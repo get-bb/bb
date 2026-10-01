@@ -79,6 +79,7 @@ function userConversationRow(index = 1): TimelineConversationRow {
     turnId: `turn_${index}`,
     sourceSeqStart: index,
     sourceSeqEnd: index,
+    messageSeq: index,
     startedAt: index,
     createdAt: index,
     kind: "conversation",

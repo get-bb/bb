@@ -477,6 +477,7 @@ export function conversationRow({
     return {
       ...rowBase,
       kind: "conversation",
+      messageSeq: rowBase.sourceSeqEnd,
       role,
       text,
       mentions: [],
@@ -500,6 +501,7 @@ export function conversationRow({
   return {
     ...rowBase,
     kind: "conversation",
+    messageSeq: rowBase.sourceSeqEnd,
     role,
     text,
     attachments,

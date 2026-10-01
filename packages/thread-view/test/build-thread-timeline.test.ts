@@ -1731,6 +1731,38 @@ describe("buildThreadTimelineFromEvents", () => {
     ]);
   });
 
+  it("keeps an accepted steer's request seq as its message seq", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Also check the tests",
+    });
+    const events = fromRows([
+      event.turnStarted({ turnId: "turn-1" }),
+      steerRequest,
+      event.inputAccepted({
+        clientRequestId: steerRequest.data.requestId,
+        turnId: "turn-1",
+      }),
+    ]);
+    const [, requestEvent, acceptedEvent] = events;
+
+    const userRows = rowsOfKind(
+      buildTimelineRows(events, "active"),
+      "conversation",
+    ).filter((row) => row.role === "user");
+
+    expect(userRows).toEqual([
+      expect.objectContaining({
+        text: "Also check the tests",
+        messageSeq: requestEvent?.meta.seq,
+        sourceSeqStart: acceptedEvent?.meta.seq,
+        sourceSeqEnd: acceptedEvent?.meta.seq,
+      }),
+    ]);
+    expect(acceptedEvent?.meta.seq).toBeGreaterThan(requestEvent?.meta.seq ?? 0);
+  });
+
   it("uses accepted context to suppress pending steers without rendering future accepted rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const turnStarted = event.turnStarted({ turnId: "turn-1" });

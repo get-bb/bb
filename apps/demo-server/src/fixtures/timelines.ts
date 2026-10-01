@@ -37,6 +37,7 @@ export function conversationRow(args: {
     ...baseRow(threadId, turnId, seq, at),
     id: `${threadId}:conversation:${seq}`,
     kind: "conversation" as const,
+    messageSeq: seq,
     text,
   };
   if (role === "assistant") {

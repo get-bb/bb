@@ -10,10 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
+import { parseMessageLink } from "@bb/client-core";
+import { appToast } from "@/components/ui/app-toast";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 
 interface SeqAnchoredRow {
   id: string;
+  messageSeq?: number;
   sourceSeqStart: number;
   sourceSeqEnd: number;
   childRows?: readonly SeqAnchoredRow[];
@@ -43,6 +46,7 @@ interface SearchMessagePaginationOptions {
   hasOlderRows?: boolean;
   isLoadingOlderRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
+  reportsMissingTarget?: boolean;
 }
 
 interface SeqRange {
@@ -75,7 +79,35 @@ function getNestedRows(row: SeqAnchoredRow): readonly SeqAnchoredRow[] | null {
   return [];
 }
 
+function findMessageSeqRowPath(
+  rows: readonly SeqAnchoredRow[],
+  seq: number,
+): SeqAnchoredRow[] | null {
+  for (const row of rows) {
+    if (row.messageSeq === seq) {
+      return [row];
+    }
+    const nestedRows = getNestedRows(row);
+    const nestedPath =
+      nestedRows === null ? null : findMessageSeqRowPath(nestedRows, seq);
+    if (nestedPath !== null) {
+      return [row, ...nestedPath];
+    }
+  }
+  return null;
+}
+
 function findDeepestSeqAnchoredRow(
+  rows: readonly SeqAnchoredRow[],
+  seq: number,
+): SeqAnchoredRow | null {
+  return (
+    findMessageSeqRowPath(rows, seq)?.at(-1) ??
+    findDeepestContainingRow(rows, seq)
+  );
+}
+
+function findDeepestContainingRow(
   rows: readonly SeqAnchoredRow[],
   seq: number,
 ): SeqAnchoredRow | null {
@@ -87,7 +119,7 @@ function findDeepestSeqAnchoredRow(
     if (nestedRows === null) {
       return null;
     }
-    return findDeepestSeqAnchoredRow(nestedRows, seq) ?? row;
+    return findDeepestContainingRow(nestedRows, seq) ?? row;
   }
   return null;
 }
@@ -174,6 +206,10 @@ export function collectSearchedMessageAncestorRowIds(
   rows: readonly SeqAnchoredRow[],
   seq: number,
 ): ReadonlySet<string> {
+  const messagePath = findMessageSeqRowPath(rows, seq);
+  if (messagePath !== null) {
+    return new Set(messagePath.map((row) => row.id));
+  }
   const ancestorIds = new Set<string>();
   collectSearchedMessageAncestorRowIdsInRows({ ancestorIds, rows, seq });
   return ancestorIds;
@@ -225,7 +261,9 @@ export function SearchMessageLocationProvider({
     locationKeyRef.current = location.key;
   }, [location.key]);
   const readLocationKey = useCallback(() => locationKeyRef.current, []);
-  const target = readSearchMessageTarget(location.state);
+  const target =
+    readSearchMessageTarget(location.state) ??
+    parseMessageLink(`${location.pathname}${location.search}`);
   const applies =
     target !== null && searchTargetAppliesToThread(target, threadId);
   const targetLocationKey = applies ? location.key : null;
@@ -269,6 +307,7 @@ export function useScrollToSearchedMessage(
     hasOlderRows = false,
     isLoadingOlderRows = false,
     onLoadOlderRows,
+    reportsMissingTarget = false,
   }: SearchMessagePaginationOptions = {},
 ): void {
   const { target, readLocationKey } = useSearchMessageLocation();
@@ -330,6 +369,20 @@ export function useScrollToSearchedMessage(
       ) {
         olderLoadAttemptKeyRef.current = olderLoadAttemptKey;
         void Promise.resolve(onLoadOlderRows()).catch(() => undefined);
+        return;
+      }
+      if (
+        reportsMissingTarget &&
+        targetIsOlderThanLoadedRows &&
+        !rowsContainSeq(rows, targetSeq) &&
+        !hasOlderRows &&
+        !isLoadingOlderRows
+      ) {
+        handledKeyRef.current = targetLocationKey;
+        appToast.message("Message not found", {
+          description:
+            "It may have been removed by an edit or hidden by a context clear.",
+        });
       }
       return;
     }
@@ -389,6 +442,7 @@ export function useScrollToSearchedMessage(
     isLoadingOlderRows,
     onLoadOlderRows,
     readLocationKey,
+    reportsMissingTarget,
     rows,
     targetLocationKey,
     targetSeq,
