@@ -242,13 +242,6 @@ plugin types --check` reports drift). Never list one in `dependencies` —
   extras (`PageBody`, `Spinner`) are gone — write your own (each is a few
   lines; see `plugins/github/components/` for reference implementations).
 
-Compatibility aliases remain for one release and warn once. Use `UrlLink`
-instead of `experimental_UrlLink`. Use `BbNavigate.openUrl` instead of
-`experimental_openUrl`. Use `Original` instead of `experimental_Original` in
-thread-list, file-opener, source-renderer, and diff-renderer props. Timeline
-renderers never had the `experimental_Original` alias. BB removes these aliases
-in bb 0.42.
-
 One deviation from stock shadcn: `Dialog` renders as a bottom drawer on
 compact viewports (the host's responsive behavior) — same API.
 

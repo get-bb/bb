@@ -192,12 +192,6 @@ bb hides the /compact command for agents that do not declare it. The plugin
 re-registers its providers as soon as the setting changes, so no restart or
 config refresh is needed.
 
-The old customAcpAgents array in the app data-dir config.json is deprecated. bb
-still reads it and logs a warning for each agent it finds, until 0.41. Move each
-entry into the customAgents setting. The shapes match except for logo, which the
-setting does not accept: bb drops that field when it reads the old array, and a
-configured agent shows the generic tool glyph.
-
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.

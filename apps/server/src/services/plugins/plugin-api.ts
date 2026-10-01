@@ -954,15 +954,6 @@ export function createPluginApi(options: {
       agentTools.push(record);
     },
   };
-  Object.defineProperty(agents, "experimental_registerProvider", {
-    enumerable: false,
-    configurable: false,
-    get(): never {
-      throw new Error(
-        "bb.agents.experimental_registerProvider was removed in SDK 0.4.16; use bb.providers.register",
-      );
-    },
-  });
 
   const mentionProviders: PluginMentionProviderRecord[] = [];
   const ui: PluginUi = {

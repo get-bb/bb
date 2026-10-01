@@ -209,9 +209,6 @@ describe("managed JSON CLI process transactions", options, () => {
                   customModels: [
                     { providerId: "future-provider", model: "synthetic" },
                   ],
-                  customAcpAgents: [
-                    { id: "synthetic", command: "missing-synthetic-command" },
-                  ],
                 }
               : {};
           const keep: Record<string, string> =

@@ -23,8 +23,7 @@ What lives here:
 
 - `server.ts` — the plugin's runtime: it reconciles one registration per
   agent, from the shipped list (`src/known-agents.ts`) plus whatever the
-  `customAgents` setting and the deprecated `customAcpAgents` config array
-  declare.
+  `customAgents` setting declares.
 - `src/agents.ts` — the agent definition and the setting's schema, built out
   of the kit's own launch-spec schema so what the setting accepts is exactly
   what the bridge parses. The setting itself is a multi-line JSON field
@@ -32,14 +31,12 @@ What lives here:
   field reference — required and optional fields, the replacement rule for a
   shipped agent's id, the `acp-<id>` provider id — is the "Custom ACP Agents"
   chapter of `docs/configuration.md`.
-- `src/configured-agents.ts` — merging the setting and the deprecated config
-  array, with the setting winning on a shared id.
+- `src/configured-agents.ts` — resolving the setting's JSON into agent
+  definitions, with a warning for each entry it cannot use.
 - `src/declaration.ts` — one agent definition becomes one
   `bb.providers.register` declaration: ids, display names, icons,
   capabilities, and the bridge options it launches with (`acpLaunchSpec`, and
   `acpDialect` for the agents whose vendor side channels the kit reads).
-- `src/legacy-config.ts` — reading the deprecated config array. Dies with the
-  deprecation window.
 - `src/host.ts` — the `bb.host` artifact, two surfaces in one file: the kit's
   bridge, re-exported, and a host entry whose one RPC asks an agent what it
   supports on the machine it is installed on (`src/contract.ts`,

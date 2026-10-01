@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { defineSplit } from "@/lib/define-split";
-import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
@@ -69,7 +68,6 @@ export function SourceCodeHost({
             overflow={overflow}
             highlightedLines={highlightedLines}
             Original={BoundOriginal}
-            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

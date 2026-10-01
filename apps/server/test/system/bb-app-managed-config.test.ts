@@ -258,7 +258,7 @@ describe("bb-app managed config", () => {
     }
   });
 
-  it("reloads a config that still carries deprecated ACP agents, with per-entry warnings and notification", async () => {
+  it("reloads a config that still carries the removed customAcpAgents array", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
     const socket = createMockHubSocket();
     const config = {
@@ -301,12 +301,7 @@ describe("bb-app managed config", () => {
       expect(config.customModels).toEqual([
         { providerId: "codex", model: "gpt-5.5-codex" },
       ]);
-      expect(logger.warnings()).toEqual([
-        expect.objectContaining({
-          fields: expect.objectContaining({ index: 1 }),
-          message: "Ignoring invalid custom ACP agent config entry",
-        }),
-      ]);
+      expect(logger.warnings()).toEqual([]);
       expect(
         socket.messages.some((message) => message.includes("config-changed")),
       ).toBe(true);

@@ -8,8 +8,6 @@ import { acpHostContract } from "./src/contract.js";
 import { KNOWN_ACP_AGENTS } from "./src/known-agents.js";
 import acpProvidersPlugin from "./server.js";
 
-const NO_LEGACY_CONFIG = "/tmp/bb-acp-plugin-test-no-config";
-
 const PLUGIN_ID = "provider-acp";
 
 const DECLARED_ICON_NAMES = Object.keys(
@@ -56,7 +54,6 @@ async function loadPlugin(options: {
 }) {
   const host = createFakePluginHost({
     pluginId: PLUGIN_ID,
-    dataDir: NO_LEGACY_CONFIG,
     experimental_declaredIconNames: DECLARED_ICON_NAMES,
     ...(options.customAgents === undefined
       ? {}
@@ -164,7 +161,6 @@ describe("the ACP plugin's registration bookkeeping", () => {
   it("registers the shipped agents before the factory's first await", async () => {
     const host = createFakePluginHost({
       pluginId: PLUGIN_ID,
-      dataDir: NO_LEGACY_CONFIG,
       experimental_declaredIconNames: DECLARED_ICON_NAMES,
     });
     host.harness.sdk.stub("hosts.list", () => Promise.resolve([]));

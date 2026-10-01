@@ -14,7 +14,6 @@ import {
   KNOWN_ACP_AGENTS,
   RESERVED_ACP_PROVIDER_IDS,
 } from "./src/known-agents.js";
-import { readLegacyCustomAcpAgents } from "./src/legacy-config.js";
 
 const CUSTOM_AGENTS_SETTING_DESCRIPTION =
   "A JSON array of ACP agents to add. Each entry needs id, displayName and command; see the guide for the optional fields.";
@@ -55,7 +54,6 @@ export default async function acpProvidersPlugin(
       experimental_schema: z.string().superRefine((value, context) => {
         const { warnings } = resolveConfiguredAcpAgents({
           settingValue: value,
-          legacyEntries: [],
           reservedProviderIds: RESERVED_ACP_PROVIDER_IDS,
           shippedAgents: KNOWN_ACP_AGENTS,
         });
@@ -125,16 +123,9 @@ export default async function acpProvidersPlugin(
     }
   }
 
-  async function resolveAndReconcile(settingValue: string): Promise<void> {
-    const legacy = await readLegacyCustomAcpAgents(
-      bb.server.experimental_dataDir,
-    );
+  function resolveAndReconcile(settingValue: string): void {
     const resolved = resolveConfiguredAcpAgents({
       settingValue,
-      legacyEntries: legacy.entries,
-      ...(legacy.problem === undefined
-        ? {}
-        : { legacyProblem: legacy.problem }),
       reservedProviderIds: RESERVED_ACP_PROVIDER_IDS,
       shippedAgents: KNOWN_ACP_AGENTS,
     });

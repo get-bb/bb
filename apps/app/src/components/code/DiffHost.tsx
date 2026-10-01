@@ -2,7 +2,6 @@ import { useMemo, type ReactNode } from "react";
 import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { defineSplit } from "@/lib/define-split";
-import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
 import { buildFileDiffPatchText } from "@/components/git-diff/git-diff-patch-text";
 import { useDiffRendererReplacement } from "./codeRendererProvider";
@@ -79,7 +78,6 @@ export function DiffHost({
             showLineNumbers={showLineNumbers}
             experimental_fullFileContents={fullFileContents}
             Original={BoundOriginal}
-            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}
