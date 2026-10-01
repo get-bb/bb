@@ -67,19 +67,6 @@ describe("machine server access", () => {
     });
   });
 
-  it("reports provider availability without acquiring a grant", async () => {
-    await withTestHarness(async ({ deps }) => {
-      const availability = vi.fn(() => ({ status: "available" as const }));
-      const acquire = vi.fn(provider().acquire);
-      installProvider({ ...provider(), availability, acquire });
-      const status = await serverAccessStatus(deps);
-      const access = status.providers.find((entry) => entry.id === "relay");
-      expect(access).toMatchObject({ id: "relay", pluginId: "access-plugin" });
-      expect(access?.availability).toEqual({ status: "available" });
-      expect(availability).toHaveBeenCalledOnce();
-      expect(acquire).not.toHaveBeenCalled();
-    });
-  });
   it("prefers the first registered provider and respects an explicit direct default", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
@@ -407,6 +394,7 @@ it.each([
       else availability.mockResolvedValue(output);
       installProvider({ ...provider(), availability });
       const status = await serverAccessStatus(deps);
+      expect(availability).toHaveBeenCalledOnce();
       expect(status.providers[0]?.availability?.status).toBe("unavailable");
       expect(JSON.stringify(status)).not.toMatch(
         /secret|password|private diagnostics/,

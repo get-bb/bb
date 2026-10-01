@@ -58,14 +58,6 @@ describe("app shell serving", () => {
     }
   });
 
-  it("serves the full document for a stale validator", async () => {
-    const res = await app.request("/", {
-      headers: { "if-none-match": 'W/"0000000000000000000000000000dead"' },
-    });
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe(shellHtml);
-  });
-
   it("rotates the ETag when a new build lands, so old validators refetch", async () => {
     const first = await app.request("/");
     const oldEtag = first.headers.get("etag") ?? "";

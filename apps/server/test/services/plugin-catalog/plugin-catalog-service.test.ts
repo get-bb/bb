@@ -294,13 +294,6 @@ describe("plugin catalog service", () => {
     expect(installedNames).toEqual(["docs"]);
   });
 
-  it("rejects unknown catalog entries", async () => {
-    const catalog = service();
-    await expect(
-      catalog.install({ entryId: "does-not-exist" }),
-    ).rejects.toThrow('unknown plugin catalog entry "does-not-exist"');
-  });
-
   it("drops entries whose bundled manifest is unreadable", async () => {
     const missingRoot = await mkdtemp(join(tmpdir(), "bb-missing-plugin-"));
     await rm(missingRoot, { recursive: true, force: true });

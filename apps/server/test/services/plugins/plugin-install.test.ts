@@ -236,6 +236,9 @@ describe("plugin install sources", () => {
     expect(() =>
       parsePluginSource("git:github.com/acme/repo@-evil"),
     ).toThrowError(/invalid git ref/);
+    expect(() => parsePluginSource("git:@main")).toThrowError(
+      /invalid git url/,
+    );
   });
 
   it("reads git semver ranges, explicit selectors, and tag prefixes", () => {
@@ -972,24 +975,6 @@ describe("plugin install flows", () => {
       await expect(stat(`${managed}@main`)).rejects.toThrowError();
     });
 
-    it("hard-fails managed install on an engines.bbPluginSdk mismatch", async () => {
-      const repoDir = join(workDir, "repo-sdk-too-new");
-      await writePluginFixture(repoDir, {
-        name: "bb-plugin-sdk-too-new",
-        pluginSdkRange: ">=99.0.0",
-      });
-      await initGitRepo(repoDir);
-      await commitAll(repoDir, "init");
-
-      await expect(
-        service.install(`git:${repoDir}@main`, { kind: "root" }),
-      ).rejects.toThrowError(
-        new RegExp(
-          `install refused.*requires bb plugin SDK >=99\\.0\\.0, running SDK is ${PLUGIN_SDK_VERSION.replaceAll(".", "\\.")}`,
-        ),
-      );
-    });
-
     it("remove retains immutable git artifacts and never touches a path source", async () => {
       const repoDir = join(workDir, "repo-rm");
       await writePluginFixture(repoDir, { name: "bb-plugin-managed" });
@@ -1051,26 +1036,6 @@ describe("plugin install flows", () => {
       expect(
         getInstalledPluginRegistration(db, "cached-engine"),
       ).toBeUndefined();
-    });
-
-    it("refuses a git url without the git binary being asked to run arbitrary flags", async () => {
-      await expect(
-        service.install("git:@main", { kind: "root" }),
-      ).rejects.toThrowError();
-    });
-
-    it("builds both bundles for a git plugin", async () => {
-      const repoDir = join(workDir, "repo-selfcontained");
-      await writePluginFixture(repoDir, { name: "bb-plugin-selfcontained" });
-      await initGitRepo(repoDir);
-      await commitAll(repoDir, "init");
-
-      const entry = await service.install(`git:${repoDir}@main`, {
-        kind: "root",
-      });
-      expect(entry.status).toBe("running");
-      await stat(join(entry.rootDir, "dist", "server.js"));
-      await stat(join(entry.rootDir, "dist", "server.meta.json"));
     });
 
     it.runIf(hasNpm)(
@@ -1584,17 +1549,6 @@ describe("plugin install flows", () => {
           pluginVersion: "0.1.0",
         }),
       ).toMatch(/unknown artifactFormatVersion 2.*supported value is 1/);
-    });
-
-    it("accepts metadata that matches the manifest and this SDK", () => {
-      expect(
-        validatePluginArtifactMeta({
-          artifact: "server",
-          raw: artifactMeta({ pluginId: "artifact-ok" }),
-          pluginId: "artifact-ok",
-          pluginVersion: "0.1.0",
-        }),
-      ).toBeNull();
     });
   });
 

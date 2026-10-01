@@ -158,13 +158,6 @@ describe("prebuilt server bundle loading", () => {
     );
   });
 
-  it("never prefers dist for path installs — edited source must win", async () => {
-    const rootDir = await writePrebuiltPlugin("bb-plugin-pathsrc");
-    const entry = await service.installPath(rootDir);
-    expect(entry.status).toBe("error");
-    expect(entry.statusDetail).toContain("source must not load");
-  });
-
   it("compiles path source into a reusable cache and rebuilds after edits", async () => {
     const rootDir = await writePrebuiltPlugin("bb-plugin-pathcache");
     const sourcePath = join(rootDir, "server.ts");

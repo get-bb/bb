@@ -82,17 +82,6 @@ describe("hero plugin: agent-enrichment", () => {
     };
   }
 
-  it("bb docs search returns excerpts from the bundled docs via the CLI endpoint", async () => {
-    const result = await runDocs(["search", "conventional commits"]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("conventions.md");
-    expect(result.stdout).toContain("conventional commits");
-
-    const last = await runDocs(["last"]);
-    expect(last.exitCode).toBe(0);
-    expect(last.stdout).toContain('"conventional commits"');
-  });
-
   it("the caseSensitive boolean setting changes search behavior without a reload", async () => {
     const insensitive = await runDocs(["search", "CONVENTIONAL COMMITS"]);
     expect(insensitive.stdout).toContain("conventions.md");

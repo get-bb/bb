@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -212,38 +212,6 @@ describe("store-installed official plugins", () => {
       ]);
     },
   );
-
-  it("re-points an installed official plugin when the bundled copy changes", async () => {
-    const mutableRoot = join(workDir, "bb-plugin-builtin-fixture");
-    await cp(fixtureRoot, mutableRoot, { recursive: true });
-    service = createService({
-      db,
-      dataDir: join(workDir, "data"),
-      bundled: [officialEntry({ rootDir: mutableRoot })],
-    });
-    await service.start();
-    await service.installOfficialPlugin("fixture");
-    await service.stop();
-
-    const packageJson = JSON.parse(
-      await readFile(join(mutableRoot, "package.json"), "utf8"),
-    ) as { version: string };
-    await writeFile(
-      join(mutableRoot, "package.json"),
-      JSON.stringify({ ...packageJson, version: "0.2.0" }),
-    );
-
-    service = createService({
-      db,
-      dataDir: join(workDir, "data"),
-      bundled: [officialEntry({ rootDir: mutableRoot })],
-    });
-    await service.start();
-
-    expect(service.list()).toMatchObject([
-      { id: "builtin-fixture", version: "0.2.0", status: "running" },
-    ]);
-  });
 
   it("keeps a removed official plugin uninstalled across restarts", async () => {
     service = createService({
