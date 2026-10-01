@@ -59,7 +59,6 @@ const hostCommandWakePolicy = {
   "host.global_skills_status": "work",
   "host.inspect_git_source": "work",
   "host.list_branch_options": "work",
-  "host.file_metadata": "work",
   "host.read_file": "work",
   "host.read_file_chunk": "work",
   "host.read_file_relative": "work",

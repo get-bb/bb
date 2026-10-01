@@ -330,13 +330,6 @@ export const BB_HOST_ID_ENV = defineEnvVar<string | undefined>({
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
-export const BB_HOST_NAME_ENV = defineEnvVar<string | undefined>({
-  description:
-    "Preferred host name to report instead of detecting the local hostname",
-  name: "BB_HOST_NAME",
-  parse: parseOptionalTrimmedStringEnvValue,
-});
-
 export const DEFAULT_BB_APP_VERSION = DEFAULTS.appVersion;
 export const DEFAULT_BB_APP_SURFACE = APP_SURFACE_WEB;
 export const DEFAULT_BB_APP_URL = "";

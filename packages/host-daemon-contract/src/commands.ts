@@ -221,7 +221,6 @@ const hostDaemonThreadRuntimeContextSchema = z
     dynamicTools: z.array(dynamicToolSchema),
     contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
     injectedSkillSources: z.array(hostDaemonInjectedSkillSourceSchema),
-    disallowedTools: z.array(z.string()).optional(),
     instructionMode: instructionModeSchema,
   })
   .strict();
@@ -488,14 +487,6 @@ const hostReadFileRelativeCommandSchema = z
     rootPath: z.string().min(1),
     path: z.string().min(1),
     dotfiles: hostReadFileRelativeDotfilePolicySchema,
-  })
-  .strict();
-
-const hostFileMetadataCommandSchema = z
-  .object({
-    type: z.literal("host.file_metadata"),
-    path: z.string().min(1),
-    rootPath: z.string().min(1).optional(),
   })
   .strict();
 
@@ -888,8 +879,6 @@ const providerInstallationStatusCommandSchema = z
     type: z.literal("provider.installation.status"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
-    cwd: z.string().min(1).optional(),
-    requirement: z.literal("thread_rewind").optional(),
   })
   .strict();
 
@@ -899,7 +888,6 @@ const providerInstallationRunCommandSchema = z
     providerId: z.string().min(1),
     action: providerCliInstallActionKindSchema,
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
-    cwd: z.string().min(1).optional(),
   })
   .strict();
 
@@ -1051,12 +1039,6 @@ const fileWriteResultSchema = z.discriminatedUnion("outcome", [
     })
     .strict(),
 ]);
-
-const fileMetadataResultSchema = z.object({
-  path: z.string(),
-  modifiedAtMs: z.number().nonnegative(),
-  sizeBytes: z.number().int().nonnegative(),
-});
 
 const workspaceStatusResultSchema = z.discriminatedUnion("outcome", [
   z
@@ -1237,9 +1219,6 @@ const providerListModelsResultSchema = z.object({
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
 });
-const turnSubmitResultSchema = z.object({
-  appliedAs: z.enum(["new-turn", "steer"]),
-});
 export const COMPETING_TURN_ERROR_CODE = "competing_turn" as const;
 
 const threadStopResultSchema = z
@@ -1283,7 +1262,6 @@ const providerUsageCommandSchema = z
     type: z.literal("provider.usage"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
-    cwd: z.string().min(1).optional(),
   })
   .strict();
 
@@ -1471,7 +1449,7 @@ export const hostDaemonCommandRegistry = {
   "turn.submit": defineHostDaemonCommandDescriptor({
     type: "turn.submit",
     schema: turnSubmitCommandSchema,
-    resultSchema: turnSubmitResultSchema,
+    resultSchema: emptyCommandResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,
@@ -1807,15 +1785,6 @@ export const hostDaemonCommandRegistry = {
     type: "host.list_branch_options",
     schema: hostListBranchOptionsCommandSchema,
     resultSchema: gitBranchOptionsSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
-  "host.file_metadata": defineHostDaemonCommandDescriptor({
-    type: "host.file_metadata",
-    schema: hostFileMetadataCommandSchema,
-    resultSchema: fileMetadataResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

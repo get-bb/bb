@@ -568,6 +568,12 @@ behavior. Keep temporary review stories and fixtures out of the final diff.
 
 ## Pull Request Status And Daemon Compatibility
 
+Host-daemon protocol 224 removes wire members that neither side used: the
+`host.file_metadata` command, the `disallowedTools` runtime-context field, the
+`cwd` and `requirement` fields on provider installation and usage commands, the
+`appliedAs` field of `turn.submit` results, and the `serviceManager` field of
+`server_move.inspect` results.
+
 Host-daemon protocol 223 upgrades Zod to 4.6.5. String length constraints now
 count Unicode code points rather than UTF-16 code units. For example, a
 controller label containing 256 emoji passes the 256-character limit; 257

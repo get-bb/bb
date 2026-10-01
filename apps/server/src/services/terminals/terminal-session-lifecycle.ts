@@ -1559,21 +1559,6 @@ export class TerminalSessionLifecycle {
       case "resize":
         this.resizeBrowserTerminal(args);
         return;
-      case "close":
-        const current = this.getBrowserTerminalSession(args);
-        if (current) {
-          void this.closeTerminalSession({
-            current,
-            payload: { mode: "force", reason: args.message.reason },
-          }).catch((error) => {
-            this.sendTerminalSocketError({
-              socket: args.socket,
-              code: "terminal_close_failed",
-              message: error instanceof Error ? error.message : String(error),
-            });
-          });
-        }
-        return;
     }
   }
 

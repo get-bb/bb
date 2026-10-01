@@ -7,16 +7,6 @@ const activationTokenSchema = z.string().min(16);
 const sha256HexSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const portSchema = z.number().int().min(1).max(65535);
 
-export const serverMoveServiceManagerSchema = z.enum([
-  "launchd",
-  "systemd-user",
-  "systemd-system",
-  "none",
-]);
-export type ServerMoveServiceManager = z.infer<
-  typeof serverMoveServiceManagerSchema
->;
-
 export const serverMoveBindHostSchema = z.enum(["127.0.0.1", "0.0.0.0"]);
 
 export const serverMoveHealthStateSchema = z.enum([
@@ -116,7 +106,6 @@ export const serverMoveResultSchemas = {
       timeZone: z.string().min(1).nullable(),
       bbAppVersion: z.string().min(1),
       serverEntryAvailable: z.boolean(),
-      serviceManager: serverMoveServiceManagerSchema,
       existingServerData: existingServerDataSchema.nullable(),
       dataDirHasServerData: z.boolean(),
       portAvailable: z.boolean(),

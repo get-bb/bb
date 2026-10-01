@@ -717,7 +717,6 @@ describe("consumer-specific config", () => {
         BB_HOST_ENROLL_KEY: " enroll-token ",
         BB_HOST_DAEMON_AUTO_UPDATE: "true",
         BB_HOST_ID: " host-123 ",
-        BB_HOST_NAME: " host-123 ",
       },
     });
 
@@ -727,7 +726,6 @@ describe("consumer-specific config", () => {
       BB_HOST_ENROLL_KEY: "enroll-token",
       BB_HOST_DAEMON_AUTO_UPDATE: true,
       BB_HOST_ID: "host-123",
-      BB_HOST_NAME: "host-123",
     });
   });
 
@@ -737,7 +735,6 @@ describe("consumer-specific config", () => {
         BB_BRIDGE_DIR: "",
         BB_CLI_DIR: "   ",
         BB_HOST_ENROLL_KEY: " ",
-        BB_HOST_NAME: "",
       },
     });
 

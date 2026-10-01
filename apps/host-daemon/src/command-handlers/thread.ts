@@ -207,7 +207,6 @@ async function resumeThreadRuntimeIfMissing(
     options: command.options,
     instructions: resumeContext.instructions,
     dynamicTools: resumeContext.dynamicTools,
-    disallowedTools: resumeContext.disallowedTools,
     instructionMode: resumeContext.instructionMode,
   });
 }
@@ -249,7 +248,6 @@ export async function startThread(
       options: command.options,
       instructions: command.instructions,
       dynamicTools: command.dynamicTools,
-      disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
       ...(command.fork ? { fork: command.fork } : {}),
     });
@@ -283,7 +281,6 @@ export async function prepareThreadRewind(
     options: command.options,
     instructions: command.instructions,
     dynamicTools: command.dynamicTools,
-    disallowedTools: command.disallowedTools,
     instructionMode: command.instructionMode,
   });
 }
@@ -342,7 +339,7 @@ async function runSubmittedTurn(
     contributedEnv: command.resumeContext.contributedEnv,
     instructions: command.resumeContext.instructions,
   });
-  return { appliedAs: "new-turn" };
+  return {};
 }
 
 async function steerSubmittedTurn(
@@ -364,7 +361,7 @@ async function steerSubmittedTurn(
     });
 
     if (result.status === "steered") {
-      return { appliedAs: "steer" };
+      return {};
     }
     activeTurnId = result.activeTurnId;
     if (attempt === TURN_SUBMIT_STEER_ATTEMPTS - 1) {

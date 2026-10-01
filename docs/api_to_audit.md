@@ -273,6 +273,14 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
+The `disallowedTools` field of the session-construction params
+(`threadStartParamsSchema`, `threadResumeParamsSchema` and
+`threadForkParamsSchema` on `@get-bb/plugin-sdk/provider-bridge`) is retired
+the same way: the runtime never populates it, because the server stopped
+producing tool removals when the subagent and workflow toggles moved to
+`providerOptions`. Kept because 0.4.x published it; remove at the next major
+version.
+
 ## Settings schemas and server writes
 
 **What it does.** A `PluginSettingDescriptor` can declare an

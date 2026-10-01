@@ -2649,14 +2649,14 @@ describe("public terminal routes", () => {
       }),
     );
 
-    fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
-      terminalId: stored.id,
-      socket: browserSocket,
-      message: {
-        type: "close",
-        reason: "user",
+    const closeResponsePromise = fixture.harness.app.request(
+      `/api/v1/terminals/${stored.id}/close`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "force", reason: "user" }),
       },
-    });
+    );
     const closeMessage = await waitForDaemonMessage(fixture.socket, 3);
     expect(closeMessage).toMatchObject({
       type: "terminal.close",
@@ -2686,6 +2686,7 @@ describe("public terminal routes", () => {
         closeReason: "user",
       },
     });
+    expect((await closeResponsePromise).status).toBe(200);
     const closingMessages = readBrowserMessages(browserSocket).slice(-2);
     expect(closingMessages).toEqual([
       { type: "output", chunk: finalChunk },

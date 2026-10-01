@@ -14,7 +14,6 @@ import {
   browseHostDirectory,
   readHostFile,
   readHostFileChunk,
-  readHostFileMetadata,
   readHostRelativeFile,
 } from "./host-files.js";
 
@@ -236,43 +235,6 @@ describe("readHostFile (no ref — disk read)", () => {
     ).rejects.toMatchObject({
       code: "invalid_path",
       message: "Path is a directory, not a file",
-    });
-  });
-});
-
-describe("readHostFileMetadata", () => {
-  it("returns host-side file metadata without reading contents", async () => {
-    const repoPath = await initRepo();
-    const filePath = path.join(repoPath, "large-preferences.md");
-    await fs.writeFile(filePath, Buffer.alloc(25 * 1024 * 1024 + 1));
-
-    const result = await readHostFileMetadata({
-      type: "host.file_metadata",
-      path: filePath,
-      rootPath: repoPath,
-    });
-
-    expect(result.path).toBe(filePath);
-    expect(result.sizeBytes).toBe(25 * 1024 * 1024 + 1);
-    expect(result.modifiedAtMs).toBeGreaterThan(0);
-  });
-
-  it("uses the same containment checks as disk reads", async () => {
-    const repoPath = await initRepo();
-    const outsidePath = path.join(repoPath, "..", "outside-metadata.txt");
-    const symlinkPath = path.join(repoPath, "outside-link");
-    await fs.writeFile(outsidePath, "outside");
-    await fs.symlink(outsidePath, symlinkPath);
-
-    await expect(
-      readHostFileMetadata({
-        type: "host.file_metadata",
-        path: symlinkPath,
-        rootPath: repoPath,
-      }),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: expect.stringContaining("escapes read root"),
     });
   });
 });

@@ -337,7 +337,7 @@ describe("thread.stop race semantics", () => {
       harness.dispatchOptions,
     );
     await expect(stopPromise).resolves.toEqual({ providerCheckpointId: null });
-    await expect(submitPromise).resolves.toEqual({ appliedAs: "new-turn" });
+    await expect(submitPromise).resolves.toEqual({});
 
     expect(recordedThreadStops(harness)).toEqual([
       expect.objectContaining({

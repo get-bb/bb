@@ -186,9 +186,6 @@ export function createBridgeProtocolAdapter(
       ...(command.dynamicTools !== undefined
         ? { dynamicTools: command.dynamicTools }
         : {}),
-      ...(command.disallowedTools !== undefined
-        ? { disallowedTools: command.disallowedTools }
-        : {}),
       instructionMode: command.instructionMode,
     };
   }

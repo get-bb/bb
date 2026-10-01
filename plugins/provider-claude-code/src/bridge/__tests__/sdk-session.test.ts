@@ -369,7 +369,6 @@ describe("SdkSession", () => {
       {
         ...defaultOptions,
         permissionMode: "acceptEdits",
-        disallowedTools: ["WebFetch"],
       },
       onMessage,
       onDone,
@@ -381,7 +380,6 @@ describe("SdkSession", () => {
       expect.objectContaining({
         options: expect.objectContaining({
           permissionMode: "acceptEdits",
-          disallowedTools: ["WebFetch"],
         }),
       }),
     );

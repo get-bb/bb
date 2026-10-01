@@ -33,7 +33,6 @@ import {
 interface StartHostDaemonOptions {
   enrollKey?: string;
   hostId?: string;
-  hostName?: string;
   bbExecutableDirectory?: string;
   bridgeBundleDir?: string;
   serverHeaders?: Record<string, string>;
@@ -76,7 +75,6 @@ export async function startHostDaemon(
     const identity = await loadHostIdentity({
       dataDir,
       providedHostId: options.hostId,
-      providedHostName: options.hostName,
     });
     const instanceId = randomUUID();
     const serverUrl = resolveServerUrl({

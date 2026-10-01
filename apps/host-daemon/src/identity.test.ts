@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { detectHostName, loadHostIdentity, persistHostId } from "./identity.js";
 
 const tempDirs: string[] = [];
@@ -117,20 +117,5 @@ describe("identity", () => {
         providedHostId: "host-mismatch",
       }),
     ).rejects.toThrow(/does not match persisted host ID/u);
-  });
-
-  it("uses BB_HOST_NAME when provided instead of detecting a hostname", async () => {
-    const dataDir = await makeTempDir("bb-host-daemon-identity-host-name-");
-    const execFile = vi.fn();
-
-    const identity = await loadHostIdentity({
-      dataDir,
-      execFile,
-      fallbackHostName: () => "fallback-host",
-      providedHostName: "remote-abcdef",
-    });
-
-    expect(identity.hostName).toBe("remote-abcdef");
-    expect(execFile).not.toHaveBeenCalled();
   });
 });

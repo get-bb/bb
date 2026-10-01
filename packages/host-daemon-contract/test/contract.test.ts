@@ -356,11 +356,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       kind: "local",
     },
   },
-  "host.file_metadata": {
-    path: "/tmp/report.html",
-    modifiedAtMs: 1234,
-    sizeBytes: 42,
-  },
   "host.read_file": {
     path: "/tmp/report.html",
     content: "<!doctype html>",
@@ -512,7 +507,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     timeZone: "America/Los_Angeles",
     bbAppVersion: "0.0.5",
     serverEntryAvailable: false,
-    serviceManager: "systemd-user",
     existingServerData: null,
     dataDirHasServerData: false,
     portAvailable: true,
@@ -539,9 +533,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "thread.start": {
     providerThreadId: "provider-thread-123",
   },
-  "turn.submit": {
-    appliedAs: "new-turn",
-  },
+  "turn.submit": {},
   "thread.stop": { providerCheckpointId: null },
   "thread.storage.delete": { providerCheckpointId: null },
   "thread.goal.clear": { cleared: true },
@@ -651,8 +643,8 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
 
 const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
   {
-    name: "host.file_metadata command with a read-file result",
-    commandType: "host.file_metadata",
+    name: "host.list_files command with a read-file result",
+    commandType: "host.list_files",
     result: {
       path: "/tmp/report.html",
       content: "<!doctype html>",
@@ -662,12 +654,11 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
     },
   },
   {
-    name: "host.read_file command with a metadata result",
+    name: "host.read_file command with a list-files result",
     commandType: "host.read_file",
     result: {
-      path: "/tmp/report.html",
-      modifiedAtMs: 1234,
-      sizeBytes: 42,
+      files: [],
+      truncated: false,
     },
   },
   {
@@ -819,10 +810,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.browse_directory may omit path to list the host's home directory, which a remote caller cannot resolve.",
   "hostDaemonOnlineRpcCommandSchema.ref":
     "host.read_file may omit ref to read from disk; setting ref switches to git history at that ref.",
-  "hostDaemonOnlineRpcCommandSchema.requirement":
-    "provider installation status omits requirement for general compatibility and names one only when checking a specific operation.",
   "hostDaemonOnlineRpcCommandSchema.rootPath":
-    "host.read_file and host.file_metadata may omit rootPath only for explicit absolute disk reads; ref-based reads still require it.",
+    "host.read_file may omit rootPath only for explicit absolute disk reads; ref-based reads still require it.",
   "hostDaemonOnlineRpcCommandSchema.selectedBranch":
     "host.list_branch_options may omit exact selected-branch classification when the caller only needs a branch option page.",
   "hostDaemonCommandSchema.threadStoragePath":
@@ -833,12 +822,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start.fork names a checkpoint only when the clone should stop at an earlier source turn; absent means clone the session tip.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
-  "hostDaemonCommandSchema.disallowedTools":
-    "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.options.promptMode":
     "thread runtime options carry a prompt mode only when the prompt entered one through the provider's declared composer action.",
-  "hostDaemonCommandSchema.resumeContext.disallowedTools":
-    "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
 };
 
 describe("cache usage wire compatibility", () => {
@@ -1145,7 +1130,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(223);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(224);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1599,18 +1584,6 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
-        type: "host.file_metadata",
-        path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123",
-      }),
-    ).toMatchObject({
-      type: "host.file_metadata",
-      path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
-      rootPath: "/tmp/bb-data/thread-storage/thread-123",
-    });
-
-    expect(
-      hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file",
         path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
         rootPath: "/tmp/bb-data/thread-storage/thread-123",
@@ -1777,11 +1750,6 @@ describe("host-daemon command schemas", () => {
         type: "host.inspect_git_source",
         path: "/tmp/workspace",
         remoteRefresh: "blocking",
-      },
-      {
-        type: "host.file_metadata",
-        path: "/tmp/workspace/README.md",
-        rootPath: "/tmp/workspace",
       },
       {
         type: "host.read_file",
@@ -3129,18 +3097,6 @@ describe("host-daemon command schemas", () => {
       path: "assets/logo.png",
       content: "iVBORw0KGgo=",
       contentEncoding: "base64",
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType["host.file_metadata"].parse({
-        path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
-        modifiedAtMs: 1234.5,
-        sizeBytes: 26_214_401,
-      }),
-    ).toMatchObject({
-      path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
-      modifiedAtMs: 1234.5,
-      sizeBytes: 26_214_401,
     });
 
     expect(

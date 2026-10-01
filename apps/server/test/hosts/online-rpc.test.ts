@@ -567,15 +567,11 @@ describe("host online RPC retry semantics", () => {
             rawMessage: {
               type: "host-rpc.response",
               requestId: request.requestId,
-              commandType: "host.file_metadata",
+              commandType: "host.read_file",
               ok: true,
               result: {
-                path: filePath,
-                content: "<!doctype html>",
-                contentEncoding: "utf8",
-                mimeType: "text/html",
-                sizeBytes: 15,
-                sha256: "0".repeat(64),
+                files: [],
+                truncated: false,
               },
             },
           });
@@ -589,7 +585,7 @@ describe("host online RPC retry semantics", () => {
           hostId: host.id,
           timeoutMs: 25,
           command: {
-            type: "host.file_metadata",
+            type: "host.read_file",
             path: filePath,
           },
         });
@@ -604,7 +600,7 @@ describe("host online RPC retry semantics", () => {
 
       expect(requests.map((request) => request.command)).toEqual([
         {
-          type: "host.file_metadata",
+          type: "host.read_file",
           path: filePath,
         },
       ]);
@@ -635,16 +631,11 @@ describe("host online RPC retry semantics", () => {
             rawMessage: {
               type: "host-rpc.response",
               requestId: request.requestId,
-              commandType: "host.read_file",
+              commandType: "host.list_files",
               ok: true,
               result: {
-                path: filePath,
-                content: "<!doctype html>",
-                contentEncoding: "utf8",
-                mimeType: "text/html",
-                modifiedAtMs: 1234,
-                sizeBytes: 15,
-                sha256: "0".repeat(64),
+                files: [],
+                truncated: false,
               },
             },
           });
@@ -658,7 +649,7 @@ describe("host online RPC retry semantics", () => {
           hostId: host.id,
           timeoutMs: 1_000,
           command: {
-            type: "host.file_metadata",
+            type: "host.read_file",
             path: filePath,
           },
         });
@@ -670,13 +661,13 @@ describe("host online RPC retry semantics", () => {
         expect(error.status).toBe(500);
         expect(error.body.code).toBe("command_result_type_mismatch");
         expect(error.body.message).toContain(
-          "completed with unexpected type host.read_file",
+          "completed with unexpected type host.list_files",
         );
       }
 
       expect(requests.map((request) => request.command)).toEqual([
         {
-          type: "host.file_metadata",
+          type: "host.read_file",
           path: filePath,
         },
       ]);

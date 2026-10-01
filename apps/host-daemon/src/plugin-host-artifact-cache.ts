@@ -5,7 +5,6 @@ import type { HostDaemonLogger } from "./logger.js";
 
 const PLUGIN_HOST_ARTIFACT_CACHE_SEGMENT = "plugin-host-artifacts";
 const ARTIFACT_FILE_NAME = "host.mjs";
-const LEGACY_ARTIFACT_FILE_NAMES = ["host.js"] as const;
 
 export type FetchPluginHostArtifact = (args: {
   pluginId: string;
@@ -30,7 +29,6 @@ export async function ensureCachedPluginHostArtifact(args: {
     digest: args.digest,
     byteLength: args.byteLength,
     fileName: ARTIFACT_FILE_NAME,
-    legacyFileNames: LEGACY_ARTIFACT_FILE_NAMES,
     fetchArtifact: ({ digest, byteLength }) =>
       args.fetchArtifact({
         pluginId: args.pluginId,

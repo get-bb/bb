@@ -248,7 +248,7 @@ describe.sequential("suspended machine lifecycle policy", () => {
         sessionId: session.id,
         handle: ({ command }) => {
           if (command.type === "turn.submit") {
-            return { ok: true, result: { appliedAs: "new-turn" } };
+            return { ok: true, result: {} };
           }
           throw new Error(`Unexpected host RPC ${command.type}`);
         },

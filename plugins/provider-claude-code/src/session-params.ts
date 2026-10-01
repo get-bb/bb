@@ -90,7 +90,6 @@ function resolveClaudeSessionPermissionMode(
 interface BuildInternalSessionParamsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   cwd: string;
-  disallowedTools?: readonly string[] | undefined;
   dynamicTools?: readonly DynamicTool[] | undefined;
   instructionMode: InstructionMode;
   options: ClaudeSessionExecutionOptions;
@@ -140,9 +139,6 @@ function buildInternalSessionParams(
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
-    ...(args.disallowedTools && args.disallowedTools.length > 0
-      ? { disallowedTools: [...args.disallowedTools] }
-      : {}),
   };
 }
 
@@ -173,7 +169,6 @@ interface BuildClaudeSessionParamsArgs {
   options: ClaudeCanonicalExecutionOptions;
   instructionMode: InstructionMode;
   dynamicTools?: readonly DynamicTool[] | undefined;
-  disallowedTools?: readonly string[] | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
 }
 
@@ -188,7 +183,6 @@ export function buildClaudeSessionParams(
     additionalWorkspaceWriteRoots:
       providerOptions.additionalWorkspaceWriteRoots ?? [],
     cwd: args.cwd,
-    disallowedTools: args.disallowedTools,
     dynamicTools: args.dynamicTools,
     instructionMode: args.instructionMode,
     threadId: args.threadId,

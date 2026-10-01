@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
 import {
+  BRIDGE_JSON_RPC_ERRORS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
 } from "@bb/provider-bridge-protocol";
@@ -28,7 +29,6 @@ import type {
 } from "@bb/provider-bridge-protocol/testing";
 
 import { handleLine } from "./bridge.js";
-import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "../bridge-protocol.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
 
 const FAKE_AGENT_PATH = resolve(
@@ -2742,7 +2742,7 @@ describe("acp bridge", () => {
       input: [{ type: "text", text: "late", mentions: [] }],
     });
     const response = await waitForResponse(steerId);
-    expect(response.error?.code).toBe(ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE);
+    expect(response.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN);
     expect(response.error?.message).toMatch(/No active turn/);
   });
 

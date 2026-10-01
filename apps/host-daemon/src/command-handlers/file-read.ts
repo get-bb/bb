@@ -47,12 +47,6 @@ export type ReadFileForTransportResult =
   | ReadFileContentForTransportResult
   | ReadFileNotModifiedForTransportResult;
 
-interface ReadFileMetadataForTransportResult {
-  modifiedAtMs: number;
-  path: string;
-  sizeBytes: number;
-}
-
 interface ReadFileForTransportArgs {
   ifNoneMatch?: HostReadFileIfNoneMatch;
   resolvedPath: string;
@@ -416,27 +410,6 @@ export async function readRootRelativeFileForTransport(
     path: relativePath.resultPath,
     sizeBytes: stat.size,
   });
-}
-
-export async function readFileMetadataForTransport(
-  args: ReadFileForTransportArgs,
-): Promise<ReadFileMetadataForTransportResult> {
-  const readablePath = await resolveReadablePath(args);
-  const stat = await fs
-    .stat(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
-  if (stat.isDirectory()) {
-    throw new CommandDispatchError(
-      "invalid_path",
-      "Path is a directory, not a file",
-    );
-  }
-
-  return {
-    path: args.resultPath,
-    modifiedAtMs: stat.mtimeMs,
-    sizeBytes: stat.size,
-  };
 }
 
 function fileRevision(stat: BigIntStats): string {

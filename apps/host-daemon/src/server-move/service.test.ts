@@ -821,7 +821,6 @@ describe("ServerMoveService.inspect and probe", () => {
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       bbAppVersion: "1.2.3",
       serverEntryAvailable: true,
-      serviceManager: "none",
       existingServerData: { path: join(fixture.homeDir, ".bb"), sizeBytes: 5 },
       dataDirHasServerData: false,
       portAvailable: true,
