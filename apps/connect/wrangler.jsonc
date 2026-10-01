@@ -28,7 +28,11 @@
   // Production: every *.getbb.app subdomain hits the gate via the wildcard
   // zone route (backed by a proxied `*` DNS record). The apex + www are
   // custom domains on bb-web and take precedence over this route.
-  "vars": { "BASE_DOMAIN": "getbb.app" },
+  "vars": {
+    "BASE_DOMAIN": "getbb.app",
+    "PRESENCE_WRITES": "on-change",
+    "WORKER_HELD_RESPONSES": "on"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -48,11 +52,6 @@
       "durable_objects": {
         "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
       },
-      // WORKER_HELD_RESPONSES and PRESENCE_WRITES are staging-only until the
-      // staging measurements are in; production omits both and keeps the
-      // object-held responses and the periodic presence write. Flip bb-web's
-      // PRESENCE_WRITES before the gate's so the dashboard never reads a
-      // last_seen_at the gate has stopped refreshing.
       "vars": {
         "BASE_DOMAIN": "vibecodethis.site",
         "WORKER_HELD_RESPONSES": "on",
