@@ -830,34 +830,23 @@
 }
 
 @keyframes bb-search-flash {
-  from {
-    opacity: 1;
+  0%,
+  25% {
+    background-color: var(--state-hover);
   }
-  to {
-    opacity: 0;
+  100% {
+    background-color: transparent;
   }
 }
 
-.bb-message-highlight,
-.bb-search-flash:not(:has(.bb-message-highlight)) {
-  position: relative;
-}
-
-.bb-search-flash .bb-message-highlight::after,
-.bb-search-flash:not(:has(.bb-message-highlight))::after {
-  content: "";
-  position: absolute;
-  inset: -3px;
-  border-radius: inherit;
-  pointer-events: none;
-  background-color: color-mix(in oklab, var(--attention) 12%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--attention) 35%, transparent);
-  animation: bb-search-flash 1.6s ease-out;
+.bb-search-flash {
+  border-radius: var(--radius-lg, 0.5rem);
+  background-color: var(--state-hover);
+  animation: bb-search-flash 1.6s ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bb-search-flash .bb-message-highlight::after,
-  .bb-search-flash:not(:has(.bb-message-highlight))::after {
+  .bb-search-flash {
     animation: none;
   }
 }
