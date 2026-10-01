@@ -42,6 +42,7 @@ function fakeModule(options: FakeModuleOptions = {}) {
     getPermission: async () => permission,
     requestPermissionMock,
     requestPermission: () => requestPermissionMock(),
+    unregisterDevicePushToken: async () => undefined,
     getExpoPushToken: vi.fn(async () => {
       const token = options.token ?? "ExponentPushToken[abc]";
       return typeof token === "function" ? token() : token;
