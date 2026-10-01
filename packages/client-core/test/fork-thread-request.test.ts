@@ -32,7 +32,7 @@ describe("buildForkThreadRequest", () => {
         data: { kind: "draft" },
       },
       projectId: "proj_test",
-      providerId: "codex",
+      providerId: "acp-amp",
       providerSupportsFork: true,
       reasoningLevel: "high",
       serviceTier: "fast",
@@ -52,7 +52,7 @@ describe("buildForkThreadRequest", () => {
         data: { kind: "draft" },
       },
       projectId: "proj_test",
-      providerId: "codex",
+      providerId: "acp-amp",
       reasoningLevel: "high",
       serviceTier: "fast",
       sourceSeqEnd: 42,
@@ -80,30 +80,6 @@ describe("buildForkThreadRequest", () => {
 
     expect(request).not.toHaveProperty("serviceTier");
     expect(request).not.toHaveProperty("pluginSubmission");
-  });
-
-  it("builds a fork request for a generic ACP provider", () => {
-    expect(
-      buildForkThreadRequest({
-        environmentId: "env_source",
-        input: [{ type: "text", text: "Continue from here", mentions: [] }],
-        model: "gpt-5",
-        permissionMode: "auto",
-        pluginSubmission: undefined,
-        projectId: "proj_test",
-        providerId: "acp-amp",
-        providerSupportsFork: true,
-        reasoningLevel: "medium",
-        serviceTier: undefined,
-        sourceSeqEnd: undefined,
-        sourceThreadId: "thr_source",
-        sourceThreadTitle: "Investigate flaky test",
-      }),
-    ).toMatchObject({
-      originKind: "fork",
-      providerId: "acp-amp",
-      sourceThreadId: "thr_source",
-    });
   });
 
   it("returns null when the provider cannot fork sessions", () => {

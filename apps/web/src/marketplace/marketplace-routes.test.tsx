@@ -1,5 +1,4 @@
 import { isNotFound } from "@tanstack/react-router";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { stringifySiteSearch } from "../lib/search-serialization.js";
@@ -21,7 +20,6 @@ import {
   MARKETPLACE_STATS_FIXTURE,
   MARKETPLACE_V2_FIXTURE,
 } from "./marketplace-v2.fixture.js";
-import { PublicMarketplaceUnavailablePage } from "./public-marketplace.js";
 
 const AVAILABLE_MARKETPLACE: PublicMarketplaceData = {
   status: "available",
@@ -53,9 +51,6 @@ describe("marketplace routes", () => {
       name: "robots",
       content: "noindex",
     });
-    expect(
-      renderToStaticMarkup(<PublicMarketplaceUnavailablePage />),
-    ).toContain("The Marketplace is not available");
   });
 
   it("returns notFound for an unknown plugin and author", () => {

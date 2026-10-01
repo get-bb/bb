@@ -20,6 +20,12 @@ describe("bbDesktopInfoSchema", () => {
       }).success,
     ).toBe(true);
     expect(bbDesktopInfoSchema.safeParse(baseInfo).success).toBe(true);
+    expect(
+      bbDesktopInfoSchema.safeParse({
+        ...baseInfo,
+        lastCheckedAt: "2026-05-21T00:00:00.000Z",
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects an unknown download state", () => {

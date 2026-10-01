@@ -131,7 +131,7 @@ function intersectionArea(args: IntersectingAreaArgs): number {
   return width * height;
 }
 
-export function hasVisibleArea(args: HasVisibleAreaArgs): boolean {
+function hasVisibleArea(args: HasVisibleAreaArgs): boolean {
   return args.displayWorkAreas.some(
     (workArea) =>
       intersectionArea({

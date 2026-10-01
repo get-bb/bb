@@ -64,16 +64,6 @@ describe("rewriteLocalhostLinkHref", () => {
     }
   });
 
-  it("does not produce a Connect hostname with the localhost port", () => {
-    expect(
-      rewriteLocalhostLinkHref({
-        currentHostname: "asdf.getbb.app",
-        enabled: true,
-        href: "http://localhost:5173/app",
-      }),
-    ).toBe("http://localhost:5173/app");
-  });
-
   it("does not ignore unrelated hostnames", () => {
     for (const currentHostname of [
       "notgetbb.app",

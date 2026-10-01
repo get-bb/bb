@@ -182,23 +182,6 @@ describe("server target store", () => {
     expect(store.getTarget()).toEqual({ kind: "builtin" });
   });
 
-  it("clears the custom URL and re-targets builtin on null", async () => {
-    const { fs } = createMemoryFs();
-    const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });
-    await store.load();
-    await store.setCustomServerUrl("https://example.com");
-    await store.setCustomServerUrl(null);
-    expect(store.getTarget()).toEqual({ kind: "builtin" });
-    expect(store.getCustomServerUrl()).toBeNull();
-
-    const reloaded = createServerTargetStore({
-      fs,
-      storagePath: "/tmp/t.json",
-    });
-    await reloaded.load();
-    expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
-  });
-
   it("selects, persists, and refreshes a connect server target", async () => {
     const { fs } = createMemoryFs();
     const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });

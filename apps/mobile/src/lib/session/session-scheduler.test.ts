@@ -87,6 +87,7 @@ describe("createSessionScheduler", () => {
       credential: "bbcm_secret",
     });
     expect(cookies.map((c) => c.useWebKit)).toEqual([false, true]);
+    expect(cookies[1]).toEqual({ ...cookies[0], useWebKit: true });
     expect(cookies[0]).toMatchObject({
       url: "https://bee.getbb.app",
       cookie: {

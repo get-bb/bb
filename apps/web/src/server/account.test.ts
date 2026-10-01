@@ -27,7 +27,6 @@ import {
   getLinkRequestView,
   linkRequestOrigin,
   pollServerLink,
-  stripControlCharacters,
   startServerLink,
   suggestHandle,
   suggestServerLabel,
@@ -172,7 +171,9 @@ describe("startServerLink", () => {
     const started = await startWith(" \u202ebb\u0007 desktop\u2066\u200f\n");
     if (started.status !== 200) throw new Error("link start failed");
     expect(linkRow(started.body.userCode)?.clientName).toBe("bb desktop");
-    expect(stripControlCharacters("Sawyer’s MacBook Pro")).toBe(
+    const apostrophe = await startWith("Sawyer’s MacBook Pro");
+    if (apostrophe.status !== 200) throw new Error("link start failed");
+    expect(linkRow(apostrophe.body.userCode)?.clientName).toBe(
       "Sawyer’s MacBook Pro",
     );
   });

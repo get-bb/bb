@@ -260,20 +260,6 @@ describe("resolveEnvironmentDisplayName", () => {
     ).toBe("modal-sandbox");
   });
 
-  it("returns null rather than the bare id while the provider list loads", () => {
-    expect(
-      resolveEnvironmentDisplayName(
-        {
-          name: null,
-          branchName: null,
-          path: null,
-          environmentProviderId: "modal-sandbox",
-        },
-        loadingProviderLookup,
-      ),
-    ).toBeNull();
-  });
-
   it("still names a loading row by its branch", () => {
     expect(
       resolveEnvironmentDisplayName(

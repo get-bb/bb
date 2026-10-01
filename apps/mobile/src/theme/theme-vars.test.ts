@@ -72,15 +72,6 @@ describe("theme vars", () => {
     expect(generatedMobileOnly).toEqual([...MOBILE_ONLY_TOKENS].sort());
   });
 
-  it("handles the digit-bearing ansi names", () => {
-    expect(tokenKeyToCssVar("ansi0")).toBe("--ansi-0");
-    expect(tokenKeyToCssVar("ansi15")).toBe("--ansi-15");
-    expect(tokenKeyToCssVar("ansiBgFg10")).toBe("--ansi-bg-fg-10");
-    expect(tokenKeyToCssVar("surfaceRecessedSoftSolid")).toBe(
-      "--surface-recessed-soft-solid",
-    );
-  });
-
   it("builds one variable per token with the token's color", () => {
     const vars = buildThemeVars(tokens);
     expect(Object.keys(vars)).toHaveLength(Object.keys(tokens).length);

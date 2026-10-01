@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  hasVisibleArea,
   readPersistedWindowStateEntries,
   restoreWindowState,
   writePersistedWindowStateEntries,
@@ -89,16 +88,20 @@ describe("window state helpers", () => {
 
   it("requires meaningful overlap with a display work area", () => {
     expect(
-      hasVisibleArea({
-        bounds: {
-          height: 400,
-          width: 400,
-          x: 1_435,
-          y: 895,
-        },
+      restoreWindowState({
         displayWorkAreas,
+        persistedState: {
+          bounds: {
+            height: 400,
+            width: 400,
+            x: 1_435,
+            y: 895,
+          },
+          isFullScreen: false,
+          isMaximized: false,
+        },
       }),
-    ).toBe(false);
+    ).toEqual(DEFAULT_WINDOW_STATE);
   });
 
   it("persists and reads multiple window states across restart", async () => {

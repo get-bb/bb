@@ -116,7 +116,7 @@ export async function fetchConnectAccountServers(
   return { ok: false, reason: "unavailable" };
 }
 
-export function selectTargetableConnectServers(
+function selectTargetableConnectServers(
   result: ConnectListAccountServersResult,
 ): ConnectAccountServer[] {
   return result.servers.filter((server) => server.handle !== result.selfHandle);

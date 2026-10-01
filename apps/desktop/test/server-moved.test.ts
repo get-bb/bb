@@ -175,9 +175,18 @@ describe("readServerMovedLock", () => {
     ).resolves.toEqual(DIRECT_MOVE);
   });
 
-  it("ignores a lock with invalid JSON and logs a warning", async () => {
+  it.each([
+    { name: "invalid JSON", contents: () => "{not json" },
+    {
+      name: "a contract mismatch",
+      contents: () => {
+        const { toHostName: _toHostName, ...incomplete } = movedFile();
+        return JSON.stringify(incomplete);
+      },
+    },
+  ])("ignores a lock with $name and logs a warning", async ({ contents }) => {
     const dataDir = await createTempDir();
-    await writeFile(join(dataDir, SERVER_MOVED_FILE_NAME), "{not json");
+    await writeFile(join(dataDir, SERVER_MOVED_FILE_NAME), contents());
     const logWarning = vi.fn();
 
     await expect(readServerMovedLock({ dataDir, logWarning })).resolves.toBe(
@@ -187,21 +196,6 @@ describe("readServerMovedLock", () => {
     expect(logWarning.mock.calls[0]?.[0]).toContain(
       join(dataDir, SERVER_MOVED_FILE_NAME),
     );
-  });
-
-  it("ignores a lock that does not match the contract", async () => {
-    const dataDir = await createTempDir();
-    const { toHostName: _toHostName, ...incomplete } = movedFile();
-    await writeFile(
-      join(dataDir, SERVER_MOVED_FILE_NAME),
-      JSON.stringify(incomplete),
-    );
-    const logWarning = vi.fn();
-
-    await expect(readServerMovedLock({ dataDir, logWarning })).resolves.toBe(
-      null,
-    );
-    expect(logWarning).toHaveBeenCalledOnce();
   });
 
   it("ignores a connect move without a handle", async () => {

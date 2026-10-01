@@ -121,7 +121,7 @@ export function linkVerificationUrl(appUrl: string, userCode: string): string {
   return url.toString();
 }
 
-export function stripControlCharacters(value: string): string {
+function stripControlCharacters(value: string): string {
   return value.replace(INVISIBLE_CONTROL_CHARACTERS, "").trim();
 }
 

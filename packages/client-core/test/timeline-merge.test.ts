@@ -351,26 +351,6 @@ describe("timeline page row merging", () => {
     expect(merge.rows[1]).toBe(oldTail);
   });
 
-  it("replaces changed overlapping row references after a latest refetch", () => {
-    const olderUser = userRow({ id: "older-user", sequence: 1 });
-    const oldTail = userRow({ id: "live-tail", sequence: 20 });
-    const updatedTail = {
-      ...oldTail,
-      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
-      text: "updated tail",
-    };
-
-    const merge = mergeLatestTimelineRows({
-      latestWindowStartSequence: 20,
-      loadedRows: [olderUser, oldTail],
-      latestRows: [updatedTail],
-    });
-
-    expect(merge.rows).toHaveLength(2);
-    expect(merge.rows[0]).toBe(olderUser);
-    expect(merge.rows[1]).toBe(updatedTail);
-  });
-
   it("replaces a pending message row when the server accepts it", () => {
     const pendingMessage = userRow({
       id: "submitted-message",

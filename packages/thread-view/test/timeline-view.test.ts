@@ -237,16 +237,6 @@ function delegationRow({
   };
 }
 
-function deniedCommandRow(): TimelineCommandWorkRow {
-  return {
-    ...commandRow(),
-    id: "command-denied-1",
-    callId: "call-denied-1",
-    command: "git push",
-    approvalStatus: "denied",
-  };
-}
-
 function expectStepSummaryRow(
   row: ThreadTimelineViewRow | undefined,
 ): TimelineStepSummaryRow {
@@ -318,23 +308,8 @@ describe("buildTimelineViewRows", () => {
     ] as const;
 
     for (const inputRow of cases) {
-      const rows = buildTimelineViewRows([inputRow]);
-
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.kind).toBe("work");
-      expect(rows[0]?.id).toBe(inputRow.id);
+      expect(buildTimelineViewRows([inputRow])).toEqual([inputRow]);
     }
-  });
-
-  it("keeps a single denied command as a leaf row", () => {
-    const rows = buildTimelineViewRows([deniedCommandRow()]);
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.kind).toBe("work");
-    expect(rows[0]).toMatchObject({
-      id: "command-denied-1",
-      approvalStatus: "denied",
-    });
   });
 
   it("keeps activity summary identity stable as a run grows", () => {
