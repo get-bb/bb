@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { spawnPortablePipedProcess } from "./spawn.js";
 import {
   stopProcessGroupLeaderFirst,
@@ -24,28 +25,27 @@ export function spawnManagedProcess(
     ...request,
     detached: supportsProcessGroups(),
   });
+  return { child, stop: createProcessStop(child) };
+}
+
+export function createProcessStop(child: ChildProcess): ManagedProcess["stop"] {
   let stopping: Promise<ProcessStopResult> | undefined;
-  return {
-    child,
-    stop({ gracePeriodMs } = { gracePeriodMs: 1_000 }) {
-      stopping ??= (async () => {
-        if (child.pid === undefined) {
-          return { treeTermination: "confirmed" };
-        }
-        const result = await stopProcessGroupLeaderFirst({
-          child,
-          timeoutMs: gracePeriodMs,
-          killGraceMs: 1_000,
-        });
-        if (child.exitCode === null && child.signalCode === null) {
-          throw new Error(
-            `Process did not exit after termination: ${child.pid}`,
-          );
-        }
-        return result;
-      })();
-      return stopping;
-    },
+  return function stop({ gracePeriodMs } = { gracePeriodMs: 1_000 }) {
+    stopping ??= (async () => {
+      if (child.pid === undefined) {
+        return { treeTermination: "confirmed" };
+      }
+      const result = await stopProcessGroupLeaderFirst({
+        child,
+        timeoutMs: gracePeriodMs,
+        killGraceMs: 1_000,
+      });
+      if (child.exitCode === null && child.signalCode === null) {
+        throw new Error(`Process did not exit after termination: ${child.pid}`);
+      }
+      return result;
+    })();
+    return stopping;
   };
 }
 

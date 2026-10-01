@@ -1,4 +1,9 @@
 import { execa } from "execa";
+import { createProcessStop } from "./managed-process.js";
+import {
+  supportsProcessGroups,
+  type ProcessStopResult,
+} from "./process-group.js";
 
 interface ExecPortableFileOptions {
   cwd: string;
@@ -23,22 +28,38 @@ export async function execPortableFile(
     encoding: "buffer",
     stripFinalNewline: false,
     maxBuffer: options.maxBuffer,
-    timeout: options.timeout,
-    cancelSignal: options.signal,
     input: options.input ?? "",
-    killDescendants: true,
+    detached: supportsProcessGroups(),
     forceKillAfterDelay: 1_000,
     reject: false,
   });
+  const stopProcess = createProcessStop(subprocess);
+  let stopPromise: Promise<ProcessStopResult> | undefined;
+  let canceled = false;
+  let timedOut = false;
+  function stop(): void {
+    stopPromise ??= stopProcess({ gracePeriodMs: 1_000 });
+    void stopPromise.catch(() => undefined);
+  }
+  const onAbort = (): void => {
+    canceled = true;
+    stop();
+  };
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+  const timer = options.timeout
+    ? setTimeout(() => {
+        timedOut = true;
+        stop();
+      }, options.timeout)
+    : undefined;
   for (const stream of [subprocess.stdout, subprocess.stderr]) {
     stream?.once("close", () => {
-      const child = subprocess.nodeChildProcess;
       if (
         !stream.readableEnded &&
         (process.platform !== "win32" ||
-          (child.exitCode === null && child.signalCode === null))
+          (subprocess.exitCode === null && subprocess.signalCode === null))
       ) {
-        subprocess.kill();
+        stop();
       }
     });
   }
@@ -54,13 +75,17 @@ export async function execPortableFile(
       if (text) onStderr(text);
     });
   }
-  const result = await subprocess;
+  const result = await subprocess.finally(() => {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", onAbort);
+  });
+  await stopPromise;
   const output = {
     stdout: Buffer.from(result.stdout).toString("utf8"),
     stderr: Buffer.from(result.stderr).toString("utf8"),
   };
-  if (!result.failed) return output;
-  const stopped = result.isCanceled || result.isMaxBuffer || result.timedOut;
+  if (!result.failed && !canceled && !timedOut) return output;
+  const stopped = canceled || result.isMaxBuffer || timedOut;
   const syscall =
     result.cause instanceof Error &&
     "syscall" in result.cause &&
@@ -72,23 +97,28 @@ export async function execPortableFile(
   )
     ? "stderr"
     : "stdout";
-  const message = result.isCanceled
+  const message = canceled
     ? "The operation was aborted"
     : result.isMaxBuffer
       ? `${overflowStream} maxBuffer length exceeded`
-      : result.timedOut
+      : timedOut
         ? `Command timed out after ${options.timeout}ms`
         : result.originalMessage || `Command failed: ${command}`;
-  throw Object.assign(new Error(message, { cause: result.cause }), {
-    name: result.isCanceled ? "AbortError" : "Error",
-    code: result.isCanceled
-      ? "ABORT_ERR"
-      : result.isMaxBuffer
-        ? "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
-        : (result.code ?? result.exitCode ?? null),
-    signal: stopped ? "SIGTERM" : (result.signal ?? null),
-    killed: stopped || result.isTerminated,
-    ...(syscall === undefined ? {} : { syscall }),
-    ...output,
-  });
+  throw Object.assign(
+    new Error(message, {
+      cause: canceled ? options.signal?.reason : result.cause,
+    }),
+    {
+      name: canceled ? "AbortError" : "Error",
+      code: canceled
+        ? "ABORT_ERR"
+        : result.isMaxBuffer
+          ? "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+          : (result.code ?? result.exitCode ?? null),
+      signal: stopped ? "SIGTERM" : (result.signal ?? null),
+      killed: stopped || result.isTerminated,
+      ...(syscall === undefined ? {} : { syscall }),
+      ...output,
+    },
+  );
 }

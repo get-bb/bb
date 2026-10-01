@@ -22,7 +22,7 @@ The native Windows coverage exercises:
   paths, literal arguments, stdin, stdout, stderr, and nonzero exit status.
 - Missing executable errors and case-insensitive runtime environment cleanup.
 - Buffered command output limits, cancellation, streaming stderr, and stdin EOF.
-  Cancellation and timeout delegate owned-process termination to Execa on every OS.
+  Cancellation and timeout use the shared owned-process termination boundary on every OS.
 - Drive-letter and UNC path containment, sibling-prefix escapes, and cross-drive
   or cross-share rejection.
 - Real Git repositories: empty repositories, status, commits, diffs, branches,
@@ -66,7 +66,7 @@ SQLite and Parcel's Windows native addons are exercised by their suites.
 
 `@bb/process-utils` owns executable resolution, owned process lifetimes, and OS
 process inspection. Long-lived children use `cross-spawn` for executable, PATH, PATHEXT, and `.cmd`
-handling. Buffered commands use Execa 10 behind `execPortableFile`; BB does not
+handling. Buffered commands use Execa 9 behind `execPortableFile`; BB does not
 implement command resolution or shell quoting itself. Callers use these shared
 interfaces rather than selecting a process library or OS-specific flags.
 
@@ -78,12 +78,13 @@ interfaces rather than selecting a process library or OS-specific flags.
   Confirmation covers the owned group or OS-tracked tree, not escaped processes.
   Failure to terminate the root rejects within the shutdown deadline. Repeated
   calls share the first stop operation and its grace period.
-- `exec-portable-file.ts` delegates buffering, command launch, cancellation,
-  timeout, stdin input, and best-effort descendant termination to Execa. The
+- `exec-portable-file.ts` delegates buffering, command launch, and stdin input to
+  Execa. Cancellation, timeout, and output-limit closure use the same bounded
+  ownership operation as managed processes. The
   adapter preserves BB's exact output, byte-based limits, sanitized environment,
   streaming UTF-8 stderr, and existing command error fields. Early output closure
   stops the command, including Execa's output-limit closure; the adapter retains
-  no output buffers or cancellation timers of its own.
+  no output buffers of its own.
 - `process-group.ts` and `windows-process-tree.ts` contain termination mechanics.
   Managed POSIX stop gives the leader the requested grace period, then kills
   surviving group members; group disappearance is polled for up to one additional
@@ -114,10 +115,11 @@ and explicit cleanup outcomes, and VS Code's separate terminal lifecycle inform
 the boundary. Their Effect integration, custom Windows shim parsing, and native
 process-table addons are not needed for this slice.
 
-[Execa's descendant termination](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/termination.md#killing-descendant-processes)
-uses the same process-group/taskkill mechanisms for buffered commands. Its
-group-wide Unix termination differs from the leader-first ordering retained for
-long-lived providers.
+Execa is pinned to 9.6.1, whose Windows launcher uses cross-spawn. Native CI
+caught incompatible missing-command classification and batch argument handling
+in Execa 10.0.1. BB therefore keeps owned shutdown in its shared module while
+borrowing Execa's buffering and stream handling. Upgrade the library only after
+these native launch and lifecycle regressions pass.
 [VS Code's process helpers](https://github.com/microsoft/vscode/blob/c353edbfa07735949e432e49b491ddc6baad49cc/src/vs/base/node/processes.ts#L150)
 also use taskkill; Windows terminal sequencing remains a subsequent slice.
 

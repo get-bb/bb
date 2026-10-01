@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "cross-spawn": "^7.0.6",
-    "execa": "10.0.1"
+    "execa": "9.6.1"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

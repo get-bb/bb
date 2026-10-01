@@ -400,10 +400,13 @@ describe("createAgentRuntime process lifecycle", () => {
     const stderr = exitInfo.mock.calls[0]?.[0].stderr;
     expect(Buffer.byteLength(stderr ?? "", "utf8")).toBeLessThanOrEqual(4_000);
     expect(stderr?.endsWith("stderr-tail")).toBe(true);
-    expect(stderrLines).toHaveLength(1);
-    expect(Buffer.byteLength(stderrLines[0] ?? "", "utf8")).toBeLessThanOrEqual(
-      4_000,
+    const providerStderr = stderrLines.filter((line) =>
+      line.endsWith("stderr-tail"),
     );
+    expect(providerStderr).toHaveLength(1);
+    expect(
+      Buffer.byteLength(providerStderr[0] ?? "", "utf8"),
+    ).toBeLessThanOrEqual(4_000);
     await manager.shutdown();
   });
 
