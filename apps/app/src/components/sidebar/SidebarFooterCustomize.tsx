@@ -67,7 +67,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
       >
         <ul
           aria-label="Footer icons"
-          className="flex min-w-0 items-center gap-1"
+          className="flex min-w-0 flex-1 items-center justify-between gap-1"
           onClickCapture={footerDnd.onClickCapture}
         >
           <DndContext {...footerDnd.dndContextProps}>
