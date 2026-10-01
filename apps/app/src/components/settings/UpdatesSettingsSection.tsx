@@ -1268,9 +1268,8 @@ export function MachineUpdatesRows({
             actionable ? (
               <RowStateControl
                 state="failed"
-                actionIcon={RETRY_ACTION_ICON as IconName}
+                buttonLabel="Retry"
                 actionLabel={`Retry ${status.displayName} on ${host.name}`}
-                actionTooltip="Retry"
                 onClick={() => onStartInstall(host.id, issue)}
               />
             ) : null
