@@ -2647,11 +2647,17 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("marks only the timeline stale when an unviewed thread's history is compacted", async () => {
+  it("marks only the timeline and loaded turn details stale when an unviewed thread's history is compacted", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineQueryKey("thr_1");
     const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    const turnDetailsKey = threadTimelineTurnSummaryDetailsQueryKey({
+      threadId: "thr_1",
+      turnId: "turn_1",
+      sourceSeqStart: 1,
+      sourceSeqEnd: 2,
+    });
     const threadKey = threadQueryKey("thr_1");
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     const threadSearchKey = threadSearchQueryKey({
@@ -2661,6 +2667,7 @@ describe("createRealtimeCacheEffects", () => {
     const promptHistoryKey = threadPromptHistoryQueryKey("thr_1");
     queryClient.setQueryData(timelineKey, { rows: [] });
     queryClient.setQueryData(outlineKey, { items: [] });
+    queryClient.setQueryData(turnDetailsKey, { rows: [] });
     queryClient.setQueryData(threadKey, { id: "thr_1" });
     queryClient.setQueryData(sidebarNavigationKey, {
       projects: [],
@@ -2681,6 +2688,7 @@ describe("createRealtimeCacheEffects", () => {
     await vi.advanceTimersByTimeAsync(50);
 
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(turnDetailsKey)?.isInvalidated).toBe(true);
     for (const queryKey of [
       outlineKey,
       threadKey,
