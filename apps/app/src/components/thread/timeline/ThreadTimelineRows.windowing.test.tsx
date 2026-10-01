@@ -225,6 +225,60 @@ describe("ThreadTimelineRows windowing", () => {
     },
   );
 
+  it("keeps an offscreen steer realized and reveals it by its message seq", async () => {
+    const scrollElement = document.createElement("div");
+    scrollElement.setAttribute("data-test-main-scroll", "");
+    Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
+    Object.defineProperty(scrollElement, "scrollHeight", { value: 8_000 });
+    const scrollElementIntoView = vi.fn();
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView,
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    const rows = Array.from({ length: 80 }, (_, index) => {
+      const row = conversationRow({
+        id: `steer-window-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        sourceSeqEnd: (index + 1) * 10,
+        sourceSeqStart: (index + 1) * 10,
+        text: `Steer window message ${index}`,
+        threadId: "thr_steer_window",
+      });
+      return index === 30 ? { ...row, messageSeq: 305 } : row;
+    });
+    const view = render(
+      <MemoryRouter initialEntries={["/threads/thr_steer_window?msg=305"]}>
+        <QueryClientProvider client={new QueryClient()}>
+          <BottomAnchorContext.Provider value={bottomAnchor}>
+            <CompactViewportOverrideProvider isCompactViewport>
+              <ThreadTimelineRows
+                threadId="thr_steer_window"
+                timelineRows={rows}
+                threadRuntimeDisplayStatus="idle"
+                workspaceRootPath={undefined}
+              />
+            </CompactViewportOverrideProvider>
+          </BottomAnchorContext.Provider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const target = view.container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="steer-window-30"]',
+    );
+
+    expect(target?.dataset.timelineWindowedRealized).toBe("true");
+    await waitFor(() =>
+      expect(scrollElementIntoView).toHaveBeenCalledWith({
+        element: target,
+        options: { block: "center" },
+      }),
+    );
+  });
+
   it("keeps offscreen search and outline targets realized", async () => {
     const scrollElement = document.createElement("div");
     scrollElement.setAttribute("data-test-main-scroll", "");

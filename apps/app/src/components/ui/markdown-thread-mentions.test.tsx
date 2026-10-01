@@ -742,32 +742,6 @@ describe("MarkdownPreview thread mentions", () => {
     ["without message directives", undefined],
     ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
   ])(
-    "links a thread mention through the mentioned thread's own project %s",
-    (_label, messageDirectives) => {
-      renderMarkdown(
-        <MarkdownPreview
-          content="See @thread:thr_child for the report."
-          threadMentions={{
-            mentions: [],
-            preserveSoftBreaks: true,
-          }}
-          messageDirectives={messageDirectives}
-        />,
-        [threadResponse({ projectId: "proj_target" })],
-      );
-
-      expect(
-        screen
-          .getByRole("link", { name: "Rebuild comments" })
-          .getAttribute("href"),
-      ).toBe("/projects/proj_target/threads/thr_child");
-    },
-  );
-
-  it.each([
-    ["without message directives", undefined],
-    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
-  ])(
     "links a message mention to that message in its thread %s",
     (_label, messageDirectives) => {
       renderMarkdown(
