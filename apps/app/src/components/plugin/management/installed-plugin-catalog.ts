@@ -111,6 +111,6 @@ export function catalogEntryInstallBlocker(
   return `Another plugin with the ID “${entry.pluginId}” is installed from ${conflictingInstallLocation(entry.conflictingInstallSource)}. Remove it to install this one.`;
 }
 
-export function conflictingInstallLocation(source: string): string {
+function conflictingInstallLocation(source: string): string {
   return source.startsWith("path:") ? source.slice("path:".length) : source;
 }

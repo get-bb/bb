@@ -32,27 +32,29 @@ export function PluginBannerBar({
     <div
       role={role}
       className={cn(
-        "bg-surface-recessed/55",
-        separator && "border-b border-border",
+        "@container border-t border-border bg-surface-recessed/55 not-first:border-t-0",
+        separator && "border-b",
       )}
     >
-      <div className="mx-auto flex w-full min-w-0 max-w-5xl items-center gap-2 px-4 py-1.5 md:px-5">
-        <Icon
-          name={icon}
-          className={cn("size-3.5 shrink-0", TONE_ICON[tone])}
-          aria-hidden
-        />
-        <p className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
-          <span className="font-medium text-foreground">{title}</span>
-          {detail === null || detail === undefined ? null : (
-            <>
-              {": "}
-              {detail}
-            </>
-          )}
-        </p>
+      <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-1 px-4 py-1.5 md:px-5 @md:flex-row @md:items-center @md:gap-2">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <Icon
+            name={icon}
+            className={cn("mt-px size-3.5 shrink-0", TONE_ICON[tone])}
+            aria-hidden
+          />
+          <p className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
+            <span className="font-medium text-foreground">{title}</span>
+            {detail === null || detail === undefined ? null : (
+              <>
+                {": "}
+                {detail}
+              </>
+            )}
+          </p>
+        </div>
         {action ? (
-          <span className="flex shrink-0 items-center">
+          <span className="flex shrink-0 items-center ps-3 @md:ps-0">
             {action}
           </span>
         ) : null}

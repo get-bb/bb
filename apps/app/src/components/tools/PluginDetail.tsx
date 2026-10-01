@@ -50,7 +50,6 @@ import { PluginCatalogInstallControl } from "@/components/plugin/management/Plug
 import {
   catalogEntryDetailKey,
   catalogEntryInstallBlocker,
-  conflictingInstallLocation,
 } from "@/components/plugin/management/installed-plugin-catalog";
 import {
   PluginHealthBanner,
@@ -262,7 +261,7 @@ export function CatalogPluginDetailBanner({
       tone="warning"
       icon="AlertTriangle"
       title="Another plugin uses this ID"
-      detail={`“${entry.pluginId}” is installed from ${conflictingInstallLocation(entry.conflictingInstallSource)}. Remove it to install this one.`}
+      detail={`remove the installed “${entry.pluginId}” to install this one.`}
       action={
         <PluginBannerOpenButton
           label="View installed plugin"
