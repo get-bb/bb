@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,22 @@ import {
 } from "./agent-connection.js";
 
 const EPIPE_PAYLOAD_SIZE = 1024 * 1024;
+
+function closedStdinAgent(): { command: string; args: string[] } {
+  const command =
+    process.platform === "win32"
+      ? execFileSync("git", ["var", "GIT_SHELL_PATH"], {
+          encoding: "utf8",
+        }).trim()
+      : "/bin/sh";
+  return {
+    command,
+    args: [
+      "-c",
+      `exec 0<&-; printf '%s\\n' '{"jsonrpc":"2.0","method":"ready"}'; sleep 30`,
+    ],
+  };
+}
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -76,15 +93,7 @@ describe("ACP agent stdio lifecycle", () => {
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
       recordThreadId: null,
-      command: process.execPath,
-      args: [
-        "-e",
-        [
-          'if (process.platform === "win32") { const input = process.stdin; require("node:fs").closeSync(0); input._handle.close(); } else require("node:fs").closeSync(0);',
-          'setImmediate(() => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n"));',
-          "setTimeout(() => process.exit(0), 1000);",
-        ].join(" "),
-      ],
+      ...closedStdinAgent(),
       cwd: process.cwd(),
       env: process.env,
       onNotification(method) {
@@ -110,15 +119,7 @@ describe("ACP agent stdio lifecycle", () => {
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
       recordThreadId: null,
-      command: process.execPath,
-      args: [
-        "-e",
-        [
-          'if (process.platform === "win32") { const input = process.stdin; require("node:fs").closeSync(0); input._handle.close(); } else require("node:fs").closeSync(0);',
-          'setImmediate(() => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n"));',
-          "setInterval(() => {}, 1000);",
-        ].join(" "),
-      ],
+      ...closedStdinAgent(),
       cwd: process.cwd(),
       env: process.env,
       onNotification(method) {

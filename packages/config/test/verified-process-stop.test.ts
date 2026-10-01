@@ -46,4 +46,4 @@ it("verifies a real process's command and start time before stopping it", async 
     usedKill: false,
   });
   expect(isProcessRunning(child.pid)).toBe(false);
-}, 20_000);
+}, 90_000);

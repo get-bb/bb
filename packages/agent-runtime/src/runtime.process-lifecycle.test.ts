@@ -414,10 +414,9 @@ describe("createAgentRuntime process lifecycle", () => {
       'setTimeout(() => process.stderr.write("stderr-after-exit"), 50);';
     writeFileSync(
       crashScript,
-      process.platform === "win32"
-        ? 'process.stderr.end("stderr-after-exit", () => process.exit(42));'
-        : `const { spawn } = require("node:child_process");
+      `const { spawn } = require("node:child_process");
       const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+        detached: process.platform === "win32",
         stdio: ["ignore", "ignore", "inherit"],
       });
       writer.unref();
@@ -625,6 +624,7 @@ describe("createAgentRuntime process lifecycle", () => {
       startMarker,
       startsLog,
       firstStartBody: `const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+          detached: process.platform === "win32",
           stdio: ["ignore", "inherit", "inherit"],
         });
         writeFileSync(${JSON.stringify(childPidFile)}, String(writer.pid));

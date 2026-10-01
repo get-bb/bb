@@ -96,7 +96,7 @@ async function readWindowsProcess(pid: number) {
       {
         encoding: "utf8",
         windowsHide: true,
-        timeout: 5_000,
+        timeout: 30_000,
         maxBuffer: 1024 * 1024,
       },
     );
@@ -105,7 +105,8 @@ async function readWindowsProcess(pid: number) {
     const value: unknown = JSON.parse(stdout);
     const result = windowsProcessSchema.safeParse(value);
     return result.success ? result.data : null;
-  } catch {
+  } catch (error) {
+    console.error("Windows process identity probe failed", error);
     return null;
   }
 }
