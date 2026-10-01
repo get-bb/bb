@@ -69,8 +69,8 @@ export function MobileAppSection() {
           bodyClassName="space-y-4"
         >
           <p className="text-sm text-subtle-foreground">
-            Download the APK for 64-bit and 32-bit ARM phones. Open it to install,
-            and allow installation from your browser if prompted.
+            Download the APK and open it on your phone to install. Allow
+            installation from your browser if prompted.
           </p>
           <p className="text-sm text-subtle-foreground">
             Google Play access is under review. For now, return here for updates.
