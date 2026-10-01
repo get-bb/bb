@@ -1760,7 +1760,9 @@ describe("buildThreadTimelineFromEvents", () => {
         sourceSeqEnd: acceptedEvent?.meta.seq,
       }),
     ]);
-    expect(acceptedEvent?.meta.seq).toBeGreaterThan(requestEvent?.meta.seq ?? 0);
+    expect(acceptedEvent?.meta.seq).toBeGreaterThan(
+      requestEvent?.meta.seq ?? 0,
+    );
   });
 
   it("uses accepted context to suppress pending steers without rendering future accepted rows", () => {

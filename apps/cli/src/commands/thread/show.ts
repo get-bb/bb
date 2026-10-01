@@ -633,11 +633,7 @@ async function printThreadLogMessage(
   },
 ): Promise<void> {
   const { format, opts, threadId } = args;
-  if (
-    opts.all ||
-    opts.limit !== undefined ||
-    opts.afterSeq !== undefined
-  ) {
+  if (opts.all || opts.limit !== undefined || opts.afterSeq !== undefined) {
     throw new Error(
       "--message cannot be combined with --limit, --all or --after-seq",
     );
@@ -679,9 +675,7 @@ async function printThreadLogMessage(
       ? [`Before:\n${formatRows(result.before)}`]
       : []),
     `Message ${opts.message}:\n${formatRows([result.message])}`,
-    ...(result.after.length > 0
-      ? [`After:\n${formatRows(result.after)}`]
-      : []),
+    ...(result.after.length > 0 ? [`After:\n${formatRows(result.after)}`] : []),
   ];
   console.log(sections.join("\n\n"));
 }
