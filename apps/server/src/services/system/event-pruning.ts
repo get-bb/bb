@@ -111,7 +111,7 @@ export function pruneThreadEventHistoryBestEffort(
     return null;
   } finally {
     if (getThreadEventRewriteGeneration(args.threadId) !== generation) {
-      deps.hub.notifyThread(args.threadId, ["history-rewritten"]);
+      deps.hub.notifyThread(args.threadId, ["history-compacted"]);
     }
   }
 }

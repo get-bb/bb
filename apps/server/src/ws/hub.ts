@@ -68,10 +68,24 @@ interface PendingThreadListEventsAppended {
 
 type ThreadChangedMessage = Extract<ServerChangedMessage, { entity: "thread" }>;
 
+function isThreadDetailOnlyChange(
+  message: Pick<ThreadChangedMessage, "changes">,
+): boolean {
+  return (
+    message.changes.length > 0 &&
+    message.changes.every((change) => change === "history-compacted")
+  );
+}
+
 function isThreadListRelevantChange(
   message: Pick<ThreadChangedMessage, "changes" | "metadata">,
 ): boolean {
-  if (message.changes.some((change) => change !== "events-appended")) {
+  if (
+    message.changes.some(
+      (change) =>
+        change !== "events-appended" && change !== "history-compacted",
+    )
+  ) {
     return true;
   }
   const metadata = message.metadata;
@@ -829,7 +843,9 @@ export class NotificationHub implements DbNotifier {
       ...(metadata ? { metadata } : {}),
       changes,
     };
-    if (isThreadListRelevantChange(message)) {
+    if (isThreadDetailOnlyChange(message)) {
+      this.notifyThreadDetailSubscribers(threadId, message);
+    } else if (isThreadListRelevantChange(message)) {
       this.notifyClients(message);
     } else {
       this.notifyThreadEventsAppendedCoalesced(threadId, message);
@@ -1016,13 +1032,13 @@ export class NotificationHub implements DbNotifier {
     this.daemonRegistrationWaiters.delete(hostId);
   }
 
-  private notifyThreadEventsAppendedCoalesced(
+  private notifyThreadDetailSubscribers(
     threadId: string,
     message: ThreadChangedMessage,
-  ): void {
+  ): string | null {
     const payload = serializeServerMessage(message);
     if (payload === null) {
-      return;
+      return null;
     }
     const detailSockets = this.clientSocketsByKey.get(
       subscriptionKey({ kind: "thread-detail", threadId }),
@@ -1031,6 +1047,17 @@ export class NotificationHub implements DbNotifier {
       this.notifyClientsByKeySet(detailSockets, payload);
     }
     this.notifyChangedMessageListeners(message);
+    return payload;
+  }
+
+  private notifyThreadEventsAppendedCoalesced(
+    threadId: string,
+    message: ThreadChangedMessage,
+  ): void {
+    const payload = this.notifyThreadDetailSubscribers(threadId, message);
+    if (payload === null) {
+      return;
+    }
 
     const eventTypes = message.metadata?.eventTypes ?? [];
     const pending = this.pendingThreadListEventsAppendedByThread.get(threadId);

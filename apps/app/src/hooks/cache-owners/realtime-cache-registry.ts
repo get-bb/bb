@@ -367,6 +367,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       getThreadPendingInteractionInvalidationQueryKeys,
     ],
   },
+  "history-compacted": {
+    flush: "debounced",
+    dirty: [getThreadTimelineWindowInvalidationQueryKeys],
+  },
   "interactions-changed": {
     flush: "debounced",
     dirty: [
