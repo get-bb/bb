@@ -1,3 +1,5 @@
+import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   useCallback,
   useEffect,
@@ -78,6 +80,7 @@ import {
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
+  useThreadStorageLocation,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -180,7 +183,7 @@ import {
   useThreadStorageViewer,
 } from "@/components/secondary-panel/useThreadStorageViewer";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { BrowserTabLifecycleObserver } from "@/components/secondary-panel/BrowserTabDeck";
+import { BrowserTabLifecycleObserver } from "@/components/secondary-panel/BrowserTabLifecycleObserver";
 import {
   LazyBrowserTabDeck,
   LazyHostFilePreviewTabContent,
@@ -196,7 +199,7 @@ import {
 } from "@/lib/side-chat-plugin";
 import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import {
   PluginPanelTabContent,
   usePluginPanelActions,
@@ -304,7 +307,7 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
+import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
@@ -376,11 +379,11 @@ function getPullRequestMergeLoadingTitle(
 
 interface ThreadDetailViewPageProps {
   surface: "page";
-  onRequestClose?: (() => void) | null;
 }
 
 interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
   surface: "pane";
+  timelineEnabled: boolean;
 }
 
 type ThreadDetailViewProps =
@@ -486,11 +489,7 @@ function ThreadDetailNotFound() {
   );
 }
 
-function RoutedThreadDetailView({
-  onRequestClose,
-}: {
-  onRequestClose?: (() => void) | null;
-}) {
+function RoutedThreadDetailView() {
   const { projectId, threadId } = useRouteState();
 
   if (!projectId || !threadId) {
@@ -498,9 +497,11 @@ function RoutedThreadDetailView({
   }
 
   return (
-    <DefaultPaneContextProvider onRequestClose={onRequestClose}>
-      <ThreadDetailViewInternal projectId={projectId} threadId={threadId} />
-    </DefaultPaneContextProvider>
+    <ThreadDetailViewInternal
+      projectId={projectId}
+      threadId={threadId}
+      timelineEnabled
+    />
   );
 }
 
@@ -508,11 +509,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
   }
-  return <RoutedThreadDetailView onRequestClose={props.onRequestClose} />;
+  return <RoutedThreadDetailView />;
 }
 
-function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
-  const { projectId, threadId } = props;
+function ThreadDetailViewInternal(
+  props: ThreadRoutePathArgs & { timelineEnabled: boolean },
+) {
+  const { projectId, threadId, timelineEnabled } = props;
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useImmediateRouteNavigate();
@@ -664,16 +667,18 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     secondaryTabs: fixedPanelTabsState.secondary.tabs,
   });
   const {
-    checkThreadStorageFileExists,
     isThreadStorageFilesLoading,
-    refetchThreadStorageFiles,
     threadStorageFiles,
     threadStorageFilesError,
-    threadStorageRootPath,
   } = useThreadStorageViewer({
     fileListEnabled: shouldLoadThreadStorageFiles,
     threadId,
   });
+  const threadStorageLocationQuery = useThreadStorageLocation(threadId, {
+    enabled: Boolean(thread?.environmentId),
+  });
+  const threadStorageRootPath =
+    threadStorageLocationQuery.data?.storageRootPath ?? null;
   const terminalsListQuery = useThreadTerminals(threadId, {
     enabled: isSecondaryPanelOpen,
   });
@@ -699,7 +704,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     syncThreadId: threadId,
     environmentId: thread?.environmentId,
     onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
-    storageFileExists: checkThreadStorageFileExists,
     storageFiles: threadStorageFiles,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
@@ -864,6 +868,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     timelineRows,
   } = useThreadTimelineController({
     threadId,
+    enabled: timelineEnabled,
   });
   const sendMessage = useSendThreadMessage();
   const editMessage = useEditThreadMessage();
@@ -995,7 +1000,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }),
     [selectionPromptDraftProjectId, selectionPromptDraftThreadId],
   );
-  const addQuoteToComposer = selectionPromptDraft.addQuote;
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
   const [sentMessageEditSession, setSentMessageEditSession] =
     useState<SentMessageEditSession | null>(null);
@@ -1166,13 +1170,23 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       ),
     [selectionPromptDraft.storageKey],
   );
+  const composerActions = useMemo(
+    () =>
+      createCoreComposerActions({
+        ...selectionPromptDraft,
+        focus: () => setComposerFocusRequestNonce((nonce) => nonce + 1),
+      }),
+    [selectionPromptDraft],
+  );
   const handleSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       dismissCompactKeyboard();
-      addQuoteToComposer(text, attachments);
-      setComposerFocusRequestNonce((nonce) => nonce + 1);
+      composerActions.replace((current) =>
+        appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),
+      );
+      composerActions.focus();
     },
-    [addQuoteToComposer, dismissCompactKeyboard],
+    [composerActions, dismissCompactKeyboard],
   );
   const sendSideChatMessageToMain = useSendSideChatMessageToMain({
     createQueuedMessage,
@@ -1195,6 +1209,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     projectId,
     environmentId: thread?.environmentId ?? "",
     sectionId: thread?.sectionId ?? null,
+    pinned: thread?.pinnedAt != null,
   });
   const { providers: registeredEnvironmentProviders } =
     useSystemEnvironmentProviders();
@@ -2082,51 +2097,20 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       link: ThreadTimelineLocalFileLink,
       options?: ThreadSecondaryPanelFileOpenOptions,
     ) => {
-      const resolution = resolveThreadLocalFileLink({
-        hostFileLinksAvailable:
-          thread?.environmentId !== null && thread?.environmentId !== undefined,
-        link,
-        threadStorageRootPath,
-        workspaceRootPath: workspacePreviewRootPath,
-      });
-
-      if (
-        resolution.kind !== "open-host-path" ||
-        threadStorageRootPath !== null
-      ) {
-        return handleTimelineLocalFileLinkResolution(resolution, options);
-      }
-
-      void refetchThreadStorageFiles()
-        .then((result) => {
-          const resolvedThreadStorageRootPath =
-            result.data?.storageRootPath ?? null;
-          if (resolvedThreadStorageRootPath === null) {
-            appToast.error("Failed to open file locally", {
-              description: "Thread storage path is not available yet.",
-            });
-            return;
-          }
-
-          const resolvedResolution = resolveThreadLocalFileLink({
-            hostFileLinksAvailable: true,
-            link,
-            threadStorageRootPath: resolvedThreadStorageRootPath,
-            workspaceRootPath: workspacePreviewRootPath,
-          });
-          handleTimelineLocalFileLinkResolution(resolvedResolution, options);
-        })
-        .catch((error: Error) => {
-          appToast.error("Failed to open file locally", {
-            description: error.message,
-          });
-        });
-
-      return true;
+      return handleTimelineLocalFileLinkResolution(
+        resolveThreadLocalFileLink({
+          hostFileLinksAvailable:
+            thread?.environmentId !== null &&
+            thread?.environmentId !== undefined,
+          link,
+          threadStorageRootPath,
+          workspaceRootPath: workspacePreviewRootPath,
+        }),
+        options,
+      );
     },
     [
       handleTimelineLocalFileLinkResolution,
-      refetchThreadStorageFiles,
       thread?.environmentId,
       threadStorageRootPath,
       workspacePreviewRootPath,
@@ -2842,7 +2826,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             ...shared,
             label: tab.title,
             leadingVisual: (
-              <PluginIcon
+              <PluginItemIcon
                 pluginId={tab.pluginId}
                 icon={pluginAction?.icon ?? null}
                 className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}

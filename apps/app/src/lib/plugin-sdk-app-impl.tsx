@@ -12,7 +12,7 @@ import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComp
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
-import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
+import { LazyPluginThreadChat } from "@/components/plugin/LazyPluginThreadChat";
 import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
@@ -30,6 +30,7 @@ import {
   useBbContext,
   useBbNavigate,
   useComposer,
+  useComposers,
   useComposerView,
   useEnvironmentProviders,
   useProviders,
@@ -75,12 +76,13 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     experimental_useAppPanel,
     experimental_useFixedTabTarget,
     useComposer,
+    useComposers,
     useComposerView,
     useRealtime,
     useRealtimeConnectionState,
     useRpc,
     useSettings,
-    ThreadChat: PluginThreadChat,
+    ThreadChat: LazyPluginThreadChat,
     Markdown: PluginMarkdown,
     experimental_FileLink: ExperimentalFileLink,
     UrlLink: PluginUrlLink,

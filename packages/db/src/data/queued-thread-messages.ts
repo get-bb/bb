@@ -51,7 +51,7 @@ import {
   createQueuedThreadMessageId,
 } from "../ids.js";
 import { createOrderKeyAfter, createOrderKeyBetween } from "./order-keys.js";
-import { queryInSqliteVariableBatches } from "./events.js";
+import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 export interface CreateQueuedThreadMessageInput {
   threadId: string;

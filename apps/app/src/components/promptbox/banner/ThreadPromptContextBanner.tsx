@@ -1,4 +1,8 @@
 import {
+  CONTEXT_CARD_TOGGLE_CLASS,
+  CONTEXT_CARD_CHEVRON_CLASS,
+} from "@bb/shared-ui/chrome-style-tokens";
+import {
   machineRemovalDescriptions,
   machineRemovalLabels,
   type MachineRemovalStatus,
@@ -122,12 +126,7 @@ export interface ThreadPromptEnvironmentGoneSection {
 }
 
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
-  new Set([
-    "active",
-    "provisioning",
-    "starting",
-    "waiting-for-host",
-  ]);
+  new Set(["active", "provisioning", "starting", "waiting-for-host"]);
 
 export function isThreadDisplayStatusBannerActive(
   status: ThreadRuntimeDisplayStatus,
@@ -246,9 +245,8 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex cursor-pointer items-center text-xs transition-colors",
+        CONTEXT_CARD_TOGGLE_CLASS,
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
-        "hover:bg-state-hover",
         SEGMENT_SHRINK_CLASS,
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
         isExpanded ? "text-foreground" : "text-muted-foreground",
@@ -272,10 +270,7 @@ function SectionToggleButton({
       ) : null}
       <Icon
         name="ChevronDown"
-        className={cn(
-          "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
-          isExpanded && "rotate-180",
-        )}
+        className={cn(CONTEXT_CARD_CHEVRON_CLASS, isExpanded && "rotate-180")}
         aria-hidden="true"
       />
     </button>
@@ -360,8 +355,10 @@ function ParentThreadInlineSegment({
 function shouldShowPullRequestAttentionLabel(
   pullRequest: ThreadPullRequest,
 ): boolean {
+  if (pullRequest.attention === "checks_failed") return false;
   return (
-    pullRequest.attention === "checks_failed" ||
+    (pullRequest.state === "open" &&
+      (pullRequest.autoMerge || pullRequest.attention === "queued")) ||
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested" ||
     pullRequest.attention === "conflicts" ||

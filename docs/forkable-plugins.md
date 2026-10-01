@@ -31,6 +31,12 @@ built-ins held to this rule. Two checks read it:
   to check only those, `--keep` to keep the copies, and `--concurrency=<n>` to
   change how many run at once.
 
+On PRs, CI selects only changed plugins when every changed file belongs to a
+listed forkable plugin. Shared changes or unavailable history run the full
+list; main and manual runs always run the full list. Use
+`--changed-from=<sha> --list` to inspect selection locally. See
+[CI performance](ci-performance.md) for selection rules and timing artifacts.
+
 ## What a listed plugin looks like
 
 - **UI through the registry alias.** Components come from `@/components/ui/*`

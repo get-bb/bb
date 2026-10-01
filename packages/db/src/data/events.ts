@@ -80,52 +80,13 @@ import {
   insertPreparedRetainedEventOutput,
   prepareCompletedEventOutputData,
 } from "./retained-event-outputs.js";
+import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
-const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
 );
-
-interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
-  dedupeKey: (value: TValue) => string;
-  fixedVariableCount: number;
-  maximumValueCount?: number;
-  queryBatch: (values: readonly TValue[]) => readonly TRow[];
-  values: readonly TValue[];
-  variableCountPerValue: number;
-}
-
-export function queryInSqliteVariableBatches<TValue, TRow>(
-  args: QueryInSqliteVariableBatchesArgs<TValue, TRow>,
-): TRow[] {
-  const values = [
-    ...new Map(
-      args.values.map((value) => [args.dedupeKey(value), value]),
-    ).values(),
-  ];
-  if (values.length === 0) {
-    return [];
-  }
-  const variableBatchSize = Math.floor(
-    (SQLITE_MAX_VARIABLE_NUMBER - args.fixedVariableCount) /
-      args.variableCountPerValue,
-  );
-  const batchSize = Math.min(
-    variableBatchSize,
-    args.maximumValueCount ?? variableBatchSize,
-  );
-  if (batchSize < 1) {
-    throw new Error("The fixed SQL variables exceed the SQLite limit");
-  }
-
-  const rows: TRow[] = [];
-  for (let offset = 0; offset < values.length; offset += batchSize) {
-    rows.push(...args.queryBatch(values.slice(offset, offset + batchSize)));
-  }
-  return rows;
-}
 
 const isRootTurnStartedEventData = isNull(events.parentToolCallId);
 const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
@@ -1464,13 +1425,14 @@ export function listStoredEventRows(
 
   const limit = args.limit ?? Number.MAX_SAFE_INTEGER;
   const order = args.order ?? "asc";
-  const listTypePage = (
-    type: ThreadEventType | undefined,
+  const types = args.types === undefined ? undefined : [...new Set(args.types)];
+  const listPage = (
+    pageTypes: readonly ThreadEventType[] | undefined,
   ): StoredEventRow[] => {
     return db
       .select(storedEventRowSqlFields(null))
       .from(
-        type === undefined
+        pageTypes === undefined
           ? events
           : sql`${events} INDEXED BY events_thread_type_sequence_idx`,
       )
@@ -1483,7 +1445,9 @@ export function listStoredEventRows(
           args.beforeSequence === undefined
             ? undefined
             : lt(events.sequence, args.beforeSequence),
-          type === undefined ? undefined : eq(events.type, type),
+          pageTypes === undefined
+            ? undefined
+            : inArray(events.type, [...pageTypes]),
         ),
       )
       .orderBy(order === "desc" ? desc(events.sequence) : events.sequence)
@@ -1491,11 +1455,11 @@ export function listStoredEventRows(
       .all();
   };
 
-  if (args.types === undefined) {
-    return listTypePage(undefined);
+  if (types === undefined || args.limit === undefined) {
+    return listPage(types);
   }
 
-  const rowsByType = [...new Set(args.types)].map((type) => listTypePage(type));
+  const rowsByType = types.map((type) => listPage([type]));
   const offsets = rowsByType.map(() => 0);
   const merged: StoredEventRow[] = [];
   while (merged.length < limit) {
@@ -2281,6 +2245,8 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
   const stateTypes = [
     "item/backgroundTask/progress",
     "item/backgroundTask/completed",
+    "item/delegation/progress",
+    "item/delegation/completed",
   ] satisfies ThreadEventType[];
   const latest = alias(events, "latest_background_task_state");
 

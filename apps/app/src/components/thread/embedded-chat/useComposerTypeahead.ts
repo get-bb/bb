@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 import type { TypeaheadConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { PromptBoxAction } from "@/components/promptbox/PromptBoxActionsMenu";
-import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
 import type { ProviderComposerAction } from "@bb/domain";
 import { buildProviderPromptActionProps } from "@bb/client-core";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -53,10 +52,7 @@ export function useComposerTypeahead({
     () => buildProviderPromptActionProps(selectedProviderComposerActions ?? []),
     [selectedProviderComposerActions],
   );
-  const promptActions = useMemo(
-    () => withAppPromptActions(providerPromptActions.promptActions),
-    [providerPromptActions.promptActions],
-  );
+  const { promptActions } = providerPromptActions;
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId,

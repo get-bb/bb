@@ -264,6 +264,7 @@ export interface CreateThreadInput {
   title?: string | null;
   titleFallback?: string | null;
   sectionId?: string | null;
+  pinned?: boolean;
   status?: ThreadStatus;
   parentThreadId?: string | null;
   lifecycleOwnerThreadId?: string | null;
@@ -321,6 +322,13 @@ export function createThread(
           title: input.title ?? null,
           titleFallback: input.titleFallback ?? null,
           sectionId: input.sectionId ?? null,
+          pinnedAt: input.pinned ? now : null,
+          pinSortKey: input.pinned
+            ? createOrderKeyBetween({
+                previousKey: null,
+                nextKey: getFirstPinnedThread(tx)?.pinSortKey ?? null,
+              })
+            : null,
           status: input.status ?? "starting",
           startupContext: input.startupContext ?? null,
           parentThreadId:

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { useRef } from "react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactSecondaryPanelShelf } from "@/components/secondary-panel/CompactSecondaryPanelShelf";
 import {
@@ -25,22 +25,24 @@ class FakeVisualViewport extends EventTarget implements VisualViewport {
 
 function VisualViewportShell({
   enabled,
+  shellKey = "initial",
   portaledShelf = false,
   restoreImmediatelyOnKeyboardDismissal = true,
 }: {
   enabled: boolean;
+  shellKey?: string;
   portaledShelf?: boolean;
   restoreImmediatelyOnKeyboardDismissal?: boolean;
 }) {
-  const shellRef = useRef<HTMLDivElement>(null);
+  const [shell, setShell] = useState<HTMLDivElement | null>(null);
   useMobileVisualViewportHeight(
-    shellRef,
+    shell,
     enabled,
     restoreImmediatelyOnKeyboardDismissal,
   );
   return (
     <div>
-      <div ref={shellRef} data-testid="shell">
+      <div key={shellKey} ref={setShell} data-testid="shell">
         <textarea data-testid="editor" />
         <textarea data-testid="other-editor" />
       </div>
@@ -141,6 +143,38 @@ afterEach(() => {
 });
 
 describe("useMobileVisualViewportHeight", () => {
+  it("keeps the current shell above the keyboard after navigation replaces it", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    visualViewport.height = 874;
+    await withElementClientHeight(document.body, () => 874, async () => {
+      await withFakeVisualViewport(visualViewport, async () => {
+        const { rerender, unmount } = render(<VisualViewportShell enabled />);
+        const previousShell = screen.getByTestId("shell");
+        rerender(<VisualViewportShell enabled shellKey="thread" />);
+        const currentShell = screen.getByTestId("shell");
+
+        act(() => {
+          screen.getByTestId("editor").focus();
+          visualViewport.height = 539;
+          visualViewport.dispatchEvent(new Event("resize"));
+        });
+        await waitFor(() => expect(currentShell.style.height).toBe("539px"));
+        expect(previousShell.isConnected).toBe(false);
+        expect(previousShell.style.height).toBe("");
+
+        act(() => {
+          screen.getByTestId("editor").blur();
+          visualViewport.height = 874;
+          visualViewport.dispatchEvent(new Event("resize"));
+        });
+        await waitFor(() => expect(currentShell.style.height).toBe(""));
+        unmount();
+        expect(document.body.style.getPropertyValue("--bb-shell-height")).toBe("");
+      });
+    });
+  });
+
   it("publishes the corrected height where a body-portaled panel can inherit it", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;

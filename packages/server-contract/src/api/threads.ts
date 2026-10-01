@@ -106,6 +106,7 @@ export const createThreadRequestSchema = z
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
     sectionId: z.string().min(1).nullable().optional(),
+    pinned: z.boolean().optional(),
     sourceThreadId: z.string().min(1).optional(),
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
@@ -889,6 +890,7 @@ export const timelinePageMetadataSchema = z
     olderCursor: timelinePaginationCursorSchema.nullable(),
     historySnapshot: z.string().optional(),
     olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
+    olderRowUpdates: z.array(timelineRowSchema).optional(),
     contentPage: z
       .object({
         anchorSeq: z.number().int().nonnegative(),
@@ -986,13 +988,6 @@ export type ThreadStoragePathsQuery = z.infer<
   typeof threadStoragePathsQuerySchema
 >;
 
-export const threadStorageContentQuerySchema = z.object({
-  path: z.string().min(1),
-});
-export type ThreadStorageContentQuery = z.infer<
-  typeof threadStorageContentQuerySchema
->;
-
 export const threadStorageLocationResponseSchema = z
   .object({
     hostId: z.string().min(1),
@@ -1002,18 +997,6 @@ export const threadStorageLocationResponseSchema = z
 export type ThreadStorageLocationResponse = z.infer<
   typeof threadStorageLocationResponseSchema
 >;
-
-export const threadHostFileContentQuerySchema = z.object({
-  path: z.string().min(1),
-});
-export type ThreadHostFileContentQuery = z.infer<
-  typeof threadHostFileContentQuerySchema
->;
-
-export const threadFilesRawQuerySchema = z.object({
-  path: z.string().min(1),
-});
-export type ThreadFilesRawQuery = z.infer<typeof threadFilesRawQuerySchema>;
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
   olderCursor: z.string().nullable().optional(),

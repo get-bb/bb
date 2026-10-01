@@ -68,6 +68,7 @@ interface ThreadSpawnCommandOptions {
   file?: string[];
   image?: string[];
   section?: string;
+  pinned?: boolean;
   originKind?: string;
   sourceThread?: string;
   sourceSeqEnd?: string;
@@ -379,6 +380,7 @@ export function registerSpawnCommand(
       [],
     )
     .option("--section <id>", "Create the thread in a section")
+    .option("--pinned", "Create the thread in Pinned")
     .option(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
@@ -593,6 +595,7 @@ export function registerSpawnCommand(
               ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
               : {}),
             ...(opts.section ? { sectionId: opts.section } : {}),
+            ...(opts.pinned ? { pinned: true } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
             ...(sendAt !== undefined ? { sendAt } : {}),

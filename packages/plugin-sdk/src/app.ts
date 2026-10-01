@@ -163,6 +163,8 @@ export const experimental_useFixedTabTarget = runtimeFunction(
   "experimental_useFixedTabTarget",
 );
 export const useComposer = runtimeFunction("useComposer");
+export const useComposers = runtimeFunction("useComposers");
+/** @internal Superseded by `useComposer()`; kept for plugins built against older SDKs. */
 export const useComposerView = runtimeFunction("useComposerView");
 // Sidebar surfaces for plugins that replace the thread list (experimental —
 // see docs/api_to_audit.md).

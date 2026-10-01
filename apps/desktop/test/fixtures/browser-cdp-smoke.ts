@@ -745,15 +745,10 @@ async function main() {
         ...target,
         tabId: brokerTabId,
         url: `${url}/broker`,
-        profile: { kind: "automation", id: "smoke-broker-profile" },
         presentation: "hidden",
       }),
     );
     assert.equal(brokerTab.presentation, "hidden");
-    assert.deepEqual(brokerTab.profile, {
-      kind: "automation",
-      id: "smoke-broker-profile",
-    });
     const brokerScope = {
       hostWebContentsId: window.webContents.id,
       threadId: target.threadId,
@@ -762,7 +757,7 @@ async function main() {
       .getAutomationTabs(brokerScope)
       .find((tab) => tab.tabId === brokerTabId);
     assert(brokerPage);
-    assert.notEqual(
+    assert.equal(
       brokerPage.webContents.session,
       manager.getAutomationTabs(scopeA)[0]?.webContents.session,
     );
@@ -826,7 +821,7 @@ async function main() {
       }),
     );
     passed(
-      "broker creates hidden automation tab in isolated profile; rejects wrong thread and stale instance",
+      "broker creates hidden automation tab in the browser session; rejects wrong thread and stale instance",
     );
     async function acquireBroker(leaseId: string) {
       await broker.execute({

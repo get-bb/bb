@@ -66,6 +66,7 @@ interface CodexRetryErrorContext {
 
 interface CodexEventTranslationState {
   rateLimitsByLimitId: Map<string, CodexRateLimitSnapshot>;
+  latestRateLimitId: string;
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
 }
@@ -73,6 +74,7 @@ interface CodexEventTranslationState {
 export function createCodexEventTranslationState(): CodexEventTranslationState {
   return {
     rateLimitsByLimitId: new Map(),
+    latestRateLimitId: "codex",
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
   };
@@ -181,6 +183,7 @@ export function applyCodexRateLimitUpdate(
     limitId,
   );
   state.rateLimitsByLimitId.set(limitId, rateLimits);
+  state.latestRateLimitId = limitId;
   return rateLimits;
 }
 
@@ -269,7 +272,7 @@ type CodexRateLimitCandidate = {
   rateLimits: ProviderRateLimitState;
 };
 
-function normalizeCodexRateLimits(
+export function normalizeCodexRateLimits(
   state: CodexEventTranslationState,
   preferredLimitId: string,
 ): ProviderRateLimitState {

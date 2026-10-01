@@ -63,11 +63,15 @@ function claudeDistTags(value: string | null): {
 } | null {
   if (value === null) return null;
   try {
+    const distTagsSchema = z.object({
+      latest: z.string().min(1),
+      stable: z.string().min(1).optional(),
+    });
     const parsed = z
-      .object({
-        latest: z.string().min(1),
-        stable: z.string().min(1).optional(),
-      })
+      .union([
+        distTagsSchema,
+        z.tuple([distTagsSchema]).transform(([tags]) => tags),
+      ])
       .safeParse(JSON.parse(value));
     if (!parsed.success) return null;
     const latest = versionFrom(parsed.data.latest);
@@ -118,7 +122,9 @@ function isDefaultNativeClaudePath(executablePath: string | null): boolean {
   );
 }
 
-export async function getClaudeProviderInstallationStatus(): Promise<ProviderInstallationStatus> {
+export async function getClaudeProviderInstallationStatus(
+  checkUpdates = true,
+): Promise<ProviderInstallationStatus> {
   const command = claudeExecutable();
   const [
     resolvedExecutable,
@@ -129,14 +135,18 @@ export async function getClaudeProviderInstallationStatus(): Promise<ProviderIns
   ] = await Promise.all([
     resolveExecutablePath(command),
     commandOutput(command, ["--version"]),
-    commandOutput(npmCommand(), [
-      "view",
-      CLAUDE_NPM_PACKAGE,
-      "dist-tags",
-      "--json",
-    ]),
-    probeNpmGlobalPackage(CLAUDE_NPM_PACKAGE),
-    commandOutput(command, ["doctor"]),
+    checkUpdates
+      ? commandOutput(npmCommand(), [
+          "view",
+          CLAUDE_NPM_PACKAGE,
+          "dist-tags",
+          "--json",
+        ])
+      : null,
+    checkUpdates
+      ? probeNpmGlobalPackage(CLAUDE_NPM_PACKAGE)
+      : { npmBin: null, npmGlobalPackageVersion: null },
+    checkUpdates ? commandOutput(command, ["doctor"]) : null,
   ]);
   const installed = resolvedExecutable !== null || versionOutput !== null;
   const currentVersion = versionFrom(versionOutput);

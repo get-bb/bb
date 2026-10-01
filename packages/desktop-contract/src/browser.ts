@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   desktopBrowserImportSelectionSchema,
-  desktopBrowserProfileSchema,
   type DesktopBrowserImportOutcome,
   type DesktopBrowserImportSource,
 } from "@bb/host-daemon-contract";
@@ -318,9 +317,7 @@ export type BbDesktopBrowserFindResultHandler = (
 export type BbDesktopBrowserUnsubscribe = () => void;
 
 export const bbDesktopBrowserImportCookiesRequestSchema =
-  desktopBrowserImportSelectionSchema
-    .extend({ profile: desktopBrowserProfileSchema })
-    .strict();
+  desktopBrowserImportSelectionSchema;
 export type BbDesktopBrowserImportCookiesRequest = z.infer<
   typeof bbDesktopBrowserImportCookiesRequestSchema
 >;

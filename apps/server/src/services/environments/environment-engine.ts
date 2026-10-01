@@ -884,6 +884,25 @@ async function sweepProviderEnvironmentInSlot(
   );
 }
 
+export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
+  const row = getEnvironment(deps.db, environmentId);
+  if (
+    row === null ||
+    row.environmentProviderId === null ||
+    environmentHasLiveThreads(deps.db, environmentId)
+  )
+    return false;
+  if (row.teardownStatus === "removed") return true;
+  writeEnvironment(deps, environmentId, { retireAt: Date.now() });
+  void sweepProviderEnvironment(deps, environmentId).catch((error) => {
+    deps.logger.warn(
+      { environmentId, error: errorMessage(error) },
+      "Environment removal will retry",
+    );
+  });
+  return true;
+}
+
 export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
   const pending: Promise<void>[] = [];
   for (const record of listEnvironmentProviders()) {

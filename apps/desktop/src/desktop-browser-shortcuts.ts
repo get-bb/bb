@@ -3,6 +3,7 @@ import {
   appCommandIdSchema,
   isAppKeybindingAvailableForClient,
   matchesAppShortcut,
+  keyboardPlatform,
   type AppCommandId,
   type AppKeybindings,
   type AppShortcutInput,
@@ -10,7 +11,7 @@ import {
 
 interface ResolveDesktopBrowserAppCommandArgs {
   input: AppShortcutInput;
-  isMac: boolean;
+  platform: string;
   keybindings: AppKeybindings;
   splitNavigationEnabled?: boolean;
   splitNavigationCommands?: readonly AppCommandId[];
@@ -18,16 +19,20 @@ interface ResolveDesktopBrowserAppCommandArgs {
 
 export function resolveDesktopBrowserAppCommand({
   input,
-  isMac,
+  platform,
   keybindings,
   splitNavigationEnabled = false,
   splitNavigationCommands = [],
 }: ResolveDesktopBrowserAppCommandArgs): AppCommandId | null {
+  const isMac = keyboardPlatform(platform) === "mac";
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
     if (
       !binding ||
-      !isAppKeybindingAvailableForClient(binding, { isDesktop: true, isMac }) ||
+      !isAppKeybindingAvailableForClient(binding, {
+        isDesktop: true,
+        platform,
+      }) ||
       (!binding.when.all.includes("browserFocus") &&
         binding.command !== "panel.previousTab" &&
         binding.command !== "panel.nextTab" &&

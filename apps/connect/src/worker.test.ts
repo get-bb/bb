@@ -131,6 +131,10 @@ vi.mock("./servers.js", () => ({
   handleCreateDesktopSession: vi.fn(),
   handleDisconnectServer: vi.fn(),
   handleListAccountServers: vi.fn(),
+}));
+
+vi.mock("./desktop-session.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./desktop-session.js")>()),
   verifyDesktopSessionCookie: vi.fn(),
 }));
 
@@ -173,8 +177,8 @@ import {
   handleCreateDesktopSession,
   handleDisconnectServer,
   handleListAccountServers,
-  verifyDesktopSessionCookie,
 } from "./servers.js";
+import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
@@ -200,7 +204,7 @@ const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
 function sessionDetails(userId = OWNER, needsRefresh = false) {
-  return { userId, needsRefresh };
+  return { sessionId: `session-${userId}`, userId, needsRefresh };
 }
 
 function resolvedServer(
@@ -734,15 +738,17 @@ describe("gate replays through a tunnel object restart", () => {
     const { env, ctx, captured } = failingThenOk([
       retryableError("Network connection lost."),
     ]);
-    await expect(
-      worker.fetch(
-        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
-          headers: machineHeaders,
-        }),
-        env as never,
-        ctx,
-      ),
-    ).rejects.toThrow("Network connection lost.");
+    expect(
+      (
+        await worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          env as never,
+          ctx,
+        )
+      ).status,
+    ).toBe(502);
     expect(captured).toHaveLength(1);
   });
 
@@ -753,15 +759,17 @@ describe("gate replays through a tunnel object restart", () => {
         overloaded: true,
       }),
     ]);
-    await expect(
-      worker.fetch(
-        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
-          headers: machineHeaders,
-        }),
-        env as never,
-        ctx,
-      ),
-    ).rejects.toThrow("overloaded");
+    expect(
+      (
+        await worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          env as never,
+          ctx,
+        )
+      ).status,
+    ).toBe(502);
     expect(captured).toHaveLength(1);
   });
 
@@ -812,31 +820,35 @@ describe("gate replays through a tunnel object restart", () => {
     const { env, ctx, captured } = failingThenOk([
       new Error(TUNNEL_RESTART_REASON),
     ]);
-    await expect(
-      worker.fetch(
-        visitorRequest("sawyer.getbb.app", "/internal/session/events", {
-          method: "POST",
-          body: "{}",
-          headers: machineHeaders,
-        }),
-        env as never,
-        ctx,
-      ),
-    ).rejects.toThrow(TUNNEL_RESTART_REASON);
+    expect(
+      (
+        await worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/internal/session/events", {
+            method: "POST",
+            body: "{}",
+            headers: machineHeaders,
+          }),
+          env as never,
+          ctx,
+        )
+      ).status,
+    ).toBe(502);
     expect(captured).toHaveLength(1);
   });
 
   it("does not replay an error that is neither a restart nor retryable", async () => {
     const { env, ctx, captured } = failingThenOk([new Error("boom")]);
-    await expect(
-      worker.fetch(
-        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
-          headers: machineHeaders,
-        }),
-        env as never,
-        ctx,
-      ),
-    ).rejects.toThrow("boom");
+    expect(
+      (
+        await worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          env as never,
+          ctx,
+        )
+      ).status,
+    ).toBe(502);
     expect(captured).toHaveLength(1);
   });
 
@@ -846,15 +858,17 @@ describe("gate replays through a tunnel object restart", () => {
       new Error(TUNNEL_RESTART_REASON),
       new Error(TUNNEL_RESTART_REASON),
     ]);
-    await expect(
-      worker.fetch(
-        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
-          headers: machineHeaders,
-        }),
-        env as never,
-        ctx,
-      ),
-    ).rejects.toThrow(TUNNEL_RESTART_REASON);
+    expect(
+      (
+        await worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          env as never,
+          ctx,
+        )
+      ).status,
+    ).toBe(502);
     expect(captured).toHaveLength(3);
   });
 });
@@ -1338,11 +1352,14 @@ describe("gate worker share hosts", () => {
     expect(mockRefreshAccountSession).not.toHaveBeenCalled();
   });
 
-  it("accepts the short-lived desktop cookie for the owning account", async () => {
+  it("accepts the desktop cookie for the owning account", async () => {
     mockParseCookie.mockImplementation((_header, name) =>
       name === DESKTOP_SESSION_COOKIE ? "desktop-token" : null,
     );
-    mockVerifyDesktopSession.mockResolvedValue(OWNER);
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OWNER,
+      refreshGrant: null,
+    });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/"),
@@ -1353,8 +1370,64 @@ describe("gate worker share hosts", () => {
     expect(mockVerifyDesktopSession).toHaveBeenCalledWith(
       "desktop-token",
       "test-secret",
+      expect.anything(),
     );
     expect(captured).toHaveLength(1);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("rolls a day-old desktop cookie forward seven days for the same grant", async () => {
+    mockParseCookie.mockImplementation((_header, name) =>
+      name === DESKTOP_SESSION_COOKIE ? "desktop-token" : null,
+    );
+    const grant = { kind: "machine" as const, credentialHash: "hash-a" };
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OWNER,
+      refreshGrant: grant,
+    });
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const before = Date.now();
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+      env as never,
+      ctx,
+    );
+
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    expect(setCookie).toMatch(
+      /^__Secure-bb-connect\.desktop_session=[^;]+; Domain=\.getbb\.app; Path=\/; Expires=[^;]+; HttpOnly; SameSite=Lax; Secure$/u,
+    );
+    const expires = Date.parse(/Expires=([^;]+)/u.exec(setCookie)![1]);
+    expect(expires).toBeGreaterThanOrEqual(
+      before + 7 * 24 * 60 * 60_000 - 1000,
+    );
+    const value = /=([^;]+)/u.exec(setCookie)![1];
+    const payload = JSON.parse(
+      Buffer.from(
+        value.slice(0, value.lastIndexOf(".")),
+        "base64url",
+      ).toString(),
+    );
+    expect(payload).toMatchObject({ userId: OWNER, grant });
+  });
+
+  it("does not roll a desktop cookie that belongs to another account", async () => {
+    mockParseCookie.mockImplementation((_header, name) =>
+      name === DESKTOP_SESSION_COOKIE ? "desktop-token" : "owner-session",
+    );
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER));
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OTHER,
+      refreshGrant: { kind: "machine", credentialHash: "hash-other" },
+    });
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 
   it("uses the desktop cookie when a stale GitHub session belongs to another account", async () => {
@@ -1362,7 +1435,10 @@ describe("gate worker share hosts", () => {
       name === DESKTOP_SESSION_COOKIE ? "desktop-token" : "github-token",
     );
     mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
-    mockVerifyDesktopSession.mockResolvedValue(OWNER);
+    mockVerifyDesktopSession.mockResolvedValue({
+      userId: OWNER,
+      refreshGrant: null,
+    });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/"),
@@ -1734,6 +1810,52 @@ describe("TunnelDO machine presence", () => {
     expect(update).toHaveBeenCalledWith(machine);
     expect(set).toHaveBeenCalledWith({ lastSeenAt: expect.any(Date) });
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules the next presence alarm before a slow D1 write settles", async () => {
+    const run = vi.fn(() => new Promise<void>(() => {}));
+    const update = vi.fn(() => ({
+      set: () => ({ where: () => ({ run }) }),
+    }));
+    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
+    const setAlarm = vi.fn(async (_at: number) => {});
+    state.api.storage.setAlarm = setAlarm;
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+
+    const before = Date.now();
+    void dob.alarm();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    expect(setAlarm).toHaveBeenCalledTimes(1);
+    const at = setAlarm.mock.calls[0]![0];
+    expect(at - before).toBeGreaterThanOrEqual(40_000);
+    expect(at - Date.now()).toBeLessThan(60_000);
+  });
+
+  it("spreads presence alarms across the interval instead of a fixed period", async () => {
+    vi.mocked(drizzle).mockReturnValue({
+      update: () => ({
+        set: () => ({ where: () => ({ run: async () => {} }) }),
+      }),
+    } as never);
+    const offsets: number[] = [];
+    for (const roll of [0, 0.5, 0.999]) {
+      const random = vi.spyOn(Math, "random").mockReturnValue(roll);
+      const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
+      const setAlarm = vi.fn(async (_at: number) => {});
+      state.api.storage.setAlarm = setAlarm;
+      const dob = new TunnelDO(state.api, makeDoEnv());
+      await state.restore;
+      state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+      const before = Date.now();
+      await dob.alarm();
+      offsets.push(Math.round((setAlarm.mock.calls[0]![0] - before) / 1000));
+      random.mockRestore();
+    }
+    expect(offsets).toEqual([40, 50, 60]);
   });
 });
 
@@ -2375,5 +2497,55 @@ describe("TunnelDO holds visitors while a lost tunnel redials", () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     await dob.fetch(new Request("https://do.internal/__control/close"));
     expect((await held).status).toBe(503);
+  });
+});
+
+describe("gate error response", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveLabel.mockRejectedValue(
+      new Error("D1_ERROR: D1 DB is overloaded. Requests queued for too long."),
+    );
+  });
+
+  it("answers an API caller with a readable JSON 502 and logs the failure", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads/thr_x/child-summary"),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      code: "connect_gate_error",
+      message: "bb connect hit a temporary problem. Try again in a moment.",
+    });
+    expect(logged).toHaveBeenCalledWith(
+      "bb connect: request failed",
+      expect.objectContaining({
+        method: "GET",
+        path: "/api/v1/threads/thr_x/child-summary",
+      }),
+    );
+    logged.mockRestore();
+  });
+
+  it("gives a browser navigation a page that retries itself", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", {
+        headers: { accept: "text/html" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(502);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    const body = await response.text();
+    expect(body).toContain("bb connect hit a temporary problem");
+    expect(body).toContain('http-equiv="refresh" content="5"');
+    logged.mockRestore();
   });
 });

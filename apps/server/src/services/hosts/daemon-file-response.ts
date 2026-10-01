@@ -1,12 +1,6 @@
 import { Buffer } from "node:buffer";
-import type {
-  HostDaemonOnlineRpcResultByType,
-  HostReadFileIfNoneMatch,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
-import { COMMAND_TIMEOUT_MS } from "../../constants.js";
-import type { LoggedWorkSessionDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "./online-rpc.js";
 
 const OCTET_STREAM_MIME_TYPE = "application/octet-stream";
 const REVALIDATE_CACHE_CONTROL = "private, no-cache";
@@ -19,53 +13,6 @@ export type DaemonFileReadResult =
 interface CreateDaemonFileContentResponseOptions {
   headers?: HeadersInit;
   ifNoneMatch?: string | undefined;
-}
-
-export async function serveDaemonFileContent(
-  deps: LoggedWorkSessionDeps,
-  target: {
-    hostId: string;
-    ifNoneMatch?: string | undefined;
-    path: string;
-    rootPath?: string;
-  },
-  createResponse: (result: DaemonFileReadResult) => Response,
-): Promise<Response> {
-  const { hostId, ifNoneMatch, ...file } = target;
-  const daemonIfNoneMatch = parseDaemonIfNoneMatch(ifNoneMatch);
-  try {
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        ...file,
-        ...(daemonIfNoneMatch !== undefined
-          ? { ifNoneMatch: daemonIfNoneMatch }
-          : {}),
-      },
-    });
-    return createResponse(result);
-  } catch (error) {
-    return remapDaemonFileRouteError(error);
-  }
-}
-
-function parseDaemonIfNoneMatch(
-  ifNoneMatch: string | undefined,
-): HostReadFileIfNoneMatch | undefined {
-  if (ifNoneMatch === undefined) {
-    return undefined;
-  }
-  if (ifNoneMatch.trim() === "*") {
-    return { kind: "any" };
-  }
-  const values = ifNoneMatch
-    .split(",")
-    .map((tag) => tag.trim().replace(/^W\//u, ""))
-    .map((tag) => /^"([a-f0-9]{64})"$/u.exec(tag)?.[1])
-    .filter((value): value is string => value !== undefined);
-  return values.length > 0 ? { kind: "sha256", values } : undefined;
 }
 
 function daemonFileEntityTag(result: DaemonFileReadResult): string {

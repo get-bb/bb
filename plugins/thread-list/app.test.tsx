@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import {
@@ -270,6 +276,7 @@ describe("thread-list plugin", () => {
       options: {
         projectId: PERSONAL_PROJECT_ID,
         hostId: "host_laptop",
+        experimental_placement: { sectionId: null, pinned: false },
         focusPrompt: true,
       },
     });

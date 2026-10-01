@@ -107,6 +107,54 @@ describe("buildSuggestedBranchName", () => {
 });
 
 describe("createThreadRecord", () => {
+  it.each([{}, { sendAt: Date.now() + 60_000 }])(
+    "preserves placement at creation for %j",
+    (mode) => {
+      const db = createConnection(":memory:");
+      try {
+        migrate(db);
+        const host = upsertHost(db, noopNotifier, { name: "Test" });
+        const { project } = createProject(db, noopNotifier, {
+          name: "Test",
+          source: {
+            type: "local_path",
+            hostId: host.id,
+            path: "/tmp/placement",
+          },
+        });
+        const section = createThreadSection(db, noopNotifier, {
+          name: "Managers",
+        });
+        if (section.status !== "created") throw new Error("Expected section");
+        const thread = createThreadRecord(
+          { db, hub: noopNotifier },
+          {
+            environmentId: null,
+            request: {
+              ...mode,
+              environment: { type: "reuse", environmentId: "env_unused" },
+              sectionId: section.section.id,
+              pinned: true,
+              input: [],
+              origin: "app",
+              pluginMetadata: null,
+              projectId: project.id,
+              providerId: "codex",
+              startedOnBehalfOf: null,
+              titleFallback: null,
+              visibility: "visible",
+            },
+          },
+        );
+        expect(thread.sectionId).toBe(section.section.id);
+        expect(thread.pinnedAt).not.toBeNull();
+        expect(thread.pinSortKey).not.toBeNull();
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
+
   it("returns section_not_found when the section is stale by create time", () => {
     const db = createConnection(":memory:");
     try {

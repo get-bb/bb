@@ -1,3 +1,4 @@
+import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
@@ -106,6 +107,7 @@ interface CreateHostDaemonAppOptions {
   logger: HostDaemonLogger;
   serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
+  supervised?: boolean;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -706,6 +708,7 @@ export async function createHostDaemonApp(
     serverHeaders: options.serverHeaders ?? {},
     hostDaemonPort: options.localApiConfig?.port ?? null,
     autoUpdate: options.autoUpdate ?? false,
+    supervised: options.supervised ?? false,
     logger: options.logger,
     ...(options.fetchFn === undefined ? {} : { fetchFn: options.fetchFn }),
     isServerSessionOpen: () => sessionState.value !== null,
@@ -920,9 +923,11 @@ export async function createHostDaemonApp(
     },
   });
   requestDaemonRestart = () => {
-    void daemon.shutdown("self-update", 0).catch((error) => {
-      options.logger.error({ err: error }, "Self-update shutdown failed");
-    });
+    void daemon
+      .shutdown("self-update", HOST_DAEMON_RESTART_EXIT_CODE)
+      .catch((error) => {
+        options.logger.error({ err: error }, "Self-update shutdown failed");
+      });
   };
   requestMachineShutdown = async () => {
     await writeMachineSuspensionMarker(options.dataDir);

@@ -295,6 +295,7 @@ interface ProviderMaintenanceArgs {
 
 interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
   requirement?: "thread_rewind";
+  checkUpdates?: boolean;
 }
 
 export interface AgentRuntime {

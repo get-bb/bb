@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { errorToResponse } from "../../src/errors.js";
+import { createServerErrorHandler } from "../../src/errors.js";
 import { registerInternalPluginHostArtifactRoutes } from "../../src/internal/plugin-host-artifacts.js";
 import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
 import { withTestHarness, testLogger } from "../helpers/test-app.js";
@@ -32,7 +32,7 @@ async function createRouteHarness(bytes: Uint8Array) {
   });
   const getHostArtifact = vi.spyOn(pluginHostArtifacts, "get");
   const app = new Hono();
-  app.onError((error) => errorToResponse(error, testLogger));
+  app.onError(createServerErrorHandler(testLogger));
   registerInternalPluginHostArtifactRoutes(app, { pluginHostArtifacts });
   return { app, digest, getHostArtifact, path };
 }

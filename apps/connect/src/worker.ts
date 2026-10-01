@@ -26,8 +26,12 @@ import {
   handleCreateDesktopSession,
   handleDisconnectServer,
   handleListAccountServers,
-  verifyDesktopSessionCookie,
 } from "./servers.js";
+import {
+  desktopSessionSetCookie,
+  issueDesktopSessionCookie,
+  verifyDesktopSessionCookie,
+} from "./desktop-session.js";
 import { serveWithCache } from "./cache.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
@@ -289,7 +293,26 @@ export function cacheNamespace(
   return target !== null ? `${routingKey}--${target}` : routingKey;
 }
 
-export default {
+export function gateErrorResponse(request: Request): Response {
+  if (wantsHtml(request)) {
+    return gatePage(
+      `<h1>bb connect hit a temporary problem</h1>
+       <p>This page retries automatically in a few seconds.</p>
+       <button class="btn" onclick="location.reload()">Retry now</button>`,
+      502,
+      5,
+    );
+  }
+  return Response.json(
+    {
+      code: "connect_gate_error",
+      message: "bb connect hit a temporary problem. Try again in a moment.",
+    },
+    { status: 502 },
+  );
+}
+
+const gate = {
   async fetch(
     request: Request,
     env: Env,
@@ -431,9 +454,14 @@ export default {
       ? await verifySessionCookieDetails(cookie, env.BETTER_AUTH_SECRET, db)
       : null;
     const sessionUserId = verifiedSession?.userId ?? null;
-    const desktopUserId = desktopCookie
-      ? await verifyDesktopSessionCookie(desktopCookie, env.BETTER_AUTH_SECRET)
+    const verifiedDesktop = desktopCookie
+      ? await verifyDesktopSessionCookie(
+          desktopCookie,
+          env.BETTER_AUTH_SECRET,
+          db,
+        )
       : null;
+    const desktopUserId = verifiedDesktop?.userId ?? null;
     if (!sessionUserId && !desktopUserId) {
       return signInPage(label, appUrl, url.toString());
     }
@@ -473,20 +501,57 @@ export default {
       );
     }
 
+    if (cached.cacheable) return response;
+
+    const setCookies: string[] = [];
+    const desktopRefreshGrant = verifiedDesktop?.refreshGrant ?? null;
+    if (desktopUserId === resolved.userId && desktopRefreshGrant !== null) {
+      const renewed = await issueDesktopSessionCookie(
+        { userId: desktopUserId, grant: desktopRefreshGrant },
+        {
+          baseDomain: env.BASE_DOMAIN,
+          name: runtime.desktopSessionCookieName,
+          secret: env.BETTER_AUTH_SECRET,
+        },
+      );
+      setCookies.push(
+        desktopSessionSetCookie(renewed, url.protocol === "https:"),
+      );
+    }
     if (
-      !cached.cacheable &&
       cookie !== null &&
       sessionUserId === resolved.userId &&
       verifiedSession?.needsRefresh === true
     ) {
       invalidateSessionCookie(cookie);
-      const setCookies = await refreshAccountSessionCookies(
+      const refreshed = await refreshAccountSessionCookies(
         `${runtime.sessionCookieName}=${cookie}`,
         runtime.accountAppUrl,
         (authRequest) => fetch(authRequest),
       );
-      if (setCookies !== null) return withSetCookies(response, setCookies);
+      if (refreshed !== null) setCookies.push(...refreshed);
     }
-    return response;
+    return setCookies.length === 0
+      ? response
+      : withSetCookies(response, setCookies);
+  },
+};
+
+export default {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    try {
+      return await gate.fetch(request, env, ctx);
+    } catch (error) {
+      console.error("bb connect: request failed", {
+        method: request.method,
+        path: new URL(request.url).pathname,
+        error,
+      });
+      return gateErrorResponse(request);
+    }
   },
 } satisfies ExportedHandler<Env>;

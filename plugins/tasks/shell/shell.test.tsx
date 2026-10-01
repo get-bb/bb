@@ -896,14 +896,19 @@ describe("tasks app shell", () => {
       },
     ];
     let deferAll = false;
-    let releaseAll: (() => void) | null = null;
+    const pendingAll: Array<() => void> = [];
     const rpc = seededRpc({
       listLabels: () => ({ labels: [] }),
-      listTasks: (input: { activeOnly?: boolean }) => {
+      listTasks: (input: { activeOnly?: boolean; statuses?: string[] }) => {
         if (input.activeOnly === true) return { tasks: [] };
-        if (!deferAll) return { tasks };
+        const matching = tasks.filter(
+          (task) =>
+            input.statuses === undefined ||
+            input.statuses.includes(task.status),
+        );
+        if (!deferAll) return { tasks: matching };
         return new Promise((resolve) => {
-          releaseAll = () => resolve({ tasks });
+          pendingAll.push(() => resolve({ tasks: matching }));
         });
       },
     });
@@ -916,10 +921,12 @@ describe("tasks app shell", () => {
 
     deferAll = true;
     slot.lifecycle.rerender(<Panel subPath="all" />);
-    await waitFor(() => expect(releaseAll).not.toBeNull());
+    await waitFor(() => expect(pendingAll.length).toBeGreaterThan(0));
     expect(slot.queryByText("No tasks yet")).toBeNull();
     expect(slot.queryByText("Scope truth")).toBeNull();
-    act(() => releaseAll!());
+    act(() => {
+      for (const release of pendingAll.splice(0)) release();
+    });
     await slot.findByText("Scope truth");
   });
 

@@ -25,7 +25,6 @@ interface UseActiveComposerDraftResult {
   currentPromptDraftInput: PromptInput[];
   activeComposerDraft: PromptDraftState;
   activeComposerDraftInput: PromptInput[];
-  setActiveComposerDraft: (draft: PromptDraftState) => void;
   handleChangeMessage: (text: string, mentions: PromptTextMention[]) => void;
   removeActiveComposerAttachment: (path: string) => void;
 }
@@ -36,7 +35,6 @@ export function useActiveComposerDraft({
   inlineSessionRef,
 }: UseActiveComposerDraftArgs): UseActiveComposerDraftResult {
   const promptDraft = usePromptDraftStorage(draftScope);
-  const setStoredPromptDraft = promptDraft.setDraft;
   const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
   const removeStoredPromptAttachment = promptDraft.removeAttachment;
 
@@ -58,17 +56,6 @@ export function useActiveComposerDraft({
     [activeComposerDraft],
   );
 
-  const setActiveComposerDraft = useCallback(
-    (draft: PromptDraftState) => {
-      const current = inlineSessionRef.current;
-      if (current) {
-        current.setDraft(() => draft);
-        return;
-      }
-      setStoredPromptDraft(draft);
-    },
-    [inlineSessionRef, setStoredPromptDraft],
-  );
   const handleChangeMessage = useCallback(
     (text: string, mentions: PromptTextMention[]) => {
       const current = inlineSessionRef.current;
@@ -103,7 +90,6 @@ export function useActiveComposerDraft({
     currentPromptDraftInput,
     activeComposerDraft,
     activeComposerDraftInput,
-    setActiveComposerDraft,
     handleChangeMessage,
     removeActiveComposerAttachment,
   };

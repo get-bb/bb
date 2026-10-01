@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +27,7 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const bbDiff = vi.hoisted(() => ({
   loaded: false,
+  renderFails: false,
   lastProps: null as Record<string, unknown> | null,
 }));
 
@@ -35,6 +36,7 @@ vi.mock("./BbDiff", async () => {
   bbDiff.loaded = true;
   return {
     default: (props: Record<string, unknown>) => {
+      if (bbDiff.renderFails) throw new Error("renderer exploded");
       bbDiff.lastProps = props;
       return React.createElement(
         "div",
@@ -101,6 +103,7 @@ function registerDiffRenderer(
 
 beforeEach(() => {
   bbDiff.loaded = false;
+  bbDiff.renderFails = false;
   bbDiff.lastProps = null;
   receivedProps.length = 0;
   resetPluginSlotStoreForTest();
@@ -283,6 +286,34 @@ describe("DiffHost", () => {
       />,
     );
 
+    expect(await screen.findByTestId("bb-diff")).toBeDefined();
+  });
+
+  it("contains a failing BB renderer inside a delegating replacement without disabling the plugin", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    bbDiff.renderFails = true;
+    registerDiffRenderer(({ Original }) => (
+      <section aria-label="Plugin chrome">
+        <Original />
+      </section>
+    ));
+
+    render(
+      <DiffHost
+        file={parseFixture()}
+        patchText={PATCH}
+        fullFileContents={null}
+      />,
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(
+      screen.getByRole("region", { name: "Plugin chrome" }).contains(alert),
+    ).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    bbDiff.renderFails = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByTestId("bb-diff")).toBeDefined();
   });
 

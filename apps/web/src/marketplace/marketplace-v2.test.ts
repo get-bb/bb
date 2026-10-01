@@ -108,6 +108,20 @@ describe("parseMarketplaceV2Manifest", () => {
     ).toThrow(/duplicate plugin id/u);
   });
 
+  it("accepts a catalog with more than 256 plugins", () => {
+    const entry = MARKETPLACE_V2_FIXTURE.plugins[0];
+    if (entry === undefined) throw new Error("The fixture needs a plugin");
+    const parsed = parseMarketplaceV2Manifest({
+      ...MARKETPLACE_V2_FIXTURE,
+      collections: [],
+      plugins: Array.from({ length: 300 }, (_, index) => ({
+        ...entry,
+        id: `plugin-${index}`,
+      })),
+    });
+    expect(parsed.plugins).toHaveLength(300);
+  });
+
   it("accepts an empty catalog and truncates display arrays", () => {
     expect(
       parseMarketplaceV2Manifest({

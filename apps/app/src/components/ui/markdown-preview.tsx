@@ -32,8 +32,7 @@ import type {
   Options as ReactMarkdownOptions,
   UrlTransform,
 } from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import { LazyMarkdownHtml } from "./lazy-markdown-html";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -289,63 +288,15 @@ const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
-const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
-  rehypeRaw,
-  [
-    rehypeSanitize,
-    {
-      ...defaultSchema,
-      tagNames: [
-        ...(defaultSchema.tagNames ?? []),
-        "video",
-        "bb-thread-mention",
-        "bb-prompt-mention",
-        "bb-message-directive",
-      ],
-      protocols: { ...defaultSchema.protocols, poster: ["http", "https"] },
-      attributes: {
-        ...defaultSchema.attributes,
-        source: [
-          ...(defaultSchema.attributes?.source ?? []),
-          "src",
-          "type",
-          "media",
-        ],
-        video: [
-          "src",
-          "controls",
-          "playsInline",
-          "preload",
-          "poster",
-          "width",
-          "height",
-          "title",
-          "ariaLabel",
-        ],
-        "bb-thread-mention": [
-          "dataThreadId",
-          "dataRawThreadId",
-          "dataRawThreadInlineCode",
-        ],
-        "bb-prompt-mention": ["dataMentionIndex"],
-        "bb-message-directive": ["dataDirectiveIndex"],
-      },
-    },
-  ],
-];
 
 const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
 
 function resolveRehypePlugins({
-  allowHtml,
   rehypeKatex,
 }: {
-  allowHtml: boolean;
   rehypeKatex: RehypeKatex | null;
 }): MarkdownRehypePlugins {
-  const base = allowHtml
-    ? MARKDOWN_HTML_REHYPE_PLUGINS
-    : MARKDOWN_PLAIN_REHYPE_PLUGINS;
+  const base = MARKDOWN_PLAIN_REHYPE_PLUGINS;
   return rehypeKatex === null ? base : [...base, rehypeKatex];
 }
 
@@ -606,9 +557,7 @@ function resolveInlineCodeMarkdownFileHref({
   if (
     localFileRouting === undefined ||
     codeText.length === 0 ||
-    codeText.trim() !== codeText ||
-    codeText.includes("\n") ||
-    codeText.includes("\r")
+    /\s/u.test(codeText)
   ) {
     return null;
   }
@@ -621,6 +570,58 @@ function resolveInlineCodeMarkdownFileHref({
   return target !== null && hasMarkdownFileExtension(target.link.path)
     ? target.href
     : null;
+}
+
+const markdownLinkGraphemes = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+
+function appendMarkdownLinkIcon(children: ReactNode): ReactNode {
+  const icon = (
+    <Icon
+      name="ExternalLink"
+      aria-hidden
+      className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
+    />
+  );
+  let appended = false;
+  const append = (node: ReactNode): ReactNode => {
+    if (typeof node === "string" || typeof node === "number") {
+      const text = String(node);
+      const last = markdownLinkGraphemes
+        .segment(text)
+        .containing(text.trimEnd().length - 1);
+      if (!last) return node;
+      appended = true;
+      return (
+        <>
+          {text.slice(0, last.index)}
+          <span className="whitespace-nowrap">
+            {text.slice(last.index)}
+            {icon}
+          </span>
+        </>
+      );
+    }
+    if (isValidElement<{ children?: ReactNode }>(node)) {
+      const content = append(node.props.children);
+      return appended ? cloneElement(node, undefined, content) : node;
+    }
+    const nodes: ReactNode[] = Children.toArray(node);
+    for (let index = nodes.length - 1; index >= 0 && !appended; index--) {
+      nodes[index] = append(nodes[index]);
+    }
+    return nodes;
+  };
+  const content = append(children);
+  return appended ? (
+    content
+  ) : (
+    <span className="whitespace-nowrap">
+      {children}
+      {icon}
+    </span>
+  );
 }
 
 function MarkdownAnchor({
@@ -685,14 +686,7 @@ function MarkdownAnchor({
       rel="noopener noreferrer"
       onClick={handleAnchorClick}
     >
-      {children}
-      {localFileLink ? (
-        <Icon
-          name="ExternalLink"
-          aria-hidden
-          className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
-        />
-      ) : null}
+      {localFileLink ? appendMarkdownLinkIcon(children) : children}
     </RouteAnchor>
   );
   if (contextMenuItems === null || contextMenuItems.length === 0) {
@@ -741,7 +735,8 @@ function MarkdownCode({
   rewriteLocalhostLinks,
   ...props
 }: MarkdownCodeRendererProps) {
-  const codeText = String(children ?? "").replace(/\n$/, "");
+  const codeText =
+    typeof children === "string" ? children.replace(/\n$/, "") : "";
   const language = getMarkdownCodeLanguage({ className: codeClassName });
   const isBlock = isMarkdownCodeBlock({ codeText, language });
   const [softWrap, setSoftWrap] = useState(false);
@@ -1838,8 +1833,8 @@ function MarkdownPreviewComponent({
 
   const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));
   const rehypePlugins = useMemo(
-    () => resolveRehypePlugins({ allowHtml: rendersHtml, rehypeKatex }),
-    [rendersHtml, rehypeKatex],
+    () => resolveRehypePlugins({ rehypeKatex }),
+    [rehypeKatex],
   );
 
   const markdownPieceRenderConfig = useMemo(
@@ -1862,16 +1857,17 @@ function MarkdownPreviewComponent({
     ? resolveMarkdownPieces(markdownPieceCache, markdownPieceRenderConfig, body)
     : null;
 
+  const Markdown = rendersHtml ? LazyMarkdownHtml : ReactMarkdown;
   const renderedMarkdown =
     markdownPieces === null ? (
-      <ReactMarkdown
+      <Markdown
         rehypePlugins={rehypePlugins}
         remarkPlugins={remarkPlugins}
         components={markdownComponents}
         urlTransform={resolvedUrlTransform}
       >
         {body}
-      </ReactMarkdown>
+      </Markdown>
     ) : (
       markdownPieces.children
     );

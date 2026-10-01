@@ -125,6 +125,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       "7d",
       "7d reset",
       "Windows",
+      "Extra usage",
       ...families.map(familyLabel),
       "Status",
     ].join("\t"),
@@ -142,6 +143,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatUtilization(account.sevenDayUtilization),
         formatReset(account.sevenDayResetAt),
         formatLimitWindows(account.limitWindows),
+        account.extraUsage?.status ?? "-",
         ...families.map((family) =>
           formatFamilyQuota(account.familyWeekly[family]),
         ),

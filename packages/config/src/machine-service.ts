@@ -2,6 +2,7 @@ import { readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 export const MACHINE_INSTALLER_ENV_NAME = "BB_MACHINE_INSTALLER";
+export const HOST_DAEMON_RESTART_EXIT_CODE = 75;
 
 const LAUNCHD_SERVICE_PREFIX = "app.getbb.host-daemon.";
 const LAUNCHD_SERVICE_SUFFIX = ".plist";

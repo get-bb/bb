@@ -3,11 +3,16 @@ import { getThreadRoutePath } from "@bb/client-core";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
-import { useProfiles, useRealtimeConnectionState } from "@/app-shell";
+import {
+  useAppRevealed,
+  useProfiles,
+  useRealtimeConnectionState,
+} from "@/app-shell";
 import {
   parsePushNotificationData,
   resolvePushTargetProfile,
   isPushRegistrationAllowed,
+  shouldOfferPushPrompt,
   type PushNotificationTarget,
 } from "@/data/notifications";
 import type { ServerProfile } from "@/lib/profiles";
@@ -137,6 +142,7 @@ export function PushNotificationsHost() {
           (activeProfile === null || isPushRegistrationAllowed(activeProfile))
         }
         prompted={storeSnapshot.prompted}
+        enabled={activeEnabled}
       />
     </>
   );
@@ -147,18 +153,22 @@ function FirstRunPrompt({
   connected,
   available,
   prompted,
+  enabled,
 }: {
   profile: ServerProfile | null;
   connected: boolean;
   available: boolean;
   prompted: boolean;
+  enabled: boolean;
 }) {
   const sheet = useSheet();
   const controller = getPushRegistrationController();
   const store = getPushStore();
   const notifications = getPushNotificationsModule();
   const [presentedFor, setPresentedFor] = useState<string | null>(null);
+  const revealed = useAppRevealed();
   const shouldAsk =
+    revealed &&
     available &&
     !prompted &&
     connected &&
@@ -169,25 +179,29 @@ function FirstRunPrompt({
     if (!shouldAsk || !profile) return;
     let cancelled = false;
     void notifications.getPermission().then((permission) => {
-      if (cancelled || permission !== "undetermined") return;
+      if (cancelled || !shouldOfferPushPrompt({ permission, enabled })) {
+        return;
+      }
       setPresentedFor(profile.id);
       sheet.present();
     });
     return () => {
       cancelled = true;
     };
-  }, [shouldAsk, profile, notifications, sheet]);
+  }, [shouldAsk, profile, enabled, notifications, sheet]);
 
   return (
     <ActionSheet
+      presentation="prompt"
       controller={sheet}
       title="Get notified when a thread needs you?"
+      cancelLabel={process.env.EXPO_OS === "ios" ? "Cancel" : null}
       message="bb can send a push notification when a thread finishes, hits an error, or is waiting for your input. You can change this per server in Settings."
       actions={[
         {
           key: "enable",
           label: "Turn on notifications",
-          icon: "Zap",
+          icon: "Bell",
           onPress: () => {
             if (!profile) return;
             void controller.setEnabled(profile, true).then((outcome) => {

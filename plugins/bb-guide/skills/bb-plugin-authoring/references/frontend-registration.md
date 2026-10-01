@@ -18,7 +18,6 @@ import {
   experimental_FileLink as FileLink,
   UrlLink as UrlLink,
   useComposer,
-  useComposerView,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner"; // shimmed to the host toaster
 import { Button } from "@/components/ui/button"; // vendored source YOU own
@@ -92,9 +91,10 @@ export default definePluginApp((app) => {
         id: "append-checklist",
         label: "Append checklist",
         run: ({ composer }) =>
-          composer.updateText(
-            (current) => `${current}\n\n- Verify behavior\n- Run checks`,
-          ),
+          composer.insert("- Verify behavior\n- Run checks", {
+            at: "end",
+            block: true,
+          }),
       },
     ],
     banners: [{ id: "workflow", component: WorkflowBanner }],
@@ -240,7 +240,9 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
       disabled={item.isDisabled || item.isLoading}
       {...split.splitProps}
       onClick={(event) =>
-        actions.activate(item.id, { openInSplit: event.metaKey || event.ctrlKey })
+        actions.activate(item.id, {
+          openInSplit: event.metaKey || event.ctrlKey,
+        })
       }
     >
       <experimental_SidebarNavigationIcon icon={item.icon} />
@@ -300,8 +302,14 @@ clears when the header is unpicked or crashes, so the row comes back:
 ```tsx
 let inHeader = false;
 const listeners = new Set<() => void>();
-const setInHeader = (next: boolean) => { inHeader = next; listeners.forEach((l) => l()); };
-const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
+const setInHeader = (next: boolean) => {
+  inHeader = next;
+  listeners.forEach((l) => l());
+};
+const subscribe = (l: () => void) => (
+  listeners.add(l),
+  () => void listeners.delete(l)
+);
 
 function HeaderIcons({ width, controlSize }: ExperimentalSidebarHeaderProps) {
   useLayoutEffect(() => (setInHeader(true), () => setInHeader(false)), []);
@@ -355,7 +363,8 @@ interface PluginThreadListProps {
 **Reading and acting on threads.** Two hooks back a replaced list:
 
 ```tsx
-const { status, threads, projects, sections } = experimental_useSidebarThreads();
+const { status, threads, projects, sections } =
+  experimental_useSidebarThreads();
 const actions = experimental_useSidebarThreadActions();
 
 // sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
@@ -401,7 +410,9 @@ const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, thread
 // Titles can contain @project:, @section:, and @thread: mentions. `displayTitle`
 // is the resolved plain text (sort on it, use it for aria-label); <ThreadTitle>
 // renders the same text with bb's mention chips:
-<span className="truncate"><ThreadTitle threadId={thread.id} /></span>
+<span className="truncate">
+  <ThreadTitle threadId={thread.id} />
+</span>;
 
 // `environment.providerId` names an entry in bb's environment provider
 // catalog; resolve it for a display name, and draw it with

@@ -168,7 +168,9 @@ export function TopLevelSidebarSection({
   const stopCollapseControlKeyDown = useCallback<
     KeyboardEventHandler<HTMLButtonElement>
   >((event) => {
-    event.stopPropagation();
+    if (event.key === "Enter" || event.key === " ") {
+      event.stopPropagation();
+    }
   }, []);
 
   return (

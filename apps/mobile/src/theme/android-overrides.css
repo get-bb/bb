@@ -1,0 +1,13 @@
+:root,
+.light {
+  --surface-grouped: var(--background);
+  --surface-grouped-cell: var(--background);
+}
+.dark {
+  --surface-grouped: var(--background);
+  --surface-grouped-cell: var(--background);
+}
+@theme {
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+}

@@ -846,7 +846,10 @@ function ensureTimelineWindowBackgroundTaskStateRows(
 ): StoredEventRow[] {
   const itemIds = new Set<string>();
   for (const row of args.rows) {
-    if (row.itemKind === "backgroundTask" && row.itemId !== null) {
+    if (
+      (row.itemKind === "backgroundTask" || row.itemKind === "delegation") &&
+      row.itemId !== null
+    ) {
       itemIds.add(row.itemId);
     }
   }
@@ -1237,6 +1240,7 @@ function buildThreadTimelineInternal(
   thread: Thread,
   options: BuildThreadTimelineOptions,
 ): BuildThreadTimelineInternalResult {
+  const workspaceRoot = resolveThreadWorkspaceRoot(db, thread);
   const snapshot = resolveTimelineSnapshot(
     db,
     thread,
@@ -1247,7 +1251,7 @@ function buildThreadTimelineInternal(
       options.maxInlineOutputChars,
       options.providerDisplayName ?? null,
       thread.title ?? thread.titleFallback ?? "",
-      resolveThreadWorkspaceRoot(db, thread),
+      workspaceRoot,
       options.completedTurnDisplay,
     ]),
     options.maxSeq === 0 ? undefined : options.maxSeq,
@@ -1372,7 +1376,7 @@ function buildThreadTimelineInternal(
     planCommand: options.planCommand,
     threadStatus: snapshot.status,
     threadName: thread.title ?? thread.titleFallback ?? "",
-    workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+    workspaceRoot,
   };
   const contextWindowEvents = measureThreadTimelineStage(
     profile,
@@ -1473,6 +1477,9 @@ function buildThreadTimelineInternal(
       ),
       historySnapshot: timelineSnapshotKey(snapshot),
       olderRowsSourceSeqEnd: paginatedTimeline.olderRowsSourceSeqEnd,
+      olderRowUpdates: options.summaryOnly
+        ? undefined
+        : paginatedTimeline.olderRowUpdates,
       contentPage: paginatedTimeline.contentPage,
     },
   };

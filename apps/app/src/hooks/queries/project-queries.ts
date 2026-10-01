@@ -7,12 +7,8 @@ import type {
   PromptHistoryResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
-import {
-  buildFilePreview,
-  normalizeFilePreviewMimeType,
-  type FilePreview,
-} from "@bb/client-core";
-import { decodeBase64Bytes } from "@/lib/base64-bytes";
+import type { FilePreview } from "@bb/client-core";
+import { loadFilePreview } from "@/lib/api";
 import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
 import { readProjectBranchOptions } from "@/lib/project-branch-options";
 import { sdk } from "@/lib/sdk";
@@ -230,10 +226,15 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
   });
 }
 
+interface ProjectFileRouting {
+  environmentId: string | null;
+  hostId: string | null;
+}
+
 export function useProjectFilePreview(
   projectId: string | undefined,
   path: string | null,
-  routing: { environmentId: string | null; hostId: string | null },
+  routing: ProjectFileRouting,
   options?: QueryOptions,
 ) {
   const enabled =
@@ -257,33 +258,18 @@ export function useProjectFilePreview(
         hookName: "useProjectFilePreview",
         argName: "path",
       });
-      const content = await sdk.projects.fileContent({
-        projectId: requiredProjectId,
-        path: requiredPath,
+      return loadFilePreview(
+        {
+          name: requiredPath.split("/").at(-1),
+          path: requiredPath,
+          url: buildProjectFileContentUrl(
+            requiredProjectId,
+            requiredPath,
+            routing,
+          ),
+        },
         signal,
-        ...(routing.environmentId !== null
-          ? { environmentId: routing.environmentId }
-          : routing.hostId !== null
-            ? { hostId: routing.hostId }
-            : {}),
-      });
-      const contentBytes =
-        content.contentEncoding === "base64"
-          ? decodeBase64Bytes(content.content)
-          : new TextEncoder().encode(content.content);
-      return buildFilePreview({
-        contentBytes,
-        mimeType: normalizeFilePreviewMimeType(content.mimeType),
-        name: requiredPath.split("/").at(-1),
-        path: requiredPath,
-        url: buildProjectFileContentUrl(requiredProjectId, requiredPath, {
-          ...(routing.environmentId !== null
-            ? { environmentId: routing.environmentId }
-            : routing.hostId !== null
-              ? { hostId: routing.hostId }
-              : {}),
-        }),
-      });
+      );
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,

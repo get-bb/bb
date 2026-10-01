@@ -407,9 +407,13 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it.each([undefined, 20])(
-    "uses the thread/type/sequence index for filtered event pages after %s",
-    (afterSequence) => {
+  it.each([
+    { afterSequence: undefined, limit: 25, queryCount: 2 },
+    { afterSequence: 20, limit: 25, queryCount: 2 },
+    { afterSequence: 20, limit: undefined, queryCount: 1 },
+  ])(
+    "uses the thread/type/sequence index for filtered event pages after $afterSequence with limit $limit",
+    ({ afterSequence, limit, queryCount }) => {
       const { db, thread } = setup();
 
       const captured = captureStatements(db, () => {
@@ -417,14 +421,14 @@ describe("slow query index plans", () => {
           listStoredEventRows(db, {
             afterSequence,
             beforeSequence: 100,
-            limit: 25,
+            limit,
             order: "desc",
             threadId: thread.id,
             types: ["provider/error", "turn/completed"],
           }),
         ).toEqual([]);
       });
-      expect(captured).toHaveLength(2);
+      expect(captured).toHaveLength(queryCount);
       for (const query of captured) {
         const details = queryPlanDetails({
           db,

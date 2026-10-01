@@ -13,7 +13,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -27,6 +27,7 @@ import {
   ModelReasoningPicker,
   type ModelReasoningPickerHandoff,
 } from "./ModelReasoningPicker";
+import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import type { PickerOption } from "./OptionPicker";
 import type { ProviderPickerOption } from "./model-brand-prefix";
 import type { ModelPickerOption } from "./model-picker-option";
@@ -255,6 +256,8 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  beforeAll(() => ModelReasoningMenu.preload());
+
   it.each([
     ["ArrowRight", "medium", "high"],
     ["ArrowLeft", "high", "medium"],
@@ -1062,8 +1065,8 @@ describe("ModelReasoningPicker", () => {
     });
 
     fireEvent.click(trigger);
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
     const search = screen.getByPlaceholderText(
       "Search models",
     ) as HTMLInputElement;
@@ -1117,8 +1120,8 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
 
     const modelList = screen.getByRole("listbox", { name: "Models" });
     const reasoning = screen.getByRole("radiogroup", { name: "Reasoning" });

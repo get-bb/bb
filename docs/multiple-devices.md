@@ -19,10 +19,10 @@ machine cannot be removed.
 
 ## Open bb from another browser
 
-The simplest managed route is **bb connect**. Pair the server from Settings →
-Connect (or `bb connect --code ... --server
-...`), then open its getbb.app URL. The server owns the tunnel and reconnects
-after restart.
+The simplest managed route is **bb connect**. Sign the server in to your bb
+account from Settings → bb connect (or `bb account login`, or
+`bb connect --code ...` with a dashboard code), then open its getbb.app URL.
+The server owns the tunnel and reconnects after restart.
 
 For a private tailnet route, keep bb on its loopback default and publish it
 through Tailscale Serve:
@@ -98,21 +98,18 @@ bb connect it pairs the same way the desktop app does: the phone enrolls as a
 connect machine with its own credential, which the getbb.app dashboard lists
 and can revoke.
 
-1. Pair the bb server with bb connect first (Settings → Remote access, or
-   `bb connect --code … --server …`).
-2. Turn on the **Mobile app** experiment (Settings → Experiments, or
-   `bb settings experiment mobileApp true`). Mobile pairing stays hidden
-   without it while the app is in early access.
-3. Mint a pairing code for the phone: Settings → Remote access → **Add mobile
-   device** (QR code plus the code as text, with a countdown), or run
+1. Sign the bb server in to your bb account first (Settings → bb account, `bb account login`, or `bb connect --code …`).
+2. Mint a pairing code for the phone: Settings → Mobile → **Add mobile device** (QR code plus the code as text, with a countdown), or run
    `bb connect machine-code` (`--json` prints
    `{code, serverUrl, apex, expiresAt}`).
-4. In the mobile app, add a server over bb connect and scan the QR code or type
+3. In the mobile app, add a server over bb connect and scan the QR code or type
    the code. Codes last 10 minutes and work once.
 
-The phone keeps its credential in the device keychain and mints short-lived
-sessions from it; it never holds the server's pairing secret. To cut a phone
-off, revoke it in the getbb.app dashboard machine list. Every phone takes one of
+The phone keeps its credential in the device keychain and mints sessions from
+it; it never holds the server's pairing secret. A session lasts seven days and
+renews while the phone is in use. To cut a phone off, revoke it in the
+getbb.app dashboard machine list; its session stops working within about 20
+seconds. Every phone takes one of
 the account's machine slots, so a machine-limit error means an unused device
 should be revoked first. On a trusted network the app can also use a direct
 server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same

@@ -61,13 +61,12 @@ export function parseSharePort(raw: unknown): number {
   return asNumber;
 }
 
-export function sharePublicUrl(
-  credential: Pick<ConnectCredential, "serverUrl" | "handle">,
-  port: number,
-): string {
-  const base = deriveConnectBaseUrl(credential.serverUrl);
+export type ShareIdentity = Pick<ConnectCredential, "serverUrl" | "handle">;
+
+export function sharePublicUrl(identity: ShareIdentity, port: number): string {
+  const base = deriveConnectBaseUrl(identity.serverUrl);
   const url = new URL(base);
-  return `${url.protocol}//${credential.handle}--${port}.${url.host}`;
+  return `${url.protocol}//${identity.handle}--${port}.${url.host}`;
 }
 
 export function machineSharePublicUrl(
@@ -96,7 +95,7 @@ interface ShareRegistryOptions {
   hosts: Pick<PluginHosts, "declareSharedPorts" | "ensureSharedPortTunnel">;
   hostResolver: ShareHostResolver;
   getLoopbackBaseUrl: () => string;
-  getCredential: () => ConnectCredential | null;
+  getIdentity: () => ShareIdentity | null;
   log: Pick<PluginLogger, "warn">;
   onChange?: () => void;
 }
@@ -249,10 +248,9 @@ export class ShareRegistry {
         `Cannot share port ${validated}: that is the bb server's own port — the bare handle URL already serves bb`,
       );
     }
-    const credential = this.options.getCredential();
-    if (credential === null) {
+    if (this.options.getIdentity() === null) {
       throw new SharePortError(
-        "this bb is not connected to getbb.app — run `bb connect` for how to pair",
+        "this bb isn't signed in to a bb account — run `bb account login`, then share again",
       );
     }
     if (host.isServer) this.serverHostId = host.id;
@@ -363,7 +361,7 @@ export class ShareRegistry {
   async declareMachineShares(
     isActivationCurrent: () => boolean,
   ): Promise<void> {
-    if (!isActivationCurrent() || this.options.getCredential() === null) return;
+    if (!isActivationCurrent() || this.options.getIdentity() === null) return;
     const serverHostId = await this.options.hostResolver.serverHostId();
     if (!isActivationCurrent()) return;
     this.serverHostId = serverHostId;
@@ -539,9 +537,9 @@ export class ShareRegistry {
   }
 
   private serverUrl(port: number): string {
-    const credential = this.options.getCredential();
-    return credential
-      ? sharePublicUrl(credential, port)
+    const identity = this.options.getIdentity();
+    return identity
+      ? sharePublicUrl(identity, port)
       : `http://127.0.0.1:${port}`;
   }
 

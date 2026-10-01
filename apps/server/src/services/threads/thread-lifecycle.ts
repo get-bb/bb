@@ -1050,7 +1050,8 @@ export function settleThreadStopCommandResult(
   if (!args.report.ok) {
     if (
       args.report.errorCode !== "unknown_environment" &&
-      args.report.errorCode !== "host_unavailable"
+      args.report.errorCode !== "host_unavailable" &&
+      args.report.errorCode !== "command_timeout"
     ) {
       return emptyCommandResultSideEffects();
     }
@@ -1570,6 +1571,13 @@ export async function stopThreadForCurrentState(
   }
 }
 
+function isUnansweredStopError(error: unknown): boolean {
+  return (
+    isHostUnavailableApiError(error) ||
+    (error instanceof ApiError && error.body.code === "command_timeout")
+  );
+}
+
 function manualThreadStopArgs(
   threadId: string,
   environment: RequestThreadStopForCurrentStateEnvironment,
@@ -1608,6 +1616,9 @@ async function stopThreadUntilSettled(
             afterInterrupt?.status === "idle" ||
             afterInterrupt?.status === "error"
           ) {
+            if (isUnansweredStopError(interrupted.failure.error)) {
+              return null;
+            }
             continue;
           }
         }

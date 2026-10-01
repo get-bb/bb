@@ -1,3 +1,4 @@
+import { preloadThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
   useCallback,
   useEffect,
@@ -212,6 +213,9 @@ export function SplitWorkspaceSecondaryPanelHost({
             }
             aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
             aria-expanded={isOpen}
+            onPointerEnter={preloadThreadSecondaryPanel}
+            onFocus={preloadThreadSecondaryPanel}
+            onPointerDown={preloadThreadSecondaryPanel}
             onClick={toggleWindowPanel}
           >
             <Icon name={toggleIconName} />

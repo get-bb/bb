@@ -119,10 +119,12 @@ function listConfiguredSystemProviderInfos(
   deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
   filter: ProviderFilter = {},
 ): ProviderInfo[] {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   return deps.providerRegistry
     .list()
     .filter(
       (entry) =>
+        !disabled.has(entry.info.id) &&
         entry.visibility === "always" &&
         providerMatchesFilter(entry.info, filter),
     )
@@ -141,7 +143,10 @@ function includeRequestedRegisteredProvider(
     return providers;
   }
   const registration = deps.providerRegistry.get(providerId);
-  return registration === null ? providers : [...providers, registration.info];
+  return registration === null ||
+    deps.providerRegistry.disabledProviderIds().has(providerId)
+    ? providers
+    : [...providers, registration.info];
 }
 
 function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
@@ -155,10 +160,12 @@ async function listInstalledPluginProviderInfos(
   hostId: string,
   filter: ProviderFilter,
 ): Promise<ProviderInfo[]> {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   const registrations = deps.providerRegistry
     .list()
     .filter(
       (registration) =>
+        !disabled.has(registration.info.id) &&
         registration.visibility === "installed" &&
         providerMatchesFilter(registration.info, filter),
     );

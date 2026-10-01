@@ -1548,6 +1548,20 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
   const migrationsFolder = resolveMigrationsFolder();
   const sqlite = db.$client;
 
+  const existingInstallation =
+    tableExists(db, "__drizzle_migrations") &&
+    db.$client.prepare("SELECT 1 FROM __drizzle_migrations LIMIT 1").get() !==
+      undefined;
+  sqlite.exec(
+    "CREATE TEMP TABLE IF NOT EXISTS bb_migration_existing_installation (existing INTEGER NOT NULL)",
+  );
+  sqlite.exec("DELETE FROM bb_migration_existing_installation");
+  sqlite
+    .prepare(
+      "INSERT INTO bb_migration_existing_installation (existing) VALUES (?)",
+    )
+    .run(existingInstallation ? 1 : 0);
+
   sqlite.exec(
     "CREATE TEMP TABLE IF NOT EXISTS bb_migration_local_host (id TEXT PRIMARY KEY)",
   );

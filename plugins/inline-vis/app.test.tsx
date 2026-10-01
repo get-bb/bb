@@ -109,6 +109,7 @@ describe("InlineVisDirective", () => {
                 environmentId: "env_1",
                 path: "charts/demo file.html",
               },
+              url: "/api/v1/environments/env_1/files/charts/demo%20file.html",
             };
           },
         },
@@ -128,7 +129,7 @@ describe("InlineVisDirective", () => {
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
     expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
     expect(iframe.getAttribute("src")).toBe(
-      "/api/v1/threads/thr_1/worktree/files/charts/demo%20file.html",
+      "/api/v1/environments/env_1/files/charts/demo%20file.html",
     );
     expect(iframe.getAttribute("srcdoc")).toBeNull();
     expect(iframe.style.height).toBe("224px");
@@ -191,6 +192,7 @@ describe("InlineVisDirective", () => {
                 threadId: "thr_1",
                 path: "reports/result file.html",
               },
+              url: "/api/v1/threads/thr_1/thread-storage/files/reports/result%20file.html",
             };
           },
         },
@@ -247,6 +249,7 @@ describe("InlineVisDirective", () => {
               environmentId: "env_1",
               path: "demo.html",
             },
+            url: "/api/v1/environments/env_1/files/demo.html",
           }),
         },
       },
@@ -272,6 +275,7 @@ describe("InlineVisDirective", () => {
             environmentId: "env_1",
             path: "demo.html",
           },
+          url: "/api/v1/environments/env_1/files/demo.html",
         }),
       },
     };
@@ -320,6 +324,7 @@ describe("InlineVisDirective", () => {
       file: string;
       source: "workspace" | "thread-storage";
       target: { kind: "workspace"; environmentId: string; path: string };
+      url: string;
     };
     let resolvePreview = (_result: HtmlPreview) => {};
     const pendingPreview = new Promise<HtmlPreview>((resolve) => {
@@ -351,9 +356,6 @@ describe("InlineVisDirective", () => {
     expect(
       slot.getByRole("status", { name: "Loading visualization demo.html" }),
     ).toBe(loading);
-    const loadingCard = loading.parentElement!;
-    const loadingHeader = loadingCard.firstElementChild!;
-    const loadingHeaderHtml = loadingHeader.outerHTML;
 
     resolvePreview({
       kind: "html",
@@ -364,6 +366,7 @@ describe("InlineVisDirective", () => {
         environmentId: "env_1",
         path: "demo.html",
       },
+      url: "/api/v1/environments/env_1/files/demo.html",
     });
 
     const iframe = await waitFor(() => {
@@ -375,15 +378,6 @@ describe("InlineVisDirective", () => {
     });
     expect(iframe.style.height).toBe("480px");
     expect(slot.queryByRole("status")).toBeNull();
-
-    const readyCard = iframe.parentElement!;
-    expect(readyCard.className).toBe(loadingCard.className);
-    const readyHeader = readyCard.firstElementChild!;
-    expect(readyHeader.className).toBe(loadingHeader.className);
-    expect(readyHeader.lastElementChild!.classList.contains("size-5")).toBe(
-      true,
-    );
-    expect(loadingHeaderHtml).toContain("size-5");
   });
 
   it("renders a Markdown document with the host renderer and no iframe", async () => {

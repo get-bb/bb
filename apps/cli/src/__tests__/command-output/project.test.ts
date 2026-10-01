@@ -312,18 +312,11 @@ describe("bb project command output", () => {
   });
 
   it("bb project content routes by environment and prints the portable DTO as JSON", async () => {
-    const getContent = vi.fn(
-      async () =>
-        new Response("environment text", {
-          headers: {
-            "content-type": "text/plain",
-            "x-bb-content-encoding": "utf8",
-          },
-        }),
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response("environment text", {
+        headers: { "content-type": "text/plain" },
+      }),
     );
-    stubServerApi({
-      "v1.projects.:id.files.content.$get": getContent,
-    });
 
     await runCommand(
       [
@@ -338,10 +331,9 @@ describe("bb project command output", () => {
       register,
     );
 
-    expect(getContent).toHaveBeenCalledWith({
-      param: { id: "proj-1" },
-      query: { environmentId: "env-remote", path: "README.md" },
-    });
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toMatch(
+      /\/api\/v1\/environments\/env-remote\/files\/README\.md$/u,
+    );
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual({

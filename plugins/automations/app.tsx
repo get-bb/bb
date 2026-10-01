@@ -1,3 +1,4 @@
+import { composerCustomization, CREATE_AUTOMATION_PROMPT } from "./composer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -22,7 +23,6 @@ import { AutomationDetailView } from "./detail-view";
 import {
   AutomationOverviewView,
   automationProjectLabel,
-  CREATE_AUTOMATION_PROMPT,
   type AutomationCollectionMode,
 } from "./overview-view";
 import { PERSONAL_PROJECT_ID } from "./lib/format-schedule";
@@ -754,6 +754,7 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
 }
 
 export default definePluginApp((app) => {
+  app.composer.customize(composerCustomization);
   app.slots.navPanel({
     id: "automations",
     title: "Automations",

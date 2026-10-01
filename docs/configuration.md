@@ -75,11 +75,16 @@ over shell variables. The environment remains the internal and deployment
 substrate, and source-development commands still load `.env` files.
 
 For source development, `pnpm dev` automatically injects
-`BB_DEV_CONNECT_BASE_URL=http://bb.localhost:<worktree-cloud-port>`. The
-Connect plugin accepts this loopback origin only when `NODE_ENV=development`
-and uses it only as the unpaired default. Explicit `bb connect --server ...`
-or `--base-url ...` targets take precedence, and packaged/production bb keeps
-the `https://getbb.app` default. This value is launcher-managed, not a
+`BB_DEV_CONNECT_BASE_URL=http://bb.localhost:<worktree-cloud-port>`;
+`pnpm dev --staging` injects `https://vibecodethis.site` instead. The bb
+account plugin accepts only those origins, only when `NODE_ENV=development`,
+and uses the value as the sign-in default; the Connect plugin
+uses it for its dashboard link while signed out. Explicit
+`bb account login --base-url ...`, `bb connect --server ...`, or
+`--base-url ...` targets take precedence but accept only `https://getbb.app`
+and `https://vibecodethis.site` (plus `http://bb.localhost:<port>` when
+`NODE_ENV=development`), and packaged/production bb keeps the
+`https://getbb.app` default. This value is launcher-managed, not a
 `bb-app config` setting.
 
 After `bb-app config` writes `~/.bb/config.json` or `bb-app env` writes
@@ -219,7 +224,8 @@ identified by its plugin and its id, so two plugins may register the same id;
 pass `--plugin <plugin-id>` to `set` when they do. Automatic tries
 the services bb ships in order: Codex (`codex`, using the Codex CLI login on the
 primary machine), then bb cloud (`bb`, the `bb-ai` plugin, for a signed-in bb
-account). Automatic never sends text to a third-party plugin. A service you pick
+account). bb cloud is on by default once you sign in; `bb ai off` turns it off
+(it then sends nothing to getbb.app) and `bb ai on` turns it back on. Automatic never sends text to a third-party plugin. A service you pick
 is used alone; if it fails, titles fall back to the start of the prompt and
 commits to `bb: automated commit`. Each plugin picks its own model.
 
@@ -234,7 +240,7 @@ happens often, run `codex login --with-api-key` on the primary machine, or pick
 another voice service.
 
 bb accepts voice recordings up to 25 MB. A service may set a lower limit;
-Codex transcribes recordings up to 20 MB.
+Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
 
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
@@ -367,6 +373,13 @@ Each provider's own options live on its plugin: Codex memory and native
 subagents under the Codex provider plugin, and Claude Code memory, native
 subagents, and the Workflow tool under the Claude Code provider plugin.
 
+Claude Code's **Disable 1M context** provider setting (`disable1MContext`)
+defaults to `false`. Enable it with
+`bb plugin config provider-claude-code set disable1MContext true`.
+bb sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` when enabled and `0` when off.
+Changes restart the thread's Claude process before its next turn, preserving
+conversation context.
+
 Claude Code starts without its Claude in Chrome browser tools when bb runs it,
 even when the interactive `claude` CLI has Chrome enabled by default. Turn the
 tools on for bb threads with
@@ -433,7 +446,7 @@ move through search, enabled actions, and recent items in displayed order.
 Search results replace actions and recents while searching. Enter activates
 the focused item.
 Chat splits use `pane.focus.left` / `right` / `up` / `down` with
-`Command+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+`Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
 spatially to the adjacent chat pane, including stacked splits, and stop at the
 layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
 commands still cycle in reading order. On Windows/Linux, these arrow navigation
@@ -441,6 +454,17 @@ commands start unassigned to preserve native Control-arrow editing shortcuts.
 Rebind any of these commands in Settings → Keyboard, via
 `bb settings keyboard set <command> <shortcut|disabled>`, or SDK
 `system.updateKeyboardSettings`; read bindings with `system.config`.
+Use `bb settings keyboard reset <command>` to adopt the current default.
+Overrides can specify `platform: "mac"`, `"windows"`, or `"linux"`; omission applies
+on all platforms. A platform-specific override takes precedence over a general one,
+including when disabled. UI edits and clears apply only to the current platform;
+UI resets remove overrides for the current platform so web and desktop each use
+their own defaults. Shared overrides become explicit bindings on the other platforms
+to preserve their behavior. Explicit overrides remain resettable even when they match
+a default shortcut.
+CLI `set` and `reset` accept `--platform mac|windows|linux`; scoped operations retain
+other platforms. Unscoped `set` updates the general override; unscoped `reset`
+clears all scopes for the selected command (or every command if omitted).
 
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
@@ -534,6 +558,43 @@ When a remote bb page asks the local helper to open a work-host path, the helper
 uses this mapping to launch remote-capable editors and terminals over SSH.
 Browsers or devices without a helper can still use bb; local editor actions are
 simply unavailable.
+
+## Provider availability
+
+Settings → Providers lists disabled providers below enabled providers in the same
+list. Only enabled providers can be reordered. Each row’s three-dot menu enables
+or disables the provider, or makes an enabled provider the default. Enable
+restores a provider and, if needed, its supplying plugin.
+Disabling an individual provider leaves its plugin, sibling providers, installed
+CLI, and existing threads intact. In-flight turns can finish; new turns and
+sessions are rejected until the provider is enabled again. Queued messages and
+automations are subject to the same server-side check.
+
+```bash
+bb provider list --all
+bb provider disable acp-opencode
+bb provider enable claude-code
+```
+
+`bb provider list` and thread pickers omit disabled providers. `list --all`
+shows the global management catalog, including providers whose plugins are off;
+it cannot be combined with machine or environment selectors. Enabling a shared
+plugin preserves individual provider opt-outs. Disabling the selected default
+clears that choice, allowing the next enabled provider in saved order to be used.
+A project whose last-used provider is disabled also falls back to that order;
+explicitly requesting a disabled provider is still rejected.
+
+The core `disabledProviderIds` value lists disabled providers by ID. It is stored
+apart from Settings → General, so only the provider enable/disable route, CLI and
+SDK change it; a general-settings save, even from a stale client, cannot. Enable
+removes the ID, so the provider returns to its automatic discovery behavior:
+agents such as `acp-opencode` again appear only where their CLI is installed.
+Uninstalling a plugin forgets the disabled state of its providers.
+
+The SDK exposes `sdk.providers.catalog()` and
+`sdk.providers.setEnabled({ providerId: "acp-opencode", enabled: false })`.
+Install provider plugins in Settings → Plugins. Configure custom ACP agents in
+the ACP providers plugin settings.
 
 ## Custom ACP Agents
 
@@ -1051,13 +1112,18 @@ or enabled account is available without a plugin reload.
 When the plugin has an enabled account whose secret file is readable and
 valid, it automatically contributes the provider's hub route and a
 machine-specific secret token to Claude Code or Codex sessions on every host.
-Claude Code also receives `ENABLE_TOOL_SEARCH=true`.
+Claude Code also receives `ENABLE_TOOL_SEARCH=true` and
+`_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1`.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies both when launching `codex app-server`
 without writing to `~/.codex/config.toml`.
 Codex image generation and editing use the same authenticated pool route.
 Claude Code disables tool search behind a custom base URL by default; the hub
 forwards `tool_reference` blocks unchanged, so the override keeps it on.
+Behind a custom base URL, Claude Code also limits Opus models without a `[1m]`
+suffix to a 200k context window. The hub forwards to Anthropic's API, so the
+second override gives pooled sessions the same native context window as a
+direct login.
 Tokens are never printed
 by the CLI. Plugin startup and `bb pool status` remove token files for machines
 that are no longer enrolled. Status lists token mint and last-use timestamps
@@ -1124,51 +1190,81 @@ their defaults. Those old values are not migrated.
 
 ## bb connect
 
-`bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
-server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Remote access is owned by the builtin
-**connect plugin** (`plugins/connect/`): pairing redeems the code and stores
-the durable credential in the plugin's kv storage (in `bb.db`), and the
-plugin's background service holds the connect tunnel — dialing the gate,
-proxying relayed requests to the server's own loopback (which serves the SPA
+Remote access makes this bb server reachable at `https://<handle>.getbb.app`
+once it is signed in to a getbb.app account. Two builtin plugins share the
+work:
 
-- `/api` + `/ws`), and reconnecting with capped backoff. The tunnel therefore
-  lives as long as the bb server runs (with the plugin enabled) and
-  re-establishes on restart; there is no foreground client. Pair from a machine
-  without an installed bb via `npx -p bb-app@latest bb connect …`.
-  `bb connect status` shows the connect state and every share's host and URL;
-  `bb connect off` disconnects and clears the pairing. After pairing,
-  `bb connect expose <port>` run from a thread shares that thread environment's
-  enrolled host. Server-host URLs remain
-  `https://<server-label>--<port>.getbb.app`; other machines use
-  `https://<machine-label>--<port>.getbb.app` and proxy directly through the
-  owning daemon. Outside a thread the command defaults to the server host;
-  `--host <name-or-id>` overrides host resolution. Access requires the owner's
-  getbb.app session (not a public link). `bb connect unexpose <port>` and
-  `bb connect shares` use the same host resolution and accept the same
-  `--host` override. Their JSON rows include `hostId`, `hostName`, `port`, and
-  `url`; `shares --json` also includes the resolved `host`. A machine without
-  a live Connect enrollment fails fast with instructions to remove and re-add
-  it in Settings → Machines. Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access;
-  `bb plugin enable connect` restores it.
+- **bb account** (`plugins/bb-account/`) signs this bb in and holds the
+  server credential in its plugin KV (in `bb.db`). It never returns the
+  credential; other plugins make hosted requests through its
+  `bb-account.v1.fetch` rpc, and only the connect plugin may use its
+  `/api/connect/` paths. Sign in with `bb account login` (a getbb.app link and
+  code to approve in any browser) or Settings → bb account. `bb account status`
+  shows the account, including a paired bb whose account hasn't loaded yet
+  (it keeps retrying). `bb account logout` revokes the credential on
+  getbb.app and forgets it; if getbb.app can't be reached, it still signs out
+  locally and says the server wasn't revoked.
+- **connect** (`plugins/connect/`) uses bb account's credential. Its
+  background service holds the tunnel: it dials the gate with the server
+  credential it reads from bb account, proxies relayed requests to the
+  server's own loopback (which serves the SPA, `/api`, and `/ws`), and
+  reconnects with capped backoff. When the gate refuses the credential, bb
+  account checks it with getbb.app and signs out if it was revoked. It also
+  keeps a copy of the pairing where bb
+  builds from before bb account look for it, so downgrading keeps remote
+  access. The tunnel lives as long
+  as the bb server runs and re-establishes on restart; there is no foreground
+  client.
 
-The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
-the plugin, and Settings → Connect drives the plugin's rpc (including shared
-ports).
+The getbb.app dashboard's pairing command,
+`bb connect --code <code> --server https://<handle>.getbb.app`, signs this bb
+in like `bb account login --code <code>` and also turns remote access back on
+if it was off. Pair from a machine without an installed bb via
+`npx -p bb-app@latest bb connect …`. `--server` and `--base-url` (on both
+`bb connect` and `bb account login`) accept only `https://getbb.app` and
+`https://vibecodethis.site` origins (a `--server` URL is reduced to its apex);
+a development build also accepts `http://bb.localhost:<port>`.
+
+The connect plugin's `remoteAccess` setting turns remote access off and on
+without signing out. `bb connect off` closes the tunnel and machine shares and
+keeps the account signed in; `bb connect on` reopens them. The same setting is
+the Remote access switch in Settings and
+`bb plugin config connect set remoteAccess <true|false>`. `bb account logout`
+forgets the pairing, and disabling the plugin (`bb plugin disable connect`)
+cuts off all remote access until `bb plugin enable connect`.
+
+`bb connect status` shows the connect state and every share's host and URL.
+`bb connect expose <port>` run from a thread shares that thread environment's
+enrolled host. Server-host URLs remain
+`https://<server-label>--<port>.getbb.app`; other machines use
+`https://<machine-label>--<port>.getbb.app` and proxy directly through the
+owning daemon. Outside a thread the command defaults to the server host;
+`--host <name-or-id>` overrides host resolution. Access requires the owner's
+getbb.app session (not a public link). `bb connect unexpose <port>` and
+`bb connect shares` use the same host resolution and accept the same `--host`
+override. Their JSON rows include `hostId`, `hostName`, `port`, and `url`;
+`shares --json` also includes the resolved `host`. A machine without a live
+Connect enrollment fails fast with instructions to remove and re-add it in
+Settings → Machines.
+
+The CLI commands are proxied to the plugins, and Settings → bb connect
+drives connect's rpc (including shared ports).
 
 ### Pairing the bb mobile app
+
+Android source builds optionally read `GOOGLE_SERVICES_JSON`, an absolute path
+to the Firebase Android configuration file. Without it, they use
+`apps/mobile/google-services.json` when present; without either, the app builds
+without Firebase push configuration. For EAS, configure it as a file environment
+variable. Android build, signing, and Play submission instructions are in
+[`apps/mobile/README.md`](../apps/mobile/README.md#android-production-setup).
 
 The bb mobile app reaches a paired bb through the same connect route. It
 enrolls as a connect **machine** — its own credential on the getbb.app account,
 separate from the server's pairing secret and individually revocable — so
-pairing starts from the bb, not from the phone. Both pairing surfaces sit
-behind the `mobileApp` experiment (Settings → Experiments → **Mobile app**, or
-`bb settings experiment mobileApp true`) until the app is generally available;
-the connect plugin reads the experiment from `/system/config` on every call,
-so a toggle applies without a plugin reload:
+pairing starts from the bb, not from the phone. No experiment is required.
 
-- Settings → Remote access → **Add mobile device** mints a one-time code and
+- Settings → Mobile → **Add mobile device** mints a one-time code and
   shows it as a QR code plus copyable text with a countdown.
 - `bb connect machine-code` prints the same code, server URL, connect apex,
   and expiry; `bb connect machine-code --json` returns
@@ -1179,7 +1275,7 @@ once. The phone then appears in the getbb.app dashboard machine list, where you
 can revoke it; every enrollment takes one of the account's machine slots
 (desktop apps, remote execution machines, and phones all count), so a
 machine-limit error asks you to revoke an unused device first. Both surfaces
-need the experiment on, the bb paired (`bb connect --code …`), and the connect
+need the experiment on, the bb signed in (`bb account login`), and the connect
 plugin enabled; with the experiment off the panel hides the section and
 `bb connect machine-code` exits 1 with a pointer to the toggle.
 
@@ -1203,10 +1299,6 @@ plugin server loader. Toggling it leaves running plugin instances unchanged;
 the selected loader applies on the next install, reload, enable, update, or
 server restart. Set it with `bb settings experiment legacyJitiPluginLoader
 <true|false>`.
-The `mobileApp` experiment turns on pairing for the bb mobile app: the
-**Add mobile device** card under Settings → Remote access and the
-`bb connect machine-code` command (see "Pairing the bb mobile app" above). It
-is off by default while the app is in early access.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
@@ -1793,3 +1885,23 @@ directories are also searched. On macOS, discovery searches Application Support.
 The desktop app's own profile is excluded. See `bb guide browser` for search
 bounds, encryption limitations, and the `import-sources` / `import-cookies`
 commands. No additional BB setting is required to enable discovery.
+
+### Mobile app downloads
+
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
+
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+
+The publishing workflow verifies the signed APK and publishes both the checksum-named
+asset and the stable `bb-android.apk` alias, then `latest.json`.

@@ -44,6 +44,14 @@ function currentPlatform(): PushPlatform {
 
 export const ANDROID_DEFAULT_CHANNEL_ID = "threads";
 
+async function ensureNotificationChannel(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync(ANDROID_DEFAULT_CHANNEL_ID, {
+    name: "Threads",
+    importance: Notifications.AndroidImportance.MAX,
+  });
+}
+
 export function createExpoPushModule(): PushNotificationsModule {
   return {
     projectId: getEasProjectId(),
@@ -52,6 +60,7 @@ export function createExpoPushModule(): PushNotificationsModule {
       return toPermissionState(await Notifications.getPermissionsAsync());
     },
     async requestPermission() {
+      await ensureNotificationChannel();
       return toPermissionState(
         await Notifications.requestPermissionsAsync({
           ios: { allowAlert: true, allowBadge: true, allowSound: true },
@@ -59,15 +68,7 @@ export function createExpoPushModule(): PushNotificationsModule {
       );
     },
     async getExpoPushToken(projectId) {
-      if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync(
-          ANDROID_DEFAULT_CHANNEL_ID,
-          {
-            name: "Threads",
-            importance: Notifications.AndroidImportance.MAX,
-          },
-        );
-      }
+      await ensureNotificationChannel();
       const token = await Notifications.getExpoPushTokenAsync({ projectId });
       return token.data;
     },

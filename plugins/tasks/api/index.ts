@@ -756,11 +756,15 @@ export function registerHandlers(
     },
     async deleteTask(input) {
       const task = store.tasks.getTask(input.taskId);
+      const subtasks = task ? store.tasks.listSubtasks(task.id) : [];
       const attachments = attachmentsForTasks(store.tasks, [input.taskId]);
       const deleted = store.tasks.deleteTask(input.taskId);
       if (deleted && task) {
         await removeAttachmentBlobs(bb, store.tasks, attachments);
         publishTasksChanged(bb, task.id, task.projectId);
+        for (const subtask of subtasks) {
+          publishTasksChanged(bb, subtask.id, subtask.projectId);
+        }
       }
       return { deleted };
     },
@@ -868,7 +872,11 @@ export function registerHandlers(
       const attachments =
         "taskId" in input
           ? store.tasks.listAttachmentsForTask(input.taskId)
-          : store.tasks.listAttachmentsForComment(input.commentId);
+          : "commentId" in input
+            ? store.tasks.listAttachmentsForComment(input.commentId)
+            : store.tasks.listAttachmentsForTaskComments(
+                input.commentsOfTaskId,
+              );
       return {
         attachments: attachments.map(attachmentMetadata),
       };

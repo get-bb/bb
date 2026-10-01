@@ -14,6 +14,7 @@ interface ProviderListCommandOptions {
   environment?: string;
   host?: string;
   json?: boolean;
+  all?: boolean;
   machine?: string;
 }
 
@@ -47,15 +48,46 @@ export function registerProviderCommands(
 ): void {
   const provider = program
     .command("provider")
-    .description("Inspect available providers and models");
+    .description("Manage providers and inspect their models");
 
   addProviderRoutingOptions(provider.command("list"))
     .description("List available providers")
+    .option(
+      "--all",
+      "Include disabled providers and providers whose plugins are disabled",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProviderListCommandOptions) => {
         const serverUrl = getUrl();
         const sdk = createCliBbSdk(serverUrl);
+        if (opts.all) {
+          if (opts.machine || opts.host || opts.environment)
+            throw new Error(
+              "--all shows the global provider catalog; omit --machine, --host and --environment.",
+            );
+          const catalog = await sdk.providers.catalog();
+          if (outputJson(opts, catalog)) return;
+          const rows = catalog.map((entry) => [
+            entry.id,
+            entry.displayName,
+            !entry.pluginEnabled
+              ? "Plugin disabled"
+              : !entry.enabled
+                ? "Disabled"
+                : entry.available
+                  ? "Enabled"
+                  : "Unavailable",
+          ]);
+          printBorderlessTable(
+            {
+              head: ["ID", "Name", "Status"],
+              colWidths: columnWidths(rows, [4, 4, 6]),
+            },
+            rows,
+          );
+          return;
+        }
         const providers = await sdk.providers.list(
           await resolveMachineEnvironmentRouting(opts, serverUrl),
         );
@@ -67,6 +99,27 @@ export function registerProviderCommands(
         printProviderTable(providers);
       }),
     );
+
+  for (const enabled of [true, false]) {
+    provider
+      .command(`${enabled ? "enable" : "disable"} <providerId>`)
+      .description(
+        enabled
+          ? "Enable a provider and its supplying plugin if needed"
+          : "Disable a provider without uninstalling its CLI or disabling its plugin",
+      )
+      .option("--json", "Print machine-readable JSON output")
+      .action(
+        action(async (providerId: string, opts: { json?: boolean }) => {
+          const catalog = await createCliBbSdk(getUrl()).providers.setEnabled({
+            providerId,
+            enabled,
+          });
+          if (outputJson(opts, catalog)) return;
+          console.log(`${providerId} ${enabled ? "enabled" : "disabled"}`);
+        }),
+      );
+  }
 
   addProviderRoutingOptions(provider.command("models [providerId]"))
     .description("List available models for a provider")

@@ -4,9 +4,9 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   hasSingleUseRootComposeTargetState,
-  readRootComposeSectionTargetFromLocationState,
   shouldStartComposingFromLocationState,
 } from "@/views/RootComposeView";
+import { readThreadCreationPlacement } from "@/lib/thread-creation-placement";
 import { useCreateThreadInEnvironment } from "./useCreateThreadInEnvironment";
 
 const navigate = vi.fn();
@@ -29,6 +29,7 @@ describe("useCreateThreadInEnvironment", () => {
           projectId: "proj_personal",
           environmentId: "env_1",
           sectionId,
+          pinned: true,
         }),
       );
 
@@ -36,9 +37,10 @@ describe("useCreateThreadInEnvironment", () => {
 
       const state = navigate.mock.calls[0][1].state;
       expect(state.reuseEnvironmentId).toBe("env_1");
-      expect(readRootComposeSectionTargetFromLocationState(state)).toEqual(
-        sectionId ? { kind: "set", sectionId } : { kind: "clear" },
-      );
+      expect(readThreadCreationPlacement(state)).toEqual({
+        sectionId,
+        pinned: true,
+      });
       expect(shouldStartComposingFromLocationState(state)).toBe(true);
       expect(hasSingleUseRootComposeTargetState(state)).toBe(true);
     },

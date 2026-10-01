@@ -61,7 +61,7 @@ function resetAt(headers: Headers, prefix: string, now: number): number | null {
   const raw = numberHeader(headers, `${prefix}-reset-at`);
   if (raw !== null && raw > 0) return epochMilliseconds(raw);
   const after = numberHeader(headers, `${prefix}-reset-after-seconds`);
-  return after === null ? null : now + Math.round(after * 1_000);
+  return after === null || after <= 0 ? null : now + Math.round(after * 1_000);
 }
 
 function windowMinutesFromSeconds(
@@ -145,8 +145,46 @@ function withoutClaudeSlots(previous: AccountQuota): AccountQuota {
     sevenDayResetAt: null,
     sevenDayStatus: null,
     representativeClaim: null,
+
     familyWeekly: EMPTY_FAMILY_WEEKLY,
   };
+}
+
+function creditAvailability(
+  credits: { has_credits: boolean; unlimited: boolean } | null,
+  source: "header" | "usage",
+  now: number,
+): AccountQuota["extraUsage"] {
+  return credits === null
+    ? null
+    : {
+        status:
+          credits.has_credits || credits.unlimited ? "allowed" : "rejected",
+        source,
+        observedAt: now,
+      };
+}
+
+function booleanHeader(headers: Headers, name: string): boolean | null {
+  const value = headers.get(name)?.toLowerCase();
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  return null;
+}
+
+const WORKSPACE_HARD_STOP_REASONS = new Set([
+  "workspace_owner_credits_depleted",
+  "workspace_member_credits_depleted",
+  "workspace_owner_usage_limit_reached",
+  "workspace_member_usage_limit_reached",
+]);
+
+function restrictionFromReason(
+  reason: string | null,
+): AccountQuota["usageRestriction"] {
+  return reason !== null && WORKSPACE_HARD_STOP_REASONS.has(reason)
+    ? { reason, resetAt: null }
+    : null;
 }
 
 function codexQuotaFromHeaders(
@@ -164,10 +202,37 @@ function codexQuotaFromHeaders(
     priorSecondary,
     now,
   );
-  if (primary === priorPrimary && secondary === priorSecondary) return previous;
+  const hasCredits = booleanHeader(headers, "x-codex-credits-has-credits");
+  const unlimited = booleanHeader(headers, "x-codex-credits-unlimited");
+  const creditsObserved = hasCredits !== null && unlimited !== null;
+  const reason = headers.get("x-codex-rate-limit-reached-type");
+  let restriction =
+    reason === null ? previous.usageRestriction : restrictionFromReason(reason);
+  if (
+    reason === null &&
+    restriction?.reason.includes("credits_depleted") &&
+    creditsObserved &&
+    (hasCredits || unlimited)
+  )
+    restriction = null;
+  const extraUsage = creditsObserved
+    ? creditAvailability({ has_credits: hasCredits, unlimited }, "header", now)
+    : previous.extraUsage;
+  if (
+    primary === priorPrimary &&
+    secondary === priorSecondary &&
+    !creditsObserved &&
+    reason === null
+  )
+    return previous;
   return {
     ...withoutClaudeSlots(previous),
     accountId,
+    extraUsage:
+      restriction === null
+        ? extraUsage
+        : { status: "rejected", source: "header", observedAt: now },
+    usageRestriction: restriction,
     limitWindows: orderedWindows([primary, secondary]),
     observedAt: now,
     heldUntil: null,
@@ -186,6 +251,21 @@ const usageWindowSchema = z
 const usageResponseSchema = z
   .object({
     plan_type: z.string().trim().min(1).nullish().catch(null),
+    credits: z
+      .object({ has_credits: z.boolean(), unlimited: z.boolean() })
+      .nullish(),
+    spend_control: z
+      .object({
+        reached: z.boolean(),
+        individual_limit: z
+          .object({
+            remaining_percent: z.number(),
+            reset_at: z.number().nullish(),
+          })
+          .nullish(),
+      })
+      .nullish(),
+    rate_limit_reached_type: z.object({ type: z.string().min(1) }).nullish(),
     rate_limit: z
       .object({
         primary_window: usageWindowSchema.nullish(),
@@ -231,18 +311,74 @@ export function codexQuotaFromUsage(
   now: number,
 ): AccountQuota | null {
   const parsed = usageResponseSchema.safeParse(payload);
-  if (!parsed.success || parsed.data.rate_limit == null) return null;
+  if (!parsed.success) return null;
+  const data = parsed.data;
+  if (
+    data.rate_limit === undefined &&
+    data.credits === undefined &&
+    data.spend_control === undefined &&
+    data.rate_limit_reached_type === undefined
+  )
+    return null;
+  const control = data.spend_control;
+  const individual = control?.individual_limit;
+  let reasonRestriction =
+    data.rate_limit_reached_type === undefined
+      ? previous.usageRestriction
+      : restrictionFromReason(data.rate_limit_reached_type?.type ?? null);
+  if (
+    data.rate_limit_reached_type === undefined &&
+    reasonRestriction !== null
+  ) {
+    if (
+      reasonRestriction.reason.includes("credits_depleted") &&
+      (data.credits?.has_credits === true || data.credits?.unlimited === true)
+    )
+      reasonRestriction = null;
+    if (
+      reasonRestriction?.reason.includes("usage_limit_reached") &&
+      control?.reached === false &&
+      (individual == null || individual.remaining_percent > 0)
+    )
+      reasonRestriction = null;
+  }
+  const restriction =
+    control?.reached === true ||
+    (individual != null && individual.remaining_percent <= 0)
+      ? {
+          reason: "spend_control_reached",
+          resetAt:
+            individual?.reset_at == null
+              ? null
+              : epochMilliseconds(individual.reset_at),
+        }
+      : control !== undefined &&
+          reasonRestriction?.reason === "spend_control_reached"
+        ? null
+        : reasonRestriction;
+  const extraUsage =
+    data.credits === undefined
+      ? previous.extraUsage
+      : creditAvailability(data.credits, "usage", now);
   return {
     ...withoutClaudeSlots(previous),
     accountId,
-    limitWindows: orderedWindows([
-      windowFromUsage("primary", parsed.data.rate_limit.primary_window, now),
-      windowFromUsage(
-        "secondary",
-        parsed.data.rate_limit.secondary_window,
-        now,
-      ),
-    ]),
+    usageRestriction: restriction,
+    extraUsage:
+      restriction === null
+        ? extraUsage
+        : { status: "rejected", source: "usage", observedAt: now },
+    limitWindows:
+      data.rate_limit === undefined
+        ? previous.limitWindows
+        : orderedWindows([
+            windowFromUsage("primary", data.rate_limit?.primary_window, now),
+            windowFromUsage(
+              "secondary",
+              data.rate_limit?.secondary_window,
+              now,
+            ),
+          ]),
     observedAt: now,
   };
 }
@@ -304,6 +440,7 @@ export function createCodexAdapter(options: {
       return codexQuotaFromHeaders(accountId, headers, previous, now);
     },
     isQuotaRejection(headers) {
+      if (headers.has("x-codex-rate-limit-reached-type")) return true;
       return ["primary", "secondary"].some((window) => {
         const prefix = `x-codex-${window}`;
         return (

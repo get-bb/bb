@@ -1,5 +1,9 @@
 # APIs To Audit
 
+## `settingsSection.experimental_page`
+
+`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile.
+
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard
@@ -38,6 +42,31 @@ Before stabilization, audit schema export fidelity (especially refinements and t
 `bb.sdk.plugins.experimental_getSafeMode()` returns `{ enabled }`, and `bb.sdk.plugins.experimental_setSafeMode({ enabled })` turns safe mode on or off and returns `{ enabled, problems }`, where `problems` names each plugin that did not start when safe mode ended. The server persists the flag. Plugins included with bb keep running: rows with `builtin` provenance, plus rows from an auto-installed bundled source that kept catalog provenance. Every other installed plugin, including official store plugins, stays unloaded with status `disabled` and detail `safe mode is on`. Each plugin's own `enabled` flag is untouched, so turning safe mode off reloads exactly the plugins that were enabled. While safe mode is on, enabling a stopped plugin keeps it unloaded, reloading it reports a failure, and installing or updating it is refused so install handlers and update validation never run against an unloaded plugin. The same toggle backs `bb plugin safe-mode [on|off]` and the command palette.
 
 Before stabilization, audit whether official store plugins should count as included, whether a plugin calling `experimental_setSafeMode` should be allowed to stop itself and others, whether the toggle should run asynchronously for installs with many slow plugins, and whether startup needs an out-of-band override (env var or flag) for a plugin that breaks the server before the toggle is reachable.
+
+## RPC caller identity (`ExperimentalPluginRpcHandlerContext.experimental_caller`)
+
+Every `bb.rpc.register` handler receives a second argument, an
+`ExperimentalPluginRpcHandlerContext`; `register` takes an
+`ExperimentalPluginRpcHandlersWithContext` map, and a one-argument
+`PluginRpcHandlers` map still assigns to it, so plugins that call their own
+handlers directly keep compiling. `experimental_caller` is an
+`ExperimentalPluginRpcCaller`: `{ kind: "plugin", pluginId }` when a loaded
+plugin called through its own `bb.sdk.plugins.callRpc`, and `{ kind: "client" }`
+for every other caller (the app, the `bb` CLI, agents, and bb itself). The
+server gives each plugin load an unguessable caller token kept only in server
+memory, attaches it to that load's `bb.sdk.plugins.callRpc` requests in the
+`x-bb-plugin-caller` header, and revokes it when the load is disposed or
+replaced. The rpc route answers 403 for any token that is not a live load's,
+so a client can't claim to be a plugin. The fake plugin host's
+`harness.callRpc(method, input, { experimental_caller })` sets the caller for
+tests and defaults to the client. Requires SDK 0.6.3.
+
+Before stabilizing, audit whether other surfaces (HTTP routes, agent tools,
+CLI commands) need the same identity, whether a plugin needs to know the
+calling app window or thread, and whether in-process plugins that read other
+plugins' memory make the token a meaningful boundary for third-party plugins.
+bb account relies on it to keep `/api/connect/` requests, credential reads,
+refused-credential reports, and credential adoption to the connect plugin.
 
 ## `bb.http.experimental_websocket`
 
@@ -2198,8 +2227,8 @@ app's tooltip provider (300 ms delay, hoverable content disabled), including
 through portals; host SDK components need no plugin-owned tooltip provider.
 The pane-local code-highlighting worker pool is not inherited here; its hooks
 support rendering without a pool. Hooks whose contract
-requires a particular surface, including `useComposer` and `useComposerView`,
-remain limited to that surface. One overlay crash hides only that registration;
+requires a particular surface, including `useComposer`, remain limited to that
+surface. One overlay crash hides only that registration;
 sibling overlays remain mounted.
 
 **Audit before stabilizing.**
@@ -2360,7 +2389,7 @@ and inert actions.
 
 `experimental_useSidebarNavigationSplit(id)` mirrors
 `experimental_useSidebarThreadSplit`. `experimental_SidebarNavigationIcon`
-renders bb's glyphs for its own items and plugin branding for panels.
+renders bb's glyphs for its own items and explicit panel icons with plugin branding as fallback.
 
 **Audit before stabilizing.**
 
@@ -2740,8 +2769,13 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    a PR lookup hits the git host and therefore cannot sit on the payload every
    sidebar loads. It reuses the host's environment-keyed query, so threads
    sharing a worktree share one lookup and the host keeps its own staleness and
-   refetch rules. Before stabilizing, confirm: the narrowed DTO (number, title,
-   url, state, attention) is enough without leaking checks/review/mergeability;
+   refetch rules. `PluginSidebarPullRequest` also exposes
+   `experimental_autoMerge`, nullable `experimental_inMergeQueue` (null means
+   the queue lookup failed), and `experimental_checks`, `experimental_review`,
+   and `experimental_mergeability` with normalized `state` fields. Attention
+   includes `queued`; failures precede waiting states and generic blocking is
+   a fallback after checks and reviews. Before stabilizing, confirm the state
+   summaries and unknown-queue semantics meet sidebar needs;
    a sidebar of many distinct worktrees does not stampede the git host; and
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
@@ -2845,18 +2879,59 @@ providers need, the 50-image boundary is appropriate, and local image access
 should remain governed by the thread dispatch validator rather than an earlier
 plugin-specific check.
 
+## Composer API redesign: final names without the experimental prefix
+
+**What shipped.** `useComposer()` returns one stable handle per composer
+(`key`, `layout`, `isRunning`, `isSubmitting`, `isSubmittingBlocked`,
+`submittingBlockedReason`, `isEmpty`, `attachmentCount`, `draft`, `insert`),
+`removeMention`, `onSubmitted`, `submit` and `setSelection` replace their
+`experimental_` names, `ComposerCustomization.sendMenu` replaces the send
+menu's hard-coded plugin ids, `PluginMessageActionContext.composer`
+exposes the message thread's composer, and `useComposers()` lists a handle for
+every composer on screen that customizations mount in (excluding the
+sent-message editor), oldest first. Michael decided to ship these under
+final names as an explicit exception to the experimental-prefix rule, so
+plugin authors migrate once. Replaced members (`useComposerView`,
+`ComposerView`, `richText.onDraftChange`, `ComposerStructuredDraft`, the
+`experimental_` composer names, the `side-chat` scope and the `zen` layout)
+are tagged `@internal`: `stripInternal` removes them from the published
+declarations while the runtime keeps exporting and implementing them, so
+existing plugins keep working. The frontend export parity test lists the
+runtime-only exports.
+
+**Audit.**
+
+1. **Handle semantics.** A stable handle with reactive getters means memo
+   dependencies must name fields (`composer.draft`), not the handle. Confirm
+   the lint and documentation guidance is enough.
+2. **Mention shape.** `ComposerMention` exposes core resource fields (path
+   source and entry kind, command source and origin). Confirm these are
+   stable enough to be public.
+3. **Canonical pill text.** `insert` writes the editor's canonical pill text
+   (`@label` for plugin mentions), while `insertMention` keeps writing the
+   bare label. Decide whether `insertMention` should converge.
+4. **Message-action composers.** They have no slot lifecycle, so
+   `setTextEffect` and `setInputLock` warn and do nothing there. Confirm.
+   `useComposers()` handles behave the same way.
+5. **Runtime-only aliases.** Decide when, if ever, the runtime drops the
+   `@internal` names.
+6. **Composer list order and membership.** `useComposers()` orders by mount
+   and omits the sent-message editor. Decide whether panels also need the
+   last-focused composer to pick a default target.
+
 ## Composer mention removal and successful submission subscriptions
 
-`PluginComposerApi.experimental_removeMention({ provider, id })` removes all matching mentions owned by the calling plugin from the current unsent draft, deletes their label text, rebases other mentions, and preserves attachments. It does not delete server records or alter sent messages.
+`PluginComposerApi.removeMention({ provider, id })` removes all matching mentions owned by the calling plugin from the current unsent draft, deletes their label text, rebases other mentions, and preserves attachments. It does not delete server records or alter sent messages.
 
-`PluginComposerApi.experimental_onSubmitted(listener)` observes successful local thread-send, queue-create, and new-thread-create mutations in the matching composer scope. It returns an unsubscribe function; host teardown also disposes subscriptions. Failed requests, draft clearing, and editing an existing queued message do not notify. This is a local UI notification, not a cross-device server event.
+`PluginComposerApi.onSubmitted(listener)` observes successful local thread-send, queue-create, and new-thread-create mutations in the matching composer scope. It returns an unsubscribe function; host teardown also disposes subscriptions. Failed requests, draft clearing, and editing an existing queued message do not notify. This is a local UI notification, not a cross-device server event.
 
-Before stabilization, audit side-chat and handoff scope routing, decide whether to include the submitted structured draft in notifications to distinguish annotations created while a request is pending, and verify disposal, failure restoration, mention rebasing, and callback failure isolation across every composer host.
+Before stabilization, audit handoff scope routing, decide whether to include the submitted structured draft in notifications to distinguish annotations created while a request is pending, and verify disposal, failure restoration, mention rebasing, and callback failure isolation across every composer host.
 
-## `useComposer().experimental_submit` and dispatch `experimental_submission`
+## `useComposer().submit` and dispatch `experimental_submission`
 
-**What it does.** Runs the composer's own submit pipeline with the draft that
-is on screen, preserving attachments, @-mentions, and the execution and
+**What it does.** Submits exactly as pressing Enter would, applying the same
+checks as the host's send button (it waits for uploads in progress, then
+rejects with `submittingBlockedReason`), with the draft that is on screen, preserving attachments, @-mentions, and the execution and
 environment choices visible in a new-thread composer. `sendAt` schedules the
 submission. `experimental_data` carries opaque JSON to every message dispatch
 hook on the initial attempt in an `experimental_submission` envelope containing
@@ -2864,7 +2939,8 @@ the calling plugin's id. Core validates JSON but does not persist or interpret
 it. Hooks run before operational core waits; a plugin-authored wait persists
 its owner through the queued row's existing `waitingOn` value. Backed host-side
 by an optional `submit` on the internal
-`PluginComposerHost`, supplied by the thread and new-thread composers. Rejects
+`PluginComposerHost`, supplied by the thread, `ThreadChat` and new-thread
+composers. Rejects
 with a user-presentable message when the composer cannot submit and restores
 the draft after request failure. Consumers: `plugins/scheduled-send` and
 `plugins/drafts`.
@@ -2874,13 +2950,11 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
 1. **Programmatic send authority.** `experimental_data` permits an immediate
    submission without `sendAt`. Confirm which composer customizations should
    receive that authority before stabilization.
-2. **Two of four scopes are unsupported.** A queued-message editor and a side
-   chat have no `submit`, and the route-draft fallback (a plugin surface
-   mounted outside any composer) has none either. All three reject with the
-   same "cannot submit programmatically" message, so a plugin cannot tell
-   "unsupported here" from "no composer mounted". Decide whether
-   `ComposerView` should advertise submit capability so a `+` menu row can
-   disable itself instead of failing on click.
+2. **Editors that save instead of send.** The queued-message and sent-message
+   editors and the route-draft fallback have no `submit` and reject with
+   "cannot submit programmatically". `isSubmittingBlocked` lets a row disable
+   itself before a click; confirm whether those surfaces also need a
+   distinct capability flag.
 3. **Data visibility.** Every dispatch hook sees the envelope and its owner id,
    not only the plugin that submitted it. Confirm that dispatch hooks remain
    the right trust boundary for plugin-owned submission data.
@@ -2900,7 +2974,19 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
    `experimental_data` can be lost in that surface. Decide whether to expose a
    forwardable experimental field or reject data-bearing submissions there.
 
-## `useComposer().experimental_setSelection`
+## `useComposer().setSelection`
+
+**Reactive read added after #4474.** `PluginComposerApi.selection` is a final-named
+member by the same explicit composer API naming exception as `setSelection`.
+It reports the current picker/submission selection as a stable snapshot and
+re-renders `useComposer()` and `useComposers()` consumers when a user or plugin
+changes a picker. Queued-message and sent-message editors report their
+read-only pickers: the thread's provider with the queued message's settings or
+the thread composer's settings. It is `null` for composers without pickers. Missing fields
+represent unavailable or unselected values; `isSubmittingBlocked` remains the
+submission readiness signal. Audit snapshot identity across provider catalog
+reconciliation and off-screen composer lifetimes before treating the read
+contract as stabilized.
 
 **What it does.** Sets a composer's pickers (provider, model, reasoning level,
 service tier, permission mode, and in a new-thread composer the project and
@@ -2926,7 +3012,7 @@ selection as it stands is returned. Backed by an optional `setSelection` on
 the internal `PluginComposerHost`, supplied by the thread and new-thread
 composers, including the plugin-embedded `experimental_NewThreadComposer`
 whose component-local selections leave the stored new-thread preferences
-untouched. The input type is `ExperimentalComposerSelection`; the hook
+untouched. The input type is `ComposerSelection`; the hook
 validates it and rejects unknown reasoning levels, tiers and permission
 modes. The testing harness records accepted calls in `composer.selections`.
 
@@ -2959,9 +3045,30 @@ modes. The testing harness records accepted calls in `composer.selections`.
 
 ## Desktop browser control
 
-`bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, isolated tab creation, expiring control leases, scoped CDP connections, capture, reveal, close, release, disposable tab-state subscriptions, and cookie import from an installed browser through `listImportSources` and `importCookies` (`ExperimentalDesktopBrowserInstanceRequest`, `ExperimentalDesktopBrowserImportCookiesInput`, `ExperimentalDesktopBrowserImportSources`, `ExperimentalDesktopBrowserImportOutcome`). The matching core CLI is `bb browser`.
+`bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, tab creation in the BB browser profile, expiring control leases, scoped CDP connections, capture, reveal, close, release, disposable tab-state subscriptions, and cookie import from an installed browser through `listImportSources` and `importCookies` (`ExperimentalDesktopBrowserInstanceRequest`, `ExperimentalDesktopBrowserImportCookiesInput`, `ExperimentalDesktopBrowserImportSources`, `ExperimentalDesktopBrowserImportOutcome`). The matching core CLI is `bb browser`.
 
-Before stabilization, audit cookie import authorization: any caller with server access can copy the desktop user's browser sessions into a BB profile, including an automation profile an agent controls, with OS consent only where the platform demands it (macOS Keychain for Chromium, Full Disk Access for Safari; none for Firefox or keyring-free Linux Chromium). Decide whether imports into automation profiles need an explicit handoff like personal-tab control, and whether the daemon should require a desktop-side confirmation. Also audit personal-profile handoff policy, per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
+Every desktop tab, including tabs created for an agent, uses the single BB browser profile and its signed-in cookies. Before stabilization, audit control and cookie import authorization: any caller with server access can control tabs carrying the user's logins and copy the desktop user's browser sessions into that profile, with OS consent only where the platform demands it (macOS Keychain for Chromium, Full Disk Access for Safari; none for Firefox or keyring-free Linux Chromium). Decide whether control or import should require a desktop-side confirmation. Also audit per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
+
+## Machine paths and environment cleanup
+
+`bb.sdk.hosts.get({ hostId })` includes nullable `threadStorageRootPath`
+from the machine's latest daemon session, even offline or without live threads.
+It is null before a session has reported paths. Reading details does not wake the
+machine or create directories. CLI: `bb machine show <id-or-name> [--json]`.
+
+`bb.sdk.environments.experimental_cleanup({ environmentId })` explicitly requests
+removal of an unused provider-managed environment, overriding automatic retention
+or keep policy and bypassing cleanup backoff. Normal retirement and failed-cleanup
+retries remain automatic; callers do not need to invoke this during routine
+thread work. It rejects live threads and
+unmanaged environments; already-removed provider environments succeed without
+another removal. Acceptance is not completion; inspect the ordinary environment
+lifecycle fields for progress. CLI: `bb environment cleanup <id> [--json]`.
+
+Before stabilization, audit path portability and session freshness after machine
+re-enrollment, and cleanup retry behavior across unavailable providers, concurrent
+attempts, and environments shared by archived and live threads. These APIs reuse
+existing session data and provider lifecycle state.
 
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 
@@ -3343,6 +3450,19 @@ components terminate at the underlying built-in or `Zap`; throwing components
 are contained and recover when their registration is replaced. Mounted icons
 subscribe to changes in their requested and fallback definitions.
 
+Per-item icon precedence changed in #4443: resolved explicit names win over
+plugin branding for mentions, message actions (including text selection), nav
+panels and fixed tabs, thread/new-thread panel launchers and their opened tabs,
+and legacy sidebar-footer actions. Unknown or omitted names fall back to
+branding, then `Zap`. This changes the documented branding-first behavior of
+`threadPanelAction`, `experimental_newThreadPanelAction`, and
+`sidebarFooterAction`; plugins that depended on their hints being hidden now
+show those hints. Omit optional icons or use the branding glyph explicitly to
+retain that appearance. Plugin identity surfaces (Tools, Settings, and plugin
+detail tabs) remain branding-first. No new API fields or wire changes are
+introduced. Verify icon precedence and load/unload fallback across these
+surfaces before stabilizing the icon API.
+
 This is an app registry, independent of all manifest branding and declared SVG
 asset contracts. It adds no server/daemon wire fields, persisted icon definitions,
 or cross-client delivery. Mobile and desktop load the same web app and plugin
@@ -3421,3 +3541,67 @@ remain forbidden. New-machine selections continue through creation.
 
 Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
 progress, cross-project ownership, and concurrent creation before binding.
+
+## Composer editing: `insert` and `replace`
+
+Michael explicitly requested the final names `insert` and `replace`, an
+exception to the experimental-prefix rule. `PluginComposerApi.replace` accepts
+an explicit `ComposerDraftReplacement` or a synchronous updater from the latest
+immutable `ComposerDraftSnapshot`. `draft` now includes uploaded attachments.
+Text and mention metadata commit together, even if text is unchanged. Omitted
+attachments are preserved; an explicit list replaces them. Ranges must be valid
+and non-overlapping; replacement never infers mention reconciliation. Invalid
+results and throwing updaters do not mutate the draft. Returning the supplied
+snapshot is a no-op. `insert` remains the cursor/end insertion primitive.
+
+Core quoting, prefills and history restoration call this same contract. Quotes
+are pure draft transformations that append blockquoted text and merge attachments
+by path, followed by `focus()`. Attachments remain independent draft items, not
+children of a quote. `replace` does not upload/copy files across projects.
+Submission rollback, restore-if-empty seeds, uploads, and editor transactions
+remain beneath these actions. Command completion's trigger-range replacement and
+autocomplete dismissal remain a documented boundary, not a hidden option on
+`replace`.
+
+`setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
+`removeMention` are marked internal and stripped from published declarations,
+but remain at runtime for older plugins. Their existing formatting, focus, and
+ownership behavior is preserved.
+Core actions and annotations use insert/replace. No runtime removal is scheduled
+in this change. The unshipped experimental replacement, quote, and attachment
+members introduced during this work were removed rather than retained as aliases.
+
+Before stabilization, audit snapshot identity and updater failure/lifetime
+behavior across mounted, offscreen, and ephemeral editors, replay of attachment
+paths in their owning project, and migration of third-party text transforms to
+explicit mention ranges. Decide whether command application merits a shared
+public operation. These operations edit client-local drafts; existing SDK/CLI
+thread creation and send surfaces still accept structured inputs.
+
+Core history conversion is centralized in the composer adapter; quoting operates
+on text and attachments directly without a mention-format round trip. Persisted
+and editor mention formats remain unchanged, while the action layer reads one
+complete draft snapshot instead of separate content and attachment getters.
+
+## Thread creation placement
+
+`PluginSidebarThreadActions.openNewThread` accepts `experimental_placement`
+with explicit `sectionId: string | null` and `pinned: boolean`. It overrides
+the legacy section option. Omission clears prior composer placement and uses
+the legacy section or the general thread list, unpinned. The composer sends
+this placement with normal and scheduled creation. Audit pinned groups, custom sections, project/machine groups,
+route transitions, draft recovery, and third-party sidebar compatibility
+before stabilizing this option.
+
+### Provider discovery metadata
+
+`package.json` → `bb.experimental_providers` statically declares
+`{ kind, id, displayName }` provider identities before a plugin runs. `kind`
+uses the `providerKind` vocabulary and currently accepts only `"agent"`, which
+feeds Settings → Providers so disabled plugins' agents stay discoverable. It does
+not grant runtime capabilities or execute code. Core also retains the last
+registered agent identities when disabling a plugin, preserving custom providers
+across restart. Add `"environment"` or `"machine"` only together with a consumer.
+Stabilize after validating first-install discovery, shared-plugin enablement,
+dynamic provider removal, plugin upgrades, and duplicate-ID ownership behavior
+with third-party providers.

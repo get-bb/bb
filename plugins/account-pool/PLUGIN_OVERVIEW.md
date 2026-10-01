@@ -10,11 +10,11 @@ Keep a Claude Code or Codex thread running when one account hits its limit. The 
 
 ## How it works
 
-The hub runs inside BB and serves an Anthropic Messages endpoint and an OpenAI Responses endpoint. With routing on, BB hands the Claude Code or Codex process a base URL that points at the hub and a token scoped to that machine, and the provider reports **Proxied** in its health row. An account is skipped for a request when it is at or above the switch threshold or in error. The threshold defaults to 98 percent of a window. A refusal first rechecks exhausted accounts, so upgrades apply next turn. Account secrets stay in the BB data directory on the server machine, and the hub refreshes them in the background.
+The hub serves Anthropic Messages and OpenAI Responses endpoints. Routed providers report **Proxied** and receive a machine-scoped hub token. Accounts in error are skipped. The switch threshold defaults to 98 percent. Claude extra usage and Codex credits are fallbacks: usable subscription accounts take precedence, and conversations return when quota recovers. Exhausted accounts are rechecked before fallback. Codex spending-control and explicit credit-depletion restrictions block routing even below the threshold. The pool does not enable extra usage, purchase credits, or change spending limits. Settings shows “Extra usage available” only for reported allowance, never current billing activity. CLI and RPC status expose the same observations. Secrets stay on the server and tokens refresh in the background.
 
 The pool waits once on the same account for short temporary rate limits. Longer holds return Retry-After for pinned conversations while new conversations can advance. A model-family limit detours requests for that family without moving the session’s main pin or the provider cursor. The pool commits a new account after a successful response; a failed attempt across every account retains the previous binding. The current account and session pins survive hub restarts. Session pins expire after 30 idle minutes, with the 4,096 most recently used pins retained.
 
-The pooler owns its upstream HTTP connections and uses HTTP/1.1, so a broken HTTP/2 session in the server's shared fetch dispatcher does not strand pooled requests. The transport honors standard proxy environment variables and is disposed on plugin unload. This does not add request replay; existing account-fallback rules still apply. Pooled request connection failures log a known error code when available, without request bodies, credentials, URLs, or raw exception messages.
+The pool uses HTTP/1.1 and honors standard proxy environment variables. Connection failures log error codes without credentials or request contents.
 
 ## Nested bb servers
 
@@ -29,7 +29,7 @@ Proxied traffic authenticates as the parent machine's token, so the parent attri
 
 Accounts you own and are permitted to use this way.
 
-This plugin is experimental. Routing behavior, stored data, and the CLI can change between releases.
+Experimental: routing, storage, and CLI may change.
 
 ## For agents
 

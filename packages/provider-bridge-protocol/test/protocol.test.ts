@@ -43,6 +43,24 @@ describe("handshake", () => {
 });
 
 describe("provider installation status", () => {
+  it("defaults legacy requests to update discovery and accepts local-only probes", () => {
+    expect(
+      providerInstallationStatusParamsSchema.parse({ providerId: "codex" })
+        .checkUpdates,
+    ).toBe(true);
+    expect(
+      providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        checkUpdates: false,
+      }).checkUpdates,
+    ).toBe(false);
+    expect(
+      providerInstallationStatusParamsSchema.safeParse({
+        providerId: "codex",
+        checkUpdates: "false",
+      }).success,
+    ).toBe(false);
+  });
   it("accepts the typed thread rewind requirement and rejects arbitrary operations", () => {
     expect(
       providerInstallationStatusParamsSchema.parse({

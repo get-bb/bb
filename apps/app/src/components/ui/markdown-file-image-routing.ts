@@ -5,9 +5,8 @@ import {
   normalizeAbsoluteFilePath,
 } from "@/lib/absolute-file-path";
 import {
-  buildFilePreviewLeaseContentUrl,
+  buildHostFileContentUrl,
   buildThreadHostFileContentUrl,
-  getFilePreviewLeaseBaseUrl,
 } from "@/lib/file-content-urls";
 
 const ROUTE_ROOT = "/__bb_markdown_file_root__";
@@ -59,22 +58,21 @@ export function buildMarkdownFileImageRouting({
   };
 }
 
-export function buildMarkdownLeaseImageRouting({
+export function buildMarkdownHostFileImageRouting({
   path,
   rootPath,
-  previewUrl,
+  hostId,
 }: {
   path: string;
   rootPath: string;
-  previewUrl: string | undefined;
+  hostId: string | null;
 }): MarkdownLinkRouting | undefined {
-  const baseUrl = getFilePreviewLeaseBaseUrl(previewUrl ?? "");
-  if (baseUrl === null) return undefined;
+  if (hostId === null) return undefined;
   return buildMarkdownFileImageRouting({
     path,
     rootPath,
     threadId: null,
-    resolveRelativeSrc: (relativePath) =>
-      buildFilePreviewLeaseContentUrl(baseUrl, relativePath),
+    resolveRelativeSrc: (_relativePath, absolutePath) =>
+      buildHostFileContentUrl(hostId, absolutePath),
   });
 }

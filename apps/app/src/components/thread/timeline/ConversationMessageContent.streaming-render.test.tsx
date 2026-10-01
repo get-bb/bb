@@ -134,9 +134,7 @@ describe("assistant streaming Markdown rendering", () => {
     view.rerender(assistant("Image ![preview](/workspace/preview.png)"));
     expect(
       screen.getByRole("img", { name: "preview" }).getAttribute("src"),
-    ).toBe(
-      "/api/v1/threads/thr_stream/host-files/content?path=%2Fworkspace%2Fpreview.png",
-    );
+    ).toBe("/api/v1/threads/thr_stream/host-files/workspace/preview.png");
   });
 
   it.each([

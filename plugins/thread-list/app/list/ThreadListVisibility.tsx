@@ -1,3 +1,4 @@
+import { ThreadCreationPlacementScope } from "./ThreadCreationPlacement.js";
 import {
   createContext,
   useContext,
@@ -223,7 +224,9 @@ export function ThreadListVisibilityGroupScope({
 }) {
   return (
     <GroupContext.Provider value={id}>
-      <div data-sidebar-visibility-group={id}>{children}</div>
+      <ThreadCreationPlacementScope group={id}>
+        <div data-sidebar-visibility-group={id}>{children}</div>
+      </ThreadCreationPlacementScope>
     </GroupContext.Provider>
   );
 }

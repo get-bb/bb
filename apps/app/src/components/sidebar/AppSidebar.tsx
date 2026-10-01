@@ -46,8 +46,8 @@ import {
   SidebarNavigationRegion,
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
-import { SidebarFooterCustomize } from "./SidebarFooterCustomize";
 import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
+import { LazySidebarFooterCustomize } from "./LazySidebarFooterCustomize";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
@@ -228,7 +228,7 @@ export function AppSidebar({
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {isFooterCustomizing ? (
           <div className="max-h-[50svh] overflow-y-auto">
-            <SidebarFooterCustomize
+            <LazySidebarFooterCustomize
               onDone={() => {
                 flushSync(() => setFooterCustomizing(false));
                 document.getElementById(SIDEBAR_FOOTER_MORE_ID)?.focus();
@@ -267,6 +267,14 @@ export function AppSidebar({
                 onActivate: () => {
                   closeOnMobile();
                   void navigate(settingsRoutePath);
+                },
+              },
+              {
+                id: "mobile",
+                href: "/settings/mobile",
+                onActivate: () => {
+                  closeOnMobile();
+                  void navigate("/settings/mobile");
                 },
               },
               {

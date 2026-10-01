@@ -178,7 +178,7 @@ function SecretRequestInteraction({
         </p>
       ) : null}
 
-      <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-end">
+      <div className="sticky -bottom-3 -mb-3 z-10 flex flex-col-reverse gap-2 border-t border-border/70 bg-surface-recessed-solid pb-3 pt-4 sm:flex-row sm:items-center sm:justify-end">
         <Button
           type="button"
           variant="ghost"

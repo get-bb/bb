@@ -177,7 +177,6 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
               threadId: thread.id,
               url: "https://example.com",
               title: "Example",
-              profile: { kind: "automation", id: "automation-profile" },
               presentation: "hidden",
               control: null,
             },

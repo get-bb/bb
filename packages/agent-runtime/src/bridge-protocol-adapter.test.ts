@@ -161,6 +161,7 @@ describe("handshake gating", () => {
     expect(
       adapter.buildCommandPlan({
         type: "provider/installation/status",
+        checkUpdates: false,
         cwd: "/workspace",
         requirement: "thread_rewind",
       }),
@@ -171,6 +172,7 @@ describe("handshake gating", () => {
         providerId: "fake-bridge",
         cwd: "/workspace",
         requirement: "thread_rewind",
+        checkUpdates: false,
       },
     });
     expect(

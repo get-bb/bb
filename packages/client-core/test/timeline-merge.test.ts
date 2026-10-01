@@ -859,6 +859,66 @@ describe("snapshot content pagination", () => {
     expect(next.historySnapshot).toBe("snapshot-2");
   });
 
+  it("keeps omitted-row updates through streaming and repeat refreshes", () => {
+    const olderUser = userRow({ id: "older-user", sequence: 1 });
+    const earlyChild = commandRow({ id: "early-command", sequence: 3 });
+    const liveChild = commandRow({ id: "live-command", sequence: 4 });
+    const summary = turnSummaryRow({
+      id: "summary",
+      sequence: 2,
+      endSequence: 4,
+      children: [earlyChild, liveChild],
+    });
+    const latestUser = userRow({ id: "latest-user", sequence: 10 });
+    const walkCursor = timelineCursor({ id: "walk-cursor", sequence: 1 });
+    const current = {
+      ...makeLoadedTimelineState(
+        [olderUser, summary, latestUser],
+        walkCursor,
+        11,
+      ),
+      historySnapshot: "snapshot-1",
+    };
+    const updatedChild = { ...liveChild, sourceSeqEnd: 12, output: "progress" };
+    const newChild = commandRow({ id: "new-command", sequence: 12 });
+    const latestTimeline = makeTimelineResponse(
+      [latestUser],
+      timelineCursor({ id: "latest-cursor", sequence: 10 }),
+      12,
+    );
+    latestTimeline.timelinePage.historySnapshot = "snapshot-2";
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = 1;
+    latestTimeline.timelinePage.olderRowUpdates = [
+      { ...summary, sourceSeqEnd: 12, children: [updatedChild, newChild] },
+      commandRow({ id: "unloaded", sequence: 5, endSequence: 12 }),
+    ];
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    const expectedRows = [
+      olderUser,
+      {
+        ...summary,
+        sourceSeqEnd: 12,
+        children: [earlyChild, updatedChild, newChild],
+      },
+      latestUser,
+    ];
+    expect(next.rows).toEqual(expectedRows);
+    const refreshed = mergeLoadedTimelineWithLatest({
+      current: next,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+    expect(refreshed.rows).toEqual(expectedRows);
+    expect(next.olderCursor).toEqual(walkCursor);
+    expect(next.latestWindowEndSequence).toBe(12);
+  });
+
   it("keeps loaded order when an older page repeats the loaded conversation group", () => {
     const providerEnvironment = commandRow({
       id: "provider-env",

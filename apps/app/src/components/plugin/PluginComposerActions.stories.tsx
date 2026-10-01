@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react";
-import type { ComposerView } from "@get-bb/plugin-sdk";
+import type { PluginComposerScope } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -25,7 +25,7 @@ function registrations(
       PluginRegistrationSet["composerCustomizations"]
     >[number]["actions"]
   >,
-  scopes: ComposerView["scope"]["kind"][] = ["new-thread", "thread"],
+  scopes: PluginComposerScope["kind"][] = ["new-thread", "thread"],
 ): PluginRegistrationSet {
   return makePluginRegistrationSet({
     composerCustomizations: [{ id: "story-actions", scopes, actions }],
@@ -39,7 +39,7 @@ function StoryPluginRegistration({
 }: {
   pluginId: string;
   actions: Parameters<typeof registrations>[0];
-  scopes?: ComposerView["scope"]["kind"][];
+  scopes?: PluginComposerScope["kind"][];
 }) {
   useEffect(() => {
     setPluginSlotRegistrations(pluginId, registrations(actions, scopes));

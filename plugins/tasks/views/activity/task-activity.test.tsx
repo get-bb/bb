@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createComment, createStore } from "../../api/index.js";
 import type { Attachment, DisplayComment } from "../../shared/contract.js";
 import {
+  activityFeedEntries,
   AgentNotificationControl,
   AttachmentTracks,
   agentNotificationTarget,
@@ -125,6 +126,44 @@ describe("AttachmentTracks", () => {
     const figure = screen.getByRole("figure");
     expect(figure.contains(screen.getByAltText("shot.png"))).toBe(true);
     expect(figure.contains(screen.getByText("shot.png"))).toBe(true);
+  });
+});
+
+describe("activity feed entries", () => {
+  it("groups one task-wide attachment listing under the comments that own each file", () => {
+    const first = { ...comment("user"), id: "01HZZZZZZZZZZZZZZZZZZZZZC1" };
+    const second = { ...comment("agent"), id: "01HZZZZZZZZZZZZZZZZZZZZZC2" };
+    const file = (id: string, commentId: string | null): Attachment => ({
+      id,
+      taskId: commentId === null ? first.taskId : null,
+      commentId,
+      fileName: `${id}.txt`,
+      mime: "text/plain",
+      sizeBytes: 1,
+      isImage: false,
+      createdAt: "2026-07-15T00:00:00.000Z",
+    });
+
+    const entries = activityFeedEntries(
+      [first, second],
+      [
+        file("a", second.id),
+        file("b", first.id),
+        file("c", second.id),
+        file("task-file", null),
+        file("orphan", "01HZZZZZZZZZZZZZZZZZZZZZC9"),
+      ],
+    );
+
+    expect(
+      entries.map((entry) => [
+        entry.comment.id,
+        entry.attachments.map((attachment) => attachment.id),
+      ]),
+    ).toEqual([
+      [first.id, ["b"]],
+      [second.id, ["a", "c"]],
+    ]);
   });
 });
 

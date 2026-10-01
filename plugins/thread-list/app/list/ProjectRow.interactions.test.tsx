@@ -39,9 +39,12 @@ installTestPluginRuntime();
 const {
   ChronologicalSectionThreadSections,
   ProjectRow,
+  PinnedEnvironmentThreadGroupRow,
   SectionThreadDragOverlay,
   ThreadTreeNodeRow,
 } = await import("./ProjectRow.js");
+const { ThreadCreationPlacementScope } =
+  await import("./ThreadCreationPlacement.js");
 const { useSidebarModeSectionOrder } =
   await import("./useSidebarModeSectionOrder.js");
 const { SidebarHeaderControls } = await import("./SidebarHeaderControls.js");
@@ -1104,6 +1107,7 @@ describe("ProjectRow interactions", () => {
           options: {
             projectId: "proj_test",
             environmentId: "env_test",
+            experimental_placement: { sectionId: null, pinned: false },
             focusPrompt: true,
           },
         },
@@ -1235,4 +1239,62 @@ describe("ProjectRow interactions", () => {
       }),
     );
   });
+});
+
+describe("environment creation placement", () => {
+  afterEach(cleanup);
+  it.each([
+    ["pinned", "sec_managers", true],
+    ["pinned-mixed", null, true],
+    ["section:sec_visible", "sec_visible", false],
+    ["project:proj_test", null, false],
+    ["machine:host_test", null, false],
+    ["threads", null, false],
+  ] as const)(
+    "creates in the containing %s group",
+    (groupId, sectionId, pinned) => {
+      const threads = ENVIRONMENT_THREADS.map((thread) => ({
+        ...thread,
+        sectionId:
+          groupId === "pinned-mixed" && thread.id === ENVIRONMENT_THREADS[0].id
+            ? "sec_other"
+            : "sec_managers",
+        pinnedAt: 1,
+      }));
+      const group = buildPinnedSidebarState({
+        threads,
+        groupEnvironmentThreads: true,
+      }).rootItems[0];
+      if (group.kind !== "environment")
+        throw new Error("Expected environment group");
+      const { sidebarActionCalls } = renderTree(
+        <ThreadCreationPlacementScope
+          group={groupId === "pinned-mixed" ? "pinned" : groupId}
+        >
+          <PinnedEnvironmentThreadGroupRow
+            group={group.group}
+            collapsedThreadIds={new Set()}
+            collapsedEnvironmentIds={new Set()}
+            onToggleThreadCollapsed={vi.fn()}
+            onToggleEnvironmentCollapsed={vi.fn()}
+          />
+        </ThreadCreationPlacementScope>,
+        { threads },
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "New thread in environment" }),
+      );
+      expect(sidebarActionCalls).toEqual([
+        {
+          method: "openNewThread",
+          options: {
+            projectId: "proj_test",
+            environmentId: "env_test",
+            focusPrompt: true,
+            experimental_placement: { sectionId, pinned },
+          },
+        },
+      ]);
+    },
+  );
 });

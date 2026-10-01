@@ -162,10 +162,16 @@ export default async function acpProvidersPlugin(
     hostId: string,
     signal: AbortSignal,
   ): Promise<void> {
+    const disabledIds = new Set(
+      (await bb.sdk.providers.catalog())
+        .filter((provider) => !provider.enabled)
+        .map((provider) => provider.id),
+    );
     const configuredIds = new Set(configuredAgents.map((agent) => agent.id));
     for (const shipped of PROBEABLE_ACP_AGENTS) {
       if (signal.aborted) return;
-      if (configuredIds.has(shipped.id)) continue;
+      if (configuredIds.has(shipped.id) || disabledIds.has(shipped.id))
+        continue;
       const agent = narrowed.get(shipped.id) ?? shipped;
       if ((agent.fork ?? "none") === "none") continue;
       let probe: AcpAgentProbe;

@@ -316,6 +316,13 @@ export const BB_HOST_DAEMON_AUTO_UPDATE_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const BB_HOST_DAEMON_SUPERVISED_ENV = defineEnvVar<boolean>({
+  description:
+    "Set by bb-app host-daemon --supervise so a daemon that relaunches itself after a server move keeps its launcher restarting it",
+  name: "BB_HOST_DAEMON_SUPERVISED",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_HOST_ID_ENV = defineEnvVar<string | undefined>({
   description:
     "Preferred host ID to persist for the daemon instead of generating one locally",

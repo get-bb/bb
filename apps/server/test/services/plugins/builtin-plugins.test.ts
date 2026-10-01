@@ -577,20 +577,24 @@ describe("builtin plugin reconciliation", () => {
     });
   });
 
-  it.each(["provider-usage", "provider-retry"])(
+  it.each([
+    ["provider-usage", "bb--provider-usage"],
+    ["provider-retry", "provider-retry"],
+  ])(
     "runs the real %s builtin on a fresh database",
-    async (builtinName) => {
+    async (builtinName, pluginId) => {
       service = createService({
         db,
         dataDir: join(workDir, "data"),
         builtinName,
+        pluginId,
         rootDir: resolveBuiltinPluginRootPath(builtinName),
       });
       await service.start();
 
       expect(service.list()).toMatchObject([
         {
-          id: builtinName,
+          id: pluginId,
           source: `builtin:${builtinName}`,
           enabled: true,
           status: "running",

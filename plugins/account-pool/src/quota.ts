@@ -88,6 +88,17 @@ export function quotaFromHeaders(
   const sevenDayResetAt = parseReset(headers.get(`${PREFIX}7d-reset`));
   const sevenDayStatus = headers.get(`${PREFIX}7d-status`);
   const representativeClaim = headers.get(`${PREFIX}representative-claim`);
+  const overageStatus = headers.get(`${PREFIX}overage-status`);
+  const extraUsage: AccountQuota["extraUsage"] =
+    overageStatus === "allowed" ||
+    overageStatus === "allowed_warning" ||
+    overageStatus === "rejected"
+      ? {
+          status: overageStatus === "rejected" ? "rejected" : "allowed",
+          observedAt: now,
+          source: "header",
+        }
+      : previous.extraUsage;
   const scoped = scopedHeaderValues(headers);
   const priorFamily = previous.familyWeekly[family];
   const familyWeekly: AccountQuota["familyWeekly"] =
@@ -111,9 +122,12 @@ export function quotaFromHeaders(
     sevenDayResetAt !== null ||
     sevenDayStatus !== null ||
     representativeClaim !== null ||
+    extraUsage !== previous.extraUsage ||
     scoped !== null;
   return {
     accountId,
+    usageRestriction: previous.usageRestriction,
+    extraUsage,
     fiveHourUtilization: fiveHourUtilization ?? previous.fiveHourUtilization,
     fiveHourResetAt: fiveHourResetAt ?? previous.fiveHourResetAt,
     fiveHourStatus: fiveHourStatus ?? previous.fiveHourStatus,
@@ -160,6 +174,8 @@ export function blockingResetAt(
   threshold: number,
   now: number,
 ): number | null {
+  if (isUsageRestricted(quota, now))
+    return quota.usageRestriction?.resetAt ?? null;
   let latest: number | null = null;
   let unknown = false;
   const include = (
@@ -244,8 +260,26 @@ export function isQuotaExhausted(
   now: number,
 ): boolean {
   return (
+    isUsageRestricted(quota, now) ||
     isSharedQuotaExhausted(quota, threshold, now) ||
     activeFamilyWindow(quota.familyWeekly[family], threshold, now)
+  );
+}
+
+export function isUsageRestricted(
+  quota: AccountQuota | AccountSummary,
+  now: number,
+): boolean {
+  return (
+    quota.usageRestriction !== null &&
+    (quota.usageRestriction.resetAt === null ||
+      quota.usageRestriction.resetAt > now)
+  );
+}
+
+export function hasExtraUsage(quota: AccountQuota): boolean {
+  return (
+    quota.extraUsage?.status === "allowed" && quota.usageRestriction === null
   );
 }
 
@@ -284,7 +318,9 @@ export function accountStatus(
   if (!account.enabled) return "disabled";
   if (quota.error !== null) return "error";
   if (quota.heldUntil !== null && quota.heldUntil > now) return "held";
-  if (isSharedQuotaExhausted(quota, threshold, now)) return "exhausted";
+  if (isUsageRestricted(quota, now)) return "exhausted";
+  if (isSharedQuotaExhausted(quota, threshold, now) && !hasExtraUsage(quota))
+    return "exhausted";
   return "ready";
 }
 

@@ -299,6 +299,18 @@ describe("Modal machine provider", () => {
     );
   });
 
+  it("reserves the default size for a machine created without a preset", async () => {
+    const harness = await setup();
+    const created = await harness.provider.create(createContext());
+    if (created.status !== "created")
+      throw new Error("Expected created machine");
+    expect(harness.backend.creates[0]).toMatchObject({
+      cpu: 1,
+      memoryMiB: 2048,
+    });
+    expect(created.resource).toMatchObject({ cpu: 1, memoryMiB: 2048 });
+  });
+
   it("resolves configured preset and image names for validation and creation", async () => {
     const harness = await setup();
     const current = modalLaunchOptionsSchema.parse(

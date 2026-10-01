@@ -208,6 +208,7 @@ describe("ServerMoveService.handleServerMoved", () => {
     const fixture = await createFixture({
       serverUrl: "http://old-server.example.test:38886",
       autoUpdate: true,
+      supervised: true,
     });
     const service = fixture.createService({
       env: {
@@ -236,6 +237,7 @@ describe("ServerMoveService.handleServerMoved", () => {
           join(fixture.npmPrefix, "bin", "bb-app"),
           "host-daemon",
           "--auto-update",
+          "--supervise",
           "--host-daemon-port",
           "38887",
           "--server-url",

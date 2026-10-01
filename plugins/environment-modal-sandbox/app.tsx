@@ -283,7 +283,7 @@ function LaunchOptionsSettings() {
             </h3>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               One preset becomes the default; several add a picker to the
-              composer. With none, Modal uses 0.125 CPU and 128 MiB.
+              composer. With none, new sandboxes reserve 1 CPU and 2 GiB.
             </p>
           </div>
           <Button

@@ -1,13 +1,25 @@
 // @vitest-environment jsdom
 
+import { LazyMarkdownHtml } from "@/components/ui/lazy-markdown-html";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  beforeAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import { resetDeprecatedAliasWarningsForTests } from "./plugin-sdk-deprecated-aliases";
 import { AppNavigationHostProvider } from "./app-navigation-host";
+
+beforeAll(() => LazyMarkdownHtml.preload());
 
 afterEach(cleanup);
 
@@ -142,7 +154,7 @@ describe("plugin SDK Markdown", () => {
       path: "/workspace/README.md",
     });
     expect(screen.getByRole("img", { name: "chart" }).getAttribute("src")).toBe(
-      "/api/v1/threads/thr_plugin/host-files/content?path=%2Fworkspace%2Fimages%2Fchart.png",
+      "/api/v1/threads/thr_plugin/host-files/workspace/images/chart.png",
     );
 
     fireEvent.click(screen.getByRole("link", { name: "the docs" }));
@@ -200,10 +212,14 @@ describe("plugin SDK Markdown", () => {
       expect(
         screen.getByRole("img", { name: "Chart" }).getAttribute("src"),
       ).toBe(
-        `/api/v1/threads/thr_document/${kind === "workspace" ? "worktree" : kind}/files/reports/chart%20one.svg`,
+        kind === "workspace"
+          ? "/api/v1/environments/env_document/files/reports/chart%20one.svg"
+          : "/api/v1/threads/thr_document/thread-storage/files/reports/chart%20one.svg",
       );
       expect(screen.getByLabelText("Clip").getAttribute("src")).toBe(
-        `/api/v1/threads/thr_document/${kind === "workspace" ? "worktree" : kind}/files/reports/clip.mp4`,
+        kind === "workspace"
+          ? "/api/v1/environments/env_document/files/reports/clip.mp4"
+          : "/api/v1/threads/thr_document/thread-storage/files/reports/clip.mp4",
       );
       fireEvent.click(screen.getByRole("link", { name: "Parent" }));
       expect(openFilePreview).toHaveBeenLastCalledWith({
@@ -263,9 +279,7 @@ describe("plugin SDK Markdown", () => {
     });
     expect(
       screen.getByRole("img", { name: "Absolute" }).getAttribute("src"),
-    ).toBe(
-      "/api/v1/threads/thr_document/host-files/content?path=%2Foutside.svg",
-    );
+    ).toBe("/api/v1/threads/thr_document/host-files/outside.svg");
   });
 
   it("routes web links without requiring a thread navigation context", () => {

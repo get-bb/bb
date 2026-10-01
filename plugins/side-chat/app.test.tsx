@@ -85,6 +85,7 @@ describe("reply-in-side-chat message action", () => {
         sourceSeqEnd: 42,
       },
       openPanel,
+      composer: null,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -136,6 +137,7 @@ describe("reply-in-side-chat message action", () => {
         sourceSeqEnd: 42,
       },
       openPanel,
+      composer: null,
     };
 
     const first = app.messageActions[0]!.run(context);
@@ -167,6 +169,7 @@ describe("reply-in-side-chat message action", () => {
       },
       selectedText: "just this part",
       openPanel,
+      composer: null,
     });
 
     expect(openPanel).toHaveBeenCalledWith(

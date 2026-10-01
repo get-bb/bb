@@ -1,3 +1,4 @@
+import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
   deleteMachineEnvironmentVariable,
@@ -67,6 +68,10 @@ import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
 } from "../services/system/execution-options.js";
+import {
+  providerManagementCatalog,
+  setProviderEnabled,
+} from "../services/system/provider-management.js";
 import { getProviderStates } from "../services/system/provider-states.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 import {
@@ -151,6 +156,12 @@ export function registerSystemRoutes(
   const routes = publicApiRoutes.system;
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
+
+  const mobileAppReleases = createMobileAppReleaseService();
+  get(routes.mobileAppReleases, async (context) => {
+    context.header("cache-control", "no-store");
+    return context.json(await mobileAppReleases());
+  });
 
   get(routes.attention, (context) =>
     context.json({ hasAttention: hasActiveThreadAttention(deps.db) }),
@@ -576,6 +587,21 @@ export function registerSystemRoutes(
 
   get(routes.providers, async (context, query) =>
     context.json(await listSystemProviderInfos(deps, query)),
+  );
+
+  get(routes.providerCatalog, async (context) => {
+    await deps.providerRegistry.whenRegistrationsSettled();
+    return context.json(providerManagementCatalog(deps, pluginService));
+  });
+  put(routes.providerEnabled, async (context, payload) =>
+    context.json(
+      await setProviderEnabled(
+        deps,
+        pluginService,
+        context.req.param("id"),
+        payload.enabled,
+      ),
+    ),
   );
 
   get(routes.providerLogo, async (context) => {

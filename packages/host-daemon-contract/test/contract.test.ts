@@ -186,7 +186,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       threadId: "thread",
       title: "",
       url: "about:blank",
-      profile: { kind: "personal" },
       presentation: "hidden",
       control: null,
     },
@@ -490,6 +489,8 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       baseRefName: "main",
       headRefName: "feature/host-rpc",
       updatedAt: "2026-06-16T12:30:00Z",
+      autoMerge: false,
+      inMergeQueue: false,
       checks: [
         {
           name: "test",
@@ -1144,9 +1145,31 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(220);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(223);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
+
+  it.each([
+    [256, true],
+    [257, false],
+  ])(
+    "validates controller labels with %i Unicode code points",
+    (length, valid) => {
+      const command = {
+        type: "desktop.browser.acquire_control",
+        instanceId: "instance",
+        generation: "generation",
+        threadId: "thread",
+        leaseId: "lease",
+        tabIds: ["tab"],
+        controllerLabel: "😀".repeat(length),
+        expiresAt: 1700000000000,
+      };
+      expect(hostDaemonOnlineRpcCommandSchema.safeParse(command).success).toBe(
+        valid,
+      );
+    },
+  );
 
   it("uses relative host-plugin timeouts and bounds artifact declarations", () => {
     const command = {

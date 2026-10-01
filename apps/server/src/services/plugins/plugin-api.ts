@@ -75,6 +75,7 @@ import type {
   PluginUi,
   StandardSchemaV1,
   PluginRpcContract,
+  ExperimentalPluginRpcHandlerContext,
 } from "@get-bb/plugin-sdk";
 import {
   KV_VALUE_MAX_BYTES,
@@ -121,6 +122,10 @@ import type {
 } from "@bb/sdk";
 import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
 import { requestServerAccessRecheck } from "./plugin-server-access-registry.js";
+import {
+  createPluginRpcCallerSdk,
+  type PluginRpcCallerCredential,
+} from "./plugin-rpc-caller.js";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
@@ -188,7 +193,10 @@ export interface PluginRpcHandler {
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: unknown) => unknown;
+  handler: (
+    input: unknown,
+    context: ExperimentalPluginRpcHandlerContext,
+  ) => unknown;
 }
 
 export interface PluginAgentToolRecord {
@@ -334,9 +342,19 @@ function withPluginThreadAttribution<
   return { ...args, ...attribution };
 }
 
-function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
+function wrapSdkForPlugin(
+  sdk: BbSdk,
+  pluginId: string,
+  rpcCallerSdk: BbSdk,
+): PluginBbSdk {
   return {
     ...sdk,
+    plugins: {
+      ...sdk.plugins,
+      callRpc(args) {
+        return rpcCallerSdk.plugins.callRpc(args);
+      },
+    },
     threads: {
       ...sdk.threads,
       async getPluginMetadata(
@@ -457,6 +475,12 @@ export function createPluginApi(options: {
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
+  /**
+   * This load's rpc caller token, attached to the plugin's
+   * `bb.sdk.plugins.callRpc` requests so handlers see it as the caller.
+   * Revoked when the handle is invalidated.
+   */
+  rpcCaller: PluginRpcCallerCredential;
   publishSignal: (channel: string, payload: unknown) => void;
   settingsChanged: () => void;
   reportNeedsConfiguration: (message: string) => void;
@@ -521,6 +545,7 @@ export function createPluginApi(options: {
     getSdk,
     getAppUrl,
     getLoopbackBaseUrl,
+    rpcCaller,
     publishSignal,
     settingsChanged,
     reportNeedsConfiguration,
@@ -1318,13 +1343,21 @@ export function createPluginApi(options: {
     get sdk(): PluginBbSdk {
       assertLive();
       const sdk = getSdk();
-      if (!sdk) {
+      const loopbackBaseUrl = getLoopbackBaseUrl();
+      if (!sdk || loopbackBaseUrl === undefined) {
         throw new Error(
           "bb.sdk is not available until the server is listening — " +
             "use it inside handlers, services, or timers, not at factory load time",
         );
       }
-      wrappedSdk ??= wrapSdkForPlugin(sdk, pluginId);
+      wrappedSdk ??= wrapSdkForPlugin(
+        sdk,
+        pluginId,
+        createPluginRpcCallerSdk({
+          baseUrl: loopbackBaseUrl,
+          token: rpcCaller.token,
+        }),
+      );
       return wrappedSdk;
     },
     onDispose(hook) {
@@ -1411,6 +1444,7 @@ export function createPluginApi(options: {
     },
     invalidate() {
       invalidated = true;
+      rpcCaller.revoke();
     },
   };
 }

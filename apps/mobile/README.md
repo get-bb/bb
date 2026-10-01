@@ -1,7 +1,7 @@
 # @bb/mobile
 
 Native iOS/Android client for bb (Expo SDK 57, React Native 0.86, Expo
-Router, NativeWind v5). Plan and decisions: `plans/bb-mobile-expo.md`.
+Router, NativeWind v5).
 
 Status: a native shell around the web interface (#2515). `app/webview.tsx`
 loads the active server's web app in `react-native-webview` and talks to it
@@ -118,6 +118,105 @@ APIs; keep RN-dependent code out of `src/lib/**` except `src/lib/native`.
 
 ## Prerequisites (macOS)
 
+For Android development, install Android Studio's SDK, a current Android SDK
+platform and build tools, and Java 17. Set `ANDROID_HOME` to the SDK directory
+(`$HOME/Library/Android/sdk` on macOS) and add its `platform-tools` and `emulator`
+directories to PATH. Start an emulator or attach an Android phone with USB
+debugging enabled.
+
+### Android local APK and verification
+
+```bash
+pnpm exec turbo run build:android:local --filter=@bb/mobile
+adb install -r apps/mobile/build-output/bb-android-local.apk
+```
+
+This builds an ARM64 APK with an embedded Release JS bundle and the generated
+Android debug signing key. It runs without Metro, Firebase, EAS, or production
+signing credentials. It is for local testing, not Play distribution. Uninstall
+it before installing an app signed with another key (which removes local app
+data). For an Intel emulator, append `-- x86_64` to the Turbo command.
+
+Run the mobile backend described below, then `adb reverse tcp:41999 tcp:41999`
+so the Android app can reach it at `http://127.0.0.1:41999`. Keep the reverse
+mapping active during tests. Android does not share the Mac loopback directly.
+
+Run `pnpm exec turbo run e2e:android --filter=@bb/mobile` with only the intended
+Android emulator/device connected. The smoke flow clears this app's local data,
+pairs the fixture, sends a message, checks Android back navigation, relaunches,
+and opens native device settings. Use a normal embedded build, not
+`EXPO_PUBLIC_BB_E2E=1`, so the relaunch step can verify saved profiles.
+
+`e2e/android/keyboard.yaml` uses the same backend and checks repeated keyboard
+opening, Back dismissal, draft retention, and sending after dismissal. Run it
+with `maestro test apps/mobile/e2e/android/keyboard.yaml` from the repo root.
+It clears this app's local data, like the main smoke flow.
+
+`plugins/with-selection-accent.js` sets the Android theme accent used by
+WebView selection handles: blue in light mode and pale blue in dark mode.
+The single insertion handle is transparent; the caret and two range-selection
+handles remain visible. This applies to Android native text fields too and is
+separate from the web app's CSS selection highlight.
+The Expo prebuild applies it to both framework and AppCompat theme attributes.
+
+The `react-native-webview` patch zeroes the Android IME inset before WebView
+receives it. `WebViewKeyboardFrame` already resizes the native container for
+the keyboard; forwarding that inset lets newer WebViews shrink the visual
+viewport a second time during opening. Keep the native keyboard frame around
+WebViews when using this patch. System bar and display-cutout insets remain
+unchanged. Recheck this patch when upgrading WebView or changing keyboard
+ownership; see [Android's inset handling guidance](https://developer.android.com/develop/ui/views/layout/webapps/understand-window-insets).
+
+`e2e/android/connect.yaml` additionally needs the local TLS connect stub started
+with `BB_MOBILE_E2E_COOKIE_DOMAIN=stub.localhost`, a
+trusted fixture CA and DNS for `stub.localhost`/`other.localhost` on the test
+emulator, and `adb reverse tcp:42998 tcp:42998`. It resets the stub and checks
+invalid codes, pairing, WebView cookie authentication, relaunch and session
+expiry recovery. Chromium rejects the fixture's default `.localhost` cookie
+domain; the host-specific override tests one server, not account-wide cookie
+sharing across servers. Do not change release TLS validation to run this fixture.
+
+The Hugeicons React Native patch restores missing SVG ellipse/polygon support
+(the globe otherwise renders as a circle with a minus sign).
+
+The cookie-library pnpm patch replaces its obsolete JCenter repository and
+declares its Android namespace for current Gradle. If adding/changing a native
+dependency leaves stale pnpm paths in Android autolinking, regenerate the
+ignored native project before rebuilding.
+
+The `react-native-screens` patch skips header updates for detached Android
+screens, matching the fix proposed in upstream
+[PR #4498](https://github.com/software-mansion/react-native-screens/pull/4498).
+It addresses a release-build crash reproduced immediately after pairing on
+Android 16. Recheck and remove it when upgrading to a version with the fix.
+
+### Android production setup
+
+The manual `Mobile Android (EAS)` workflow builds preview APKs or production
+AABs. It needs the existing `EXPO_TOKEN` and an Android signing key configured
+through `pnpm exec eas credentials -p android` in `apps/mobile`. Submission is
+opt-in and uploads a draft to the internal Play track; it does not release to
+the public. The first Play upload must be completed manually.
+
+Firebase is optional for builds. Place the Android Firebase config in the
+gitignored `apps/mobile/google-services.json`, or set `GOOGLE_SERVICES_JSON`
+to its absolute path. For EAS, create a file environment variable with that
+name in each build environment used (preview/production). `app.config.js`
+loads the file when present. Upload the FCM V1 service-account credential to
+EAS separately, then rebuild to test push on a device.
+
+For Play uploads, add the GitHub secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+Local EAS Submit reads the gitignored `google-play-service-account.json` in
+`apps/mobile`. Register the **Play app-signing certificate**, not only the
+upload certificate, in `ASSETLINKS_SHA256_FINGERPRINTS` on the apex and connect
+gate. Verify real HTTPS app links after installing the Play-signed build.
+The native `bb://` scheme works without those certificates.
+
+Pending credentials do not establish push delivery or verified HTTPS app-link
+coverage. Test those separately once Firebase/signing are configured.
+
+### iOS prerequisites
+
 - Xcode 26.2 with an iOS 26 simulator runtime (`xcodebuild -downloadPlatform iOS`).
 - CocoaPods (`brew install cocoapods`), `export LANG=en_US.UTF-8`.
 - For Maestro e2e: `brew install --cask temurin@17` or `brew install openjdk@17`
@@ -206,6 +305,15 @@ as the first argument drives a dev client through Metro instead.
 
 ## CI
 
+- **Android emulator smoke** (`mobile-android-e2e.yml`) runs on PRs labeled
+  `mobile-e2e`, on manual dispatch, and nightly. It builds a debug-key-signed
+  Release APK for an Android 16 x86_64 emulator and runs the existing smoke
+  flow: direct pairing, send/provider reply, Android Back, saved connection
+  after relaunch, and native settings. It uses the isolated backend and needs
+  no Firebase, EAS, or Play credentials. The `mobile-e2e-android` artifact
+  contains screenshots, JUnit results, Maestro output, logcat, and backend logs.
+  Keyboard animation, push delivery, and bb connect are outside this basic job.
+
 - Typecheck, lint, and unit tests run on Linux in the regular `CI` workflow
   (`pnpm exec turbo run build typecheck lint` in `Checks`, the `packages`
   test shard for `vitest`), like every workspace package.
@@ -226,10 +334,7 @@ as the first argument drives a dev client through Metro instead.
 
 ## bb connect (Phase 5)
 
-- The pairing surfaces on the bb side (Settings → Remote access → Add mobile
-  device, `bb connect machine-code`) sit behind the `mobileApp` experiment
-  while the app is in early access: turn it on in Settings → Experiments or
-  with `bb settings experiment mobileApp true` before you mint a code.
+- Pair through Settings → Mobile → Add mobile device or `bb connect machine-code`. No experiment is required.
 - Enrollment (`src/screens/connect`, `src/data/connect`, route `/connect`):
   "Add server" offers "Connect with bb connect" above the Direct URL form.
   The screen scans the pairing QR (`expo-camera`; payload = the connect
@@ -240,7 +345,13 @@ as the first argument drives a dev client through Metro instead.
   self-hosted apex; the apex defaults to `deriveConnectBaseUrl(serverUrl)`
   or `https://getbb.app` (`resolveEnrollmentTarget`). `redeemEnrollment`
   calls `redeemMachineCredential` (`POST <apex>/api/connect/redeem-machine`)
-  and saves `{mode:"connect", serverUrl, handle, credential(bbcm_…), label}`
+  with the phone’s device name (for example, `Pixel 9 Pro`). The account
+  service stores it on the machine so the dashboard shows a recognizable name.
+  The request accepts an optional `deviceName` string, trimmed and limited to
+  128 characters; older clients may omit it. Existing unnamed devices are not
+  renamed automatically. Both the account service update and a new mobile build
+  are needed for names to appear on new pairings.
+  Enrollment saves `{mode:"connect", serverUrl, handle, credential(bbcm_…), label}`
   in SecureStore, then activates it: the connector mints the desktop-session
   cookie and opens realtime (the enrolled screen shows that status live).
   Errors map to copy per wire code (`describeEnrollmentError`: invalid /
@@ -249,8 +360,8 @@ as the first argument drives a dev client through Metro instead.
 - Account servers: the machine credential is account-scoped (the apex stores
   it against the user, `apps/web/src/server/api.ts` `redeemMachineCode`; the
   gate checks it against the label's owner), and the desktop-session cookie
-  is a `.getbb.app` cookie carrying only the user id, so one enrollment
-  covers every server the account owns — the same as the desktop app's
+  is a `.getbb.app` cookie carrying the user id and the minting credential, so
+  one enrollment covers every server the account owns — the same as the desktop app's
   Server menu. After pairing, "Servers on this account"
   (`GET <serverUrl>/api/connect/servers` with the credential,
   `listAccountServers`) adds any other server as a profile in one tap with
@@ -258,12 +369,25 @@ as the first argument drives a dev client through Metro instead.
 - Session: `src/lib/session` mints `POST <serverUrl>/api/connect/desktop-session`
   with the credential, installs the cookie in both native jars (`Secure`
   follows the server URL's scheme so a plain-http stub gate works), renews
-  five minutes before expiry and on AppState active. The connector
+  five minutes before expiry and on AppState active. Each minted session
+  (server URL, pairing credential and the full cookie, value included) is kept
+  per profile in SecureStore (`bb.connectSession.<profileId>`); a cold start
+  whose record matches the profile's server URL and credential and is more
+  than five minutes from expiry reinstalls that cookie into both jars instead
+  of minting, so the page loads
+  without a round trip to the gate. Re-pairing with a new credential mints a
+  fresh session. Older cache records without a credential are ignored.
+  A refused mint and Clear website data clear the record. The cookie lasts seven
+  days; the gate re-issues it once a day on ordinary responses and rejects it
+  within about 20 seconds of the machine being revoked. The connector
   (`src/lib/connection`) re-checks the session on any 401/403 (an API call
   or the `/ws` upgrade — React Native reports the refused upgrade as the
   close reason "Received bad response code from server: 401.") and on
   repeated connection failures (throttled): a fresh cookie reconnects the
   socket at once; a refused re-mint flips the profile to `auth-required`.
+  Installing a fresh session reloads a WebView showing a 401/403 page, even
+  before the previous cookie expires; routine renewal leaves a healthy page
+  alone.
   Queries that raced the first mint (or a re-mint) and hit the gate's 401
   page are fetched again once the cookie lands
   (`refetchQueriesRejectedBeforeSession`); a 401 within two seconds of a
@@ -474,9 +598,10 @@ group, App Store Connect needs all of this:
   path works for a reviewer: a bb server's API is unauthenticated and runs
   commands, so it cannot be on the internet, and connect pairing codes are
   single-use and expire in ten minutes. Give them the **demo server** instead:
-  `apps/demo-server` is a Cloudflare Worker that answers the launch-path API
-  from fixed data, runs nothing, and isolates each client address. Deploy it
-  with `pnpm --filter @bb/demo-server deploy`, and rehearse the review notes
+  `apps/demo-server` is a Cloudflare Worker that serves the web app shell, sidebar plugin frontends, and API
+  from fixed data, runs nothing, and isolates each client address. Build it
+  with `pnpm exec turbo run build --filter=@bb/demo-server`, then deploy it
+  with `pnpm --filter @bb/demo-server exec wrangler deploy`, and rehearse the review notes
   below before every submission. Disclose it in the notes: a disclosed demo
   mode is sanctioned by guideline 2.1.
 
@@ -490,13 +615,19 @@ you. It serves sample conversations and scripted replies; it does not run a
 real coding agent.
 
 1. Open the app. It shows "Connect to a bb server".
-2. Under "Direct URL", in "Server URL", enter: https://<DEMO-HOST>
+2. In "Server URL", enter: https://bb-demo-server.sawyer-7bb.workers.dev
 3. Tap "Connect".
 4. The app shows a list of conversations. Open any of them to read it.
-5. Type a message and send it. The agent replies after a moment.
+5. Browse the sample conversations. No credentials or pairing code are needed.
 
 Write to <EMAIL> if the server does not respond.
 ```
+
+The same demo URL and connection steps apply to Google Play app access
+instructions. No sign-in or pairing code is needed. See
+[the demo server README](../demo-server/README.md) for build, local verification,
+and deployment steps. Verify the deployed shell with the actual store build
+before submitting either platform.
 
 Rehearse it before submitting: hand a colleague a phone that has never run bb,
 give them only these notes, and check that they reach a thread.
@@ -509,6 +640,9 @@ Beta App Review and another build of the same version usually does not.
 
 - Server profiles: `expo-secure-store`, one key per profile
   (`bb.profile.<id>`) plus `bb.profiles.index`.
+- Connect sessions: `expo-secure-store`, one key per profile
+  (`bb.connectSession.<profileId>`) holding the last minted desktop-session
+  cookie and its server URL.
 - Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`): MMKV
   store `bb.preferences`, one shared instance from
   `src/lib/native/preferences-storage.ts`. Push state shares it:
@@ -548,3 +682,18 @@ palette, run `pnpm --filter @bb/mobile theme:generate` and commit the result;
 - Maestro on iOS: `back` is not a thing; tap `id: BackButton`. The dev
   client's floating gear can sit over the header's right icons on larger
   simulators.
+
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
+
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.

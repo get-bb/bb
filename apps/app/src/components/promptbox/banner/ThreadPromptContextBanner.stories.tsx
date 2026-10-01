@@ -423,6 +423,8 @@ function buildPullRequestFixture(
     baseRefName: "main",
     headRefName: "bb/pr-context-banner",
     updatedAt: "2026-06-16T12:30:00Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "failing",
       totalCount: 3,

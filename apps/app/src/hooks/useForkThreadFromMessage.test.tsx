@@ -91,7 +91,7 @@ describe("useForkThreadFromMessage", () => {
     const { result } = renderHook(
       () =>
         useForkThreadFromMessage({
-          sourceThread: makeThread(),
+          sourceThread: makeThread({ sectionId: "sec_managers", pinnedAt: 1 }),
         }),
       { wrapper: Wrapper },
     );
@@ -105,6 +105,7 @@ describe("useForkThreadFromMessage", () => {
       state: expect.objectContaining({
         focusPrompt: true,
         reuseEnvironmentId: "env_source",
+        placement: { sectionId: "sec_managers", pinned: true },
       }),
     });
 

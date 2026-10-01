@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Label } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
@@ -38,6 +38,9 @@ import {
 import { editedTasks, matchesFilters } from "./optimistic.js";
 import { useListTaskEdits } from "./use-task-edits.js";
 import { TaskRow } from "./row.js";
+import { rowWindows, useRowWindowViewport } from "./row-window.js";
+
+const NO_LABELS: readonly Label[] = [];
 
 interface ListViewProps {
   projectId: string | null;
@@ -67,6 +70,10 @@ function LoadingRows() {
 
 export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const navigation = useTasksNavigation();
+  const openTask = useCallback(
+    (taskKey: string) => navigation.go({ kind: "task", taskKey }),
+    [navigation],
+  );
   const projects = useProjects();
   const { toasts, push, dismiss } = useDetailToasts();
   const preferenceScope = listPreferenceScope(projectId, activeOnly);
@@ -117,7 +124,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     priorities: filters.priorities,
     labelIds,
   });
-  const meta = useTaskListMeta(tasksQuery.data);
+  const meta = useTaskListMeta(projectId);
   const edits = useListTaskEdits(tasksQuery.data, (message) => push(message));
 
   const labelsById = useMemo(
@@ -188,6 +195,15 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     revision: tasksQuery.data?.length ?? 0,
   });
 
+  const viewport = useRowWindowViewport(scrollRef, groups);
+  const ranges = rowWindows({
+    counts: groups.map((group) => group.tasks.length),
+    headerHeight: viewport.headerHeight,
+    rowHeight: viewport.rowHeight,
+    scrollTop: viewport.scrollTop,
+    viewportHeight: viewport.height,
+  });
+
   let body: React.ReactNode;
   if (
     routeScopeChanged ||
@@ -245,34 +261,45 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       );
     }
   } else {
-    body = groups.map((group) => (
-      <section key={group.status}>
-        <div
-          data-status-group-header={group.status}
-          className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
-        >
-          <StatusIcon status={group.status} />
-          {STATUS_LABELS[group.status]}
-          <span className="text-xs font-normal tabular-nums text-subtle-foreground">
-            {group.tasks.length}
-          </span>
-        </div>
-        {group.tasks.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            meta={meta.data?.get(task.id)}
-            project={projectsById.get(task.projectId)}
-            showProject={showProject}
-            labelsById={labelsById}
-            projectLabels={labelsByProject.get(task.projectId) ?? []}
-            onEdit={edits.edit}
-            onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
-            pending={edits.pending.has(task.id)}
-          />
-        ))}
-      </section>
-    ));
+    body = groups.map((group, groupIndex) => {
+      const [start, end] = ranges[groupIndex] ?? [0, group.tasks.length];
+      const hiddenAbove = start * viewport.rowHeight;
+      const hiddenBelow = (group.tasks.length - end) * viewport.rowHeight;
+      return (
+        <section key={group.status}>
+          <div
+            data-status-group-header={group.status}
+            className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
+          >
+            <StatusIcon status={group.status} />
+            {STATUS_LABELS[group.status]}
+            <span className="text-xs font-normal tabular-nums text-subtle-foreground">
+              {group.tasks.length}
+            </span>
+          </div>
+          {hiddenAbove > 0 ? (
+            <div aria-hidden style={{ height: hiddenAbove }} />
+          ) : null}
+          {group.tasks.slice(start, end).map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              meta={meta.data?.get(task.id)}
+              project={projectsById.get(task.projectId)}
+              showProject={showProject}
+              labelsById={labelsById}
+              projectLabels={labelsByProject.get(task.projectId) ?? NO_LABELS}
+              onEdit={edits.edit}
+              onOpen={openTask}
+              pending={edits.pending.has(task.id)}
+            />
+          ))}
+          {hiddenBelow > 0 ? (
+            <div aria-hidden style={{ height: hiddenBelow }} />
+          ) : null}
+        </section>
+      );
+    });
   }
 
   return (

@@ -1,13 +1,24 @@
 // @vitest-environment jsdom
 
+import { LazyPluginThreadChat } from "./LazyPluginThreadChat";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  beforeAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginSlotMount } from "./PluginSlotMount";
+
+beforeAll(() => LazyPluginThreadChat.preload());
 
 const mocks = vi.hoisted(() => ({
   embeddedChatProps: [] as Array<Record<string, unknown>>,

@@ -102,6 +102,7 @@ import { createKeyedLock } from "../lib/async-deduper.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
 import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 import { buildCachedPluginServer } from "./plugin-server-cache.js";
+import { createPluginRpcCallerRegistry } from "./plugin-rpc-caller.js";
 
 const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
 const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
@@ -384,7 +385,7 @@ export interface SafeModeActivationRefusalArgs {
 const PLUGIN_SAFE_MODE_DETAIL = "safe mode is on";
 
 export interface PluginLoadHold {
-  source: string;
+  sources: readonly string[];
   detail: string;
   isActive(): Promise<boolean>;
 }
@@ -446,6 +447,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
+  const rpcCallers = createPluginRpcCallerRegistry();
   let loadHold: PluginLoadHold | null = null;
 
   function publishStatus(
@@ -1513,7 +1515,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   async function heldDetail(row: InstalledPluginRow): Promise<string | null> {
     const hold = loadHold;
-    if (hold === null || !row.enabled || row.source !== hold.source) {
+    if (hold === null || !row.enabled || !hold.sources.includes(row.source)) {
       return null;
     }
     return (await hold.isActive()) ? hold.detail : null;
@@ -1666,6 +1668,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       },
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
+      rpcCaller: rpcCallers.issue(row.id),
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
@@ -1832,16 +1835,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         });
         mod = (await jiti.import(serverEntry.path)) as { default?: unknown };
       } else if (serverEntry.loader === "cjs") {
+        const filename = runtimeRequire.resolve(serverEntry.path);
         try {
-          const exported: unknown = runtimeRequire(serverEntry.path);
+          const exported: unknown = runtimeRequire(filename);
           mod =
             typeof exported === "function"
               ? { default: exported }
               : (exported as { default?: unknown });
         } finally {
-          const entry = runtimeRequire.cache[serverEntry.path];
+          const entry = runtimeRequire.cache[filename];
           if (entry !== undefined) detachCommonJsModule(entry);
-          delete runtimeRequire.cache[serverEntry.path];
+          delete runtimeRequire.cache[filename];
         }
       } else {
         const mutation = setMutableRootVersion(
@@ -2088,6 +2092,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     appBundles,
     hostArtifacts,
     bindSdk,
+    resolveRpcCaller: rpcCallers.resolve,
     buildThreadDto,
     builtinSourceWatchers,
     checkEngineRange,

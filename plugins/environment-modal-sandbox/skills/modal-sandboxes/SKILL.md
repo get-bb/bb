@@ -24,7 +24,9 @@ description: Connect Modal and create reusable cloud machines with the bundled s
    optional configured names as `{"preset":"Large","image":"Node 22"}`.
 
 Settings edits the Default image's Dockerfile, adds named Dockerfile or Modal
-image-ID entries, and adds named CPU/memory presets. One or zero choices use the
+image-ID entries, and adds named CPU/memory presets. Without a preset, new
+machines reserve 1 CPU and 2 GiB; Modal lets a sandbox burst above its
+reservation and bills whichever is higher. One or zero choices use the
 default without adding a composer chip; multiple choices share one chip. Agents
 can run
 `bb modal image show > Dockerfile`, edit the file, then run `bb modal image set

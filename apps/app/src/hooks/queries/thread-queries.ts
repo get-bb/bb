@@ -9,10 +9,7 @@ import {
 import { useCallback, useMemo } from "react";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
-import type {
-  PendingInteraction,
-  ThreadListEntry,
-} from "@bb/domain";
+import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,

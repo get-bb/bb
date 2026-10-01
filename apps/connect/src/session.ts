@@ -14,17 +14,19 @@ import {
 
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
+const MACHINE_CREDENTIAL_TTL_MS = 20_000;
 const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
   1000;
 
-interface CacheEntry<T> {
+export interface CacheEntry<T> {
   value: Promise<T>;
   expires: number;
 }
 const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
 
 interface CachedSession {
+  sessionId: string;
   userId: string;
   expiresAt: number;
 }
@@ -35,7 +37,7 @@ export function invalidateSessionCookie(cookieValue: string): void {
   sessionCache.delete(safeDecode(cookieValue));
 }
 
-function cacheGet<T>(
+export function cacheGet<T>(
   map: Map<string, CacheEntry<T>>,
   key: string,
   now: number,
@@ -46,7 +48,7 @@ function cacheGet<T>(
   return undefined;
 }
 
-function cacheStore<T>(
+export function cacheStore<T>(
   map: Map<string, CacheEntry<T>>,
   key: string,
   value: Promise<T>,
@@ -177,6 +179,7 @@ async function lookupLabel(
 }
 
 export interface VerifiedSessionCookie {
+  sessionId: string;
   userId: string;
   needsRefresh: boolean;
 }
@@ -186,6 +189,7 @@ function verifiedSession(
   now: number,
 ): VerifiedSessionCookie {
   return {
+    sessionId: session.sessionId,
     userId: session.userId,
     needsRefresh: session.expiresAt <= now + SESSION_REFRESH_BEFORE_EXPIRY_MS,
   };
@@ -247,23 +251,21 @@ async function lookupCachedSession(
   if (!constantTimeEqual(providedSig, expectedSig)) return null;
 
   const row = await db
-    .select({ expiresAt: session.expiresAt, userId: session.userId })
+    .select({
+      expiresAt: session.expiresAt,
+      sessionId: session.id,
+      userId: session.userId,
+    })
     .from(session)
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date(now))))
     .get();
   return row
-    ? { userId: row.userId, expiresAt: row.expiresAt.getTime() }
+    ? {
+        sessionId: row.sessionId,
+        userId: row.userId,
+        expiresAt: row.expiresAt.getTime(),
+      }
     : null;
-}
-
-export async function verifySessionCookie(
-  cookieValue: string,
-  secret: string,
-  db: ConnectDb,
-): Promise<string | null> {
-  return (
-    (await verifySessionCookieDetails(cookieValue, secret, db))?.userId ?? null
-  );
 }
 
 const machineLastSeenWrites = new Map<string, number>();
@@ -276,12 +278,37 @@ export async function verifyMachineCredential(
   return (await verifyMachineCredentialDetails(credential, db))?.userId ?? null;
 }
 
+interface VerifiedMachine {
+  machineId: string;
+  userId: string;
+}
+
+const machineCredentialCache = new Map<
+  string,
+  CacheEntry<VerifiedMachine | null>
+>();
+
 export async function verifyMachineCredentialDetails(
   credential: string,
   db: ConnectDb,
-): Promise<{ machineId: string; userId: string } | null> {
+): Promise<VerifiedMachine | null> {
   if (!credential) return null;
   const hash = await sha256Hex(credential);
+  const now = Date.now();
+  const cached = cacheGet(machineCredentialCache, hash, now);
+  if (cached !== undefined) return cached;
+  return cacheStore(
+    machineCredentialCache,
+    hash,
+    lookupMachineCredential(hash, db),
+    now + MACHINE_CREDENTIAL_TTL_MS,
+  );
+}
+
+async function lookupMachineCredential(
+  hash: string,
+  db: ConnectDb,
+): Promise<VerifiedMachine | null> {
   const row = await db
     .select({ machineId: machine.id, userId: machine.userId })
     .from(machine)

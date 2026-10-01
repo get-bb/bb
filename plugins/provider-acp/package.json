@@ -22,7 +22,34 @@
       }
     },
     "server": "./server.ts",
-    "host": "./src/host.ts"
+    "host": "./src/host.ts",
+    "experimental_providers": [
+      {
+        "kind": "agent",
+        "id": "acp-cursor",
+        "displayName": "Cursor"
+      },
+      {
+        "kind": "agent",
+        "id": "acp-opencode",
+        "displayName": "OpenCode"
+      },
+      {
+        "kind": "agent",
+        "id": "acp-omp",
+        "displayName": "oh-my-pi"
+      },
+      {
+        "kind": "agent",
+        "id": "acp-grok",
+        "displayName": "Grok"
+      },
+      {
+        "kind": "agent",
+        "id": "acp-hermes-agent",
+        "displayName": "Hermes"
+      }
+    ]
   },
   "keywords": [
     "bb-plugin"

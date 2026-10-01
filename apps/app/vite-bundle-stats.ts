@@ -12,6 +12,7 @@ interface BundleBootChunk {
 }
 
 export interface BundleChunk extends BundleBootChunk {
+  appModules: string[];
   imports: string[];
   facade: string | null;
 }
@@ -29,6 +30,7 @@ export interface BundleStats {
 }
 
 const MEASURED_ROUTE_CLOSURES: Record<string, string> = {
+  PluginFrontend: "/src/lib/plugin-frontend.ts",
   SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx",
 };
 
@@ -101,6 +103,10 @@ export function computeBundleStats(
     allChunks.push({
       ...describeChunk(chunk),
       imports: [...chunk.imports].sort(),
+      appModules: chunk.moduleIds
+        .map((id) => relative(appDir, id).split(sep).join("/"))
+        .filter((id) => id.startsWith("src/"))
+        .sort(),
       facade:
         chunk.facadeModuleId === null
           ? null
@@ -112,12 +118,18 @@ export function computeBundleStats(
   for (const [name, sourceSuffix] of Object.entries(measuredRouteClosures)) {
     const routeChunk = chunks.find(
       (chunk) =>
-        chunk.facadeModuleId !== null &&
-        chunk.facadeModuleId.endsWith(sourceSuffix),
+        chunk.facadeModuleId?.endsWith(sourceSuffix) ||
+        chunk.moduleIds.some((id) => id.endsWith(sourceSuffix)),
     );
     if (routeChunk === undefined) {
       warn(
-        `no chunk has facadeModuleId ending in ${sourceSuffix}; the ${name} route closure is not recorded`,
+        `no chunk contains ${sourceSuffix}; the ${name} route closure is not recorded`,
+      );
+      continue;
+    }
+    if (bootFileNames.has(routeChunk.fileName)) {
+      warn(
+        `${name} is in the boot payload (${routeChunk.fileName}); its lazy route closure is not recorded`,
       );
       continue;
     }

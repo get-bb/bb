@@ -1138,10 +1138,10 @@ describe("bb server allow-connect", () => {
       "imported server",
     );
     expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Stop the original bb server first. Two servers holding the same bb connect credential take each other's tunnel.",
+      "Stop the original bb server first. Two servers holding the same bb account credential take each other's tunnel and spend the same hosted quota.",
     ]);
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      `Removed the bb connect hold from ${dataDir}. bb connect starts the next time this server starts; restart bb if it's already running.`,
+      `Removed the bb connect hold from ${dataDir}. bb account and bb connect start the next time this server starts; restart bb if it's already running.`,
     ]);
   });
 

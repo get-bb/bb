@@ -309,20 +309,7 @@ async function openCustomizeFromContextMenu(
 }
 
 beforeAll(async () => {
-  render(
-    <SidebarVisibilityCustomize
-      items={[]}
-      listLabel="Preloaded editor"
-      onDone={() => {}}
-      onReorder={() => {}}
-      onVisibleChange={() => {}}
-      title="Preloaded editor"
-      variant="card"
-      visibleIds={[]}
-    />,
-  );
-  await screen.findByRole("list", { name: "Preloaded editor" });
-  cleanup();
+  await SidebarVisibilityCustomize.preload();
 });
 
 beforeEach(async () => {

@@ -112,7 +112,15 @@ decision. `provider/installation/status` returns that state plus a display-only
 command. A status request may include a typed operation requirement such as
 `thread_rewind`; the bridge owns the minimum provider version needed for that
 operation and reports it through the ordinary installation status. When the
-host daemon gates a thread start or rewind on that status, it remembers the
+status request includes `checkUpdates: false`, Codex, Claude Code, and Pi only probe
+the local executable and version, without npm registry, global-package, or
+doctor discovery. `latestVersion` and `npmGlobalPackageVersion` are unknown
+(`null`); `versionUnsupported` still identifies a known unsupported local version.
+Omitting `checkUpdates` defaults to full discovery for Settings and install/update
+actions. The daemon sends `false` for startup compatibility gates. This optional
+bridge-only field preserves older bridges' passthrough request parsing; older
+providers can still perform a full probe. Server/daemon wire fields are unchanged.
+When the host daemon gates a thread start or rewind on that status, it remembers the
 answer per provider, bridge launch, and requirement for a few minutes rather
 than probing before every thread, and forgets it after an install or update
 it ran itself or a shell-environment change. An answer with

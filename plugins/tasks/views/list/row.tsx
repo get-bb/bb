@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type {
   Label,
   Project,
@@ -100,11 +100,11 @@ interface TaskRowProps {
   labelsById: Map<string, Label>;
   projectLabels: readonly Label[];
   onEdit: EditFn;
-  onOpen: () => void;
+  onOpen: (taskKey: string) => void;
   pending: boolean;
 }
 
-export function TaskRow({
+export const TaskRow = memo(function TaskRow({
   task,
   meta,
   project,
@@ -131,7 +131,7 @@ export function TaskRow({
         <button
           type="button"
           aria-label={`Open ${task.key}: ${task.title}`}
-          onClick={onOpen}
+          onClick={() => onOpen(task.key)}
           onKeyDown={(event) => {
             if (!isBareKey(event)) return;
             const key = event.key.toLowerCase();
@@ -186,4 +186,4 @@ export function TaskRow({
       </div>
     </TaskContextMenu>
   );
-}
+});

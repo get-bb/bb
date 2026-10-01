@@ -52,6 +52,11 @@ import { applyPluginCss, resetPluginCssForTest } from "@/lib/plugin-css";
 import { ComposerActionsSlot } from "./PluginComposerActions";
 import { PluginContext } from "./plugin-context";
 import {
+  clearComposerEditorBridge,
+  publishComposerEditorBridge,
+  type ComposerEditorBridge,
+} from "@/lib/composer-editor-registry";
+import {
   PluginComposerHostProvider,
   PluginComposerHostScopeProvider,
   type PluginComposerHost,
@@ -65,6 +70,7 @@ import { renderNavigationHarness } from "@/test/navigation-harness";
 import {
   getComposerInputLock,
   useComposer,
+  useComposers,
   useComposerView,
 } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
@@ -261,8 +267,7 @@ describe("useComposer", () => {
         <div>
           <div>scope: {composer.scope.kind}</div>
           <div data-testid={`${label}-scope-project`}>
-            {composer.scope.kind === "new-thread" ||
-            composer.scope.kind === "side-chat"
+            {composer.scope.kind === "new-thread"
               ? (composer.scope.projectId ?? "null")
               : "none"}
           </div>
@@ -673,97 +678,6 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("dismiss-queued-edit"));
     expect(screen.getByTestId("sibling-scope").textContent).toBe("thread");
-  });
-
-  it("binds side-chat customizations and hooks to the visible side-chat draft", () => {
-    registerComposerProbe("side");
-
-    function SideChatComposerHarness() {
-      const [childThreadId, setChildThreadId] = useState<string | null>(null);
-      const [draft, setDraft] = useState<PromptDraftState>({
-        text: "side-chat draft",
-        mentions: [],
-        attachments: [
-          {
-            type: "localFile",
-            path: "uploads/side-spec.md",
-            name: "side-spec.md",
-            sizeBytes: 42,
-          },
-        ],
-      });
-      const draftRef = useRef(draft);
-      draftRef.current = draft;
-      const subscribeDraft = useComposerHostDraftNotifier(draft);
-      const host = useMemo<PluginComposerHost>(
-        () => ({
-          scope: {
-            kind: "side-chat",
-            projectId: "proj_side",
-            parentThreadId: "thr_parent",
-            tabId: "side-chat:one",
-            childThreadId,
-          },
-          textEffectKey: `side-chat:side-chat:one:${childThreadId ?? ""}`,
-          getCurrent: () => draftRef.current,
-          subscribeDraft,
-          setDraft,
-          focus: () => {},
-        }),
-        [childThreadId, subscribeDraft],
-      );
-
-      return (
-        <PluginComposerHostProvider value={host}>
-          <ComposerCustomizationMount />
-          <div data-testid="side-attachments">
-            {JSON.stringify(draft.attachments)}
-          </div>
-          <button type="button" onClick={() => setChildThreadId("thr_side")}>
-            create-side-child
-          </button>
-        </PluginComposerHostProvider>
-      );
-    }
-
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_parent"]}>
-        <SideChatComposerHarness />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText("scope: side-chat")).toBeDefined();
-    expect(
-      JSON.parse(screen.getByTestId("side-scope-details").textContent ?? "{}"),
-    ).toEqual({
-      kind: "side-chat",
-      projectId: "proj_side",
-      parentThreadId: "thr_parent",
-      tabId: "side-chat:one",
-      childThreadId: null,
-    });
-
-    fireEvent.click(screen.getByText("side-replace"));
-    expect(screen.getByTestId("side-composer-text").textContent).toBe(
-      "replacement",
-    );
-    expect(
-      JSON.parse(screen.getByTestId("side-attachments").textContent ?? "[]"),
-    ).toHaveLength(1);
-
-    fireEvent.click(screen.getByText("create-side-child"));
-    expect(
-      JSON.parse(screen.getByTestId("side-scope-details").textContent ?? "{}"),
-    ).toEqual({
-      kind: "side-chat",
-      projectId: "proj_side",
-      parentThreadId: "thr_parent",
-      tabId: "side-chat:one",
-      childThreadId: "thr_side",
-    });
-    expect(screen.getByTestId("side-composer-text").textContent).toBe(
-      "replacement",
-    );
   });
 
   it("targets the new-thread composer without leaking replacements to thread drafts", () => {
@@ -1292,6 +1206,28 @@ describe("useComposer", () => {
       );
     }
 
+    const readyEditor: ComposerEditorBridge = {
+      host: {
+        scope: { kind: "thread", threadId: "thr_submit" },
+        textEffectKey: "thread:thr_submit",
+        getCurrent: () => draft,
+        subscribeDraft: () => () => {},
+        setDraft: () => {},
+        focus: () => {},
+      },
+      pluginCustomizable: true,
+      state: {
+        layout: "expanded",
+        isRunning: false,
+        isSubmitting: false,
+        isSubmittingBlocked: false,
+        submittingBlockedReason: null,
+        isAttaching: false,
+        attachmentError: null,
+      },
+      insertAtCursor: () => true,
+    };
+    publishComposerEditorBridge("thread:thr_submit", readyEditor);
     const view = render(
       <MemoryRouter initialEntries={["/threads/thr_submit"]}>
         <Harness withSubmit />
@@ -1327,6 +1263,7 @@ describe("useComposer", () => {
       /cannot submit/,
     );
     expect(submit).toHaveBeenCalledTimes(2);
+    clearComposerEditorBridge("thread:thr_submit", readyEditor);
   });
 });
 
@@ -1337,10 +1274,15 @@ describe("useComposer().experimental_setSelection", () => {
   }
 
   function registerSelectionProbe(
-    onRender: (composer: PluginComposerApi) => void,
+    onRender: (
+      composer: PluginComposerApi,
+      listed: readonly PluginComposerApi[],
+    ) => void,
   ) {
     function SelectionProbe() {
-      onRender(useComposer());
+      const composer = useComposer();
+      const listed = useComposers();
+      onRender(composer, listed);
       return <div>selection probe</div>;
     }
     setPluginSlotRegistrations("demo", {
@@ -1390,6 +1332,74 @@ describe("useComposer().experimental_setSelection", () => {
       </PluginComposerHostProvider>
     );
   }
+
+  it("re-renders the same composer handle when its picker snapshot changes", async () => {
+    const listeners = new Set<() => void>();
+    let selection: ExperimentalComposerSelection = {
+      providerId: "codex",
+      model: "gpt-5",
+    };
+    const reads: Array<{
+      handle: PluginComposerApi;
+      selection: ExperimentalComposerSelection | null;
+      listedSelection: ExperimentalComposerSelection | null;
+    }> = [];
+    registerSelectionProbe((composer, listed) => {
+      reads.push({
+        handle: composer,
+        selection: composer.selection,
+        listedSelection: listed[0]?.selection ?? null,
+      });
+    });
+    const host: PluginComposerHost = {
+      scope: { kind: "thread", threadId: "thr_selection" },
+      textEffectKey: "thread:thr_selection",
+      getCurrent: () => emptyDraft,
+      subscribeDraft: () => () => {},
+      setDraft: () => {},
+      focus: () => {},
+      getSelection: () => selection,
+      subscribeSelection: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    const editor: ComposerEditorBridge = {
+      host,
+      pluginCustomizable: true,
+      state: {
+        layout: "expanded",
+        isRunning: false,
+        isSubmitting: false,
+        isSubmittingBlocked: false,
+        submittingBlockedReason: null,
+        isAttaching: false,
+        attachmentError: null,
+      },
+      insertAtCursor: () => true,
+    };
+    publishComposerEditorBridge("thread:thr_selection", editor);
+    const view = render(
+      <MemoryRouter initialEntries={["/threads/thr_selection"]}>
+        <Harness host={host} />
+      </MemoryRouter>,
+    );
+    expect(reads.at(-1)?.selection).toEqual({
+      providerId: "codex",
+      model: "gpt-5",
+    });
+    expect(reads.at(-1)?.listedSelection).toEqual(reads.at(-1)?.selection);
+    const handle = reads.at(-1)?.handle;
+    await act(async () => {
+      selection = { providerId: "claude-code", model: "claude-opus-5" };
+      for (const listener of listeners) listener();
+    });
+    expect(reads.at(-1)?.handle).toBe(handle);
+    expect(reads.at(-1)?.selection).toEqual(selection);
+    expect(reads.at(-1)?.listedSelection).toEqual(selection);
+    view.unmount();
+    clearComposerEditorBridge("thread:thr_selection", editor);
+  });
 
   it("routes to the composer host, validates the selection, and refuses where there are no pickers", async () => {
     const setSelection = vi.fn(
@@ -1455,13 +1465,6 @@ describe("useComposer().experimental_setSelection", () => {
         kind: "queued-message" as const,
         threadId: "thr_selection",
         queuedMessageId: "qmsg_1",
-      },
-      {
-        kind: "side-chat" as const,
-        projectId: "proj_1",
-        parentThreadId: "thr_selection",
-        tabId: "side-chat:one",
-        childThreadId: null,
       },
     ]) {
       const view = render(

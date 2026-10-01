@@ -82,6 +82,7 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
     requirement?: "thread_rewind";
+    checkUpdates?: boolean;
   }) => Promise<ProviderInstallationStatus>;
   providerInstallationRun: (args: {
     providerId: string;

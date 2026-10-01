@@ -133,6 +133,51 @@ afterEach(() => {
 });
 
 describe("TimelineWindowedItems", () => {
+  it("never mounts the full history while the parent scroll ref is pending", async () => {
+    const rendered = new Set<number>();
+    let root: HTMLElement | null = null;
+    Object.defineProperty(scrollElement, "clientHeight", { value: 96 });
+    Object.defineProperty(scrollElement, "offsetHeight", { value: 96 });
+    render(
+      <div
+        ref={() => {
+          root = scrollElement;
+        }}
+      >
+        <TimelineWindowedItems
+          estimateItemHeight={() => 32}
+          gap={0}
+          getScrollElement={() => root}
+          itemKeys={ITEM_KEYS}
+          measurements={new Map()}
+          renderItem={(index, state) => {
+            rendered.add(index);
+            return (
+              <div
+                key={ITEM_KEYS[index]}
+                ref={state.itemRef}
+                data-index={state.itemIndex}
+                style={state.itemStyle}
+                data-testid={`pending-${index}`}
+                data-timeline-windowed-realized="true"
+              />
+            );
+          }}
+        />
+      </div>,
+      { container: scrollElement },
+    );
+    await waitFor(() => expect(screen.getByTestId("pending-0")).toBeTruthy());
+    expect(rendered.size).toBeLessThan(50);
+    scrollElement.scrollTop = 1_600;
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    fireEvent.scroll(scrollElement);
+    await waitFor(() => expect(screen.getByTestId("pending-50")).toBeTruthy());
+    expect(screen.queryByTestId("pending-0")).toBeNull();
+  });
+
   it("captures exact heights before the scrollport becomes usable", () => {
     const measurements = new Map<string, number>();
 

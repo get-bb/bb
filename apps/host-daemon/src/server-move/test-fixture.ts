@@ -323,6 +323,7 @@ export interface FixtureArgs {
   env?: NodeJS.ProcessEnv;
   serverUrl?: string;
   autoUpdate?: boolean;
+  supervised?: boolean;
   hostDaemonPort?: number | null;
   installBbApp?: ServerMoveServiceOptions["installBbApp"];
   checkPortAvailable?: ServerMoveServiceOptions["checkPortAvailable"];
@@ -356,6 +357,7 @@ export async function createFixture(args: FixtureArgs = {}) {
     hostDaemonPort:
       args.hostDaemonPort === undefined ? 38_887 : args.hostDaemonPort,
     autoUpdate: args.autoUpdate ?? false,
+    supervised: args.supervised ?? false,
     env: args.env ?? { BB_SERVER_MOVE_SERVICE_MANAGER: "none" },
     platform: "linux",
     uid: 1000,

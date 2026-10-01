@@ -26,9 +26,8 @@ import {
 import {
   definePluginApp,
   useComposer,
-  useComposerView,
-  type ComposerView,
-  type PluginComposerScope,
+  type ComposerSendMenuItem,
+  type PluginComposerApi,
 } from "@get-bb/plugin-sdk/app";
 import {
   DEFAULT_SCHEDULE_PRESET_ID,
@@ -45,19 +44,6 @@ import {
   type ScheduleTimeParse,
 } from "./schedule-time.js";
 
-export function composerScopeKey(scope: PluginComposerScope): string {
-  switch (scope.kind) {
-    case "thread":
-      return `thread:${scope.threadId}`;
-    case "queued-message":
-      return `queued-message:${scope.queuedMessageId}`;
-    case "side-chat":
-      return `side-chat:${scope.tabId}`;
-    case "new-thread":
-      return `new-thread:${scope.projectId ?? ""}`;
-  }
-}
-
 const listeners = new Set<() => void>();
 let openScopeKey: string | null = null;
 
@@ -72,9 +58,9 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-export function openSendLater(view: ComposerView): boolean {
-  if (view.draft.isEmpty) return false;
-  openScopeKey = composerScopeKey(view.scope);
+export function openSendLater(composer: PluginComposerApi): boolean {
+  if (composer.isEmpty) return false;
+  openScopeKey = composer.key;
   notify();
   return true;
 }
@@ -123,9 +109,8 @@ function resolveScheduleOption(
 
 function SendLaterPicker() {
   const composer = useComposer();
-  const view = useComposerView();
-  const scopeKey = composerScopeKey(view.scope);
-  const isOpen = useSendLaterOpen(scopeKey);
+  const isEmpty = composer.isEmpty;
+  const isOpen = useSendLaterOpen(composer.key);
   const whenId = useId();
   const customDateId = useId();
   const customTimeId = useId();
@@ -151,8 +136,8 @@ function SendLaterPicker() {
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && view.draft.isEmpty) closeSendLater();
-  }, [isOpen, view.draft.isEmpty]);
+    if (isOpen && isEmpty) closeSendLater();
+  }, [isEmpty, isOpen]);
 
   async function schedule(at: number): Promise<void> {
     if (at <= Date.now()) {
@@ -162,7 +147,7 @@ function SendLaterPicker() {
     setBusy(true);
     setError(null);
     try {
-      await composer.experimental_submit({ sendAt: at });
+      await composer.submit({ sendAt: at });
       closeSendLater();
       toast.success(`Sending ${formatScheduleTime(at, Date.now())}`);
     } catch (scheduleError: unknown) {
@@ -196,7 +181,7 @@ function SendLaterPicker() {
         <DialogHeader>
           <DialogTitle>Send later</DialogTitle>
           <DialogDescription>
-            {view.scope.kind === "new-thread"
+            {composer.scope.kind === "new-thread"
               ? "Choose when this thread should start. It will use the model and environment selected in the composer."
               : "Choose when this message should send."}
           </DialogDescription>
@@ -313,26 +298,26 @@ function SendLaterPicker() {
   );
 }
 
+const sendLater: ComposerSendMenuItem = {
+  id: "send-later",
+  label: "Send later…",
+  icon: "Calendar",
+  description: "Schedule the current draft to send at a time you pick.",
+  disabled: (composer) => composer.isSubmittingBlocked,
+  run: ({ composer }) => {
+    if (!openSendLater(composer)) {
+      toast.error("Nothing to schedule", {
+        description: "Type a message first, then choose Send later.",
+      });
+    }
+  },
+};
+
 export default definePluginApp((app) => {
   app.composer.customize({
     id: "send-later",
     scopes: ["thread", "new-thread"],
-    plusMenu: [
-      {
-        id: "send-later",
-        label: "Send later…",
-        icon: "Calendar",
-        description: "Schedule the current draft to send at a time you pick.",
-        disabled: (view) => view.draft.isEmpty || view.run.isSubmitting,
-        run: ({ view }) => {
-          if (!openSendLater(view)) {
-            toast.error("Nothing to schedule", {
-              description: "Type a message first, then choose Send later.",
-            });
-          }
-        },
-      },
-    ],
+    sendMenu: [sendLater],
     banners: [{ id: "send-later", chrome: "bare", component: SendLaterPicker }],
   });
 });

@@ -17,11 +17,10 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useHostFilePreview } from "@/hooks/queries/host-file-preview-query";
 import {
+  buildEnvironmentFileContentUrl,
   buildProjectFileContentUrl,
-  buildRawFilesystemHtmlContentUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageRawContentUrl,
-  buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import type {
   EnvironmentFilePreviewSource,
@@ -38,7 +37,7 @@ import { useDiffFileContentsRequester } from "./git-diff/useDiffFileContentsRequ
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 import {
   buildMarkdownFileImageRouting,
-  buildMarkdownLeaseImageRouting,
+  buildMarkdownHostFileImageRouting,
 } from "@/components/ui/markdown-file-image-routing";
 import { getAbsoluteDirname } from "@/lib/absolute-file-path";
 
@@ -341,14 +340,8 @@ export function WorkspaceFilePreviewTabContent({
     { enabled: isPanelOpen },
   );
   const environmentRootPath = environmentQuery.data?.path ?? null;
-  const environmentProjectId = environmentQuery.data?.projectId;
   const resolvedMarkdownLinkRouting = useMemo(() => {
-    if (
-      source === null ||
-      environmentId === null ||
-      environmentId === undefined ||
-      (!threadId && environmentProjectId === undefined)
-    ) {
+    if (source === null || !environmentId) {
       return markdownLinkRouting;
     }
     return buildMarkdownFileImageRouting({
@@ -356,21 +349,12 @@ export function WorkspaceFilePreviewTabContent({
       rootPath: environmentRootPath,
       threadId: threadId ?? null,
       linkRouting: markdownLinkRouting,
-      resolveRelativeSrc: (path) => {
-        if (threadId && source.kind === "working-tree") {
-          return buildThreadWorktreeRawContentUrl(threadId, path);
-        }
-        return environmentProjectId === undefined
-          ? path
-          : buildProjectFileContentUrl(environmentProjectId, path, {
-              environmentId,
-            });
-      },
+      resolveRelativeSrc: (path) =>
+        buildEnvironmentFileContentUrl(environmentId, source, path),
     });
   }, [
     activePath,
     environmentId,
-    environmentProjectId,
     environmentRootPath,
     markdownLinkRouting,
     source,
@@ -383,8 +367,8 @@ export function WorkspaceFilePreviewTabContent({
       activePath={activePath}
       copyPath={copyPath}
       htmlPreviewUrl={
-        threadId && source?.kind === "working-tree"
-          ? buildThreadWorktreeRawContentUrl(threadId, activePath)
+        environmentId && source?.kind === "working-tree"
+          ? buildEnvironmentFileContentUrl(environmentId, source, activePath)
           : null
       }
       lineRange={lineRange}
@@ -423,13 +407,7 @@ export function ProjectFilePreviewTabContent({
       threadId,
       linkRouting: markdownLinkRouting,
       resolveRelativeSrc: (path) =>
-        buildProjectFileContentUrl(projectId, path, {
-          ...(environmentId !== null
-            ? { environmentId }
-            : hostId !== null
-              ? { hostId }
-              : {}),
-        }),
+        buildProjectFileContentUrl(projectId, path, { environmentId, hostId }),
     });
   }, [
     activePath,
@@ -490,7 +468,7 @@ export function HostFilePreviewTabContent({
       {...filePreviewQueryProps(hostFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}
-      htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
+      htmlPreviewUrl={buildThreadHostFileContentUrl(threadId, activePath)}
       lineRange={lineRange}
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
@@ -510,20 +488,19 @@ export function HostScopedFilePreviewTabContent({
   const hostFilePreviewQuery = useHostFilePreview(hostId, activePath, {
     enabled: isPanelOpen,
   });
-  const hostFilePreviewUrl = hostFilePreviewQuery.data?.url;
   const markdownLinkRouting = useMemo(() => {
-    return buildMarkdownLeaseImageRouting({
+    return buildMarkdownHostFileImageRouting({
       path: activePath,
       rootPath: getAbsoluteDirname({ path: activePath }),
-      previewUrl: hostFilePreviewUrl,
+      hostId,
     });
-  }, [activePath, hostFilePreviewUrl]);
+  }, [activePath, hostId]);
   return (
     <SecondaryPanelFilePreview
       {...filePreviewQueryProps(hostFilePreviewQuery)}
       activePath={activePath}
       copyPath={activePath}
-      htmlPreviewUrl={hostFilePreviewUrl ?? null}
+      htmlPreviewUrl={hostFilePreviewQuery.data?.url ?? null}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}

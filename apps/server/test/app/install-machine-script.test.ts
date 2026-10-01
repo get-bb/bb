@@ -350,6 +350,47 @@ exec '${process.execPath}' "$@"
     );
   });
 
+  it("starts an owned daemon that has no service under launcher supervision", () => {
+    const fixture = createFixture();
+    mkdirSync(join(fixture.homeDir, ".bb-machines", "owned"), {
+      recursive: true,
+    });
+    const dataDir = realpathSync(
+      join(fixture.homeDir, ".bb-machines", "owned"),
+    );
+    writeJoinedState({ ...fixture, dataDir });
+    writeFileSync(join(dataDir, "host-daemon-port"), "40000\n");
+    const invocationPath = join(dataDir, "invocation");
+    mkdirSync(join(dataDir, "npm", "bin"), { recursive: true });
+    writeExecutable(
+      join(dataDir, "npm", "bin", "bb-app"),
+      createEnrollingBbAppScript({ hostId: "host-test", invocationPath }),
+    );
+    const daemonPidPath = join(dataDir, "install-daemon.pid");
+
+    const started = runScript(
+      ["--start", "--host-id", "host-test", "--data-dir", dataDir],
+      fixture,
+    );
+
+    try {
+      expect(started.status, started.stderr).toBe(0);
+      expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
+        "host-daemon",
+        "--auto-update",
+        "--supervise",
+        "--host-daemon-port",
+        "40000",
+        "--server-url",
+        "https://machine.getbb.app",
+      ]);
+    } finally {
+      if (existsSync(daemonPidPath)) {
+        process.kill(Number(readFileSync(daemonPidPath, "utf8")), "SIGTERM");
+      }
+    }
+  });
+
   it("stops and uninstalls an owned Linux service through installer flags", () => {
     const fixture = createFixture();
     mkdirSync(join(fixture.homeDir, ".bb-machines", "owned"), {
@@ -726,6 +767,7 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
       "host-daemon",
       "--auto-update",
+      "--supervise",
       "--host-daemon-port",
       selectedPort,
       "--server-url",
@@ -759,6 +801,7 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
       expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
         "host-daemon",
         "--auto-update",
+        "--supervise",
         "--host-daemon-port",
         readFileSync(join(fixture.dataDir, "host-daemon-port"), "utf8").trim(),
         "--server-url",
@@ -1495,7 +1538,7 @@ fi
     );
     writeExecutable(
       join(fixture.binDir, "launchctl"),
-      "#!/bin/sh\nif [ \"$1\" = bootout ]; then exit 1; fi\n",
+      '#!/bin/sh\nif [ "$1" = bootout ]; then exit 1; fi\n',
     );
 
     const result = runScript(BOOTSTRAP_ARGS, fixture);

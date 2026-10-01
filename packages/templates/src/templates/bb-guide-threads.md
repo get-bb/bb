@@ -49,6 +49,7 @@ Spawning:
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
+    --pinned                       Create the thread in Pinned
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
@@ -239,9 +240,8 @@ Opening threads and files in the app:
   bb thread pane <action> [thread-id]      Maximize, restore, toggle, spotlight, or clear spotlight
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
-  the thread ID argument is omitted for file-only opens. Pass an explicit thread
-  ID with --split to open another thread. Outside a BB thread, pass the thread ID
-  as the first argument. A thread already open in a pane is focused instead of
+  the thread ID argument is omitted for file-only opens. Outside a BB thread,
+  pass the thread ID as the first argument. A thread already open in a pane is focused instead of
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
   Pane actions broadcast to connected BB app windows and affect the matching

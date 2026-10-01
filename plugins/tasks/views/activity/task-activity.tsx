@@ -50,26 +50,38 @@ interface FeedEntry {
   attachments: Attachment[];
 }
 
+export function activityFeedEntries(
+  comments: readonly DisplayComment[],
+  attachments: readonly Attachment[],
+): FeedEntry[] {
+  const attachmentsByCommentId = new Map<string, Attachment[]>();
+  for (const attachment of attachments) {
+    if (attachment.commentId === null) continue;
+    const entries = attachmentsByCommentId.get(attachment.commentId);
+    if (entries === undefined) {
+      attachmentsByCommentId.set(attachment.commentId, [attachment]);
+    } else {
+      entries.push(attachment);
+    }
+  }
+  return comments.map((comment) => ({
+    comment,
+    attachments: attachmentsByCommentId.get(comment.id) ?? [],
+  }));
+}
+
 function useActivityFeed(taskId: string) {
   return useTasksQuery<FeedEntry[]>(
     async (rpc) => {
-      const { comments } = await rpc.call("listComments", { taskId });
-      const attachments = await Promise.all(
-        comments.map((comment) =>
-          comment.kind === "system"
-            ? Promise.resolve<Attachment[]>([])
-            : rpc
-                .call("listAttachments", { commentId: comment.id })
-                .then((result) => result.attachments),
-        ),
-      );
-      return comments.map((comment, index) => ({
-        comment,
-        attachments: attachments[index] ?? [],
-      }));
+      const [{ comments }, { attachments }] = await Promise.all([
+        rpc.call("listComments", { taskId }),
+        rpc.call("listAttachments", { commentsOfTaskId: taskId }),
+      ]);
+      return activityFeedEntries(comments, attachments);
     },
     ["comments:changed", "tasks:changed"],
     [taskId],
+    { relevantTaskIds: [taskId] },
   );
 }
 

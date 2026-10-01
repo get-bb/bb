@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -9,12 +8,12 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type {
   SidebarVisibilityItem,
   SidebarActivationModifiers,
 } from "./SidebarVisibilityControls";
+import { SidebarVisibilityCustomizeFrame } from "./SidebarVisibilityCustomizeFrame";
 import { useSidebarSortable } from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 
@@ -110,69 +109,17 @@ export function SidebarVisibilityCustomize({
     </div>
   );
 
-  if (variant === "compact") {
-    return (
-      <div
-        ref={containerRef}
-        className="flex min-h-0 flex-1 flex-col"
-        data-testid={`${testIdPrefix}-customize-inline`}
-      >
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            ref={doneButtonRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Back to sidebar"
-            className={cn(
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "shrink-0 text-muted-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
-            )}
-            onClick={onDone}
-          >
-            <Icon name="ChevronLeft" aria-hidden="true" />
-          </Button>
-          <div
-            className={cn("min-w-0 flex-1 px-1", CHROME_SECTION_LABEL_CLASS)}
-          >
-            {title}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pt-1">{list}</div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      ref={containerRef}
-      className="rounded-lg border border-sidebar-border/40 bg-sidebar-accent/40 p-1"
-      data-testid={`${testIdPrefix}-customize-inline`}
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        onDone();
-      }}
+    <SidebarVisibilityCustomizeFrame
+      containerRef={containerRef}
+      doneButtonRef={doneButtonRef}
+      onDone={onDone}
+      testId={`${testIdPrefix}-customize-inline`}
+      title={title}
+      variant={variant}
     >
-      <div className="flex items-center gap-1 pb-1">
-        <div
-          className={cn("min-w-0 flex-1 px-2 py-1", CHROME_SECTION_LABEL_CLASS)}
-        >
-          {title}
-        </div>
-        <Button
-          ref={doneButtonRef}
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2"
-          onClick={onDone}
-        >
-          Done
-        </Button>
-      </div>
       {list}
-    </div>
+    </SidebarVisibilityCustomizeFrame>
   );
 }
 

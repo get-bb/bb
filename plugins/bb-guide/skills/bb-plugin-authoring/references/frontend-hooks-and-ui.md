@@ -16,7 +16,7 @@ Hooks:
   `experimental_useSidebarThreadActions()` for optimistic pin, read state,
   rename, and archive actions. The client is stable, so it is safe in dependency
   lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
-  } } })` and read `inspection.sdkCalls`.
+} } })` and read `inspection.sdkCalls`.
 - `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
   input, and result inference from a type-only backend contract import.
   Reach for it when the work needs your server: secrets, host files, or your
@@ -52,42 +52,83 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
-- `useComposer()` → programmatic access to the chat composer draft (the
-  same one the built-in "Add to chat" affordances write to):
-  `text` is the current plain text; `setText(next)` replaces it;
-  `updateText(current => next)` receives the latest committed text; and
-  `clear()` clears the text. These edits preserve attachments. Inline
-  mentions outside the changed range are preserved and rebased, while a
-  mention overlapped by replaced text is removed because its inline text no
-  longer represents that pill. Text edits do not focus the composer;
-  `addQuote(text)` appends the text as a `> ` blockquote block and focuses
-  the composer — the "reference this selection in chat" primitive;
-  `setTextEffect({ className })` paints the whole editable draft with a class
-  from the plugin stylesheet (`null` clears it); `setInputLock(locked)` makes
-  the editor read-only and busy and auto-releases when the customization
-  unmounts or changes scope;
-  `insertMention({ provider, id, label })` inserts an @-mention pill bound
-  to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
-  fresh context at send time; `focus()` focuses the caret. The `scope` is
-  `thread`, `queued-message`, `side-chat`, or `new-thread`, with the identifiers
-  for that surface. `experimental_submit({ sendAt })` submits through the
-  composer's own pipeline at a future time. `experimental_submit({
-experimental_data })` submits now and carries plugin-owned JSON to dispatch
-  hooks on the initial attempt; bb automatically namespaces it with the
-  calling plugin's id but does not persist it.
-  `experimental_setSelection({ projectId?, environment?, providerId?, model?,
-  reasoningLevel?, serviceTier?, permissionMode? })` sets the composer's
-  pickers as if picked by hand and resolves with the composer's own settled
-  selection, limited to the pickers that composer has: omitted fields are
-  left alone, fields the composer has no picker for are ignored (a thread has
-  no project or environment), and a value that comes back different was
-  reconciled. In a thread a provider change starts the same handoff the
-  picker starts. It rejects in a queued-message editor or a side chat.
-- `useComposerView()` → reactive `{ scope, layout, draft, run }` for the
-  composer instance that mounted an action or banner. `layout` is
-  `"expanded" | "compact" | "zen"`; `draft` is
-  `{ text, isEmpty, attachmentCount }`; `run` is
-  `{ isRunning, isSubmitting }`.
+- `useComposer()` → one stable handle for the composer the calling surface
+  belongs to: inside a composer slot, that composer; in a thread's panels,
+  that thread's composer; elsewhere, the current route's draft. The same
+  composer returns the same object across renders and its methods always act
+  on the current draft, so keep it in effects, callbacks and async work
+  directly (no `useRef` copy). Its reactive fields re-render the component
+  when they change; depend on those fields, not on the handle, in memo
+  dependency lists.
+  - State: `scope` (`thread`, `queued-message`, or `new-thread`, with that
+    surface's identifiers), `key` (stable identity for the composer's draft:
+    the same across remounts and reloads, per editing session for queued and
+    sent-message editors), `layout`
+    (`"expanded" | "compact"`), `isRunning`, `isSubmitting`,
+    `isSubmittingBlocked` and `submittingBlockedReason` (the same decision
+    and message bb's send button shows: empty draft, uploads in progress,
+    loading, a missing selection or setup, a pending interaction, voice
+    input), `isEmpty`, and `attachmentCount`.
+  - Content: `text` is the plain text; `draft` is an immutable `{ text, mentions, attachments }` snapshot where
+    each `ComposerMention` carries its range and everything needed to
+    recreate the pill (`kind` thread, project, section, path, command, or
+    plugin with `pluginId`, `provider` and `id`).
+  - Selection: `selection` is the current picker snapshot and updates reactively
+    when the user or `setSelection` changes it. It contains the provider, model,
+    reasoning level, service tier, and permission mode where available, plus
+    project and environment in a new-thread composer. Queued-message and
+    sent-message editors report their read-only pickers: the thread's provider
+    with the queued message's or the thread composer's settings. Missing keys
+    mean the corresponding picker has no selected value; `null` means this
+    composer has no pickers. Use `isSubmittingBlocked` for submission readiness.
+  - Editing: `insert(parts, { at?, block? })` inserts text and pills at the
+    current selection (default) or at `"end"`; `block: true` places the content
+    on its own paragraph. `replace(next)` atomically sets text and mentions;
+    `replace(current => next)` transforms the latest complete draft. Mention
+    ranges must explicitly match the result: replacement does not reconcile
+    them automatically. Omit attachments to preserve them, or provide a list
+    (including `[]`) to replace them. The updater is synchronous; invalid
+    results and throws leave the draft unchanged. Returning `current` is a no-op.
+  - `focus()` focuses the caret. `setTextEffect({ className })` paints the
+    draft (`null` clears); `setInputLock(locked)` makes the editor read-only
+    and auto-releases when the slot unmounts or changes scope.
+  - Save `composer.draft`, then restore it with `composer.replace(saved)`.
+    For an LLM rewrite, map preserved mention placeholders to explicit ranges
+    in the resulting text and replace text and mentions together.
+  - `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
+    `removeMention` are runtime-only compatibility methods and are absent
+    from published types. Use `insert` or `replace` in new code. Legacy text
+    setters retain automatic mention reconciliation; legacy `insertMention` retains its bare-label formatting.
+  - `submit({ sendAt? , experimental_data? })` submits exactly as pressing
+    Enter would (send, or queue while the thread is busy). It waits for
+    uploads in progress, then rejects with `submittingBlockedReason` when the
+    send button would refuse. `experimental_data` reaches dispatch hooks on
+    the initial attempt, namespaced with your plugin id. The queued-message
+    and sent-message editors reject.
+  - `setSelection({ projectId?, environment?, providerId?, model?,
+reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
+    picked by hand and resolves with the settled selection; omitted fields keep
+    their current values. It rejects in a
+    queued-message editor. `onSubmitted(listener)` observes successful local
+    submissions.
+  - Lifetime: a handle writes to its own composer's draft. Thread and
+    new-thread drafts persist, so writes after the composer leaves the screen
+    still land there. Once a queued-message or sent-message editor closes,
+    `insert`, `replace`, `submit` and `setSelection` throw and the older
+    text methods warn and do nothing.
+  - Deprecated, still working for plugins built against older SDKs but gone
+    from the types: `useComposerView()` (use `useComposer()`), the
+    `experimental_submit`, `experimental_setSelection`,
+    `experimental_onSubmitted` and `experimental_removeMention` names, and
+    `richText.onDraftChange` (read `draft` instead).
+- `useComposers()` → a handle for every composer on screen that composer
+  customizations mount in (thread page, `ThreadChat`, new-thread, open
+  queued-message editors), oldest first. Use it from a panel or page that
+  writes into a composer the user picks: label each by `scope`, then call
+  `insert`, `focus` or `submit` on the chosen one. Handles are the same
+  `PluginComposerApi` with the same lifetime rule; `setTextEffect` and
+  `setInputLock` have no effect here. Re-renders when the list or a listed
+  draft or selection changes.
 - `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
   is currently rendering with. `mode` is `"light" | "dark"`, `name` is the
   registered theme name for that mode, and `theme` is the resolved **VS Code
@@ -106,28 +147,31 @@ experimental_data })` submits now and carries plugin-owned JSON to dispatch
 
 ```tsx
 const composer = useComposer();
-composer.updateText((current) => `${current}\n\nPlease summarize this.`);
+composer.insert("Please summarize this.", { at: "end", block: true });
 ```
 
 Composer customizations:
 
 - Register with `app.composer.customize({ id, scopes?, actions?, plusMenu?,
-banners?, richText? })`. Omitted `scopes` means all thread, queued-message,
-  side-chat, and new-thread composers.
-- `actions` and `banners` are plugin React components. Calls to
-  `useComposer()` and `useComposerView()` inside them are bound to the composer
-  that mounted the component. Actions render before native voice/submit and
-  are unavailable in compact layout; banners render above the composer.
-  A banner's `chrome` is `"card"` by default or `"bare"`.
-- `plusMenu` rows are host-rendered so keyboard navigation, focus restoration,
-  and mobile layout remain correct. Each `ComposerPlusMenuItem` supplies
-  `id`, `label`, optional `icon`, `description`, and `disabled`, plus
-  `run({ composer, view })`. `disabled` accepts a boolean or a function of the
-  current `ComposerView`.
+sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
+  queued-message, and new-thread composers.
+- `actions` and `banners` are plugin React components. `useComposer()` inside
+  them is bound to the composer that mounted the component. Actions render
+  before native voice/submit and are unavailable in compact layout; banners
+  render above the composer. A banner's `chrome` is `"card"` by default or
+  `"bare"`.
+- `plusMenu` rows (the `+` menu) and `sendMenu` rows (the menu beside the send
+  button, shown only while the composer can submit) are host-rendered so
+  keyboard navigation, focus restoration, and mobile layout remain correct.
+  Each item supplies `id`, `label`, optional `icon` (drawn instead of the
+  plugin's branding icon), `description`, and `disabled` (a boolean or a
+  function of the composer, re-evaluated when the draft or selection changes),
+  plus `run({ composer })`. `plusMenu` rows also appear in the sent-message
+  editor (scope `thread`), where the other customizations do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
-  `richText.onDraftChange(draft, view)` observes the debounced
-  `ComposerStructuredDraft`, including mention ranges.
+- A `messageAction`'s `run` receives `context.composer`: the composer of the
+  message's thread, or null.
 - Use a vendored BB prompt icon-button recipe for native-matching action chrome
   and provide an accessible label. Each component/callback is isolated so one
   failing customization does not degrade the native composer. Complete

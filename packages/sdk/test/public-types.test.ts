@@ -242,6 +242,7 @@ type ExpectedBbSdkKey =
 type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
+  | "experimental_cleanup"
   | "archiveThreads"
   | "commit"
   | "delete"
@@ -346,12 +347,14 @@ type ExpectedProjectsKey =
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
-type ExpectedProvidersKey = "list" | "models";
+type ExpectedProvidersKey = "catalog" | "list" | "models" | "setEnabled";
 
 type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
   | "acknowledgeAppUpdate"
+  | "mobileAppDownloads"
+  | "mobileAppReleases"
   | "appUpdate"
   | "applyAppUpdate"
   | "setMachineEnvironmentVariable"

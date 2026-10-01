@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appToast } from "@/components/ui/app-toast";
+import { downloadBlob } from "@/lib/download-blob";
 import {
   requestAudioInputStream,
   useAudioInputDevicePreferenceValue,
@@ -110,17 +111,6 @@ function createRecordingFile(audioBlob: Blob, mimeType: string): File {
   return new File([audioBlob], `recording.${extension}`, {
     type: mimeType,
   });
-}
-
-function downloadRecording(file: File): void {
-  const url = URL.createObjectURL(file);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = file.name;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export function useVoiceInput(options: UseVoiceInputOptions) {
@@ -361,7 +351,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
             duration: Infinity,
             action: {
               label: "Download recording",
-              onClick: () => downloadRecording(audioFile),
+              onClick: () => downloadBlob(audioFile, audioFile.name),
             },
           });
         } finally {
@@ -431,6 +421,10 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         } catch (error) {
           showError(resolveRecordingErrorMessage(error));
         }
+      } else {
+        shouldTranscribeRef.current = false;
+        acceptedRecordingPendingRef.current = false;
+        transcriptionAbortRef.current?.abort();
       }
       return;
     }

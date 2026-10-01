@@ -132,6 +132,23 @@ export function resolveComposerPlusMenuItems(
   return resolved;
 }
 
+export function resolveComposerSendMenuItems(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+): readonly ResolvedComposerPlusMenuItem[] {
+  const resolved: ResolvedComposerPlusMenuItem[] = [];
+  for (const customization of customizations) {
+    if (!composerCustomizationApplies(customization, scopeKind)) continue;
+    for (const item of customization.sendMenu ?? []) {
+      resolved.push({
+        ...resolvedComposerContribution(customization, item.id),
+        item,
+      });
+    }
+  }
+  return resolved;
+}
+
 export function resolveComposerEditorEffects(
   customizations: readonly PluginComposerCustomizationSlot[],
   scopeKind: PluginComposerScope["kind"],

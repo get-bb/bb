@@ -84,7 +84,6 @@ export function BrowserImportDialog({
       .importCookies({
         sourceId: source.id,
         sourceProfileDirectory,
-        profile: { kind: "personal" },
       })
       .then((outcome) => {
         if (!mounted.current) return;

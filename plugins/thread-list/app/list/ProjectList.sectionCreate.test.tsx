@@ -48,7 +48,7 @@ function makeSection(id: string, name: string) {
   return { id, name, createdAt: 1, updatedAt: 1 };
 }
 
-function renderCustomSections() {
+function renderCustomSections(pinned = false) {
   const store = createStore();
   store.set(preferencesReadyAtom(), true);
   store.set(sidebarOrganizationModeAtom, "chronological");
@@ -57,7 +57,13 @@ function renderCustomSections() {
     { children: <ProjectList activeThreadId={null} />, store },
     {
       sidebarThreads: {
-        threads: [makeSidebarThread({ id: "thr_alpha", sectionId: "sec_a" })],
+        threads: [
+          makeSidebarThread({
+            id: "thr_alpha",
+            sectionId: "sec_a",
+            pinnedAt: pinned ? 1 : null,
+          }),
+        ],
         projects: [makePluginProject()],
         sections: [makeSection("sec_a", "Alpha"), makeSection("sec_b", "Beta")],
       },
@@ -86,15 +92,34 @@ async function createSectionFrom(actionsLabel: string) {
 }
 
 describe("creating a sidebar section", () => {
+  it("pins new threads from the Pinned header", async () => {
+    const { inspection } = renderCustomSections(true);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New thread in Pinned" }),
+    );
+    expect(inspection.sidebarActionCalls).toContainEqual({
+      method: "openNewThread",
+      options: {
+        focusPrompt: true,
+        experimental_placement: { sectionId: null, pinned: true },
+      },
+    });
+  });
+
   it("keeps the composer project when starting a thread in a section", async () => {
     const { inspection } = renderCustomSections();
     fireEvent.click(
-      await screen.findByRole("button", { name: "New thread in Alpha section" }),
+      await screen.findByRole("button", {
+        name: "New thread in Alpha section",
+      }),
     );
 
     expect(inspection.sidebarActionCalls).toContainEqual({
       method: "openNewThread",
-      options: { sectionId: "sec_a", focusPrompt: true },
+      options: {
+        experimental_placement: { sectionId: "sec_a", pinned: false },
+        focusPrompt: true,
+      },
     });
   });
 

@@ -49,3 +49,10 @@ Organize → Rows → Provider icons toggles the icon before each thread title.
 `showProviderIcons` defaults to `false`; use
 `bb thread-list prefs set showProviderIcons true` to show them. Unknown
 provider ids have no icon.
+
+New threads inherit the sidebar group where creation was invoked. Pinned
+creates pinned threads; custom sections supply their section; project, machine,
+and general thread groups start unsectioned and unpinned. Environment rows
+reuse their environment and the containing group's placement. In Pinned,
+they retain the group's common underlying section for unpinning; mixed-section
+groups use no underlying section.

@@ -7,6 +7,26 @@ editingNotes: Keep flags accurate against the CLI implementation.
 ---
 Provider commands
 
+Manage agents in Settings → Providers. Enabled providers can be reordered, made
+default or disabled through the row menu; disabled providers stay listed at the
+bottom. Install provider plugins in Settings → Plugins.
+
+  bb provider disable <id>
+  bb provider enable <id>
+  bb provider list --all
+
+Disable hides one provider from pickers and the ordinary list and rejects new
+sessions and turns. It preserves its CLI, plugin, siblings and thread history;
+in-flight turns can finish. Enable also enables its supplying plugin if needed,
+while preserving other providers' individual opt-outs. list --all shows the global
+catalog including disabled plugins, without machine/environment selectors.
+SDK: providers.catalog() and providers.setEnabled({ providerId, enabled }).
+Enable restores automatic discovery, so installed-only agents again appear only
+where their CLI is installed. Disabling the default clears its selection; new
+threads use the next enabled provider in saved order, including in projects whose
+last-used provider is disabled. Explicit or existing-thread choices never
+silently switch.
+
 Providers are agent backends (e.g., codex, claude-code). Each supports different models.
 
   bb provider list [--machine <id-or-name> | --environment <id>]
@@ -86,6 +106,13 @@ it — waiting does not fix it.
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.
+
+Claude Code's **Disable 1M context** provider setting (`disable1MContext`)
+defaults to `false`. Enable it with
+`bb plugin config provider-claude-code set disable1MContext true`.
+bb sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` when enabled and `0` when off.
+Changes restart the thread's Claude process before its next turn, preserving
+conversation context.
 
 Claude Code runs without its Claude in Chrome browser tools under bb by
 default. Enable them with

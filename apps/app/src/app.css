@@ -486,8 +486,6 @@
   }
 
   [data-follow-up-composer] [data-promptbox-submit-action] {
-    width: 2rem;
-    height: 2rem;
     margin-left: 0;
     padding: 0;
   }
@@ -702,6 +700,16 @@
   .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover,
   .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    .thread-scrollbar {
+      scrollbar-width: none;
+    }
+
+    .thread-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   [data-vaul-drawer-direction] [data-sidebar="content"] {

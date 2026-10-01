@@ -91,7 +91,10 @@ export interface MachineProviderListArgs {
 export type HostCreateJoinCodeResult = CreateHostJoinCodeResponse;
 export type HostDeleteResult = { ok: true };
 export type HostDirectoryResult = HostDirectoryListing;
-export type HostGetResult = Host & { connectMachineId: string | null };
+export type HostGetResult = Host & {
+  connectMachineId: string | null;
+  threadStorageRootPath: string | null;
+};
 export type HostEnrollmentCommandResult = HostEnrollmentCommandResponse;
 export type HostReconnectResult = HostReconnectResponse;
 export type HostCloneDefaultPathResult = HostCloneDefaultPathResponse;

@@ -179,7 +179,9 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
     await workspace.runPullRequestAction({ operation: "ready" });
 
-    const calls = await readGhCalls(logPath);
+    const calls = (await readGhCalls(logPath)).filter(
+      (call) => call[0] === "pr",
+    );
     expect(calls).toHaveLength(2);
     expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
     expect(calls[1]).toEqual(["pr", "ready"]);
@@ -195,7 +197,9 @@ describe("pull request lookup for differently named upstream branches", () => {
       new Workspace(workspacePath).getPullRequest(),
     ).resolves.toMatchObject({ outcome: "found" });
 
-    const calls = await readGhCalls(logPath);
+    const calls = (await readGhCalls(logPath)).filter(
+      (call) => call[0] === "pr",
+    );
     expect(calls).toHaveLength(1);
     expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
   });
@@ -214,7 +218,9 @@ describe("pull request lookup for differently named upstream branches", () => {
       },
     });
 
-    const calls = await readGhCalls(logPath);
+    const calls = (await readGhCalls(logPath)).filter(
+      (call) => call[0] === "pr",
+    );
     expect(calls).toHaveLength(1);
     expect(calls[0]?.slice(0, 4)).toEqual([
       "pr",
@@ -257,7 +263,9 @@ describe("pull request lookup for differently named upstream branches", () => {
       outcome: "found",
     });
 
-    const calls = await readGhCalls(logPath);
+    const calls = (await readGhCalls(logPath)).filter(
+      (call) => call[0] === "pr",
+    );
     expect(calls.map((call) => call[2])).toEqual([
       qualifiedUpstream,
       `other-owner:${upstreamBranch}`,

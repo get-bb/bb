@@ -1,3 +1,4 @@
+import { ThreadCreationPlacementScope } from "./ThreadCreationPlacement.js";
 import { memo, type ReactNode } from "react";
 import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
 import {
@@ -110,7 +111,9 @@ function BuiltInSidebarSection({
       consumeClickSuppression={consumeClickSuppression}
       dropParentKey={BUILT_IN_SECTION_DROP_PARENT_KEY[id]}
     >
-      {content}
+      <ThreadCreationPlacementScope group={id}>
+        {content}
+      </ThreadCreationPlacementScope>
     </SortableSidebarSection>
   );
 }

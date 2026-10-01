@@ -1525,6 +1525,20 @@ export function createTasksStore(db: PluginDatabase) {
       .map(attachmentFromRow);
   }
 
+  function listAttachmentsForTaskComments(taskId: string): Attachment[] {
+    return db
+      .prepare<[string], AttachmentRow>(
+        `
+        SELECT attachments.* FROM attachments
+        JOIN comments ON comments.id = attachments.comment_id
+        WHERE comments.task_id = ?
+        ORDER BY attachments.created_at, attachments.id
+      `,
+      )
+      .all(taskId)
+      .map(attachmentFromRow);
+  }
+
   function updateAttachment(
     id: string,
     input: UpdateAttachmentInput,
@@ -1847,6 +1861,7 @@ export function createTasksStore(db: PluginDatabase) {
     getAttachment,
     listAttachmentsForTask,
     listAttachmentsForComment,
+    listAttachmentsForTaskComments,
     updateAttachment,
     deleteAttachment,
     upsertTaskThread,

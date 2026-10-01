@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Annotate elements in a Browser tab and add them to the prompt as structured agent context.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.6.0"
   },
   "bb": {
     "name": "Agent Annotations",

@@ -31,7 +31,16 @@ import {
   makeThreadWithRuntime as makeThreadWithRuntimeFixture,
 } from "@bb/test-helpers/domain-fixtures";
 import type { ComponentProps, ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
@@ -920,6 +929,8 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
   return render(buildPromptAreaElement(options));
 }
 
+beforeAll(() => LazyQueuedMessagesList.preload());
+
 beforeEach(() => {
   testQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -1032,9 +1043,7 @@ describe("ThreadDetailPromptArea", () => {
 
     renderPromptArea({ queuedMessageCount: 1 });
 
-    expect(screen.getByRole("status").textContent).toContain(
-      "Loading queued message details",
-    );
+    screen.getByRole("status", { name: "Loading queued messages" });
     expect(screen.getByLabelText("Queued messages").textContent).toContain(
       "Queue1",
     );
@@ -1084,6 +1093,15 @@ describe("ThreadDetailPromptArea", () => {
     expect(
       inlineEditor.getByTestId("plugin-customizations-suppressed").textContent,
     ).toBe("true");
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
+    );
+    expect(mocks.pluginComposerHost?.getSelection?.()).toEqual({
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "auto",
+    });
     expect(
       (
         inlineEditor.getByRole("textbox", {
@@ -1643,6 +1661,15 @@ describe("ThreadDetailPromptArea", () => {
     expect(inlineEditor.getByTestId("permission-read-only").textContent).toBe(
       "true",
     );
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
+    );
+    expect(mocks.pluginComposerHost?.getSelection?.()).toEqual({
+      providerId: "codex",
+      model: "queued-model",
+      reasoningLevel: "high",
+      permissionMode: "full",
+    });
   });
 
   it("dismisses an inline edit when its thread changes or its live row disappears", async () => {
@@ -2067,6 +2094,7 @@ describe("ThreadDetailPromptArea", () => {
       reasoningLevel: "medium",
       permissionMode: "auto",
     });
+    expect(host!.getSelection?.()).toEqual(result);
     expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
     expect(screen.getByTestId("command-suggestions").textContent).toBe(
       "claude-code:new-thread",

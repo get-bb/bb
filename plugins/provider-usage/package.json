@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-provider-usage",
+  "name": "bb-plugin-bb--provider-usage",
   "version": "0.1.0",
   "private": true,
   "type": "module",

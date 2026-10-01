@@ -8,6 +8,10 @@ description: "Configure or troubleshoot BB-specific Claude Code provider setting
 Read settings with `bb plugin config provider-claude-code`; change a declared key
 with `bb plugin config provider-claude-code set <key> <value>`.
 
+- `disable1MContext` defaults to `false`. Enable with
+  `bb plugin config provider-claude-code set disable1MContext true` to set
+  `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off). Changes restart the
+  thread's Claude process before its next turn, preserving context.
 - `chromeEnabled` defaults to `false`. It starts Claude Code with `--chrome` for
   Claude in Chrome tools. The host needs the extension and a claude.ai login.
   A change restarts the thread's Claude process before its next turn, preserving

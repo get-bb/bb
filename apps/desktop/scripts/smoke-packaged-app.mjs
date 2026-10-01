@@ -147,7 +147,6 @@ async function startSmokeServer({
         customThemes: [],
         dataDir,
         experiments: {
-          mobileApp: false,
         },
         featureFlags: {
           placeholder: false,

@@ -1,5 +1,9 @@
+import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 // @vitest-environment jsdom
 
+import {
+  createCoreComposerActions,
+} from "@/lib/plugin-composer-handle";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -271,7 +275,16 @@ describe("usePromptDraftStorage", () => {
   });
 });
 
-describe("usePromptDraftStorage addQuote", () => {
+function addQuote(
+  source: ReturnType<typeof getPromptDraftAccessor>,
+  text: string,
+  attachments?: Parameters<typeof appendQuoteAndAttachmentsToDraft>[2],
+) {
+  const composer = createCoreComposerActions({ ...source, focus: () => {} });
+  composer.replace((current) => appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []));
+}
+
+describe("composer quote persistence", () => {
   it("keeps an imperative draft-action consumer unsubscribed from composer writes", () => {
     const scope = uniqueScope();
     let consumerRenders = 0;
@@ -295,7 +308,7 @@ describe("usePromptDraftStorage addQuote", () => {
     expect(draftActions?.storageKey).toBe(composer.result.current.storageKey);
 
     act(() => {
-      draftActions?.addQuote("selected text");
+      if (draftActions) addQuote(draftActions, "selected text");
     });
 
     expect(composer.result.current.text).toBe("typed reply\n> selected text\n");
@@ -306,7 +319,7 @@ describe("usePromptDraftStorage addQuote", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => result.current.addQuote("  ship it  "));
+    act(() => addQuote(result.current, "  ship it  "));
 
     expect(result.current.text).toBe("> ship it\n");
     expect(window.localStorage.length).toBe(1);
@@ -319,8 +332,8 @@ describe("usePromptDraftStorage addQuote", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => result.current.addQuote("first"));
-    act(() => result.current.addQuote("second"));
+    act(() => addQuote(result.current, "first"));
+    act(() => addQuote(result.current, "second"));
 
     expect(result.current.text).toBe("> first\n\n> second\n");
   });
@@ -329,7 +342,7 @@ describe("usePromptDraftStorage addQuote", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => result.current.addQuote("line a\nline b"));
+    act(() => addQuote(result.current, "line a\nline b"));
 
     expect(result.current.text).toBe("> line a\n> line b\n");
   });
@@ -339,7 +352,7 @@ describe("usePromptDraftStorage addQuote", () => {
     const { result } = renderHook(() => usePromptDraftStorage(scope));
 
     act(() =>
-      result.current.addQuote("review this", [
+      addQuote(result.current, "review this", [
         {
           type: "localFile",
           path: "uploads/spec.md",
@@ -367,7 +380,7 @@ describe("usePromptDraftStorage addQuote", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => result.current.addQuote("   \n  "));
+    act(() => addQuote(result.current, "   \n  "));
 
     expect(result.current.text).toBe("");
     expect(window.localStorage.length).toBe(0);
@@ -378,7 +391,7 @@ describe("usePromptDraftStorage addQuote", () => {
     const first = renderHook(() => usePromptDraftStorage(scope));
     const second = renderHook(() => usePromptDraftStorage(scope));
 
-    act(() => first.result.current.addQuote("shared selection"));
+    act(() => addQuote(first.result.current, "shared selection"));
 
     expect(second.result.current.text).toBe("> shared selection\n");
   });

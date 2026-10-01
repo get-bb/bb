@@ -29,6 +29,8 @@ describe("bb thread show command output", () => {
       baseRefName: "main",
       headRefName: "bb/thread-show-pr",
       updatedAt: "2026-06-24T12:00:00.000Z",
+      autoMerge: false,
+      inMergeQueue: false,
       checks: {
         state: "passing",
         totalCount: 3,

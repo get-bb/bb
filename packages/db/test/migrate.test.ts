@@ -507,6 +507,12 @@ const curatedMarketplaceRenameMigrationPath = resolve(
   "drizzle",
   "0098_rename_curated_marketplace.sql",
 );
+const providerUsagePluginIdMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0135_rename_provider_usage_plugin_id.sql",
+);
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
   "..",
@@ -5440,6 +5446,90 @@ describe("migrate", () => {
           lastModified: "Thu, 02 Jan 2025 00:00:00 GMT",
         },
         { name: "bb-community", etag: null, lastModified: null },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("moves the bundled provider usage plugin and its footer preferences to the bb-- id", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO plugins (id, source, root_dir, version, enabled, installed_at, updated_at, provenance, source_kind, source_builtin_name, removed_at)
+        VALUES
+          ('provider-usage', 'builtin:provider-usage', '/bundled/provider-usage', '0.1.0', 0, 1, 1, 'builtin', 'builtin', 'provider-usage', 7),
+          ('usage', 'git:https://example.com/usage.git', '/managed/usage', '0.3.1', 1, 1, 1, 'catalog', 'git', NULL, NULL);
+        INSERT INTO ui_preferences (key, value_json, revision, updated_at) VALUES
+          ('sidebar.footerOrder', '["builtin:settings","plugin:provider-usage/usage","plugin:usage/usage"]', 3, 1),
+          ('sidebar.hiddenFooterItems', '["plugin:provider-usage/usage"]', 5, 1),
+          ('sidebar.visiblePluginPanels', '["provider-usage/usage"]', 2, 1);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: providerUsagePluginIdMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { id: string; enabled: number; removedAt: number | null }
+          >(
+            "SELECT id, enabled, removed_at AS removedAt FROM plugins ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: "bb--provider-usage", enabled: 0, removedAt: 7 },
+        { id: "usage", enabled: 1, removedAt: null },
+      ]);
+      expect(
+        db.$client
+          .prepare<[], { key: string; valueJson: string; revision: number }>(
+            "SELECT key, value_json AS valueJson, revision FROM ui_preferences ORDER BY key",
+          )
+          .all(),
+      ).toEqual([
+        {
+          key: "sidebar.footerOrder",
+          valueJson:
+            '["builtin:settings","plugin:bb--provider-usage/usage","plugin:usage/usage"]',
+          revision: 4,
+        },
+        {
+          key: "sidebar.hiddenFooterItems",
+          valueJson: '["plugin:bb--provider-usage/usage"]',
+          revision: 6,
+        },
+        {
+          key: "sidebar.visiblePluginPanels",
+          valueJson: '["provider-usage/usage"]',
+          revision: 2,
+        },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("leaves a user-installed provider-usage plugin under its own id", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO plugins (id, source, root_dir, version, enabled, installed_at, updated_at, provenance, source_kind)
+        VALUES ('provider-usage', 'git:https://github.com/braedonsaunders/bb-plugin-provider-usage.git', '/managed/provider-usage', '0.4.0', 1, 1, 1, 'catalog', 'git');
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: providerUsagePluginIdMigrationPath,
+      });
+
+      expect(db.$client.prepare("SELECT id FROM plugins").all()).toEqual([
+        { id: "provider-usage" },
       ]);
     } finally {
       closeConnection(db);

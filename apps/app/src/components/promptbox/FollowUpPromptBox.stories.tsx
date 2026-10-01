@@ -36,16 +36,12 @@ import {
   type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
-} from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import {
-  QueuedMessagesList,
-  type QueuedMessageEditRequest,
-  type QueuedMessageInlineEditor,
-} from "@/components/promptbox/banner/QueuedMessagesList";
+import type {
+  QueuedMessageEditRequest,
+  QueuedMessageInlineEditor,
+} from "@/components/promptbox/banner/LazyQueuedMessagesList";
+import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import {
   formatWorkspaceCheckoutDisplay,
@@ -116,8 +112,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 interface EnvironmentSummaryArgs {

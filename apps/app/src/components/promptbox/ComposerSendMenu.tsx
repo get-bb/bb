@@ -12,7 +12,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { PluginComposerPlusMenuEntry } from "@/components/plugin/PluginComposerActions";
-import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
+import { useResolvedComposerSendMenuItems } from "@/components/plugin/composer-slot-hooks";
 import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
 
 export function ComposerSendMenu({
@@ -34,23 +34,16 @@ export function ComposerSendMenu({
 }) {
   const isCompactViewport = useIsCompactViewport();
   const view = useOptionalPluginComposerView();
-  const contributions = useResolvedComposerPlusMenuItems(
+  const contributions = useResolvedComposerSendMenuItems(
     includePluginContributions ? (view?.scope.kind ?? null) : null,
-  ).filter(
-    ({ pluginId, customizationId, item }) =>
-      (pluginId === "drafts" &&
-        customizationId === "drafts" &&
-        item.id === "drafts") ||
-      (pluginId === "scheduled-send" &&
-        customizationId === "send-later" &&
-        item.id === "send-later"),
   );
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (!canSubmit) setOpen(false);
   }, [canSubmit]);
-  const handleOpenChange = (nextOpen: boolean) => setOpen(nextOpen && canSubmit);
+  const handleOpenChange = (nextOpen: boolean) =>
+    setOpen(nextOpen && canSubmit);
 
   if (!onSubmit && contributions.length === 0) return children;
 
@@ -69,6 +62,7 @@ export function ComposerSendMenu({
         <PluginComposerPlusMenuEntry
           key={contribution.key}
           contribution={contribution}
+          slotKind="composerSendMenuItem"
         />
       ))}
     </>

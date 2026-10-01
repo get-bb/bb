@@ -271,7 +271,7 @@ run_lifecycle() {
         systemctl "$systemd_scope" start "$service_name"
       fi
     elif ! owned_pid; then
-      BB_APP_NPM_PREFIX="$data_dir/npm" BB_DATA_DIR="$data_dir" nohup "$data_dir/npm/bin/bb-app" host-daemon --auto-update --host-daemon-port "$host_daemon_port" --server-url "$server_url" >"$data_dir/install-daemon.log" 2>&1 &
+      BB_APP_NPM_PREFIX="$data_dir/npm" BB_DATA_DIR="$data_dir" nohup "$data_dir/npm/bin/bb-app" host-daemon --auto-update --supervise --host-daemon-port "$host_daemon_port" --server-url "$server_url" >"$data_dir/install-daemon.log" 2>&1 &
       daemon_pid=$!
       (umask 077 && printf '%s\n' "$daemon_pid" >"$pid_file")
     fi
@@ -971,6 +971,7 @@ if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
     detail "Host daemon output is logged to $daemon_log"
     BB_APP_NPM_PREFIX="$bb_app_npm_prefix" BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon \
       --auto-update \
+      --supervise \
       --host-daemon-port "$host_daemon_port" \
       --server-url "$server_url" >"$daemon_log" 2>&1 &
     join_pid=$!

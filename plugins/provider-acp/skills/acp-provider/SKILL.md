@@ -11,6 +11,11 @@ host: `opencode`, `omp`, `grok`, and `hermes` appear as `acp-opencode`, `acp-omp
 `bb provider list` and `bb provider models <provider-id>` using its environment
 or machine selector.
 
+To hide a detected ACP agent, use `bb provider disable acp-opencode`, or Disable
+on Settings → Providers. Restore it with `bb provider enable acp-opencode`.
+This leaves other ACP agents and the host CLI intact. Disabled agents skip
+background capability probing. `bb provider list --all` includes disabled agents.
+
 Cursor project skills come from `.cursor/skills`, which can link to
 `.agents/skills`. BB lists these linked skills as read-only under `cursor-project`.
 

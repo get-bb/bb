@@ -1,0 +1,83 @@
+appId: app.getbb.mobile
+---
+- evalScript: ${output.androidMessage = "Android authenticated " + Date.now()}
+- runScript:
+    file: ../scripts/connect-stub-control.js
+    env:
+      STUB_ACTION: "reset"
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "add-server-screen"
+    timeout: 30000
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://connect?code=EXPIRED-CODE&serverUrl=https%3A%2F%2Fstub.localhost%3A42998&apex=https%3A%2F%2Flocalhost%3A42998"
+- scrollUntilVisible:
+    element:
+      id: "connect-submit"
+    direction: DOWN
+- tapOn:
+    id: "connect-submit"
+- extendedWaitUntil:
+    visible: "Code expired"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: "connect-code-input"
+    direction: UP
+- tapOn:
+    id: "connect-code-input"
+- eraseText: 30
+- inputText: "STUB-PAIR"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "connect-submit"
+    direction: DOWN
+- tapOn:
+    id: "connect-submit"
+- extendedWaitUntil:
+    visible: ".*(Paired with bb connect|Not now).*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Not now"
+    commands:
+      - tapOn: "Not now"
+- extendedWaitUntil:
+    visible:
+      id: "connect-session-authenticated"
+    timeout: 30000
+- takeScreenshot: android-connect-authenticated
+- tapOn:
+    id: "connect-done"
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 30000
+- assertVisible: ".*Idle thread.*"
+- takeScreenshot: android-connect-webview
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 30000
+- assertVisible: ".*Idle thread.*"
+- takeScreenshot: android-connect-relaunch
+- runScript:
+    file: ../scripts/connect-stub-control.js
+    env:
+      STUB_ACTION: "expire-session"
+- tapOn: ".*Idle thread.*"
+- extendedWaitUntil:
+    visible: ".*follow-up.*"
+    timeout: 30000
+- tapOn: ".*follow-up.*"
+- inputText: "${output.androidMessage}"
+- tapOn: ".*Submit.*"
+- extendedWaitUntil:
+    visible: ".*Response to: ${output.androidMessage}.*"
+    timeout: 90000
+- takeScreenshot: android-connect-session-recovered

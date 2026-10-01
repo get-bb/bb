@@ -64,6 +64,7 @@ function PushProfileSection({ profile }: { profile: ServerProfile }) {
         />
       </SettingsSection>
       <ActionSheet
+        presentation="prompt"
         controller={permissionSheet}
         title="Allow push notifications?"
         message={`bb will ask this phone for permission, then register it with ${profile.label}.`}
@@ -71,7 +72,7 @@ function PushProfileSection({ profile }: { profile: ServerProfile }) {
           {
             key: "enable",
             label: "Turn on notifications",
-            icon: "Zap",
+            icon: "Bell",
             onPress: () => setEnabled(true),
           },
         ]}

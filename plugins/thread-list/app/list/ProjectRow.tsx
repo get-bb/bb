@@ -1,4 +1,8 @@
 import {
+  ThreadCreationPlacementScope,
+  useThreadCreationPlacement,
+} from "./ThreadCreationPlacement.js";
+import {
   ThreadListVisibility,
   ThreadListMore,
   ThreadListVisibilityGroupScope,
@@ -9,7 +13,10 @@ import {
   SidebarHeaderControls,
   SidebarSectionMenuItems,
 } from "./SidebarHeaderControls.js";
-import { SidebarRowControls, SidebarControlButton } from "../rows/SidebarRowControls.js";
+import {
+  SidebarRowControls,
+  SidebarControlButton,
+} from "../rows/SidebarRowControls.js";
 import {
   SIDEBAR_CONTROL_BUTTON_CLASS,
   SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
@@ -58,7 +65,10 @@ import {
   ConfirmDeleteDialogContent,
 } from "../ui/ConfirmDeleteDialog.js";
 import { getMutationErrorMessage } from "../ui/mutation-errors.js";
-import { useSidebarRename, useSidebarRenameState } from "../rows/SidebarInlineRename.js";
+import {
+  useSidebarRename,
+  useSidebarRenameState,
+} from "../rows/SidebarInlineRename.js";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -844,8 +854,7 @@ function EnvironmentThreadGroupHeader({
     ) ?? UNNAMED_ENVIRONMENT_LABEL;
   const sdk = useSdk();
   const updateEnvironment = useCallback(
-    (name: string | null) =>
-      sdk.environments.update({ environmentId, name }),
+    (name: string | null) => sdk.environments.update({ environmentId, name }),
     [environmentId, sdk],
   );
   const rename = useSidebarRename({
@@ -1048,7 +1057,12 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
         })
       : undefined;
   const sidebarActions = experimental_useSidebarThreadActions();
-  const representativeSectionId = representativeThread.sectionId;
+  const sectionWhenUnpinned = nodes.every(
+    (node) => node.thread.sectionId === representativeThread.sectionId,
+  )
+    ? representativeThread.sectionId
+    : null;
+  const { sectionId, pinned } = useThreadCreationPlacement(sectionWhenUnpinned);
   const threads = useMemo(() => nodes.map((node) => node.thread), [nodes]);
   const { archiveThreadsPending, onArchiveThreads } =
     useArchiveEnvironmentThreadGroupAction({
@@ -1062,16 +1076,15 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     sidebarActions.openNewThread({
       projectId,
       environmentId,
-      ...(representativeSectionId === null
-        ? {}
-        : { sectionId: representativeSectionId }),
+      experimental_placement: { sectionId, pinned },
       focusPrompt: true,
     });
   }, [
     environmentId,
     onProjectSelect,
     projectId,
-    representativeSectionId,
+    sectionId,
+    pinned,
     sidebarActions,
   ]);
   const nodeItems = useMemo<ProjectThreadItem[]>(
@@ -1320,9 +1333,7 @@ export function NestDropPreviewRow({
         "pointer-events-none overflow-hidden text-sidebar-foreground opacity-50",
       )}
     >
-      <span className="min-w-0 flex-1 truncate">
-        {thread.displayTitle}
-      </span>
+      <span className="min-w-0 flex-1 truncate">{thread.displayTitle}</span>
     </div>
   );
 }
@@ -1396,7 +1407,10 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         }),
       );
       try {
-        const result = await sdk.threadSections.update({ id: section.id, name });
+        const result = await sdk.threadSections.update({
+          id: section.id,
+          name,
+        });
         setSectionNameOverrides((current) =>
           new Map(current).set(section.id, {
             previousName,
@@ -1538,7 +1552,9 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         sectionRef={sortableRef}
         sectionStyle={sortableStyle}
       >
-        {childrenArea}
+        <ThreadCreationPlacementScope group={`section:${section.id}`}>
+          {childrenArea}
+        </ThreadCreationPlacementScope>
       </TopLevelSidebarSection>
     );
   }
@@ -1576,7 +1592,9 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
       />
-      {childrenArea}
+      <ThreadCreationPlacementScope group={`section:${section.id}`}>
+        {childrenArea}
+      </ThreadCreationPlacementScope>
     </SidebarStickyGroup>
   );
 });

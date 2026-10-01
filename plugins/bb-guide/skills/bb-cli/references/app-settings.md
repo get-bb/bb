@@ -186,10 +186,8 @@ so they carry over between navigation plugins.
 
 ## Mobile app
 
-- The `mobileApp` experiment defaults to false while the bb mobile app is in
-  early access.
-- Enable it with `bb settings experiment mobileApp true`. It shows the
-  **Add mobile device** card under Settings → Remote access.
+- Downloads are available in Settings → Mobile without opting in.
+- Pair your phone under Settings → Mobile → **Add mobile device**.
 
 ## Changelog preview
 
@@ -256,9 +254,24 @@ adds a More item while the footer has room, and drag reorders within a zone. Mor
 hides every action, and Show footer shows them again.
 Right-click an action for Hide from footer or Customize footer.
 Settings → Appearance → Sidebar footer edits the same preferences. CLI example:
-`bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'`.
+`bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'`.
 Use `bb settings ui reset sidebar.hiddenFooterItems` to restore the default footer.
 
 Disable anonymous usage telemetry with `bb settings general telemetryEnabled false`
 or Settings → General → Privacy & diagnostics → Share anonymous usage data. This server-wide preference
 applies immediately and persists across restarts. `BB_TELEMETRY=false` overrides it.
+
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or its remote-access tunnel. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
+
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.

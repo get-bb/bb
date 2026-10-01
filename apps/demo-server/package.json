@@ -7,7 +7,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "build": "tsx scripts/build-assets.ts"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
@@ -15,9 +16,13 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/app": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@cloudflare/workers-types": "^4.20260610.0",
     "@types/node": "^22.0.0",
+    "bb-plugin-navigation": "workspace:*",
+    "bb-plugin-thread-list": "workspace:*",
+    "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1",
     "wrangler": "^4.100.0"

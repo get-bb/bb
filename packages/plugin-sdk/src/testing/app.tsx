@@ -18,6 +18,11 @@ import {
   type BbNavigate,
   type BranchesState,
   type ComposerCustomization,
+  type ComposerAttachment,
+  type ComposerDraftSnapshot,
+  type ComposerMention,
+  type ComposerSelection,
+  type ComposerSubmitOptions,
   type ComposerView,
   type ExperimentalAppOverlayRegistration,
   type ExperimentalQuestionFormHost,
@@ -78,8 +83,6 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
-  type ExperimentalComposerSelection,
-  type ExperimentalComposerSubmitOptions,
   type ExperimentalAppPanel,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenFixedTabOptions,
@@ -97,6 +100,12 @@ import {
   type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
+import {
+  appendComposerDraft,
+  createComposerHandleBinding,
+  reconcileComposerMentions,
+  type ComposerHandleTarget,
+} from "../internal/composer-handle.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import {
@@ -192,8 +201,17 @@ export interface ExperimentalFixedTabOpenCall {
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
+  /**
+   * Latest text and mention pills, as `useComposer().draft` reports them.
+   * The harness composer has no caret, so cursor inserts land at the end.
+   */
+  readonly draft: ComposerDraftSnapshot;
+  /** The key `useComposer().key` reports for the current scope. */
+  readonly key: string;
   /** Latest host-provided composer scope. */
   readonly scope: PluginComposerScope;
+  /** Current picker snapshot, or null for a composer without pickers. */
+  readonly selection: ComposerSelection | null;
   /** Latest host-provided attachment count exposed through `useComposerView()`. */
   readonly attachmentCount: number;
   /** Latest host-rendered text effect requested by the plugin. */
@@ -206,24 +224,27 @@ export interface ComposerLog {
   mentions: PluginComposerMention[];
   focusCount: number;
   /**
-   * Every `experimental_submit` the plugin ran, in order. The harness composer
-   * has no submit pipeline of its own, so it records the options and clears the
+   * Every `submit` the plugin ran, in order. The harness composer has no
+   * submit pipeline of its own, so it records the options and clears the
    * draft — enough to assert what a picker scheduled and that it tidied up.
    */
-  submits: ExperimentalComposerSubmitOptions[];
+  submits: ComposerSubmitOptions[];
   /**
-   * Every `experimental_setSelection` the harness composer accepted, in
-   * order. The harness has no pickers of its own, so it records the request
-   * and echoes it back as the settled selection, minus the fields the
-   * composer's scope has no picker for (a thread has no project or
-   * environment). Queued-message and side-chat scopes reject, as the app does.
+   * Every `setSelection` the harness composer accepted, in order. The
+   * harness has no pickers of its own, so it merges accepted fields into
+   * its current selection and returns that snapshot. A thread drops
+   * project and environment because it has no pickers for them. The
+   * queued-message scope rejects, as the app does.
    */
-  selections: ExperimentalComposerSelection[];
+  selections: ComposerSelection[];
 }
 
 interface TestComposerStore {
-  api: Omit<PluginComposerApi, "scope" | "text">;
+  api: PluginComposerApi;
+  apiList: readonly PluginComposerApi[];
   getAttachmentCount(): number;
+  getLayout(): "expanded" | "compact";
+  getRun(): { isRunning: boolean; isSubmitting: boolean };
   getScope(): PluginComposerScope;
   getText(): string;
   getVersionSnapshot(): number;
@@ -296,6 +317,39 @@ export interface SidebarNavigationCall {
   itemIds?: string[];
   isVisible?: boolean;
   openInSplit?: boolean;
+}
+
+function testComposerKey(scope: PluginComposerScope): string {
+  switch (scope.kind) {
+    case "thread":
+      return `test-composer:thread:${scope.threadId}`;
+    case "queued-message":
+      return `test-composer:queued-message:${scope.threadId}:${scope.queuedMessageId}`;
+    case "new-thread":
+      return `test-composer:new-thread:${scope.projectId ?? ""}`;
+  }
+}
+
+function testComposerMentionText(mention: ComposerMention): string {
+  switch (mention.kind) {
+    case "thread":
+      return `@thread:${mention.threadId}`;
+    case "project":
+      return `@project:${mention.projectId}`;
+    case "section":
+      return `@section:${mention.sectionId}`;
+    case "command":
+      return `${mention.trigger}${mention.name}`;
+    case "plugin":
+      return `@${mention.label}`;
+    case "path": {
+      const path =
+        mention.source === "thread-storage"
+          ? `thread-storage:${mention.path}`
+          : mention.path;
+      return `@${path}${mention.entryKind === "directory" && !path.endsWith("/") ? "/" : ""}`;
+    }
+  }
 }
 
 function createSdkFakeNode(
@@ -966,19 +1020,21 @@ const testPluginSdkApp = {
   },
   useComposer(): PluginComposerApi {
     const composer = useSlotEnv("useComposer").composer;
-    const version = useSyncExternalStore(
+    useSyncExternalStore(
       composer.subscribe,
       composer.getVersionSnapshot,
       composer.getVersionSnapshot,
     );
-    return useMemo(
-      () => ({
-        ...composer.api,
-        scope: composer.getScope(),
-        text: composer.getText(),
-      }),
-      [composer, version],
+    return composer.api;
+  },
+  useComposers(): readonly PluginComposerApi[] {
+    const composer = useSlotEnv("useComposers").composer;
+    useSyncExternalStore(
+      composer.subscribe,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
     );
+    return composer.apiList;
   },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
@@ -1133,13 +1189,13 @@ const testPluginSdkApp = {
       const attachmentCount = composer.getAttachmentCount();
       return {
         scope: composer.getScope(),
-        layout: "expanded",
+        layout: composer.getLayout(),
         draft: {
           text,
           isEmpty: isComposerDraftEmpty(text, attachmentCount),
           attachmentCount,
         },
-        run: { isRunning: false, isSubmitting: false },
+        run: composer.getRun(),
       };
     }, [composer, version]);
   },
@@ -1396,8 +1452,21 @@ export interface RenderSlotOptions<
   /** Initial state for this render's isolated composer scope and view. */
   composer?: {
     text?: string;
+    /** Mention pills already in `text`, with ranges into it. */
+    mentions?: readonly ComposerMention[];
     scope?: PluginComposerScope;
     attachmentCount?: number;
+    attachments?: readonly ComposerAttachment[];
+    layout?: "expanded" | "compact";
+    isRunning?: boolean;
+    isSubmitting?: boolean;
+    selection?: ComposerSelection;
+    /**
+     * What `submittingBlockedReason` reports, and what `submit` rejects
+     * with. Omitted → "Type a message first." while the draft is empty,
+     * "Submitting..." while `isSubmitting`, otherwise null.
+     */
+    submittingBlockedReason?: string | null;
   };
   /**
    * Threads and projects `experimental_useSidebarThreads()` reports. Omitted →
@@ -1861,26 +1930,90 @@ export function renderSlot<
     (threadId !== null
       ? { kind: "thread", threadId }
       : { kind: "new-thread", projectId });
+  let composerSelection: ComposerSelection | null =
+    composerScope.kind === "queued-message"
+      ? null
+      : {
+          ...(composerScope.kind === "new-thread" && projectId !== null
+            ? { projectId }
+            : {}),
+          ...options.composer?.selection,
+        };
 
   let composerText = options.composer?.text ?? "";
-  const composerAttachmentCount = options.composer?.attachmentCount ?? 0;
+  let composerMentions: ComposerMention[] = [
+    ...(options.composer?.mentions ?? []),
+  ];
+  let composerAttachments = [...(options.composer?.attachments ?? [])];
+  let composerAttachmentCount =
+    options.composer?.attachmentCount ?? composerAttachments.length;
+  const composerLayout = options.composer?.layout ?? "expanded";
+  const composerIsRunning = options.composer?.isRunning ?? false;
+  const composerIsSubmitting = options.composer?.isSubmitting ?? false;
+  const composerPluginId = options.pluginId ?? "test-plugin";
   let composerVersion = 0;
   const composerListeners = new Set<() => void>();
   const notifyComposerListeners = () => {
     composerVersion += 1;
     for (const listener of composerListeners) listener();
   };
+  const commitComposerDraft = (
+    nextText: string,
+    nextMentions: ComposerMention[],
+  ) => {
+    if (nextText === composerText && nextMentions === composerMentions) return;
+    composerText = nextText;
+    composerMentions = nextMentions;
+    notifyComposerListeners();
+  };
   const commitComposerText = (next: string) => {
     if (next === composerText) return;
-    composerText = next;
-    notifyComposerListeners();
+    commitComposerDraft(
+      next,
+      reconcileComposerMentions(composerText, next, composerMentions),
+    );
+  };
+  const composerBlockedReason = (): string | null => {
+    if (options.composer?.submittingBlockedReason !== undefined) {
+      return options.composer.submittingBlockedReason;
+    }
+    if (composerIsSubmitting) return "Submitting...";
+    return composerText.trim() === "" && composerAttachmentCount === 0
+      ? "Type a message first."
+      : null;
+  };
+  let composerDraftCache: {
+    version: number;
+    draft: ComposerDraftSnapshot;
+  } | null = null;
+  const composerDraft = (): ComposerDraftSnapshot => {
+    if (composerDraftCache?.version !== composerVersion) {
+      composerDraftCache = {
+        version: composerVersion,
+        draft: {
+          text: composerText,
+          mentions: composerMentions,
+          attachments: composerAttachments,
+        },
+      };
+    }
+    return composerDraftCache.draft;
   };
   const composerLog: ComposerLog = {
     get text() {
       return composerText;
     },
+    get draft() {
+      return composerHandle.draft;
+    },
+    get key() {
+      return testComposerKey(composerScope);
+    },
     get scope() {
       return composerScope;
+    },
+    get selection() {
+      return composerSelection;
     },
     get attachmentCount() {
       return composerAttachmentCount;
@@ -1896,26 +2029,89 @@ export function renderSlot<
     selections: [],
   };
   const composerOwnership = { active: true };
+  const composerIsAvailable = () =>
+    composerOwnership.active || composerScope.kind !== "queued-message";
   const submissionListeners = new Set<() => void>();
-  const composer: TestComposerStore = {
-    getAttachmentCount: () => composerAttachmentCount,
-    getScope: () => composerScope,
-    getText: () => composerText,
-    getVersionSnapshot: () => composerVersion,
-    subscribe(listener) {
-      composerListeners.add(listener);
-      return () => composerListeners.delete(listener);
+  const composerTarget: ComposerHandleTarget = {
+    get key() {
+      return testComposerKey(composerScope);
     },
-    api: {
-      setText(next) {
-        commitComposerText(next);
-      },
-      updateText(updater) {
-        commitComposerText(updater(composerText));
-      },
-      clear() {
-        commitComposerText("");
-      },
+    get scope() {
+      return composerScope;
+    },
+    getDraft: composerDraft,
+    getAttachmentCount: () => composerAttachmentCount,
+    getSelection: () => composerSelection,
+    setDraft: (next) => {
+      if (next.attachments !== undefined) {
+        composerAttachments = [...next.attachments];
+        composerAttachmentCount = composerAttachments.length;
+      }
+      commitComposerDraft(next.text, [...next.mentions]);
+    },
+    addQuote(text) {
+      const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
+      if (trimmed === "") return;
+      const block = trimmed
+        .split("\n")
+        .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+        .join("\n");
+      commitComposerText(
+        composerText === "" ? `${block}\n` : `${composerText}\n${block}\n`,
+      );
+      composerLog.quotes.push(text);
+    },
+    getEditorState: () => {
+      const reason = composerBlockedReason();
+      return {
+        layout: composerLayout,
+        isRunning: composerIsRunning,
+        isSubmitting: composerIsSubmitting,
+        isSubmittingBlocked: reason !== null,
+        submittingBlockedReason: reason,
+        isAttaching: false,
+        attachmentError: null,
+      };
+    },
+    subscribeEditorState: () => () => {},
+    insertAtCursor(value, block) {
+      composerTarget.setDraft(
+        appendComposerDraft(composerDraft(), value, block),
+      );
+      return true;
+    },
+    isAvailable: composerIsAvailable,
+    focus() {
+      composerLog.focusCount += 1;
+    },
+    async submit(submitOptions) {
+      composerLog.submits.push(submitOptions);
+      commitComposerDraft("", []);
+      for (const listener of submissionListeners) listener();
+    },
+    async setSelection(selection) {
+      if (composerScope.kind === "queued-message") {
+        throw new Error("This composer has no pickers to set.");
+      }
+      const {
+        projectId: _projectId,
+        environment: _environment,
+        ...rest
+      } = selection;
+      const accepted: ComposerSelection =
+        composerScope.kind === "thread" ? rest : { ...selection };
+      composerLog.selections.push(accepted);
+      composerSelection = { ...composerSelection, ...accepted };
+      notifyComposerListeners();
+      return composerSelection;
+    },
+  };
+  const composerHandle = createComposerHandleBinding(
+    testComposerKey(composerScope),
+    {
+      pluginId: composerPluginId,
+      target: composerTarget,
+      mentionText: testComposerMentionText,
       setTextEffect(effect) {
         if (!composerOwnership.active) return;
         composerLog.textEffect = effect;
@@ -1926,87 +2122,59 @@ export function renderSlot<
         composerLog.inputLocked = locked;
         composerLog.inputLockCalls.push(locked);
       },
-      addQuote(text) {
-        const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
-        if (trimmed !== "") {
-          const block = trimmed
-            .split("\n")
-            .map((line) => (line.length > 0 ? `> ${line}` : ">"))
-            .join("\n");
-          commitComposerText(
-            composerText === "" ? `${block}\n` : `${composerText}\n${block}\n`,
-          );
-          composerLog.quotes.push(text);
-        }
-        composerLog.focusCount += 1;
-      },
-      experimental_onSubmitted(listener) {
+      onSubmitted(listener) {
         submissionListeners.add(listener);
         return () => {
           submissionListeners.delete(listener);
         };
       },
-      experimental_removeMention({ provider, id }) {
-        for (
-          let index = composerLog.mentions.length - 1;
-          index >= 0;
-          index -= 1
-        ) {
-          const mention = composerLog.mentions[index];
-          if (mention?.provider === provider && mention.id === id) {
-            commitComposerText(composerText.replace(mention.label, ""));
-            composerLog.mentions.splice(index, 1);
-          }
-        }
-      },
-      insertMention(mention) {
-        const label = mention.label.trim() || mention.id;
-        const separator =
-          composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
-        commitComposerText(`${composerText}${separator}${label} `);
-        composerLog.mentions.push(mention);
-        composerLog.focusCount += 1;
-      },
-      focus() {
-        composerLog.focusCount += 1;
-      },
-      async experimental_submit(options) {
-        if (!composerOwnership.active) {
-          throw new Error("This composer is no longer active.");
-        }
-        if (composerText.trim() === "") {
-          throw new Error("Type a message before scheduling it.");
-        }
-        if (
-          options.sendAt !== undefined &&
-          (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
-        ) {
-          throw new Error("Pick a time in the future.");
-        }
-        composerLog.submits.push(options);
-        commitComposerText("");
-        for (const listener of submissionListeners) listener();
-      },
-      async experimental_setSelection(selection) {
-        if (!composerOwnership.active) {
-          throw new Error("This composer is no longer active.");
-        }
-        if (
-          composerScope.kind === "queued-message" ||
-          composerScope.kind === "side-chat"
-        ) {
-          throw new Error("This composer has no pickers to set.");
-        }
-        const {
-          projectId: _projectId,
-          environment: _environment,
-          ...rest
-        } = selection;
-        const accepted: ExperimentalComposerSelection =
-          composerScope.kind === "thread" ? rest : { ...selection };
-        composerLog.selections.push(accepted);
-        return accepted;
-      },
+    },
+  ).handle;
+  const forgetLoggedMention = ({
+    provider,
+    id,
+  }: {
+    provider: string;
+    id: string;
+  }) => {
+    for (let index = composerLog.mentions.length - 1; index >= 0; index -= 1) {
+      const mention = composerLog.mentions[index];
+      if (mention?.provider === provider && mention.id === id) {
+        composerLog.mentions.splice(index, 1);
+      }
+    }
+  };
+  const { insertMention, removeMention, experimental_removeMention } =
+    composerHandle;
+  Object.assign(composerHandle, {
+    insertMention(mention: PluginComposerMention) {
+      insertMention(mention);
+      composerLog.mentions.push(mention);
+    },
+    removeMention(mention: { provider: string; id: string }) {
+      removeMention(mention);
+      forgetLoggedMention(mention);
+    },
+    experimental_removeMention(mention: { provider: string; id: string }) {
+      experimental_removeMention(mention);
+      forgetLoggedMention(mention);
+    },
+  });
+  const composer: TestComposerStore = {
+    api: composerHandle,
+    apiList: [composerHandle],
+    getAttachmentCount: () => composerAttachmentCount,
+    getLayout: () => composerLayout,
+    getRun: () => ({
+      isRunning: composerIsRunning,
+      isSubmitting: composerIsSubmitting,
+    }),
+    getScope: () => composerScope,
+    getText: () => composerText,
+    getVersionSnapshot: () => composerVersion,
+    subscribe(listener) {
+      composerListeners.add(listener);
+      return () => composerListeners.delete(listener);
     },
   };
 

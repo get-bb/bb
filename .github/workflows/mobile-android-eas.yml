@@ -1,0 +1,116 @@
+name: Mobile Android (EAS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: APK for testers or production AAB for Google Play
+        required: true
+        type: choice
+        default: preview
+        options: [preview, production]
+      publish:
+        description: Publish a preview APK for the Android App experiment on GitHub
+        type: boolean
+        default: false
+      submit:
+        description: Upload production AAB to the Google Play internal track as a draft
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-android-eas
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 9.15.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Build and optionally submit
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          EAS_PROFILE: ${{ inputs.profile }}
+          EAS_SUBMIT: ${{ inputs.submit }}
+          EAS_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo "::error::EXPO_TOKEN is required"; exit 1; }
+          if [[ "$EAS_PUBLISH" == "true" && "$EAS_PROFILE" != "preview" ]]; then
+            echo "::error::Only preview APKs can be published to Android testing"
+            exit 1
+          fi
+          args=(build --platform android --profile "$EAS_PROFILE" --non-interactive --wait --json)
+          if [[ "$EAS_SUBMIT" == "true" ]]; then
+            [[ "$EAS_PROFILE" == "production" ]] || { echo "::error::Only production can be submitted"; exit 1; }
+            test -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" || { echo "::error::Google Play service account is required"; exit 1; }
+            umask 077
+            printf '%s\n' "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > google-play-service-account.json
+            args+=(--auto-submit)
+          fi
+          pnpm exec eas "${args[@]}" > eas-build.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: inputs.publish
+        with:
+          name: android-eas-build
+          path: apps/mobile/eas-build.json
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: inputs.publish && inputs.profile == 'preview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK for APK verification
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: "build-tools;36.0.0"
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: android-eas-build
+          path: android-release
+      - name: Download and verify the signed APK
+        run: |
+          set -euo pipefail
+          apk_url="$(jq -er 'map(select(.platform == "ANDROID" and .status == "FINISHED")) | first | .artifacts.buildUrl | select(type == "string" and startswith("https://"))' android-release/eas-build.json)"
+          curl --fail --location --retry 3 --max-time 900 --proto '=https' --proto-redir '=https' "$apk_url" -o android-release/build.apk
+          node apps/mobile/scripts/publish-android-apk.mjs android-release/build.apk android-release
+      - name: Publish the Android testing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view android-testing >/dev/null 2>&1; then
+            gh release create android-testing --target "$GITHUB_SHA" --title "bb Android testing" --notes "Android APKs for the Android App experiment." --prerelease --latest=false
+          fi
+          gh release upload android-testing android-release/android-testing/*.apk --clobber
+          cp android-release/build.apk android-release/bb-android.apk
+          gh release upload android-testing android-release/bb-android.apk --clobber
+          gh release upload android-testing android-release/android-testing/latest.json --clobber

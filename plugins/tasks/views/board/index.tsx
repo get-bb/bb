@@ -13,7 +13,9 @@ import {
 } from "../../shared/contract.js";
 import {
   listAllTasks,
+  signalTaskIds,
   useTasksQuery,
+  type TaskSignal,
   useTasksRpc,
   type TasksRpc,
 } from "../../shell/data.js";
@@ -46,6 +48,7 @@ interface BoardCardMeta {
 
 interface BoardData {
   tasks: Task[];
+  subtasks: Task[];
   labelsById: Map<string, Label>;
   metaByTaskId: Map<string, BoardCardMeta>;
 }
@@ -110,6 +113,7 @@ async function fetchBoard(
 
   return {
     tasks: topLevel,
+    subtasks: tasks.filter((task) => task.parentTaskId !== null),
     labelsById: new Map(labels.map((label) => [label.id, label])),
     metaByTaskId: new Map(
       topLevel.map((task) => [
@@ -123,6 +127,99 @@ async function fetchBoard(
       ]),
     ),
   };
+}
+
+async function workingThreadsFor(
+  rpc: TasksRpc,
+  taskId: string,
+): Promise<TaskThread[]> {
+  return rpc.call("listTaskThreads", { taskId }).then(
+    (result) => result.taskThreads.filter(isActiveThread),
+    () => [],
+  );
+}
+
+async function patchBoard(
+  rpc: TasksRpc,
+  projectId: string,
+  current: BoardData,
+  signals: readonly TaskSignal[],
+): Promise<BoardData | null> {
+  if (signals.some((signal) => signal.channel === "projects:changed")) {
+    return null;
+  }
+  const changedIds = signalTaskIds(signals, "tasks:changed");
+  const fetched = await Promise.all(
+    changedIds.map(async (taskId) => {
+      const { task } = await rpc.call("getTask", { taskId });
+      return [taskId, task] as const;
+    }),
+  );
+  const changed = new Map(fetched);
+  const keep = (task: Task) => !changed.has(task.id);
+  const tasks = current.tasks.filter(keep);
+  const subtasks = current.subtasks.filter(keep);
+  const metaByTaskId = new Map(current.metaByTaskId);
+  for (const taskId of changed.keys()) metaByTaskId.delete(taskId);
+  const refreshedCards: Task[] = [];
+  for (const task of changed.values()) {
+    if (task === null || task.projectId !== projectId) continue;
+    if (task.parentTaskId === null) {
+      tasks.push(task);
+      refreshedCards.push(task);
+    } else {
+      subtasks.push(task);
+    }
+  }
+  const topLevelIds = new Set(tasks.map((task) => task.id));
+  const threadIds = signalTaskIds(signals, "threads:changed").filter(
+    (taskId) => topLevelIds.has(taskId) && !changed.has(taskId),
+  );
+  await Promise.all([
+    ...refreshedCards.map(async (task) => {
+      const [workingThreads, attachmentCount] = await Promise.all([
+        workingThreadsFor(rpc, task.id),
+        rpc.call("listAttachments", { taskId: task.id }).then(
+          (result) => result.attachments.length,
+          () => 0,
+        ),
+      ]);
+      metaByTaskId.set(task.id, {
+        ...EMPTY_META,
+        workingThreads,
+        attachmentCount,
+      });
+    }),
+    ...threadIds.map(async (taskId) => {
+      const workingThreads = await workingThreadsFor(rpc, taskId);
+      metaByTaskId.set(taskId, {
+        ...(metaByTaskId.get(taskId) ?? EMPTY_META),
+        workingThreads,
+      });
+    }),
+  ]);
+  const progress = new Map<string, { done: number; total: number }>();
+  for (const task of subtasks) {
+    if (task.parentTaskId === null) continue;
+    const entry = progress.get(task.parentTaskId) ?? { done: 0, total: 0 };
+    entry.total += 1;
+    if (task.status === "done") entry.done += 1;
+    progress.set(task.parentTaskId, entry);
+  }
+  for (const task of tasks) {
+    const meta = metaByTaskId.get(task.id) ?? EMPTY_META;
+    const entry = progress.get(task.id);
+    metaByTaskId.set(task.id, {
+      ...meta,
+      subDone: entry?.done ?? 0,
+      subTotal: entry?.total ?? 0,
+    });
+  }
+  tasks.sort(
+    (a, b) =>
+      a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+  return { ...current, tasks, subtasks, metaByTaskId };
 }
 
 type ColumnMap = Record<TaskStatus, Task[]>;
@@ -273,10 +370,14 @@ interface BoardViewProps {
 export function BoardView({ projectId }: BoardViewProps) {
   const rpc = useTasksRpc();
   const navigation = useTasksNavigation();
-  const board = useTasksQuery(
+  const board = useTasksQuery<BoardData>(
     (queryRpc) => fetchBoard(queryRpc, projectId),
     ["tasks:changed", "projects:changed", "threads:changed"],
     [projectId],
+    {
+      applySignals: (queryRpc, current, signals) =>
+        patchBoard(queryRpc, projectId, current, signals),
+    },
   );
 
   const [columns, setColumns] = useState<ColumnMap | undefined>(undefined);

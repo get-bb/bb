@@ -28,6 +28,8 @@ const pullRequestFixture: ThreadPullRequest = {
   baseRefName: "main",
   headRefName: "bb/pr-context-banner",
   updatedAt: "2026-06-16T12:30:00Z",
+  autoMerge: false,
+  inMergeQueue: false,
   checks: {
     state: "passing",
     totalCount: 1,
@@ -257,7 +259,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("disabled");
   });
 
-  it("labels a standalone pull request without non-actionable attention text", () => {
+  it("keeps ready-to-merge status out of standalone visible labels", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -302,38 +304,64 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Squash merge");
   });
 
-  it("does not label standalone pending checks", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={null}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={null}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={{
-          pullRequest: {
-            ...pullRequestFixture,
-            checks: {
-              state: "pending",
-              totalCount: 1,
-              passedCount: 0,
-              failedCount: 0,
-              pendingCount: 1,
+  it.each([
+    ["checks_pending", false, null],
+    ["checks_failed", false, null],
+    ["checks_failed", true, null],
+    ["checks_pending", true, "Auto-merge on"],
+    ["ready_to_merge", true, "Auto-merge on"],
+    ["queued", true, "Queued to merge"],
+  ] as const)(
+    "shows only automation labels for %s with auto-merge %s",
+    (attention, autoMerge, label) => {
+      const markup = renderToStaticMarkup(
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={{
+            pullRequest: {
+              ...pullRequestFixture,
+              autoMerge,
+              inMergeQueue: attention === "queued",
+              review: { state: "approved", reviewRequestCount: 0 },
+              checks: {
+                state: attention === "checks_failed" ? "failing" : "pending",
+                totalCount: 1,
+                passedCount: 0,
+                failedCount: 0,
+                pendingCount: 1,
+              },
+              attention,
             },
-            attention: "checks_pending",
-          },
-        }}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
+          }}
+          expandedSection={null}
+          onToggleSection={noop}
+        />,
+      );
 
-    expect(markup).toContain("PR #128");
-    expect(markup).not.toContain("PR #128 · Open");
-    expect(markup).not.toContain("· Checks pending");
-    expect(markup).not.toContain('alt="Checks pending"');
-  });
+      expect(markup).toContain("PR #128");
+      expect(markup).not.toContain("PR #128 · Open");
+      if (label) {
+        expect(markup).toContain(`text-attention">· ${label}</span>`);
+      } else {
+        expect(markup).not.toContain('text-attention">·');
+        expect(markup).not.toContain("· Checks failing</span>");
+      }
+      expect(markup).toContain('class="size-4 shrink-0 text-success"');
+      expect(markup).toContain('data-icon="GitPullRequestArrow"');
+      expect(markup).not.toContain('data-icon="GitMerge"');
+      expect(markup).toContain(
+        attention === "checks_failed"
+          ? 'class="fill-destructive"'
+          : 'class="fill-attention"',
+      );
+      expect(markup).not.toContain('alt="Checks pending"');
+    },
+  );
 
   it("keeps useful standalone terminal pull request state labels", () => {
     const markup = renderToStaticMarkup(
@@ -538,7 +566,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).not.toContain("animate-shine-icon");
   });
 
-  it("labels standalone actionable pull request attention", () => {
+  it("keeps failed-check detail accessible without a redundant label", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={null}
@@ -566,7 +594,8 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain("PR #128");
-    expect(markup).toContain("· Checks failing");
+    expect(markup).not.toContain("· Checks failing");
+    expect(markup).toContain('title="Checks failing"');
     expect(markup).not.toContain("Checks failure");
   });
 

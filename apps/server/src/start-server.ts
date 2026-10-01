@@ -6,7 +6,11 @@ import type { ServerConfig } from "@bb/config/server";
 import { isLoopbackHostname } from "@bb/config/loopback";
 import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
-import { getAppSettings, listRunningThreads } from "@bb/db";
+import {
+  getAppSettings,
+  getDisabledProviderIds,
+  listRunningThreads,
+} from "@bb/db";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
@@ -162,6 +166,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       const settings = getAppSettings(db);
       return {
         providerOrder: settings.providerOrder,
+        disabledProviderIds: getDisabledProviderIds(db),
         defaultProviderId: settings.defaultProviderId,
       };
     },

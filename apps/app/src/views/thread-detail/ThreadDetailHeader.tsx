@@ -1,3 +1,4 @@
+import { preloadThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
   useCallback,
   useContext,
@@ -279,6 +280,9 @@ export function ThreadDetailHeader({
               }
               aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
               aria-expanded={isSecondaryPanelOpen}
+              onPointerEnter={preloadThreadSecondaryPanel}
+              onFocus={preloadThreadSecondaryPanel}
+              onPointerDown={preloadThreadSecondaryPanel}
               onClick={onToggleSecondaryPanel}
             >
               <Icon name={rightPanelIconName} />

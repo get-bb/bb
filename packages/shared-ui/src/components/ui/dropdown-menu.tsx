@@ -150,7 +150,7 @@ const DropdownMenuContent = React.forwardRef<
           <div
             ref={ref}
             className={cn(
-              "flex flex-col gap-0.5 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+              "flex flex-col gap-0.5 overflow-y-auto p-2",
               className,
             )}
             {...domProps}

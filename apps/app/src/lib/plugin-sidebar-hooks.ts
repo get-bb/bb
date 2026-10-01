@@ -313,6 +313,10 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
           setRootComposeProjectId(projectId);
         }
         const state = {
+          placement: options?.experimental_placement ?? {
+            sectionId: options?.sectionId ?? null,
+            pinned: false,
+          },
           ...(options?.focusPrompt ? { focusPrompt: true } : {}),
           ...(options?.sectionId !== undefined
             ? { sectionId: options.sectionId }
@@ -436,6 +440,13 @@ export function useSidebarThreadPullRequest(
               url: pullRequest.url,
               state: pullRequest.state,
               attention: pullRequest.attention,
+              experimental_autoMerge: pullRequest.autoMerge,
+              experimental_inMergeQueue: pullRequest.inMergeQueue,
+              experimental_checks: { state: pullRequest.checks.state },
+              experimental_review: { state: pullRequest.review.state },
+              experimental_mergeability: {
+                state: pullRequest.mergeability.state,
+              },
             },
     }),
     [environmentId, pullRequest, query.isPending],

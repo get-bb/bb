@@ -47,7 +47,7 @@ const chunks: BundleStatsChunkInput[] = [
   chunk("assets/route-only.js", {
     moduleIds: [
       "/repo/node_modules/.pnpm/@pierre+diffs@1/node_modules/@pierre/diffs/dist/index.js",
-      "/repo/apps/app/src/lib/x.ts",
+      resolve(import.meta.dirname, "lib/x.ts"),
     ],
   }),
   chunk("assets/only-behind-dynamic-import.js", {
@@ -77,7 +77,22 @@ describe("computeBundleStats", () => {
       "assets/route-only.js",
     ]);
     expect(route.chunks[1]?.packages).toEqual(["@pierre/diffs"]);
+    expect(
+      stats.chunks.find((entry) => entry.fileName === "assets/route-only.js")
+        ?.appModules,
+    ).toEqual(["src/lib/x.ts"]);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("measures a shared runtime chunk even when bundling removes its facade", () => {
+    const stats = computeBundleStats(
+      chunks,
+      { Runtime: "/src/lib/x.ts" },
+      vi.fn(),
+    );
+    expect(
+      stats?.routeClosures.Runtime?.chunks.map((chunk) => chunk.fileName),
+    ).toEqual(["assets/route-only.js"]);
   });
 
   it("warns instead of throwing when a measured route has no chunk", () => {
@@ -86,6 +101,66 @@ describe("computeBundleStats", () => {
     expect(stats?.routeClosures).toEqual({});
     expect(warn).toHaveBeenCalledTimes(1);
   });
+
+  it("measures grouped routes whose entry no longer has a facade", () => {
+    const grouped = chunks.map((entry) =>
+      entry.facadeModuleId?.endsWith("/SplitWorkspaceRoute.tsx")
+        ? {
+            ...entry,
+            facadeModuleId: null,
+            moduleIds: [entry.facadeModuleId],
+          }
+        : entry,
+    );
+    const stats = computeBundleStats(
+      grouped,
+      { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+      vi.fn(),
+    );
+    expect(
+      stats?.routeClosures.SplitWorkspaceRoute?.chunks.map((c) => c.fileName),
+    ).toEqual(["assets/SplitWorkspaceRoute.js", "assets/route-only.js"]);
+  });
+
+  it.each(["assets/index.js", "assets/boot-shared.js"])(
+    "rejects a route absorbed into the boot chunk %s",
+    async (bootChunk) => {
+      const eager = chunks
+        .filter((entry) => entry.fileName !== "assets/SplitWorkspaceRoute.js")
+        .map((entry) =>
+          entry.fileName === bootChunk
+            ? {
+                ...entry,
+                moduleIds: [
+                  ...entry.moduleIds,
+                  "/repo/apps/app/src/views/SplitWorkspaceRoute.tsx",
+                ],
+              }
+            : entry,
+        );
+      const warn = vi.fn();
+      const stats = computeBundleStats(
+        eager,
+        { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+        warn,
+      );
+      expect(stats?.routeClosures).toEqual({});
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("boot payload"),
+      );
+
+      const fixture = await writeFixture(passingBudget);
+      await writeFile(
+        resolve(fixture.budgetDir, "bundle-stats.json"),
+        JSON.stringify(stats),
+      );
+      const result = await runCheck(fixture);
+      expect(result.code).toBe(1);
+      expect(result.output).toContain(
+        'has no "SplitWorkspaceRoute" route closure',
+      );
+    },
+  );
 });
 
 interface Fixture {
@@ -154,6 +229,37 @@ describe("check-bundle-budget", () => {
     expect(result.code).toBe(0);
   });
 
+  it("fails when a forbidden package reaches a chunk the boot entry imports", async () => {
+    const stats = computeBundleStats(
+      chunks.map((c) =>
+        c.fileName === "assets/boot-shared.js"
+          ? {
+              ...c,
+              moduleIds: [
+                ...c.moduleIds,
+                "/repo/node_modules/.pnpm/@dnd-kit+core@6/node_modules/@dnd-kit/core/dist/core.esm.js",
+              ],
+            }
+          : c,
+      ),
+      { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+      () => undefined,
+    );
+    const result = await runCheck(
+      await writeFixture(
+        {
+          ...passingBudget,
+          forbiddenBootPackages: ["@dnd-kit/core"],
+        },
+        stats,
+      ),
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(
+      "@dnd-kit/core is in the boot payload (assets/boot-shared.js)",
+    );
+  });
+
   it("fails when a forbidden package reaches the route closure", async () => {
     const result = await runCheck(
       await writeFixture({
@@ -202,6 +308,7 @@ function statsChunk(
     packages: spec.packages ?? [],
     imports: spec.imports ?? [],
     facade: spec.facade ?? null,
+    appModules: [],
   };
 }
 
@@ -282,4 +389,55 @@ describe("check-bundle-budget on-demand packages", () => {
       `katex has no gate chunk for ${KATEX_GATE}`,
     );
   });
+});
+
+describe("split boundaries", () => {
+  it.each(["lazy", "boot", "route", "missing"])(
+    "checks an emitted %s gate even when byte budgets pass",
+    async (placement) => {
+      const gate = "assets/feature.js";
+      const source = "src/feature.tsx";
+      const input = [
+        chunk("assets/index.js", {
+          isEntry: true,
+          imports: placement === "boot" ? [gate] : [],
+        }),
+        chunk("assets/route.js", {
+          facadeModuleId: "/repo/apps/app/src/views/SplitWorkspaceRoute.tsx",
+          imports: placement === "route" ? [gate] : [],
+        }),
+        ...(placement === "missing"
+          ? []
+          : [
+              chunk(gate, {
+                moduleIds: [resolve(import.meta.dirname, "feature.tsx")],
+              }),
+            ]),
+      ];
+      const stats = computeBundleStats(
+        input,
+        { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+        () => {},
+      );
+      if (stats === null) throw new Error("missing stats");
+      const result = await runCheck(
+        await writeFixture(
+          {
+            ...passingBudget,
+            splitBoundaries: { [source]: ["boot", "SplitWorkspaceRoute"] },
+          },
+          stats,
+          input.map((entry) => entry.fileName),
+        ),
+      );
+      expect(result.code).toBe(placement === "lazy" ? 0 : 1);
+      if (placement !== "lazy") expect(result.output).toContain(source);
+      if (placement === "boot")
+        expect(result.output).toContain("eager in boot");
+      if (placement === "route")
+        expect(result.output).toContain("eager in SplitWorkspaceRoute");
+      if (placement === "missing")
+        expect(result.output).toContain("absent from bundle module metadata");
+    },
+  );
 });

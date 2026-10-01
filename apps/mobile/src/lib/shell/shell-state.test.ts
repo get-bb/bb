@@ -3,6 +3,7 @@ import type { SessionState } from "../session/session-scheduler";
 import {
   resolveShellLoadPath,
   resolveShellScreenState,
+  revealsShellFailure,
   shouldReloadForSession,
   type ShellLoadPhase,
 } from "./shell-state";
@@ -12,9 +13,10 @@ const IDLE: SessionState = { status: "idle" };
 const AUTHENTICATED: SessionState = {
   status: "authenticated",
   expiresAt: 1_000,
+  restored: false,
 };
 
-const BASE = { storeReady: true, hasAnyProfile: true };
+const BASE = { storeReady: true, hasAnyProfile: true, requiresSession: false };
 
 describe("resolveShellScreenState", () => {
   it("sends a phone with no server to the add-server screen", () => {
@@ -23,6 +25,7 @@ describe("resolveShellScreenState", () => {
         storeReady: true,
         hasAnyProfile: false,
         hasProfile: false,
+        requiresSession: false,
         session: IDLE,
         load: { kind: "loading" },
       }),
@@ -35,11 +38,24 @@ describe("resolveShellScreenState", () => {
         storeReady: false,
         hasAnyProfile: false,
         hasProfile: false,
+        requiresSession: false,
         session: IDLE,
         load: { kind: "loading" },
       }).kind,
     ).toBe("loading");
   });
+  it("keeps a bb connect profile off the page until its session starts", () => {
+    expect(
+      resolveShellScreenState({
+        ...BASE,
+        hasProfile: true,
+        requiresSession: true,
+        session: IDLE,
+        load: { kind: "loading" },
+      }),
+    ).toEqual({ kind: "loading", message: "Signing in" });
+  });
+
   it("shows the page once a Direct profile is loaded", () => {
     expect(
       resolveShellScreenState({
@@ -60,8 +76,9 @@ describe("resolveShellScreenState", () => {
     });
     expect(state).toEqual({
       kind: "error",
-      title: "This server needs pairing again",
-      detail: "credential revoked",
+      title: "Could not sign in",
+      detail:
+        "bb connect could not renew this phone’s sign-in. Pair again to reconnect.",
       action: "re-pair",
     });
   });
@@ -135,6 +152,28 @@ describe("resolveShellScreenState", () => {
   });
 });
 
+describe("revealsShellFailure", () => {
+  const page = (serverErrorStatus: number | null) =>
+    ({ kind: "webview", serverErrorStatus }) as const;
+
+  it("reveals error screens and server error pages", () => {
+    expect(
+      revealsShellFailure(
+        { kind: "error", title: "", detail: "", action: "retry" },
+        true,
+      ),
+    ).toBe(true);
+    expect(revealsShellFailure(page(500), true)).toBe(true);
+    expect(revealsShellFailure(page(401), false)).toBe(true);
+    expect(revealsShellFailure(page(null), true)).toBe(false);
+  });
+
+  it("keeps a bb connect page the gate rejected covered while the session is repaired", () => {
+    expect(revealsShellFailure(page(401), true)).toBe(false);
+    expect(revealsShellFailure(page(403), true)).toBe(false);
+  });
+});
+
 describe("resolveShellLoadPath", () => {
   it("reloads the page where the user is, not where it was first opened", () => {
     expect(
@@ -165,30 +204,71 @@ describe("resolveShellLoadPath", () => {
 });
 
 describe("shouldReloadForSession", () => {
-  it("reloads when a fresh cookie replaces the one the page loaded with", () => {
-    expect(
-      shouldReloadForSession(AUTHENTICATED, {
-        status: "authenticated",
-        expiresAt: 2_000,
-      }),
-    ).toBe(true);
+  const RENEWED: SessionState = {
+    status: "authenticated",
+    expiresAt: 2_000,
+    restored: false,
+  };
+
+  it("reloads when the cookie the page loaded with has expired", () => {
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_000, READY)).toBe(
+      true,
+    );
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 1_500, READY)).toBe(
+      true,
+    );
   });
 
-  it("reloads on the first successful mint", () => {
+  it("does not reload when a renewal replaces a cookie that is still valid", () => {
+    expect(shouldReloadForSession(AUTHENTICATED, RENEWED, 999, READY)).toBe(
+      false,
+    );
+  });
+
+  it.each([401, 403])(
+    "reloads a rejected page after session repair (%s)",
+    (status) => {
+      for (const repaired of [RENEWED, { ...AUTHENTICATED }]) {
+        expect(
+          shouldReloadForSession(AUTHENTICATED, repaired, 999, {
+            kind: "http-error",
+            status,
+          }),
+        ).toBe(true);
+      }
+      expect(
+        shouldReloadForSession(AUTHENTICATED, AUTHENTICATED, 999, {
+          kind: "http-error",
+          status,
+        }),
+      ).toBe(false);
+    },
+  );
+
+  it("does not reload on the first mint, since the page only mounts after it", () => {
     expect(
-      shouldReloadForSession({ status: "authenticating" }, AUTHENTICATED),
-    ).toBe(true);
+      shouldReloadForSession(
+        { status: "authenticating" },
+        AUTHENTICATED,
+        0,
+        READY,
+      ),
+    ).toBe(false);
+    expect(shouldReloadForSession(IDLE, AUTHENTICATED, 0, READY)).toBe(false);
   });
 
   it("does not reload on an unchanged session or a failure", () => {
-    expect(shouldReloadForSession(AUTHENTICATED, AUTHENTICATED)).toBe(false);
     expect(
-      shouldReloadForSession(AUTHENTICATED, {
-        status: "error",
-        detail: "offline",
-        retryAt: 0,
-      }),
+      shouldReloadForSession(AUTHENTICATED, AUTHENTICATED, 5_000, READY),
     ).toBe(false);
-    expect(shouldReloadForSession(IDLE, IDLE)).toBe(false);
+    expect(
+      shouldReloadForSession(
+        AUTHENTICATED,
+        { status: "error", detail: "offline", retryAt: 0 },
+        5_000,
+        READY,
+      ),
+    ).toBe(false);
+    expect(shouldReloadForSession(IDLE, IDLE, 5_000, READY)).toBe(false);
   });
 });

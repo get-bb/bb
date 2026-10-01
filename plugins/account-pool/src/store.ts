@@ -545,6 +545,8 @@ const quotaRowSchema = z
     bucket_exhaustion_json: z.string(),
     family_weekly_json: z.string(),
     limit_windows_json: z.string(),
+    extra_usage_json: z.string(),
+    usage_restriction_json: z.string(),
     observed_at: z.number().int().nullable(),
     held_until: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -552,6 +554,8 @@ const quotaRowSchema = z
   .strict();
 
 const EMPTY_QUOTA = {
+  usageRestriction: null,
+  extraUsage: null,
   fiveHourUtilization: null,
   fiveHourResetAt: null,
   fiveHourStatus: null,
@@ -591,6 +595,8 @@ export class QuotaStore {
       representativeClaim: row.representative_claim,
       familyWeekly: JSON.parse(row.family_weekly_json),
       limitWindows: JSON.parse(row.limit_windows_json),
+      extraUsage: JSON.parse(row.extra_usage_json),
+      usageRestriction: JSON.parse(row.usage_restriction_json),
       observedAt: row.observed_at,
       heldUntil: row.held_until,
       error: row.error,
@@ -605,8 +611,8 @@ export class QuotaStore {
           account_id, five_hour_utilization, five_hour_reset_at,
           five_hour_status, seven_day_utilization, seven_day_reset_at,
           seven_day_status, representative_claim, bucket_exhaustion_json,
-          family_weekly_json, limit_windows_json, observed_at, held_until, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?)
+          family_weekly_json, limit_windows_json, extra_usage_json, usage_restriction_json, observed_at, held_until, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           five_hour_utilization = excluded.five_hour_utilization,
           five_hour_reset_at = excluded.five_hour_reset_at,
@@ -617,6 +623,8 @@ export class QuotaStore {
           representative_claim = excluded.representative_claim,
           family_weekly_json = excluded.family_weekly_json,
           limit_windows_json = excluded.limit_windows_json,
+          extra_usage_json = excluded.extra_usage_json,
+          usage_restriction_json = excluded.usage_restriction_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
           error = excluded.error`,
@@ -632,6 +640,8 @@ export class QuotaStore {
         value.representativeClaim,
         JSON.stringify(value.familyWeekly),
         JSON.stringify(value.limitWindows),
+        JSON.stringify(value.extraUsage),
+        JSON.stringify(value.usageRestriction),
         value.observedAt,
         value.heldUntil,
         value.error,
@@ -750,4 +760,6 @@ export const QUOTA_MIGRATIONS = [
     provider TEXT PRIMARY KEY,
     account_id TEXT NOT NULL
   )`,
+  `ALTER TABLE account_quota ADD COLUMN extra_usage_json TEXT NOT NULL DEFAULT 'null'`,
+  `ALTER TABLE account_quota ADD COLUMN usage_restriction_json TEXT NOT NULL DEFAULT 'null'`,
 ];

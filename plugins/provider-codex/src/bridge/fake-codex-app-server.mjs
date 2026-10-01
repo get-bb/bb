@@ -411,6 +411,15 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "account/rateLimits/read":
+      if (script?.rateLimitRead) {
+        if (script.rateLimitRead.hang) return;
+        setTimeout(() => {
+          if (script.rateLimitRead.error)
+            respondError(id, -32603, "Quota read unavailable");
+          else respond(id, script.rateLimitRead.result);
+        }, script.rateLimitRead.delayMs ?? 0);
+        return;
+      }
       respond(id, { rateLimits: {} });
       return;
     case "model/list":

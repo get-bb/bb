@@ -3,6 +3,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  setPluginLogoUrls,
+  resetPluginLogoStoreForTest,
+} from "@/lib/plugin-logos";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import { setCompactSidebarDrawerShowing } from "@/components/ui/sidebar-mobile-drawer-visibility";
@@ -54,6 +58,7 @@ function actionLabels(): string[] {
 
 afterEach(() => {
   cleanup();
+  resetPluginLogoStoreForTest();
   setCompactSidebarDrawerShowing(false);
   window.localStorage.clear();
   vi.unstubAllGlobals();
@@ -161,4 +166,28 @@ describe("NewTabActions", () => {
     expect(store.get(newTabActionOrderAtom)).toEqual([]);
     expect(actionLabels()).toEqual(["Start terminal", "Start side chat"]);
   });
+});
+
+it("uses the panel action icon before branding in the shared launcher", () => {
+  setPluginLogoUrls(
+    new Map([
+      [
+        "demo",
+        {
+          displayName: "Demo",
+          icon: "Check",
+          compactIconUrl: "/demo.svg",
+          logoUrl: null,
+          logoDarkUrl: null,
+          icons: new Map(),
+        },
+      ],
+    ]),
+  );
+  renderActions([], [{ ...pluginAction("demo", "Inspect"), icon: "Zap" }]);
+  expect(
+    screen
+      .getByRole("button", { name: "Inspect" })
+      .querySelector('[data-icon="Zap"]'),
+  ).not.toBeNull();
 });

@@ -2,7 +2,6 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
-  appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
   isPromptDraftEmpty,
@@ -224,24 +223,6 @@ function restorePromptDraftIfEmpty(
   return true;
 }
 
-function addQuoteToPromptDraft(
-  storageKey: string,
-  text: string,
-  attachments: readonly PromptDraftAttachment[] = [],
-): void {
-  const currentDraft = readPromptDraft(storageKey);
-  const nextDraft = appendQuoteAndAttachmentsToDraft(
-    currentDraft,
-    text,
-    attachments,
-  );
-  if (nextDraft === currentDraft) {
-    return;
-  }
-
-  writePromptDraft(storageKey, nextDraft);
-}
-
 function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   if (scope.kind === "automation-edit") {
     const normalizedAutomationId = normalizeStorageSegment(scope.automationId);
@@ -264,10 +245,6 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
   getCurrent: () => PromptDraftState;
   subscribe: (listener: () => void) => () => void;
   setDraft: (draft: PromptDraftState) => void;
-  addQuote: (
-    text: string,
-    attachments?: readonly PromptDraftAttachment[],
-  ) => void;
 } {
   const storageKey = getPromptDraftStorageKey(scope);
   return {
@@ -275,8 +252,6 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
     getCurrent: () => readPromptDraft(storageKey),
     subscribe: (listener) => subscribePromptDraft(storageKey, listener),
     setDraft: (draft) => writePromptDraft(storageKey, draft),
-    addQuote: (text, attachments) =>
-      addQuoteToPromptDraft(storageKey, text, attachments),
   };
 }
 
@@ -356,12 +331,6 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [storageKey],
   );
 
-  const addQuote = useCallback(
-    (text: string, attachments?: readonly PromptDraftAttachment[]) =>
-      addQuoteToPromptDraft(storageKey, text, attachments),
-    [storageKey],
-  );
-
   const clear = useCallback(() => {
     setDraftAndPersist(EMPTY_PROMPT_DRAFT);
   }, [setDraftAndPersist]);
@@ -411,14 +380,12 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       setAttachments,
       addAttachment,
       removeAttachment,
-      addQuote,
       clear,
       clearIfCurrentMatches,
       restoreIfEmpty,
     }),
     [
       addAttachment,
-      addQuote,
       clear,
       clearIfCurrentMatches,
       draft.attachments,

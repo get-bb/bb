@@ -49,6 +49,25 @@ const thread = await bb.sdk.threads.spawn({
 });
 ```
 
+### Calling another plugin's RPC
+
+`bb.sdk.plugins.callRpc({ pluginId, method, input, outputSchema })` calls
+another plugin's `bb.rpc` handler. Each handler receives a context whose
+`experimental_caller` is `{ kind: "plugin", pluginId }` for a call through a
+loaded plugin's own `bb.sdk.plugins.callRpc`, verified with a per-load token
+only the server holds, and `{ kind: "client" }` for everything else: the app,
+CLI, agents, and bb. Tests set it with
+`harness.callRpc(method, input, { experimental_caller })`.
+
+```ts
+handOver(input, { experimental_caller: caller }) {
+  if (caller.kind !== "plugin" || caller.pluginId !== "connect") {
+    throw new Error("only the connect plugin can call handOver");
+  }
+  return handOver(input);
+},
+```
+
 ### Thread plugin metadata
 
 Each plugin can keep a JSON-object namespace on a thread. Seed your namespace

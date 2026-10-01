@@ -38,14 +38,27 @@ function useCompactHomeMetrics() {
   const regionRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
+  const scrollContentRef = useRef<HTMLDivElement>(null);
   const bottomSpacerRef = useRef<HTMLDivElement>(null);
+  const composerFadeRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const region = regionRef.current;
     const composer = composerRef.current;
     const scrollViewport = scrollViewportRef.current;
+    const scrollContent = scrollContentRef.current;
     const bottomSpacer = bottomSpacerRef.current;
-    if (!region || !composer || !scrollViewport || !bottomSpacer) return;
+    const composerFade = composerFadeRef.current;
+    if (
+      !region ||
+      !composer ||
+      !scrollViewport ||
+      !scrollContent ||
+      !bottomSpacer ||
+      !composerFade
+    ) {
+      return;
+    }
     const measure = () => {
       const composerHeight = composer.offsetHeight;
       scrollViewport.style.top = `${getCompactHomeScrollViewportTop({
@@ -53,24 +66,40 @@ function useCompactHomeMetrics() {
         composerHeight,
       })}px`;
       bottomSpacer.style.height = `${composerHeight}px`;
+      composerFade.hidden =
+        scrollViewport.scrollHeight <= scrollViewport.clientHeight;
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(region);
     observer.observe(composer);
+    observer.observe(scrollContent);
     return () => observer.disconnect();
   }, []);
 
-  return { regionRef, composerRef, scrollViewportRef, bottomSpacerRef };
+  return {
+    regionRef,
+    composerRef,
+    scrollViewportRef,
+    scrollContentRef,
+    bottomSpacerRef,
+    composerFadeRef,
+  };
 }
 
 export function RootComposeCompactHome({
   children,
   composer,
 }: RootComposeCompactHomeProps) {
-  const { regionRef, composerRef, scrollViewportRef, bottomSpacerRef } =
-    useCompactHomeMetrics();
+  const {
+    regionRef,
+    composerRef,
+    scrollViewportRef,
+    scrollContentRef,
+    bottomSpacerRef,
+    composerFadeRef,
+  } = useCompactHomeMetrics();
 
   return (
     <div
@@ -85,19 +114,31 @@ export function RootComposeCompactHome({
         style={{ top: COMPACT_HOME_CHROME_OFFSET_PX }}
       >
         <div
-          aria-hidden
-          data-testid="root-compose-compact-recents-offset"
-          style={{ height: COMPACT_HOME_REST_OFFSET_PX }}
-        />
-        <div className={COMPACT_HOME_COLUMN_CLASS}>{children}</div>
-        <div ref={bottomSpacerRef} aria-hidden />
+          ref={scrollContentRef}
+          data-testid="root-compose-compact-scroll-content"
+          className="flex min-h-full flex-col justify-end"
+        >
+          <div
+            aria-hidden
+            data-testid="root-compose-compact-recents-offset"
+            style={{ height: COMPACT_HOME_REST_OFFSET_PX }}
+          />
+          <div className={COMPACT_HOME_COLUMN_CLASS}>{children}</div>
+          <div
+            ref={bottomSpacerRef}
+            aria-hidden
+            data-testid="root-compose-compact-bottom-spacer"
+          />
+        </div>
       </div>
       <div
         ref={composerRef}
         data-testid="root-compose-compact-composer"
         className="absolute inset-x-0 bottom-0 z-10"
       >
-        <OverflowFade placement="above" tone="background" size="lg" />
+        <div ref={composerFadeRef} data-testid="root-compose-compact-fade">
+          <OverflowFade placement="above" tone="background" size="lg" />
+        </div>
         <div className="bg-background pb-4">
           <div className={COMPACT_HOME_COLUMN_CLASS}>{composer}</div>
         </div>

@@ -34,8 +34,8 @@ import type {
 } from "@bb/server-contract";
 import type { JsonValue, ReadonlyJsonValue } from "./json-value.js";
 import type {
+  ExperimentalPluginRpcHandlersWithContext,
   PluginRpcContract,
-  PluginRpcHandlers,
   StandardSchemaV1,
 } from "./rpc-contract.js";
 import type {
@@ -670,7 +670,7 @@ export interface MessageDispatchHookContext {
   queuedMessages: ThreadQueuedMessage[];
   /**
    * Opaque JSON supplied by a plugin through the composer's
-   * `experimental_submit`, paired with that plugin's id. Null for ordinary
+   * `submit`, paired with that plugin's id. Null for ordinary
    * submissions and queued re-attempts. Core does not persist or interpret
    * the data.
    */
@@ -859,11 +859,13 @@ export interface PluginRpc {
    * `/api/v1/plugins/<id>/rpc/<method>` with "local" auth semantics. The
    * host validates input before invocation and output before strict JSON
    * serialization. The response is `{ ok: true, result }` or
-   * `{ ok: false, error: { code, message, issues? } }`.
+   * `{ ok: false, error: { code, message, issues? } }`. Each handler gets
+   * the call's context as its second argument; `experimental_caller` names
+   * the plugin that called through `bb.sdk.plugins.callRpc`, or `client`.
    */
   register<Contract extends PluginRpcContract>(
     contract: Contract,
-    handlers: PluginRpcHandlers<Contract>,
+    handlers: ExperimentalPluginRpcHandlersWithContext<Contract>,
     options?: {
       experimental_discoverable?: boolean;
       experimental_description?: string;
@@ -1763,8 +1765,9 @@ export interface PluginMentionItem {
   subtitle?: string;
   /**
    * BB icon name: a built-in name, or a name the plugin's app bundle
-   * registered with `app.experimental_icons.register()`. The row prefers the
-   * plugin's own branding icon when it ships one; unknown names fall back to
+   * registered with `app.experimental_icons.register()`. Resolved names take
+   * precedence over plugin branding in menu rows, composer pills, and sent
+   * messages. Omitted or unknown names fall back to plugin branding, then
    * the generic plugin icon.
    */
   icon?: string;

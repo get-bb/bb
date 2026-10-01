@@ -2451,13 +2451,9 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
-  it("hydrates and preserves rate-limit buckets by limit id", () => {
+  it("recovers and preserves rate-limit buckets by limit id", () => {
     const harness = createHarness();
-    const [rateLimitRead] = harness.translator.buildPostInitializeRequests();
-    if (rateLimitRead === undefined) {
-      throw new Error("Expected a Codex rate-limit hydration request");
-    }
-    rateLimitRead.onResult({
+    harness.translator.recoverRateLimits({
       rateLimits: {
         limitId: "codex",
         primary: {
@@ -2601,24 +2597,16 @@ describe("codex account rate-limit translation", () => {
     });
   });
 
-  it("hydrates Codex rate limits before merging truly sparse rolling updates", () => {
+  it("recovers Codex rate limits before merging truly sparse rolling updates", () => {
     const harness = createHarness();
-    const requests = harness.translator.buildPostInitializeRequests();
-    expect(requests).toHaveLength(1);
-    const [rateLimitRead] = requests;
-    if (rateLimitRead === undefined) {
-      throw new Error("Expected a Codex rate-limit hydration request");
-    }
-    expect(rateLimitRead).toMatchObject({
-      plan: { kind: "request", method: "account/rateLimits/read" },
-      required: false,
-    });
-    rateLimitRead.onResult({
+    harness.translator.recoverRateLimits({
+      rateLimitsByLimitId: null,
       rateLimits: {
         limitId: "codex",
         limitName: "Codex",
         primary: {
           usedPercent: 20,
+          windowDurationMins: null,
           resetsAt: 1_781_120_400,
         },
         secondary: {
