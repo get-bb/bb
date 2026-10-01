@@ -18,6 +18,8 @@ import {
   ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
+import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
+import { Pill } from "@bb/shared-ui/pill";
 import { BbLogo } from "@/components/ui/bb-logo";
 import {
   ConfirmDeleteDialog,
@@ -32,6 +34,10 @@ import type { ProviderInfo } from "@bb/domain";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
+import {
+  groupIdenticalSkills,
+  type SkillGroup,
+} from "@/components/tools/skill-groups";
 
 type ResourceProviderFilter = "bb" | SkillProvider;
 export type ProviderRoster = ReadonlyMap<string, ProviderInfo>;
@@ -60,6 +66,10 @@ function providerLabel(
 
 function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
   return skill.provider ?? "bb";
+}
+
+function groupProviderFilterIds(group: SkillGroup): ResourceProviderFilter[] {
+  return [...new Set(group.members.map(skillProviderFilterId))];
 }
 
 function providerFilterLabel(
@@ -158,23 +168,64 @@ export function SkillProvenanceTooltip({
   );
 }
 
-function SkillLeading({
-  skill,
+function ProviderFilterLogo({
+  provider,
+  providerRoster,
+  className,
+}: {
+  provider: ResourceProviderFilter;
+  providerRoster: ProviderRoster;
+  className: string;
+}) {
+  return provider === "bb" ? (
+    <BbLogo className={className} />
+  ) : (
+    <ProviderLogo
+      providerId={provider}
+      provider={providerRoster.get(provider)}
+      className={className}
+    />
+  );
+}
+
+function SkillProviderChips({
+  providers,
   providerRoster,
 }: {
-  skill: SkillSummary;
+  providers: readonly ResourceProviderFilter[];
   providerRoster: ProviderRoster;
 }) {
-  if (skill.provider !== null) {
-    return (
-      <ProviderLogo
-        providerId={skill.provider}
-        provider={providerRoster.get(skill.provider)}
-        className="size-6"
-      />
-    );
-  }
-  return <BbLogo className="size-6" />;
+  const label = `Available in ${providers
+    .map((provider) => providerFilterLabel(provider, providerRoster))
+    .join(", ")}`;
+  return (
+    <span
+      role="group"
+      aria-label={label}
+      data-skill-providers={providers.join(" ")}
+      className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5"
+    >
+      {providers.map((provider) => (
+        <Pill
+          key={provider}
+          variant="outline"
+          size="sm"
+          className="min-w-0 max-w-full rounded-md border-border/40 bg-surface-recessed/45 px-2 py-1 text-2xs font-medium leading-none text-subtle-foreground shadow-none"
+        >
+          <span className="inline-flex max-w-full items-center gap-1.5">
+            <ProviderFilterLogo
+              provider={provider}
+              providerRoster={providerRoster}
+              className="size-3 shrink-0"
+            />
+            <span className="min-w-0 truncate">
+              {providerFilterLabel(provider, providerRoster)}
+            </span>
+          </span>
+        </Pill>
+      ))}
+    </span>
+  );
 }
 
 function skillDescription(
@@ -243,16 +294,17 @@ const SKILLS_LIBRARY_DESCRIPTION =
 const PREFETCH_HOVER_INTENT_MS = 150;
 
 function SkillRow({
-  skill,
+  group,
   providerRoster,
   onSelect,
   onPrefetch,
 }: {
-  skill: SkillSummary;
+  group: SkillGroup;
   providerRoster: ProviderRoster;
   onSelect: () => void;
   onPrefetch?: (skill: SkillSummary) => void;
 }) {
+  const skill = group.primary;
   const description = skillDescription(skill, providerRoster);
   const prefetchTimer = useRef<number | null>(null);
   const cancelScheduledPrefetch = () => {
@@ -276,29 +328,35 @@ function SkillRow({
       onBlur={cancelScheduledPrefetch}
     >
       <ResourceRow
-        leading={<SkillLeading skill={skill} providerRoster={providerRoster} />}
         title={skill.name}
+        openLabel={skill.name}
         titleMeta={
-          skill.scope === "bb-builtin" ? (
-            <ProvenancePill label="BB Official" />
-          ) : skill.scope === "plugin" ? (
-            <ProvenancePill
-              label="Included"
-              tooltip={
-                <SkillProvenanceTooltip
-                  prefix="Included with"
-                  providerId={skill.provider}
-                  provider={
-                    skill.provider === null
-                      ? undefined
-                      : providerRoster.get(skill.provider)
-                  }
-                  name={`${providerPluginDisplayName(skill)} plugin.`}
-                />
-              }
-              accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill, providerRoster)}`}
+          <span className="flex flex-wrap items-center gap-1.5">
+            {skill.scope === "bb-builtin" ? (
+              <ProvenancePill label="BB Official" />
+            ) : skill.scope === "plugin" ? (
+              <ProvenancePill
+                label="Included"
+                tooltip={
+                  <SkillProvenanceTooltip
+                    prefix="Included with"
+                    providerId={skill.provider}
+                    provider={
+                      skill.provider === null
+                        ? undefined
+                        : providerRoster.get(skill.provider)
+                    }
+                    name={`${providerPluginDisplayName(skill)} plugin.`}
+                  />
+                }
+                accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill, providerRoster)}`}
+              />
+            ) : null}
+            <SkillProviderChips
+              providers={groupProviderFilterIds(group)}
+              providerRoster={providerRoster}
             />
-          ) : undefined
+          </span>
         }
         description={description}
         onOpen={onSelect}
@@ -362,14 +420,16 @@ export function SkillsOverview({
   const libraryPageSize = useResourceViewportPageSize(libraryViewport, {
     resetKey: libraryResetKey,
   });
+  const groups = useMemo(() => groupIdenticalSkills(skills), [skills]);
   const providerCounts = useMemo(() => {
     const counts = new Map<ResourceProviderFilter, number>();
-    for (const skill of skills) {
-      const provider = skillProviderFilterId(skill);
-      counts.set(provider, (counts.get(provider) ?? 0) + 1);
+    for (const group of groups) {
+      for (const provider of groupProviderFilterIds(group)) {
+        counts.set(provider, (counts.get(provider) ?? 0) + 1);
+      }
     }
     return counts;
-  }, [skills]);
+  }, [groups]);
   const providerBucketCount = providerCounts.size;
   const providerOptions = useMemo(() => {
     const present = new Set<ResourceProviderFilter>([
@@ -387,16 +447,13 @@ export function SkillsOverview({
     return ordered.map((provider) => ({
       id: provider,
       label: providerFilterLabel(provider, providerRoster),
-      leading:
-        provider === "bb" ? (
-          <BbLogo className="size-4" />
-        ) : (
-          <ProviderLogo
-            providerId={provider}
-            provider={providerRoster.get(provider)}
-            className="size-4"
-          />
-        ),
+      leading: (
+        <ProviderFilterLogo
+          provider={provider}
+          providerRoster={providerRoster}
+          className="size-4"
+        />
+      ),
       disabled:
         !providerCounts.has(provider) && !providerFilters.includes(provider),
     }));
@@ -407,32 +464,47 @@ export function SkillsOverview({
       setSortDirection("asc");
     }
   }, [providerBucketCount, sortMode]);
-  const visibleSkills = useMemo(() => {
-    const filtered = skills.filter((skill) => {
-      const source = skillSourceFilterId(skill);
-      if (sourceFilters.length > 0 && !sourceFilters.includes(source)) {
-        return false;
-      }
+  const visibleGroups = useMemo(() => {
+    const filtered = groups.flatMap((group) => {
+      const matchingMembers = group.members.filter(
+        (skill) =>
+          (sourceFilters.length === 0 ||
+            sourceFilters.includes(skillSourceFilterId(skill))) &&
+          (providerFilters.length === 0 ||
+            providerFilters.includes(skillProviderFilterId(skill))),
+      );
+      if (matchingMembers.length === 0) return [];
       if (
-        providerFilters.length > 0 &&
-        !providerFilters.includes(skillProviderFilterId(skill))
-      ) {
-        return false;
-      }
-      return (
-        normalizedQuery === "" ||
-        [
-          skill.name,
-          skill.description ?? "",
-          providerLabel(skill.provider, providerRoster),
-          skillScopeLabel(skill, providerLabelForScope(skill, providerRoster)),
+        normalizedQuery !== "" &&
+        ![
+          group.primary.name,
+          group.primary.description ?? "",
+          ...group.members.flatMap((skill) => [
+            providerLabel(skill.provider, providerRoster),
+            skillScopeLabel(
+              skill,
+              providerLabelForScope(skill, providerRoster),
+            ),
+          ]),
         ]
           .join(" ")
           .toLowerCase()
           .includes(normalizedQuery)
-      );
+      ) {
+        return [];
+      }
+      return [
+        {
+          ...group,
+          primary:
+            matchingMembers.find((skill) => skill.manageable) ??
+            matchingMembers[0],
+        },
+      ];
     });
-    return [...filtered].sort((left, right) => {
+    return [...filtered].sort((leftGroup, rightGroup) => {
+      const left = leftGroup.primary;
+      const right = rightGroup.primary;
       const officialResult =
         Number(left.scope !== "bb-builtin") -
         Number(right.scope !== "bb-builtin");
@@ -447,15 +519,15 @@ export function SkillsOverview({
       return left.filePath.localeCompare(right.filePath);
     });
   }, [
+    groups,
     normalizedQuery,
     providerRoster,
     providerFilters,
-    skills,
     sortDirection,
     sortMode,
     sourceFilters,
   ]);
-  const libraryList = useResourceInfiniteItems(visibleSkills, {
+  const libraryList = useResourceInfiniteItems(visibleGroups, {
     pageSize: libraryPageSize,
     resetKey: libraryResetKey,
   });
@@ -480,7 +552,7 @@ export function SkillsOverview({
     />
   ) : isLoading ? (
     <ResourceListState state="loading" message="Loading skills" />
-  ) : visibleSkills.length === 0 ? (
+  ) : visibleGroups.length === 0 ? (
     <ResourceListState
       state="empty"
       message={
@@ -496,12 +568,12 @@ export function SkillsOverview({
   ) : (
     <>
       <ResourceListPanel>
-        {libraryList.items.map((skill) => (
+        {libraryList.items.map((group) => (
           <SkillRow
-            key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
-            skill={skill}
+            key={group.key}
+            group={group}
             providerRoster={providerRoster}
-            onSelect={() => onSelectSkill(skill)}
+            onSelect={() => onSelectSkill(group.primary)}
             onPrefetch={onPrefetchSkill}
           />
         ))}
@@ -596,8 +668,49 @@ export function SkillsOverview({
   );
 }
 
+function SkillCopyList({
+  copies,
+  currentSkillId,
+  providerRoster,
+  onSelect,
+}: {
+  copies: readonly SkillSummary[];
+  currentSkillId: string;
+  providerRoster: ProviderRoster;
+  onSelect?: (skill: SkillSummary) => void;
+}) {
+  return copies.map((copy) => {
+    const label = providerFilterLabel(
+      skillProviderFilterId(copy),
+      providerRoster,
+    );
+    return (
+      <button
+        key={copy.id}
+        type="button"
+        aria-current={copy.id === currentSkillId ? "true" : undefined}
+        aria-label={`${label}: ${copy.filePath}`}
+        onClick={() => onSelect?.(copy)}
+        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground aria-[current]:bg-surface-recessed/45 aria-[current]:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <ProviderFilterLogo
+          provider={skillProviderFilterId(copy)}
+          providerRoster={providerRoster}
+          className="size-4 shrink-0"
+        />
+        <span className="shrink-0 text-foreground">{label}</span>
+        <span className="min-w-0 truncate font-mono">
+          {formatHomePathForDisplay(copy.filePath)}
+        </span>
+      </button>
+    );
+  });
+}
+
 interface SkillDetailDialogViewProps {
   skill: SkillSummary | null;
+  copies?: readonly SkillSummary[];
+  onSelectCopy?: (skill: SkillSummary) => void;
   providerRoster: ProviderRoster;
   files: readonly string[];
   selectedPath: string;
@@ -618,6 +731,8 @@ interface SkillDetailDialogViewProps {
 
 export function SkillDetailDialogView({
   skill,
+  copies = [],
+  onSelectCopy,
   providerRoster,
   files,
   selectedPath,
@@ -687,7 +802,16 @@ export function SkillDetailDialogView({
     ) : null;
   return (
     <SkillDetailView
-      leading={<SkillLeading skill={skill} providerRoster={providerRoster} />}
+      providerChips={
+        <SkillProviderChips
+          providers={[
+            ...new Set(
+              (copies.length > 0 ? copies : [skill]).map(skillProviderFilterId),
+            ),
+          ]}
+          providerRoster={providerRoster}
+        />
+      }
       title={skill.name}
       path={skill.filePath}
       titleBadge={
@@ -728,6 +852,16 @@ export function SkillDetailDialogView({
                   accessibleLabel: `${skill.name} is imported from ${providerLabel(skill.provider, providerRoster)}`,
                 }
               : undefined
+      }
+      availableIn={
+        copies.length > 1 ? (
+          <SkillCopyList
+            copies={copies}
+            currentSkillId={skill.id}
+            providerRoster={providerRoster}
+            onSelect={onSelectCopy}
+          />
+        ) : undefined
       }
       files={files.length > 0 ? files : ["SKILL.md"]}
       markdownLinkRouting={markdownLinkRouting}

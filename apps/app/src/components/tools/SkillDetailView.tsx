@@ -35,12 +35,14 @@ type SkillDetailContentState =
 
 interface SkillDetailViewProps {
   leading?: ReactNode;
+  providerChips?: ReactNode;
   title: string;
   path: string;
   pathHref?: string;
   titleBadge?: SkillDetailTitleBadge;
   headerActions?: ReactNode;
   overflowMenu?: ReactNode;
+  availableIn?: ReactNode;
   files: readonly string[];
   selectedPath: string;
   onSelectFile: (path: string) => void;
@@ -215,12 +217,14 @@ function ScrollingSkillContent({
 
 export function SkillDetailView({
   leading,
+  providerChips,
   title,
   path,
   pathHref,
   titleBadge,
   headerActions,
   overflowMenu,
+  availableIn,
   files,
   selectedPath,
   onSelectFile,
@@ -232,13 +236,18 @@ export function SkillDetailView({
   const selectedDisplayPath = formatHomePathForDisplay(selectedPath);
   const selectedFileIsMarkdown = selectedPath.toLowerCase().endsWith(".md");
   const titleMeta =
-    titleBadge === undefined ? undefined : (
-      <ProvenancePill
-        label={titleBadge.label}
-        tooltip={titleBadge.tooltip}
-        accessibleLabel={titleBadge.accessibleLabel}
-      />
-    );
+    titleBadge || providerChips ? (
+      <span className="flex flex-wrap items-center gap-1.5">
+        {titleBadge ? (
+          <ProvenancePill
+            label={titleBadge.label}
+            tooltip={titleBadge.tooltip}
+            accessibleLabel={titleBadge.accessibleLabel}
+          />
+        ) : null}
+        {providerChips}
+      </span>
+    ) : undefined;
   return (
     <ResourceDetailPage
       leading={leading}
@@ -249,6 +258,11 @@ export function SkillDetailView({
       actions={headerActions}
     >
       <ResourceDetailStack>
+        {availableIn ? (
+          <ResourceDetailIncludesSection label="Available in">
+            <ResourceDetailCollection>{availableIn}</ResourceDetailCollection>
+          </ResourceDetailIncludesSection>
+        ) : null}
         {files.length > 1 ? (
           <ResourceDetailIncludesSection label="Files">
             <SkillFileList

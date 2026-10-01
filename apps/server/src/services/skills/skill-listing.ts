@@ -133,6 +133,7 @@ export function assembleSkillList(
         id: skill.id,
         name: skill.name,
         description: skill.description,
+        contentHash: skill.contentHash,
         provider: mapped.provider,
         scope: mapped.scope,
         pluginId:
@@ -154,57 +155,77 @@ function skillId(identitySeed: string, logicalPath: string): string {
     .digest("hex")}`;
 }
 
-function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
-  return resolveServerOwnedSkillCatalogEntries({
+async function readSkillContentHash(filePath: string): Promise<string | null> {
+  try {
+    const content = await fs.readFile(filePath);
+    return createHash("sha256").update(content).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+async function listServerOwnedSkills(deps: AppDeps): Promise<SkillSummary[]> {
+  const entries = resolveServerOwnedSkillCatalogEntries({
     builtinSkillsRootPath: null,
     dataDir: deps.config.dataDir,
     logger: deps.logger,
     skillTreeRegistry: deps.skillTreeRegistry,
-  })
-    .map(({ runtimeSource }): SkillSummary | null => {
+  });
+  const skills = await Promise.all(
+    entries.map(async ({ runtimeSource }): Promise<SkillSummary | null> => {
       if (runtimeSource.kind !== "tree") return null;
       const rootPath = path.join(
         resolveDataDirSkillsRootPath(deps.config.dataDir),
         runtimeSource.name,
       );
       const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
+      const filePath = path.join(rootPath, runtimeSource.entryPath);
       return {
         id: skillId("bb-data-dir", logicalPath),
         name: runtimeSource.name,
         description: runtimeSource.description,
+        contentHash: await readSkillContentHash(filePath),
         provider: null,
         scope: "bb-user",
         pluginId: null,
-        filePath: path.join(rootPath, runtimeSource.entryPath),
+        filePath,
         manageable: true,
         registrySkillId: readRegistrySkillProvenance(rootPath),
       };
-    })
+    }),
+  );
+  return skills
     .filter((skill): skill is SkillSummary => skill !== null)
     .sort(compareSkillSummaries);
 }
 
-function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
-  return resolveSkillCatalog(deps)
-    .map(({ provenance, runtimeSource }): SkillSummary | null => {
-      if (provenance.kind !== "plugin" || runtimeSource.kind !== "tree") {
-        return null;
-      }
-      const rootPath = deps.skillTreeRegistry.resolve(runtimeSource.treeHash);
-      if (rootPath === undefined) return null;
-      const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
-      return {
-        id: skillId(`bb-plugin:${provenance.pluginId}`, logicalPath),
-        name: runtimeSource.name,
-        description: runtimeSource.description,
-        provider: null,
-        scope: "plugin",
-        pluginId: provenance.pluginId,
-        filePath: path.join(rootPath, runtimeSource.entryPath),
-        manageable: false,
-        registrySkillId: null,
-      };
-    })
+async function listBbPluginSkills(deps: AppDeps): Promise<SkillSummary[]> {
+  const skills = await Promise.all(
+    resolveSkillCatalog(deps).map(
+      async ({ provenance, runtimeSource }): Promise<SkillSummary | null> => {
+        if (provenance.kind !== "plugin" || runtimeSource.kind !== "tree") {
+          return null;
+        }
+        const rootPath = deps.skillTreeRegistry.resolve(runtimeSource.treeHash);
+        if (rootPath === undefined) return null;
+        const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
+        const filePath = path.join(rootPath, runtimeSource.entryPath);
+        return {
+          id: skillId(`bb-plugin:${provenance.pluginId}`, logicalPath),
+          name: runtimeSource.name,
+          description: runtimeSource.description,
+          contentHash: await readSkillContentHash(filePath),
+          provider: null,
+          scope: "plugin",
+          pluginId: provenance.pluginId,
+          filePath,
+          manageable: false,
+          registrySkillId: null,
+        };
+      },
+    ),
+  );
+  return skills
     .filter((skill): skill is SkillSummary => skill !== null)
     .sort(compareSkillSummaries);
 }
@@ -216,30 +237,33 @@ export async function listProjectSkills(
   const skillProviders = deps.providerRegistry
     .list()
     .filter(providerHasNativeRootSurface);
-  const [perProvider, sharedSkills] = await Promise.all([
-    Promise.all(
-      skillProviders.map(
-        async (registration): Promise<ProviderSkillDiscovery> => {
-          const result = await scanProviderNativeRoots(deps, {
-            type: "host.list_skills",
-            registration,
-            hostId: args.workspace.hostId,
-            cwd: args.workspace.cwd,
-          });
-          return { provider: registration.info.id, skills: result.skills };
-        },
+  const [perProvider, sharedSkills, serverOwnedSkills, bbPluginSkills] =
+    await Promise.all([
+      Promise.all(
+        skillProviders.map(
+          async (registration): Promise<ProviderSkillDiscovery> => {
+            const result = await scanProviderNativeRoots(deps, {
+              type: "host.list_skills",
+              registration,
+              hostId: args.workspace.hostId,
+              cwd: args.workspace.cwd,
+            });
+            return { provider: registration.info.id, skills: result.skills };
+          },
+        ),
       ),
-    ),
-    resolveSharedSkills(deps, {
-      hostId: args.workspace.hostId,
-      cwd: args.workspace.cwd,
-    }),
-  ]);
+      resolveSharedSkills(deps, {
+        hostId: args.workspace.hostId,
+        cwd: args.workspace.cwd,
+      }),
+      listServerOwnedSkills(deps),
+      listBbPluginSkills(deps),
+    ]);
   return [
     ...assembleSkillList(perProvider),
     ...sharedSkills.summaries,
-    ...listServerOwnedSkills(deps),
-    ...listBbPluginSkills(deps),
+    ...serverOwnedSkills,
+    ...bbPluginSkills,
   ].sort(compareSkillSummaries);
 }
 

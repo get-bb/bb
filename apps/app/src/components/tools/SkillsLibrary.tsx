@@ -61,6 +61,7 @@ import {
   useSkillFiles,
 } from "@/hooks/queries/skills-queries";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
+import { findSkillGroup } from "@/components/tools/skill-groups";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
@@ -77,11 +78,15 @@ const REGISTRY_LIST_STALE_TIME_MS = 30 * 60_000;
 function SkillDetailPage({
   projectId,
   skill,
+  copies,
+  onSelectCopy,
   onClose,
   onEdit,
 }: {
   projectId: string;
   skill: SkillSummary | null;
+  copies: readonly SkillSummary[];
+  onSelectCopy: (skill: SkillSummary) => void;
   onClose: () => void;
   onEdit: (skill: SkillSummary) => void;
 }) {
@@ -115,6 +120,8 @@ function SkillDetailPage({
   return (
     <SkillDetailDialogView
       skill={skill}
+      copies={copies}
+      onSelectCopy={onSelectCopy}
       providerRoster={providerRoster}
       files={filesQuery.data?.files ?? ["SKILL.md"]}
       selectedPath={selectedPath}
@@ -370,6 +377,10 @@ export function SkillsLibrary() {
     if (routeSkillId === undefined) return null;
     return skills.find((skill) => skill.id === routeSkillId) ?? null;
   }, [routeSkillId, skills]);
+  const selectedSkillCopies = useMemo(
+    () => (selectedSkill === null ? [] : findSkillGroup(skills, selectedSkill)),
+    [selectedSkill, skills],
+  );
   const registrySkillOnPage = useMemo(() => {
     if (routeRegistrySkillId === undefined) {
       return null;
@@ -417,6 +428,14 @@ export function SkillsLibrary() {
           skillId: skill.id,
         }),
       );
+    },
+    [navigate],
+  );
+  const openSkillCopy = useCallback(
+    (skill: SkillSummary) => {
+      navigate(getSkillDetailRoutePath({ skillId: skill.id }), {
+        replace: true,
+      });
     },
     [navigate],
   );
@@ -514,6 +533,8 @@ export function SkillsLibrary() {
         <SkillDetailPage
           projectId={PERSONAL_PROJECT_ID}
           skill={selectedSkill}
+          copies={selectedSkillCopies}
+          onSelectCopy={openSkillCopy}
           onClose={closeSkillDetail}
           onEdit={editSkillViaThread}
         />

@@ -179,6 +179,7 @@ describe("public project command typeahead route", () => {
               id: `skill_${"a".repeat(64)}`,
               name: "portable-review",
               description: "Review code from one shared source.",
+              contentHash: null,
               filePath:
                 "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
               rootKind: "shared-project",

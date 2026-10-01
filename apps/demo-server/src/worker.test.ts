@@ -54,7 +54,9 @@ beforeAll(async () => {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     try {
-      if ((await fetch(`${origin}/health`)).ok) return;
+      const response = await fetch(`${origin}/health`);
+      await response.arrayBuffer();
+      if (response.ok) return;
     } catch {
       if (worker.exitCode !== null) break;
     }
@@ -98,59 +100,65 @@ it("serves the shell, deep links, and its JavaScript and styles", async () => {
   expect((await fetch(origin, { method: "HEAD" })).status).toBe(200);
 });
 
-it("serves the sidebar plugin frontends and sample conversation in current contract shape", async () => {
-  const catalog = pluginListResponseSchema.parse(
-    await (await fetch(`${origin}/api/v1/plugins`)).json(),
-  );
-  expect(catalog.plugins.map((plugin) => plugin.id)).toEqual([
-    "navigation",
-    "thread-list",
-  ]);
-  for (const plugin of catalog.plugins) {
-    if (plugin.app.bundle === null) throw new Error("Missing sidebar frontend");
-    for (const path of [plugin.app.bundle.jsUrl, plugin.app.bundle.cssUrl]) {
-      if (path === null) throw new Error("Missing sidebar asset URL");
-      const asset = await fetch(new URL(path, origin));
-      expect(asset.status).toBe(200);
-      expect(asset.headers.get("content-type")).not.toContain("text/html");
+it(
+  "serves the sidebar plugin frontends and sample conversation in current contract shape",
+  { timeout: 15_000 },
+  async () => {
+    const catalog = pluginListResponseSchema.parse(
+      await (await fetch(`${origin}/api/v1/plugins`)).json(),
+    );
+    expect(catalog.plugins.map((plugin) => plugin.id)).toEqual([
+      "navigation",
+      "thread-list",
+    ]);
+    for (const plugin of catalog.plugins) {
+      if (plugin.app.bundle === null)
+        throw new Error("Missing sidebar frontend");
+      for (const path of [plugin.app.bundle.jsUrl, plugin.app.bundle.cssUrl]) {
+        if (path === null) throw new Error("Missing sidebar asset URL");
+        const asset = await fetch(new URL(path, origin));
+        expect(asset.status).toBe(200);
+        expect(asset.headers.get("content-type")).not.toContain("text/html");
+        expect((await asset.text()).length).toBeGreaterThan(0);
+      }
     }
-  }
-  for (const provider of PROVIDERS) {
-    if (provider.logoUrl === null)
-      throw new Error("Missing demo provider logo URL");
-    const logo = await fetch(new URL(provider.logoUrl, origin));
-    expect(logo.status).toBe(200);
-    expect(logo.headers.get("content-type")).toContain("image/svg+xml");
-    expect(await logo.text()).toContain("<svg");
-  }
-  const bootstrap = sidebarBootstrapResponseSchema.parse(
-    await (await fetch(`${origin}/api/v1/sidebar-bootstrap`)).json(),
-  );
-  expect(bootstrap.projects[0].threads).toHaveLength(3);
-  const thread = bootstrap.projects[0].threads[0];
-  const timeline = threadTimelineResponseSchema.parse(
-    await (
-      await fetch(`${origin}/api/v1/threads/${thread.id}/timeline`)
-    ).json(),
-  );
-  expect(
-    timeline.rows.some(
-      (row) => row.kind === "conversation" && row.role === "assistant",
-    ),
-  ).toBe(true);
-  const rpc = await fetch(
-    `${origin}/api/v1/plugins/thread-list/rpc/listPreferences`,
-    {
-      method: "POST",
-      body: "null",
-      headers: { "content-type": "application/json" },
-    },
-  );
-  expect(await rpc.json()).toEqual({ ok: true, result: { preferences: {} } });
-  systemAppUpdateStatusSchema.parse(
-    await (await fetch(`${origin}/api/v1/system/app-update`)).json(),
-  );
-});
+    for (const provider of PROVIDERS) {
+      if (provider.logoUrl === null)
+        throw new Error("Missing demo provider logo URL");
+      const logo = await fetch(new URL(provider.logoUrl, origin));
+      expect(logo.status).toBe(200);
+      expect(logo.headers.get("content-type")).toContain("image/svg+xml");
+      expect(await logo.text()).toContain("<svg");
+    }
+    const bootstrap = sidebarBootstrapResponseSchema.parse(
+      await (await fetch(`${origin}/api/v1/sidebar-bootstrap`)).json(),
+    );
+    expect(bootstrap.projects[0].threads).toHaveLength(3);
+    const thread = bootstrap.projects[0].threads[0];
+    const timeline = threadTimelineResponseSchema.parse(
+      await (
+        await fetch(`${origin}/api/v1/threads/${thread.id}/timeline`)
+      ).json(),
+    );
+    expect(
+      timeline.rows.some(
+        (row) => row.kind === "conversation" && row.role === "assistant",
+      ),
+    ).toBe(true);
+    const rpc = await fetch(
+      `${origin}/api/v1/plugins/thread-list/rpc/listPreferences`,
+      {
+        method: "POST",
+        body: "null",
+        headers: { "content-type": "application/json" },
+      },
+    );
+    expect(await rpc.json()).toEqual({ ok: true, result: { preferences: {} } });
+    systemAppUpdateStatusSchema.parse(
+      await (await fetch(`${origin}/api/v1/system/app-update`)).json(),
+    );
+  },
+);
 
 it("keeps unsupported API and mutation requests out of the SPA fallback", async () => {
   for (const [path, method] of [

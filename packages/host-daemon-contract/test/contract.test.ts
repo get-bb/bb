@@ -303,6 +303,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         id: `skill_${"a".repeat(64)}`,
         name: "review",
         description: "Review the current diff",
+        contentHash: "a".repeat(64),
         filePath: "/home/user/.bb/skills/review/SKILL.md",
         rootKind: "bb-data-dir",
         linked: false,
@@ -1145,7 +1146,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(223);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(224);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

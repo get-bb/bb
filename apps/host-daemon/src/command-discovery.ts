@@ -81,6 +81,7 @@ interface ParsedFrontmatter {
   name: string | null;
   description: string | null;
   argumentHint: string | null;
+  contentHash: string | null;
 }
 
 interface SkillFileMatch {
@@ -137,28 +138,36 @@ function readFrontmatterString(
 }
 
 async function parseFrontmatter(filePath: string): Promise<ParsedFrontmatter> {
-  let content: string;
+  let bytes: Buffer;
   try {
-    content = await fs.readFile(filePath, "utf8");
+    bytes = await fs.readFile(filePath);
   } catch {
-    return { name: null, description: null, argumentHint: null };
+    return {
+      name: null,
+      description: null,
+      argumentHint: null,
+      contentHash: null,
+    };
   }
+  const contentHash = createHash("sha256").update(bytes).digest("hex");
+  const content = bytes.toString("utf8");
 
   if (!hasSupportedFrontmatterDelimiter(content)) {
-    return { name: null, description: null, argumentHint: null };
+    return { name: null, description: null, argumentHint: null, contentHash };
   }
 
   let data: Record<string, unknown>;
   try {
     data = matter(content).data;
   } catch {
-    return { name: null, description: null, argumentHint: null };
+    return { name: null, description: null, argumentHint: null, contentHash };
   }
 
   return {
     name: readFrontmatterString(data, "name"),
     description: readFrontmatterString(data, "description"),
     argumentHint: readFrontmatterString(data, "argument-hint"),
+    contentHash,
   };
 }
 
@@ -514,6 +523,7 @@ function buildSkillRecord(
       .digest("hex")}`,
     name: `${root.namePrefix}${match.name}`,
     description: match.frontmatter.description,
+    contentHash: match.frontmatter.contentHash,
     filePath: match.filePath,
     rootKind: root.rootKind,
     linked: match.linked,

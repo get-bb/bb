@@ -31,6 +31,7 @@ function installedSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     id: `skill_${"a".repeat(64)}`,
     name: "useful-skill",
     description: "A useful skill.",
+    contentHash: null,
     provider: null,
     scope: "bb-user",
     pluginId: null,

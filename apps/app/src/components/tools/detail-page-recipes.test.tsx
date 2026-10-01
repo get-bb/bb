@@ -363,6 +363,7 @@ describe("Plugin detail recipe", () => {
             id: `skill_${"a".repeat(64)}`,
             name: "review",
             description: "Reviews pull requests.",
+            contentHash: null,
             provider: null,
             scope: "plugin",
             pluginId: "github",

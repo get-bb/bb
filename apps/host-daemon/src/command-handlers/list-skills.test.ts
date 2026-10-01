@@ -143,6 +143,8 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
       id: expect.stringMatching(/^skill_[a-f0-9]{64}$/u),
       name: "proj-bb",
       description: "proj-bb skill",
+      contentHash:
+        "142fb7e8aea9624d1c7c32a28bb5f8aa805d311ecb48068a89da319e293238f5",
       filePath: files["proj-bb"],
       rootKind: "bb-project",
       linked: false,
@@ -151,6 +153,68 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     expect(byName(skills, "proj-agent")?.rootKind).toBe("provider-project");
     expect(byName(skills, "user-agent")?.rootKind).toBe("provider-user");
     expect(byName(skills, "user-agent")?.filePath).toBe(files["user-agent"]);
+  });
+
+  it("hashes SKILL.md contents so identical copies share a content hash", async () => {
+    const claudeRoot = path.join(tempRoot, "home", ".claude", "skills");
+    const codexRoot = path.join(tempRoot, "home", ".agents", "skills");
+    await writeSkill(path.join(claudeRoot, "review", "SKILL.md"), "review");
+    await mkdir(path.join(codexRoot, "review"), { recursive: true });
+    await writeFile(
+      path.join(codexRoot, "review", "SKILL.md"),
+      "---\nname: review\ndescription: review skill\n---\nEdited.\n",
+    );
+    await writeSkill(path.join(claudeRoot, "lint", "SKILL.md"), "lint");
+    await writeSkill(path.join(codexRoot, "lint", "SKILL.md"), "lint");
+    await mkdir(path.join(claudeRoot, "encoded"), { recursive: true });
+    await mkdir(path.join(codexRoot, "encoded"), { recursive: true });
+    await writeFile(
+      path.join(claudeRoot, "encoded", "SKILL.md"),
+      Buffer.from([0x80]),
+    );
+    await writeFile(
+      path.join(codexRoot, "encoded", "SKILL.md"),
+      Buffer.from([0x81]),
+    );
+    const userRoot = (
+      rootPath: string,
+      identitySeed: string,
+    ): SkillScanRoot => ({
+      rootPath,
+      shape: "skill",
+      namePrefix: "",
+      source: "skill",
+      origin: "user",
+      identitySeed,
+      rootKind: "provider-user",
+    });
+
+    const skills = await discoverSkills({
+      roots: [userRoot(claudeRoot, "claude"), userRoot(codexRoot, "codex")],
+    });
+    const hashOf = (root: string, name: string) =>
+      skills.find(
+        (skill) => skill.filePath === path.join(root, name, "SKILL.md"),
+      )?.contentHash;
+
+    expect(hashOf(claudeRoot, "lint")).toBe(
+      "f3d2ca48dd11f16c8d310cbbba9b14871c0256c9beda5e8539df252aaaf6c24b",
+    );
+    expect(hashOf(codexRoot, "lint")).toBe(
+      "f3d2ca48dd11f16c8d310cbbba9b14871c0256c9beda5e8539df252aaaf6c24b",
+    );
+    expect(hashOf(claudeRoot, "review")).toBe(
+      "ed1a409fd5344d354f012966c3411bac8503ea016409bf888799a72620b1cc9e",
+    );
+    expect(hashOf(codexRoot, "review")).toBe(
+      "6b6a0413bc0dc24dbaee428cac8768190f2fc7dfda7f680eeb0616d6d5b22071",
+    );
+    expect(hashOf(claudeRoot, "encoded")).toBe(
+      "76be8b528d0075f7aae98d6fa57a6d3c83ae480a8469e668d7b0af968995ac71",
+    );
+    expect(hashOf(codexRoot, "encoded")).toBe(
+      "591b7cc95037822dec5a4d593a2e2e8b19c07ddd2570e5699003d17f14c440a6",
+    );
   });
 
   it("keeps native skill IDs stable when the workspace root moves", async () => {
