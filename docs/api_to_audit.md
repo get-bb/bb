@@ -1128,6 +1128,21 @@ hook; confirm the `{ threadId | null }` scope is the right key once bridges
 multiplex several threads over one child; and settle the recording entry
 shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
+## Portable provider spawn (`experimental_spawnPortableProcess`) (`@get-bb/plugin-sdk/provider-bridge`)
+
+**What it does.** Spawns a provider executable with the daemon's portable
+launcher instead of `node:child_process` `spawn`. It takes
+`{ command, args, cwd?, env?, stdio?, detached? }` and returns a `ChildProcess`.
+On Windows it resolves the command through PATH and PATHEXT, runs npm `.cmd`
+shims, and hides the console window; on macOS and Linux it behaves like
+`spawn`. The Codex and Pi bridges launch their CLIs with it.
+
+**Audit before stabilizing.** Decide whether bridges should receive the managed
+process handle (awaited stop that ends the whole process tree) instead of a raw
+`ChildProcess`: on Windows a `.cmd` shim makes `child.kill()` end only the
+`cmd.exe` wrapper. Confirm argument quoting for `.cmd` targets with untrusted
+arguments, and whether `detached` belongs in the public shape.
+
 ## `experimental_BridgeRecoveryError`
 
 **Kept experimental (2026-08-22).** it is part of the provider-bridge authoring surface and stabilizes together with `experimental_defineProviderBridge` / `experimental_apiVersion` in the later bridge-kit audit.
@@ -1154,8 +1169,9 @@ whether `retryable` should be per kind (only `sessionArchived` and
 bridge's `provider/health`, `provider/usage` and `provider/installation/*`
 answers when its provider is a user-installed CLI. The probes:
 `experimental_resolveExecutablePath` (the command's absolute path — the path
-itself when given absolute and executable, else the first `which`/`where`
-hit, null when absent; 5 s), `experimental_readCliVersion` (`<command>
+itself when given absolute and executable, else the first `which` hit, or on
+Windows the first `where` hit whose extension is in `PATHEXT` so an npm `.cmd`
+launcher wins over the extensionless shim beside it, null when absent; 5 s), `experimental_readCliVersion` (`<command>
 --version` with stdin closed, so CLIs that start a stdio server on unknown
 flags exit instead of hitting the timeout; the first version token on stdout
 or stderr, or null if it is invalid SemVer; 5 s),
@@ -1172,7 +1188,8 @@ install verifies by existence; an update by reaching the latest version the
 status saw, or by any change when the registry was unreachable). The
 actions: `experimental_npmGlobalInstallCommand` (`npm install -g
 <package>@latest` with its display string), `experimental_downloadedInstallerCommand`
-(a vendor's `curl | bash` script run from a temp file),
+(a vendor's `curl | bash` script run from a temp file; given
+`{ powershellUrl }` it returns `powershell.exe … "irm <url> | iex"` on Windows),
 `experimental_npmCommand` (`npm` / `npm.cmd`) and
 `experimental_formatCommand` (a display command line with shell-unsafe
 arguments single-quoted). `experimental_clampPercent` rounds a usage

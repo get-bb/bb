@@ -258,6 +258,13 @@ export type {
  */
 export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 
+/**
+ * Spawns a provider CLI by name the way the daemon does: on Windows it resolves
+ * PATH and PATHEXT, runs npm `.cmd` shims, and opens no console window. Use it
+ * in place of `node:child_process` `spawn` for a provider executable.
+ */
+export { spawnPortableProcess as experimental_spawnPortableProcess } from "@bb/process-utils";
+
 // ---------------------------------------------------------------------------
 // 4. The domain vocabulary the protocol's payloads reference
 // ---------------------------------------------------------------------------

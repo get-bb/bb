@@ -1,6 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
-import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  experimental_recordProviderChildIo,
+  experimental_spawnPortableProcess,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
@@ -111,7 +114,9 @@ function isClosedChildStdinError(error: Error): boolean {
 export function createCodexAppServerConnection(
   options: CreateCodexAppServerConnectionOptions,
 ): CodexAppServerConnection {
-  const child: ChildProcess = spawn(options.command, options.args, {
+  const child: ChildProcess = experimental_spawnPortableProcess({
+    command: options.command,
+    args: options.args,
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
