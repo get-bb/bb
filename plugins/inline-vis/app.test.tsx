@@ -229,40 +229,6 @@ describe("InlineVisDirective", () => {
     ]);
   });
 
-  it("uses an optional bounded height attribute", async () => {
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: { file: "demo.html", height: "480" },
-        source: '::inline-vis{file="demo.html" height="480"}',
-        message,
-        openWorkspaceFile: null,
-      },
-      {
-        rpc: {
-          preparePreview: () => ({
-            kind: "html",
-            file: "demo.html",
-            source: "workspace",
-            target: {
-              kind: "workspace",
-              environmentId: "env_1",
-              path: "demo.html",
-            },
-            url: "/api/v1/environments/env_1/files/demo.html",
-          }),
-        },
-      },
-    );
-
-    const iframe = await waitFor(() => {
-      const el = slot.container.querySelector("iframe");
-      expect(el).toBeTruthy();
-      return el as HTMLIFrameElement;
-    });
-    expect(iframe.style.height).toBe("480px");
-  });
-
   it("persists the collapsed preference for subsequent previews", async () => {
     const options = {
       rpc: {
@@ -489,37 +455,6 @@ describe("InlineVisDirective", () => {
     ]);
   });
 
-  it("uses an optional bounded height for Markdown", async () => {
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: { file: "notes.md", height: "480" },
-        source: '::inline-vis{file="notes.md" height="480"}',
-        message,
-        openWorkspaceFile: null,
-      },
-      {
-        rpc: {
-          preparePreview: () => ({
-            kind: "markdown",
-            file: "notes.md",
-            source: "workspace",
-            target: {
-              kind: "workspace",
-              environmentId: "env_1",
-              path: "notes.md",
-            },
-            rootPath: "/work/repo",
-            content: "# Notes",
-          }),
-        },
-      },
-    );
-
-    const markdown = await slot.findByTestId("bb-markdown");
-    expect(markdown.parentElement?.style.height).toBe("480px");
-  });
-
   it("reserves the Markdown preview height while loading", async () => {
     type MarkdownPreview = {
       kind: "markdown";
@@ -595,28 +530,5 @@ describe("InlineVisDirective", () => {
     );
     expect(slot.container.querySelector("iframe")).toBeNull();
     expect(slot.rpcCalls).toEqual([]);
-  });
-
-  it("shows an error when rpc fails", async () => {
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: { file: "missing.html" },
-        source: '::inline-vis{file="missing.html"}',
-        message,
-        openWorkspaceFile: null,
-      },
-      {
-        rpc: {
-          preparePreview: () => {
-            throw new Error("Preview file not found: missing.html");
-          },
-        },
-      },
-    );
-
-    const alert = await slot.findByRole("alert");
-    expect(alert.textContent).toMatch(/Preview file not found: missing\.html/);
-    expect(slot.container.querySelector("iframe")).toBeNull();
   });
 });

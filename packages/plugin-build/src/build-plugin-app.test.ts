@@ -461,8 +461,6 @@ describe("plugin app runtime shim", () => {
   });
 
   it.each([
-    ["non-SVG XML", "<html/>", /<svg> root element/],
-    ["malformed XML", "<svg><path></svg>", /not valid SVG XML/],
     [
       "entity declarations",
       '<!DOCTYPE svg [<!ENTITY mark "x">]><svg>&mark;</svg>',

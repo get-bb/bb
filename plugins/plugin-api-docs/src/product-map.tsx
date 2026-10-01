@@ -516,7 +516,7 @@ function SlideTitle({ title }: { title: string }) {
   );
 }
 
-export function panCarets(
+function panCarets(
   index: number,
   slideCount: number,
 ): { previous: boolean; next: boolean } {

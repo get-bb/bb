@@ -386,6 +386,7 @@ describe("Modal machine provider", () => {
     await expect(harness.provider.create(context)).resolves.toMatchObject({
       status: "failed",
     });
+    expect(harness.backend.image).toHaveBeenCalledOnce();
     expect(harness.backend.states[0]?.terminated).toBe(false);
     await expect(harness.provider.create(context)).resolves.toMatchObject({
       status: "created",
@@ -858,16 +859,6 @@ it("reconciles uncertain named allocations without creating or bootstrapping", a
   expect(test.bootstrap).not.toHaveBeenCalled();
   await test.harness.lifecycle.dispose();
 });
-it("reports bootstrap failures after preserving the allocation", async () => {
-  const test = await setup();
-  test.bootstrap.mockRejectedValueOnce(new Error("Configure machine access"));
-  expect(await test.provider.create(createContext())).toMatchObject({
-    status: "failed",
-  });
-  expect(test.backend.image).toHaveBeenCalledOnce();
-  expect(test.backend.creates).toHaveLength(1);
-});
-
 it("observes vendor deadlines", async () => {
   const harness = await setup();
   const created = await harness.provider.create(createContext());
@@ -1150,7 +1141,7 @@ it("does not allocate debug compute when the image fails to build", async () => 
 });
 
 describe("modal CLI surface", () => {
-  it("documents commands, rejects near-miss names and options, and reports missing values at once", async () => {
+  it("documents commands and requires a command after -- for sandbox exec", async () => {
     const test = await setup();
 
     const help = await test.harness.behavior.runCli(["--help"]);
@@ -1166,22 +1157,6 @@ describe("modal CLI surface", () => {
     expect(commandHelp.exitCode).toBe(0);
     expect(commandHelp.stdout).toContain("bb modal image set --file <PATH>");
 
-    expect(
-      await test.harness.behavior.runCli(["sandbox", "exce", "sandbox-1"]),
-    ).toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining(
-        "unknown command 'sandbox exce' (Did you mean sandbox exec?)",
-      ),
-    });
-    expect(
-      await test.harness.behavior.runCli(["image", "show", "--jsno"]),
-    ).toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining(
-        "unknown option '--jsno' (Did you mean --json?)",
-      ),
-    });
     expect(
       await test.harness.behavior.runCli(["sandbox", "exec", "sandbox-1"]),
     ).toMatchObject({

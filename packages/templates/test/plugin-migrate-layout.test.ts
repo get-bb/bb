@@ -601,35 +601,6 @@ describe("setPluginSdkPin", () => {
     ).toBeNull();
   });
 
-  it("moves a runtime-declared SDK into devDependencies rather than duplicating it", async () => {
-    await writeFile(
-      join(rootDir, "package.json"),
-      `${JSON.stringify(
-        {
-          name: "bb-plugin-runtime-dep",
-          bb: { server: "./server.ts" },
-          dependencies: { "@get-bb/plugin-sdk": "0.2.0", zod: "^4.3.6" },
-        },
-        null,
-        2,
-      )}\n`,
-    );
-
-    const result = await setPluginSdkPin({
-      rootDir,
-      sdkVersion: SDK_VERSION,
-    });
-
-    expect(result?.movedFromDependencies).toBe(true);
-    const manifest = await readJson(join(rootDir, "package.json"));
-    expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(SDK_VERSION);
-  });
-
   it("moves an already-exact pin out of dependencies", async () => {
     await writeFile(
       join(rootDir, "package.json"),

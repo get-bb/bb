@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import anatomy from "../src/anatomy-manifest.json";
-import {
-  fixtureResponsiveStrategy,
-  SURFACE_GROUPS,
-  SURFACES_BY_ID,
-} from "../src/surfaces";
+import { SURFACE_GROUPS, SURFACES_BY_ID } from "../src/surfaces";
 import { ANATOMY_RENDERER_KEYS } from "../src/wireframes";
 
 const groupById = new Map(SURFACE_GROUPS.map((group) => [group.id, group]));
@@ -62,26 +58,6 @@ describe("product-map surfaces", () => {
     );
     expect(new Set(all).size).toBe(all.length);
     expect(SURFACES_BY_ID.size).toBe(all.length);
-  });
-
-  it("derives one responsive strategy from each group's fixture kind", () => {
-    for (const group of SURFACE_GROUPS) {
-      expect(fixtureResponsiveStrategy(group), group.id).toBe(
-        group.fixtureKind === "spatial" ? "scale-together" : "reflow",
-      );
-    }
-    expect(
-      SURFACE_GROUPS.filter(
-        (group) => fixtureResponsiveStrategy(group) === "scale-together",
-      ).map((group) => group.id),
-    ).toEqual([
-      "app-shell",
-      "command-palette",
-      "composer",
-      "home",
-      "settings",
-      "extensions",
-    ]);
   });
 
   it("renders every anatomy-manifest region and nothing else", () => {

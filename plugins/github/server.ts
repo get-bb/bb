@@ -468,7 +468,7 @@ const repositoryListsQuery = `query RepositoryLists($owner: String!, $name: Stri
   }
 }`;
 
-export async function fetchRepoItems(
+async function fetchRepoItems(
   gh: GhRunner,
   repo: string,
 ): Promise<CachedItem[]> {

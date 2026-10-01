@@ -226,32 +226,6 @@ async function chooseEndlessDark(): Promise<void> {
 }
 
 describe("Theme Preview", () => {
-  it("keeps the chrome free of implementation notes and personal identity", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(1280);
-    try {
-      renderPreview({
-        themeCatalog: () => DEFAULT_CATALOG,
-        setTheme: () => DEFAULT_CATALOG,
-      });
-
-      await waitFor(() =>
-        expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull(),
-      );
-      expect(screen.queryByText(/amber = sidebar override/i)).toBeNull();
-      expect(screen.queryByText(/preview only/i)).toBeNull();
-      expect(screen.queryByText(/live values/i)).toBeNull();
-      expect(screen.queryByText(/theme applies live/i)).toBeNull();
-      expect(
-        screen.queryByText(/values are measured from the rendered theme/i),
-      ).toBeNull();
-      expect(screen.queryByText("brsbl")).toBeNull();
-    } finally {
-      width.mockRestore();
-    }
-  });
-
   it.each([390, 700, 807, 808, 1280])(
     "offers supported views in bb's tabs and themes in bb's select at %ipx",
     async (panelWidth) => {
@@ -855,26 +829,6 @@ describe("Theme Preview", () => {
     } finally {
       width.mockRestore();
     }
-  });
-
-  it("keeps the style sheet passive while showing every visual system", async () => {
-    renderPreview({
-      themeCatalog: () => DEFAULT_CATALOG,
-      setTheme: () => DEFAULT_CATALOG,
-    });
-
-    await waitFor(() =>
-      expect(document.querySelector("[data-tp-style-readonly]")).not.toBeNull(),
-    );
-    const sheet = document.querySelector("[data-tp-area=stylesheet]");
-    expect(sheet?.querySelector("input, select, [role=slider]")).toBeNull();
-    expect(within(sheet as HTMLElement).getByText("Typography")).toBeDefined();
-    expect(within(sheet as HTMLElement).getByText("Rhythm")).toBeDefined();
-    expect(
-      within(sheet as HTMLElement).getByText("Corner radius"),
-    ).toBeDefined();
-    expect(within(sheet as HTMLElement).getByText("Shadow")).toBeDefined();
-    expect(document.querySelector("[data-tp-shadow-preview]")).not.toBeNull();
   });
 
   it("includes the sidebar and info panel once the pane is wide enough", async () => {

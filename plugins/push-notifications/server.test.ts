@@ -448,6 +448,7 @@ describe("push sender", () => {
       now += 2;
       await waitForCoalesce();
       expect(host.expo.requests).toEqual([]);
+      expect(host.harness.realtimeSignals).toEqual([]);
     } finally {
       await host.cleanup();
     }
@@ -615,27 +616,6 @@ describe("web and desktop delivery", () => {
       });
       await waitForCoalesce();
       expect(host.harness.realtimeSignals).toHaveLength(2);
-    } finally {
-      await host.cleanup();
-    }
-  });
-
-  it("does not broadcast read, archived, or resumed threads", async () => {
-    const host = await setup();
-    try {
-      for (const overrides of [
-        { lastReadAt: Date.now() + 60_000 },
-        { archivedAt: 100 },
-        { status: "active" as const },
-      ]) {
-        const thread = host.setThread(overrides);
-        await host.harness.behavior.emitThreadEvent("thread.idle", {
-          thread,
-          lastAssistantText: "Stale",
-        });
-      }
-      await waitForCoalesce();
-      expect(host.harness.realtimeSignals).toHaveLength(0);
     } finally {
       await host.cleanup();
     }

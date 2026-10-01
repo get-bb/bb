@@ -332,6 +332,13 @@ describe("defineCli errors", () => {
     expect(ran).not.toHaveBeenCalled();
   });
 
+  it("rejects a repeated boolean option", async () => {
+    const result = await run(memoryLikeCli(), ["catalog", "--json", "--json"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--json was given more than once");
+    expect(ran).not.toHaveBeenCalled();
+  });
+
   it("rejects an option written without its value", async () => {
     const result = await run(memoryLikeCli(), ["catalog", "--limit"]);
     expect(result.exitCode).toBe(1);
