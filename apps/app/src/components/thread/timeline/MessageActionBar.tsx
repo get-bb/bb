@@ -376,15 +376,6 @@ export function MessageActionBar({
           },
         ]
       : []),
-    ...(onCopyLink
-      ? [
-          {
-            icon: "Link" as const,
-            label: "Copy link to message",
-            onSelect: onCopyLink,
-          },
-        ]
-      : []),
     ...(onEdit
       ? [
           {
@@ -444,6 +435,15 @@ export function MessageActionBar({
       ? 0
       : layout.inlineCount;
   const menuActions = [
+    ...(onCopyLink
+      ? [
+          {
+            icon: "Link" as const,
+            label: "Copy link to message",
+            onSelect: onCopyLink,
+          },
+        ]
+      : []),
     ...inlineCandidates.slice(isCompactViewport ? 0 : inlineCount),
     ...trailingMenuActions,
   ];
