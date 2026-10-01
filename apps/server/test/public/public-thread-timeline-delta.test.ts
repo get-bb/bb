@@ -278,7 +278,7 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
     });
   });
 
-  it("streaming deltas: delta + merge equals a cold window on invisible and visible ticks", async () => {
+  it("streaming deltas: delta + merge equals a cold window including partial lines", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness, {
         thread: { status: "active" },
@@ -329,9 +329,7 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
         expect(tick.delta).toBeDefined();
         const merged = applyTimelineDelta(before.rows, tick.delta!) ?? [];
         expect(merged).toEqual(buildColdLatestRows(harness, thread));
-        expect(assistantText(merged) ?? "").toBe(
-          streamed.slice(0, streamed.lastIndexOf("\n") + 1),
-        );
+        expect(assistantText(merged)).toBe(streamed);
         before = { ...tick, rows: merged };
       }
       expect(
