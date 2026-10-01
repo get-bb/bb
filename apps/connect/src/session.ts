@@ -15,8 +15,6 @@ import {
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
 const MACHINE_CREDENTIAL_TTL_MS = 20_000;
-const STALE_MAX_AGE_MS = 5 * 60_000;
-const STALE_RETRY_MS = 2_000;
 const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
   1000;
@@ -24,12 +22,6 @@ const SESSION_REFRESH_BEFORE_EXPIRY_MS =
 export interface CacheEntry<T> {
   value: Promise<T>;
   expires: number;
-  lastGood?: { value: T; at: number };
-}
-
-export interface StaleFallback<T> {
-  maxAgeMs: number;
-  usable?: (value: T, now: number) => boolean;
 }
 const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
 
@@ -52,45 +44,29 @@ export function cacheGet<T>(
 ): Promise<T> | undefined {
   const hit = map.get(key);
   if (hit && hit.expires > now) return hit.value;
+  if (hit) map.delete(key);
   return undefined;
 }
 
 export function cacheStore<T>(
   map: Map<string, CacheEntry<T>>,
   key: string,
-  lookup: Promise<T>,
+  value: Promise<T>,
   expires: number,
   settledExpires?: (value: T) => number,
-  stale?: StaleFallback<T>,
 ): Promise<T> {
-  const previous = map.get(key)?.lastGood;
-  const entry: CacheEntry<T> = { value: lookup, expires, lastGood: previous };
-  if (stale !== undefined && previous !== undefined) {
-    entry.value = lookup.catch((error: unknown) => {
-      const at = Date.now();
-      const usable =
-        at - previous.at <= stale.maxAgeMs &&
-        (stale.usable?.(previous.value, at) ?? true);
-      if (!usable) throw error;
-      if (map.get(key) === entry) entry.expires = at + STALE_RETRY_MS;
-      return previous.value;
-    });
-  }
+  const entry: CacheEntry<T> = { value, expires };
   map.set(key, entry);
-  lookup.then(
+  value.then(
     (settled) => {
-      entry.lastGood = { value: settled, at: Date.now() };
       if (settledExpires === undefined || map.get(key) !== entry) return;
       entry.expires = settledExpires(settled);
     },
-    () => {},
+    () => {
+      if (map.get(key) === entry) map.delete(key);
+    },
   );
-  entry.value.then(undefined, () => {
-    if (map.get(key) !== entry) return;
-    if (entry.lastGood === undefined) map.delete(key);
-    else entry.expires = 0;
-  });
-  return entry.value;
+  return value;
 }
 
 interface ResolvedServer {
@@ -134,8 +110,6 @@ export async function resolveLabel(
     label,
     lookupLabel(label, db),
     now + LABEL_TTL_MS,
-    undefined,
-    options?.fresh ? undefined : { maxAgeMs: STALE_MAX_AGE_MS },
   );
 }
 
@@ -250,10 +224,6 @@ export async function verifySessionCookieDetails(
             looked === null
               ? now + SESSION_TTL_MS
               : Math.min(now + SESSION_TTL_MS, looked.expiresAt),
-          {
-            maxAgeMs: STALE_MAX_AGE_MS,
-            usable: (looked, at) => looked === null || looked.expiresAt > at,
-          },
         );
   return cachedSession === null ? null : verifiedSession(cachedSession, now);
 }
@@ -332,8 +302,6 @@ export async function verifyMachineCredentialDetails(
     hash,
     lookupMachineCredential(hash, db),
     now + MACHINE_CREDENTIAL_TTL_MS,
-    undefined,
-    { maxAgeMs: STALE_MAX_AGE_MS },
   );
 }
 
