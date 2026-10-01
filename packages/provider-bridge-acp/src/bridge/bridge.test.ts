@@ -584,6 +584,7 @@ async function waitForAgentExit(readyFile: string): Promise<void> {
 }
 
 beforeEach(() => {
+  bbThreadIdByProviderThreadId.clear();
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-acp-bridge-test-"));
   output = captureBridgeJsonRpcOutput();
 });
