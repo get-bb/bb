@@ -26,13 +26,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -60,6 +53,79 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
 
 const CHIP_TRIGGER =
   "h-7 w-auto gap-1.5 rounded-md px-2 text-xs text-muted-foreground";
+
+function TaskFieldPicker<Value extends string>({
+  dialogOpen,
+  label,
+  value,
+  options,
+  onValueChange,
+}: {
+  dialogOpen: boolean;
+  label: string;
+  value: Value | null;
+  options: ReadonlyArray<{
+    value: Value;
+    label: string;
+    color?: string;
+    keywords?: string[];
+  }>;
+  onValueChange: (value: Value) => void;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  useEffect(() => {
+    if (!dialogOpen) setPickerOpen(false);
+  }, [dialogOpen]);
+  const selected = options.find((option) => option.value === value);
+  return (
+    <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={label}
+          variant="outline"
+          size="sm"
+          className={cn(CHIP_TRIGGER, "max-w-44 border-input font-normal")}
+        >
+          <span className="truncate">{selected?.label ?? label}</span>
+          <Icon name="ChevronDown" className="size-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-0" align="start">
+        <Command>
+          <CommandInput placeholder={`Choose ${label.toLowerCase()}…`} />
+          <CommandList>
+            <CommandEmpty>No matching options.</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.label}
+                  keywords={option.keywords}
+                  onSelect={() => {
+                    if (option.value !== value) onValueChange(option.value);
+                    setPickerOpen(false);
+                  }}
+                >
+                  {option.color ? (
+                    <span
+                      aria-hidden
+                      className="size-2.5 rounded-sm"
+                      style={{ backgroundColor: option.color }}
+                    />
+                  ) : null}
+                  <span className="flex-1 truncate">{option.label}</span>
+                  {option.value === value ? (
+                    <Icon name="Check" className="size-3.5" />
+                  ) : null}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function blankDraft(
   projectId: string | null,
@@ -97,7 +163,6 @@ export function NewTaskDialog({
     blankDraft(projectId, defaultStatus),
   );
   const [createMore, setCreateMore] = useState(false);
-  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [labelQuery, setLabelQuery] = useState("");
@@ -129,7 +194,6 @@ export function NewTaskDialog({
     if (!open) return;
     const restored = loadNewTaskDraft();
     setDraft(restored ?? blankDraft(projectId, defaultStatus));
-    setProjectPickerOpen(false);
     setLabelQuery("");
     setPendingFiles([]);
     setCreatedTask(null);
@@ -435,87 +499,38 @@ export function NewTaskDialog({
             createdTask && "hidden",
           )}
         >
-          <Popover open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                aria-label="Project"
-                variant="outline"
-                size="sm"
-                className={cn(
-                  CHIP_TRIGGER,
-                  "max-w-44 border-input font-normal",
-                )}
-              >
-                <span className="truncate">{project?.name ?? "Project"}</span>
-                <Icon name="ChevronDown" className="size-4 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-0" align="start">
-              <Command>
-                <CommandInput placeholder="Choose project…" />
-                <CommandList>
-                  <CommandEmpty>No matching projects.</CommandEmpty>
-                  <CommandGroup>
-                    {projectList.map((entry) => (
-                      <CommandItem
-                        key={entry.id}
-                        value={`${entry.name} ${entry.prefix}`}
-                        onSelect={() => {
-                          if (entry.id !== effectiveProjectId)
-                            changeProject(entry.id);
-                          setProjectPickerOpen(false);
-                        }}
-                      >
-                        <span
-                          aria-hidden
-                          className="size-2.5 rounded-sm"
-                          style={{ backgroundColor: entry.color }}
-                        />
-                        <span className="flex-1 truncate">{entry.name}</span>
-                        {entry.id === effectiveProjectId ? (
-                          <Icon name="Check" className="size-3.5" />
-                        ) : null}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-          <Select
+          <TaskFieldPicker
+            dialogOpen={open}
+            label="Project"
+            value={effectiveProjectId}
+            options={projectList.map((entry) => ({
+              value: entry.id,
+              label: entry.name,
+              color: entry.color,
+              keywords: [entry.prefix],
+            }))}
+            onValueChange={changeProject}
+          />
+          <TaskFieldPicker<TaskStatus>
+            dialogOpen={open}
+            label="Status"
             value={status}
-            onValueChange={(value) =>
-              updateDraft(() => ({ status: value as TaskStatus }))
-            }
-          >
-            <SelectTrigger aria-label="Status" className={CHIP_TRIGGER}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TASK_STATUSES.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {STATUS_LABELS[value]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
+            options={TASK_STATUSES.map((value) => ({
+              value,
+              label: STATUS_LABELS[value],
+            }))}
+            onValueChange={(status) => updateDraft(() => ({ status }))}
+          />
+          <TaskFieldPicker<TaskPriority>
+            dialogOpen={open}
+            label="Priority"
             value={priority}
-            onValueChange={(value) =>
-              updateDraft(() => ({ priority: value as TaskPriority }))
-            }
-          >
-            <SelectTrigger aria-label="Priority" className={CHIP_TRIGGER}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TASK_PRIORITIES.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {PRIORITY_LABELS[value]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={TASK_PRIORITIES.map((value) => ({
+              value,
+              label: PRIORITY_LABELS[value],
+            }))}
+            onValueChange={(priority) => updateDraft(() => ({ priority }))}
+          />
           <Popover>
             <PopoverTrigger asChild>
               <Button

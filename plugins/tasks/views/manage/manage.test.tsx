@@ -84,71 +84,86 @@ describe("derivePrefix", () => {
 });
 
 describe("NewTaskDialog", () => {
-  it("keeps the compact task form accessible while choosing another project", async () => {
-    const media = vi
-      .spyOn(window, "matchMedia")
-      .mockImplementation((query) => ({
-        matches: query === "(max-width: 767px)",
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-      }));
-    const otherProject = {
-      ...project,
-      id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
-      name: "Personal",
-      prefix: "HOME",
-    };
-    const createCalls: Array<Record<string, unknown>> = [];
-    try {
-      const slot = renderSlot(
-        app.navPanels[0]!,
-        { subPath: PROJECT_ID },
-        {
-          rpc: {
-            listProjects: () => ({ projects: [project, otherProject] }),
-            listFolders: () => ({ folders: [] }),
-            listPresets: () => ({ presets: [] }),
-            sidebarSummary: () => ({ projects: [] }),
-            listTasks: () => ({ tasks: [] }),
-            listLabels: () => ({ labels: [] }),
-            createTask: (raw: unknown) => {
-              const input = rpcInput(raw);
-              createCalls.push(input);
-              return { ok: true, task: createdTask(input) };
+  it.each([
+    {
+      field: "Project",
+      option: "Personal",
+      expected: { projectId: "01HZZZZZZZZZZZZZZZZZZZZZP2" },
+    },
+    {
+      field: "Status",
+      option: "In Progress",
+      expected: { status: "in_progress" },
+    },
+    { field: "Priority", option: "High", expected: { priority: "high" } },
+  ])(
+    "keeps the compact task form accessible while choosing $field",
+    async ({ field, option: optionName, expected }) => {
+      const media = vi
+        .spyOn(window, "matchMedia")
+        .mockImplementation((query) => ({
+          matches: query === "(max-width: 767px)",
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        }));
+      const otherProject = {
+        ...project,
+        id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+        name: "Personal",
+        prefix: "HOME",
+      };
+      const createCalls: Array<Record<string, unknown>> = [];
+      try {
+        const slot = renderSlot(
+          app.navPanels[0]!,
+          { subPath: PROJECT_ID },
+          {
+            rpc: {
+              listProjects: () => ({ projects: [project, otherProject] }),
+              listFolders: () => ({ folders: [] }),
+              listPresets: () => ({ presets: [] }),
+              sidebarSummary: () => ({ projects: [] }),
+              listTasks: () => ({ tasks: [] }),
+              listLabels: () => ({ labels: [] }),
+              createTask: (raw: unknown) => {
+                const input = rpcInput(raw);
+                createCalls.push(input);
+                return { ok: true, task: createdTask(input) };
+              },
             },
           },
-        },
-      );
-      fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
-      const title = await slot.findByLabelText("Task title");
-      fireEvent.change(title, { target: { value: "Keep this draft open" } });
-      fireEvent.click(slot.getByLabelText("Project"));
-      const option = await slot.findByRole("option", { name: "Personal" });
-      expect(title.closest('[aria-hidden="true"], [inert]')).toBeNull();
-      fireEvent.click(option);
-      await waitFor(() =>
-        expect(
-          slot
-            .getByRole("textbox", { name: "Task title" })
-            .getAttribute("value"),
-        ).toBe("Keep this draft open"),
-      );
-      fireEvent.click(slot.getByRole("button", { name: "Create task" }));
-      await waitFor(() => expect(createCalls).toHaveLength(1));
-      expect(createCalls[0]).toMatchObject({
-        projectId: otherProject.id,
-        title: "Keep this draft open",
-      });
-    } finally {
-      cleanup();
-      media.mockRestore();
-    }
-  });
+        );
+        fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+        const title = await slot.findByLabelText("Task title");
+        fireEvent.change(title, { target: { value: "Keep this draft open" } });
+        fireEvent.click(slot.getByLabelText(field));
+        const option = await slot.findByRole("option", { name: optionName });
+        expect(title.closest('[aria-hidden="true"], [inert]')).toBeNull();
+        fireEvent.click(option);
+        await waitFor(() =>
+          expect(
+            slot
+              .getByRole("textbox", { name: "Task title" })
+              .getAttribute("value"),
+          ).toBe("Keep this draft open"),
+        );
+        fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+        await waitFor(() => expect(createCalls).toHaveLength(1));
+        expect(createCalls[0]).toMatchObject({
+          title: "Keep this draft open",
+          ...expected,
+        });
+      } finally {
+        cleanup();
+        media.mockRestore();
+      }
+    },
+  );
 
   it.each([
     {
