@@ -1025,7 +1025,10 @@ describe("useThreadTimelineController", () => {
     );
 
     await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "start",
+        inline: "nearest",
+      });
     });
     expect(toastSpy).not.toHaveBeenCalled();
   });
@@ -1092,7 +1095,10 @@ describe("useThreadTimelineController", () => {
       });
 
       await waitFor(() => {
-        expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+        expect(scrollIntoView).toHaveBeenCalledWith({
+          block: "start",
+          inline: "nearest",
+        });
       });
       expect(result.current.activeThinking?.id).toBe("thinking-1");
     } finally {

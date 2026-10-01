@@ -274,7 +274,7 @@ describe("ThreadTimelineRows windowing", () => {
     await waitFor(() =>
       expect(scrollElementIntoView).toHaveBeenCalledWith({
         element: target,
-        options: { block: "center" },
+        options: { block: "start", inline: "nearest" },
       }),
     );
   });
@@ -352,7 +352,7 @@ describe("ThreadTimelineRows windowing", () => {
     await waitFor(() =>
       expect(scrollElementIntoView).toHaveBeenCalledWith({
         element: target,
-        options: { block: "center" },
+        options: { block: "start", inline: "nearest" },
       }),
     );
   });

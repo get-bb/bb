@@ -13,6 +13,7 @@ import { useLocation } from "react-router-dom";
 import { parseMessageLink } from "@bb/client-core";
 import { appToast } from "@/components/ui/app-toast";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { revealTimelineRow } from "./reveal-timeline-row.js";
 
 interface SeqAnchoredRow {
   id: string;
@@ -55,8 +56,6 @@ interface SeqRange {
   max: number;
 }
 
-const FLASH_CLASS_NAME = "bb-search-flash";
-const FLASH_DURATION_MS = 1700;
 const POST_WINDOW_SETTLE_REVEAL_MS = 800;
 
 function escapeTimelineRowId(rowId: string): string {
@@ -435,21 +434,8 @@ export function useScrollToSearchedMessage(
       if (element === null) {
         return;
       }
-      if (bottomAnchor !== null) {
-        bottomAnchor.scrollElementIntoView({
-          element,
-          options: { block: "center" },
-        });
-      } else {
-        element.scrollIntoView({ block: "center" });
-      }
-      if (!flashed) {
-        flashed = true;
-        element.classList.add(FLASH_CLASS_NAME);
-        window.setTimeout(() => {
-          element.classList.remove(FLASH_CLASS_NAME);
-        }, FLASH_DURATION_MS);
-      }
+      revealTimelineRow(element, bottomAnchor, !flashed);
+      flashed = true;
     };
 
     const scheduleReveal = (delayMs: number) => {
