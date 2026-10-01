@@ -37,7 +37,8 @@ the same hierarchy, lifecycle-owner, and hidden source-fork edges as
 `archive-all`, deduplicates threads, traverses archived intermediaries, and
 excludes already archived or deleted candidates and the requested root.
 The UI adds the root to the displayed total and skips confirmation when no
-unarchived descendants remain. The summary is a preview; concurrent changes
+unarchived descendants remain or the General setting `confirmThreadArchive`
+is disabled. The summary is a preview; concurrent changes
 can alter the eventual archive result. CLI and SDK archive calls remain
 non-interactive.
 

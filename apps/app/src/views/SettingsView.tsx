@@ -168,6 +168,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  confirmThreadArchive: boolean;
+  onConfirmThreadArchiveChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
   generalSettingsDisabled: boolean;
   managedBranchPrefix: string;
@@ -849,6 +851,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  confirmThreadArchive,
+  onConfirmThreadArchiveChange,
   desktopBrowserAvailable,
   generalSettingsDisabled,
   managedBranchPrefix,
@@ -871,6 +875,18 @@ export function GeneralSettingsSection({
     <>
       <SettingsSection title="Threads & editing">
         <div className="space-y-5">
+          <SettingsWithControl
+            label="Confirm thread archiving"
+            description="Ask before archiving a thread with child threads. Turn off to archive them together immediately."
+          >
+            <Switch
+              checked={confirmThreadArchive}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onConfirmThreadArchiveChange}
+              aria-label="Confirm thread archiving"
+            />
+          </SettingsWithControl>
+
           <SettingsWithControl
             label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
           >
@@ -1272,6 +1288,13 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          confirmThreadArchive={generalSettings.confirmThreadArchive}
+          onConfirmThreadArchiveChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              confirmThreadArchive: enabled,
+            })
+          }
           desktopBrowserAvailable={desktopBrowserAvailable}
           generalSettingsDisabled={
             systemConfigQuery.data === undefined ||

@@ -12,6 +12,8 @@ import { GeneralSettingsSection, PrivacySettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  confirmThreadArchive?: boolean;
+  onConfirmThreadArchiveChange?: (enabled: boolean) => void;
   desktopBrowserAvailable?: boolean;
   telemetryEnabled?: boolean;
   onTelemetryEnabledChange?: (enabled: boolean) => void;
@@ -21,6 +23,10 @@ function renderSection(overrides?: {
   return render(
     <>
       <GeneralSettingsSection
+        confirmThreadArchive={overrides?.confirmThreadArchive ?? true}
+        onConfirmThreadArchiveChange={
+          overrides?.onConfirmThreadArchiveChange ?? vi.fn()
+        }
         desktopBrowserAvailable={overrides?.desktopBrowserAvailable ?? false}
         generalSettingsDisabled={false}
         managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
@@ -141,6 +147,24 @@ it("shows the saved telemetry preference and allows opting out", () => {
   expect(
     screen
       .getByRole("switch", { name: "Share anonymous usage data" })
+      .getAttribute("aria-checked"),
+  ).toBe("false");
+});
+
+it("allows disabling archive confirmation and shows the saved preference", () => {
+  const onChange = vi.fn();
+  renderSection({ onConfirmThreadArchiveChange: onChange });
+  const toggle = screen.getByRole("switch", {
+    name: "Confirm thread archiving",
+  });
+  expect(toggle.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(toggle);
+  expect(onChange).toHaveBeenCalledWith(false);
+  cleanup();
+  renderSection({ confirmThreadArchive: false });
+  expect(
+    screen
+      .getByRole("switch", { name: "Confirm thread archiving" })
       .getAttribute("aria-checked"),
   ).toBe("false");
 });

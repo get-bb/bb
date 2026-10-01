@@ -27,6 +27,7 @@ import {
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import { sdk } from "@/lib/sdk";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useDialogState } from "@/hooks/useDialogState";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
@@ -100,6 +101,8 @@ const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
+  const confirmThreadArchive =
+    useSystemConfig().data?.generalSettings.confirmThreadArchive ?? true;
   const navigate = useRouteNavigate();
   const location = useLocation();
   const viewedRoute = `${location.pathname}${location.search}${location.hash}`;
@@ -419,9 +422,12 @@ export function ThreadActionsProvider({
 
   const requestArchive = useCallback(
     (thread: Thread) => {
-      performArchive({ thread, childThreadsConfirmed: false });
+      performArchive({
+        thread,
+        childThreadsConfirmed: !confirmThreadArchive,
+      });
     },
-    [performArchive],
+    [confirmThreadArchive, performArchive],
   );
 
   const confirmArchive = useCallback(

@@ -17,6 +17,7 @@ export const appSettingsSchema = z
   .object({
     showKeyboardHints: z.boolean(),
     steerActiveThreadOnEnter: z.boolean(),
+    confirmThreadArchive: z.boolean(),
     showDiagnosticEvents: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
@@ -49,6 +50,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
   steerActiveThreadOnEnter: true,
+  confirmThreadArchive: true,
   showDiagnosticEvents: false,
   providerOrder: [],
   defaultProviderId: null,
@@ -68,11 +70,13 @@ export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
+    confirmThreadArchive: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
+    confirmThreadArchive: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
   }),
 ]);

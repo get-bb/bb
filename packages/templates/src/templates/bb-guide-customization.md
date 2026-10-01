@@ -123,6 +123,12 @@ reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices, the
 software-keyboard Return path inserts a newline. iPadOS WebKit preserves these
 Enter shortcuts for a connected Magic Keyboard.
 
+Settings → General includes `confirmThreadArchive`, which defaults to true.
+Set `bb settings general confirmThreadArchive false` to archive parent and
+child threads without the confirmation popup. The toast still offers Undo.
+The setting applies to all connected app clients; CLI and SDK archive calls
+remain non-interactive.
+
 Settings → General also includes `streamerMode`, which defaults to false. Turn
 it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The

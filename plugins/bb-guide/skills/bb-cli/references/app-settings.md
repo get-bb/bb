@@ -111,6 +111,15 @@ so they carry over between navigation plugins.
   software-keyboard Return path stays a newline; iPadOS WebKit preserves the
   Enter shortcuts for a connected Magic Keyboard.
 
+## Archive confirmation
+
+- `confirmThreadArchive` defaults to true. Set it with
+  `bb settings general confirmThreadArchive <true|false|on|off>`.
+- Turn it off to archive a parent and child threads without the confirmation
+  popup. Undo remains available in the archive toast. This server-wide setting
+  applies to all connected app clients. CLI and SDK archive calls remain
+  non-interactive.
+
 ## Streamer mode
 
 - `streamerMode` defaults to false. Set it with

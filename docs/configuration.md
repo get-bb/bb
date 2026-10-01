@@ -313,6 +313,14 @@ it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
+The "Confirm thread archiving" switch in Settings → General defaults to on.
+Turn it off to archive a thread and its child threads immediately without a
+confirmation popup. The archive toast still offers Undo. This server-wide
+preference applies to all connected app clients. Set it with
+`bb settings general confirmThreadArchive false` or
+`bb.sdk.system.updateGeneralSettings` using `confirmThreadArchive`.
+CLI and SDK archive operations remain non-interactive.
+
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
 `bb provider models`, and `sdk.providers.models`. Turn it on before a screen
