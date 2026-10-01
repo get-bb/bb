@@ -38,7 +38,7 @@ for (const shim of [false, true]) {
       if (shim) {
         writeFileSync(
           join(binDirectory, "bb-process-probe.cmd"),
-          `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`,
+          `@echo off\r\n"${process.execPath}" "%~dp0..\\..\\probe.cjs" %*\r\n`,
         );
       }
       const args = [

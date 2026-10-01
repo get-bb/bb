@@ -476,7 +476,9 @@ export function sanitizeInheritedChildProcessEnv(
     if (value === undefined) {
       continue;
     }
-    if (key === "NODE_ENV" || key.startsWith("BB_")) {
+    const normalizedKey =
+      process.platform === "win32" ? key.toUpperCase() : key;
+    if (normalizedKey === "NODE_ENV" || normalizedKey.startsWith("BB_")) {
       continue;
     }
     sanitizedEnv[key] = value;

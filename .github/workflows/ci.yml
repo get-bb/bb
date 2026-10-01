@@ -41,7 +41,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Install foundation dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter @bb/process-utils...
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/process-utils..."
 
       - name: Typecheck and test foundation packages
         run: pnpm exec turbo run typecheck test --filter=@bb/process-utils --force --output-logs=full

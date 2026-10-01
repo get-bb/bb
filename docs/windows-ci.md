@@ -23,7 +23,7 @@ Install and run the same slice from the repository root in PowerShell:
 
 ```powershell
 npm install --global pnpm@9.15.0 --ignore-scripts
-pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter @bb/process-utils...
+pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/process-utils..."
 pnpm exec turbo run typecheck test --filter=@bb/process-utils --force --output-logs=full
 ```
 
