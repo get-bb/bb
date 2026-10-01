@@ -485,6 +485,8 @@
   }
 
   [data-follow-up-composer] [data-promptbox-submit-action] {
+    width: auto;
+    aspect-ratio: 1;
     margin-left: 0;
     padding: 0;
   }
