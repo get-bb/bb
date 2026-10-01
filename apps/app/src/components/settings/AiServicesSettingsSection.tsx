@@ -203,7 +203,7 @@ export function AiServicesSettingsSection() {
   return (
     <SettingsSection
       title="AI services"
-      description="Choose which plugin writes thread titles, commit messages, and voice transcripts. Automatic uses the services bb ships, in order; a service you pick is never swapped for another."
+      description="Choose which plugin writes thread titles, commit messages, and voice transcripts. Automatic tries bb cloud first, then other services by plugin ID; a service you pick is never swapped for another."
     >
       <div className="space-y-5">
         {AI_TASK_ROWS.map((row) => {

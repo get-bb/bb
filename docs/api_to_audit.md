@@ -2514,9 +2514,10 @@ rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
 The user picks per task in Settings → AI services, `bb settings ai-services
 set`, or `sdk.system.setAiServiceSelection` (`automatic` | `off` |
 `{ pluginId, serviceId }`, stored server-side under the `aiServiceSelections`
-app-settings key). Automatic walks `AUTOMATIC_AI_SERVICE_PLUGIN_IDS` in the
-builtin registry (`provider-codex`, then `bb-ai`) and only matches builtin
-installs, so a third-party plugin receives text only after the user picks it.
+app-settings key). Automatic tries services from `bb-ai` first, then all other compatible
+registered services in lexicographic order of plugin id and service id.
+Third-party services participate without an explicit per-task selection.
+The services view exposes each registration's position as `automaticRank`.
 An explicit pick is strict: failure uses the plain fallback text and never
 moves to another service. Services are keyed by plugin id plus service id, so
 ids only need to be unique within a plugin: a plugin that registers one id
@@ -2538,8 +2539,9 @@ the service's `signal` when the HTTP request is cancelled.
    instead of waiting for the next poll.
 3. **Voice payloads.** `transcribe` receives the whole `File` in process
    (25 MB cap). Decide whether streaming matters for long recordings.
-4. **Automatic order as policy.** The order lives in core's builtin registry.
-   Decide whether it should become a user-editable setting.
+4. **Automatic order as policy.** Core prioritizes bb cloud, then sorts
+   by plugin id and service id, including third-party plugins. Decide whether
+   this order and automatic inclusion should become user-editable settings.
 5. **Several services per plugin.** Confirm the id-per-registration shape and
    the per-plugin id scope (plugin id plus service id).
 

@@ -413,7 +413,8 @@ plugin-served too. A plugin registers
 `bb.experimental_aiServices.register({ id, displayName, complete, transcribe, status })`
 from its server entry: `complete(prompt) → Promise<string>` and
 `transcribe(audio) → Promise<string>`, each with an abort signal. The user picks
-a service per task in Settings → AI services; Automatic walks the services bb
-ships (Codex, then bb cloud) and never reaches a third-party plugin. The codex
+a service per task in Settings → AI services; Automatic tries bb cloud first,
+then all other compatible registered services by plugin id and service id in
+lexicographic order, including third-party plugins. The codex
 plugin serves `codex` by calling its own `bb.host` entry for the Codex CLI
 login on the primary machine. See `docs/api_to_audit.md` for the audit items.

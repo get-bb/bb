@@ -1255,6 +1255,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Write thread titles and commit messages with any model or API the plugin chooses",
           "Transcribe voice input for the microphone button in the prompt box",
           "Appear as a choice per task in Settings → AI services, with a status line that says how to make it ready",
+          "Participate in Automatic after bb cloud, ordered by plugin ID and service ID",
         ],
         apiSymbols: [
           "PluginAiServices",

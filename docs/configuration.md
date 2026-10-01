@@ -234,10 +234,13 @@ bb settings ai-services test thread-title
 Each task is `automatic` (the default), `off`, or a service id. A service is
 identified by its plugin and its id, so two plugins may register the same id;
 pass `--plugin <plugin-id>` to `set` when they do. Automatic tries
-the services bb ships in order: Codex (`codex`, using the Codex CLI login on the
-primary machine), then bb cloud (`bb`, the `bb-ai` plugin, for a signed-in bb
-account). bb cloud is on by default once you sign in; `bb ai off` turns it off
-(it then sends nothing to getbb.app) and `bb ai on` turns it back on. Automatic never sends text to a third-party plugin. A service you pick
+bb cloud (`bb`, the `bb-ai` plugin, for a signed-in bb account) first,
+then all other registered services in lexicographic order of plugin id and
+service id, including third-party plugins. Only services supporting the task
+participate; unavailable services and failed requests fall through to the next.
+Codex (`codex`, the `provider-codex` plugin) uses the Codex CLI login on the
+primary machine. bb cloud is on by default once you sign in; `bb ai off` turns it off
+(it then sends nothing to getbb.app) and `bb ai on` turns it back on. A service you pick
 is used alone; if it fails, titles fall back to the start of the prompt and
 commits to `bb: automated commit`. Each plugin picks its own model.
 

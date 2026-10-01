@@ -161,8 +161,9 @@ branches bb creates after the change.
 
 `bb settings ai-services` shows which AI service writes thread titles (and so
 branch names), commit messages, and voice transcripts, plus every service a
-plugin registers and whether it is ready. `set` picks `automatic` (the services
-bb ships, in order: Codex, then bb cloud), `off`, or one service id; a picked
+plugin registers and whether it is ready. `set` picks `automatic` (bb cloud first,
+then all other compatible services by plugin id and service id in
+lexicographic order, including third-party plugins), `off`, or one service id; a picked
 service is never swapped for another. A service is identified by its plugin
 and its id, so two plugins may use the same id; pass `--plugin <plugin-id>`
 when they do. `test` runs a sample title or commit message through the current
