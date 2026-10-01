@@ -399,22 +399,11 @@ has been exercised or that every behavior has been understood.
 
 22 source files. Recipes: [plugin-account-pool](features/plugin-account-pool.md).
 
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-add`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-disable`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-enable`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-list`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-login-complete`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-login-poll`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-priority`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-remove`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: account-reorder`
 - `cli-name-candidate: plugins/account-pool/src/cli.ts: bypass`
 - `cli-name-candidate: plugins/account-pool/src/cli.ts: config`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: config-set`
 - `cli-name-candidate: plugins/account-pool/src/cli.ts: pool`
 - `cli-name-candidate: plugins/account-pool/src/cli.ts: routing`
 - `cli-name-candidate: plugins/account-pool/src/cli.ts: status`
-- `cli-name-candidate: plugins/account-pool/src/cli.ts: token-rotate`
 - `plugin-slot: plugins/account-pool/app.tsx: settingsSection`
 
 ## plugin:ask-user-question
@@ -543,7 +532,6 @@ has been exercised or that every behavior has been understood.
 
 15 source files. Recipes: [plugin-monaco-editor](features/plugin-monaco-editor.md).
 
-- `plugin-slot: plugins/monaco-editor/app.tsx: commandPaletteAction`
 - `plugin-slot: plugins/monaco-editor/app.tsx: fileOpener`
 
 ## plugin:pdf-preview
@@ -887,9 +875,7 @@ has been exercised or that every behavior has been understood.
 - `setting-or-key: apps/app/src/components/settings/settings-sections.ts: providers`
 - `setting-or-key: apps/app/src/components/settings/settings-sections.ts: sectionId`
 - `setting-or-key: apps/app/src/components/settings/settings-sections.ts: updates`
-- `setting-or-key: apps/app/src/components/settings/settings-sections.ts: usage`
 - `setting-or-key: apps/app/src/lib/app-command-metadata.ts: command`
-- `setting-or-key: apps/app/src/lib/app-command-metadata.ts: commandId`
 - `setting-or-key: apps/app/src/lib/app-command-metadata.ts: commands`
 - `setting-or-key: apps/app/src/lib/app-command-metadata.ts: description`
 - `setting-or-key: apps/app/src/lib/app-command-metadata.ts: id`
@@ -904,7 +890,4 @@ has been exercised or that every behavior has been understood.
 - `setting-or-key: packages/domain/src/app-settings.ts: steerActiveThreadOnEnter`
 - `setting-or-key: packages/domain/src/app-settings.ts: streamerMode`
 - `setting-or-key: packages/domain/src/experiments.ts: changelogPreview`
-- `setting-or-key: packages/domain/src/experiments.ts: editMessages`
-- `setting-or-key: packages/domain/src/experiments.ts: mobileApp`
 - `setting-or-key: packages/domain/src/experiments.ts: sidebarProgressiveDisclosure`
-- `setting-or-key: packages/domain/src/experiments.ts: timelineWindowing`

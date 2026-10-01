@@ -15,8 +15,6 @@
     "desktop:build:linux": "pnpm run build && node scripts/run-electron-builder.mjs --linux --x64 --publish never",
     "desktop:version-feed": "tsx scripts/generate-version-feed.mts",
     "dev": "pnpm run prepare-runtime && pnpm run build && node --conditions=source --import tsx scripts/run-electron-dev.mjs",
-    "dist": "pnpm run prepare-runtime && pnpm run desktop:build",
-    "dist:linux": "pnpm run prepare-runtime && pnpm run desktop:build:linux",
     "package": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --mac --dir --arm64",
     "package:linux": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --linux --dir --x64",
     "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
@@ -25,7 +23,6 @@
     "smoke:packaged-npm": "node scripts/smoke-packaged-npm.mjs",
     "smoke:browser-cdp": "node scripts/smoke-browser-cdp.mjs",
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
-    "start:linux": "pnpm run package:linux && node scripts/run-packaged-app.mjs",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "smoke:browser-broker": "node scripts/smoke-browser-broker.mjs"

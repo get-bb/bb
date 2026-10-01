@@ -545,22 +545,11 @@
       "sourceFiles": 22,
       "sourceDigest": "8600c451a5266755082e10ebe32f3190f0f8805ebaad6c276e89baf92f05e9a3",
       "declarations": [
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-add",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-disable",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-enable",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-list",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-login-complete",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-login-poll",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-priority",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-remove",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: account-reorder",
         "cli-name-candidate: plugins/account-pool/src/cli.ts: bypass",
         "cli-name-candidate: plugins/account-pool/src/cli.ts: config",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: config-set",
         "cli-name-candidate: plugins/account-pool/src/cli.ts: pool",
         "cli-name-candidate: plugins/account-pool/src/cli.ts: routing",
         "cli-name-candidate: plugins/account-pool/src/cli.ts: status",
-        "cli-name-candidate: plugins/account-pool/src/cli.ts: token-rotate",
         "plugin-slot: plugins/account-pool/app.tsx: settingsSection"
       ]
     },
@@ -733,7 +722,6 @@
       "sourceFiles": 15,
       "sourceDigest": "2d021f75a871bb04f93b0e5cefe556ac63a9f1fb64fa47c951c3bded6fabdcf4",
       "declarations": [
-        "plugin-slot: plugins/monaco-editor/app.tsx: commandPaletteAction",
         "plugin-slot: plugins/monaco-editor/app.tsx: fileOpener"
       ]
     },
@@ -1186,9 +1174,7 @@
         "setting-or-key: apps/app/src/components/settings/settings-sections.ts: providers",
         "setting-or-key: apps/app/src/components/settings/settings-sections.ts: sectionId",
         "setting-or-key: apps/app/src/components/settings/settings-sections.ts: updates",
-        "setting-or-key: apps/app/src/components/settings/settings-sections.ts: usage",
         "setting-or-key: apps/app/src/lib/app-command-metadata.ts: command",
-        "setting-or-key: apps/app/src/lib/app-command-metadata.ts: commandId",
         "setting-or-key: apps/app/src/lib/app-command-metadata.ts: commands",
         "setting-or-key: apps/app/src/lib/app-command-metadata.ts: description",
         "setting-or-key: apps/app/src/lib/app-command-metadata.ts: id",
@@ -1203,10 +1189,7 @@
         "setting-or-key: packages/domain/src/app-settings.ts: steerActiveThreadOnEnter",
         "setting-or-key: packages/domain/src/app-settings.ts: streamerMode",
         "setting-or-key: packages/domain/src/experiments.ts: changelogPreview",
-        "setting-or-key: packages/domain/src/experiments.ts: editMessages",
-        "setting-or-key: packages/domain/src/experiments.ts: mobileApp",
-        "setting-or-key: packages/domain/src/experiments.ts: sidebarProgressiveDisclosure",
-        "setting-or-key: packages/domain/src/experiments.ts: timelineWindowing"
+        "setting-or-key: packages/domain/src/experiments.ts: sidebarProgressiveDisclosure"
       ]
     }
   }

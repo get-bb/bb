@@ -308,10 +308,6 @@
       "persistent": true,
       "passThroughEnv": ["*"]
     },
-    "bundle": {
-      "cache": false,
-      "outputs": []
-    },
     "@bb/app#dev": {
       "dependsOn": ["@bb/templates#generate:templates"],
       "cache": false,
@@ -374,18 +370,6 @@
         "@bb/plugin-build#generate",
         "@get-bb/plugin-sdk#build:runtime"
       ],
-      "cache": false,
-      "persistent": true,
-      "passThroughEnv": ["*"]
-    },
-    "@bb/host-daemon#start:prod": {
-      "dependsOn": ["build"],
-      "cache": false,
-      "persistent": true,
-      "passThroughEnv": ["*"]
-    },
-    "@bb/server#start:prod": {
-      "dependsOn": ["build"],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]
@@ -778,10 +762,6 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    "test:smoke": {
-      "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
-    },
     "@bb/integration-tests#e2e:mobile-backend": {
       "cache": false,
       "persistent": true,
@@ -796,25 +776,6 @@
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]
-    },
-    "@bb/integration-tests#test:smoke": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "@get-bb/plugin-sdk#build",
-        "topo"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/server/package.json",
-        "$TURBO_ROOT$/apps/server/tsconfig.json",
-        "$TURBO_ROOT$/apps/server/src/**",
-        "$TURBO_ROOT$/packages/templates/package.json",
-        "$TURBO_ROOT$/packages/templates/scripts/**",
-        "$TURBO_ROOT$/packages/templates/src/**",
-        "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
-        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
-      ]
     },
     "test:integration": {
       "dependsOn": ["//#ensure-native-modules", "topo"],

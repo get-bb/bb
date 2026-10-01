@@ -101,8 +101,6 @@ e2e/subflows/            shared steps (launch-app.yaml: cold start through the
                          clear-open-confirmation.yaml: accept or cancel the
                          native `bb://` confirmation), called with
                          `runFlow: ../subflows/<name>.yaml`
-e2e/spike/               Phase 0 spike helpers (tap, tap-point, swipe, type,
-                         pair-direct) for the WebView spike screen
 e2e/scripts/             ci-run-flows.sh (the CI flow set against a Release
                          build; see "CI"), connect-stub-control.js (drives the
                          bb connect stub), pick-simulator.mjs (newest iPhone

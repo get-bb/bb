@@ -25,9 +25,6 @@
     "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
-  "dependencies": {
-    "zod": "^4.3.6"
-  },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",

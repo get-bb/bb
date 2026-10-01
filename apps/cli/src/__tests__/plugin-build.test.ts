@@ -368,8 +368,6 @@ describe("buildPluginApp", () => {
     await linkScaffoldDeps(targetDir, [
       "@radix-ui/react-checkbox",
       "@radix-ui/react-slot",
-      "@hugeicons/react",
-      "@hugeicons/core-free-icons",
     ]);
     const result = await buildPluginApp(
       targetDir,
