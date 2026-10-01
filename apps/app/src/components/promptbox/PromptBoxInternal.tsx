@@ -3301,7 +3301,7 @@ export function PromptBoxInternal({
                   data-promptbox-expanded-only=""
                   data-promptbox-standard-actions=""
                   className={cn(
-                    "flex min-w-0 flex-auto flex-row items-center gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                    "flex min-w-9 flex-1 flex-row items-center gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
                     showVoiceActionGroup
                       ? "pointer-events-none translate-y-1 opacity-0"
                       : "translate-y-0 opacity-100",
