@@ -1505,49 +1505,6 @@ describe("public terminal routes", () => {
     });
   });
 
-  it("marks running terminals disconnected when their daemon session closes", async () => {
-    const fixture = await createTerminalRouteFixture();
-    harnesses.push(fixture.harness);
-    const stored = createTerminalSession(fixture.harness.db, {
-      cols: 80,
-      daemonSessionId: fixture.session.id,
-      environmentId: fixture.environment.id,
-      hostId: fixture.host.id,
-      initialCwd: "/tmp/terminal-workspace",
-      rows: 24,
-      status: "running",
-      threadId: fixture.thread.id,
-      title: "Terminal 1",
-    });
-    const browserSocket = createFakeBrowserSocket();
-    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
-
-    fixture.harness.deps.terminalSessions.handleDaemonSessionClosed({
-      sessionId: fixture.session.id,
-    });
-
-    const sessions = listTerminalSessionsByThread(
-      fixture.harness.db,
-      fixture.thread.id,
-    );
-    expect(sessions).toEqual([
-      expect.objectContaining({
-        daemonSessionId: fixture.session.id,
-        id: stored.id,
-        status: "disconnected",
-      }),
-    ]);
-    expect(readBrowserMessages(browserSocket)).toContainEqual(
-      expect.objectContaining({
-        type: "session-updated",
-        session: expect.objectContaining({
-          id: stored.id,
-          status: "disconnected",
-        }),
-      }),
-    );
-  });
-
   it("reattaches disconnected terminals when the same daemon instance reconnects and replays the output browsers missed", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);

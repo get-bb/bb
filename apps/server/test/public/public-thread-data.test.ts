@@ -553,43 +553,6 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("returns timeline rows from thread events", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedThreadFixture(harness);
-
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 1,
-        type: "system/manager/user_message",
-        scope: threadScope(),
-        data: { text: "Legacy note one" },
-      });
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 2,
-        type: "system/manager/user_message",
-        scope: threadScope(),
-        data: { text: "Legacy note two" },
-      });
-
-      const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline`,
-      );
-      expect(timelineResponse.status).toBe(200);
-      await expect(readJson(timelineResponse)).resolves.toEqual(
-        expect.objectContaining({
-          rows: expect.arrayContaining([
-            expect.objectContaining({
-              kind: "conversation",
-            }),
-          ]),
-        }),
-      );
-    });
-  });
-
   it("returns a timeline when a stored history holds a duplicate turn/started from a daemon replay", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

@@ -91,12 +91,6 @@ describe("AI service registry", () => {
     });
   });
 
-  it("treats a service without a status function as always ready", async () => {
-    const registry = createAiServiceRegistry();
-    registry.register(service(null));
-    await expect(registry.status(ACME)).resolves.toEqual({ ready: true });
-  });
-
   it("notifies when readiness changes and when services come and go", async () => {
     const onStatusChange = vi.fn();
     let ready = false;

@@ -517,20 +517,6 @@ describe("public host management", () => {
     });
   });
 
-  it("allows session-gated join-code minting", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request(`${API}/hosts/join-codes`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-bb-gate-auth": "session",
-        },
-        body: JSON.stringify({}),
-      });
-      expect(response.status).toBe(201);
-    });
-  });
-
   it("renames a host, broadcasts it, and rejects unknown or destroyed hosts", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host_rename" });

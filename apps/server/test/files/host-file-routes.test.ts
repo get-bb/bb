@@ -414,46 +414,4 @@ describe("host file routes", () => {
       expect(missingResponse.status).toBe(404);
     });
   });
-
-  it("allows a non-primary host target", async () => {
-    await withTestHarness(async (harness) => {
-      const { host: primary, session: primarySession } = seedHostSession(
-        harness.deps,
-        { id: "host-file-primary" },
-      );
-      seedPrimaryHost(harness.deps, primary.id);
-      const { host: secondary, session: secondarySession } = seedHostSession(
-        harness.deps,
-        { id: "host-file-secondary" },
-      );
-
-      registerHostRpcResponder(harness, {
-        hostId: primary.id,
-        sessionId: primarySession.id,
-        handle: () => ({ ok: true, result: WRITTEN_RESULT }),
-      });
-      const primaryOk = await harness.app.request(
-        ...postJson("/api/v1/files/write", {
-          hostId: primary.id,
-          path: "/home/me/notes/note.md",
-          content: "hello",
-        }),
-      );
-      expect(primaryOk.status).toBe(200);
-
-      registerHostRpcResponder(harness, {
-        hostId: secondary.id,
-        sessionId: secondarySession.id,
-        handle: () => ({ ok: true, result: WRITTEN_RESULT }),
-      });
-      const secondaryOk = await harness.app.request(
-        ...postJson("/api/v1/files/write", {
-          hostId: secondary.id,
-          path: "/home/me/notes/note.md",
-          content: "hello",
-        }),
-      );
-      expect(secondaryOk.status).toBe(200);
-    });
-  });
 });

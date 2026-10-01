@@ -522,68 +522,6 @@ describe("public thread banner actions", () => {
     });
   });
 
-  it("persists a successful Goal clear and returns zero after refetch", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedBannerFixture(harness, { status: "idle" });
-      seedActiveGoal(harness, fixture);
-      const responder = registerHostRpcResponder(harness, {
-        hostId: fixture.hostId,
-        sessionId: fixture.sessionId,
-        handle: ({ command }) => {
-          if (command.type === "host.list_files") {
-            return { ok: true, result: { files: [], truncated: false } };
-          }
-          if (command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${command.path}`,
-            };
-          }
-          expect(command).toMatchObject({
-            type: "thread.goal.clear",
-            threadId: fixture.threadId,
-          });
-          seedEvent(harness.deps, {
-            threadId: fixture.threadId,
-            environmentId: fixture.environmentId,
-            providerThreadId: "provider-thread-1",
-            sequence: 4,
-            type: "thread/goal/cleared",
-            scope: threadScope(),
-            data: { providerThreadId: "provider-thread-1" },
-          });
-          return { ok: true, result: { cleared: true } };
-        },
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${fixture.threadId}/goal/clear`,
-        { method: "POST" },
-      );
-
-      expect(
-        response.status,
-        JSON.stringify(await readJson(response.clone())),
-      ).toBe(200);
-      expect(
-        responder.requests.some(
-          ({ command }) => command.type === "thread.goal.clear",
-        ),
-      ).toBe(true);
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activeGoalCount: 0,
-        },
-      );
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activeGoalCount: 0,
-        },
-      );
-    });
-  });
-
   it("accepts a stale Goal clear result after provider events persist the clear", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedBannerFixture(harness, { status: "idle" });

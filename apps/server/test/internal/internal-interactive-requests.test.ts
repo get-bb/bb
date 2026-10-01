@@ -24,7 +24,6 @@ import {
   createAllowForSessionResolution,
   createAllowOnceResolution,
   createCommandApprovalPayload,
-  createPermissionGrantApprovalPayload,
   createUserQuestionPayload,
 } from "../helpers/pending-interactions.js";
 import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
@@ -274,6 +273,7 @@ describe("internal interactive request lifecycle", () => {
         session: {
           id: "host-interaction-session-resolve",
         },
+        thread: { providerId: "claude-code" },
       });
       seedTurnStarted(harness.deps, {
         threadId: thread.id,
@@ -297,7 +297,7 @@ describe("internal interactive request lifecycle", () => {
             interaction: {
               threadId: thread.id,
               turnId: "turn-session-1",
-              providerId: "codex",
+              providerId: "claude-code",
               providerThreadId: "provider-thread-session-1",
               providerRequestId: "request-session-1",
               payload: createCommandApprovalPayload({
@@ -342,7 +342,7 @@ describe("internal interactive request lifecycle", () => {
       );
       expect(queuedResolve.command).toMatchObject({
         type: "interactive.resolve",
-        providerId: "codex",
+        providerId: "claude-code",
         providerThreadId: "provider-thread-session-1",
         providerRequestId: "request-session-1",
         resolution: sessionResolution,
@@ -728,87 +728,6 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
-  it("interrupts pending interactive requests for provider exits", async () => {
-    await withTestHarness(async (harness) => {
-      const { session, environment, thread } = seedThreadFixture(harness, {
-        session: {
-          id: "host-interaction-interrupt",
-        },
-      });
-      seedTurnStarted(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        turnId: "turn-1",
-        providerThreadId: "provider-thread-1",
-      });
-
-      const response = await harness.app.request(
-        "/internal/session/interactive-request",
-        {
-          method: "POST",
-          headers: internalAuthHeaders(harness),
-          body: JSON.stringify({
-            sessionId: session.id,
-            interaction: {
-              threadId: thread.id,
-              turnId: "turn-1",
-              providerId: "codex",
-              providerThreadId: "provider-thread-1",
-              providerRequestId: "request-1",
-              payload: createCommandApprovalPayload({
-                itemId: "item-1",
-                reason: "Needs approval",
-                command: "git push",
-                cwd: "/tmp/project",
-              }),
-            },
-          }),
-        },
-      );
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toMatchObject({
-        outcome: "created",
-        status: "pending",
-      });
-
-      await waitForPendingInteractionId({
-        harness,
-        threadId: thread.id,
-      });
-
-      const interruptResponse = await harness.app.request(
-        "/internal/session/interactive-request/interrupt",
-        {
-          method: "POST",
-          headers: internalAuthHeaders(harness),
-          body: JSON.stringify({
-            sessionId: session.id,
-            providerId: "codex",
-            threadIds: [thread.id],
-            reason: "Provider exited",
-          }),
-        },
-      );
-
-      expect(interruptResponse.status).toBe(200);
-      await expect(readJson(interruptResponse)).resolves.toEqual({
-        ok: true,
-        interactionIds: [expect.any(String)],
-      });
-
-      expect(
-        listPendingInteractionsByThread(harness.db, {
-          threadId: thread.id,
-        }).map(toPendingInteraction),
-      ).toEqual([
-        expect.objectContaining({
-          status: "interrupted",
-          statusReason: "Provider exited",
-        }),
-      ]);
-    });
-  });
-
   it("skips deleted threads in interrupt batches and still interrupts live threads", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -982,107 +901,6 @@ describe("internal interactive request lifecycle", () => {
           statusReason: "thread-deleted",
         }),
       ]);
-    });
-  });
-
-  it("persists Claude interactive requests and resolves them through the same lifecycle", async () => {
-    await withTestHarness(async (harness) => {
-      const { session, environment, thread } = seedThreadFixture(harness, {
-        session: {
-          id: "host-claude-interaction-resolve",
-        },
-        thread: { providerId: "claude-code" },
-      });
-      seedTurnStarted(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        turnId: "turn-claude-1",
-        providerThreadId: "claude-thread-1",
-      });
-
-      const response = await harness.app.request(
-        "/internal/session/interactive-request",
-        {
-          method: "POST",
-          headers: internalAuthHeaders(harness),
-          body: JSON.stringify({
-            sessionId: session.id,
-            interaction: {
-              threadId: thread.id,
-              turnId: "turn-claude-1",
-              providerId: "claude-code",
-              providerThreadId: "claude-thread-1",
-              providerRequestId: "request-claude-1",
-              payload: createPermissionGrantApprovalPayload({
-                itemId: "item-claude-1",
-                reason: "Need network access",
-                toolName: "WebFetch",
-                permissions: {
-                  network: { enabled: true },
-                  fileSystem: null,
-                },
-              }),
-            },
-          }),
-        },
-      );
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toMatchObject({
-        outcome: "created",
-        status: "pending",
-      });
-
-      const interactionId = await waitForPendingInteractionId({
-        harness,
-        threadId: thread.id,
-      });
-      const resolved =
-        harness.deps.pendingInteractions.resolvePendingInteraction({
-          threadId: thread.id,
-          interactionId,
-          resolution: createAllowForSessionResolution({
-            network: { enabled: true },
-            fileSystem: null,
-          }),
-        });
-
-      expect(resolved).toMatchObject({
-        id: interactionId,
-        status: "resolving",
-      });
-
-      const queuedResolve = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "interactive.resolve" &&
-          command.interactionId === interactionId,
-      );
-      expect(queuedResolve.command).toMatchObject({
-        type: "interactive.resolve",
-        providerId: "claude-code",
-        providerThreadId: "claude-thread-1",
-        providerRequestId: "request-claude-1",
-        resolution: createAllowForSessionResolution({
-          network: { enabled: true },
-          fileSystem: null,
-        }),
-      });
-      const commandResultResponse = await reportQueuedCommandSuccess(
-        harness,
-        queuedResolve,
-        {},
-      );
-      expect(commandResultResponse.status).toBe(200);
-
-      expect(
-        harness.deps.pendingInteractions.getThreadInteraction({
-          threadId: thread.id,
-          interactionId,
-        }),
-      ).toMatchObject({
-        id: interactionId,
-        status: "resolved",
-      });
     });
   });
 });

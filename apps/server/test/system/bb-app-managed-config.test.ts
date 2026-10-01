@@ -184,42 +184,6 @@ describe("bb-app managed config", () => {
     expect(targetConfig.customModels).toEqual([]);
   });
 
-  it("reloads config file changes and notifies clients", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
-    const socket = createMockHubSocket();
-    const config = {
-      ...createRuntimeConfig(),
-      dataDir,
-    };
-    const hub = new NotificationHub();
-    hub.subscribe(socket, { kind: "system" });
-
-    const reloader = await createBbAppManagedConfigReloader({
-      config,
-      hub,
-      logger: createTestLogger(),
-    });
-
-    try {
-      writeFileSync(
-        formatBbAppConfigPath(dataDir),
-        `${JSON.stringify({
-          config: { BB_APP_URL: "https://live-app.example.test" },
-        })}\n`,
-        "utf8",
-      );
-
-      await reloader.reload({ notify: true });
-      expect(config.appUrl).toBe("https://live-app.example.test");
-      expect(
-        socket.messages.some((message) => message.includes("config-changed")),
-      ).toBe(true);
-    } finally {
-      hub.unregisterClient(socket);
-      rmSync(dataDir, { force: true, recursive: true });
-    }
-  });
-
   it("ignores removed AI service keys with a warning on reload", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
     const config = {

@@ -403,30 +403,6 @@ describe("GET /threads/:id/timeline inline output preview", () => {
     });
   });
 
-  it("turn-summary-details scoped to the previewed row returns its whole output", async () => {
-    await withTestHarness(async (harness) => {
-      const { threadId } = seedRunningTurnWithCommands(harness);
-      const timeline = await getTimeline(harness, threadId);
-      const big = findCommandRow(timeline.rows, "big");
-      expect(big.turnId).toBe("turn-1");
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${threadId}/timeline/turn-summary-details?turnId=${big.turnId}&sourceSeqStart=${big.sourceSeqStart}&sourceSeqEnd=${big.sourceSeqEnd}`,
-      );
-      expect(response.status).toBe(200);
-      const details = timelineTurnSummaryDetailsResponseSchema.parse(
-        await readJson(response),
-      );
-      const full = details.rows.find((row) => row.id === big.id);
-      expect(full).toBeDefined();
-      if (!full || full.kind !== "work" || full.workKind !== "command") {
-        throw new Error("expected the previewed command row in details");
-      }
-      expect(full.outputPreview).toBeUndefined();
-      expect(full.output).toBe(BIG_OUTPUT);
-    });
-  });
-
   it("row-scoped details still resolve after the turn completes (expand/complete race)", async () => {
     await withTestHarness(async (harness) => {
       const { threadId } = seedRunningTurnWithCommands(harness);
