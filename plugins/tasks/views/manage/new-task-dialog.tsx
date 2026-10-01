@@ -99,8 +99,8 @@ function TaskFieldPicker<Value extends string>({
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label}
-                  keywords={option.keywords}
+                  value={option.value}
+                  keywords={[option.label, ...(option.keywords ?? [])]}
                   onSelect={() => {
                     if (option.value !== value) onValueChange(option.value);
                     setPickerOpen(false);
