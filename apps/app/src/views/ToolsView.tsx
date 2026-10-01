@@ -664,7 +664,6 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
         }}
         renderPanel={renderPanel}
         composerHost={null}
-        compactPresentation="full"
       />
     </div>
   );

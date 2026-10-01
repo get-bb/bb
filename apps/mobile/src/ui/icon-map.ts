@@ -18,8 +18,6 @@ import Refresh01Icon from "@hugeicons/core-free-icons/Refresh01Icon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
-import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import Notification01Icon from "@hugeicons/core-free-icons/Notification01Icon";
 import Camera01Icon from "@hugeicons/core-free-icons/Camera01Icon";
 
@@ -141,7 +139,6 @@ const ICON_MAP = {
   ],
   CircleX: CancelCircleIcon,
   Cloud: CloudIcon,
-  Eye: ViewIcon,
   Globe: InternetIcon,
   GridView: GridViewIcon,
   Info: InformationCircleIcon,
@@ -154,7 +151,6 @@ const ICON_MAP = {
   Settings: Settings01Icon,
   Smartphone: SmartPhone01Icon,
   Trash2: Delete02Icon,
-  Zap: ZapIcon,
 } as const satisfies Record<string, IconSvgElement>;
 
 export type IconName = keyof typeof ICON_MAP;

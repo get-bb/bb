@@ -187,10 +187,9 @@
     box-shadow: var(--pill-shadow);
   }
 
-  /* Leading mention identity: a plain near-black outline glyph or section
-   * marker (near-white in dark), with no fill. */
-  .prompt-mention-pill svg,
-  .prompt-mention-pill [data-section-mention-marker] {
+  /* Leading mention identity: a plain near-black outline glyph (near-white in
+   * dark), with no fill. */
+  .prompt-mention-pill svg {
     color: var(--pill-icon);
   }
 
@@ -771,26 +770,6 @@
 
   .persistent-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
-  }
-
-  /*
-   * Soft right-edge fade for single-line text that is clipped horizontally
-   * (e.g. a queued-message preview). Fades the text out instead of a hard
-   * `…` ellipsis. Self-gating: short text doesn't reach the fade zone, so the
-   * fade only shows when content is actually truncated. Pair with
-   * `overflow-hidden whitespace-nowrap` (no scroll).
-   */
-  .fade-clip-right {
-    -webkit-mask-image: linear-gradient(
-      to right,
-      #000 calc(100% - 1.5rem),
-      transparent
-    );
-    mask-image: linear-gradient(
-      to right,
-      #000 calc(100% - 1.5rem),
-      transparent
-    );
   }
 }
 

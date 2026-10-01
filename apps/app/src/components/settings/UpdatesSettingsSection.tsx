@@ -161,8 +161,6 @@ export function UpdateActionButton({
   className,
   variant,
   loading = false,
-  disabled = false,
-  disabledReason,
   onClick,
 }: {
   label: string;
@@ -173,8 +171,6 @@ export function UpdateActionButton({
   className?: string;
   variant?: ButtonProps["variant"];
   loading?: boolean;
-  disabled?: boolean;
-  disabledReason?: ReactNode;
   onClick?: () => void;
 }) {
   if (visibleLabel === undefined) {
@@ -184,8 +180,6 @@ export function UpdateActionButton({
         tooltipLabel={tooltipLabel}
         icon={icon}
         loading={loading}
-        disabled={disabled}
-        disabledReason={disabledReason}
         className={cn(
           "size-7",
           variant === "default" &&
@@ -204,7 +198,6 @@ export function UpdateActionButton({
       size="sm"
       aria-label={label}
       aria-busy={loading}
-      disabled={disabled}
       className={cn(
         "h-7 gap-1.5 px-2.5 font-normal",
         isQuiet && "text-subtle-foreground hover:text-foreground",

@@ -2,7 +2,6 @@ import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  COARSE_POINTER_DOT_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -11,8 +10,6 @@ export const SIDEBAR_ROW_BASE_CLASS =
   "flex w-full items-center gap-2 rounded-md pr-0 text-sm transition-colors";
 
 export const SIDEBAR_STATUS_ICON_CLASS = "size-4";
-
-export const SIDEBAR_UNREAD_DOT_CLASS = `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`;
 
 export const SIDEBAR_WORKING_STATUS_COLOR_CLASS = "text-muted-foreground/50";
 

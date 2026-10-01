@@ -27,7 +27,6 @@ const MOBILE_ONLY_COLOR_UTILITIES = new Set([
   "pill-surface-border",
   "pill-surface-selected-border",
   "sidebar-search-match",
-  "sidebar-search-match-border",
   "shadow-color",
   "surface-grouped",
   "surface-grouped-cell",

@@ -67,13 +67,11 @@ import {
 type PromptBoxWithScrollAnchorProps = ComponentProps<
   typeof PromptBoxInternal
 > & {
-  scrollToBottomOnModifierSubmit?: boolean;
   scrollToBottomOnSubmit?: boolean;
 };
 
 function PromptBoxWithScrollAnchor({
   onSubmit,
-  scrollToBottomOnModifierSubmit = true,
   scrollToBottomOnSubmit = true,
   submission,
   ...promptBoxProps
@@ -90,9 +88,7 @@ function PromptBoxWithScrollAnchor({
       ? undefined
       : () => {
           submission.onModifierSubmit?.();
-          if (scrollToBottomOnModifierSubmit) {
-            bottomAnchor?.scrollToBottom();
-          }
+          bottomAnchor?.scrollToBottom();
         };
   const anchoredSubmission =
     submission === undefined

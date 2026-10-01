@@ -506,11 +506,9 @@ function useThreadActionsMenuLifecycle(onOpenChange?: (open: boolean) => void) {
 export function ThreadArchiveQuickAction({
   thread,
   className,
-  disabled,
 }: {
   thread: SidebarThread;
   className?: string;
-  disabled?: boolean;
 }) {
   const actions = experimental_useSidebarThreadActions();
   const unarchiveThread = useUnarchiveThread();
@@ -526,7 +524,7 @@ export function ThreadArchiveQuickAction({
           size="icon"
           className={cn("rounded-md p-0", className)}
           aria-label={`${label} thread`}
-          disabled={disabled || isRestoring}
+          disabled={isRestoring}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();

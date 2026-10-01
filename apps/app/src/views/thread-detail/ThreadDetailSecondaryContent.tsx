@@ -130,7 +130,6 @@ function ThreadDetailSecondaryContentBody({
           onToggle: onToggleConversationCollapse,
         }}
         composerHost={composerHost}
-        compactPresentation="full"
         renderHostedPanel={renderHostedPanel}
         renderPanel={({
           presentation,

@@ -622,7 +622,6 @@ interface HostlessEnvironmentOptionsProps {
     | ((provider: SystemEnvironmentProvider, hostId: string | null) => void)
     | undefined;
   separated: boolean;
-  heading?: string;
 }
 
 function HostlessEnvironmentOptions({
@@ -631,14 +630,13 @@ function HostlessEnvironmentOptions({
   inputsControlProviderIds,
   onSelectProvider,
   separated,
-  heading,
 }: HostlessEnvironmentOptionsProps) {
   if (onSelectProvider === undefined || providers.length === 0) return null;
 
   return (
     <>
       {separated ? <CommandSeparator className="mx-0 shrink-0" /> : null}
-      <CommandGroup heading={heading} className="shrink-0">
+      <CommandGroup className="shrink-0">
         {providers.map((provider) => (
           <EnvironmentMenuItem
             key={provider.id}

@@ -52,7 +52,6 @@ it.each([false, true])(
               main={<div data-testid="chat">Chat</div>}
               renderPanel={() => <div data-testid="details">Details</div>}
               composerHost={null}
-              compactPresentation="shelf"
             />
           </CompactViewportOverrideProvider>
         </PaneContext.Provider>

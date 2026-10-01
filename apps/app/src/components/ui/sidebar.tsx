@@ -6,7 +6,6 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
@@ -39,8 +38,6 @@ const SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS =
   "max-md:[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none!";
 const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
   "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
-const SIDEBAR_GROUP_LABEL_BASE_CLASS =
-  "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0";
 
 type SidebarMobileWidthStyle = React.CSSProperties & {
   "--sidebar-width-mobile": string;
@@ -377,9 +374,6 @@ const SidebarContext = React.createContext<SidebarContext | null>(null);
 const SidebarWidthContext = React.createContext<string>(SIDEBAR_WIDTH);
 
 const SidebarShowingContext = React.createContext<boolean | null>(null);
-
-const SidebarContentElementContext =
-  React.createContext<React.RefObject<HTMLDivElement | null> | null>(null);
 
 function useSidebar() {
   const context = React.useContext(SidebarContext);
@@ -1590,11 +1584,10 @@ const SidebarInset = React.forwardRef<
           : undefined
       }
       className={cn(
-        "group/page-inset relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background max-md:z-30",
+        "relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background max-md:z-30",
         SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS,
         "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf]:will-change-[translate]",
-        "data-[panel-shelf=shelf]:-translate-x-(--secondary-panel-width-mobile) data-[panel-shelf]:will-change-[translate]",
-        "data-[panel-shelf=full]:-translate-x-full",
+        "data-[panel-shelf=full]:-translate-x-full data-[panel-shelf]:will-change-[translate]",
         className,
       )}
       {...props}
@@ -1621,126 +1614,20 @@ SidebarFooter.displayName = "SidebarFooter";
 const SidebarContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(({ className, children, ...props }, ref) => {
-  const contentRef = React.useRef<HTMLDivElement | null>(null);
-  const setContentRef = React.useCallback(
-    (node: HTMLDivElement | null) => {
-      contentRef.current = node;
-      if (typeof ref === "function") {
-        ref(node);
-      } else if (ref) {
-        ref.current = node;
-      }
-    },
-    [ref],
-  );
-
+>(({ className, ...props }, ref) => {
   return (
     <div
-      ref={setContentRef}
+      ref={ref}
       data-sidebar="content"
       className={cn(
         "flex min-h-0 flex-1 flex-col gap-2 overflow-auto bg-sidebar",
         className,
       )}
       {...props}
-    >
-      <SidebarContentElementContext.Provider value={contentRef}>
-        {children}
-      </SidebarContentElementContext.Provider>
-    </div>
+    />
   );
 });
 SidebarContent.displayName = "SidebarContent";
-
-type SidebarStickyTierKind = "label" | "project" | "parent";
-
-type SidebarStickyStackProps = React.ComponentProps<"div">;
-
-interface SidebarStickyTierProps extends React.ComponentProps<"div"> {
-  tier: SidebarStickyTierKind;
-  level?: number;
-}
-
-type SidebarStickyParentLevelStyle = React.CSSProperties & {
-  "--bb-sidebar-sticky-parent-level": number;
-};
-
-const SidebarStickyStack = React.forwardRef<
-  HTMLDivElement,
-  SidebarStickyStackProps
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      data-sidebar="group"
-      data-sidebar-sticky-stack=""
-      className={cn("relative flex w-full min-w-0 flex-col", className)}
-      {...props}
-    />
-  );
-});
-SidebarStickyStack.displayName = "SidebarStickyStack";
-
-const SidebarStickyTier = React.forwardRef<
-  HTMLDivElement,
-  SidebarStickyTierProps
->(({ children, className, tier, level, style, ...props }, ref) => {
-  const tierStyle =
-    tier === "parent" && level !== undefined
-      ? ({
-          ...style,
-          "--bb-sidebar-sticky-parent-level": level,
-        } satisfies SidebarStickyParentLevelStyle)
-      : style;
-  return (
-    <div
-      ref={ref}
-      {...props}
-      style={tierStyle}
-      data-sidebar={tier === "label" ? "group-label" : undefined}
-      data-sidebar-sticky-tier={tier}
-      className={cn(
-        tier === "label" && SIDEBAR_GROUP_LABEL_BASE_CLASS,
-        "bg-sidebar",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-});
-SidebarStickyTier.displayName = "SidebarStickyTier";
-
-type SidebarStickyGroupProps = React.ComponentProps<"div">;
-
-const SidebarStickyGroup = React.forwardRef<
-  HTMLDivElement,
-  SidebarStickyGroupProps
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      data-sidebar-sticky-group=""
-      className={cn(className)}
-      {...props}
-    />
-  );
-});
-SidebarStickyGroup.displayName = "SidebarStickyGroup";
-
-const SidebarGroupContent = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    data-sidebar="group-content"
-    className={cn("w-full text-sm", className)}
-    {...props}
-  />
-));
-SidebarGroupContent.displayName = "SidebarGroupContent";
 
 const SidebarMenu = React.forwardRef<
   HTMLUListElement,
@@ -1808,55 +1695,15 @@ const SidebarMenuButton = React.forwardRef<
 });
 SidebarMenuButton.displayName = "SidebarMenuButton";
 
-const SidebarMenuSkeleton = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
-  const skeletonId = React.useId();
-
-  const width = React.useMemo(() => {
-    let hash = 0;
-    for (let index = 0; index < skeletonId.length; index += 1) {
-      hash = (hash + skeletonId.charCodeAt(index) * (index + 1)) % 40;
-    }
-    return `${hash + 50}%`;
-  }, [skeletonId]);
-
-  return (
-    <div
-      ref={ref}
-      data-sidebar="menu-skeleton"
-      className={cn("rounded-md h-8 flex gap-2 px-2 items-center", className)}
-      {...props}
-    >
-      <Skeleton
-        className="h-4 flex-1 max-w-[--skeleton-width]"
-        data-sidebar="menu-skeleton-text"
-        style={
-          {
-            "--skeleton-width": width,
-          } as React.CSSProperties
-        }
-      />
-    </div>
-  );
-});
-SidebarMenuSkeleton.displayName = "SidebarMenuSkeleton";
-
 export {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroupContent,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSkeleton,
   SidebarProvider,
-  SidebarStickyGroup,
-  SidebarStickyStack,
-  SidebarStickyTier,
   SidebarTrigger,
   useCloseMobileSidebar,
   useIsSidebarShowing,

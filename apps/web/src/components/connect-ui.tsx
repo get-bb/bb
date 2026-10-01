@@ -340,7 +340,6 @@ export function ClaimField({
   buildSubmitLabel,
   onClaim,
   onCancel,
-  cancelLabel = "Cancel",
   layout,
 }: {
   serverUrlTemplate: string;
@@ -350,7 +349,6 @@ export function ClaimField({
   buildSubmitLabel: (label: string) => string;
   onClaim: (label: string) => Promise<string | null>;
   onCancel?: () => void;
-  cancelLabel?: string;
   layout: "card" | "dialog";
 }) {
   const [value, setValue] = useState(initial);
@@ -435,7 +433,7 @@ export function ClaimField({
         <div className="mt-3.5 flex justify-end gap-2">
           {onCancel && (
             <Button variant="outline" onClick={onCancel}>
-              {cancelLabel}
+              Cancel
             </Button>
           )}
           {submitButton}

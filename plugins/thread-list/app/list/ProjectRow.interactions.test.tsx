@@ -156,7 +156,6 @@ function renderPinnedParentWithChild({
       isEnvGrouped={false}
       collapsedThreadIds={isCollapsed ? new Set(["thr_parent"]) : new Set()}
       collapsedEnvironmentIds={new Set()}
-      variant="section"
       onToggleThreadCollapsed={vi.fn()}
       onToggleEnvironmentCollapsed={vi.fn()}
       sectionDnd={sectionDnd}

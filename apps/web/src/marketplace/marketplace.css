@@ -135,18 +135,6 @@
   line-height: 1.4;
 }
 
-.marketplace-visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-  white-space: nowrap;
-}
-
 .marketplace-controls {
   position: sticky;
   z-index: 20;
@@ -562,23 +550,6 @@
 .marketplace-detail-installs.is-new {
   color: var(--accent);
   font-weight: 600;
-}
-
-.marketplace-category-pill {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 150px;
-  padding: 2px 9px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--surface-recessed);
-  color: var(--dim);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .marketplace-flat-results .marketplace-section-head {

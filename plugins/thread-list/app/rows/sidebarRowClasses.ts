@@ -71,9 +71,6 @@ export const SIDEBAR_ROW_SELECTED_STATE_CLASS = `${CONTEXT_SELECTION_SURFACE_CLA
 export const SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS =
   "bb-sidebar-open-in-split-row";
 
-export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
-  "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-70 before:content-[''] max-md:pointer-coarse:before:left-5";
-
 const SIDEBAR_SECTION_DROP_TARGET_BASE_CLASS =
   "pointer-events-none absolute -inset-x-1 -inset-y-0.5 z-[70] rounded-md ring-1 ring-inset";
 
