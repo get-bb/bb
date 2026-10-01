@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type {
   BbDesktopBrowserApi,
   BbDesktopBrowserAttachRequest,
@@ -370,6 +377,28 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     });
     expect(screen.queryByText("This tab is open on another computer")).toBeNull();
     expect(attachments).toEqual([]);
+  });
+
+  it("stops checking after about a minute and lets the user try again", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api } = createRecordingBrowserApi();
+      const getTarget = vi.fn(async () => null);
+      api.getTarget = getTarget;
+      installDesktopBrowser(api);
+      render(renderTargetDeck(savedTab({})));
+      await act(() => vi.advanceTimersByTimeAsync(70_000));
+      const stoppedAt = getTarget.mock.calls.length;
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+      expect(getTarget).toHaveBeenCalledTimes(stoppedAt);
+      expect(screen.getByText("Can't reach this tab")).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(getTarget.mock.calls.length).toBeGreaterThan(stoppedAt);
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("retries the open-window check when it fails", async () => {

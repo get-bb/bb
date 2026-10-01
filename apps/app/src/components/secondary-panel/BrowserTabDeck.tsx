@@ -40,6 +40,7 @@ export function selectActiveBrowserTab(
 }
 
 const WINDOW_TARGET_PENDING_ATTEMPTS = 4;
+const WINDOW_CHECK_MAX_ATTEMPTS = 32;
 const WINDOW_TARGET_MAX_RETRY_MS = 2000;
 
 function windowRetryDelay(attempt: number): number {
@@ -105,6 +106,12 @@ export function BrowserTabDeck({
   const [windowTarget, setWindowTarget] = useState<WindowTargetCheck>({
     status: "pending",
   });
+  const [checkRound, setCheckRound] = useState(0);
+  const checkKey =
+    target === undefined
+      ? null
+      : `${checkRound}:${target.hostId}:${target.instanceId}:${target.generation}`;
+  const [stoppedCheckKey, setStoppedCheckKey] = useState<string | null>(null);
   useEffect(() => {
     if (targetHostId === undefined) return;
     const getTarget = desktopBrowser?.getTarget?.bind(desktopBrowser);
@@ -127,6 +134,10 @@ export function BrowserTabDeck({
           attempt += 1;
           if (attempt >= WINDOW_TARGET_PENDING_ATTEMPTS)
             setWindowTarget({ status: "ready", target: null });
+          if (attempt >= WINDOW_CHECK_MAX_ATTEMPTS) {
+            setStoppedCheckKey(checkKey);
+            return;
+          }
           retry = setTimeout(check, windowRetryDelay(attempt));
         });
     };
@@ -135,7 +146,13 @@ export function BrowserTabDeck({
       current = false;
       clearTimeout(retry);
     };
-  }, [desktopBrowser, targetHostId, target?.instanceId, target?.generation]);
+  }, [
+    desktopBrowser,
+    targetHostId,
+    target?.instanceId,
+    target?.generation,
+    checkKey,
+  ]);
 
   const placement = resolveBrowserTabPlacement(target, windowTarget);
   const savedWindowKey =
@@ -174,6 +191,10 @@ export function BrowserTabDeck({
             attempt += 1;
             if (attempt >= WINDOW_TARGET_PENDING_ATTEMPTS)
               setSavedWindowCheck({ key: savedWindowKey, status: "unknown" });
+            if (attempt >= WINDOW_CHECK_MAX_ATTEMPTS) {
+              setStoppedCheckKey(checkKey);
+              return;
+            }
             retry = setTimeout(check, windowRetryDelay(attempt));
           },
         );
@@ -183,13 +204,14 @@ export function BrowserTabDeck({
       current = false;
       clearTimeout(retry);
     };
-  }, [savedWindowKey, targetHostId, savedInstanceId]);
+  }, [savedWindowKey, targetHostId, savedInstanceId, checkKey]);
 
   if (activeBrowserTab === null) {
     return null;
   }
   const savedWindowStatus =
     savedWindowCheck?.key === savedWindowKey ? savedWindowCheck.status : null;
+  const checksStopped = checkKey !== null && stoppedCheckKey === checkKey;
   if (
     placement === "pending" ||
     (placement === "check-saved-window" && savedWindowStatus === null)
@@ -203,6 +225,9 @@ export function BrowserTabDeck({
     return (
       <BrowserTabElsewhere
         url={activeBrowserTab.url}
+        onRetry={
+          checksStopped ? () => setCheckRound((round) => round + 1) : null
+        }
         reason={
           desktopBrowser === null
             ? "desktop-required"
@@ -212,7 +237,9 @@ export function BrowserTabDeck({
                   windowTarget.target !== null &&
                   windowTarget.target.hostId !== target?.hostId
                 ? "other-computer"
-                : "reconnecting"
+                : checksStopped
+                  ? "unreachable"
+                  : "reconnecting"
         }
       />
     );
@@ -261,14 +288,20 @@ const BROWSER_TAB_ELSEWHERE_COPY = {
     title: "Reconnecting to this tab",
     body: "bb can't reach this computer's browser right now. The tab opens once it reconnects.",
   },
+  unreachable: {
+    title: "Can't reach this tab",
+    body: "bb couldn't reach this computer's browser. Try again once bb has reconnected.",
+  },
 } as const;
 
 function BrowserTabElsewhere({
   url,
   reason,
+  onRetry,
 }: {
   url: string;
   reason: keyof typeof BROWSER_TAB_ELSEWHERE_COPY;
+  onRetry: (() => void) | null;
 }) {
   const copy = BROWSER_TAB_ELSEWHERE_COPY[reason];
   return (
@@ -286,20 +319,28 @@ function BrowserTabElsewhere({
         {copy.body}
       </p>
       {url.length > 0 ? (
-        <>
-          <p
-            className={cn(
-              "max-w-full truncate font-mono text-muted-foreground select-text",
-              COARSE_POINTER_TEXT_SM_CLASS,
-            )}
-            title={url}
-          >
-            {url}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
+        <p
+          className={cn(
+            "max-w-full truncate font-mono text-muted-foreground select-text",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
+          title={url}
+        >
+          {url}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {onRetry !== null ? (
+          <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+            <Icon name="RotateCcw" aria-hidden />
+            Try again
+          </Button>
+        ) : null}
+        {url.length > 0 ? (
+          <>
             <Button
               type="button"
-              variant="outline"
+              variant={onRetry !== null ? "ghost" : "outline"}
               size="sm"
               onClick={() => openUrlInExternalBrowser(url)}
             >
@@ -319,9 +360,9 @@ function BrowserTabElsewhere({
               <Icon name="Copy" aria-hidden />
               Copy link
             </Button>
-          </div>
-        </>
-      ) : null}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
