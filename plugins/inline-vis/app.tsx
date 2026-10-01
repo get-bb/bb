@@ -194,7 +194,7 @@ function OpenPreviewAction({
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`Open ${file} in sidebar`}
-      title={`Open in sidebar\n${newPageClickHint()} to open in a browser tab`}
+      title={`Open in sidebar\n${newPageClickHint()} to open in the browser`}
       className={OPEN_ACTION_CLASS}
       onClick={(event) => {
         if (event.defaultPrevented || isModifiedClick(event)) return;
