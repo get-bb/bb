@@ -75,7 +75,7 @@ const windowsProcessSchema = z.object({
 async function readWindowsProcess(pid: number) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   try {
-    const { stdout } = await execFileAsync(
+    const pending = execFileAsync(
       path.join(
         process.env.SystemRoot ?? "C:\\Windows",
         "System32",
@@ -100,6 +100,8 @@ async function readWindowsProcess(pid: number) {
         maxBuffer: 1024 * 1024,
       },
     );
+    pending.child.stdin?.end();
+    const { stdout } = await pending;
     const value: unknown = JSON.parse(stdout);
     const result = windowsProcessSchema.safeParse(value);
     return result.success ? result.data : null;

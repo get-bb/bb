@@ -253,7 +253,7 @@ describe("createAgentRuntime process lifecycle", () => {
       providerId: "fake",
     });
 
-    expect(staleProcess.child.killed).toBe(true);
+    expect(processIsAlive(staleProcess.child.pid ?? 0)).toBe(false);
     expect(() =>
       manager.requireProviderProcess({
         processKey: staleKey,
@@ -370,7 +370,7 @@ describe("createAgentRuntime process lifecycle", () => {
       undefined,
     ]);
     expect(completedPromptly).toBe(true);
-    expect(replacementProcess.child.killed).toBe(true);
+    expect(processIsAlive(replacementProcess.child.pid ?? 0)).toBe(false);
     await manager.ensureProvider(MANAGER_PROVIDER);
     expect(manager.listRunningProviders()).toEqual([]);
   });
@@ -627,7 +627,7 @@ describe("createAgentRuntime process lifecycle", () => {
       firstStartBody: `const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
           stdio: ["ignore", "inherit", "inherit"],
         });
-        fs.writeFileSync(${JSON.stringify(childPidFile)}, String(writer.pid));
+        writeFileSync(${JSON.stringify(childPidFile)}, String(writer.pid));
         writer.unref();
         setTimeout(() => process.exit(42), 50);`,
     });

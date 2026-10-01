@@ -80,7 +80,7 @@ describe("ACP agent stdio lifecycle", () => {
       args: [
         "-e",
         [
-          'if (process.platform === "win32") process.stdin._handle.close(); else require("node:fs").closeSync(0);',
+          'if (process.platform === "win32") { const input = process.stdin; require("node:fs").closeSync(0); input._handle.close(); } else require("node:fs").closeSync(0);',
           'setImmediate(() => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n"));',
           "setTimeout(() => process.exit(0), 1000);",
         ].join(" "),
@@ -114,7 +114,7 @@ describe("ACP agent stdio lifecycle", () => {
       args: [
         "-e",
         [
-          'if (process.platform === "win32") process.stdin._handle.close(); else require("node:fs").closeSync(0);',
+          'if (process.platform === "win32") { const input = process.stdin; require("node:fs").closeSync(0); input._handle.close(); } else require("node:fs").closeSync(0);',
           'setImmediate(() => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n"));',
           "setInterval(() => {}, 1000);",
         ].join(" "),

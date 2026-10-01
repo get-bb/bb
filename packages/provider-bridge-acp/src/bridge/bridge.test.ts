@@ -1676,7 +1676,10 @@ describe("acp bridge", () => {
   });
 
   it("approves Cursor session MCP servers for the session lifetime (#2018)", async () => {
-    const cursorAgent = join(workspaceDir, "cursor-agent");
+    const cursorAgent = join(
+      workspaceDir,
+      process.platform === "win32" ? "cursor-agent.exe" : "cursor-agent",
+    );
     const cursorDataDir = join(workspaceDir, "cursor-data");
     symlinkSync(process.execPath, cursorAgent);
     const { providerThreadId } = await startThread({
