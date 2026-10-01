@@ -361,6 +361,8 @@ export function BottomAnchoredScrollBody({
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {
       const scrollArea = scrollAreaRef.current;
+      cancelPendingScrollRestore();
+      pendingPrependAnchorRef.current = null;
       shouldStickToBottomRef.current = false;
       setIsAtBottom(false);
       cancelQueuedRestore();
@@ -370,7 +372,7 @@ export function BottomAnchoredScrollBody({
         scrollArea.dispatchEvent(new Event("scroll"));
       }
     },
-    [cancelQueuedRestore],
+    [cancelPendingScrollRestore, cancelQueuedRestore],
   );
 
   const scrollElementIntoViewClampedToMaxScroll = useCallback(

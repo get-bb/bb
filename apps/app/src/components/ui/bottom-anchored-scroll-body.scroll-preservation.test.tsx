@@ -654,36 +654,49 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.scrollTop).toBe(300);
   });
 
-  it("does not let a pending saved-row restore undo an explicit bottom scroll", () => {
-    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
-      rowId: "row-b",
-      offsetWithinRow: 20,
-      atBottom: false,
-    });
+  it.each(["bottom", "message"])(
+    "does not let a pending saved-row restore undo an explicit %s scroll",
+    (destination) => {
+      getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thread-a"), {
+        rowId: "row-b",
+        offsetWithinRow: 20,
+        atBottom: false,
+      });
 
-    const { getByRole, scrollArea, rowElements } = renderTimeline({
-      threadId: "thread-a",
-      rowIds: ["row-a", "row-b", "row-c"],
-      showScrollToBottomControl: true,
-    });
-    mockScrollAreaRect(scrollArea);
-    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
-      top: -100,
-      bottom: 0,
-    });
-    setScrollMetrics(scrollArea, {
-      scrollHeight: 400,
-      clientHeight: 100,
-      scrollTop: 0,
-    });
+      const { getByRole, scrollArea, rowElements } = renderTimeline({
+        threadId: "thread-a",
+        rowIds: ["row-a", "row-b", "row-c"],
+        showScrollToBottomControl: true,
+        scrollIntoViewRowId: "row-a",
+      });
+      mockScrollAreaRect(scrollArea);
+      mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+        top: -100,
+        bottom: 0,
+      });
+      setScrollMetrics(scrollArea, {
+        scrollHeight: 400,
+        clientHeight: 100,
+        scrollTop: 0,
+      });
 
-    fireEvent.click(getByRole("button", { name: "Bottom" }));
-    expect(scrollArea.scrollTop).toBe(300);
+      const expectedScrollTop = destination === "bottom" ? 300 : 150;
+      const row = requireHTMLElement(rowElements.get("row-a")!);
+      row.scrollIntoView = vi.fn(() => {
+        scrollArea.scrollTop = expectedScrollTop;
+      });
+      fireEvent.click(
+        getByRole("button", {
+          name: destination === "bottom" ? "Bottom" : "Reveal row",
+        }),
+      );
+      expect(scrollArea.scrollTop).toBe(expectedScrollTop);
 
-    getLatestResizeObserver().trigger();
+      getLatestResizeObserver().trigger();
 
-    expect(scrollArea.scrollTop).toBe(300);
-  });
+      expect(scrollArea.scrollTop).toBe(expectedScrollTop);
+    },
+  );
 
   it("keeps sticking after manual scroll reaches bottom before more growth", () => {
     const { scrollArea } = renderTimeline({

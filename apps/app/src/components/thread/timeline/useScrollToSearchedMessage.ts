@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
@@ -56,7 +57,8 @@ interface SeqRange {
   max: number;
 }
 
-const POST_WINDOW_SETTLE_REVEAL_MS = 800;
+const REVEAL_STABLE_FRAME_COUNT = 2;
+const REVEAL_MAX_FRAME_COUNT = 12;
 
 function escapeTimelineRowId(rowId: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -334,26 +336,37 @@ export function useScrollToSearchedMessage(
     onLoadOlderRows,
     reportsMissingTarget = false,
   }: SearchMessagePaginationOptions = {},
-): void {
+): boolean {
   const { target, readLocationKey } = useSearchMessageLocation();
   const bottomAnchor = useBottomAnchoredScroll();
   const handledKeyRef = useRef<string | null>(null);
   const olderLoadAttemptKeyRef = useRef<string | null>(null);
-  const pendingRevealTimersRef = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const pendingRevealTimers = pendingRevealTimersRef.current;
-    return () => {
-      for (const timer of pendingRevealTimers) {
-        window.clearTimeout(timer);
-      }
-      pendingRevealTimers.clear();
-      handledKeyRef.current = null;
-    };
-  }, []);
   const targetLocationKey = target?.locationKey ?? null;
+  const [initialLocationKey] = useState(targetLocationKey);
+  const [settledLocationKey, setSettledLocationKey] = useState<string | null>(
+    null,
+  );
   const targetMatch = target?.match ?? null;
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
+  const targetLeafRow =
+    targetSeq === null || targetMatch === null
+      ? null
+      : findSearchTargetRow(rows, targetSeq, targetMatch);
+  const loadedRange = useMemo(() => getRowsSeqRange(rows), [rows]);
+  const targetIsOlderThanLoadedRows =
+    loadedRange !== null && targetSeq !== null && targetSeq < loadedRange.max;
+  const targetIsMissing =
+    targetLeafRow === null &&
+    loadedRange !== null &&
+    (targetMatch === "message" || targetIsOlderThanLoadedRows);
+  const canLoadOlderTarget = targetIsOlderThanLoadedRows && hasOlderRows;
+  const isInitialRevealPending =
+    reportsMissingTarget &&
+    initialLocationKey !== null &&
+    initialLocationKey === targetLocationKey &&
+    settledLocationKey !== initialLocationKey &&
+    !(targetIsMissing && !canLoadOlderTarget && !isLoadingOlderRows);
 
   useEffect(() => {
     if (
@@ -369,15 +382,7 @@ export function useScrollToSearchedMessage(
         return;
       }
     }
-    const targetLeafRow = findSearchTargetRow(rows, targetSeq, targetMatch);
     if (targetLeafRow === null) {
-      const loadedRange = getRowsSeqRange(rows);
-      const targetIsOlderThanLoadedRows =
-        loadedRange !== null && targetSeq < loadedRange.max;
-      const targetIsMissing =
-        loadedRange !== null &&
-        (targetMatch === "message" || targetIsOlderThanLoadedRows);
-      const canLoadOlderTarget = targetIsOlderThanLoadedRows && hasOlderRows;
       const olderLoadAttemptKey =
         loadedRange === null
           ? null
@@ -398,7 +403,16 @@ export function useScrollToSearchedMessage(
         olderLoadAttemptKeyRef.current !== olderLoadAttemptKey
       ) {
         olderLoadAttemptKeyRef.current = olderLoadAttemptKey;
-        void Promise.resolve(onLoadOlderRows()).catch(() => undefined);
+        void Promise.resolve(onLoadOlderRows()).catch(() => {
+          if (readLocationKey() !== targetLocationKey) return;
+          handledKeyRef.current = targetLocationKey;
+          setSettledLocationKey(targetLocationKey);
+          if (reportsMissingTarget) {
+            appToast.message("Failed to load message", {
+              description: "Please try opening the link again.",
+            });
+          }
+        });
         return;
       }
       if (
@@ -423,9 +437,10 @@ export function useScrollToSearchedMessage(
     ) {
       return;
     }
-    handledKeyRef.current = targetLocationKey;
-
-    let flashed = false;
+    let frame: number;
+    let frameCount = 0;
+    let stableFrameCount = 0;
+    let previousGeometry: string | null = null;
     const revealTarget = () => {
       if (readLocationKey() !== targetLocationKey) {
         return;
@@ -434,28 +449,39 @@ export function useScrollToSearchedMessage(
       if (element === null) {
         return;
       }
-      revealTimelineRow(element, bottomAnchor, !flashed);
-      flashed = true;
+      revealTimelineRow(element, bottomAnchor, false);
+      const rect = element.getBoundingClientRect();
+      const scrollArea = bottomAnchor?.getScrollElement();
+      const geometry = [
+        Math.round(rect.top + (scrollArea?.scrollTop ?? 0)),
+        Math.round(rect.height),
+        scrollArea?.scrollHeight ?? 0,
+      ].join(":");
+      stableFrameCount =
+        geometry === previousGeometry ? stableFrameCount + 1 : 0;
+      previousGeometry = geometry;
+      frameCount += 1;
+      if (
+        stableFrameCount >= REVEAL_STABLE_FRAME_COUNT ||
+        frameCount >= REVEAL_MAX_FRAME_COUNT
+      ) {
+        handledKeyRef.current = targetLocationKey;
+        setSettledLocationKey(targetLocationKey);
+        revealTimelineRow(element, bottomAnchor);
+        return;
+      }
+      frame = requestAnimationFrame(revealTarget);
     };
 
-    const scheduleReveal = (delayMs: number) => {
-      const timer = window.setTimeout(() => {
-        pendingRevealTimersRef.current.delete(timer);
-        revealTarget();
-      }, delayMs);
-      pendingRevealTimersRef.current.add(timer);
-    };
-
-    const frame = requestAnimationFrame(revealTarget);
-    scheduleReveal(320);
-    scheduleReveal(POST_WINDOW_SETTLE_REVEAL_MS);
+    frame = requestAnimationFrame(revealTarget);
     return () => {
       cancelAnimationFrame(frame);
     };
   }, [
     bottomAnchor,
-    hasOlderRows,
+    canLoadOlderTarget,
     isLoadingOlderRows,
+    loadedRange,
     onLoadOlderRows,
     readLocationKey,
     reportsMissingTarget,
@@ -464,6 +490,9 @@ export function useScrollToSearchedMessage(
     targetMatch,
     targetSeq,
     targetThreadId,
+    targetIsMissing,
+    targetLeafRow,
     threadId,
   ]);
+  return isInitialRevealPending;
 }

@@ -126,7 +126,7 @@ function EditActionAvailabilityHarness({
 function SearchOlderRowsHarness({
   onLoadOlderRows,
 }: {
-  onLoadOlderRows: () => void;
+  onLoadOlderRows: () => Promise<void> | void;
 }) {
   const [loadedOlderRows, setLoadedOlderRows] = useState(false);
   const rows = loadedOlderRows
@@ -165,8 +165,8 @@ function SearchOlderRowsHarness({
       timelineRows={rows}
       hasOlderTimelineRows={!loadedOlderRows}
       isLoadingOlderTimelineRows={false}
-      onLoadOlderRows={() => {
-        onLoadOlderRows();
+      onLoadOlderRows={async () => {
+        await onLoadOlderRows();
         setLoadedOlderRows(true);
       }}
       threadRuntimeDisplayStatus="idle"
@@ -1077,6 +1077,13 @@ describe("ThreadTimelineRows actions", () => {
       expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
     );
     expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
+    await waitFor(() => {
+      expect(
+        container.querySelector<HTMLElement>(
+          '[data-timeline-row-list="top-level"]',
+        )?.style.visibility,
+      ).not.toBe("hidden");
+    });
   });
 
   it("cancels the follow-up search reveals when the rows unmount", () => {
@@ -1129,6 +1136,70 @@ describe("ThreadTimelineRows actions", () => {
     }
   });
 
+  it("keeps the initial timeline hidden until an older linked message is positioned and stable", async () => {
+    let resolvePage: (() => void) | undefined;
+    const page = new Promise<void>((resolve) => {
+      resolvePage = resolve;
+    });
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const onLoadOlderRows = vi.fn(() => page);
+    const { container } = renderWithRouter(
+      <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
+      [{ pathname: "/threads/thr_main", hash: "#msg=12" }],
+    );
+    await waitFor(() => expect(onLoadOlderRows).toHaveBeenCalledTimes(1));
+    const list = container.querySelector<HTMLElement>(
+      '[data-timeline-row-list="top-level"]',
+    );
+    expect(list?.style.visibility).toBe("hidden");
+    await act(async () => resolvePage?.());
+    const target = container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="older_match"]',
+    );
+    expect(target).not.toBeNull();
+    expect(list?.style.visibility).toBe("hidden");
+    expect(target?.classList.contains("bb-search-flash")).toBe(false);
+    if (target === null) throw new Error("Expected linked message");
+    let targetTop = 100;
+    vi.spyOn(target, "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(0, targetTop, 100, 80),
+    );
+    const runFrame = () => {
+      act(() => {
+        const pending = [...frames.values()];
+        frames.clear();
+        for (const callback of pending) callback(performance.now());
+      });
+    };
+    runFrame();
+    expect(list?.style.visibility).toBe("hidden");
+    targetTop = 150;
+    runFrame();
+    expect(list?.style.visibility).toBe("hidden");
+    expect(target.classList.contains("bb-search-flash")).toBe(false);
+    for (let index = 0; index < 5; index += 1) {
+      runFrame();
+    }
+    expect(list?.style.visibility).not.toBe("hidden");
+    expect(target?.classList.contains("bb-search-flash")).toBe(true);
+    expect(target?.scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      inline: "nearest",
+    });
+  });
+
   it("loads older timeline rows before scrolling to an older thread-search match", async () => {
     const onLoadOlderRows = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -1170,7 +1241,7 @@ describe("ThreadTimelineRows actions", () => {
   it("does not retry failed older-row auto-loading until rows advance", async () => {
     const onLoadOlderRows = vi.fn();
 
-    renderWithRouter(
+    const { container } = renderWithRouter(
       <SearchOlderRowsFailedLoadHarness onLoadOlderRows={onLoadOlderRows} />,
       [
         {
@@ -1189,6 +1260,11 @@ describe("ThreadTimelineRows actions", () => {
     });
 
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+    expect(
+      container.querySelector<HTMLElement>(
+        '[data-timeline-row-list="top-level"]',
+      )?.style.visibility,
+    ).not.toBe("hidden");
   });
 
   it("renders plugin message actions on user and assistant rows with the narrow message reference", () => {
