@@ -1,4 +1,3 @@
-import { execPortableFile } from "@bb/process-utils";
 import type { ExecFileException } from "node:child_process";
 import {
   type GitHostPullRequest,
@@ -10,7 +9,10 @@ import {
   type GitHostPullRequestReviewDecision,
   gitHostPullRequestSchema,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  execPortableFile,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import { runGit, type GitCommandResult, WorkspaceError } from "./git.js";
 
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;

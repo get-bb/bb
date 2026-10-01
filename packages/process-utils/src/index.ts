@@ -1,4 +1,3 @@
-export { execPortableFile } from "./exec-portable-file.js";
 export * from "./event-loop-delay.js";
 export * from "./plugin-process-paths.js";
 export * from "./socket-type-of-service.js";
@@ -17,6 +16,8 @@ import {
 } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import crossSpawn from "cross-spawn";
+
+export { execPortableFile } from "./exec-portable-file.js";
 
 interface PortableSpawnRequest {
   command: string;

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, onTestFinished } from "vitest";
 import {
+  execPortableFile,
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
 } from "../src/index.js";
@@ -81,6 +82,29 @@ for (const shim of [false, true]) {
         stdin: "input with spaces and é\n",
       });
       expect(Buffer.concat(stderr).toString("utf8")).toBe("provider stderr");
+      await expect(
+        execPortableFile(
+          shim ? "bb-process-probe" : process.execPath,
+          shim ? args : [scriptPath, ...args],
+          {
+            cwd: directory,
+            env: sanitizeInheritedChildProcessEnv({
+              env: inheritedEnv,
+              shellPath: binDirectory,
+            }),
+            maxBuffer: 1024,
+            input: "input with spaces and é\n",
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: 23,
+        stdout: JSON.stringify({
+          args,
+          cwd: directory,
+          stdin: "input with spaces and é\n",
+        }),
+        stderr: "provider stderr",
+      });
     },
   );
 }

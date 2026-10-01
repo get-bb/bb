@@ -279,7 +279,6 @@ export async function runGit(
   try {
     const processOptions = {
       cwd: options.cwd,
-      encoding: "utf8",
       env: resolveGitProcessEnv({
         env: options.env,
         shellPath: options.shellPath,
@@ -531,30 +530,30 @@ export async function runShellPipeline(
     throw createShellPipelineCancelledError(options.signal.reason);
   }
   try {
+    const processOptions = {
+      cwd: options.cwd,
+      env: resolveGitProcessEnv({
+        env: undefined,
+        shellPath: options.shellPath,
+      }),
+      maxBuffer: DEFAULT_BUFFER_BYTES,
+      signal: options.signal,
+      timeout: options.timeoutMs,
+    };
     const shell =
       process.platform === "win32"
         ? (
-            await runGit(["var", "GIT_SHELL_PATH"], {
-              cwd: options.cwd,
-              shellPath: options.shellPath,
-              signal: options.signal,
-              timeoutMs: options.timeoutMs,
-            })
+            await execPortableFile(
+              "git",
+              ["var", "GIT_SHELL_PATH"],
+              processOptions,
+            )
           ).stdout.trim()
         : "/bin/sh";
     const result = await execPortableFile(
       shell,
       ["-c", script, "sh", ...positionalArgs],
-      {
-        cwd: options.cwd,
-        env: resolveGitProcessEnv({
-          env: undefined,
-          shellPath: options.shellPath,
-        }),
-        maxBuffer: DEFAULT_BUFFER_BYTES,
-        signal: options.signal,
-        timeout: options.timeoutMs,
-      },
+      processOptions,
     );
     return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
   } catch (error) {

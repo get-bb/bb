@@ -1,4 +1,5 @@
-import type { ExecFileException } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
+import path from "node:path";
 import crossSpawn from "cross-spawn";
 
 interface ExecPortableFileOptions {
@@ -41,9 +42,29 @@ export function execPortableFile(
     let stderrBytes = 0;
     let failure: ExecFileException | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let stopping: Promise<void> | undefined;
     const stop = (error: ExecFileException) => {
-      failure ??= error;
-      child.kill();
+      if (failure) return;
+      failure = error;
+      if (process.platform === "win32" && child.pid !== undefined) {
+        stopping = new Promise<void>((resolveStop) => {
+          execFile(
+            path.join(
+              process.env.SystemRoot ?? "C:\\Windows",
+              "System32",
+              "taskkill.exe",
+            ),
+            ["/pid", String(child.pid), "/T", "/F"],
+            { windowsHide: true, timeout: 5_000 },
+            () => {
+              child.kill();
+              resolveStop();
+            },
+          );
+        });
+      } else {
+        child.kill();
+      }
       childInput.destroy();
       childOutput.destroy();
       childError.destroy();
@@ -92,9 +113,10 @@ export function execPortableFile(
         if (text) onStderr(text);
       });
     }
-    child.once("close", (code, signal) => {
+    child.once("close", async (code, signal) => {
       clearTimeout(timeout);
       options.signal?.removeEventListener("abort", abort);
+      await stopping;
       const output = {
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderr: Buffer.concat(stderr).toString("utf8"),
@@ -103,8 +125,8 @@ export function execPortableFile(
         reject(
           Object.assign(failure ?? new Error(`Command failed: ${command}`), {
             code: failure?.code ?? code,
-            signal,
-            killed: child.killed,
+            signal: stopping ? "SIGTERM" : signal,
+            killed: stopping !== undefined || child.killed,
             ...output,
           }),
         );

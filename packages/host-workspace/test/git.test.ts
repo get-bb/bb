@@ -500,7 +500,7 @@ describe("user-shell Git resolution", () => {
     await fs.writeFile(
       gitPath,
       process.platform === "win32"
-        ? `@echo off\r\nif "%1"=="var" (echo ${shell}) else (echo user-shell-git)\r\n`
+        ? `@echo off\r\nif "%~1"=="var" (echo ${shell}) else (echo user-shell-git)\r\n`
         : "#!/bin/sh\nprintf 'user-shell-git\\n'\n",
       { mode: 0o755 },
     );
