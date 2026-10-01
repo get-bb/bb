@@ -533,27 +533,42 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("follows a changed default for a builtin the user never toggled", async () => {
-    service = createService({
-      db,
-      dataDir: join(workDir, "data"),
-      defaultEnabled: false,
-    });
-    await service.start();
-    await service.stop();
+  it.each([false, true])(
+    "follows a changed default for a builtin the user never toggled (initial default: %s)",
+    async (initialDefault) => {
+      service = createService({
+        db,
+        dataDir: join(workDir, "data"),
+        defaultEnabled: initialDefault,
+      });
+      await service.start();
+      expect(service.list()).toMatchObject([
+        {
+          id: "builtin-fixture",
+          enabled: initialDefault,
+          status: initialDefault ? "running" : "disabled",
+        },
+      ]);
+      expect(loadCount()).toBe(initialDefault ? 1 : 0);
+      await service.stop();
 
-    service = createService({
-      db,
-      dataDir: join(workDir, "data"),
-      defaultEnabled: true,
-    });
-    await service.start();
+      service = createService({
+        db,
+        dataDir: join(workDir, "data"),
+        defaultEnabled: !initialDefault,
+      });
+      await service.start();
 
-    expect(service.list()).toMatchObject([
-      { id: "builtin-fixture", enabled: true, status: "running" },
-    ]);
-    expect(loadCount()).toBe(1);
-  });
+      expect(service.list()).toMatchObject([
+        {
+          id: "builtin-fixture",
+          enabled: !initialDefault,
+          status: initialDefault ? "disabled" : "running",
+        },
+      ]);
+      expect(loadCount()).toBe(1);
+    },
+  );
 
   it("keeps a builtin the user turned off disabled when its default turns on", async () => {
     service = createService({
