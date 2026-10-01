@@ -9,6 +9,7 @@ import type {
   WorkspaceGitOperation,
 } from "@bb/domain";
 import {
+  execPortableFile,
   killProcessGroup,
   pathExists,
   sanitizeInheritedChildProcessEnv,
@@ -40,6 +41,7 @@ export interface RunGitOptions extends GitProcessOptions {
   maxBufferBytes?: number;
   allowTruncatedStdout?: boolean;
   onStderr?: (chunk: string) => void;
+  input?: string;
 }
 
 interface ResolveGitProcessEnvArgs {
@@ -286,28 +288,11 @@ export async function runGit(
       signal: options.signal,
       timeout: options.timeoutMs,
     } as const;
-    const stderrListener = options.onStderr;
-    const result =
-      stderrListener === undefined
-        ? await execFileAsync("git", args, processOptions)
-        : await new Promise<{ stdout: string; stderr: string }>(
-            (resolve, reject) => {
-              const child = execFile(
-                "git",
-                args,
-                processOptions,
-                (error, stdout, stderr) => {
-                  if (error) {
-                    error.stdout = stdout;
-                    error.stderr = stderr;
-                    reject(error);
-                  } else resolve({ stdout, stderr });
-                },
-              );
-              child.stderr?.setEncoding("utf8");
-              child.stderr?.on("data", stderrListener);
-            },
-          );
+    const result = await execPortableFile("git", args, {
+      ...processOptions,
+      input: options.input,
+      onStderr: options.onStderr,
+    });
     return {
       stdout: result.stdout,
       stderr: result.stderr,
@@ -546,12 +531,22 @@ export async function runShellPipeline(
     throw createShellPipelineCancelledError(options.signal.reason);
   }
   try {
-    const result = await execFileAsync(
-      "/bin/sh",
+    const shell =
+      process.platform === "win32"
+        ? (
+            await runGit(["var", "GIT_SHELL_PATH"], {
+              cwd: options.cwd,
+              shellPath: options.shellPath,
+              signal: options.signal,
+              timeoutMs: options.timeoutMs,
+            })
+          ).stdout.trim()
+        : "/bin/sh";
+    const result = await execPortableFile(
+      shell,
       ["-c", script, "sh", ...positionalArgs],
       {
         cwd: options.cwd,
-        encoding: "utf8",
         env: resolveGitProcessEnv({
           env: undefined,
           shellPath: options.shellPath,

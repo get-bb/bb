@@ -1,3 +1,4 @@
+export { execPortableFile } from "./exec-portable-file.js";
 export * from "./event-loop-delay.js";
 export * from "./plugin-process-paths.js";
 export * from "./socket-type-of-service.js";
@@ -481,7 +482,7 @@ export function sanitizeInheritedChildProcessEnv(
     if (normalizedKey === "NODE_ENV" || normalizedKey.startsWith("BB_")) {
       continue;
     }
-    sanitizedEnv[key] = value;
+    sanitizedEnv[normalizedKey === "PATH" ? "PATH" : key] = value;
   }
   if (args.shellPath !== undefined) {
     sanitizedEnv.PATH = args.shellPath;
