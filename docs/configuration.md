@@ -313,7 +313,7 @@ it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
-The "Confirm thread archiving" switch in Settings → General defaults to on.
+The "Thread archive confirmation" switch in Settings → General defaults to on.
 Turn it off to archive a thread and its child threads immediately without a
 confirmation popup. The archive toast still offers Undo. This server-wide
 preference applies to all connected app clients. Set it with

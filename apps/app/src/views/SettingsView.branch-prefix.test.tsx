@@ -155,7 +155,7 @@ it("allows disabling archive confirmation and shows the saved preference", () =>
   const onChange = vi.fn();
   renderSection({ onConfirmThreadArchiveChange: onChange });
   const toggle = screen.getByRole("switch", {
-    name: "Confirm thread archiving",
+    name: "Thread archive confirmation",
   });
   expect(toggle.getAttribute("aria-checked")).toBe("true");
   fireEvent.click(toggle);
@@ -164,7 +164,7 @@ it("allows disabling archive confirmation and shows the saved preference", () =>
   renderSection({ confirmThreadArchive: false });
   expect(
     screen
-      .getByRole("switch", { name: "Confirm thread archiving" })
+      .getByRole("switch", { name: "Thread archive confirmation" })
       .getAttribute("aria-checked"),
   ).toBe("false");
 });

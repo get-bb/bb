@@ -876,18 +876,6 @@ export function GeneralSettingsSection({
       <SettingsSection title="Threads & editing">
         <div className="space-y-5">
           <SettingsWithControl
-            label="Confirm thread archiving"
-            description="Ask before archiving a thread with child threads. Turn off to archive them together immediately."
-          >
-            <Switch
-              checked={confirmThreadArchive}
-              disabled={generalSettingsDisabled}
-              onCheckedChange={onConfirmThreadArchiveChange}
-              aria-label="Confirm thread archiving"
-            />
-          </SettingsWithControl>
-
-          <SettingsWithControl
             label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
           >
             <Switch
@@ -956,6 +944,18 @@ export function GeneralSettingsSection({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Thread archive confirmation"
+            description="Ask before archiving a thread with unarchived children."
+          >
+            <Switch
+              checked={confirmThreadArchive}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onConfirmThreadArchiveChange}
+              aria-label="Thread archive confirmation"
+            />
           </SettingsWithControl>
         </div>
       </SettingsSection>
