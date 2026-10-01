@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
 import { makeTask, rpcInput } from "../../test-fixtures.js";
@@ -84,6 +84,72 @@ describe("derivePrefix", () => {
 });
 
 describe("NewTaskDialog", () => {
+  it("keeps the compact task form accessible while choosing another project", async () => {
+    const media = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation((query) => ({
+        matches: query === "(max-width: 767px)",
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }));
+    const otherProject = {
+      ...project,
+      id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+      name: "Personal",
+      prefix: "HOME",
+    };
+    const createCalls: Array<Record<string, unknown>> = [];
+    try {
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: PROJECT_ID },
+        {
+          rpc: {
+            listProjects: () => ({ projects: [project, otherProject] }),
+            listFolders: () => ({ folders: [] }),
+            listPresets: () => ({ presets: [] }),
+            sidebarSummary: () => ({ projects: [] }),
+            listTasks: () => ({ tasks: [] }),
+            listLabels: () => ({ labels: [] }),
+            createTask: (raw: unknown) => {
+              const input = rpcInput(raw);
+              createCalls.push(input);
+              return { ok: true, task: createdTask(input) };
+            },
+          },
+        },
+      );
+      fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+      const title = await slot.findByLabelText("Task title");
+      fireEvent.change(title, { target: { value: "Keep this draft open" } });
+      fireEvent.click(slot.getByLabelText("Project"));
+      const option = await slot.findByRole("option", { name: "Personal" });
+      expect(title.closest('[aria-hidden="true"], [inert]')).toBeNull();
+      fireEvent.click(option);
+      await waitFor(() =>
+        expect(
+          slot
+            .getByRole("textbox", { name: "Task title" })
+            .getAttribute("value"),
+        ).toBe("Keep this draft open"),
+      );
+      fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+      await waitFor(() => expect(createCalls).toHaveLength(1));
+      expect(createCalls[0]).toMatchObject({
+        projectId: otherProject.id,
+        title: "Keep this draft open",
+      });
+    } finally {
+      cleanup();
+      media.mockRestore();
+    }
+  });
+
   it.each([
     {
       name: "Ctrl+Enter in title",

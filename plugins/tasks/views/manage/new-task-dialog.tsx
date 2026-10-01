@@ -97,6 +97,7 @@ export function NewTaskDialog({
     blankDraft(projectId, defaultStatus),
   );
   const [createMore, setCreateMore] = useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [labelQuery, setLabelQuery] = useState("");
@@ -128,6 +129,7 @@ export function NewTaskDialog({
     if (!open) return;
     const restored = loadNewTaskDraft();
     setDraft(restored ?? blankDraft(projectId, defaultStatus));
+    setProjectPickerOpen(false);
     setLabelQuery("");
     setPendingFiles([]);
     setCreatedTask(null);
@@ -433,31 +435,53 @@ export function NewTaskDialog({
             createdTask && "hidden",
           )}
         >
-          <Select
-            value={effectiveProjectId ?? undefined}
-            onValueChange={changeProject}
-          >
-            <SelectTrigger
-              aria-label="Project"
-              className={cn(CHIP_TRIGGER, "max-w-44")}
-            >
-              <SelectValue placeholder="Project" />
-            </SelectTrigger>
-            <SelectContent>
-              {projectList.map((entry) => (
-                <SelectItem key={entry.id} value={entry.id}>
-                  <span className="flex items-center gap-2">
-                    <span
-                      aria-hidden
-                      className="size-2.5 rounded-sm"
-                      style={{ backgroundColor: entry.color }}
-                    />
-                    {entry.name}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                aria-label="Project"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  CHIP_TRIGGER,
+                  "max-w-44 border-input font-normal",
+                )}
+              >
+                <span className="truncate">{project?.name ?? "Project"}</span>
+                <Icon name="ChevronDown" className="size-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Choose project…" />
+                <CommandList>
+                  <CommandEmpty>No matching projects.</CommandEmpty>
+                  <CommandGroup>
+                    {projectList.map((entry) => (
+                      <CommandItem
+                        key={entry.id}
+                        value={`${entry.name} ${entry.prefix}`}
+                        onSelect={() => {
+                          if (entry.id !== effectiveProjectId)
+                            changeProject(entry.id);
+                          setProjectPickerOpen(false);
+                        }}
+                      >
+                        <span
+                          aria-hidden
+                          className="size-2.5 rounded-sm"
+                          style={{ backgroundColor: entry.color }}
+                        />
+                        <span className="flex-1 truncate">{entry.name}</span>
+                        {entry.id === effectiveProjectId ? (
+                          <Icon name="Check" className="size-3.5" />
+                        ) : null}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <Select
             value={status}
             onValueChange={(value) =>
