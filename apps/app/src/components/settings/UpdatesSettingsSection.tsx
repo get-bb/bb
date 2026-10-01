@@ -105,7 +105,7 @@ import {
   getSettingsMachineRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
-import { getProviderIconInfo } from "@/lib/provider-icon";
+import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import {
   useSystemConfig,
   useSystemProviders,
@@ -1204,11 +1204,6 @@ export function MachineUpdatesRows({
     const providerInfo = providerRoster?.find(
       (candidate) => candidate.id === providerId,
     );
-    const ProviderIcon = getProviderIconInfo(
-      "agent",
-      providerId,
-      providerInfo ?? null,
-    )?.icon;
     return (
       <ResourceRow
         key={provider}
@@ -1217,15 +1212,17 @@ export function MachineUpdatesRows({
         openLabel={`Open ${status.displayName} settings`}
         onOpen={() => onOpenProvider(providerId)}
         leading={
-          ProviderIcon === undefined ? null : (
-            <span
-              data-provider-icon={providerId}
-              aria-hidden
-              className="flex size-3.5 shrink-0 items-center justify-center"
-            >
-              <ProviderIcon className="size-3.5 text-muted-foreground" />
-            </span>
-          )
+          <span
+            data-provider-icon={providerId}
+            aria-hidden
+            className="flex size-3.5 shrink-0 items-center justify-center"
+          >
+            <ProviderIcon
+              providerKind="agent"
+              provider={providerInfo ?? { id: providerId }}
+              className="size-3.5 text-muted-foreground"
+            />
+          </span>
         }
         title={status.displayName}
         titleMeta={
