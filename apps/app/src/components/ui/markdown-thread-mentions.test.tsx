@@ -739,15 +739,14 @@ describe("MarkdownPreview thread mentions", () => {
   );
 
   it.each([
-    ["without message directives", undefined, "#"],
-    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES, "#"],
-    ["using an existing query mention", undefined, "?"],
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
   ])(
     "links a message mention to that message in its thread %s",
-    (_label, messageDirectives, separator) => {
+    (_label, messageDirectives) => {
       renderMarkdown(
         <MarkdownPreview
-          content={`See @thread:thr_child${separator}msg=42, then reply.`}
+          content="See @thread:thr_child#msg=42, then reply."
           threadMentions={{
             mentions: [],
             preserveSoftBreaks: true,

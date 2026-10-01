@@ -229,9 +229,7 @@ export function parseMessageLink(href: string): MessageLinkTarget | null {
     return null;
   }
   const encodedThreadId = THREAD_ROUTE_PATHNAME_PATTERN.exec(url.pathname)?.[1];
-  const seq =
-    new URLSearchParams(url.hash.slice(1)).get(MESSAGE_LINK_PARAM) ??
-    url.searchParams.get(MESSAGE_LINK_PARAM);
+  const seq = new URLSearchParams(url.hash.slice(1)).get(MESSAGE_LINK_PARAM);
   if (
     encodedThreadId === undefined ||
     seq === null ||
