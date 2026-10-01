@@ -872,7 +872,11 @@ export function registerHandlers(
       const attachments =
         "taskId" in input
           ? store.tasks.listAttachmentsForTask(input.taskId)
-          : store.tasks.listAttachmentsForComment(input.commentId);
+          : "commentId" in input
+            ? store.tasks.listAttachmentsForComment(input.commentId)
+            : store.tasks.listAttachmentsForTaskComments(
+                input.commentsOfTaskId,
+              );
       return {
         attachments: attachments.map(attachmentMetadata),
       };

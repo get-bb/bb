@@ -647,6 +647,53 @@ describe("tasks storage", () => {
     }
   });
 
+  it("lists every comment attachment of one task and nothing from its own files or other tasks", async () => {
+    const { harness, store } = setup();
+    try {
+      const project = createProject(store, "ATT");
+      const task = store.createTask({ projectId: project.id, title: "Task" });
+      const otherTask = store.createTask({
+        projectId: project.id,
+        title: "Other",
+      });
+      const attach = (
+        owner: { taskId: string } | { commentId: string },
+        fileName: string,
+      ) =>
+        store.createAttachment({
+          ...owner,
+          fileName,
+          mime: "text/plain",
+          sizeBytes: 1,
+          blobPath: `blobs/${fileName}`,
+          isImage: false,
+        });
+      const comment = (taskId: string, body: string) =>
+        store.createComment({
+          taskId,
+          kind: "user",
+          authorName: "Sawyer",
+          body,
+        });
+      const first = comment(task.id, "First");
+      const second = comment(task.id, "Second");
+      const elsewhere = comment(otherTask.id, "Elsewhere");
+      attach({ taskId: task.id }, "task-file.txt");
+      const onFirst = attach({ commentId: first.id }, "first.txt");
+      const onSecond = attach({ commentId: second.id }, "second.txt");
+      attach({ commentId: elsewhere.id }, "elsewhere.txt");
+
+      expect(
+        store
+          .listAttachmentsForTaskComments(task.id)
+          .map((attachment) => attachment.id)
+          .sort(),
+      ).toEqual([onFirst.id, onSecond.id].sort());
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("lists task comments in chronological order", async () => {
     const { db, harness, store } = setup();
     try {
