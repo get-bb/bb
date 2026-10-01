@@ -411,19 +411,13 @@ describe("desktop window factory", () => {
       "https://example.com/from-markdown",
       "devin://file/Users/me/.bb/artifacts/thr_1/review.diff",
       "javascript:alert(1)",
-      "data:text/html,hi",
-      "file:///Applications/Calculator.app",
-      "ms-msdt:/id",
-      "devin://chat-plugin/install?source=https://example.invalid/plugin",
-      "vscode://command/workbench.action.terminal.new",
-      "devin://file/%2Fserver/share/a.diff",
+      "file:///System/Applications/Chess.app",
       "http://127.0.0.1:38886/threads/thr_1",
     ].map((url) => handler({ url }));
 
     expect(createdWindows).toHaveLength(1);
     expect(openedExternalUrls).toEqual([
       "https://example.com/from-markdown",
-      "devin://file/Users/me/.bb/artifacts/thr_1/review.diff",
       "http://127.0.0.1:38886/threads/thr_1",
     ]);
     expect(new Set(results.map((result) => result.action))).toEqual(

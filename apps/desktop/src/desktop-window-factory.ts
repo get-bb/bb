@@ -1,5 +1,4 @@
 import type { BrowserWindowConstructorOptions } from "electron";
-import { resolveDesktopExternalUrl } from "@bb/desktop-contract";
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -16,6 +15,7 @@ import {
   type PersistBrowserWindowStateSnapshot,
   type StatefulBrowserWindow,
 } from "./window-state.js";
+import { resolveDesktopExternalUrl } from "./desktop-external-url.js";
 import type { DesktopContextMenuWebContents } from "./desktop-context-menu.js";
 
 type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];

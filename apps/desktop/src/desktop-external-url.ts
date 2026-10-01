@@ -1,48 +1,14 @@
-import { stat } from "node:fs/promises";
-import { isAbsolute } from "node:path";
-import { ipcMain } from "electron";
-import {
-  resolveDesktopExternalUrl,
-  resolveEditorFilePath,
-} from "@bb/desktop-contract";
-import { BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL } from "./desktop-update-ipc.js";
+const EXTERNAL_URL_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
-type OpenExternal = (url: string) => Promise<void>;
-
-async function isRegularFile(path: string): Promise<boolean> {
-  if (!isAbsolute(path)) {
-    return false;
+export function resolveDesktopExternalUrl(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
   }
+  let url: URL;
   try {
-    return (await stat(path)).isFile();
+    url = new URL(value);
   } catch {
-    return false;
+    return null;
   }
-}
-
-export async function openDesktopExternalUrl(
-  value: unknown,
-  openExternal: OpenExternal,
-): Promise<boolean> {
-  const url = resolveDesktopExternalUrl(value);
-  if (url === null) {
-    return false;
-  }
-  const filePath = resolveEditorFilePath(url);
-  if (filePath !== null && !(await isRegularFile(filePath))) {
-    return false;
-  }
-  await openExternal(url);
-  return true;
-}
-
-export function registerDesktopExternalUrlIpc(
-  openExternal: OpenExternal,
-): void {
-  ipcMain.on(
-    BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
-    (_event, payload: unknown) => {
-      void openDesktopExternalUrl(payload, openExternal);
-    },
-  );
+  return EXTERNAL_URL_PROTOCOLS.has(url.protocol) ? url.href : null;
 }
