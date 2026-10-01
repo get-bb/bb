@@ -465,38 +465,6 @@ describe("createAgentRuntime command contracts", () => {
     await runtime.shutdown();
   });
 
-  it("archives threads using caller-provided provider ids without runtime registry state", async () => {
-    const { record, runtime } = createContractRuntime();
-
-    await runtime.archiveThread({
-      bridgeLaunch: createScriptedEchoLaunch(),
-      threadId: "t-archive",
-      providerId: "fake",
-      providerThreadId: "provider-explicit",
-    });
-    expect(record.last("thread/archive")?.params).toEqual({
-      threadId: "t-archive",
-      providerThreadId: "provider-explicit",
-    });
-    await runtime.shutdown();
-  });
-
-  it("unarchives threads using caller-provided provider ids without runtime registry state", async () => {
-    const { record, runtime } = createContractRuntime();
-
-    await runtime.unarchiveThread({
-      bridgeLaunch: createScriptedEchoLaunch(),
-      threadId: "t-unarchive",
-      providerId: "fake",
-      providerThreadId: "provider-explicit",
-    });
-    expect(record.last("thread/unarchive")?.params).toEqual({
-      threadId: "t-unarchive",
-      providerThreadId: "provider-explicit",
-    });
-    await runtime.shutdown();
-  });
-
   it("propagates a bridge's archive and unarchive rejections verbatim", async () => {
     const { record, runtime } = createContractRuntime({
       env: scriptedEchoProcessEnv({

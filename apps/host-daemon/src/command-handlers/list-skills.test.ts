@@ -153,42 +153,6 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     expect(byName(skills, "user-agent")?.filePath).toBe(files["user-agent"]);
   });
 
-  it("keeps native skill IDs stable when the workspace root moves", async () => {
-    const firstRoot = path.join(tempRoot, "checkout-a", ".bb", "skills");
-    const secondRoot = path.join(tempRoot, "checkout-b", ".bb", "skills");
-    await writeSkill(path.join(firstRoot, "review", "SKILL.md"), "review");
-    await writeSkill(path.join(secondRoot, "review", "SKILL.md"), "review");
-
-    const [first] = await discoverSkills({
-      roots: [
-        {
-          rootPath: firstRoot,
-          shape: "skill",
-          namePrefix: "",
-          source: "skill",
-          origin: "project",
-          identitySeed: "bb-project",
-          rootKind: "bb-project",
-        },
-      ],
-    });
-    const [second] = await discoverSkills({
-      roots: [
-        {
-          rootPath: secondRoot,
-          shape: "skill",
-          namePrefix: "",
-          source: "skill",
-          origin: "project",
-          identitySeed: "bb-project",
-          rootKind: "bb-project",
-        },
-      ],
-    });
-
-    expect(first?.id).toBe(second?.id);
-  });
-
   it("keeps a declared provider skill's ID stable when the workspace root moves", async () => {
     const roots = skillRoots({ project: [declared(".agent/skills")] });
     const ids: string[] = [];

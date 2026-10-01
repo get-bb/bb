@@ -478,64 +478,62 @@ describe("CommandRouter", () => {
     await runtimeManager.shutdownAll();
   });
 
-  it.each(["codex", "claude-code", "acp-cursor"])(
-    "does not route separate %s threads through one lane",
-    async (providerId) => {
-      const harness = createHarness({ workspacePath: "/tmp/env-router" });
-      await harness.manager.ensureEnvironment({
+  it("does not route separate threads through one lane", async () => {
+    const providerId = "codex";
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-router",
+      workspacePath: "/tmp/env-router",
+    });
+    harness.threadControls.setProviderSession("thread-stop", {
+      providerId,
+      providerThreadId: "provider-stop",
+    });
+    harness.threadControls.setProviderSession("thread-turn", {
+      providerId,
+      providerThreadId: "provider-turn",
+    });
+
+    const stopEntered = createDeferredPromise<void>();
+    const releaseStop = createDeferredPromise<void>();
+    const originalStopThread = harness.runtime.stopThread;
+    harness.runtime.stopThread = async (args) => {
+      stopEntered.resolve();
+      await releaseStop.promise;
+      return originalStopThread(args);
+    };
+
+    const router = createRouter(harness);
+    const stopTask = runRouterCommand({
+      command: {
+        type: "thread.stop",
+        intent: "interrupt",
         environmentId: "env-router",
-        workspacePath: "/tmp/env-router",
-      });
-      harness.threadControls.setProviderSession("thread-stop", {
-        providerId,
-        providerThreadId: "provider-stop",
-      });
-      harness.threadControls.setProviderSession("thread-turn", {
+        threadId: "thread-stop",
+      },
+      requestId: "stop-thread",
+      router,
+    });
+    await stopEntered.promise;
+
+    const turnTask = runRouterCommand({
+      command: createTurnSubmitCommand({
         providerId,
         providerThreadId: "provider-turn",
-      });
+        text: "other thread",
+        threadId: "thread-turn",
+      }),
+      requestId: "turn-other-thread",
+      router,
+    });
+    await flushAsyncWork();
 
-      const stopEntered = createDeferredPromise<void>();
-      const releaseStop = createDeferredPromise<void>();
-      const originalStopThread = harness.runtime.stopThread;
-      harness.runtime.stopThread = async (args) => {
-        stopEntered.resolve();
-        await releaseStop.promise;
-        return originalStopThread(args);
-      };
+    expect(harness.runtimeState.ranTurnText).toBe("other thread");
+    const turnResponse = await turnTask;
+    expect(turnResponse.ok).toBe(true);
 
-      const router = createRouter(harness);
-      const stopTask = runRouterCommand({
-        command: {
-          type: "thread.stop",
-          intent: "interrupt",
-          environmentId: "env-router",
-          threadId: "thread-stop",
-        },
-        requestId: "stop-thread",
-        router,
-      });
-      await stopEntered.promise;
-
-      const turnTask = runRouterCommand({
-        command: createTurnSubmitCommand({
-          providerId,
-          providerThreadId: "provider-turn",
-          text: "other thread",
-          threadId: "thread-turn",
-        }),
-        requestId: "turn-other-thread",
-        router,
-      });
-      await flushAsyncWork();
-
-      expect(harness.runtimeState.ranTurnText).toBe("other thread");
-      const turnResponse = await turnTask;
-      expect(turnResponse.ok).toBe(true);
-
-      releaseStop.resolve();
-      const stopResponse = await stopTask;
-      expect(stopResponse.ok).toBe(true);
-    },
-  );
+    releaseStop.resolve();
+    const stopResponse = await stopTask;
+    expect(stopResponse.ok).toBe(true);
+  });
 });

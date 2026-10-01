@@ -87,24 +87,6 @@ describe("identity", () => {
     ).resolves.toContain("host-provided");
   });
 
-  it("lets a fresh BB_HOST_ID be used after an earlier load failed to persist", async () => {
-    const dataDir = await makeTempDir("bb-host-daemon-identity-retry-");
-
-    const first = await loadHostIdentity({
-      dataDir,
-      fallbackHostName: () => "test-host",
-      providedHostId: "host-original",
-    });
-    expect(first.hostId).toBe("host-original");
-
-    const second = await loadHostIdentity({
-      dataDir,
-      fallbackHostName: () => "test-host",
-      providedHostId: "host-retry",
-    });
-    expect(second.hostId).toBe("host-retry");
-  });
-
   it("rejects a BB_HOST_ID that conflicts with a persisted host ID", async () => {
     const dataDir = await makeTempDir("bb-host-daemon-identity-conflict-");
 

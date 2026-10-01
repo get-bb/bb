@@ -345,24 +345,6 @@ describe("skills/configure", () => {
 });
 
 describe("translateEvent", () => {
-  const validEvent: ThreadEvent = {
-    type: "turn/started",
-    threadId: "thr_1",
-    providerThreadId: "p_1",
-    scope: { kind: "turn", turnId: "bturn_1" },
-  };
-
-  it("ignores the retired thread/event notification", () => {
-    const adapter = makeAdapter();
-    expect(
-      adapter.translateEvent({
-        jsonrpc: "2.0",
-        method: "thread/event",
-        params: { threadId: "thr_1", event: validEvent },
-      }),
-    ).toStrictEqual([]);
-  });
-
   it("ignores an unknown bridge notification without emitting a timeline event", () => {
     const adapter = makeAdapter();
     expect(

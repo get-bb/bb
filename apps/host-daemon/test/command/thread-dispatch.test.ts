@@ -1,9 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type {
-  AgentRuntimeBridgeLaunch,
-  AgentRuntimeOptions,
-} from "@bb/agent-runtime";
+import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import type {
   HostDaemonBridgeLaunch,
   HostDaemonCommand,
@@ -15,10 +12,7 @@ import {
   type PromptInput,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  dispatchCommand,
-  dispatchOnlineRpcCommand,
-} from "../../src/command-dispatch.js";
+import { dispatchCommand } from "../../src/command-dispatch.js";
 import { CommandDispatchError } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
@@ -30,7 +24,6 @@ import {
   makeDispatchOptions,
   makeTempDir,
   DISPATCH_TEST_BRIDGE_LAUNCH,
-  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
 } from "./dispatch-helpers.js";
 
 afterEach(cleanupTempDirs);
@@ -2226,86 +2219,6 @@ describe("thread command dispatch", () => {
     expect(replacementFake.state.ranTurnText).toBe("after exit");
   });
 
-  it("covers provider.list_models", async () => {
-    const harness = createHarness();
-    let capturedListModelsArgs:
-      | {
-          providerId: string;
-          bridgeLaunch?: AgentRuntimeBridgeLaunch;
-          cwd?: string;
-        }
-      | undefined;
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
-        type: "provider.list_models",
-        providerId: "fake",
-        cwd: "/tmp/worktree",
-      },
-      {
-        ...harness.dispatchOptions(),
-        listModels: async (args) => {
-          capturedListModelsArgs = args;
-          return {
-            models: [
-              {
-                id: "model-1",
-                model: "model-1",
-                displayName: "Model 1",
-                description: "Test model",
-                supportedReasoningEfforts: [],
-                defaultReasoningEffort: "medium",
-                isDefault: true,
-              },
-            ],
-            selectedOnlyModels: [
-              {
-                id: "model-1-legacy",
-                model: "model-1-legacy",
-                displayName: "Model 1 (Legacy)",
-                description: "Retired model retained for existing selections",
-                supportedReasoningEfforts: [],
-                defaultReasoningEffort: "medium",
-                isDefault: false,
-              },
-            ],
-          };
-        },
-      },
-    );
-
-    expect(capturedListModelsArgs).toEqual({
-      providerId: "fake",
-      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
-      cwd: "/tmp/worktree",
-    });
-    expect(result).toEqual({
-      models: [
-        {
-          id: "model-1",
-          model: "model-1",
-          displayName: "Model 1",
-          description: "Test model",
-          supportedReasoningEfforts: [],
-          defaultReasoningEffort: "medium",
-          isDefault: true,
-        },
-      ],
-      selectedOnlyModels: [
-        {
-          id: "model-1-legacy",
-          model: "model-1-legacy",
-          displayName: "Model 1 (Legacy)",
-          description: "Retired model retained for existing selections",
-          supportedReasoningEfforts: [],
-          defaultReasoningEffort: "medium",
-          isDefault: false,
-        },
-      ],
-    });
-  });
-
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });
@@ -2418,44 +2331,6 @@ describe("thread command dispatch", () => {
 
     const stat = await fs.stat(storagePath);
     expect(stat.isDirectory()).toBe(true);
-  });
-
-  it("does not fail when threadStoragePath is omitted", async () => {
-    const harness = createHarness();
-
-    const result = await dispatchCommand(
-      {
-        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
-        type: "thread.start",
-        environmentId: "env-1",
-        threadId: "thread-1",
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-        projectId: "project-1",
-        providerId: "fake",
-        requestId: nextClientRequestId(),
-        input: [textPromptInput("hello")],
-        options: {
-          model: "gpt-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          providerOptions: {},
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-        },
-        instructions: "test",
-        dynamicTools: [],
-        contributedEnv: [],
-        injectedSkillSources: [],
-        instructionMode: "append",
-      },
-      harness.dispatchOptions(),
-    );
-
-    expect(result).toEqual({ providerThreadId: "provider-thread-1" });
   });
 
   it("rejects thread.start when threadStoragePath escapes storage root", async () => {

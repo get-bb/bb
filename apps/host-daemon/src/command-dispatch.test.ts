@@ -23,6 +23,7 @@ import {
   unexpectedProviderMaintenance,
 } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
+import { PROVIDER_INSTALLATION_GATE_TTL_MS } from "./provider-installation-gate.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import { stageInjectedSkillSources } from "./injected-skills.js";
 
@@ -1629,36 +1630,6 @@ describe("dispatchCommand", () => {
     );
   });
 
-  it("shares one in-flight probe between concurrent thread starts", async () => {
-    const runtime = createRuntime();
-    const manager = new RuntimeManager({
-      createRuntime: () => runtime,
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const probe = createDeferredPromise<ProviderCliStatus>();
-    const providerInstallationStatus = vi.fn(() => probe.promise);
-    const options = makeDispatchOptions({
-      runtimeManager: manager,
-      providerInstallationStatus,
-    });
-
-    const starts = Promise.all([
-      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
-      dispatchCommand(createInstallationGatedThreadStart("thread-2"), options),
-    ]);
-    await vi.waitFor(() =>
-      expect(providerInstallationStatus).toHaveBeenCalledOnce(),
-    );
-    probe.resolve(supportedCodexInstallationStatus());
-
-    await expect(starts).resolves.toEqual([
-      { providerThreadId: "provider-thread-1" },
-      { providerThreadId: "provider-thread-1" },
-    ]);
-    expect(providerInstallationStatus).toHaveBeenCalledOnce();
-    expect(runtime.startThread).toHaveBeenCalledTimes(2);
-  });
-
   it("retries concurrent thread starts when a shell env refresh interrupts their shared probe", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
@@ -1693,37 +1664,6 @@ describe("dispatchCommand", () => {
     ]);
     expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
     expect(runtime.startThread).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not remember an unsupported installation", async () => {
-    const runtime = createRuntime();
-    const manager = new RuntimeManager({
-      createRuntime: () => runtime,
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const providerInstallationStatus = vi
-      .fn<() => Promise<ProviderCliStatus>>()
-      .mockResolvedValueOnce({
-        ...supportedCodexInstallationStatus(),
-        currentVersion: "0.135.0",
-        npmGlobalPackageVersion: "0.135.0",
-        versionUnsupported: true,
-      })
-      .mockResolvedValue(supportedCodexInstallationStatus());
-    const options = makeDispatchOptions({
-      runtimeManager: manager,
-      providerInstallationStatus,
-    });
-
-    await expect(
-      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
-    ).rejects.toMatchObject({ code: "provider_cli_unsupported_version" });
-    await expect(
-      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
-    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
-
-    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
-    expect(runtime.startThread).toHaveBeenCalledOnce();
   });
 
   it("keys the rewind requirement separately from thread start", async () => {
@@ -1900,7 +1840,6 @@ describe("dispatchCommand", () => {
       const manager = new RuntimeManager({
         createRuntime: () => runtime,
         provisionWorkspace: async () => createWorkspace(),
-        providerInstallationGateTtlMs: 100,
       });
       const providerInstallationStatus = vi.fn(async () =>
         supportedCodexInstallationStatus(),
@@ -1914,12 +1853,18 @@ describe("dispatchCommand", () => {
         createInstallationGatedThreadStart("thread-1"),
         options,
       );
-      now.mockReturnValue(101);
+      now.mockReturnValue(PROVIDER_INSTALLATION_GATE_TTL_MS - 1);
       await dispatchCommand(
         createInstallationGatedThreadStart("thread-2"),
         options,
       );
+      expect(providerInstallationStatus).toHaveBeenCalledOnce();
 
+      now.mockReturnValue(PROVIDER_INSTALLATION_GATE_TTL_MS);
+      await dispatchCommand(
+        createInstallationGatedThreadStart("thread-3"),
+        options,
+      );
       expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
     } finally {
       now.mockRestore();

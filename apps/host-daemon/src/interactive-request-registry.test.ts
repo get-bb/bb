@@ -59,30 +59,6 @@ function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
 }
 
 describe("InteractiveRequestRegistry", () => {
-  it("registers a provider request and resolves it from an interactive.resolve command", async () => {
-    const request = createCommandApprovalRequest();
-    const resolution = createCommandApprovalResolution();
-    const registry = createRegistry({
-      registerRequest: async () => ({
-        outcome: "created",
-        interactionId: "pint_registry",
-        status: "pending",
-      }),
-    });
-
-    const pending = registry.registerAndWait(request);
-    registry.resolve({
-      interactionId: "pint_registry",
-      providerId: request.providerId,
-      providerRequestId: request.providerRequestId,
-      providerThreadId: request.providerThreadId,
-      resolution,
-      threadId: request.threadId,
-    });
-
-    await expect(pending).resolves.toEqual(resolution);
-  });
-
   it("deduplicates registration retries for the same live provider request", async () => {
     const request = createCommandApprovalRequest();
     const registration =

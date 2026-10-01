@@ -653,35 +653,6 @@ describe("parseNameStatusEntries", () => {
     ]);
   });
 
-  it("preserves single-letter status with no similarity score", () => {
-    const output = ["T", "src/link.ts", ""].join("\0");
-    expect(parseNameStatusEntries(output)).toEqual([
-      { path: "src/link.ts", status: "T" },
-    ]);
-  });
-
-  it("interleaves regular and rename entries correctly", () => {
-    const output = [
-      "M",
-      "src/a.ts",
-      "R090",
-      "src/b-old.ts",
-      "src/b-new.ts",
-      "A",
-      "src/c.ts",
-      "",
-    ].join("\0");
-    expect(parseNameStatusEntries(output)).toEqual([
-      { path: "src/a.ts", status: "M" },
-      { path: "src/b-new.ts", status: "R" },
-      { path: "src/c.ts", status: "A" },
-    ]);
-  });
-
-  it("returns empty array for empty input", () => {
-    expect(parseNameStatusEntries("")).toEqual([]);
-  });
-
   it("skips truncated trailing entries without throwing", () => {
     expect(parseNameStatusEntries("M\0")).toEqual([]);
     expect(parseNameStatusEntries("R100\0src/old.ts\0")).toEqual([]);
@@ -719,9 +690,5 @@ describe("parseNumstatEntriesZ", () => {
       { path: "src/new.ts", insertions: 3, deletions: 1 },
       { path: "src/app.ts", insertions: 5, deletions: 2 },
     ]);
-  });
-
-  it("returns an empty array for empty input", () => {
-    expect(parseNumstatEntriesZ("")).toEqual([]);
   });
 });

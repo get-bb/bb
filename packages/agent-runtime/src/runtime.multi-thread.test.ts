@@ -116,6 +116,18 @@ describe("createAgentRuntime multi-thread routing", () => {
       );
     expect(completedFor("t1")).toHaveLength(1);
     expect(completedFor("t2")).toHaveLength(1);
+    const providerThreadIdsByThreadId = new Map([
+      ["t1", r1.providerThreadId],
+      ["t2", r2.providerThreadId],
+    ]);
+    for (const e of events) {
+      expect(providerThreadIdsByThreadId.has(e.threadId)).toBe(true);
+      if ("providerThreadId" in e) {
+        expect(e.providerThreadId).toBe(
+          providerThreadIdsByThreadId.get(e.threadId),
+        );
+      }
+    }
     await waitForThreadAgentMessageText({
       events,
       providerId: "fake",
@@ -222,111 +234,6 @@ describe("createAgentRuntime multi-thread routing", () => {
       threadId: "t2",
       text: "thread B still accepts turns",
     });
-
-    await runtime.shutdown();
-  });
-
-  it("stamps all events with bb threadId and providerThreadId", async () => {
-    const events: ThreadEvent[] = [];
-    const runtime = createScriptedEchoRuntime({
-      runtime: { workspacePath: tmpDir, onEvent: (e) => events.push(e) },
-    });
-
-    const { providerThreadId } = await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "my-thread",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.runTurn({
-      clientRequestId: "creq_222222222g",
-      threadId: "my-thread",
-      input: [promptTextInput({ text: "check ids" })],
-      options: fullRuntimeOptions,
-    });
-    await waitForThreadTurnCompleted({
-      events,
-      providerId: "fake",
-      runtime,
-      threadId: "my-thread",
-    });
-
-    expect(events.length).toBeGreaterThan(0);
-    for (const e of events) {
-      expect(e.threadId).toBe("my-thread");
-      if ("providerThreadId" in e) {
-        expect(e.providerThreadId).toBe(providerThreadId);
-      }
-    }
-
-    await runtime.shutdown();
-  });
-
-  it("stamps events correctly for multiple threads", async () => {
-    const events: ThreadEvent[] = [];
-    const runtime = createScriptedEchoRuntime({
-      runtime: { workspacePath: tmpDir, onEvent: (e) => events.push(e) },
-    });
-
-    const r1 = await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-    const r2 = await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t2",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-
-    await Promise.all([
-      runtime.runTurn({
-        clientRequestId: "creq_222222222h",
-        threadId: "t1",
-        input: [promptTextInput({ text: "from t1" })],
-        options: fullRuntimeOptions,
-      }),
-      runtime.runTurn({
-        clientRequestId: "creq_222222222i",
-        threadId: "t2",
-        input: [promptTextInput({ text: "from t2" })],
-        options: fullRuntimeOptions,
-      }),
-    ]);
-    await Promise.all([
-      waitForThreadTurnCompleted({
-        events,
-        providerId: "fake",
-        runtime,
-        threadId: "t1",
-      }),
-      waitForThreadTurnCompleted({
-        events,
-        providerId: "fake",
-        runtime,
-        threadId: "t2",
-      }),
-    ]);
-
-    const t1Events = events.filter((e) => e.threadId === "t1");
-    const t2Events = events.filter((e) => e.threadId === "t2");
-    expect(t1Events.length).toBeGreaterThan(0);
-    expect(t2Events.length).toBeGreaterThan(0);
-    for (const e of t1Events) {
-      if ("providerThreadId" in e) {
-        expect(e.providerThreadId).toBe(r1.providerThreadId);
-      }
-    }
-    for (const e of t2Events) {
-      if ("providerThreadId" in e) {
-        expect(e.providerThreadId).toBe(r2.providerThreadId);
-      }
-    }
 
     await runtime.shutdown();
   });

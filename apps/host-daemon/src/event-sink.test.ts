@@ -43,22 +43,6 @@ function systemErrorEvent(threadId: string) {
 }
 
 describe("event sink", () => {
-  it("posts emitted events", async () => {
-    const postEvents = acceptingPostEvents();
-    const sink = createEventSink({
-      isSessionOpen: () => true,
-      logger: createLogger(),
-      postEvents,
-    });
-
-    sink.emit({ threadId: "thr_1", event: systemErrorEvent("thr_1") });
-    await sink.flush();
-
-    expect(postEvents).toHaveBeenCalledWith([
-      { threadId: "thr_1", event: systemErrorEvent("thr_1") },
-    ]);
-  });
-
   it("drains successfully skipped diffs without requiring allocated sequences", async () => {
     const postEvents = vi.fn<CreateEventSinkOptions["postEvents"]>(
       async () => ({

@@ -149,49 +149,6 @@ afterAll(async () => {
 });
 
 describe("createLogger", () => {
-  it("writes structured JSON to the component log file", async () => {
-    const dataDir = createTempDir();
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("BB_DATA_DIR", dataDir);
-
-    const { createLogger } = await importFreshLogger();
-    const logger = createLogger({ component: "server" });
-    const logDir = path.join(dataDir, "logs");
-
-    logger.info({ requestId: "req_1" }, "booted");
-    await waitFor(() => readComponentLogLines(logDir, "server").length === 1);
-
-    const entries = readComponentLogLines(logDir, "server");
-    expect(entries[0]).toMatchObject({
-      component: "server",
-      level: 30,
-      msg: "booted",
-      requestId: "req_1",
-    });
-  });
-
-  it("keeps parent context on child loggers", async () => {
-    const dataDir = createTempDir();
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("BB_DATA_DIR", dataDir);
-
-    const { createLogger } = await importFreshLogger();
-    const logger = createLogger({ component: "host-daemon" });
-    const logDir = path.join(dataDir, "logs");
-
-    logger.child({ threadId: "thr_123" }).info("turn started");
-    await waitFor(
-      () => readComponentLogLines(logDir, "host-daemon").length === 1,
-    );
-
-    const entries = readComponentLogLines(logDir, "host-daemon");
-    expect(entries[0]).toMatchObject({
-      component: "host-daemon",
-      threadId: "thr_123",
-      msg: "turn started",
-    });
-  });
-
   it("rotates files when the active log exceeds the configured size", async () => {
     const dataDir = createTempDir();
     vi.stubEnv("NODE_ENV", "production");

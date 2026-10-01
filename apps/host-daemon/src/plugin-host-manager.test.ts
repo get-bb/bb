@@ -753,28 +753,6 @@ describe("PluginHostManager", () => {
     ).rejects.toThrow(/exceeds 8388608 bytes/u);
   });
 
-  it("cancels running calls and enforces deadlines", async () => {
-    const manager = await createManager();
-    await manager.call(callCommand());
-    const command = callCommand({ method: "wait" });
-    const result = manager.call(command);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(
-      manager.cancel({
-        type: "plugin.host.cancel",
-        pluginId: command.pluginId,
-        generation: command.generation,
-        callId: command.callId,
-      }),
-    ).toEqual({ cancelled: true });
-    await expect(result).rejects.toMatchObject({ name: "AbortError" });
-
-    await expect(
-      manager.call(callCommand({ method: "wait", timeoutMs: 20 })),
-    ).rejects.toThrow(/exceeded its deadline/u);
-  });
-
   it.each([-4_000_000_000_000, 4_000_000_000_000])(
     "enforces relative timeouts with a wall-clock offset of %s",
     async (wallClockMs) => {

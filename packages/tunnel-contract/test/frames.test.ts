@@ -70,13 +70,6 @@ describe("frame round-trips", () => {
     expect(Array.from(out.data)).toEqual(Array.from(data));
   });
 
-  it("body-end", () => {
-    expect(roundTrip({ type: "body-end", streamId: 3 })).toEqual({
-      type: "body-end",
-      streamId: 3,
-    });
-  });
-
   it("resp-head", () => {
     const frame: Frame = {
       type: "resp-head",

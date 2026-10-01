@@ -565,6 +565,7 @@ describe("createHostDaemonApp", () => {
           type: "provider.list_models",
           providerId: "cursor",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          cwd: "/tmp/worktree",
         },
       });
 
@@ -589,6 +590,7 @@ describe("createHostDaemonApp", () => {
       );
       expect(listModels).toHaveBeenCalledWith({
         providerId: "cursor",
+        cwd: "/tmp/worktree",
         bridgeLaunch: {
           ...dispatchTestRuntimeBridgeLaunch(dataDir),
         },

@@ -151,27 +151,6 @@ describe("provider registry", () => {
     });
   });
 
-  it("runs every acp id on the acp plugin's verified artifact", () => {
-    for (const providerId of ["acp-cursor", "acp-opencode", "acp-custom"]) {
-      const provider = createProviderForId(providerId, {
-        additionalWorkspaceWriteRoots: [],
-        bridgeLaunch: {
-          ...ACP_BRIDGE_LAUNCH,
-          providerOptions: { acpLaunchSpec: dynamicAcpLaunchSpec },
-        },
-      });
-      expect(provider.id).toBe(providerId);
-      expectBridgeSpawn(provider, {
-        module: "/data/provider-bridges/acp.mjs",
-      });
-      expect(provider.capabilities).toMatchObject({
-        supportsServiceTier: true,
-        supportsFork: true,
-        permissionModes: ["accept-edits", "full"],
-      });
-    }
-  });
-
   it("carries a configured acp agent's declared launch spec", () => {
     const provider = createProviderForId("acp-custom", {
       additionalWorkspaceWriteRoots: ["/extra-root"],

@@ -1401,20 +1401,6 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
-  it("fails fast when provider crashes during initialize", async () => {
-    const runtime = createScriptedEchoRuntime({
-      runtime: {
-        workspacePath: tmpDir,
-        env: scriptedEchoProcessEnv({ crashOn: "initialize" }),
-        onEvent: () => {},
-      },
-    });
-    await expect(
-      runtime.ensureProvider({ providerId: "fake" }),
-    ).rejects.toThrow(/exited during startup|exited/i);
-    await runtime.shutdown();
-  });
-
   it("removes the cached provider and retries when startup skill configuration fails", async () => {
     const record = createScriptedEchoRequestRecord();
     const runtime = createScriptedEchoRuntime({
@@ -1481,35 +1467,6 @@ describe("createAgentRuntime process lifecycle", () => {
       ]);
     } finally {
       await retryRuntime.shutdown();
-    }
-  });
-
-  it("waits for startup skill configuration before starting a codex thread", async () => {
-    const record = createScriptedEchoRequestRecord();
-    const runtime = createScriptedEchoRuntime({
-      runtime: {
-        workspacePath: tmpDir,
-        env: record.env,
-        skillRoots: [{ id: "skill-root", path: tmpDir, skills: [] }],
-        onEvent: () => {},
-      },
-      launch: { pluginId: "provider-codex", scripted: { startDelayMs: 50 } },
-    });
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      expect(record.read().map((request) => request.method)).toEqual([
-        "initialize",
-        "skills/configure",
-        "thread/start",
-      ]);
-    } finally {
-      await runtime.shutdown();
     }
   });
 

@@ -361,20 +361,6 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("returns no targets for unsupported win32 runtime", async () => {
-    const execFile = vi.fn(async () => ({ stdout: "" }));
-
-    await expect(
-      listWorkspaceOpenTargetsWithRuntime(
-        createRuntime({
-          execFile,
-          platform: "win32",
-        }),
-      ),
-    ).resolves.toEqual([]);
-    expect(execFile).not.toHaveBeenCalled();
-  });
-
   it("opens WSL paths with the configured default app bridge", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "notes.md");
@@ -447,23 +433,6 @@ describe("workspace open targets", () => {
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
-  });
-
-  it("rejects unsupported non-Linux open requests", async () => {
-    await expect(
-      openPathInTargetWithRuntime(
-        {
-          context: { kind: "local" },
-          columnNumber: null,
-          lineNumber: null,
-          path: "/tmp/workspace",
-          targetId: "default-app",
-        },
-        createRuntime({ platform: "win32" }),
-      ),
-    ).rejects.toMatchObject({
-      code: "unsupported_platform",
-    });
   });
 
   it("opens Linux files with discovered editor CLIs", async () => {

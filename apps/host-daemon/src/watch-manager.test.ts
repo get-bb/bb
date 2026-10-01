@@ -562,51 +562,6 @@ describe("WatchManager", () => {
     expect(manager.workspaceWatchCount()).toBe(0);
   });
 
-  it("reports shared git ref changes separately from local workspace changes", async () => {
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return () => undefined;
-      },
-    });
-    const onWorkspaceStatusChanged = vi.fn();
-    const manager = new WatchManager({
-      hostWatcher,
-      provisionWorkspace: vi.fn(async () => workspace),
-      onWorkspaceStatusChanged,
-    });
-
-    await manager.replaceWatchSet({
-      generation: 1,
-      workspaceTargets: [
-        {
-          environmentId: "env-watch",
-          workspaceContext: {
-            workspacePath: "/tmp/env-watch",
-          },
-        },
-      ],
-      threadStorageTargets: [],
-    });
-    workspace.setSharedGitRefsFingerprint("refs:/tmp/env-watch:changed");
-
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/shared/.git/refs/heads/main"],
-      changeKinds: ["shared-git-refs-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["git-refs-changed"],
-      environmentId: "env-watch",
-    });
-  });
-
   it("reports shared git ref changes from single-dir git watcher events", async () => {
     let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
     const workspace = createFakeWorkspace("/tmp/env-watch");

@@ -324,27 +324,6 @@ describe("readHostFile (with ref — git history read)", () => {
     });
   });
 
-  it("reads file contents at a specific ref", async () => {
-    const repoPath = await initRepo();
-    const filePath = path.join(repoPath, "tracked.txt");
-    await fs.writeFile(filePath, "version 1\n", "utf8");
-    await runGit(["add", "tracked.txt"], { cwd: repoPath });
-    await runGit(["commit", "-m", "v1"], { cwd: repoPath });
-
-    await fs.writeFile(filePath, "version 2\n", "utf8");
-
-    const result = await readHostFile({
-      type: "host.read_file",
-      path: filePath,
-      rootPath: repoPath,
-      ref: "HEAD",
-    });
-
-    expect(result.content).toBe("version 1\n");
-    expect(result.contentEncoding).toBe("utf8");
-    expect(result.sizeBytes).toBe(10);
-  });
-
   it("returns empty content when the file does not exist at the ref", async () => {
     const repoPath = await initRepo();
     await fs.writeFile(path.join(repoPath, "seed.txt"), "seed\n", "utf8");
@@ -427,6 +406,8 @@ describe("readHostFile (with ref — git history read)", () => {
     });
 
     expect(result.content).toBe("first\n");
+    expect(result.contentEncoding).toBe("utf8");
+    expect(result.sizeBytes).toBe(6);
   });
 });
 

@@ -585,6 +585,3 @@ export function dispatchTestRuntimeBridgeLaunch(
     envPassthrough: [],
   };
 }
-
-export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch =
-  dispatchTestRuntimeBridgeLaunch();

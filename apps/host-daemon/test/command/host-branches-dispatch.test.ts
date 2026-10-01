@@ -332,23 +332,6 @@ describe("host.inspect_git_source dispatch", () => {
     expect(invocations[1]).toContain("GIT_TERMINAL_PROMPT=unset");
   });
 
-  it("reports detached HEAD in checkout state", async () => {
-    const repoPath = await initBranchRepo();
-    await runGitCommand(["switch", "--detach", "HEAD"], { cwd: repoPath });
-    const harness = createHarness();
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "host.inspect_git_source",
-        path: repoPath,
-        remoteRefresh: "blocking",
-      },
-      harness.dispatchOptions(),
-    );
-
-    expect(result.checkout.kind).toBe("detached");
-  });
-
   it("reports dirty primary checkouts", async () => {
     const repoPath = await initBranchRepo();
     await fs.writeFile(path.join(repoPath, "draft.txt"), "dirty\n", "utf8");

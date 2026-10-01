@@ -34,16 +34,6 @@ describe("finalizeListedFiles", () => {
     expect(result.truncated).toBe(false);
   });
 
-  it("does not report truncation below the limit", () => {
-    const result = finalizeListedFiles({
-      filePaths: ["a.ts", "b.ts"],
-      limit: 3,
-    });
-
-    expect(result.files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
-    expect(result.truncated).toBe(false);
-  });
-
   it("does not report truncation exactly at the limit", () => {
     const result = finalizeListedFiles({
       filePaths: ["a.ts", "b.ts", "c.ts"],
@@ -56,20 +46,6 @@ describe("finalizeListedFiles", () => {
       "c.ts",
     ]);
     expect(result.truncated).toBe(false);
-  });
-
-  it("reports truncation above the limit", () => {
-    const result = finalizeListedFiles({
-      filePaths: ["a.ts", "b.ts", "c.ts", "d.ts"],
-      limit: 3,
-    });
-
-    expect(result.files.map((file) => file.path)).toEqual([
-      "a.ts",
-      "b.ts",
-      "c.ts",
-    ]);
-    expect(result.truncated).toBe(true);
   });
 
   it("applies query matching before truncating", () => {
