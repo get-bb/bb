@@ -46,6 +46,7 @@
     "app/dist",
     "dist",
     "host-daemon/dist/bb",
+    "host-daemon/dist/bb.cmd",
     "host-daemon/dist/bb-chunks",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
     "host-daemon/dist/bb-plugin-host-worker.mjs",
@@ -63,6 +64,7 @@
     "build:host": "node scripts/build-host.mjs",
     "clean": "rimraf dist app host-daemon server tsconfig.tsbuildinfo",
     "prepack": "node dist/prune-bb-chunks.mjs",
+    "smoke:boot": "node scripts/smoke-boot.mjs",
     "smoke:tarball": "node scripts/smoke-tarball.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"

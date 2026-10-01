@@ -129,11 +129,33 @@ The Windows packages use the ordinary Turbo test prerequisites. Shared Vitest
 inputs include `vitest*.ts`, covering both the worker configuration and temporary
 directory setup; there are no Windows-specific package task overrides.
 
+## App boot smoke
+
+The `Windows app smoke (Node 22.x)` job builds `bb-app` from the checkout and
+runs `packages/bb-app/scripts/smoke-boot.mjs` on the same runner image. The
+smoke starts the built launcher on free ports with a temporary data directory,
+waits for the server's `/health`, runs `bb status` through the bundled CLI,
+waits for the expected built-in plugins to report `running`, checks that the
+host daemon connected, then stops the process tree and confirms the server no
+longer answers. It fails when a built-in plugin cannot load or the bundled CLI
+cannot start. The same task runs on macOS and Linux:
+
+```powershell
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm exec turbo run smoke:boot --filter=bb-app --output-logs=new-only
+```
+
+The daemon bundle ships `bb.cmd` beside the extensionless `bb` script so
+PowerShell and `cmd.exe` find `bb` on the PATH that bb gives agent shells. The
+launcher and the CLI re-exec run the extensionless script through Node on
+Windows, because Windows cannot execute a file by its shebang.
+
 ## Remaining Windows work
 
-This check establishes package-level Windows support, not a runnable Windows app.
-Provider integration tests use controlled agent fixtures and recorded traffic;
-real installed providers still need end-to-end verification.
+The package checks and the boot smoke establish that bb starts on Windows, not a
+supported Windows product. Provider integration tests use controlled agent
+fixtures and recorded traffic; real installed providers still need end-to-end
+verification.
 
 Windows stop operations use forced tree termination while the leader is alive.
 They do not provide POSIX signal delivery or graceful signal handlers. Descendant
@@ -142,7 +164,7 @@ and synchronous process-group helpers remain follow-up work. Existing tests for
 Unix signals, filenames, symlinks, and Linux inotify counters remain
 platform-specific.
 
-Server/daemon startup, interactive terminals and node-pty, service installation,
+Windows project paths, interactive terminals and node-pty, service installation,
 provider installation commands, and desktop packaging/updates remain subsequent
 slices. Electron runtime and packaging behavior are unchanged.
 
