@@ -47,7 +47,6 @@ import {
 import { workspaceResolutionFailureSchema } from "./workspace.js";
 import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 import {
-  providerHealthSchema,
   providerHealthResultSchema,
   providerInstallationStatusSchema,
   providerUsageResultSchema,
@@ -891,7 +890,6 @@ const providerInstallationRunCommandSchema = z
   })
   .strict();
 
-export { providerHealthSchema };
 export type {
   ProviderHealth,
   ProviderHealthResult,
@@ -1244,7 +1242,6 @@ const workspaceCommitResultSchema = z.object({
 const workspacePullRequestActionResultSchema = z.object({}).strict();
 
 export { providerUsageWindowSchema };
-export type { ProviderUsageWindow } from "@bb/provider-bridge-protocol";
 
 export type {
   ProviderUsage,

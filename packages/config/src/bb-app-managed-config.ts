@@ -30,6 +30,8 @@ export const REMOVED_AI_SERVICE_CONFIG_MESSAGE =
 
 export const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const REMOVED_CUSTOM_ACP_AGENTS_CONFIG_KEY = "customAcpAgents";
+const REMOVED_CUSTOM_ACP_AGENTS_MESSAGE =
+  "customAcpAgents in config.json is no longer read. Declare the agents with `bb plugin config provider-acp set customAgents '<json>'`.";
 
 interface BbAppManagedConfigWarningLogger {
   warn(fields: Record<string, unknown>, message: string): void;
@@ -143,7 +145,10 @@ function withoutRemovedAiServiceConfig(
   };
 }
 
-function withoutRemovedCustomAcpAgents(rawConfig: unknown): unknown {
+function withoutRemovedCustomAcpAgents(
+  rawConfig: unknown,
+  options: ParseBbAppManagedConfigOptions,
+): unknown {
   if (
     typeof rawConfig !== "object" ||
     rawConfig === null ||
@@ -151,6 +156,10 @@ function withoutRemovedCustomAcpAgents(rawConfig: unknown): unknown {
   ) {
     return rawConfig;
   }
+  options.logger?.warn(
+    { key: REMOVED_CUSTOM_ACP_AGENTS_CONFIG_KEY },
+    REMOVED_CUSTOM_ACP_AGENTS_MESSAGE,
+  );
   return Object.fromEntries(
     Object.entries(rawConfig).filter(
       ([key]) => key !== REMOVED_CUSTOM_ACP_AGENTS_CONFIG_KEY,
@@ -165,6 +174,7 @@ export function parseBbAppManagedConfig(
   const parsed = bbAppManagedConfigBoundarySchema.parse(
     withoutRemovedCustomAcpAgents(
       withoutRemovedAiServiceConfig(rawConfig, options),
+      options,
     ),
   );
   const customModels = parseCustomModels(parsed.customModels, options);

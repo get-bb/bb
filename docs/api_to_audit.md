@@ -1748,7 +1748,7 @@ protocol`'s `assembler`, `conformance`, and `testing` subpaths.
    (`turnId`, `itemId`, `id`, `parentToolCallId`) and drops
    `providerCheckpointId`. Confirm the defaults against a third-party
    bridge's goldens before fixing them.
-2. **Surface size.** 25 value exports plus 57 types (the eight no consumer
+2. **Surface size.** 24 value exports plus 57 types (the eight no consumer
    used — the conformance client and opens-before-delta check, the cumulative
    text differ, the parity value/event/row normalizers, the cell replayer and
    the bootstrap path resolver — came off in the stabilization audit; the

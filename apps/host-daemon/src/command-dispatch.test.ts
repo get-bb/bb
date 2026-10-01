@@ -896,6 +896,7 @@ describe("dispatchCommand", () => {
         threadId: "thread-1",
       }),
     );
+    expect(newRuntime.runTurn).toHaveBeenCalledOnce();
     expect(
       (oldRuntime.stopThread as unknown as Mock).mock.invocationCallOrder[0],
     ).toBeLessThan(

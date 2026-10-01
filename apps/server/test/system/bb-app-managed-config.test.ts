@@ -301,7 +301,12 @@ describe("bb-app managed config", () => {
       expect(config.customModels).toEqual([
         { providerId: "codex", model: "gpt-5.5-codex" },
       ]);
-      expect(logger.warnings()).toEqual([]);
+      expect(logger.warnings()).toEqual([
+        {
+          fields: { key: "customAcpAgents" },
+          message: expect.stringContaining("customAcpAgents"),
+        },
+      ]);
       expect(
         socket.messages.some((message) => message.includes("config-changed")),
       ).toBe(true);

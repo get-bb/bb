@@ -123,7 +123,7 @@ describe("parseBbAppManagedConfig", () => {
     expect(warnings).toHaveLength(1);
   });
 
-  it("loads a config that still carries the removed customAcpAgents array and drops it", () => {
+  it("loads a config that still carries the removed customAcpAgents array, drops it, and warns", () => {
     const { parsed, warnings } = parseWithWarnings({
       config: { BB_APP_URL: "https://bb.example.test" },
       customAcpAgents: [
@@ -137,7 +137,7 @@ describe("parseBbAppManagedConfig", () => {
       config: { BB_APP_URL: "https://bb.example.test" },
       customModels: [{ providerId: "codex", model: "gpt-5.4" }],
     });
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual([{ key: "customAcpAgents" }]);
   });
 
   it("still rejects an unknown top-level key", () => {
