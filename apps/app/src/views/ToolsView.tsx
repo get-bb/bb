@@ -26,6 +26,12 @@ import {
 import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
 import { resolvePluginDetailKey } from "@/components/plugin/management/installed-plugin-catalog";
 import {
+  parsePluginDetailKey,
+  pluginDetailKeyFromRoute,
+  pluginDetailLocation,
+  withoutPluginListing,
+} from "@/components/plugin/plugin-detail-key";
+import {
   ResourceListState,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
@@ -152,9 +158,13 @@ function PluginsToolView({
 function PluginDetailToolView({ detailKey }: { detailKey: string }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { pluginId: detailPluginId } = parsePluginDetailKey(detailKey);
   const routeOwnsDetail =
-    location.pathname === getPluginDetailRoutePath({ pluginId: detailKey }) ||
-    location.pathname === getPluginConfigurationRoutePath({ pluginId: detailKey });
+    pluginDetailKeyFromRoute(detailPluginId, location.search) === detailKey &&
+    (location.pathname ===
+      getPluginDetailRoutePath({ pluginId: detailPluginId }) ||
+      location.pathname ===
+        getPluginConfigurationRoutePath({ pluginId: detailPluginId }));
   const [locallyConfiguredDetailKey, setLocallyConfiguredDetailKey] = useState<
     string | null
   >(null);
@@ -295,11 +305,8 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
     [canOpenPreferredDirectoryTarget, openPathInPreferredDirectoryTarget],
   );
   const handleOpenCatalogPlugin = useCallback(
-    (nextPluginId: string) => {
-      navigate({
-        pathname: getPluginDetailRoutePath({ pluginId: nextPluginId }),
-        search: location.search,
-      });
+    (nextDetailKey: string) => {
+      navigate(pluginDetailLocation(nextDetailKey, location.search));
     },
     [location.search, navigate],
   );
@@ -463,55 +470,52 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   );
 }
 
-export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
+export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const focusReturnRef = useRef<HTMLButtonElement | null>(null);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
   const [workspace, setWorkspace] = useAtom(pluginWorkspaceAtom);
   const isCompact = useIsCompactViewport();
-  const activePluginId = pluginId ?? workspace.activePluginId;
+  const activePluginId = detailKey ?? workspace.activePluginId;
   const isPanelOpen =
-    activePluginId !== null && (!isCompact || pluginId !== undefined);
+    activePluginId !== null && (!isCompact || detailKey !== undefined);
   const catalogQuery = usePluginCatalogSearch("", { enabled: isPanelOpen });
   const listQuery = usePluginList({ enabled: true });
   const openIds = useMemo(
     () =>
-      pluginId !== undefined && !workspace.tabs.includes(pluginId)
-        ? [...workspace.tabs, pluginId]
+      detailKey !== undefined && !workspace.tabs.includes(detailKey)
+        ? [...workspace.tabs, detailKey]
         : workspace.tabs,
-    [pluginId, workspace.tabs],
+    [detailKey, workspace.tabs],
   );
 
   useEffect(() => {
-    if (pluginId === undefined) return;
+    if (detailKey === undefined) return;
     setWorkspace((current) =>
-      current.activePluginId === pluginId && current.tabs.includes(pluginId)
+      current.activePluginId === detailKey && current.tabs.includes(detailKey)
         ? current
         : {
-            tabs: current.tabs.includes(pluginId)
+            tabs: current.tabs.includes(detailKey)
               ? current.tabs
-              : [...current.tabs, pluginId],
-            activePluginId: pluginId,
+              : [...current.tabs, detailKey],
+            activePluginId: detailKey,
           },
     );
-  }, [pluginId, setWorkspace]);
+  }, [detailKey, setWorkspace]);
 
   const selectPlugin = useCallback(
-    (nextPluginId: string) => {
+    (nextDetailKey: string) => {
       const params = new URLSearchParams(location.search);
       params.delete("configure");
-      navigate({
-        pathname: getPluginDetailRoutePath({ pluginId: nextPluginId }),
-        search: params.toString(),
-      });
+      navigate(pluginDetailLocation(nextDetailKey, params.toString()));
     },
     [location.search, navigate],
   );
   const openPlugin = useCallback(
-    (nextPluginId: string, trigger: HTMLButtonElement) => {
+    (nextDetailKey: string, trigger: HTMLButtonElement) => {
       focusReturnRef.current = trigger;
-      selectPlugin(nextPluginId);
+      selectPlugin(nextDetailKey);
     },
     [selectPlugin],
   );
@@ -524,7 +528,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
   const closePanel = useCallback(() => {
     setIsPluginDetailFullPage(false);
     setWorkspace((current) => ({ ...current, activePluginId: null }));
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(withoutPluginListing(location.search));
     params.delete("configure");
     navigate({ pathname: getPluginsRoutePath(), search: params.toString() });
     restoreFocus();

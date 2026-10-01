@@ -44,6 +44,7 @@ import {
 } from "./management/plugin-browse-discovery";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { pluginDetailLocation } from "@/components/plugin/plugin-detail-key";
 import {
   getPluginDetailRoutePath,
   getRootComposeRoutePath,
@@ -213,12 +214,11 @@ export function PluginsOverview({
 
   const openPlugin =
     onOpenPlugin ??
-    ((pluginId: string) =>
+    ((detailKey: string) =>
       navigate(
-        getPluginDetailRoutePath({
-          pluginId,
-          view: activeMode === "installed" ? "installed" : undefined,
-        }),
+        activeMode === "installed"
+          ? getPluginDetailRoutePath({ pluginId: detailKey, view: "installed" })
+          : pluginDetailLocation(detailKey, ""),
       ));
   let content: ReactNode;
   if (activeMode === "browse") {

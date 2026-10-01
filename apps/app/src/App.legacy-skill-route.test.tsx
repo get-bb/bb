@@ -13,8 +13,8 @@ vi.mock("./views/SettingsView", () => ({
   SettingsView: () => <h1>Settings</h1>,
 }));
 vi.mock("./views/ToolsView", () => ({
-  PluginsView: ({ pluginId }: { pluginId?: string }) => (
-    <h1>Plugin detail: {pluginId}</h1>
+  PluginsView: ({ detailKey }: { detailKey?: string }) => (
+    <h1>Plugin detail: {detailKey}</h1>
   ),
   SkillsView: () => <h1>Skills</h1>,
 }));

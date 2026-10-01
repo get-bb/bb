@@ -32,6 +32,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
+import { pluginDetailKeyFromRoute } from "@/components/plugin/plugin-detail-key";
 import { PluginDetailPaneView, PluginsView } from "./ToolsView";
 import { AppRoutes } from "../App";
 import {
@@ -114,6 +115,10 @@ function RoutedPluginsView() {
   const pluginId = location.pathname.startsWith(prefix)
     ? decodeURIComponent(location.pathname.slice(prefix.length))
     : undefined;
+  const detailKey =
+    pluginId === undefined
+      ? undefined
+      : pluginDetailKeyFromRoute(pluginId, location.search);
   return (
     <>
       <TooltipProvider>
@@ -124,7 +129,7 @@ function RoutedPluginsView() {
             <PluginsOverview mode="installed" />
           )
         ) : (
-          <PluginsView pluginId={pluginId} />
+          <PluginsView detailKey={detailKey} />
         )}
       </TooltipProvider>
       <LocationProbe />
@@ -140,6 +145,10 @@ function LocationProbe() {
       <output data-testid="route-search">{location.search}</output>
     </>
   );
+}
+
+function routeUrl(): string {
+  return `${screen.getByTestId("route-path").textContent}${screen.getByTestId("route-search").textContent}`;
 }
 
 function HistoryBackButton() {
@@ -982,9 +991,7 @@ describe("BB Official plugin detail routing", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/plugins/bb-community%2Fcanvas",
-      );
+      expect(routeUrl()).toBe("/plugins/canvas?q=canvas&listing=bb-community");
     });
     await waitFor(() => {
       expect(
@@ -1002,9 +1009,7 @@ describe("BB Official plugin detail routing", () => {
       screen.getByRole("button", { name: "View installed plugin" }),
     );
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/plugins/canvas",
-      );
+      expect(routeUrl()).toBe("/plugins/canvas?q=canvas");
     });
     await waitFor(() => {
       expect(
@@ -1015,9 +1020,7 @@ describe("BB Official plugin detail routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "View listing" }));
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/plugins/bb-community%2Fcanvas",
-      );
+      expect(routeUrl()).toBe("/plugins/canvas?q=canvas&listing=bb-community");
     });
   });
 
@@ -1228,7 +1231,7 @@ describe("BB Official plugin detail routing", () => {
             path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <PluginsView pluginId="github" />
+                <PluginsView detailKey="github" />
               </TooltipProvider>
             }
           />
@@ -1682,7 +1685,7 @@ describe("plugin removal confirmation", () => {
             path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <PluginsView pluginId="github" />
+                <PluginsView detailKey="github" />
               </TooltipProvider>
             }
           />

@@ -1,5 +1,9 @@
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  parsePluginDetailKey,
+  pluginDetailKey,
+} from "@/components/plugin/plugin-detail-key";
 
 export function installedPluginCatalogEntry<
   Entry extends Pick<
@@ -48,12 +52,14 @@ export function installedPluginCatalogEntry<
 export function catalogEntryDetailKey(
   entry: Pick<
     PluginCatalogSearchEntry,
-    "pluginId" | "entryId" | "marketplace" | "conflictingInstallSource"
+    "pluginId" | "marketplace" | "conflictingInstallSource"
   >,
 ): string {
-  return entry.conflictingInstallSource === null
-    ? entry.pluginId
-    : `${entry.marketplace}/${entry.entryId}`;
+  return pluginDetailKey({
+    pluginId: entry.pluginId,
+    listing:
+      entry.conflictingInstallSource === null ? null : entry.marketplace,
+  });
 }
 
 export function resolvePluginDetailKey<
@@ -71,17 +77,18 @@ export function resolvePluginDetailKey<
   entries: readonly Entry[],
   options?: { allowSourceFallback?: boolean },
 ): { plugin: Plugin | null; entry: Entry | null } {
-  if (!detailKey.includes("/")) {
-    const plugin = plugins.find((candidate) => candidate.id === detailKey);
+  const { pluginId, listing } = parsePluginDetailKey(detailKey);
+  if (listing === null) {
+    const plugin = plugins.find((candidate) => candidate.id === pluginId);
     const entry =
       plugin === undefined
-        ? entries.find((candidate) => candidate.pluginId === detailKey)
+        ? entries.find((candidate) => candidate.pluginId === pluginId)
         : installedPluginCatalogEntry(plugin, entries, options);
     return { plugin: plugin ?? null, entry: entry ?? null };
   }
   const entry = entries.find(
     (candidate) =>
-      `${candidate.marketplace}/${candidate.entryId}` === detailKey,
+      candidate.marketplace === listing && candidate.pluginId === pluginId,
   );
   if (entry === undefined) return { plugin: null, entry: null };
   const plugin = entry.installed
