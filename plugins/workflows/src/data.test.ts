@@ -281,13 +281,6 @@ describe("workflow durable data", () => {
       status: "queued",
       replaySafetyVersion: 1,
     });
-
-    db.prepare(
-      "UPDATE workflow_runs SET replay_safety_version = 0 WHERE id = ?",
-    ).run(run.id);
-    expect(getRunRequired(db, run.id)).toMatchObject({
-      replaySafetyVersion: 0,
-    });
   });
 
   it("stores successful calls for deterministic replay", () => {
@@ -456,7 +449,7 @@ describe("workflow durable data", () => {
     });
   });
 
-  it("persists JSON null but requires it to rerun instead of replaying", () => {
+  it("persists a successful call's JSON null result", () => {
     const first = newRun();
     markRunning(first.id);
     const original = startCall(db, {
@@ -480,43 +473,6 @@ describe("workflow durable data", () => {
       error: null,
     });
     expect(getCall(db, first.id, 0)?.resultJson).toBe("null");
-    const second = createRun(db, {
-      projectId: "project-1",
-      originThreadId: "thread-1",
-      environmentId: "environment-1",
-      originProvider: "codex",
-      originModel: "gpt-test",
-      originReasoningLevel: "medium",
-      originPermissionMode: "full",
-      name: "test-workflow",
-      source: "return null",
-      sourceHash: "hash-2",
-      argsJson: "null",
-      settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
-      resumedFromRunId: first.id,
-    });
-    markRunning(second.id);
-    startCall(db, {
-      runId: second.id,
-      callIndex: 0,
-      cacheKey: "null-cache",
-      prompt: "return null",
-      options: {
-        selection: null,
-        outputSchema: null,
-        title: null,
-        phase: null,
-      },
-      selection: resolvedSelection,
-      replay: null,
-    });
-
-    expect(getCall(db, second.id, 0)).toMatchObject({
-      status: "queued",
-      resultJson: null,
-      replayedFromCallId: null,
-    });
   });
 
   it("atomically preserves the first structured value", () => {

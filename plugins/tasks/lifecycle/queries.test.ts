@@ -117,15 +117,6 @@ describe("lifecycle SQL scope", () => {
         await registerLifecycle(f.bb, f.store);
         f.queries.length = 0;
         await emitAllEvents(f, "thr_unrelated");
-        console.log(
-          JSON.stringify({
-            tasks,
-            mappings,
-            events: 5,
-            statements: f.queries.length,
-            sql: [...new Set(f.queries.map((q) => q.sql))],
-          }),
-        );
         expect(f.harness.realtimeSignals).toEqual([]);
         expect(f.queries).toHaveLength(5);
         expect(
@@ -177,14 +168,6 @@ describe("lifecycle SQL scope", () => {
               error: "failed",
             });
           else await f.harness.emitThreadEvent("thread.deleted", { thread });
-          console.log(
-            JSON.stringify({
-              status,
-              expected,
-              statements: f.queries.length,
-              statementsPerMapping,
-            }),
-          );
           expect(f.queries).toHaveLength(1 + count * statementsPerMapping);
           expect(f.harness.realtimeSignals.length - signalsBefore).toBe(
             statementsPerMapping === 0 ? 0 : count * 2,
@@ -300,12 +283,6 @@ describe("lifecycle SQL scope", () => {
           "EXPLAIN QUERY PLAN SELECT * FROM task_threads WHERE thread_id = 'thr_worker_0' ORDER BY task_id, id",
         )
         .all();
-      console.log(
-        JSON.stringify({
-          plan,
-          indexes: f.db.pragma("index_list(task_threads)"),
-        }),
-      );
       expect(
         plan.some((row) =>
           row.detail.includes(

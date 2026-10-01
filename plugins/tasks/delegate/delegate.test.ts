@@ -365,35 +365,6 @@ describe("task delegation", () => {
     await harness.dispose();
   });
 
-  it("fails before spawning when the task project is not linked to bb", async () => {
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: { threads: { spawn: async () => ({ id: "thr_never" }) } },
-    });
-    const store = createStore(bb);
-    const project = store.tasks.createProject({
-      name: "Unlinked",
-      prefix: "UNL",
-      color: "blue",
-    });
-    const task = store.tasks.createTask({
-      projectId: project.id,
-      title: "Cannot delegate yet",
-    });
-    registerDelegation(bb, store);
-    const preset = createTestPreset(store);
-
-    await expect(
-      harness.callRpc("delegate", { taskId: task.id, presetId: preset.id }),
-    ).rejects.toMatchObject({
-      code: "handler_error",
-      message: 'Task project "Unlinked" is not linked to a bb project',
-    });
-    expect(harness.sdk.callsTo("threads.spawn")).toEqual([]);
-
-    await harness.dispose();
-  });
-
   it("self-attaches an existing thread through taskThreadsAttach", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

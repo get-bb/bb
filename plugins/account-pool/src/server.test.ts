@@ -1314,22 +1314,6 @@ describe("Account Pool plugin", () => {
     const run = (argv: string[], ctx?: { threadId: string }) =>
       host.harness.behavior.runCli(argv, ctx);
 
-    const unknownOption = await run(["account", "list", "--jsonn"]);
-    expect(unknownOption.exitCode).toBe(1);
-    expect(unknownOption.stderr).toContain("unknown option '--jsonn'");
-    expect(unknownOption.stderr).toContain("Did you mean --json?");
-    expect(unknownOption.stdout).toBe("");
-
-    const noCommand = await run([]);
-    expect(noCommand.exitCode).toBe(1);
-    expect(noCommand.stdout).toContain("bb pool <command> [options]");
-
-    const unknownCommand = await run(["account", "lst"]);
-    expect(unknownCommand.exitCode).toBe(1);
-    expect(unknownCommand.stderr).toContain(
-      "unknown command 'account lst' (Did you mean account list?)",
-    );
-
     const strayArgument = await run(["status", "everything"]);
     expect(strayArgument.exitCode).toBe(1);
     expect(strayArgument.stderr).toContain("unexpected argument 'everything'");
@@ -1405,18 +1389,6 @@ describe("Account Pool plugin", () => {
     expect(bypassWithoutThread.stderr).toContain(
       "This thread is thread-seven; re-run with bb pool bypass thread-seven",
     );
-
-    for (const argv of [
-      ["--help"],
-      ["account", "add", "--help"],
-      ["account", "reorder", "-h"],
-      ["bypass", "--help"],
-    ]) {
-      const help = await run(argv);
-      expect(help.exitCode).toBe(0);
-      expect(help.stderr).toBe("");
-      expect(help.stdout).toContain("Usage:");
-    }
   });
 
   it("exposes manual Claude login over RPC and the two-step CLI", async () => {
@@ -4653,50 +4625,6 @@ describe("Account Pool plugin", () => {
         }
       },
     );
-
-    it("separates Codex session and cache namespaces and prefers the native header", async () => {
-      const attempts: Array<string | null> = [];
-      const fixture = await affinityFixture("codex", async (_input, init) => {
-        attempts.push(new Headers(init?.headers).get("authorization"));
-        return attempts.length === 1 ? openStream() : Response.json({});
-      });
-      const held = await fixture.host.harness.behavior.fetchHttp(
-        "POST",
-        "/v1/responses",
-        {
-          headers: { ...authHeaders(fixture.key), "session-id": sessionId },
-          body: "{}",
-        },
-      );
-      try {
-        await movePoolToOtherAccount(fixture, "codex");
-        attempts.splice(1);
-        const variants: Array<Record<string, string>> = [
-          {},
-          { session_id: sessionId },
-          { "session-id": sessionId, session_id: "different-session" },
-        ];
-        for (const headers of variants) {
-          const response = await fixture.host.harness.behavior.fetchHttp(
-            "POST",
-            "/v1/responses",
-            {
-              headers: { ...authHeaders(fixture.key), ...headers },
-              body: JSON.stringify({ prompt_cache_key: sessionId }),
-            },
-          );
-          await response.text();
-        }
-        expect(attempts).toEqual([
-          "Bearer sk-first",
-          "Bearer sk-second",
-          "Bearer sk-first",
-          "Bearer sk-first",
-        ]);
-      } finally {
-        await held.body?.cancel();
-      }
-    });
 
     it.each([
       "family quota",

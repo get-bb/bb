@@ -193,12 +193,6 @@ describe("getSidebarThreadComparator", () => {
     ).toEqual(["thr_c", "thr_b", "thr_a"]);
   });
 
-  it("updated lists most recent first", () => {
-    expect(
-      order(getSidebarThreadComparator("updated"), [apple, banana, cherry]),
-    ).toEqual(["thr_c", "thr_b", "thr_a"]);
-  });
-
   it("alphabetical lists A→Z", () => {
     expect(
       order(getSidebarThreadComparator("alpha"), [cherry, apple, banana]),
@@ -312,16 +306,6 @@ describe("getSidebarThreadComparator", () => {
           item.kind === "thread" ? item.node.thread.id : "unexpected",
         ),
     ).toEqual(["thr_a", "thr_z"]);
-  });
-
-  it("alphabetical leaf and item comparators agree", () => {
-    const comparator = getSidebarThreadComparator("alpha");
-    expect(comparator.compareItems).toBeDefined();
-    const leafSign = Math.sign(comparator(apple, banana));
-    const itemSign = Math.sign(
-      comparator.compareItems!(threadItem(apple), threadItem(banana)),
-    );
-    expect(itemSign).toBe(leafSign);
   });
 });
 

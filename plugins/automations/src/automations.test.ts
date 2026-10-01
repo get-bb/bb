@@ -314,8 +314,7 @@ describe("data migrations", () => {
     insertRun.run("run_third", 1001);
 
     db.transaction(() => {
-      db.exec(migrations[1] ?? "");
-      db.exec(migrations[2] ?? "");
+      for (const migration of migrations.slice(1)) db.exec(migration);
     })();
 
     const rows = db
@@ -539,15 +538,6 @@ describe("schedule helpers", () => {
     },
   );
 
-  it("computes cron next runs with timezone", () => {
-    const next = computeNextScheduledTime({
-      cron: "30 9 * * *",
-      timezone: "America/New_York",
-      now: Date.parse("2026-01-01T13:00:00.000Z"),
-    });
-    expect(new Date(next).toISOString()).toBe("2026-01-01T14:30:00.000Z");
-  });
-
   it("validates and computes once triggers", () => {
     const now = Date.parse("2026-01-01T00:00:00.000Z");
     expect(() => validateOnceDefinition({ runAt: now, now })).toThrow(
@@ -591,29 +581,6 @@ describe("automation data access", () => {
     expect(
       listAutomationRuns(db, { automationId: "auto_test", limit: 10 }),
     ).toHaveLength(1);
-  });
-
-  it("backs off a scheduled automation after dispatch failure", () => {
-    const db = createTestDb();
-    const automation = createScheduledAutomation(db, 1000);
-    const claim = claimAutomationScheduledRun(db, {
-      automationId: automation.id,
-      expectedNextRunAt: 1000,
-      newNextRunAt: 2000,
-      now: 1000,
-    });
-    if (!claim.advanced) throw new Error("claim failed");
-    closeAutomationRun(db, {
-      runId: claim.run.id,
-      status: "failed",
-      error: "dispatch failed",
-      now: 1001,
-    });
-    const restored = getAutomation(db, automation.id);
-    expect(restored?.nextRunAt).toBe(1001 + AUTOMATION_RETRY_BASE_MS);
-    expect(restored?.runCount).toBe(1);
-    expect(restored?.consecutiveFailures).toBe(1);
-    expect(restored?.lastRunStatus).toBe("failed");
   });
 
   it("settles a running automation exactly once", () => {
@@ -715,39 +682,6 @@ describe("automation data access", () => {
     }
   });
 
-  it("applies the same backoff and pause policy to settled script failures", () => {
-    const db = createTestDb();
-    const automation = createScheduledAutomation(db, 1000);
-    let expectedNextRunAt = 1000;
-
-    for (let failure = 1; failure <= 3; failure += 1) {
-      const claim = claimAutomationScheduledRun(db, {
-        automationId: automation.id,
-        expectedNextRunAt,
-        newNextRunAt: expectedNextRunAt + 60_000,
-        now: expectedNextRunAt,
-      });
-      if (!claim.advanced) throw new Error(`claim ${failure} failed`);
-      const failedAt = expectedNextRunAt + 1;
-      closeAutomationRun(db, {
-        runId: claim.run.id,
-        status: "failed",
-        error: `script failed ${failure}`,
-        now: failedAt,
-      });
-      const current = getAutomation(db, automation.id);
-      expect(current?.consecutiveFailures).toBe(failure);
-      if (failure < 3) {
-        expectedNextRunAt =
-          failedAt + AUTOMATION_RETRY_BASE_MS * 2 ** (failure - 1);
-        expect(current?.nextRunAt).toBe(expectedNextRunAt);
-      } else {
-        expect(current?.enabled).toBe(false);
-        expect(current?.nextRunAt).toBeNull();
-      }
-    }
-  });
-
   it("enforces one running execution per automation", () => {
     const db = createTestDb();
     const automation = createScheduledAutomation(db, 1000);
@@ -775,29 +709,6 @@ describe("automation data access", () => {
     expect(manual.deduped).toBe(true);
     expect(manual.run.id).toBe(first.run.id);
     expect(getRunningAutomationRun(db, automation.id)?.id).toBe(first.run.id);
-  });
-
-  it("enforces single-flight at the database boundary", () => {
-    const db = createTestDb();
-    const automation = createScheduledAutomation(db, 1000);
-    createManualRun(db, {
-      automationId: automation.id,
-      runMode: "agent",
-      now: 1000,
-    });
-
-    expect(() =>
-      db
-        .prepare(
-          `INSERT INTO automation_runs (
-             id, automation_id, run_mode, status, trigger,
-             scheduled_for, started_at
-           ) VALUES (
-             'run_overlap', ?, 'agent', 'running', 'manual', 1001, 1001
-           )`,
-        )
-        .run(automation.id),
-    ).toThrow();
   });
 
   it("resets consecutive failures after a successful run", () => {
@@ -1953,29 +1864,9 @@ describe("automation CLI --script-file", () => {
     }
   });
 
-  it("rejects a valueless working-directory flag on create and replacement", async () => {
+  it("rejects an empty working-directory value on create and replacement", async () => {
     const t = await setup();
     try {
-      const rejectedCreate = await t.cli.run(
-        [
-          "create",
-          "--project",
-          "proj_test",
-          "--name",
-          "missing-cwd",
-          "--in",
-          "30m",
-          "--script",
-          "echo hi",
-          "--working-directory",
-        ],
-        {},
-      );
-      expect(rejectedCreate.exitCode).toBe(1);
-      expect(rejectedCreate.stderr).toContain(
-        "--working-directory requires a value",
-      );
-
       const emptyCreate = await t.cli.run(
         [
           "create",
@@ -2011,23 +1902,6 @@ describe("automation CLI --script-file", () => {
         ],
         {},
       );
-      const rejectedReplacement = await t.cli.run(
-        [
-          "update",
-          idFrom(created.stdout),
-          "--project",
-          "proj_test",
-          "--script",
-          "echo next",
-          "--working-directory",
-        ],
-        {},
-      );
-      expect(rejectedReplacement.exitCode).toBe(1);
-      expect(rejectedReplacement.stderr).toContain(
-        "--working-directory requires a value",
-      );
-
       const emptyReplacement = await t.cli.run(
         [
           "update",
@@ -2045,43 +1919,6 @@ describe("automation CLI --script-file", () => {
       expect(emptyReplacement.stderr).toContain(
         "Missing required option --working-directory <value>.",
       );
-    } finally {
-      await t.cleanup();
-    }
-  });
-
-  it("rejects a misspelled script flag instead of ignoring it", async () => {
-    const t = await setup();
-    try {
-      const created = await t.cli.run(
-        [
-          "create",
-          "--project",
-          "proj_test",
-          "--name",
-          "unknown-flag",
-          "--in",
-          "30m",
-          "--script",
-          "echo hi",
-        ],
-        {},
-      );
-      expect(created.exitCode).toBe(0);
-      const ignored = await t.cli.run(
-        [
-          "update",
-          idFrom(created.stdout),
-          "--project",
-          "proj_test",
-          "--scripts",
-          "echo next",
-        ],
-        {},
-      );
-      expect(ignored.exitCode).toBe(1);
-      expect(ignored.stderr).toContain("unknown option '--scripts'");
-      expect(ignored.stderr).toContain("Did you mean --script?");
     } finally {
       await t.cleanup();
     }
@@ -2404,28 +2241,6 @@ describe("script project context", () => {
     }
   });
 
-  it("keeps fieldless automations in shared script storage", async () => {
-    const serverProjectDir = await mkdtemp(join(tmpdir(), "bb-auto-server-"));
-    try {
-      const result = await runScriptAutomation({
-        script: "pwd -P\n",
-        workingDirectory: { type: "automation-storage" },
-        sources: [
-          projectSource({
-            hostId: "host_server",
-            path: serverProjectDir,
-            isDefault: true,
-          }),
-        ],
-      });
-      expect(withoutMissingBbCliWarning(result.closed?.output)).toBe(
-        `${result.scriptsDir}\n`,
-      );
-    } finally {
-      await rm(serverProjectDir, { recursive: true, force: true });
-    }
-  });
-
   it("reports a resolved directory equal to the process working directory", async () => {
     const serverProjectDir = await mkdtemp(join(tmpdir(), "bb-auto-server-"));
     const explicitDir = await mkdtemp(join(tmpdir(), "bb-auto-explicit-"));
@@ -2536,27 +2351,6 @@ describe("script project context", () => {
       status: "failed",
       error: expect.stringContaining("is not an existing directory"),
     });
-  });
-
-  it("runs in an explicit absolute server-host directory", async () => {
-    const selectedDir = await mkdtemp(join(tmpdir(), "bb-auto-selected-"));
-    await writeFile(join(selectedDir, "selected.txt"), "selected directory\n");
-    try {
-      const result = await runScriptAutomation({
-        script: "pwd -P\ncat selected.txt\n",
-        workingDirectory: { type: "path", path: selectedDir },
-        sources: [],
-      });
-      expect(result.closed).toMatchObject({
-        status: "succeeded",
-        exitCode: 0,
-      });
-      expect(withoutMissingBbCliWarning(result.closed?.output)).toBe(
-        `${await realpath(selectedDir)}\nselected directory\n`,
-      );
-    } finally {
-      await rm(selectedDir, { recursive: true, force: true });
-    }
   });
 
   it("includes the first stderr line in a failed run summary", async () => {

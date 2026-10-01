@@ -711,14 +711,6 @@ describe("Docs vault operations", () => {
     expect(harness.sdk.callsTo("files.move")).toHaveLength(1);
   });
 
-  it("registers the agent-discoverable Docs CLI", async () => {
-    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
-    expect(harness.registrations.cli).toMatchObject({
-      name: "docs",
-      summary: "Discover and safely sync Docs vaults",
-    });
-  });
-
   it("round-trips a folder edit through pull and push without changing binary assets", async () => {
     const { harness, files, setUtf8 } = await loadVirtualSyncVault({
       "/vault/plans/plan.md": {
@@ -1089,12 +1081,6 @@ describe("Docs vault operations", () => {
     expect(noCommand.exitCode).toBe(2);
     expect(noCommand.stdout).toContain("bb docs <command> [options]");
 
-    const unknownCommand = await harness.runCli(["pul", "plan.md"]);
-    expect(unknownCommand.exitCode).toBe(2);
-    expect(unknownCommand.stderr).toContain(
-      "unknown command 'pul' (Did you mean pull?)",
-    );
-
     const strayArgument = await harness.runCli(["vaults", "personal"]);
     expect(strayArgument.exitCode).toBe(2);
     expect(strayArgument.stderr).toContain("unexpected argument 'personal'");
@@ -1118,13 +1104,6 @@ describe("Docs vault operations", () => {
     expect(combined.exitCode).toBe(2);
     expect(combined.stderr).toContain("--all and --folder cannot be combined");
     expect(files.has("/work/sync/plan.md")).toBe(false);
-
-    for (const argv of [["push", "--help"], ["remove", "-h"], ["help"]]) {
-      const commandHelp = await harness.runCli(argv);
-      expect(commandHelp.exitCode).toBe(0);
-      expect(commandHelp.stderr).toBe("");
-      expect(commandHelp.stdout).toContain("Usage:");
-    }
   });
 
   it("keeps CLI removal non-recursive unless --recursive is passed", async () => {

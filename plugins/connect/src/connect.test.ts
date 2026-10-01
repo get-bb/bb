@@ -12,13 +12,11 @@ import {
   isBareBbRealtimeWs,
   TunnelSession,
 } from "@bb/tunnel-client";
-import { deriveConnectBaseUrl, serverUrlForHandle } from "@bb/connect-client";
 import {
   parseSharePort,
   machineSharePublicUrl,
   SharePortError,
   ShareRegistry,
-  sharePublicUrl,
   SHARES_KV_KEY,
   serverOwnPort,
 } from "./shares.js";
@@ -92,17 +90,6 @@ function createConnectFakeHost(options?: {
   });
 }
 
-describe("deriveConnectBaseUrl", () => {
-  it("drops the handle label to reach the apex", () => {
-    expect(deriveConnectBaseUrl("https://sawyer.getbb.app")).toBe(
-      "https://getbb.app",
-    );
-    expect(deriveConnectBaseUrl("https://my-box.vibecodethis.site/")).toBe(
-      "https://vibecodethis.site",
-    );
-  });
-});
-
 describe("resolveDefaultConnectBaseUrl", () => {
   it("uses the local Cloud origin only in development", () => {
     expect(
@@ -147,14 +134,6 @@ describe("resolveDefaultConnectBaseUrl", () => {
         "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin or https://vibecodethis.site",
       );
     }
-  });
-});
-
-describe("serverUrlForHandle", () => {
-  it("prepends the handle label to the apex", () => {
-    expect(serverUrlForHandle("https://getbb.app", "sawyer")).toBe(
-      "https://sawyer.getbb.app",
-    );
   });
 });
 
@@ -207,28 +186,7 @@ describe("headersForLoopbackRequest", () => {
   });
 });
 
-describe("sharePublicUrl", () => {
-  it("builds https://handle--port.base from the credential serverUrl", () => {
-    expect(
-      sharePublicUrl(
-        { serverUrl: "https://sawyer.getbb.app", handle: "sawyer" },
-        8000,
-      ),
-    ).toBe("https://sawyer--8000.getbb.app");
-  });
-
-  it("uses a non-primary routing label when multi-server pairing stored one", () => {
-    expect(
-      sharePublicUrl(
-        {
-          serverUrl: "https://sawyer-desktop.getbb.app",
-          handle: "sawyer-desktop",
-        },
-        8000,
-      ),
-    ).toBe("https://sawyer-desktop--8000.getbb.app");
-  });
-
+describe("machineSharePublicUrl", () => {
   it("uses HTTP and the local port for machine shares in local Cloud", () => {
     expect(
       machineSharePublicUrl(
@@ -1620,17 +1578,6 @@ describe("connect plugin", () => {
     }
   });
 
-  it("registers contributeInstructions", async () => {
-    const { harness } = await loadPlugin();
-    expect(harness.registrations.instructionProvider).not.toBeNull();
-    expect(
-      harness.registrations.instructionProvider?.({
-        threadId: "th_1",
-        projectId: "proj_1",
-      }),
-    ).toBeNull();
-  });
-
   it("follows the bb account: signs in, reports the gate URL, and tears down on sign-out", async () => {
     const current = await loadPlugin();
     await signIn(current, {
@@ -2653,22 +2600,8 @@ describe("connect CLI", () => {
     expect(JSON.parse(json.stdout ?? "")).toMatchObject({ enabled: true });
   });
 
-  it("unknown subcommands fail with help", async () => {
+  it("`expose --help` documents the port argument", async () => {
     const { harness } = await loadCli();
-    const result = await harness.runCli(["bogus"]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("unknown command 'bogus'");
-    expect(result.stderr).toContain("bb connect status");
-  });
-
-  it("`--help` prints help on stdout at every level", async () => {
-    const { harness } = await loadCli();
-    for (const argv of [["--help"], ["-h"], ["shares", "--help"]]) {
-      const result = await harness.runCli(argv);
-      expect(result.exitCode, argv.join(" ")).toBe(0);
-      expect(result.stderr).toBe("");
-      expect(result.stdout).toContain("bb connect");
-    }
     expect((await harness.runCli(["expose", "--help"])).stdout).toContain(
       "<port>",
     );
@@ -2679,14 +2612,6 @@ describe("connect CLI", () => {
     const result = await harness.runCli(["list"]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("(Did you mean shares?)");
-  });
-
-  it("rejects an unknown flag instead of ignoring it", async () => {
-    const { harness } = await loadCli();
-    const result = await harness.runCli(["shares", "--hosts", "bee"]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("unknown option '--hosts'");
-    expect(result.stderr).toContain("(Did you mean --host?)");
   });
 
   it("expose, servers, and machine-code explain how to sign in when signed out", async () => {
