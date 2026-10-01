@@ -67,10 +67,35 @@ openWorkspaceFile }` — register a leaf
   rather than trusting paths. Reference implementation:
   `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
   iframe preview, including relative assets and normal web loading).
+- `experimental_messageMetadata` → React metadata above or below realized conversation
+  messages (including windowing overscan). Registration:
+  `{ id, roles?, placement?, component }`, with `ExperimentalMessageMetadataProps`.
+  The component receives `{ message }`: `id`, `threadId`, `role`, `createdAt`
+  (Unix milliseconds), and nullable `turnId`; user messages also have
+  `initiator: "user" | "agent" | "system"`. Text and source sequence numbers
+  are excluded, so streaming does not rerender metadata. Omitted roles means
+  both; empty or unknown role lists fail registration. Placement accepts
+  "above" or "below" and defaults to "below". BB supplies plugin
+  context, CSS, error containment, empty suspense fallback, default muted
+  typography, alignment, and deterministic ordering. Components can use hooks
+  for queries and live updates; share query caches and clean up effects on
+  unmount. Metadata unmounts outside the realized window. Plugins own date
+  refreshes; there is no host midnight timer or text-length limit.
+
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
   assistant-message text-selection menu. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, icon?, run }`. Activating it calls
+  component — registration: `{ id, title, icon?, experimental_roles?, experimental_placements?, run }`.
+  `experimental_placements` is a nonempty array of `"message"` and/or
+  `"selection"`; omitted means both. Message placement covers row action bars
+  and compact overflow. Selection placement covers existing assistant
+  selection menus; it does not enable selection menus for user messages.
+  Role and placement filters intersect. Embedded ThreadChat suppresses global
+  plugin actions in both placements; its instance-specific `messageActions`
+  remain available.
+  `experimental_roles` is a nonempty array of `"user"` and/or `"assistant"`;
+  omitted means both. Role filtering covers action bars, overflow, selection,
+  and embedded ThreadChat timelines. Activating it calls
   `run(context)` with `{ threadId, message, selectedText?, openPanel }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd }` (never

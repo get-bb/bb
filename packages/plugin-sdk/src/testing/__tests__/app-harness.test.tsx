@@ -1400,6 +1400,100 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
   });
 
+  it("validates message metadata components and action targeting", async () => {
+    const component = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_messageMetadata({
+          id: "timestamp",
+          placement: "above",
+          roles: ["user"],
+          component,
+        });
+        builder.slots.messageAction({
+          id: "feedback",
+          title: "Feedback",
+          experimental_roles: ["assistant"],
+          experimental_placements: ["selection", "selection"],
+          run: () => {},
+        });
+      }),
+    );
+    expect(captured.messageActions[0]?.experimental_placements).toEqual([
+      "selection",
+    ]);
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad-placement",
+            placement: "outside" as never,
+            component,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"placement" must be "above" or "below"');
+
+    for (const roles of [[], ["other"]]) {
+      await expect(
+        loadPluginApp(
+          definePluginApp((builder) => {
+            builder.slots.experimental_messageMetadata({
+              id: "bad",
+              roles: roles as never,
+              component,
+            });
+          }),
+        ),
+      ).rejects.toThrow('"roles" must be a non-empty array');
+      await expect(
+        loadPluginApp(
+          definePluginApp((builder) => {
+            builder.slots.messageAction({
+              id: "bad",
+              title: "Bad",
+              experimental_roles: roles as never,
+              run: () => {},
+            });
+          }),
+        ),
+      ).rejects.toThrow('"experimental_roles" must be a non-empty array');
+    }
+    for (const placements of [[], ["other"], "selection"]) {
+      await expect(
+        loadPluginApp(
+          definePluginApp((builder) => {
+            builder.slots.messageAction({
+              id: "bad",
+              title: "Bad",
+              experimental_placements: placements as never,
+              run: () => {},
+            });
+          }),
+        ),
+      ).rejects.toThrow('"experimental_placements" must be a non-empty array');
+    }
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad",
+            component: undefined as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"component" must be a React component');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_messageMetadata: duplicate id "dup"');
+  });
+
   it("collects separate provider kinds and the legacy all-kinds registration", async () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {

@@ -84,7 +84,7 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         blurb: "Plugins can extend the thread header, conversation, and composer.",
         appShellScene: "conversation" as const,
         surfaces: group.surfaces.filter((surface) => [
-          "thread-header", "timeline-renderers", "message-directives", "message-actions",
+          "thread-header", "timeline-renderers", "message-directives", "message-actions", "message-metadata",
           "pending-interaction", "app-overlay", "content-scripts",
         ].includes(surface.id)),
       },

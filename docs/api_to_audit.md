@@ -4,6 +4,53 @@
 
 `experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile.
 
+## `app.slots.experimental_messageMetadata` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.12.
+
+`app.slots.experimental_messageMetadata({ id, roles?, placement?, component })` mounts
+React metadata above or below realized user and assistant conversation messages,
+including windowing overscan and embedded ThreadChat timelines. `placement`
+accepts "above" or "below"; omission defaults to "below". Above suits timestamps;
+below suits status and statistics. The component
+receives `{ message }` with `id`, `threadId`, `role`, exact `createdAt` in Unix
+milliseconds, and `turnId` (null outside a turn). User messages also expose
+`initiator: "user" | "agent" | "system"`; assistant messages do not. Message
+text and source sequence numbers are excluded, so streaming text does not
+invalidate metadata props. Types: `ExperimentalMessageMetadataRegistration`,
+`ExperimentalMessageMetadataProps`, and `ExperimentalMessageMetadataContext`.
+
+BB supplies plugin context, CSS, muted typography, wrapping, user-right and
+assistant-left alignment, and plugin-id then registration ordering. Each
+contribution has its own error boundary and empty suspense fallback. Plugin
+hooks can fetch or subscribe to data; use shared query caches rather than one
+request per message. Components unmount when their messages are no longer
+realized or the registration is removed. Plugin effects own their cleanup
+and time-based refreshes; BB adds no timer, text length limits, or server calls.
+
+Before stabilizing, audit compact and embedded placement, variable-height
+metadata and scroll anchoring, unmount cleanup, asynchronous updates,
+origin filtering, and render isolation during streaming and across messages.
+
+## `PluginMessageActionRegistration.experimental_roles` and `.experimental_placements` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.12.
+
+The stable `messageAction` registration accepts `experimental_roles`, a
+nonempty array of `"user"` and `"assistant"`, and `experimental_placements`,
+a nonempty array of `"message"` and `"selection"`. Omitted fields mean both.
+Empty or unknown values fail registration; duplicates are normalized.
+Role and placement filters intersect. `"message"` covers row action bars
+and compact overflow entries. `"selection"` covers the existing assistant
+text-selection menu; it does not create user-message selection menus.
+BB applies both filters wherever global actions are enabled. Embedded
+ThreadChat currently suppresses global plugin actions in both placements,
+through its internal `includePluginMessageActions={false}` policy.
+
+Before renaming these fields to `roles` and `placements`, audit overflow,
+selection-only invocation, backwards-compatible defaults, embedded surfaces,
+and marketplace plugin adoption.
+
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard

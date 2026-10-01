@@ -17,6 +17,7 @@ import type {
   PluginHomepageSectionRegistration,
   PluginCommandRegistration,
   PluginMessageActionRegistration,
+  ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
@@ -47,6 +48,45 @@ import {
   requireTimelineRendererKind,
   requireUniqueId,
 } from "./composer-customization-validation.js";
+
+function requireMessagePlacements(
+  kind: string,
+  placements: unknown,
+): readonly ("message" | "selection")[] {
+  if (
+    !Array.isArray(placements) ||
+    placements.length === 0 ||
+    !placements.every(
+      (placement) => placement === "message" || placement === "selection",
+    )
+  ) {
+    throw new Error(
+      `${kind}: "experimental_placements" must be a non-empty array of message or selection`,
+    );
+  }
+  return [...new Set(placements)];
+}
+
+function isMessageRole(role: unknown): role is "user" | "assistant" {
+  return role === "user" || role === "assistant";
+}
+
+function requireMessageRoles(
+  kind: string,
+  field: string,
+  roles: unknown,
+): readonly ("user" | "assistant")[] {
+  if (
+    !Array.isArray(roles) ||
+    roles.length === 0 ||
+    !roles.every(isMessageRole)
+  ) {
+    throw new Error(
+      `${kind}: "${field}" must be a non-empty array of user or assistant`,
+    );
+  }
+  return [...new Set(roles)];
+}
 
 export type ExperimentalSidebarFooterCommandKind = "open" | "close" | "toggle";
 
@@ -357,6 +397,7 @@ export interface CollectedPluginAppRegistrations {
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  messageMetadata: ExperimentalMessageMetadataRegistration[];
   commandPaletteActions: CollectedPluginCommandRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
   icons: ExperimentalIconRegistration[];
@@ -483,6 +524,7 @@ export function collectPluginAppRegistrations(
     diffRenderers: [],
     messageDirectives: [],
     messageActions: [],
+    messageMetadata: [],
     commandPaletteActions: [],
     providerIcons: [],
     icons: [],
@@ -512,6 +554,7 @@ export function collectPluginAppRegistrations(
     diffRenderer: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
+    messageMetadata: new Set<string>(),
     command: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
@@ -860,6 +903,42 @@ export function collectPluginAppRegistrations(
               }
             : {}),
           run: registration.run,
+          ...(registration.experimental_placements === undefined
+            ? {}
+            : {
+                experimental_placements: requireMessagePlacements(
+                  kind,
+                  registration.experimental_placements,
+                ),
+              }),
+          ...(registration.experimental_roles === undefined
+            ? {}
+            : {
+                experimental_roles: requireMessageRoles(
+                  kind,
+                  "experimental_roles",
+                  registration.experimental_roles,
+                ),
+              }),
+        });
+      },
+      experimental_messageMetadata(registration) {
+        const kind = "slots.experimental_messageMetadata";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.messageMetadata, id);
+        const placement = registration.placement ?? "below";
+        if (placement !== "above" && placement !== "below") {
+          throw new Error(`${kind}: "placement" must be "above" or "below"`);
+        }
+        collected.messageMetadata.push({
+          id,
+          placement,
+          ...(registration.roles === undefined
+            ? {}
+            : {
+                roles: requireMessageRoles(kind, "roles", registration.roles),
+              }),
+          component: requireComponent(kind, registration.component),
         });
       },
       commandPaletteAction(registration) {

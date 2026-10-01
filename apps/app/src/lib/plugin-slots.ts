@@ -10,6 +10,7 @@ import type {
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginMessageActionRegistration,
+  ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
@@ -56,6 +57,7 @@ export interface PluginRegistrationSet {
   diffRenderers?: readonly PluginDiffRendererRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
+  messageMetadata?: readonly ExperimentalMessageMetadataRegistration[];
   commandPaletteActions?: readonly CollectedPluginCommandRegistration[];
   providerIcons?: readonly CollectedPluginProviderIconRegistration[];
   icons?: readonly ExperimentalIconRegistration[];
@@ -107,6 +109,8 @@ export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
+export interface PluginMessageMetadataSlot
+  extends ExperimentalMessageMetadataRegistration, PluginSlotBase {}
 export interface PluginCommandPaletteActionSlot
   extends CollectedPluginCommandRegistration, PluginSlotBase {}
 interface PluginIconSlot extends ExperimentalIconRegistration, PluginSlotBase {}
@@ -139,6 +143,7 @@ export interface PluginSlotSnapshot {
   diffRenderers: readonly PluginDiffRendererSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   messageActions: readonly PluginMessageActionSlot[];
+  messageMetadata: readonly PluginMessageMetadataSlot[];
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
   icons: readonly PluginIconSlot[];
@@ -167,6 +172,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   diffRenderers: [],
   messageDirectives: [],
   messageActions: [],
+  messageMetadata: [],
   commandPaletteActions: [],
   providerIcons: [],
   icons: [],
@@ -202,6 +208,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "diffRenderers",
   "messageDirectives",
   "messageActions",
+  "messageMetadata",
   "commandPaletteActions",
   "providerIcons",
   "icons",
@@ -261,6 +268,7 @@ function flattenRegistrations(
     diffRenderers: stamp(set.diffRenderers),
     messageDirectives: stamp(set.messageDirectives),
     messageActions: stamp(set.messageActions),
+    messageMetadata: stamp(set.messageMetadata),
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
     icons: stamp(set.icons),

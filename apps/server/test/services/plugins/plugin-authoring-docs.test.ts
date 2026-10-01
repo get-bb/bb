@@ -17,6 +17,7 @@ import {
   type PluginHttpAuthMode,
   type PluginCommandContext,
   type PluginCommandRegistration,
+  type ExperimentalMessageMetadataProps,
   type PluginMessageActionContext,
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveProps,
@@ -279,6 +280,7 @@ type SlotPropsByName = {
   experimental_diffRenderer: PluginDiffRendererProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
+  experimental_messageMetadata: ExperimentalMessageMetadataProps;
   commandPaletteAction: PluginCommandContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
@@ -396,6 +398,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "openPanel",
     "composer",
   ],
+  experimental_messageMetadata: ["message"],
   commandPaletteAction: ["threadId", "projectId", "openPanel"],
   experimental_providerIcon: ["providerKind", "providerId", "icon"],
   experimental_timelineRenderer: [
@@ -467,6 +470,8 @@ const MESSAGE_ACTION_REGISTRATION_FIELDS = [
   "id",
   "title",
   "icon",
+  "experimental_roles",
+  "experimental_placements",
   "run",
 ] as const satisfies readonly (keyof PluginMessageActionRegistration)[];
 

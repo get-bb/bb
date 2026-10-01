@@ -262,6 +262,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds an action to individual messages in a thread. With this, a plugin can:",
         bullets: [
           "Appear in the row that shows under messages on hover, or in the toolbar that appears when text in an agent's message is selected",
+          "Target user or assistant messages with experimental_roles; omitted means both",
+          "Choose message actions, assistant selection menus, or both with experimental_placements",
           "Receive the message, plus the selected text when the action was run from a selection",
           "Show the action’s explicit icon in both menus, with plugin branding as the fallback for omitted or unknown names",
           "Open one of the plugin's own [side-panel tabs](thread-panel) with what it received",
@@ -272,6 +274,26 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginMessageActionContext",
         ],
         firstParty: ["Side chat"],
+      },
+      {
+        id: "message-metadata",
+        title: "Message metadata",
+        summary:
+          "Mounts a React component above or below realized conversation messages. With this, a plugin can:",
+        bullets: [
+          "Receive message identity, exact createdAt, nullable turnId, and user-message initiator without message text",
+          "Use plugin hooks, shared query caches, and React state for asynchronous metadata",
+          "Mount only for realized messages, including overscan; clean up effects when unmounted",
+          "Target user or assistant messages with roles; omitted means both",
+          "Place timestamps above messages or status and statistics below with placement; omitted means below",
+          "Rely on bb for default typography, alignment, ordering, plugin context, CSS, error containment, and an empty suspense fallback",
+        ],
+        apiSymbols: [
+          "ExperimentalMessageMetadataRegistration",
+          "ExperimentalMessageMetadataContext",
+          "ExperimentalMessageMetadataProps",
+        ],
+        experimental: true,
       },
       {
         id: "pending-interaction",

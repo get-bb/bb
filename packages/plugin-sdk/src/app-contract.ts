@@ -1724,6 +1724,35 @@ export interface ThreadChatMessageReference {
   sourceSeqEnd: number;
 }
 
+/** Stable identity and creation time of one rendered conversation message. */
+export type ExperimentalMessageMetadataContext = Pick<
+  ThreadChatMessageReference,
+  "id" | "threadId"
+> & {
+  /** Unix time in milliseconds, supplied by BB's timeline. */
+  createdAt: number;
+  /** The containing turn, or null for a message outside a turn. */
+  turnId: string | null;
+} & (
+    | { role: "user"; initiator: "user" | "agent" | "system" }
+    | { role: "assistant" }
+  );
+
+/** Props for a metadata component mounted only beside realized messages. */
+export interface ExperimentalMessageMetadataProps {
+  message: ExperimentalMessageMetadataContext;
+}
+
+/** A React contribution above or below a conversation message. */
+export interface ExperimentalMessageMetadataRegistration {
+  id: string;
+  /** Omitted means below. Above suits timestamps; below suits status and statistics. */
+  placement?: "above" | "below";
+  /** Omitted means both roles. */
+  roles?: readonly ("user" | "assistant")[];
+  component: ComponentType<ExperimentalMessageMetadataProps>;
+}
+
 /**
  * What a caller that is *not* itself a panel action passes to open one — a
  * `messageAction`'s `run`, or any component via `useBbNavigate()`. A panel
@@ -1778,6 +1807,10 @@ export interface PluginMessageActionRegistration {
   /** Tooltip / menu label for the action. */
   title: string;
   icon?: BbIconName;
+  /** Omitted means both roles. Experimental until the role policy is audited. */
+  experimental_roles?: readonly ("user" | "assistant")[];
+  /** Omitted means both. Selection placement currently supports assistant messages only. */
+  experimental_placements?: readonly ("message" | "selection")[];
   /**
    * Runs when the user activates the action. Errors (sync or async) are
    * contained and logged; they never break the timeline.
@@ -2108,6 +2141,10 @@ export interface PluginAppSlots {
   experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
+  /** Register React message metadata. Experimental: see docs/api_to_audit.md. */
+  experimental_messageMetadata(
+    registration: ExperimentalMessageMetadataRegistration,
+  ): void;
   /**
    * @deprecated Use `app.commands.register` with the same registration.
    * Both entry points share the same command registry and ID namespace.
