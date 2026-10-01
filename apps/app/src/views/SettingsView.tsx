@@ -1269,7 +1269,7 @@ export function SettingsView() {
         }
         experiments={experiments}
         onExperimentChange={(key, enabled) =>
-          updateExperimentsMutation.mutate({ ...experiments, [key]: enabled })
+          updateExperimentsMutation.mutate({ [key]: enabled })
         }
       />
     );

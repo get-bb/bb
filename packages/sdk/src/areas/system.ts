@@ -8,6 +8,7 @@ import type {
   AppKeybindingOverrides,
   AppSettings,
   AppSettingsUpdate,
+  ExperimentUpdates,
   Experiments,
   UiPreferenceKey,
   UiPreferenceValue,
@@ -176,7 +177,9 @@ export interface SystemArea {
   uiPreferences: SystemUiPreferencesArea;
   mobileAppDownloads(): typeof mobileAppDownloads;
   mobileAppReleases(): Promise<SystemMobileAppReleasesResponse>;
-  updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
+  updateExperiments(
+    args: ExperimentUpdates,
+  ): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
     args: AppSettingsUpdate,
   ): Promise<SystemUpdateGeneralSettingsResult>;

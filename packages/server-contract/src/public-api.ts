@@ -53,6 +53,7 @@ import type {
   AppSettingsUpdate,
   AppKeybindingOverrides,
   Environment,
+  ExperimentUpdates,
   Experiments,
   Host,
   PendingInteraction,
@@ -66,7 +67,7 @@ import {
   appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
-  experimentsSchema,
+  experimentUpdatesSchema,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
@@ -1829,7 +1830,9 @@ export const publicApiRoutes = {
     experiments: defineRoute({
       path: "/settings/experiments",
       method: "put",
-      request: jsonRequest<EmptyInput, Experiments>(experimentsSchema),
+      request: jsonRequest<EmptyInput, ExperimentUpdates>(
+        experimentUpdatesSchema,
+      ),
       response: jsonResponse<Experiments>(),
     }),
     appearance: defineRoute({

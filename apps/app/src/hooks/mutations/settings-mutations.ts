@@ -3,7 +3,7 @@ import {
   type AppKeybindingOverrides,
   type AppSettings,
   type AppThemeSelection,
-  type Experiments,
+  type ExperimentUpdates,
 } from "@bb/domain";
 import type { SystemInstallCliSkillsRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
@@ -27,8 +27,8 @@ export function useUpdateExperiments() {
     meta: {
       errorMessage: "Failed to update experiments.",
     },
-    mutationFn: (experiments: Experiments) =>
-      sdk.system.updateExperiments(experiments),
+    mutationFn: (updates: ExperimentUpdates) =>
+      sdk.system.updateExperiments(updates),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

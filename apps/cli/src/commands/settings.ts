@@ -11,7 +11,6 @@ import {
   completedTurnDisplaySchema,
   describeUiPreference,
   experimentKeySchema,
-  experimentsSchema,
   isUiPreferenceKey,
   parseUiPreferenceValue,
   UI_PREFERENCE_KEYS,
@@ -20,7 +19,7 @@ import {
   type AppSettings,
   type AppShortcut,
   type CompletedTurnDisplay,
-  type Experiments,
+  type ExperimentUpdates,
   type UiPreferenceKey,
   type UiPreferenceValue,
 } from "@bb/domain";
@@ -313,20 +312,13 @@ function requireKnownProvider(
   );
 }
 
-function updateExperiment(
-  experiments: Experiments,
-  key: string,
-  value: string,
-): Experiments {
+function experimentUpdate(key: string, value: string): ExperimentUpdates {
   const enabled = parseBoolean(value);
   const experimentKey = experimentKeySchema.safeParse(key);
   if (!experimentKey.success) {
     throw new Error(`Unknown experiment '${key}'.`);
   }
-  return experimentsSchema.parse({
-    ...experiments,
-    [experimentKey.data]: enabled,
-  });
+  return { [experimentKey.data]: enabled };
 }
 
 function requireUiPreferenceKey(key: string): UiPreferenceKey {
@@ -653,9 +645,8 @@ export function registerSettingsCommands(
     .action(
       action(async (key: string, value: string, opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
         const result = await sdk.system.updateExperiments(
-          updateExperiment(config.experiments, key, value),
+          experimentUpdate(key, value),
         );
         if (outputJson(opts, result)) return;
         console.log(`${key} updated`);
