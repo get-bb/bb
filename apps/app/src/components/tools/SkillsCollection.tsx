@@ -211,14 +211,14 @@ function SkillProviderStack({
             role="img"
             aria-label={label}
             data-skill-providers={providers.join(" ")}
-            className="flex items-center gap-1 px-1"
+            className="flex shrink-0 items-center gap-1.5"
           >
             {providers.map((provider) => (
               <ProviderFilterLogo
                 key={provider}
                 provider={provider}
                 providerRoster={providerRoster}
-                className="size-4"
+                className="size-6 shrink-0"
               />
             ))}
           </span>
@@ -231,11 +231,21 @@ function SkillProviderStack({
 
 function SkillLeading({
   skill,
+  copies = [],
   providerRoster,
 }: {
   skill: SkillSummary;
+  copies?: readonly SkillSummary[];
   providerRoster: ProviderRoster;
 }) {
+  const providers = [
+    ...new Set((copies.length > 0 ? copies : [skill]).map(skillProviderFilterId)),
+  ];
+  if (providers.length > 1) {
+    return (
+      <SkillProviderStack providers={providers} providerRoster={providerRoster} />
+    );
+  }
   if (skill.provider !== null) {
     return (
       <ProviderLogo
@@ -325,7 +335,6 @@ function SkillRow({
   onPrefetch?: (skill: SkillSummary) => void;
 }) {
   const skill = group.primary;
-  const providers = groupProviderFilterIds(group);
   const description = skillDescription(skill, providerRoster);
   const prefetchTimer = useRef<number | null>(null);
   const cancelScheduledPrefetch = () => {
@@ -349,7 +358,13 @@ function SkillRow({
       onBlur={cancelScheduledPrefetch}
     >
       <ResourceRow
-        leading={<SkillLeading skill={skill} providerRoster={providerRoster} />}
+        leading={
+          <SkillLeading
+            skill={skill}
+            copies={group.members}
+            providerRoster={providerRoster}
+          />
+        }
         title={skill.name}
         titleMeta={
           skill.scope === "bb-builtin" ? (
@@ -374,14 +389,6 @@ function SkillRow({
           ) : undefined
         }
         description={description}
-        trailingMeta={
-          providers.length > 1 ? (
-            <SkillProviderStack
-              providers={providers}
-              providerRoster={providerRoster}
-            />
-          ) : undefined
-        }
         onOpen={onSelect}
         trailingVisual={<ResourceRowDetailChevron />}
       />
@@ -825,7 +832,13 @@ export function SkillDetailDialogView({
     ) : null;
   return (
     <SkillDetailView
-      leading={<SkillLeading skill={skill} providerRoster={providerRoster} />}
+      leading={
+        <SkillLeading
+          skill={skill}
+          copies={copies}
+          providerRoster={providerRoster}
+        />
+      }
       title={skill.name}
       path={skill.filePath}
       titleBadge={

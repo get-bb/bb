@@ -228,7 +228,7 @@ export function ResourceRow({
       className={cn(
         "group grid min-w-0 cursor-pointer items-center gap-3 bg-transparent py-3 text-left focus-visible:outline-none",
         hasLeading
-          ? "grid-cols-[1.5rem_minmax(0,1fr)_auto]"
+          ? "grid-cols-[max-content_minmax(0,1fr)_auto]"
           : "grid-cols-[minmax(0,1fr)_auto]",
         muted && "opacity-60",
         className,
@@ -239,7 +239,7 @@ export function ResourceRow({
       }}
     >
       {hasLeading ? (
-        <span className="flex size-6 shrink-0 items-center justify-center">
+        <span className="flex h-6 min-w-6 shrink-0 items-center justify-center">
           {leading}
         </span>
       ) : null}

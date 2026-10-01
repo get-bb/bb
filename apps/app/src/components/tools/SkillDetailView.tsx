@@ -244,6 +244,7 @@ export function SkillDetailView({
   return (
     <ResourceDetailPage
       leading={leading}
+      leadingClassName="w-auto min-w-4"
       title={title}
       titleMeta={titleMeta}
       metadata={<SkillPath path={directoryPath} href={pathHref} />}
