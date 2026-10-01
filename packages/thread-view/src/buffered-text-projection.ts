@@ -12,6 +12,7 @@ import {
 import {
   appendVisibleTextBuffer,
   createVisibleTextBuffer,
+  flushVisibleTextBuffer,
   setVisibleTextBuffer,
   type VisibleTextBuffer,
 } from "./visible-text-buffer.js";
@@ -122,6 +123,7 @@ export function projectBufferedTextEvent<
 
   if (args.mode === "delta") {
     appendVisibleTextBuffer(buffer, args.text);
+    flushVisibleTextBuffer(buffer);
     syncBufferedTextMessage({
       buffer,
       messageKey,

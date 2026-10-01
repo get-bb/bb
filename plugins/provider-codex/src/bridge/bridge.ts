@@ -2210,7 +2210,10 @@ async function handleRequest(
     case "provider/installation/status":
       sendResult(
         request.id,
-        await getCodexProviderInstallationStatus(request.params.requirement),
+        await getCodexProviderInstallationStatus(
+          request.params.requirement,
+          request.params.checkUpdates,
+        ),
       );
       break;
     case "provider/installation/run":

@@ -44,6 +44,7 @@ export type AdapterCommand =
       type: "provider/installation/status";
       cwd?: string;
       requirement?: "thread_rewind";
+      checkUpdates: boolean;
     }
   | {
       type: "provider/installation/run";

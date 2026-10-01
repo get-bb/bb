@@ -95,6 +95,40 @@ function getOnlyTimelineWebWorkRow(
 }
 
 describe("timeline CLI rendering snapshots", () => {
+  it("shows partial assistant Markdown before completion and replaces it with final text", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const events: TimelineFixtureEvent[] = [
+      event.clientTurnRequested({
+        target: { kind: "new-turn" },
+        text: "Hello",
+      }),
+      event.turnStarted(),
+      event.assistantDelta({ itemId: "assistant-1", delta: "Hi **Mich" }),
+    ];
+
+    expect(renderActiveTimeline(events).text).toContain("Hi **Mich");
+
+    events.push(
+      event.assistantDelta({ itemId: "assistant-1", delta: "ael**!" }),
+    );
+    expect(renderActiveTimeline(events).text).toContain("Hi **Michael**!");
+
+    events.push(
+      event.assistantCompleted({
+        itemId: "assistant-1",
+        text: "Hello Michael!",
+      }),
+    );
+    const completed = renderActiveTimeline(events);
+    expect(completed.text).toContain("Hello Michael!");
+    expect(completed.text).not.toContain("Hi **Michael**!");
+    expect(
+      messageKinds(completed.messages).filter(
+        (kind) => kind === "assistant-text",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("keeps accepted steer rows outside summaries while preserving summary segments", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events: TimelineFixtureEvent[] = [

@@ -112,6 +112,7 @@ async function requireSupportedProviderCliForThreadStart({
       return options.providerInstallationStatus({
         providerId: command.providerId,
         bridgeLaunch,
+        checkUpdates: false,
         ...(requirement !== undefined ? { requirement } : {}),
       });
     },

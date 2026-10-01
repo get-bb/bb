@@ -2050,7 +2050,10 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(request.id, await getClaudeProviderUsage());
       break;
     case "provider/installation/status":
-      sendResult(request.id, await getClaudeProviderInstallationStatus());
+      sendResult(
+        request.id,
+        await getClaudeProviderInstallationStatus(request.params.checkUpdates),
+      );
       break;
     case "provider/installation/run":
       sendResult(

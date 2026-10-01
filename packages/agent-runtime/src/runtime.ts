@@ -2437,6 +2437,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       bridgeLaunch,
       cwd,
       requirement,
+      checkUpdates = true,
     }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
@@ -2447,6 +2448,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         commandType: "provider/installation/status",
         plan: proc.adapter.buildCommandPlan({
           type: "provider/installation/status",
+          checkUpdates,
           ...(cwd !== undefined ? { cwd } : {}),
           ...(requirement !== undefined ? { requirement } : {}),
         }),

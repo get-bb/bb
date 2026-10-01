@@ -1527,7 +1527,10 @@ describe("dispatchCommand", () => {
       }),
     ).resolves.toEqual({ providerThreadId: "provider-thread-rewind-1" });
     expect(providerInstallationStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ requirement: "thread_rewind" }),
+      expect.objectContaining({
+        requirement: "thread_rewind",
+        checkUpdates: false,
+      }),
     );
     expect(runtime.prepareThreadRewind).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1620,6 +1623,9 @@ describe("dispatchCommand", () => {
 
     expect(providerInstallationStatus).toHaveBeenCalledOnce();
     expect(runtime.startThread).toHaveBeenCalledTimes(2);
+    expect(providerInstallationStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ checkUpdates: false }),
+    );
   });
 
   it("shares one in-flight probe between concurrent thread starts", async () => {
