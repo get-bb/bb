@@ -29,6 +29,7 @@ const searchResult = {
   official: true,
   author: null,
   installed: false,
+  conflictingInstallSource: null,
   installs: null,
   compatible: true,
   incompatibleReason: null,
@@ -125,6 +126,25 @@ describe("bb plugin catalog", () => {
     expect(output).toContain("Developer tools");
     expect(output).toContain("compatible");
     expect(output).not.toContain("Marketplace");
+  });
+
+  it("names the installed plugin that holds a listing's id", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        results: [
+          {
+            ...searchResult,
+            conflictingInstallSource: "path:/Users/me/git/linear",
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "search", "lin"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("id in use by path:/Users/me/git/linear");
+    expect(output).not.toContain("compatible");
   });
 
   it("names the marketplace once a third-party listing appears", async () => {

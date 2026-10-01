@@ -32,6 +32,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
+import { pluginDetailKeyFromRoute } from "@/components/plugin/plugin-detail-key";
 import { PluginDetailPaneView, PluginsView } from "./ToolsView";
 import { AppRoutes } from "../App";
 import {
@@ -101,6 +102,7 @@ const GITHUB_CATALOG_ENTRY = {
   official: true,
   author: null,
   installed: false,
+  conflictingInstallSource: null,
   installs: null,
   compatible: true,
   incompatibleReason: null,
@@ -113,6 +115,10 @@ function RoutedPluginsView() {
   const pluginId = location.pathname.startsWith(prefix)
     ? decodeURIComponent(location.pathname.slice(prefix.length))
     : undefined;
+  const detailKey =
+    pluginId === undefined
+      ? undefined
+      : pluginDetailKeyFromRoute(pluginId, location.search);
   return (
     <>
       <TooltipProvider>
@@ -123,7 +129,7 @@ function RoutedPluginsView() {
             <PluginsOverview mode="installed" />
           )
         ) : (
-          <PluginsView pluginId={pluginId} />
+          <PluginsView detailKey={detailKey} />
         )}
       </TooltipProvider>
       <LocationProbe />
@@ -139,6 +145,10 @@ function LocationProbe() {
       <output data-testid="route-search">{location.search}</output>
     </>
   );
+}
+
+function routeUrl(): string {
+  return `${screen.getByTestId("route-path").textContent}${screen.getByTestId("route-search").textContent}`;
 }
 
 function HistoryBackButton() {
@@ -259,7 +269,10 @@ describe("PluginDetail official catalog lifecycle", () => {
     };
     render(
       <>
-        <CatalogPluginDetailBanner entry={incompatibleEntry} />
+        <CatalogPluginDetailBanner
+          entry={incompatibleEntry}
+          onOpenPlugin={vi.fn()}
+        />
         <CatalogPluginDetail
           entry={incompatibleEntry}
           onInstall={() => {}}
@@ -913,6 +926,104 @@ describe("BB Official plugin detail routing", () => {
     },
   );
 
+  it("opens a marketplace entry instead of a local plugin that shares its id", async () => {
+    const marketplaceCanvas = {
+      ...GITHUB_CATALOG_ENTRY,
+      entryId: "canvas",
+      pluginId: "canvas",
+      displayName: "Canvas",
+      description: "Draw diagrams on a shared tldraw canvas.",
+      source: "git:https://github.com/example/canvas.git@main",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "bb-community",
+      publisherLabel: "BB Community",
+      official: false,
+      conflictingInstallSource: "path:/Users/you/git/canvas",
+    } satisfies PluginCatalogSearchEntry;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({
+              enabled: true,
+              plugins: [
+                makeInstalledPlugin({
+                  id: "canvas",
+                  name: "Canvas",
+                  description: "Edit .mdx files beside the chat.",
+                  source: "path:/Users/you/git/canvas",
+                  rootDir: "/Users/you/git/canvas",
+                  provenance: "direct",
+                }),
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({ results: [marketplaceCanvas], collections: [] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?q=canvas"]}>
+        <Routes>
+          <Route path="/plugins/*" element={<RoutedPluginsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open Canvas details" }),
+    );
+
+    await waitFor(() => {
+      expect(routeUrl()).toBe("/plugins/canvas?q=canvas&listing=bb-community");
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-plugin-summary]")?.textContent,
+      ).toBe("Draw diagrams on a shared tldraw canvas.");
+    });
+    expect(screen.getByText("Another plugin uses this ID")).toBeTruthy();
+    const installButtons = screen.getAllByRole("button", { name: /Install/u });
+    expect(installButtons).toHaveLength(2);
+    for (const button of installButtons) {
+      expect(button.getAttribute("aria-disabled")).toBe("true");
+    }
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "View installed plugin" }),
+    );
+    await waitFor(() => {
+      expect(routeUrl()).toBe("/plugins/canvas?q=canvas");
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-plugin-summary]")?.textContent,
+      ).toBe("Edit .mdx files beside the chat.");
+    });
+    expect(screen.getByText("Also published in BB Community")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "View listing" }));
+    await waitFor(() => {
+      expect(routeUrl()).toBe("/plugins/canvas?q=canvas&listing=bb-community");
+    });
+  });
+
   it("uses the installed catalog identity when plugin ids collide", async () => {
     const firstCatalogEntry = {
       ...GITHUB_CATALOG_ENTRY,
@@ -1120,7 +1231,7 @@ describe("BB Official plugin detail routing", () => {
             path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <PluginsView pluginId="github" />
+                <PluginsView detailKey="github" />
               </TooltipProvider>
             }
           />
@@ -1574,7 +1685,7 @@ describe("plugin removal confirmation", () => {
             path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <PluginsView pluginId="github" />
+                <PluginsView detailKey="github" />
               </TooltipProvider>
             }
           />
@@ -1634,7 +1745,14 @@ describe("PluginDetail banner precedence", () => {
 
   it("renders only current health and keeps diagnostics out of user copy", () => {
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginDetailBanners plugin={collision} />, { wrapper });
+    render(
+      <PluginDetailBanners
+        plugin={collision}
+        catalogEntries={[]}
+        onOpenPlugin={vi.fn()}
+      />,
+      { wrapper },
+    );
 
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(1);
@@ -1655,6 +1773,8 @@ describe("PluginDetail banner precedence", () => {
           ...managedPlugin,
           handlerStats: { ...managedPlugin.handlerStats, errorCount: 3 },
         }}
+        catalogEntries={[]}
+        onOpenPlugin={vi.fn()}
       />,
       { wrapper },
     );
@@ -1723,7 +1843,11 @@ describe("PluginDetail runtime health", () => {
     const result = render(
       <MemoryRouter>
         <QueryClientWrapper>
-          <PluginDetailBanners plugin={plugin} />
+          <PluginDetailBanners
+            plugin={plugin}
+            catalogEntries={[]}
+            onOpenPlugin={vi.fn()}
+          />
           <PluginDetail
             isLoading={false}
             plugin={plugin}

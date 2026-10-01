@@ -38,6 +38,11 @@ export function PluginCatalogInstallControl(
       : disabled
         ? (props.unavailableReason ?? "Unavailable for this version of BB.")
         : `Install ${displayName}`;
+  const stateIcon = installed
+    ? "Check"
+    : disabled
+      ? "AlertTriangle"
+      : "Download";
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -69,9 +74,10 @@ export function PluginCatalogInstallControl(
           >
             <span className="grid place-items-center" aria-hidden>
               <Icon
-                name="Download"
+                name={stateIcon}
                 className={cn(
                   "col-start-1 row-start-1 size-3.5",
+                  !installed && disabled && "text-warning-text",
                   installed &&
                     !disabled &&
                     "group-hover/install:opacity-0 group-focus-visible/install:opacity-0",

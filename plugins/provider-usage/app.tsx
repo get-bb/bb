@@ -196,164 +196,6 @@ function usageToneTextClass(usedPercent: number): string {
   return "text-sidebar-foreground";
 }
 
-function compactWindowLabel(label: string): string {
-  const [base, scope] = label.split(" · ");
-  const short = shortWindowLabel(base ?? label);
-  if (scope === undefined) return short;
-  return short === "7d" ? scope : `${scope} ${short}`;
-}
-
-function compactStatus(account: UsageProvider): {
-  label: string;
-  detail: string | undefined;
-} {
-  const usage = account.usage;
-  switch (usage?.status) {
-    case undefined:
-      return { label: "—", detail: "Usage not reported." };
-    case "ok":
-      return { label: "No limits", detail: undefined };
-    case "not_installed":
-      return { label: "Not installed", detail: undefined };
-    case "unauthenticated":
-      return { label: "Signed out", detail: account.signInHint };
-    case "expired":
-      return { label: "Expired", detail: account.expiredHint };
-    case "error":
-      return { label: "Error", detail: usage.message };
-  }
-}
-
-function CompactUsageCell({ window }: { window: UsageWindowValue }) {
-  const reset = formatUsageReset(window.resetsAt);
-  const used = Math.round(window.usedPercent);
-  const label = compactWindowLabel(window.label);
-  return (
-    <span
-      title={`${window.label} · ${used}% used · ${reset ?? "Reset time not reported"}`}
-      className="flex w-12 shrink-0 flex-col gap-0.5"
-    >
-      <span className="flex items-baseline justify-between gap-1 leading-none whitespace-nowrap">
-        <span className="min-w-0 truncate text-subtle-foreground">
-          <span className="sr-only">{window.label}: </span>
-          <span aria-hidden="true">{label}</span>
-        </span>
-        <span
-          className={cn("tabular-nums", usageToneTextClass(window.usedPercent))}
-        >
-          {used}%
-        </span>
-      </span>
-      <span className="h-0.5 overflow-hidden rounded-full bg-sidebar-border">
-        <span
-          className={
-            "block h-full rounded-full " +
-            usageBarColorClass(window.usedPercent)
-          }
-          style={{
-            width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
-          }}
-        />
-      </span>
-    </span>
-  );
-}
-
-const WINDOW_ORDER = ["7d", "5h", "1d"];
-
-function windowPriority(accounts: UsageProvider[]): (label: string) => number {
-  const counts = new Map<string, number>();
-  for (const account of accounts) {
-    if (account.usage?.status !== "ok") continue;
-    for (const window of account.usage.windows) {
-      const label = compactWindowLabel(window.label);
-      counts.set(label, (counts.get(label) ?? 0) + 1);
-    }
-  }
-  const labels = [...counts.keys()].sort((left, right) => {
-    const shared = (counts.get(right) ?? 0) - (counts.get(left) ?? 0);
-    if (shared !== 0) return shared;
-    const leftOrder = WINDOW_ORDER.indexOf(left);
-    const rightOrder = WINDOW_ORDER.indexOf(right);
-    return (
-      (leftOrder === -1 ? WINDOW_ORDER.length : leftOrder) -
-        (rightOrder === -1 ? WINDOW_ORDER.length : rightOrder) ||
-      left.localeCompare(right)
-    );
-  });
-  return (label) => labels.indexOf(label);
-}
-
-function CompactUsageTable({
-  accounts,
-  loading,
-}: {
-  accounts: UsageProvider[];
-  loading: boolean;
-}) {
-  const priority = windowPriority(accounts);
-  return (
-    <ul className="flex flex-col gap-0.5 text-2xs">
-      {accounts.map((account) => {
-        const name = account.accountLabel ?? account.displayName;
-        const usage = account.usage;
-        const plan =
-          usage?.status === "ok" && usage.planLabel !== null
-            ? ` · ${usage.planLabel}`
-            : "";
-        const windows =
-          usage?.status === "ok"
-            ? [...usage.windows].sort(
-                (left, right) =>
-                  priority(compactWindowLabel(left.label)) -
-                  priority(compactWindowLabel(right.label)),
-              )
-            : [];
-        const status = compactStatus(account);
-        return (
-          <li
-            key={account.id}
-            aria-label={`${account.displayName} ${name}`}
-            className="flex h-6 min-w-0 items-center gap-2"
-          >
-            <ProviderIcon
-              providerKind="agent"
-              provider={account}
-              fallback="Bot"
-              className="size-3.5 shrink-0"
-            />
-            <span
-              title={`${account.displayName} · ${name}${plan}`}
-              className="min-w-0 flex-1 truncate text-sidebar-foreground"
-            >
-              {name}
-            </span>
-            {usage === null && loading ? (
-              <Skeleton
-                aria-label={usageFeedbackMessages.loading}
-                className="h-2 w-16 shrink-0"
-              />
-            ) : windows.length === 0 ? (
-              <span
-                title={status.detail}
-                className="shrink-0 text-subtle-foreground"
-              >
-                {status.label}
-              </span>
-            ) : (
-              <span className="flex shrink-0 flex-row-reverse gap-1.5">
-                {windows.map((window) => (
-                  <CompactUsageCell key={window.label} window={window} />
-                ))}
-              </span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 type MessageNotice = {
   kind: "stale" | "empty";
   icon: "CloudOff" | "AlertTriangle" | "AlertCircle" | "Info";
@@ -420,6 +262,9 @@ function UsageNotice({
   );
 }
 
+const USAGE_GRID_CLASS_NAME =
+  "grid grid-cols-[max-content_minmax(0,1fr)_max-content_max-content] gap-x-3";
+
 function UsageWindow({ window }: { window: UsageWindowValue }) {
   const [showReset, setShowReset] = useState(false);
   const reset = formatUsageReset(window.resetsAt);
@@ -430,19 +275,18 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
       : formatUsdCents(window.cost.usedUsdCents, true) +
         " / " +
         formatUsdCents(window.cost.limitUsdCents, false);
-  const label = shortWindowLabel(window.label);
   return (
     <button
       type="button"
-      className="col-span-full grid grid-cols-subgrid rounded-sm py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      className="col-span-full grid grid-cols-subgrid rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       title={`${window.label} · ${reset ?? "Reset time not reported"}`}
       aria-label={`${window.label}: ${value}. ${reset ?? "Reset time not reported"}`}
       aria-expanded={showReset}
       onClick={() => setShowReset((shown) => !shown)}
     >
-      <span className="col-span-full grid grid-cols-subgrid items-center text-2xs">
+      <span className="col-span-full grid h-5 grid-cols-subgrid items-center text-2xs">
         <span className="max-w-20 truncate text-subtle-foreground">
-          {label}
+          {shortWindowLabel(window.label)}
         </span>
         <span className="h-1 min-w-0 overflow-hidden rounded-full bg-sidebar-border">
           <span
@@ -455,18 +299,23 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
             }}
           />
         </span>
-        <span className="text-right tabular-nums text-sidebar-foreground">
+        <span
+          className={cn(
+            "text-right tabular-nums",
+            usageToneTextClass(window.usedPercent),
+          )}
+        >
           {Math.round(window.usedPercent)}%
         </span>
         <span
           aria-hidden="true"
-          className="text-right tabular-nums text-subtle-foreground"
+          className="min-w-9 text-right tabular-nums text-subtle-foreground"
         >
           {countdown ?? "—"}
         </span>
       </span>
       {showReset ? (
-        <span className="col-span-full mt-1 text-2xs text-subtle-foreground">
+        <span className="col-span-full pb-1 text-2xs text-subtle-foreground">
           {reset ?? "Reset time not reported."}
           {window.cost === null ? "" : ` · ${value}`}
         </span>
@@ -475,41 +324,114 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
   );
 }
 
-function ProviderUsageBody({ provider }: { provider: UsageProvider }) {
-  const usage = provider.usage;
-  if (usage === null) {
-    return <p className="text-xs text-muted-foreground">Usage not reported.</p>;
-  }
-  switch (usage.status) {
+function accountStatusMessage(account: UsageProvider): string | null {
+  const usage = account.usage;
+  switch (usage?.status) {
+    case undefined:
+      return "Usage not reported.";
     case "ok":
-      return usage.windows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No usage limits reported for this plan.
-        </p>
-      ) : (
-        <div className="grid grid-cols-[max-content_minmax(0,1fr)_max-content_max-content] gap-x-3 gap-y-0.5">
-          {usage.windows.map((window) => (
-            <UsageWindow key={window.label} window={window} />
-          ))}
-        </div>
-      );
+      return usage.windows.length === 0
+        ? "No usage limits reported for this plan."
+        : null;
     case "not_installed":
-      return (
-        <p className="text-xs text-muted-foreground">
-          Not installed on this machine.
-        </p>
-      );
+      return "Not installed on this machine.";
     case "unauthenticated":
-      return (
-        <p className="text-xs text-muted-foreground">{provider.signInHint}</p>
-      );
+      return account.signInHint;
     case "expired":
-      return (
-        <p className="text-xs text-muted-foreground">{provider.expiredHint}</p>
-      );
+      return account.expiredHint;
     case "error":
-      return <p className="text-xs text-muted-foreground">{usage.message}</p>;
+      return usage.message;
   }
+}
+
+function AccountUsage({
+  account,
+  loading,
+  unavailable,
+  showProvider,
+}: {
+  account: UsageProvider;
+  loading: boolean;
+  unavailable: boolean;
+  showProvider: boolean;
+}) {
+  const usage = account.usage;
+  const email = usage?.status === "ok" ? usage.accountEmail : null;
+  const title = account.accountLabel ?? email ?? account.displayName;
+  const plan = usage?.status === "ok" ? usage.planLabel : null;
+  const message =
+    usage === null && loading
+      ? usageFeedbackMessages.loading
+      : usage === null && unavailable
+        ? usageFeedbackMessages.unavailable
+        : accountStatusMessage(account);
+  return (
+    <section
+      aria-label={showProvider ? `${account.displayName} ${title}` : title}
+      className="col-span-full grid grid-cols-subgrid"
+    >
+      <div className="col-span-full flex h-5 min-w-0 items-center gap-1.5">
+        {showProvider ? (
+          <ProviderIcon
+            providerKind="agent"
+            provider={account}
+            fallback="Bot"
+            className="size-3.5 shrink-0"
+          />
+        ) : null}
+        <h3
+          title={title}
+          className="min-w-0 flex-1 truncate text-xs text-sidebar-foreground"
+        >
+          {title}
+        </h3>
+        {plan === null ? null : (
+          <span className="shrink-0 rounded-sm bg-sidebar-border/60 px-1 py-0.5 text-2xs leading-none text-subtle-foreground">
+            {plan}
+          </span>
+        )}
+      </div>
+      {email !== null && email !== title ? (
+        <p
+          title={email}
+          className="col-span-full truncate text-2xs text-subtle-foreground"
+        >
+          {email}
+        </p>
+      ) : null}
+      {message !== null ? (
+        <p className="col-span-full text-2xs text-subtle-foreground">
+          {message}
+        </p>
+      ) : usage?.status === "ok" ? (
+        usage.windows.map((window) => (
+          <UsageWindow key={window.label} window={window} />
+        ))
+      ) : null}
+    </section>
+  );
+}
+
+function ProviderAccounts({
+  accounts,
+  loading,
+  unavailable,
+  showProvider,
+}: {
+  accounts: UsageProvider[];
+  loading: boolean;
+  unavailable: boolean;
+  showProvider: boolean;
+}) {
+  return accounts.map((account) => (
+    <AccountUsage
+      key={account.id}
+      account={account}
+      loading={loading}
+      unavailable={unavailable}
+      showProvider={showProvider}
+    />
+  ));
 }
 
 function MachineSelector({
@@ -660,6 +582,7 @@ export function ProviderUsageStatusContent({
     ? providers.flatMap((provider) => provider.accounts)
     : (activeProvider?.accounts ?? []);
   const hasActiveUsage = hasReportedUsage(activeAccounts);
+  const unavailable = activeMachine?.error != null || snapshot.error !== null;
   const notice: CardNotice | null =
     activeMachine === null
       ? snapshot.error !== null
@@ -965,64 +888,30 @@ export function ProviderUsageStatusContent({
         {notice?.kind === "empty" ? null : notice?.kind === "loading" ? (
           <UsageSkeleton rows={3} />
         ) : isAllTab ? (
-          <CompactUsageTable
-            accounts={activeAccounts}
-            loading={snapshot.isRefreshing}
-          />
+          <div className={cn(USAGE_GRID_CLASS_NAME, "gap-y-2.5")}>
+            {providers.map((provider) => (
+              <div
+                key={provider.id}
+                className="col-span-full grid grid-cols-subgrid gap-y-2 border-t border-sidebar-border pt-2.5 first:border-t-0 first:pt-0"
+              >
+                <ProviderAccounts
+                  accounts={provider.accounts}
+                  loading={snapshot.isRefreshing}
+                  unavailable={unavailable}
+                  showProvider
+                />
+              </div>
+            ))}
+          </div>
         ) : activeProvider === null ? null : (
-          <>
-            <div className="divide-y divide-sidebar-border">
-              {activeProvider.accounts.map((account) => (
-                <section
-                  key={account.id}
-                  aria-label={account.accountLabel ?? account.displayName}
-                  className="py-2 first:pt-0 last:pb-0"
-                >
-                  <div className="flex min-w-0 items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <h2
-                        title={account.accountLabel ?? account.displayName}
-                        className="truncate text-xs font-medium text-sidebar-foreground"
-                      >
-                        {account.accountLabel ?? account.displayName}
-                      </h2>
-                      {account.usage?.status === "ok" &&
-                      account.usage.accountEmail !== null &&
-                      account.usage.accountEmail !== account.accountLabel ? (
-                        <p
-                          title={account.usage.accountEmail}
-                          className="truncate text-2xs text-subtle-foreground"
-                        >
-                          {account.usage.accountEmail}
-                        </p>
-                      ) : null}
-                    </div>
-                    {account.usage?.status === "ok" &&
-                    account.usage.planLabel !== null ? (
-                      <span className="ml-auto shrink-0 rounded-sm bg-sidebar-border/60 px-1 py-0.5 text-2xs leading-none text-subtle-foreground">
-                        {account.usage.planLabel}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-1">
-                    {account.usage === null && snapshot.isRefreshing ? (
-                      <p className="text-xs text-muted-foreground">
-                        {usageFeedbackMessages.loading}
-                      </p>
-                    ) : account.usage === null &&
-                      (activeMachine?.error != null ||
-                        snapshot.error !== null) ? (
-                      <p className="text-xs text-muted-foreground">
-                        {usageFeedbackMessages.unavailable}
-                      </p>
-                    ) : (
-                      <ProviderUsageBody provider={account} />
-                    )}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </>
+          <div className={cn(USAGE_GRID_CLASS_NAME, "gap-y-2")}>
+            <ProviderAccounts
+              accounts={activeProvider.accounts}
+              loading={snapshot.isRefreshing}
+              unavailable={unavailable}
+              showProvider={false}
+            />
+          </div>
         )}
       </div>
     </div>

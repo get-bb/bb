@@ -602,7 +602,9 @@ version tags such as `v1` and `v1.2.3` are always the literal tag.
 
 `bb plugin search <query>` matches an id, name, description, category, or tag.
 It searches bb-official and each other registered marketplace. The output has a
-Category column. Status shows installed, compatible, or requires newer bb.
+Category column. Status shows installed, compatible, requires newer bb, or
+`id in use by <source>` when another installed plugin, such as a local `path:`
+checkout, already uses the entry's id.
 Install a bundled plugin by its bare name. Direct
 HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.

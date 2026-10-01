@@ -20,6 +20,7 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
 import { getPluginsRoutePath } from "@/lib/route-paths";
 import { PluginCardAuthorName } from "./PluginCard";
+import { catalogEntryDetailKey } from "./installed-plugin-catalog";
 import {
   CatalogEntryIconChip,
   formatUrlLabel,
@@ -316,7 +317,7 @@ export function PluginMoreFromAuthorSection({
             description={candidate.description || undefined}
             trailingVisual={<ResourceRowDetailChevron />}
             openLabel={`Open ${candidate.displayName} details`}
-            onOpen={() => onOpenPlugin(candidate.pluginId)}
+            onOpen={() => onOpenPlugin(catalogEntryDetailKey(candidate))}
           />
         ))}
       </ResourceListPanel>
