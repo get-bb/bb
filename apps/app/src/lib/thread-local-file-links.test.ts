@@ -5,9 +5,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("leaves app routes as normal navigation", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: true,
         link: {
           lineRange: null,
+          openTargetId: null,
           path: "/projects/proj_gyz9przugq/threads/thr_rq7r4uv8zg",
         },
         threadStorageRootPath: null,
@@ -21,9 +23,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("opens host file links when there is no ready local workspace", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: true,
         link: {
           lineRange: null,
+          openTargetId: null,
           path: "/Users/me/project/src/file.ts",
         },
         threadStorageRootPath: null,
@@ -41,9 +45,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("rejects file links when host-file context is unavailable", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: false,
         link: {
           lineRange: { startLineNumber: 12, endLineNumber: 14 },
+          openTargetId: null,
           path: "/Users/me/.ssh/id_rsa",
         },
         threadStorageRootPath: null,
@@ -59,9 +65,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("opens paths outside the workspace root as host files", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: true,
         link: {
           lineRange: { startLineNumber: 12, endLineNumber: 14 },
+          openTargetId: null,
           path: "/Users/me/.ssh/id_rsa",
         },
         threadStorageRootPath: null,
@@ -79,9 +87,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("normalizes paths before checking workspace containment", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: true,
         link: {
           lineRange: { startLineNumber: 12, endLineNumber: 14 },
+          openTargetId: null,
           path: "/Users/me/project/src/../src/file.ts",
         },
         threadStorageRootPath: null,
@@ -101,9 +111,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("rejects relative file links", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: true,
         link: {
           lineRange: { startLineNumber: 7, endLineNumber: 7 },
+          openTargetId: null,
           path: "apps/app/src/main.tsx",
         },
         threadStorageRootPath: null,
@@ -118,9 +130,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("does not mistake deeper filesystem paths for project routes", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: true,
         link: {
           lineRange: null,
+          openTargetId: null,
           path: "/projects/my-repo/src/file.ts",
         },
         threadStorageRootPath: null,
@@ -140,9 +154,11 @@ describe("resolveThreadLocalFileLink", () => {
   it("opens paths inside the known thread storage root as storage files", () => {
     expect(
       resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
         hostFileLinksAvailable: true,
         link: {
           lineRange: { startLineNumber: 4, endLineNumber: 6 },
+          openTargetId: null,
           path: "/Users/me/.bb/thread-storage/thr_one/reports/preview.html",
         },
         threadStorageRootPath: "/Users/me/.bb/thread-storage/thr_one",
@@ -155,6 +171,45 @@ describe("resolveThreadLocalFileLink", () => {
         path: "/Users/me/.bb/thread-storage/thr_one/reports/preview.html",
         relativePath: "reports/preview.html",
         threadStorageRootPath: "/Users/me/.bb/thread-storage/thr_one",
+      },
+    });
+  });
+
+  it("opens editor links in the editor they name when it is available", () => {
+    const link = {
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
+      openTargetId: "devin-desktop",
+      path: "/Users/me/project/src/../review.diff",
+    };
+    const args = {
+      hostFileLinksAvailable: true,
+      link,
+      threadStorageRootPath: null,
+      workspaceRootPath: "/Users/me/project",
+    };
+
+    expect(
+      resolveThreadLocalFileLink({
+        ...args,
+        fileOpenTargetIds: ["vscode", "devin-desktop"],
+      }),
+    ).toEqual({
+      kind: "open-in-target",
+      request: {
+        lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        path: "/Users/me/project/review.diff",
+        targetId: "devin-desktop",
+      },
+    });
+    expect(
+      resolveThreadLocalFileLink({ ...args, fileOpenTargetIds: ["vscode"] }),
+    ).toEqual({
+      kind: "open-workspace-path",
+      request: {
+        lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        path: "/Users/me/project/review.diff",
+        relativePath: "review.diff",
+        workspaceRootPath: "/Users/me/project",
       },
     });
   });

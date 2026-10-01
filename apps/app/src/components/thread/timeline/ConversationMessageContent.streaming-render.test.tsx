@@ -185,6 +185,7 @@ describe("assistant streaming Markdown rendering", () => {
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       path: "/workspace/My File.ts",
       lineRange: { startLineNumber: 12, endLineNumber: 12 },
+      openTargetId: null,
     });
     expect(
       screen.getByRole("link", { name: "Related thread" }).getAttribute("href"),

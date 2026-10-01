@@ -618,6 +618,7 @@ describe("ConversationMessageContent assistant directives", () => {
     );
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       lineRange: null,
+      openTargetId: null,
       path: "/workspace/project/charts/demo.html",
     });
   });

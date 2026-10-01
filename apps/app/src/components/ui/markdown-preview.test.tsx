@@ -580,57 +580,99 @@ describe("MarkdownPreview", () => {
     ).toBe(href);
   });
 
-  it("hands desktop app links to the native opener without rewriting them", () => {
-    const onOpenLink = vi.fn(() => false);
-    const href =
-      "devin://file/Users/me/.bb/artifacts/thr_1/cloudflare-iac-review.diff";
+  it("routes editor file links to the local file handler with their editor", () => {
+    const onOpenLink = vi.fn(() => true);
+    const onOpenLocalFileLink = vi.fn(() => true);
 
     render(
       <MarkdownPreview
-        content={`Open [review](${href}) or [cursor](Cursor://file/workspace/app.ts:12).`}
-        linkRouting={{ ...workspaceLinkRouting, onOpenLink }}
+        content="Open [review](devin://file/Users/me/.bb/artifacts/thr_1/review.diff) or [cursor](Cursor://file/workspace/My%20App.ts:12:3)."
+        linkRouting={{
+          localFile: {
+            absoluteLinks: { kind: "trusted-host" },
+            onOpenLink: onOpenLocalFileLink,
+          },
+          onOpenLink,
+        }}
       />,
     );
 
-    const link = screen.getByRole("link", { name: "review" });
-    expect(link.getAttribute("href")).toBe(href);
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(fireEvent.click(link)).toBe(true);
-    expect(onOpenLink).toHaveBeenCalledWith({ href });
-    expect(workspaceLinkRouting.localFile.onOpenLink).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole("link", { name: "cursor" }).getAttribute("href"),
-    ).toBe("cursor://file/workspace/app.ts:12");
+    const review = screen.getByRole("link", { name: "review" });
+    expect(review.getAttribute("href")).toBe(
+      "file:///Users/me/.bb/artifacts/thr_1/review.diff",
+    );
+    fireEvent.click(review);
+    fireEvent.click(screen.getByRole("link", { name: "cursor" }));
+
+    expect(onOpenLocalFileLink.mock.calls).toEqual([
+      [
+        {
+          lineRange: null,
+          openTargetId: "devin-desktop",
+          path: "/Users/me/.bb/artifacts/thr_1/review.diff",
+        },
+      ],
+      [
+        {
+          lineRange: { endLineNumber: 12, startLineNumber: 12 },
+          openTargetId: "cursor",
+          path: "/workspace/My App.ts",
+        },
+      ],
+    ]);
+    expect(onOpenLink).not.toHaveBeenCalled();
   });
 
-  it("keeps desktop app links through the sanitized HTML path", () => {
+  it("keeps editor file links through the sanitized HTML path", () => {
+    const onOpenLocalFileLink = vi.fn(() => true);
+
     const { container } = render(
       <MarkdownPreview
         allowHtml
         content={
-          'Press <kbd>Enter</kbd> for [review](DEVIN://file/tmp/review.diff) or <a href="vscode://file/tmp/a.ts">code</a>, not <a href="javascript:alert(1)">script</a> or <a href="devin://chat-plugin/install?source=https://example.invalid/plugin">install</a>.'
+          'Press <kbd>Enter</kbd> for [review](devin://file/tmp/review.diff) or <a href="vscode://file/tmp/a.ts">code</a>, not <a href="javascript:alert(1)">script</a> or <a href="devin://chat-plugin/install?source=https://example.invalid/plugin">install</a>.'
         }
+        linkRouting={{
+          localFile: {
+            absoluteLinks: { kind: "trusted-host" },
+            onOpenLink: onOpenLocalFileLink,
+          },
+        }}
       />,
     );
 
-    expect(
-      screen.getByRole("link", { name: "review" }).getAttribute("href"),
-    ).toBe("devin://file/tmp/review.diff");
-    expect(
-      screen.getByRole("link", { name: "code" }).getAttribute("href"),
-    ).toBe("vscode://file/tmp/a.ts");
+    fireEvent.click(screen.getByRole("link", { name: "review" }));
+    fireEvent.click(screen.getByRole("link", { name: "code" }));
+
     expect(container.querySelectorAll("a")).toHaveLength(2);
+    expect(onOpenLocalFileLink.mock.calls).toEqual([
+      [
+        {
+          lineRange: null,
+          openTargetId: "devin-desktop",
+          path: "/tmp/review.diff",
+        },
+      ],
+      [{ lineRange: null, openTargetId: "vscode", path: "/tmp/a.ts" }],
+    ]);
   });
 
   it("renders links with blocked protocols as inert text", () => {
     const onOpenLink = vi.fn(() => true);
+    const onOpenLocalFileLink = vi.fn(() => true);
 
     const { container } = render(
       <MarkdownPreview
         content={
-          "[script](javascript:alert(1)) [data](data:text/html,hi) [unknown](ms-msdt:/id) [install](devin://chat-plugin/install?source=https://example.invalid/plugin) [command](vscode://command/workbench.action.terminal.new) [query](vscode://file/tmp/a.ts?windowId=_blank) [workspace](vscode://file/tmp/a%2Ecode-workspace) [parent](vscode://file/tmp/..:1) [empty]()"
+          "[script](javascript:alert(1)) [data](data:text/html,hi) [unknown](ms-msdt:/id) [install](devin://chat-plugin/install?source=https://example.invalid/plugin) [command](vscode://command/workbench.action.terminal.new) [query](vscode://file/tmp/a.ts?windowId=_blank) [zed](zed://file/tmp/a.ts) [empty]()"
         }
-        linkRouting={{ ...workspaceLinkRouting, onOpenLink }}
+        linkRouting={{
+          localFile: {
+            absoluteLinks: { kind: "trusted-host" },
+            onOpenLink: onOpenLocalFileLink,
+          },
+          onOpenLink,
+        }}
       />,
     );
 
@@ -642,13 +684,13 @@ describe("MarkdownPreview", () => {
       "install",
       "command",
       "query",
-      "workspace",
-      "parent",
+      "zed",
       "empty",
     ]) {
       fireEvent.click(screen.getByText(name));
     }
     expect(onOpenLink).not.toHaveBeenCalled();
+    expect(onOpenLocalFileLink).not.toHaveBeenCalled();
   });
 
   it("rewrites localhost link hrefs without changing the visible text", () => {

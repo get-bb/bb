@@ -2057,6 +2057,18 @@ function ThreadDetailViewInternal(
         return true;
       }
 
+      if (resolution.kind === "open-in-target") {
+        void openPathInFileTarget({
+          lineNumber: getFilePreviewLineRangeStart({
+            lineRange: resolution.request.lineRange,
+          }),
+          path: resolution.request.path,
+          rememberTarget: false,
+          targetId: resolution.request.targetId,
+        });
+        return true;
+      }
+
       if (resolution.kind === "open-workspace-path") {
         openWorkspaceFile(
           {
@@ -2090,7 +2102,7 @@ function ThreadDetailViewInternal(
       );
       return true;
     },
-    [openHostFile, openStorageFile, openWorkspaceFile],
+    [openHostFile, openPathInFileTarget, openStorageFile, openWorkspaceFile],
   );
   const handleOpenTimelineLocalFileLink = useCallback(
     (
@@ -2099,6 +2111,7 @@ function ThreadDetailViewInternal(
     ) => {
       return handleTimelineLocalFileLinkResolution(
         resolveThreadLocalFileLink({
+          fileOpenTargetIds: fileOpenTargets.map((target) => target.id),
           hostFileLinksAvailable:
             thread?.environmentId !== null &&
             thread?.environmentId !== undefined,
@@ -2110,6 +2123,7 @@ function ThreadDetailViewInternal(
       );
     },
     [
+      fileOpenTargets,
       handleTimelineLocalFileLinkResolution,
       thread?.environmentId,
       threadStorageRootPath,

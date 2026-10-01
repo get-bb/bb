@@ -2,34 +2,12 @@ import { useMemo } from "react";
 import ReactMarkdown, { type Options } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import {
-  EDITOR_FILE_URL_SCHEMES,
-  resolveEditorFileUrl,
-} from "@bb/desktop-contract";
+import { EDITOR_FILE_URL_SCHEMES } from "./markdown-local-file-link.js";
 
 type MarkdownRehypePlugins = NonNullable<Options["rehypePlugins"]>;
 
-interface MarkdownHtmlNode {
-  children?: MarkdownHtmlNode[];
-  properties?: Record<string, unknown>;
-  tagName?: string;
-}
-
-function canonicalizeEditorFileLinks(node: MarkdownHtmlNode): void {
-  const href = node.properties?.href;
-  if (node.tagName === "a" && node.properties && typeof href === "string") {
-    node.properties.href = resolveEditorFileUrl(href) ?? href;
-  }
-  node.children?.forEach(canonicalizeEditorFileLinks);
-}
-
-function rehypeCanonicalEditorFileLinks() {
-  return canonicalizeEditorFileLinks;
-}
-
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
-  rehypeCanonicalEditorFileLinks,
   [
     rehypeSanitize,
     {

@@ -22,6 +22,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/app.ts",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/app.ts",
       lineRange: null,
     });
@@ -31,6 +32,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/app.ts:12",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/app.ts",
       lineRange: { startLineNumber: 12, endLineNumber: 12 },
     });
@@ -40,6 +42,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/app.ts#L12",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/app.ts",
       lineRange: { startLineNumber: 12, endLineNumber: 12 },
     });
@@ -49,6 +52,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/app.ts#L12-L15",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/app.ts",
       lineRange: { startLineNumber: 12, endLineNumber: 15 },
     });
@@ -58,6 +62,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/app.ts#L12C3-L15C8",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/app.ts",
       lineRange: { startLineNumber: 12, endLineNumber: 15 },
     });
@@ -67,6 +72,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/app.ts:12:34",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/app.ts",
       lineRange: { startLineNumber: 12, endLineNumber: 12 },
     });
@@ -76,6 +82,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/app.ts:12-15",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/app.ts",
       lineRange: { startLineNumber: 12, endLineNumber: 15 },
     });
@@ -85,6 +92,7 @@ describe("parseLocalFileHref", () => {
         href: "file:///workspace/src/file-url.ts#L4",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/src/file-url.ts",
       lineRange: { startLineNumber: 4, endLineNumber: 4 },
     });
@@ -94,9 +102,94 @@ describe("parseLocalFileHref", () => {
         href: "/work%20space/app.ts:3",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/work space/app.ts",
       lineRange: { startLineNumber: 3, endLineNumber: 3 },
     });
+  });
+
+  it("parses editor file URLs with the editor that should open them", () => {
+    expect(
+      [
+        "devin://file/Users/me/.bb/artifacts/thr_1/review.diff",
+        "windsurf://file/Users/me/app.ts:12",
+        "vscode://file/Users/me/My%20Notes.md:12:3",
+        "VSCODE-INSIDERS://file/Users/me/app.ts",
+        "cursor://file/Users/me/README",
+      ].map((href) =>
+        parseLocalFileHref({
+          absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+          href,
+        }),
+      ),
+    ).toEqual([
+      {
+        lineRange: null,
+        openTargetId: "devin-desktop",
+        path: "/Users/me/.bb/artifacts/thr_1/review.diff",
+      },
+      {
+        lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        openTargetId: "devin-desktop",
+        path: "/Users/me/app.ts",
+      },
+      {
+        lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        openTargetId: "vscode",
+        path: "/Users/me/My Notes.md",
+      },
+      {
+        lineRange: null,
+        openTargetId: "vscode-insiders",
+        path: "/Users/me/app.ts",
+      },
+      {
+        lineRange: null,
+        openTargetId: "cursor",
+        path: "/Users/me/README",
+      },
+    ]);
+  });
+
+  it("rejects editor URLs that are not plain file links", () => {
+    for (const href of [
+      "zed://file/Users/me/app.ts",
+      "vscode://command/workbench.action.terminal.new",
+      "vscode://vscode.git/clone?url=https://example.invalid/repo.git",
+      "devin://chat-plugin/install?source=https://example.invalid/plugin",
+      "vscode://file/Users/me/app.ts?windowId=_blank",
+      "devin://file/Users/me/app.ts#L1",
+      "devin://user@file/Users/me/app.ts",
+      "devin://file:8080/Users/me/app.ts",
+      "devin://file//server/share/app.ts",
+      "devin://file/Users/me/",
+    ]) {
+      expect(
+        parseLocalFileHref({
+          absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+          href,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("keeps editor file URLs inside the contained root", () => {
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: CONTAINED_WORKSPACE_ABSOLUTE_LINKS,
+        href: "vscode://file/workspace/src/../app.ts:4",
+      }),
+    ).toEqual({
+      lineRange: { startLineNumber: 4, endLineNumber: 4 },
+      openTargetId: "vscode",
+      path: "/workspace/app.ts",
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: CONTAINED_WORKSPACE_ABSOLUTE_LINKS,
+        href: "vscode://file/workspace/../etc/passwd",
+      }),
+    ).toBeNull();
   });
 
   it("applies the same containment policy to absolute paths and file URLs", () => {
@@ -106,6 +199,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/../README",
       }),
     ).toEqual({
+      openTargetId: null,
       lineRange: null,
       path: "/workspace/README",
     });
@@ -115,6 +209,7 @@ describe("parseLocalFileHref", () => {
         href: "file:///workspace/src/../README",
       }),
     ).toEqual({
+      openTargetId: null,
       lineRange: null,
       path: "/workspace/README",
     });
@@ -163,6 +258,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/app.ts#section",
       }),
     ).toEqual({
+      openTargetId: null,
       path: "/workspace/app.ts",
       lineRange: null,
     });
@@ -188,6 +284,7 @@ describe("buildLocalFileAnchorHref", () => {
         {
           path: "apps/app/main.tsx",
           lineRange: { startLineNumber: 4, endLineNumber: 4 },
+          openTargetId: null,
         },
         "apps/app/main.tsx:4",
       ),
@@ -197,19 +294,20 @@ describe("buildLocalFileAnchorHref", () => {
         {
           path: "/workspace/src/app.ts",
           lineRange: { startLineNumber: 12, endLineNumber: 12 },
+          openTargetId: null,
         },
         "/workspace/src/app.ts:12",
       ),
     ).toBe("file:///workspace/src/app.ts#L12");
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/README.md", lineRange: null },
+        { path: "/workspace/README.md", lineRange: null, openTargetId: null },
         "/workspace/README.md",
       ),
     ).toBe("file:///workspace/README.md");
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/README.md", lineRange: null },
+        { path: "/workspace/README.md", lineRange: null, openTargetId: null },
         "/workspace/README.md#intro",
       ),
     ).toBe("file:///workspace/README.md");
@@ -218,6 +316,7 @@ describe("buildLocalFileAnchorHref", () => {
         {
           path: "/work space/app.ts",
           lineRange: { startLineNumber: 3, endLineNumber: 3 },
+          openTargetId: null,
         },
         "/work space/app.ts:3",
       ),
@@ -227,6 +326,7 @@ describe("buildLocalFileAnchorHref", () => {
         {
           path: "/work space/app.ts",
           lineRange: { startLineNumber: 3, endLineNumber: 5 },
+          openTargetId: null,
         },
         "/work space/app.ts#L3-L5",
       ),
@@ -236,7 +336,11 @@ describe("buildLocalFileAnchorHref", () => {
   it("rewrites parsed extensionless file URLs consistently with click handling", () => {
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/no-extension", lineRange: null },
+        {
+          path: "/workspace/no-extension",
+          lineRange: null,
+          openTargetId: null,
+        },
         "file:///workspace/no-extension",
       ),
     ).toBe("file:///workspace/no-extension");

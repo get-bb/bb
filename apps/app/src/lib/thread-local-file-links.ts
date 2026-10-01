@@ -1,5 +1,6 @@
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
 import type { FilePreviewLineRange } from "@bb/client-core";
+import type { WorkspaceOpenTargetId } from "@bb/host-daemon-contract";
 import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
@@ -12,6 +13,7 @@ const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
   "Thread file links must use absolute file paths.";
 
 interface ResolveThreadLocalFileLinkArgs {
+  fileOpenTargetIds: readonly WorkspaceOpenTargetId[];
   hostFileLinksAvailable: boolean;
   link: ThreadTimelineLocalFileLink;
   threadStorageRootPath: string | null;
@@ -37,6 +39,12 @@ interface ThreadStorageFileLinkOpenRequest {
   threadStorageRootPath: string;
 }
 
+interface ThreadOpenTargetFileLinkOpenRequest {
+  lineRange: FilePreviewLineRange | null;
+  path: string;
+  targetId: WorkspaceOpenTargetId;
+}
+
 interface ThreadLocalFileLinkAppRouteResolution {
   kind: "app-route";
 }
@@ -54,6 +62,11 @@ interface ThreadWorkspaceFileLinkOpenResolution {
 interface ThreadHostFileLinkOpenResolution {
   kind: "open-host-path";
   request: ThreadHostFileLinkOpenRequest;
+}
+
+interface ThreadOpenTargetFileLinkOpenResolution {
+  kind: "open-in-target";
+  request: ThreadOpenTargetFileLinkOpenRequest;
 }
 
 interface ThreadStorageFileLinkOpenResolution {
@@ -77,6 +90,7 @@ export type ThreadLocalFileLinkResolution =
   | ThreadLocalFileLinkErrorResolution
   | ThreadWorkspaceFileLinkOpenResolution
   | ThreadHostFileLinkOpenResolution
+  | ThreadOpenTargetFileLinkOpenResolution
   | ThreadStorageFileLinkOpenResolution;
 
 function normalizeLocalFilePathWithinRoot(
@@ -128,6 +142,18 @@ export function resolveThreadLocalFileLink(
     return {
       description: THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION,
       kind: "error",
+    };
+  }
+
+  const openTargetId = args.link.openTargetId;
+  if (openTargetId !== null && args.fileOpenTargetIds.includes(openTargetId)) {
+    return {
+      kind: "open-in-target",
+      request: {
+        lineRange: args.link.lineRange,
+        path: normalizedPath,
+        targetId: openTargetId,
+      },
     };
   }
 
