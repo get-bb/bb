@@ -299,6 +299,9 @@ function runTrackedOperation(args: {
 }
 
 const REMOVE_RETRY_MS = 60_000;
+const PROVIDER_OWNER_MISMATCH_MESSAGE =
+  "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.";
+const PROVIDER_LIFECYCLE_SWEEP_YIELD_INTERVAL = 25;
 
 const RETIRED_CREATE_CONTEXT_FIELDS = { rebuild: false, previous: null };
 
@@ -826,12 +829,10 @@ async function sweepProviderEnvironmentInSlot(
     return;
   }
   if (record.pluginId !== row.environmentProviderPluginId) {
-    const teardownMessage =
-      "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.";
-    if (row.teardownMessage !== teardownMessage)
+    if (row.teardownMessage !== PROVIDER_OWNER_MISMATCH_MESSAGE)
       writeEnvironment(deps, environmentId, {
         teardownStatus: "failed",
-        teardownMessage,
+        teardownMessage: PROVIDER_OWNER_MISMATCH_MESSAGE,
       });
     return;
   }
@@ -903,6 +904,22 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   return true;
 }
 
+function isBlockedOnProviderOwnerMismatch(
+  row: EnvironmentRow,
+  record: PluginEnvironmentProviderRecord,
+): boolean {
+  return (
+    row.ownerThreadId === null &&
+    row.teardownStatus === "failed" &&
+    row.teardownMessage === PROVIDER_OWNER_MISMATCH_MESSAGE &&
+    row.environmentProviderPluginId !== record.pluginId
+  );
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
   const pending: Promise<void>[] = [];
   for (const record of listEnvironmentProviders()) {
@@ -910,6 +927,7 @@ export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
       deps.db,
       record.provider.id,
     )) {
+      if (isBlockedOnProviderOwnerMismatch(row, record)) continue;
       pending.push(
         sweepProviderEnvironment(deps, row.id).catch((error) => {
           deps.logger.warn(
@@ -918,7 +936,10 @@ export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
           );
         }),
       );
+      if (pending.length % PROVIDER_LIFECYCLE_SWEEP_YIELD_INTERVAL === 0)
+        await yieldToEventLoop();
     }
+    await yieldToEventLoop();
   }
   await Promise.all(pending);
   releaseFinishedEnvironmentPreparationOwners(deps.db);
