@@ -45,6 +45,7 @@ import {
   type RehypeKatex,
 } from "./markdown-katex-loader.js";
 import { CopyButton } from "./copy-button.js";
+import { resolveEditorFileUrl } from "@bb/desktop-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { RouteAnchor } from "./app-route-anchor.js";
 import {
@@ -505,6 +506,11 @@ function resolveMarkdownLocalFileTarget(
       };
 }
 
+const markdownUrlTransform: UrlTransform = (value, key, node) =>
+  (key === "href" && node.tagName === "a"
+    ? resolveEditorFileUrl(value)
+    : null) ?? defaultUrlTransform(value);
+
 function buildLocalAwareUrlTransform({
   fallbackUrlTransform,
   localFileRouting,
@@ -539,7 +545,7 @@ function buildLocalAwareUrlTransform({
       }
     }
 
-    return (fallbackUrlTransform ?? defaultUrlTransform)(value, key, node);
+    return (fallbackUrlTransform ?? markdownUrlTransform)(value, key, node);
   };
 }
 
@@ -649,6 +655,9 @@ function MarkdownAnchor({
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
   const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
+  if (!anchorHref) {
+    return <span>{children}</span>;
+  }
   const contextMenuItems =
     localFileLink !== null && getContextMenuItems !== null
       ? getContextMenuItems(localFileLink)
@@ -1827,7 +1836,7 @@ function MarkdownPreviewComponent({
             localFileRouting,
             localImageRouting,
           })
-        : urlTransform,
+        : (urlTransform ?? markdownUrlTransform),
     [localFileRouting, localImageRouting, urlTransform],
   );
 

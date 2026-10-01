@@ -1,4 +1,5 @@
 import type { BrowserWindowConstructorOptions } from "electron";
+import { resolveDesktopExternalUrl } from "@bb/desktop-contract";
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -260,7 +261,10 @@ export function createDesktopWindowFactory(
         }
       });
       browserWindow.webContents.setWindowOpenHandler((details) => {
-        args.openExternalUrl({ url: details.url });
+        const url = resolveDesktopExternalUrl(details.url);
+        if (url !== null) {
+          args.openExternalUrl({ url });
+        }
         return { action: "deny" };
       });
 

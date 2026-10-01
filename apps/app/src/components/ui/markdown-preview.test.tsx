@@ -580,6 +580,77 @@ describe("MarkdownPreview", () => {
     ).toBe(href);
   });
 
+  it("hands desktop app links to the native opener without rewriting them", () => {
+    const onOpenLink = vi.fn(() => false);
+    const href =
+      "devin://file/Users/me/.bb/artifacts/thr_1/cloudflare-iac-review.diff";
+
+    render(
+      <MarkdownPreview
+        content={`Open [review](${href}) or [cursor](Cursor://file/workspace/app.ts:12).`}
+        linkRouting={{ ...workspaceLinkRouting, onOpenLink }}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "review" });
+    expect(link.getAttribute("href")).toBe(href);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(fireEvent.click(link)).toBe(true);
+    expect(onOpenLink).toHaveBeenCalledWith({ href });
+    expect(workspaceLinkRouting.localFile.onOpenLink).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("link", { name: "cursor" }).getAttribute("href"),
+    ).toBe("cursor://file/workspace/app.ts:12");
+  });
+
+  it("keeps desktop app links through the sanitized HTML path", () => {
+    const { container } = render(
+      <MarkdownPreview
+        allowHtml
+        content={
+          'Press <kbd>Enter</kbd> for [review](DEVIN://file/tmp/review.diff) or <a href="vscode://file/tmp/a.ts">code</a>, not <a href="javascript:alert(1)">script</a> or <a href="devin://chat-plugin/install?source=https://example.invalid/plugin">install</a>.'
+        }
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "review" }).getAttribute("href"),
+    ).toBe("devin://file/tmp/review.diff");
+    expect(
+      screen.getByRole("link", { name: "code" }).getAttribute("href"),
+    ).toBe("vscode://file/tmp/a.ts");
+    expect(container.querySelectorAll("a")).toHaveLength(2);
+  });
+
+  it("renders links with blocked protocols as inert text", () => {
+    const onOpenLink = vi.fn(() => true);
+
+    const { container } = render(
+      <MarkdownPreview
+        content={
+          "[script](javascript:alert(1)) [data](data:text/html,hi) [unknown](ms-msdt:/id) [install](devin://chat-plugin/install?source=https://example.invalid/plugin) [command](vscode://command/workbench.action.terminal.new) [query](vscode://file/tmp/a.ts?windowId=_blank) [workspace](vscode://file/tmp/a%2Ecode-workspace) [parent](vscode://file/tmp/..:1) [empty]()"
+        }
+        linkRouting={{ ...workspaceLinkRouting, onOpenLink }}
+      />,
+    );
+
+    expect(container.querySelectorAll("a")).toHaveLength(0);
+    for (const name of [
+      "script",
+      "data",
+      "unknown",
+      "install",
+      "command",
+      "query",
+      "workspace",
+      "parent",
+      "empty",
+    ]) {
+      fireEvent.click(screen.getByText(name));
+    }
+    expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
   it("rewrites localhost link hrefs without changing the visible text", () => {
     const displayedText = "http://127.0.0.1:5173";
 

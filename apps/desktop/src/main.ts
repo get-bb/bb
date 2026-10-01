@@ -196,7 +196,6 @@ import {
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
-  BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
   BB_DESKTOP_ZOOM_COMMAND_CHANNEL,
 } from "./desktop-update-ipc.js";
@@ -220,6 +219,10 @@ import {
 import { removeLegacyAutomationPartitions } from "./desktop-browser-legacy-partitions.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
+import {
+  openDesktopExternalUrl,
+  registerDesktopExternalUrlIpc,
+} from "./desktop-external-url.js";
 import {
   createDesktopFindViewManager,
   type DesktopFindViewManager,
@@ -2355,24 +2358,7 @@ function registerDesktopUpdateIpc(): void {
       resolveApplicationWindow(event.sender)?.close();
     }
   });
-  ipcMain.on(
-    BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
-    (_event, payload: unknown) => {
-      if (typeof payload !== "string") {
-        return;
-      }
-      let parsed: URL;
-      try {
-        parsed = new URL(payload);
-      } catch {
-        return;
-      }
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        return;
-      }
-      void shell.openExternal(parsed.toString());
-    },
-  );
+  registerDesktopExternalUrlIpc((url) => shell.openExternal(url));
 }
 
 interface DesktopBrowserWindowLifecycleArgs {
@@ -3159,7 +3145,9 @@ async function runDesktopApp(): Promise<void> {
       return quitting;
     },
     openExternalUrl(openArgs) {
-      void shell.openExternal(openArgs.url);
+      void openDesktopExternalUrl(openArgs.url, (url) =>
+        shell.openExternal(url),
+      );
     },
     preloadPath,
     userDataPath,

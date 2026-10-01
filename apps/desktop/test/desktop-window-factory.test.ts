@@ -356,7 +356,7 @@ describe("desktop window factory", () => {
     expect(new Set(stateKeys).size).toBe(2);
   });
 
-  it("opens renderer blank-target links externally and denies the popup", async () => {
+  it("opens only policy-approved blank-target links externally and denies every popup", async () => {
     const tempDir = await createTempDir();
     const createdWindows: FakeDesktopWindow[] = [];
     const openedExternalUrls: string[] = [];
@@ -407,11 +407,28 @@ describe("desktop window factory", () => {
       throw new Error("Expected window open handler");
     }
 
-    const result = handler({ url: "https://example.com/from-markdown" });
+    const results = [
+      "https://example.com/from-markdown",
+      "devin://file/Users/me/.bb/artifacts/thr_1/review.diff",
+      "javascript:alert(1)",
+      "data:text/html,hi",
+      "file:///Applications/Calculator.app",
+      "ms-msdt:/id",
+      "devin://chat-plugin/install?source=https://example.invalid/plugin",
+      "vscode://command/workbench.action.terminal.new",
+      "devin://file/%2Fserver/share/a.diff",
+      "http://127.0.0.1:38886/threads/thr_1",
+    ].map((url) => handler({ url }));
 
     expect(createdWindows).toHaveLength(1);
-    expect(openedExternalUrls).toEqual(["https://example.com/from-markdown"]);
-    expect(result).toEqual({ action: "deny" });
+    expect(openedExternalUrls).toEqual([
+      "https://example.com/from-markdown",
+      "devin://file/Users/me/.bb/artifacts/thr_1/review.diff",
+      "http://127.0.0.1:38886/threads/thr_1",
+    ]);
+    expect(new Set(results.map((result) => result.action))).toEqual(
+      new Set(["deny"]),
+    );
   });
 
   it.each([
