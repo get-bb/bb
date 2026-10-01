@@ -48,8 +48,8 @@ binary="${install_dir}/bin/pnpm"
 
 url="https://github.com/pnpm/pnpm/releases/download/v${version}/${asset}"
 curl --fail --silent --show-error --location \
-  --retry 2 --retry-all-errors --retry-delay 2 --retry-max-time 120 \
-  --connect-timeout 10 --max-time 60 \
+  --retry 2 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+  --connect-timeout 10 --speed-limit 102400 --speed-time 30 --max-time 300 \
   --output "${binary}" "${url}"
 
 if command -v sha256sum >/dev/null 2>&1; then
