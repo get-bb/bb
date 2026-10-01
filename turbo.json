@@ -54,6 +54,17 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    "@bb/demo-server#test": {
+      "dependsOn": ["@bb/demo-server#build", "topo"]
+    },
+    "@bb/demo-server#build": {
+      "dependsOn": [
+        "@bb/app#build",
+        "bb-plugin-navigation#prepare:bundled",
+        "bb-plugin-thread-list#prepare:bundled"
+      ],
+      "outputs": ["dist/**"]
+    },
     "@bb/app#build": {
       "env": [
         "NODE_OPTIONS",

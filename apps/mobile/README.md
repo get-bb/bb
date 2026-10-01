@@ -598,9 +598,10 @@ group, App Store Connect needs all of this:
   path works for a reviewer: a bb server's API is unauthenticated and runs
   commands, so it cannot be on the internet, and connect pairing codes are
   single-use and expire in ten minutes. Give them the **demo server** instead:
-  `apps/demo-server` is a Cloudflare Worker that answers the launch-path API
-  from fixed data, runs nothing, and isolates each client address. Deploy it
-  with `pnpm --filter @bb/demo-server deploy`, and rehearse the review notes
+  `apps/demo-server` is a Cloudflare Worker that serves the web app shell, sidebar plugin frontends, and API
+  from fixed data, runs nothing, and isolates each client address. Build it
+  with `pnpm exec turbo run build --filter=@bb/demo-server`, then deploy it
+  with `pnpm --filter @bb/demo-server exec wrangler deploy`, and rehearse the review notes
   below before every submission. Disclose it in the notes: a disclosed demo
   mode is sanctioned by guideline 2.1.
 
@@ -614,13 +615,19 @@ you. It serves sample conversations and scripted replies; it does not run a
 real coding agent.
 
 1. Open the app. It shows "Connect to a bb server".
-2. Under "Direct URL", in "Server URL", enter: https://<DEMO-HOST>
+2. In "Server URL", enter: https://bb-demo-server.sawyer-7bb.workers.dev
 3. Tap "Connect".
 4. The app shows a list of conversations. Open any of them to read it.
-5. Type a message and send it. The agent replies after a moment.
+5. Browse the sample conversations. No credentials or pairing code are needed.
 
 Write to <EMAIL> if the server does not respond.
 ```
+
+The same demo URL and connection steps apply to Google Play app access
+instructions. No sign-in or pairing code is needed. See
+[the demo server README](../demo-server/README.md) for build, local verification,
+and deployment steps. Verify the deployed shell with the actual store build
+before submitting either platform.
 
 Rehearse it before submitting: hand a colleague a phone that has never run bb,
 give them only these notes, and check that they reach a thread.
