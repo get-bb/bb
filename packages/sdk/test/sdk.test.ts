@@ -1829,6 +1829,7 @@ describe("@bb/sdk", () => {
               official: false,
               author: { name: "Acme", url: null },
               installed: true,
+              conflictingInstallSource: null,
               compatible: true,
               incompatibleReason: null,
             },

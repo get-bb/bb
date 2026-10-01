@@ -137,6 +137,7 @@ describe("plugin catalog queries", () => {
             author: { name: "Acme", url: "https://acme.dev" },
             overview: "# Todoist\n\nLong-form text.\n",
             installed: false,
+            conflictingInstallSource: null,
             compatible: false,
             incompatibleReason: "requires bb >= 0.15",
           },
