@@ -233,6 +233,9 @@ On the selected New tab page, `panel.previousNewTabItem` /
 move through search, enabled actions, and recent items in displayed order.
 Search results replace actions and recents while searching. Enter activates
 the focused item.
+The initially unassigned `panel.fullScreen.toggle` command runs the right
+panel's Full Screen / Exit Full Screen control while the panel is open. In a
+split right panel it maximizes the focused group.
 Chat splits use `pane.focus.left` / `right` / `up` / `down` with
 `Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
 spatially to the adjacent chat pane, including stacked splits, and stop at the

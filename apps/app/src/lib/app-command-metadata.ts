@@ -143,6 +143,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Show or hide the secondary panel.",
       ),
       command(
+        "panel.fullScreen.toggle",
+        "Toggle panel full screen",
+        "Expand the right panel over the conversation, or restore the conversation.",
+      ),
+      command(
         "pane.focus.left",
         "Focus chat pane left",
         "Focus the chat pane to the left of the current pane.",

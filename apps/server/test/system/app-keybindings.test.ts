@@ -195,7 +195,11 @@ describe("app keybindings", () => {
       );
       expect(config.keybindingOverrides).toEqual([]);
       expect(assignedDefaultKeybindings).toEqual(config.keybindings);
-      for (const command of ["thread.rename", "thread.archive"] as const) {
+      for (const command of [
+        "thread.rename",
+        "thread.archive",
+        "panel.fullScreen.toggle",
+      ] as const) {
         expect(
           config.defaultKeybindings.find(
             (binding) => binding.command === command,

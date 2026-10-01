@@ -8,10 +8,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AppKeybindings } from "@bb/domain";
 import {
   AppCommandProvider,
   useAppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
+import { browserPlatform, presentAppShortcut } from "@/lib/app-keybindings";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -35,10 +37,22 @@ import {
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 
+const commandBindings = vi.hoisted(() => ({
+  keybindings: [] as AppKeybindings,
+}));
+
+vi.mock("@/hooks/usePluginCommandBindings", () => ({
+  usePluginCommandBindings: () => ({
+    keybindings: commandBindings.keybindings,
+    defaults: commandBindings.keybindings,
+  }),
+}));
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  commandBindings.keybindings = [];
 });
 
 const noop = () => {};
@@ -1019,6 +1033,94 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(
       document.querySelector('[data-split-pane-id][data-maximized="true"]'),
     ).toBeNull();
+  });
+});
+
+const FULL_SCREEN_SHORTCUT = {
+  key: "f",
+  mod: true,
+  meta: false,
+  control: false,
+  alt: false,
+  shift: true,
+};
+
+function bindFullScreenCommand() {
+  commandBindings.keybindings = [
+    {
+      command: "panel.fullScreen.toggle",
+      desktopOnly: false,
+      shortcut: FULL_SCREEN_SHORTCUT,
+      when: { all: ["mainSurface"], none: ["modalOpen"] },
+    },
+  ];
+  return presentAppShortcut(FULL_SCREEN_SHORTCUT, browserPlatform());
+}
+
+function renderPanelWithCommands(args: {
+  showFullScreenShortcut: boolean;
+  splitPanelStateId?: string;
+}) {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
+  return render(
+    <Wrapper>
+      <AppCommandProvider>
+        <SidebarProvider>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <ThreadSecondaryPanel
+                activeTab={infoFixedTab}
+                canUseGitUi={false}
+                fixedTabs={infoFixedTabs}
+                tabs={[]}
+                isConversationCollapsed={false}
+                isOpen
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onTabReorder={noop}
+                onOpenNewTab={noop}
+                onPanelFocus={noop}
+                onToggleConversationCollapse={noop}
+                renderAsDrawer={false}
+                {...args}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </SidebarProvider>
+      </AppCommandProvider>
+    </Wrapper>,
+  );
+}
+
+describe("ThreadSecondaryPanel full-screen shortcut", () => {
+  it.each([
+    ["Full Screen", undefined],
+    ["Maximize pane", "full-screen-shortcut-split"],
+  ])(
+    "advertises the bound command on the %s control",
+    (label, splitPanelStateId) => {
+      const shortcut = bindFullScreenCommand();
+      renderPanelWithCommands({
+        showFullScreenShortcut: true,
+        splitPanelStateId,
+      });
+
+      const control = screen.getByRole("button", {
+        name: `${label} (${shortcut.label})`,
+      });
+      expect(control.getAttribute("aria-keyshortcuts")).toBe(
+        shortcut.ariaKeyshortcuts,
+      );
+    },
+  );
+
+  it("keeps the shortcut off hosts that do not handle the command", () => {
+    bindFullScreenCommand();
+    renderPanelWithCommands({ showFullScreenShortcut: false });
+
+    const control = screen.getByRole("button", { name: "Full Screen" });
+    expect(control.getAttribute("aria-keyshortcuts")).toBeNull();
   });
 });
 
