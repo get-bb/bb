@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
@@ -22,7 +22,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function status(overrides: Partial<ConnectStatus> = {}): ConnectStatus {
   return {
@@ -145,10 +148,12 @@ describe("connect settings section", () => {
       },
     );
 
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Sign in to your bb account" }),
-    );
-    await slot.findByText("K7QP-2M4X");
+    const signIn = await slot.findByRole("button", {
+      name: "Sign in to your bb account",
+    });
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(signIn));
+    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
     expect(account.calls[0]).toEqual({
       pluginId: "bb-account",
       method: "login.start",
@@ -160,16 +165,16 @@ describe("connect settings section", () => {
     expect(link.href).toBe("https://getbb.app/link?code=K7QP-2M4X");
     expect(link.target).toBe("_blank");
 
-    await waitFor(
-      () =>
-        expect(
-          account.calls.filter((call) => call.method === "login.poll"),
-        ).toHaveLength(2),
-      { timeout: 6_000 },
-    );
+    await act(async () => vi.advanceTimersByTimeAsync(1_999));
+    expect(polls).toBe(0);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(polls).toBe(1);
+    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    expect(polls).toBe(2);
     currentStatus = connected();
     await slot.emitRealtime(CONNECT_REALTIME_CHANNEL, currentStatus);
-    await slot.findByText("Connected");
+    expect(slot.getByText("Connected")).toBeTruthy();
   });
 
   it("backs off the sign-in poll while bb account can't be reached", async () => {
@@ -192,14 +197,20 @@ describe("connect settings section", () => {
         rpc: { status: () => status() },
       },
     );
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Sign in to your bb account" }),
-    );
-    await slot.findByText("K7QP-2M4X");
-    await waitFor(() => expect(polls()).toBe(1), { timeout: 4_000 });
-
-    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const signIn = await slot.findByRole("button", {
+      name: "Sign in to your bb account",
+    });
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(signIn));
+    expect(slot.getByText("K7QP-2M4X")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(1_999));
+    expect(polls()).toBe(0);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(polls()).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(3_999));
+    expect(polls()).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(polls()).toBe(2);
   });
 
   it("explains when the bb account plugin is off", async () => {
@@ -643,19 +654,25 @@ describe("connect settings section", () => {
       },
     );
 
-    await slot.findByRole("button", { name: "Add mobile device" });
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Add mobile device" }),
-    );
-    await slot.findByText("AAAA-1111");
-
-    await slot.findByText("Code expired", undefined, { timeout: 4_000 });
+    const addMobileDevice = await slot.findByRole("button", {
+      name: "Add mobile device",
+    });
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(addMobileDevice));
+    expect(slot.getByText("AAAA-1111")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(slot.queryByText("Code expired")).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(slot.getByText("Code expired")).toBeTruthy();
     expect(
       slot.queryByRole("button", { name: "Copy pairing code" }),
     ).toBeNull();
-    fireEvent.click(slot.getByRole("button", { name: "Generate a new code" }));
-
-    await slot.findByText("BBBB-2222");
+    await act(async () => {
+      fireEvent.click(
+        slot.getByRole("button", { name: "Generate a new code" }),
+      );
+    });
+    expect(slot.getByText("BBBB-2222")).toBeTruthy();
     expect(slot.queryByText("AAAA-1111")).toBeNull();
     slot.getByText(/Code expires in/);
   });

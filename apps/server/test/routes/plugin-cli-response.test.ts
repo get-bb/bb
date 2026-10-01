@@ -1,5 +1,5 @@
 import type { PluginCliExecutionResult } from "@get-bb/plugin-sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pluginCliResponse } from "../../src/routes/plugins.js";
 
 const RESULT: PluginCliExecutionResult = {
@@ -19,6 +19,8 @@ function deferred<T>() {
 }
 
 describe("pluginCliResponse", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
   it("answers a command that finishes quickly with a plain JSON body", async () => {
     const response = await pluginCliResponse(Promise.resolve(RESULT), 50);
 
@@ -29,17 +31,23 @@ describe("pluginCliResponse", () => {
 
   it("sends headers and keepalive bytes before a slow command settles", async () => {
     const pending = deferred<PluginCliExecutionResult>();
-    const response = await pluginCliResponse(pending.promise, 5);
+    const responsePromise = pluginCliResponse(pending.promise, 5);
+    await vi.advanceTimersByTimeAsync(5);
+    const response = await responsePromise;
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-transform");
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toBe("\n");
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await vi.advanceTimersByTimeAsync(5);
+    const keepalive = await reader.read();
+    expect(new TextDecoder().decode(keepalive.value)).toBe("\n");
     pending.resolve(RESULT);
 
-    let text = new TextDecoder().decode(first.value);
+    let text =
+      new TextDecoder().decode(first.value) +
+      new TextDecoder().decode(keepalive.value);
     for (;;) {
       const chunk = await reader.read();
       if (chunk.done) break;
@@ -52,7 +60,9 @@ describe("pluginCliResponse", () => {
 
   it("reports a command that rejects after streaming began as a failed exit", async () => {
     const pending = deferred<PluginCliExecutionResult>();
-    const response = await pluginCliResponse(pending.promise, 5);
+    const responsePromise = pluginCliResponse(pending.promise, 5);
+    await vi.advanceTimersByTimeAsync(5);
+    const response = await responsePromise;
     pending.reject(new Error("plugin stopped"));
 
     expect(await response.json()).toEqual({
@@ -64,10 +74,17 @@ describe("pluginCliResponse", () => {
 
   it("stops writing once the client goes away", async () => {
     const pending = deferred<PluginCliExecutionResult>();
-    const response = await pluginCliResponse(pending.promise, 5);
-    await response.body!.cancel();
+    const responsePromise = pluginCliResponse(pending.promise, 5);
+    await vi.advanceTimersByTimeAsync(5);
+    const response = await responsePromise;
+    const reader = response.body!.getReader();
+    expect((await reader.read()).done).toBe(false);
+    await reader.cancel();
+    expect(vi.getTimerCount()).toBe(0);
 
     pending.resolve(RESULT);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(await reader.read()).toEqual({ done: true, value: undefined });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

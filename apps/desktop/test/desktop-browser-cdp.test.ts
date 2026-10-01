@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { z } from "zod";
 import {
@@ -25,6 +25,7 @@ function deferred() {
 }
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   for (const dispose of disposers.splice(0).reverse()) await dispose();
 });
 
@@ -730,9 +731,39 @@ describe("thread-scoped browser CDP", () => {
     expect(() => bridge.grant(scopeA, Date.now() + 3_700_000)).toThrow(
       "expire",
     );
-    const client = await connect(
-      bridge.grant(scopeA, Date.now() + 150).endpoint,
+    const setTimeoutReal = globalThis.setTimeout;
+    const deadlines: Array<{ delay: number | undefined; expire(): void }> = [];
+    vi.stubGlobal(
+      "setTimeout",
+      vi
+        .fn<typeof setTimeout>()
+        .mockImplementation((callback, delay, ...args) => {
+          const timer = setTimeoutReal(callback, 60_000, ...args);
+          deadlines.push({
+            delay,
+            expire() {
+              clearTimeout(timer);
+              callback(...args);
+            },
+          });
+          return timer;
+        }),
     );
-    await once(client.socket, "close");
+    const expiresAt = Date.now() + 60_000;
+    const beforeGrant = Date.now();
+    const grant = bridge.grant(scopeA, expiresAt);
+    const afterGrant = Date.now();
+    vi.unstubAllGlobals();
+    expect(deadlines).toHaveLength(1);
+    const deadline = deadlines[0];
+    if (deadline === undefined)
+      throw new Error("Grant did not schedule expiry");
+    expect(deadline.delay).toBeGreaterThanOrEqual(expiresAt - afterGrant);
+    expect(deadline.delay).toBeLessThanOrEqual(expiresAt - beforeGrant);
+    const client = await connect(grant.endpoint);
+    const closed = once(client.socket, "close");
+    deadline.expire();
+    await closed;
+    expect(await rejectedConnection(grant.endpoint)).toBeInstanceOf(Error);
   });
 });
