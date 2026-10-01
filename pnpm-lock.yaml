@@ -1153,9 +1153,6 @@ importers:
       hono:
         specifier: ^4.7.0
         version: 4.11.9
-      jiti:
-        specifier: ^2.6.1
-        version: 2.7.0
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
@@ -1520,9 +1517,6 @@ importers:
       hono:
         specifier: ^4.7.0
         version: 4.11.9
-      jiti:
-        specifier: ^2.6.1
-        version: 2.7.0
       node-pty:
         specifier: 1.2.0-beta.15
         version: 1.2.0-beta.15
@@ -6995,7 +6989,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {'0': node >=0.10.0}
+    engines: {node: '>=0.10.0'}
 
   '@expo/cli@57.0.16':
     resolution: {integrity: sha512-+HyMY2nAS6QBJb0nSeMz92p11bZ1AtWSRnhWnklznN07IRoQirisnKq2vr18Ayjb/fnb5F/um+n6FRhF0fZm1Q==}

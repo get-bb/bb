@@ -37,7 +37,6 @@ describe("experiments", () => {
       ).toEqual([
         "changelogPreview",
         "futureExperiment",
-        "legacyJitiPluginLoader",
         "serverMove",
       ]);
     } finally {

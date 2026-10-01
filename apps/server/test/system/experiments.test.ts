@@ -13,7 +13,6 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         changelogPreview: false,
-        legacyJitiPluginLoader: false,
         serverMove: false,
       });
     });
@@ -26,19 +25,16 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           changelogPreview: true,
-          legacyJitiPluginLoader: true,
           serverMove: true,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
-        legacyJitiPluginLoader: true,
         serverMove: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
-        legacyJitiPluginLoader: true,
         serverMove: true,
       });
 
@@ -47,7 +43,6 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         changelogPreview: true,
-        legacyJitiPluginLoader: true,
         serverMove: true,
       });
     });

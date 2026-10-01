@@ -1312,11 +1312,6 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The default-off `legacyJitiPluginLoader` experiment restores the previous JITI
-plugin server loader. Toggling it leaves running plugin instances unchanged;
-the selected loader applies on the next install, reload, enable, update, or
-server restart. Set it with `bb settings experiment legacyJitiPluginLoader
-<true|false>`.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,

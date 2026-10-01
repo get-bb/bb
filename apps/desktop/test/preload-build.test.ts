@@ -132,7 +132,6 @@ async function startDesktopSmokeServer(
           dataDir: args.dataDir,
           experiments: {
             changelogPreview: false,
-            legacyJitiPluginLoader: false,
             serverMove: false,
           },
           featureFlags: {

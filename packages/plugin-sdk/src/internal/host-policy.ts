@@ -2165,8 +2165,8 @@ export function enforcePluginCliOutputLimit(
 /**
  * Adopt the value a plugin HTTP route handler returned.
  *
- * Plugin handlers can run in a different realm (jiti-loaded modules, bundled
- * fetch polyfills), so a valid `Response` from a handler can fail
+ * Plugin handlers can run in a different realm (bundled fetch polyfills), so
+ * a valid `Response` from a handler can fail
  * `instanceof Response` in the host (#1661). Both the real host and the fake
  * host accept a structurally valid Response from any realm and re-wrap it
  * into a this-realm `Response`, so Hono always consumes a native object and a
