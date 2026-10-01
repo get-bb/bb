@@ -37,8 +37,6 @@ describe("acp process topology", () => {
 
   it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
     const setTimeoutReal = setTimeout;
-    const sleepReal = (ms: number) =>
-      new Promise<void>((resolve) => setTimeoutReal(resolve, ms));
     const readyFile = join(workspaceDir, "agent-ready");
     const signalFile = join(workspaceDir, "agent-signal");
     const runtime = withBridgeLaunch(
@@ -72,7 +70,19 @@ describe("acp process topology", () => {
     runtimes.push(runtime);
 
     await runtime.ensureProvider({ providerId: "acp" });
-    vi.useFakeTimers();
+    const constructionDeadlines: Array<() => void> = [];
+    const constructionTimeout = vi
+      .fn<typeof setTimeout>()
+      .mockImplementation((callback, delay, ...args) => {
+        if (delay !== 300) return setTimeoutReal(callback, delay, ...args);
+        const timer = setTimeoutReal(callback, 60_000, ...args);
+        constructionDeadlines.push(() => {
+          clearTimeout(timer);
+          callback(...args);
+        });
+        return timer;
+      });
+    vi.stubGlobal("setTimeout", constructionTimeout);
     try {
       const outcome = runtime
         .startThread({
@@ -86,17 +96,22 @@ describe("acp process topology", () => {
           () => null,
           (error: unknown) => error,
         );
-      for (let attempt = 0; !existsSync(readyFile); attempt += 1) {
-        if (attempt >= 1_000)
-          throw new Error("The fake ACP child never started");
-        await sleepReal(10);
-      }
-      await vi.advanceTimersByTimeAsync(301);
+      await waitForRuntimeState({
+        label: "the agent and its construction deadline are ready",
+        predicate: () =>
+          existsSync(readyFile) && constructionDeadlines.length === 1,
+        timeoutMs: 10_000,
+      });
+      vi.unstubAllGlobals();
+      const expire = constructionDeadlines[0];
+      if (expire === undefined)
+        throw new Error("No construction deadline was armed");
+      expire();
       const error = await outcome;
       expect(error).toBeInstanceOf(Error);
       expect(String(error)).toMatch(/timed out/i);
     } finally {
-      vi.useRealTimers();
+      vi.unstubAllGlobals();
     }
     expect(runtime.hasThread("t1")).toBe(false);
     await waitForRuntimeState({
