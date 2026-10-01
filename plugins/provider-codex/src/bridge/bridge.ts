@@ -519,12 +519,15 @@ function endSessionComputerUseTurn(
     return;
   }
   session.computerUseCodexThreadIdByTurnId.delete(turnId);
-  endComputerUseTurn({
-    codexHome: resolveCodexHome(os.homedir(), process.env),
-    codexThreadId,
-    turnId,
-    cwd: session.construction.cwd,
-  });
+  void endComputerUseTurn(
+    {
+      codexHome: resolveCodexHome(os.homedir(), process.env),
+      codexThreadId,
+      turnId,
+      cwd: session.construction.cwd,
+    },
+    resolveAppServerLaunch().command,
+  ).catch(() => {});
 }
 
 function releaseSession(session: CodexBridgeSession): Promise<void> {
