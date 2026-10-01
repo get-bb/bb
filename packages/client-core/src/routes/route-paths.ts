@@ -228,13 +228,20 @@ export function parseMessageLink(href: string): MessageLinkTarget | null {
   } catch {
     return null;
   }
-  const threadId = THREAD_ROUTE_PATHNAME_PATTERN.exec(url.pathname)?.[1];
+  const encodedThreadId = THREAD_ROUTE_PATHNAME_PATTERN.exec(url.pathname)?.[1];
   const seq = url.searchParams.get(MESSAGE_LINK_SEARCH_PARAM);
-  return threadId === undefined ||
+  if (
+    encodedThreadId === undefined ||
     seq === null ||
     !MESSAGE_LINK_SEQ_PATTERN.test(seq)
-    ? null
-    : { threadId: decodeURIComponent(threadId), seq: Number(seq) };
+  ) {
+    return null;
+  }
+  try {
+    return { threadId: decodeURIComponent(encodedThreadId), seq: Number(seq) };
+  } catch {
+    return null;
+  }
 }
 
 export const ROUTE_PATTERNS: readonly string[] = [

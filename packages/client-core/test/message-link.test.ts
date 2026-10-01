@@ -25,6 +25,7 @@ describe("message links", () => {
       "/projects/proj_abc/threads/thr_abc?msg=4a",
       "/projects/proj_abc/threads/thr_abc?msg=-1",
       "/projects/proj_abc/threads/thr_abc?msg=007",
+      "/projects/proj_abc/threads/%E0%A4%A?msg=4",
       "/projects/proj_abc/archived?msg=4",
       "thr_abc",
     ]) {

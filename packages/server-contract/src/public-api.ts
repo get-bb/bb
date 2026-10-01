@@ -1686,12 +1686,6 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadEventRow[]>(),
     }),
-    /**
-     * One conversation message by its message seq (the `?msg=` value of a
-     * message link), with up to `before`/`after` neighbouring messages. Reads
-     * the same conversation rows as the timeline, from the latest context
-     * clear on. 404 `message_not_found` when no visible message has that seq.
-     */
     message: defineRoute({
       path: "/threads/:id/messages/:seq",
       method: "get",

@@ -590,13 +590,6 @@ export interface ThreadsArea {
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
   paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
-  /**
-   * Read one conversation message by its message seq, the `msg` value of a
-   * message link or `@thread:<id>?msg=<seq>` mention, with up to
-   * `before`/`after` neighbouring messages (max 20 each). Rejects with
-   * `message_not_found` when no visible message has that seq, for example
-   * after an edit removed it or a context clear hid it.
-   */
   message(args: ThreadMessageArgs): Promise<ThreadMessageResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
