@@ -324,9 +324,7 @@ export class RuntimeProviderProcessManager {
     const shutdownPromises: Promise<void>[] = [];
 
     for (const [processKey, providerProcess] of this.processes) {
-      if (!hasChildProcessExited(providerProcess.child)) {
-        shutdownPromises.push(providerProcess.stop({ timeoutMs: 5000 }));
-      }
+      shutdownPromises.push(this.terminateProviderProcess({ providerProcess }));
       for (const [, pending] of providerProcess.pending) {
         pending.reject(new Error("Runtime shutting down"));
       }
@@ -523,13 +521,14 @@ export class RuntimeProviderProcessManager {
   private async terminateProviderProcess(
     args: TerminateProviderProcessArgs,
   ): Promise<void> {
-    if (hasChildProcessExited(args.providerProcess.child)) {
-      return;
-    }
-
-    await args.providerProcess.stop({
-      timeoutMs: args.timeoutMs ?? 5000,
+    const result = await args.providerProcess.stop({
+      gracePeriodMs: args.timeoutMs ?? 5000,
     });
+    if (result.treeTermination === "unverified") {
+      this.args.onStderr?.(
+        "Provider process exited, but descendant cleanup could not be confirmed",
+      );
+    }
   }
 
   private handleProviderProcessError(args: ProviderProcessErrorArgs): void {
@@ -567,7 +566,9 @@ export class RuntimeProviderProcessManager {
     );
     this.processes.delete(args.providerProcess.processKey);
     if (!expected) {
-      void args.providerProcess.stop().catch((error: Error) => {
+      void this.terminateProviderProcess({
+        providerProcess: args.providerProcess,
+      }).catch((error: Error) => {
         this.args.onStderr?.(
           `Provider process cleanup failed: ${error.message}`,
         );

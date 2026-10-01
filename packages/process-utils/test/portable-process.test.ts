@@ -119,6 +119,18 @@ it("reports ENOENT and finishes cleanup when a command cannot be resolved", asyn
     code: "ENOENT",
   });
   await managed.stop();
+  await expect(
+    execPortableFile("bb-process-utils-command-that-does-not-exist", [], {
+      cwd: process.cwd(),
+      env: process.env,
+      maxBuffer: 1024,
+    }),
+  ).rejects.toMatchObject({
+    code: "ENOENT",
+    syscall: expect.stringMatching(/^spawn/),
+    stdout: "",
+    stderr: "",
+  });
 });
 
 it.runIf(process.platform === "win32")(

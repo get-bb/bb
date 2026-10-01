@@ -148,6 +148,18 @@ export function createAcpAgentConnection(
   let nextRequestId = 1;
   let exited = false;
   let stopping = false;
+  let stopPromise: Promise<void> | undefined;
+
+  function stopAgent(gracePeriodMs = 1_000): Promise<void> {
+    stopPromise ??= managed.stop({ gracePeriodMs }).then((result) => {
+      if (result.treeTermination === "unverified") {
+        stderrChunks.push(
+          "ACP agent exited, but descendant cleanup could not be confirmed",
+        );
+      }
+    });
+    return stopPromise;
+  }
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -169,11 +181,18 @@ export function createAcpAgentConnection(
     rejectAllPending(
       new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
     );
-    const stopped = managed.stop({ timeoutMs: 0 });
-    const stderrTail = [...stderrChunks, detail].join("\n");
-    void stopped.then(() =>
-      options.onExit({ code: null, signal: null, stderrTail }),
-    );
+    const reportExit = (cleanupError: unknown): void => {
+      const cleanupDetail =
+        cleanupError === null
+          ? []
+          : [`Agent cleanup failed: ${String(cleanupError)}`];
+      options.onExit({
+        code: null,
+        signal: null,
+        stderrTail: [...stderrChunks, detail, ...cleanupDetail].join("\n"),
+      });
+    };
+    void stopAgent(0).then(() => reportExit(null), reportExit);
   }
 
   function writeLine(message: object): void {
@@ -304,7 +323,18 @@ export function createAcpAgentConnection(
         }`,
       ),
     );
-    options.onExit({ code, signal, stderrTail });
+    const reportExit = (cleanupError: unknown): void => {
+      const cleanupDetail =
+        cleanupError === null
+          ? []
+          : [`Agent cleanup failed: ${String(cleanupError)}`];
+      options.onExit({
+        code,
+        signal,
+        stderrTail: [...stderrChunks, ...cleanupDetail].join("\n"),
+      });
+    };
+    void stopAgent().then(() => reportExit(null), reportExit);
   });
 
   return {
@@ -350,14 +380,14 @@ export function createAcpAgentConnection(
     },
 
     kill() {
-      if (stopping || exited) return managed.stop();
+      if (stopping || exited) return stopAgent();
       stopping = true;
       rejectAllPending(
         new AcpAgentExitedError(
           `ACP agent "${options.command}" is not running`,
         ),
       );
-      return managed.stop();
+      return stopAgent();
     },
   };
 }

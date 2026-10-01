@@ -17,7 +17,8 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "cross-spawn": "^7.0.6"
+    "cross-spawn": "^7.0.6",
+    "execa": "10.0.1"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

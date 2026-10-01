@@ -15,6 +15,10 @@ interface StopProcessGroupLeaderFirstArgs {
   killGraceMs: number;
 }
 
+export interface ProcessStopResult {
+  treeTermination: "confirmed" | "unverified";
+}
+
 export function supportsProcessGroups(): boolean {
   return process.platform !== "win32";
 }
@@ -38,8 +42,12 @@ export function isProcessGroupAlive(child: {
   try {
     process.kill(-child.pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return !(
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ESRCH"
+    );
   }
 }
 
@@ -51,13 +59,13 @@ const PROCESS_GROUP_EXIT_POLL_MS = 100;
 
 export function stopProcessGroupLeaderFirst(
   args: StopProcessGroupLeaderFirstArgs,
-): Promise<void> {
+): Promise<ProcessStopResult> {
   const { child, timeoutMs, killGraceMs } = args;
   if (process.platform === "win32") return stopWindowsProcessTree(child);
   if (hasChildExited(child) && !isProcessGroupAlive(child)) {
-    return Promise.resolve();
+    return Promise.resolve({ treeTermination: "confirmed" });
   }
-  return new Promise<void>((resolveStop) => {
+  return new Promise<ProcessStopResult>((resolveStop) => {
     let settled = false;
     let hardTimer: NodeJS.Timeout | undefined;
     let poll: NodeJS.Timeout | undefined;
@@ -74,7 +82,9 @@ export function stopProcessGroupLeaderFirst(
       if (poll !== undefined) {
         clearInterval(poll);
       }
-      resolveStop();
+      resolveStop({
+        treeTermination: groupGone() ? "confirmed" : "unverified",
+      });
     };
     const groupGone = (): boolean =>
       hasChildExited(child) && !isProcessGroupAlive(child);

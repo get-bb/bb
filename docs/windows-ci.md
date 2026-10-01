@@ -22,7 +22,7 @@ The native Windows coverage exercises:
   paths, literal arguments, stdin, stdout, stderr, and nonzero exit status.
 - Missing executable errors and case-insensitive runtime environment cleanup.
 - Buffered command output limits, cancellation, streaming stderr, and stdin EOF.
-  Cancellation and timeout use the same owned-process stop operation on every OS.
+  Cancellation and timeout delegate owned-process termination to Execa on every OS.
 - Drive-letter and UNC path containment, sibling-prefix escapes, and cross-drive
   or cross-share rejection.
 - Real Git repositories: empty repositories, status, commits, diffs, branches,
@@ -65,27 +65,42 @@ SQLite and Parcel's Windows native addons are exercised by their suites.
 ## Process boundary
 
 `@bb/process-utils` owns executable resolution, owned process lifetimes, and OS
-process inspection. It continues to use `cross-spawn` for executable, PATH,
-PATHEXT, and `.cmd` handling. No new process library or shell-quoting implementation
-is introduced.
+process inspection. Long-lived children use `cross-spawn` for executable, PATH, PATHEXT, and `.cmd`
+handling. Buffered commands use Execa 10 behind `execPortableFile`; BB does not
+implement command resolution or shell quoting itself. Callers use these shared
+interfaces rather than selecting a process library or OS-specific flags.
 
 - `spawn.ts` contains the shared portable launch implementation.
 - `managed-process.ts` pairs a piped child with an idempotent `stop()` promise.
   It creates the POSIX process group at launch, so callers do not choose
-  `detached` or branch on the OS. Stop waits for the retained child to exit.
-- `exec-portable-file.ts` uses that managed handle for buffered commands,
-  output limits, cancellation, timeout, stdin input, and streaming stderr.
+  `detached` or branch on the OS. `stop({ gracePeriodMs })` resolves after the
+  retained root exits and reports `treeTermination: "confirmed" | "unverified"`.
+  Confirmation covers the owned group or OS-tracked tree, not escaped processes.
+  Failure to terminate the root rejects within the shutdown deadline. Repeated
+  calls share the first stop operation and its grace period.
+- `exec-portable-file.ts` delegates buffering, command launch, cancellation,
+  timeout, stdin input, and best-effort descendant termination to Execa. The
+  adapter preserves BB's exact output, byte-based limits, sanitized environment,
+  streaming UTF-8 stderr, and existing command error fields. Early output closure
+  stops the command, including Execa's output-limit closure; the adapter retains
+  no output buffers or cancellation timers of its own.
 - `process-group.ts` and `windows-process-tree.ts` contain termination mechanics.
-  POSIX stop gives the leader the requested grace period, then kills surviving
-  group members; group disappearance is polled for up to one additional second.
-  Windows forces the tree with `taskkill /T /F` while the leader is alive.
-  Neither path claims to track descendants that deliberately leave its group/tree.
+  Managed POSIX stop gives the leader the requested grace period, then kills
+  surviving group members; group disappearance is polled for up to one additional
+  second. Windows cannot offer a signal grace period: it immediately forces the
+  tree with `taskkill /T /F` while the leader is alive, allowing two seconds for
+  taskkill and one second for root exit. Failed taskkill falls back to terminating
+  the retained root and reports unverified tree cleanup. An already-exited root
+  is also unverified; its potentially recycled PID is never targeted. Neither
+  path claims to track descendants that deliberately leave its group/tree.
 - `process-info.ts` reads command and start time together in one OS query.
   Config still decides whether that identity matches a recorded BB process.
 
-ACP and agent-runtime consume managed handles. Git's buffered commands, background
-fetch, and bounded record reader use the same lifecycle; Git-specific shell and
-error policy stay in host-workspace. The binary blob reader still uses Node's
+ACP and agent-runtime consume managed handles, and report unverified cleanup in
+process diagnostics. Git's buffered commands and background fetch use the Execa
+adapter; the bounded record reader uses a managed child. Shutdown failure is
+propagated without waiting indefinitely for a stream close event. Git-specific
+shell and error policy stay in host-workspace. The binary blob reader still uses Node's
 buffered binary API. Low-level spawn/group exports remain for existing callers
 outside this slice; new owned processes should use the managed API. The migrated
 runtime and ACP launch boundary have lint rules preventing direct process launches
@@ -94,8 +109,17 @@ or manual process-group setup.
 This structure follows the shared-launch and owned-lifetime patterns in
 [T3's ProcessRunner](https://github.com/pingdotgg/t3code/blob/5cc99e1c23980d7995a13c47f969b47cb68ed1be/apps/server/src/processRunner.ts#L250)
 and [Orca's child-process module](https://github.com/stablyai/orca/blob/449b8ca17dd16ab0074b968cdffe24bcee807b26/src/shared/child-process/run-process.ts#L44).
-No source was copied. Their Effect integration, custom Windows shim parsing, and
-native process-table addons are not needed for this slice.
+No source was copied. T3's scoped resource ownership, Orca's bounded termination
+and explicit cleanup outcomes, and VS Code's separate terminal lifecycle inform
+the boundary. Their Effect integration, custom Windows shim parsing, and native
+process-table addons are not needed for this slice.
+
+[Execa's descendant termination](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/termination.md#killing-descendant-processes)
+uses the same process-group/taskkill mechanisms for buffered commands. Its
+group-wide Unix termination differs from the leader-first ordering retained for
+long-lived providers.
+[VS Code's process helpers](https://github.com/microsoft/vscode/blob/c353edbfa07735949e432e49b491ddc6baad49cc/src/vs/base/node/processes.ts#L150)
+also use taskkill; Windows terminal sequencing remains a subsequent slice.
 
 The Windows packages use the ordinary Turbo test prerequisites. Shared Vitest
 inputs include `vitest*.ts`, covering both the worker configuration and temporary

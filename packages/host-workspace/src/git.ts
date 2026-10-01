@@ -377,7 +377,16 @@ export async function runGitWithNullRecordLimit(
 
     let stopping: Promise<void> | undefined;
     const stopChild = (): void => {
-      stopping = managed.stop({ timeoutMs: 0 });
+      stopping ??= managed.stop({ gracePeriodMs: 0 }).then(
+        () => undefined,
+        (error: unknown) => {
+          if (timeout !== undefined) clearTimeout(timeout);
+          options.signal?.removeEventListener("abort", onAbort);
+          child.stdin.destroy();
+          child.stderr.destroy();
+          reject(error);
+        },
+      );
       child.stdout.destroy();
     };
     const onAbort = (): void => {

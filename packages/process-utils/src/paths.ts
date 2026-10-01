@@ -17,11 +17,7 @@ export function resolveContainedPath(
     return null;
   }
 
-  if (
-    relativePath === ".." ||
-    relativePath.startsWith(`..${sep}`) ||
-    isAbsolute(relativePath)
-  ) {
+  if (!isPathWithinDirectory(resolvedRootPath, resolvedCandidatePath)) {
     return null;
   }
 
@@ -35,7 +31,9 @@ export function isPathWithinDirectory(
   const relativePath = relative(directoryPath, candidatePath);
   return (
     relativePath === "" ||
-    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+    (relativePath !== ".." &&
+      !relativePath.startsWith(`..${sep}`) &&
+      !isAbsolute(relativePath))
   );
 }
 

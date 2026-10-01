@@ -1,5 +1,8 @@
-import { expect, it } from "vitest";
-import { execPortableFile } from "../src/index.js";
+import { expect, it, vi, onTestFinished } from "vitest";
+import {
+  execPortableFile,
+  sanitizeInheritedChildProcessEnv,
+} from "../src/index.js";
 
 const options = {
   cwd: process.cwd(),
@@ -17,7 +20,7 @@ it.each(["stdout", "stderr"])(
         [
           "-e",
           `
-    process.${stream}.write("x".repeat(2048));
+    process.${stream}.write("é".repeat(1024));
     setInterval(() => {}, 1000);
   `,
         ],
@@ -26,10 +29,34 @@ it.each(["stdout", "stderr"])(
     ).rejects.toMatchObject({
       code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
       message: `${stream} maxBuffer length exceeded`,
-      [stream]: "x".repeat(1024),
+      [stream]: "é".repeat(512),
     });
   },
 );
+
+it("does not reintroduce sanitized parent runtime settings", async () => {
+  vi.stubEnv("BB_PROCESS_PARENT_SECRET", "parent-only");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const output = await execPortableFile(
+    process.execPath,
+    [
+      "-e",
+      'process.stdout.write(JSON.stringify([process.env.BB_PROCESS_PARENT_SECRET ?? null, process.env.PROVIDER_TOKEN]) + "\\n");',
+    ],
+    {
+      ...options,
+      env: sanitizeInheritedChildProcessEnv({
+        env: { ...process.env, PROVIDER_TOKEN: "preserved-token" },
+      }),
+    },
+  );
+  expect(output).toEqual({
+    stdout: '[null,"preserved-token"]\n',
+    stderr: "",
+  });
+});
 
 it("streams split UTF-8 stderr and closes stdin after writing the input", async () => {
   const chunks: string[] = [];
@@ -75,6 +102,7 @@ it("cancels a command with its descendants and retains prior output", async () =
           "-e",
           `
     const { spawn } = require("node:child_process");
+    process.on("SIGTERM", () => process.exit(0));
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
     child.once("spawn", () => process.stderr.write(JSON.stringify([process.pid, child.pid]) + "\\n"));
     setInterval(() => {}, 1000);
@@ -96,6 +124,8 @@ it("cancels a command with its descendants and retains prior output", async () =
       name: "AbortError",
       code: "ABORT_ERR",
       cause: "cancelled by caller",
+      killed: true,
+      signal: "SIGTERM",
       stderr: expect.stringContaining("["),
     });
     expect(pids).toHaveLength(2);
