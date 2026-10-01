@@ -123,7 +123,7 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
   `--after-seq <seq>` or pass `--all`.
   Grep the `--all` output, not the default page, when checking whether a
   thread ever received a message.
-- Read a message reference (`@thread:<id>?msg=<seq>` or a `…/threads/<id>?msg=<seq>`
+- Read a message reference (`@thread:<id>#msg=<seq>` or a `…/threads/<id>#msg=<seq>`
   link) with `bb thread log <id> --message <seq> [--context <n>]`.
 - Use `bb thread output <thread-id>` to read the latest final output, or
   `bb thread output --self` for the current thread.

@@ -739,14 +739,15 @@ describe("MarkdownPreview thread mentions", () => {
   );
 
   it.each([
-    ["without message directives", undefined],
-    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+    ["without message directives", undefined, "#"],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES, "#"],
+    ["using an existing query mention", undefined, "?"],
   ])(
     "links a message mention to that message in its thread %s",
-    (_label, messageDirectives) => {
+    (_label, messageDirectives, separator) => {
       renderMarkdown(
         <MarkdownPreview
-          content="See @thread:thr_child?msg=42, then reply."
+          content={`See @thread:thr_child${separator}msg=42, then reply.`}
           threadMentions={{
             mentions: [],
             preserveSoftBreaks: true,
@@ -759,7 +760,7 @@ describe("MarkdownPreview thread mentions", () => {
       const pill = screen.getByRole("link", { name: /Rebuild comments/ });
       expect(pill.textContent).toBe("Rebuild comments· message");
       expect(pill.getAttribute("href")).toBe(
-        "/projects/proj_target/threads/thr_child?msg=42",
+        "/projects/proj_target/threads/thr_child#msg=42",
       );
       expect(screen.queryByText(/msg=42/)).toBeNull();
     },
@@ -773,7 +774,7 @@ describe("MarkdownPreview thread mentions", () => {
     (_label, messageDirectives) => {
       renderMarkdown(
         <MarkdownPreview
-          content="See @thread:thr_unknown?msg=7 please."
+          content="See @thread:thr_unknown#msg=7 please."
           threadMentions={{
             mentions: [],
             preserveSoftBreaks: true,
@@ -785,7 +786,7 @@ describe("MarkdownPreview thread mentions", () => {
 
       expect(
         screen.getByRole("link", { name: /message/ }).getAttribute("href"),
-      ).toBe("/threads/thr_unknown?msg=7");
+      ).toBe("/threads/thr_unknown#msg=7");
     },
   );
 

@@ -242,9 +242,10 @@ Opening threads and files in the app:
   paste without formatting (Cmd/Ctrl+Shift+V) keeps it literal. Links with query
   strings or fragments, quoted/code text, and links to other origins stay literal.
   CLI prompts can use @thread:<id> directly; URL conversion only runs on a user paste.
-  Reference one message as @thread:thr_abc123?msg=42, taking the number from
+  Reference one message as @thread:thr_abc123#msg=42, taking the number from
   sourceSeq in `bb thread search --json`. Read it, or a copied message link
-  (…/threads/thr_abc123?msg=42), with `bb thread log thr_abc123 --message 42`.
+  (…/threads/thr_abc123#msg=42), with `bb thread log thr_abc123 --message 42`.
+  Previously copied ?msg= links still open; new links use the #msg= fragment.
 
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file

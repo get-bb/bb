@@ -202,7 +202,7 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
-const MESSAGE_LINK_SEARCH_PARAM = "msg";
+const MESSAGE_LINK_PARAM = "msg";
 
 export interface MessageLinkPathArgs extends ThreadRoutePathArgs {
   seq: number;
@@ -218,7 +218,7 @@ const THREAD_ROUTE_PATHNAME_PATTERN =
 const MESSAGE_LINK_SEQ_PATTERN = /^(0|[1-9]\d*)$/;
 
 export function getMessageLinkPath(args: MessageLinkPathArgs): string {
-  return `${getThreadRoutePath(args)}?${MESSAGE_LINK_SEARCH_PARAM}=${args.seq}`;
+  return `${getThreadRoutePath(args)}#${MESSAGE_LINK_PARAM}=${args.seq}`;
 }
 
 export function parseMessageLink(href: string): MessageLinkTarget | null {
@@ -229,7 +229,9 @@ export function parseMessageLink(href: string): MessageLinkTarget | null {
     return null;
   }
   const encodedThreadId = THREAD_ROUTE_PATHNAME_PATTERN.exec(url.pathname)?.[1];
-  const seq = url.searchParams.get(MESSAGE_LINK_SEARCH_PARAM);
+  const seq =
+    new URLSearchParams(url.hash.slice(1)).get(MESSAGE_LINK_PARAM) ??
+    url.searchParams.get(MESSAGE_LINK_PARAM);
   if (
     encodedThreadId === undefined ||
     seq === null ||

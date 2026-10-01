@@ -936,7 +936,7 @@ describe("useThreadTimelineController", () => {
       queryWrapper({
         children: (
           <MemoryRouter
-            initialEntries={["/projects/proj-1/threads/thread-1?msg=4"]}
+            initialEntries={["/projects/proj-1/threads/thread-1#msg=4"]}
           >
             <SearchMessageLocationProvider threadId="thread-1">
               {children}
@@ -995,7 +995,7 @@ describe("useThreadTimelineController", () => {
       queryWrapper({
         children: (
           <MemoryRouter
-            initialEntries={["/projects/proj-1/threads/thread-1?msg=5"]}
+            initialEntries={["/projects/proj-1/threads/thread-1#msg=5"]}
           >
             <SearchMessageLocationProvider threadId="thread-1">
               {children}

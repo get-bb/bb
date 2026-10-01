@@ -25,10 +25,10 @@ import {
 import { replaceTextMatches } from "./markdown-text-matches.js";
 
 const THREAD_MENTION_PATTERN = new RegExp(
-  `@thread:([A-Za-z0-9_-]+)(?:\\?msg=(0|[1-9]\\d*))?|(${RAW_THREAD_ID_PATTERN_SOURCE})`,
+  `@thread:([A-Za-z0-9_-]+)(?:[?#]msg=(0|[1-9]\\d*))?|(${RAW_THREAD_ID_PATTERN_SOURCE})`,
   "gu",
 );
-const MESSAGE_SUFFIX_PATTERN = /^\?msg=(0|[1-9]\d*)/u;
+const MESSAGE_SUFFIX_PATTERN = /^[?#]msg=(0|[1-9]\d*)/u;
 const RAW_THREAD_ID_PATTERN = new RegExp(RAW_THREAD_ID_PATTERN_SOURCE, "gu");
 const CHARACTER_REFERENCE_PATTERN = /&(?:#\d+|#x[\da-f]+|[a-z][a-z\d]*);/iu;
 const THREAD_MENTION_PREFIX = "@thread";

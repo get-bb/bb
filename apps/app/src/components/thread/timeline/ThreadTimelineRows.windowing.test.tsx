@@ -251,7 +251,7 @@ describe("ThreadTimelineRows windowing", () => {
       return index === 30 ? { ...row, messageSeq: 305 } : row;
     });
     const view = render(
-      <MemoryRouter initialEntries={["/threads/thr_steer_window?msg=305"]}>
+      <MemoryRouter initialEntries={["/threads/thr_steer_window#msg=305"]}>
         <QueryClientProvider client={new QueryClient()}>
           <BottomAnchorContext.Provider value={bottomAnchor}>
             <CompactViewportOverrideProvider isCompactViewport>

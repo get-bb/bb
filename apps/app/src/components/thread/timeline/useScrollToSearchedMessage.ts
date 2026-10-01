@@ -267,23 +267,23 @@ export function SearchMessageLocationProvider({
   children,
 }: SearchMessageLocationProviderProps) {
   const location = useLocation();
-  const locationKeyRef = useRef(location.key);
+  const locationKey = `${location.key}:${location.pathname}${location.search}${location.hash}`;
+  const locationKeyRef = useRef(locationKey);
   useLayoutEffect(() => {
-    locationKeyRef.current = location.key;
-  }, [location.key]);
+    locationKeyRef.current = locationKey;
+  }, [locationKey]);
   const readLocationKey = useCallback(() => locationKeyRef.current, []);
   const searchTarget = readSearchMessageTarget(location.state);
   const messageLinkTarget = parseMessageLink(
-    `${location.pathname}${location.search}`,
+    `${location.pathname}${location.search}${location.hash}`,
   );
   const target =
-    searchTarget ??
-    (messageLinkTarget === null
-      ? null
-      : { ...messageLinkTarget, match: "message" as const });
+    messageLinkTarget === null
+      ? searchTarget
+      : { ...messageLinkTarget, match: "message" as const };
   const applies =
     target !== null && searchTargetAppliesToThread(target, threadId);
-  const targetLocationKey = applies ? location.key : null;
+  const targetLocationKey = applies ? locationKey : null;
   const targetMatch = applies ? target.match : null;
   const targetSeq = applies ? target.seq : null;
   const targetThreadId = applies ? target.threadId : null;

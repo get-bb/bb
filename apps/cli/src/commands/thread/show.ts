@@ -432,7 +432,7 @@ export function registerShowCommand(
     )
     .option(
       "--message <seq>",
-      "Print one message: the msg value of a message link or @thread:<id>?msg=<seq> mention",
+      "Print one message: the msg value of a message link or @thread:<id>#msg=<seq> mention",
     )
     .option(
       "--context <count>",
