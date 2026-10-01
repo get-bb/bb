@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import os from "node:os";
 import {
   isStandaloneBuiltinCompactCommand,
   approvalInteractionOutcomeSchema,
@@ -48,6 +49,7 @@ import {
   type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { resolveCodexHome } from "../codex-home.js";
 import {
   CODEX_MACOS_PERMISSION_EXTENSION_KIND,
   summarizeCodexMacOsPermissions,
@@ -88,6 +90,10 @@ import {
   type CodexAppServerExitInfo,
   type CodexAppServerRequestResponder,
 } from "./app-server-connection.js";
+import {
+  computerUseTurnFromNotification,
+  endComputerUseTurn,
+} from "./computer-use-turn-end.js";
 import {
   getCodexProviderHealth,
   getCodexProviderInstallationRun,
@@ -466,6 +472,7 @@ interface CodexBridgeSession {
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
   unopenedCompactionDispatches: PendingCompactionDispatch[];
   turnSettledWaiters: Map<string, Array<() => void>>;
+  computerUseCodexThreadIdByTurnId: Map<string, string>;
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
   pendingPreIdentityDeltas: ThreadDelta[];
@@ -503,11 +510,31 @@ function currentSession(
   return session;
 }
 
+function endSessionComputerUseTurn(
+  session: CodexBridgeSession,
+  turnId: string,
+): void {
+  const codexThreadId = session.computerUseCodexThreadIdByTurnId.get(turnId);
+  if (codexThreadId === undefined) {
+    return;
+  }
+  session.computerUseCodexThreadIdByTurnId.delete(turnId);
+  endComputerUseTurn({
+    codexHome: resolveCodexHome(os.homedir(), process.env),
+    codexThreadId,
+    turnId,
+    cwd: session.construction.cwd,
+  });
+}
+
 function releaseSession(session: CodexBridgeSession): Promise<void> {
   if (session.releasePromise !== null) {
     return session.releasePromise;
   }
   session.closing = true;
+  for (const turnId of [...session.computerUseCodexThreadIdByTurnId.keys()]) {
+    endSessionComputerUseTurn(session, turnId);
+  }
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -612,6 +639,7 @@ function sendThreadDeltas(
     }
     if (delta.kind === "turn.boundary" && delta.providerTurnId !== undefined) {
       session.openCodexTurnIds.delete(delta.providerTurnId);
+      endSessionComputerUseTurn(session, delta.providerTurnId);
       settleResponseOpenedTurn(session, delta.providerTurnId);
       const waiters = session.turnSettledWaiters.get(delta.providerTurnId);
       if (waiters !== undefined) {
@@ -697,6 +725,13 @@ async function handleChildNotification(
   }
   if (method === "thread/status/changed") {
     settleCompactionDispatchesWhenCodexIsNotRunning(session, params);
+  }
+  const computerUseTurn = computerUseTurnFromNotification(method, params);
+  if (computerUseTurn !== null) {
+    session.computerUseCodexThreadIdByTurnId.set(
+      computerUseTurn.turnId,
+      computerUseTurn.codexThreadId,
+    );
   }
   if (method === "turn/started") {
     const parsed = codexTurnNotificationPeekSchema.safeParse(params);
@@ -1098,6 +1133,7 @@ async function constructThreadSession(
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
+    computerUseCodexThreadIdByTurnId: new Map(),
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
@@ -1277,6 +1313,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
+    computerUseCodexThreadIdByTurnId: new Map(),
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
     pendingPreIdentityDeltas: [],
