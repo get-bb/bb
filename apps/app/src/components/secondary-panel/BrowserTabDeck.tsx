@@ -39,6 +39,9 @@ export function selectActiveBrowserTab(
   return browserTabs.find((tab) => tab.id === activeBrowserTabId) ?? null;
 }
 
+const WINDOW_TARGET_PENDING_ATTEMPTS = 4;
+const WINDOW_TARGET_MAX_RETRY_MS = 2000;
+
 type WindowTargetCheck =
   | { status: "pending" }
   | { status: "ready"; target: BbDesktopBrowserTarget | null };
@@ -100,22 +103,36 @@ export function BrowserTabDeck({
   });
   useEffect(() => {
     if (targetHostId === undefined) return;
-    let current = true;
-    const getTarget = desktopBrowser?.getTarget;
+    const getTarget = desktopBrowser?.getTarget?.bind(desktopBrowser);
     if (getTarget === undefined) {
       setWindowTarget({ status: "ready", target: null });
       return;
     }
-    void getTarget().then(
-      (actual) => {
-        if (current) setWindowTarget({ status: "ready", target: actual });
-      },
-      () => {
-        if (current) setWindowTarget({ status: "ready", target: null });
-      },
-    );
+    let current = true;
+    let attempt = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      void getTarget()
+        .catch(() => null)
+        .then((actual) => {
+          if (!current) return;
+          if (actual !== null) {
+            setWindowTarget({ status: "ready", target: actual });
+            return;
+          }
+          attempt += 1;
+          if (attempt >= WINDOW_TARGET_PENDING_ATTEMPTS)
+            setWindowTarget({ status: "ready", target: null });
+          retry = setTimeout(
+            check,
+            Math.min(250 * 2 ** (attempt - 1), WINDOW_TARGET_MAX_RETRY_MS),
+          );
+        });
+    };
+    check();
     return () => {
       current = false;
+      clearTimeout(retry);
     };
   }, [desktopBrowser, targetHostId, target?.instanceId, target?.generation]);
 

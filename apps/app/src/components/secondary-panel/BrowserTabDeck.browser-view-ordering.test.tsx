@@ -308,6 +308,58 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     expect(screen.queryByText("This tab is open in another bb window")).toBeNull();
   });
 
+  it("keeps a reopened tab visible after the server moves it to this window", async () => {
+    const { api, calls } = createRecordingBrowserApi();
+    api.getTarget = async () => desktopTarget;
+    installDesktopBrowser(api);
+    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+      instances: [{ ...desktopTarget, label: "BB window 1" }],
+    });
+    const orphan = savedTab({ instanceId: "closed-window" });
+    const view = render(renderTargetDeck(orphan));
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (call) =>
+            call.type === "setVisibleWithoutFocus" && call.request.visible,
+        ),
+      ).toBe(true),
+    );
+    const shownAt = calls.length;
+    view.rerender(renderTargetDeck({ ...orphan, desktopTarget }));
+    await act(async () => {});
+    const after = calls.slice(shownAt);
+    expect(after.some((call) => call.type === "attach")).toBe(false);
+    expect(
+      after.some(
+        (call) =>
+          (call.type === "setVisible" ||
+            call.type === "setVisibleWithoutFocus") &&
+          !call.request.visible,
+      ),
+    ).toBe(false);
+  });
+
+  it("waits for the desktop connection after a relaunch instead of falling back", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    const getTarget = vi
+      .fn<() => Promise<typeof desktopTarget | null>>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(desktopTarget);
+    api.getTarget = getTarget;
+    installDesktopBrowser(api);
+    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+      instances: [{ ...desktopTarget, label: "BB window 1" }],
+    });
+    render(renderTargetDeck(savedTab({ instanceId: "closed-window" })));
+    expect(screen.queryByText("This tab isn't available in this window")).toBeNull();
+    await waitFor(() => expect(attachments).toHaveLength(1), { timeout: 3000 });
+    expect(getTarget).toHaveBeenCalledTimes(3);
+    expect(attachments[0]?.existingOnly).toBeUndefined();
+    expect(screen.queryByText("This tab isn't available in this window")).toBeNull();
+  });
+
   it("reattaches its own window's tab after a reconnect rotates the generation", async () => {
     const { api, attachments } = createRecordingBrowserApi();
     api.getTarget = async () => desktopTarget;
