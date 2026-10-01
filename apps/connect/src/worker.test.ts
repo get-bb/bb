@@ -182,7 +182,7 @@ import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
-import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
+import worker, { relativeTime, wantsHtml } from "./worker.js";
 import {
   TUNNEL_OFFLINE_HEADER,
   TUNNEL_RESTART_REASON,
@@ -1576,6 +1576,7 @@ describe("gate offline page", () => {
     expect(html).toContain("Your bb is offline");
     expect(html).toContain("Last seen 5 minutes ago");
     expect(html).toContain('http-equiv="refresh"');
+    expect(html).toContain("Retry now");
   });
 
   it("omits the last-seen sentence when the server never connected", async () => {
@@ -1676,13 +1677,6 @@ describe("gate page helpers", () => {
       wantsHtml(new Request("https://x/", { headers: { accept: "*/*" } })),
     ).toBe(false);
     expect(wantsHtml(new Request("https://x/"))).toBe(false);
-  });
-
-  it("offlinePage is a self-retrying styled 503", async () => {
-    const res = offlinePage(null, "server");
-    expect(res.status).toBe(503);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    expect(await res.text()).toContain("Retry now");
   });
 });
 

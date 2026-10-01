@@ -309,7 +309,7 @@ export function parseArchiveTmpBbSessionsArgs(
   return { help, options };
 }
 
-export function renderHelpText(): string {
+function renderHelpText(): string {
   const defaultPatterns = DEFAULT_TMP_BB_PATTERNS.join(", ");
   return `
   ${bold("codex archive tmp bb sessions")}

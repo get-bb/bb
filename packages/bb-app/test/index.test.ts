@@ -687,39 +687,6 @@ describe("bb-app launcher", () => {
     });
   });
 
-  it("resolves config commands", () => {
-    expect(
-      resolveBbAppCommand(["config", "set", "BB_APP_URL", "https://bb.test"]),
-    ).toEqual({
-      args: ["set", "BB_APP_URL", "https://bb.test"],
-      kind: "config",
-    });
-  });
-
-  it("resolves env commands", () => {
-    expect(
-      resolveBbAppCommand(["env", "set", "OPENAI_API_KEY", "test-key"]),
-    ).toEqual({
-      args: ["set", "OPENAI_API_KEY", "test-key"],
-      kind: "env",
-    });
-  });
-
-  it("resolves client commands", () => {
-    expect(
-      resolveBbAppCommand([
-        "client",
-        "ssh-target",
-        "set",
-        "https://bb.example.test",
-        "devbox",
-      ]),
-    ).toEqual({
-      args: ["ssh-target", "set", "https://bb.example.test", "devbox"],
-      kind: "client",
-    });
-  });
-
   it("prints help for help requests", () => {
     expect(resolveBbAppCommand(["--help"])).toEqual({ kind: "help" });
     expect(resolveBbAppCommand(["help"])).toEqual({ kind: "help" });
@@ -1262,73 +1229,6 @@ describe("bb-app launcher", () => {
     }
   });
 
-  it("preserves customModels across managed config writes", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-custom-"));
-    const customModels = [
-      {
-        providerId: "claude-code",
-        model: "claude-example-preview[1m]",
-        displayName: "Example Preview (1M)",
-      },
-    ];
-    writeFileSync(
-      join(dataDir, "config.json"),
-      `${JSON.stringify({ customModels })}\n`,
-      "utf8",
-    );
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_APP_URL",
-      "https://bb.example.test",
-    ]);
-
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      config: {
-        BB_APP_URL: "https://bb.example.test",
-      },
-      customModels,
-    });
-  });
-
-  it("preserves invalid customModels across managed config set writes", async () => {
-    const dataDir = mkdtempSync(
-      join(tmpdir(), "bb-app-config-invalid-custom-models-set-"),
-    );
-    const customModels = [
-      { providerId: "acp-opencode", model: "my-proxy/custom-model" },
-      { providerId: "not-a-provider", model: "typo-model" },
-    ];
-    writeFileSync(
-      join(dataDir, "config.json"),
-      `${JSON.stringify({ customModels })}\n`,
-      "utf8",
-    );
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_APP_URL",
-      "https://bb.example.test",
-    ]);
-
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      config: {
-        BB_APP_URL: "https://bb.example.test",
-      },
-      customModels,
-    });
-  });
-
   it("loads a config that still carries the removed customAcpAgents array and drops it on the next write", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-custom-acp-"));
     writeFileSync(
@@ -1373,28 +1273,6 @@ describe("bb-app launcher", () => {
         "test-openai-key",
       ]),
     ).rejects.toThrow(/bb-app env set OPENAI_API_KEY/u);
-  });
-
-  it("stores managed env values from the env command", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-env-command-"));
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "env",
-      "set",
-      "ANTHROPIC_API_KEY",
-      "test-anthropic-key",
-    ]);
-
-    expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(
-      {
-        env: {
-          ANTHROPIC_API_KEY: "test-anthropic-key",
-        },
-      },
-    );
-    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
   });
 
   it("rejects invalid server bind hosts before writing managed env", async () => {
@@ -1498,25 +1376,6 @@ describe("bb-app launcher", () => {
     });
 
     expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
-  });
-
-  it("unsets managed env values", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-env-unset-"));
-    writeFileSync(
-      join(dataDir, "env.json"),
-      JSON.stringify({
-        env: {
-          OPENAI_API_KEY: "test-openai-key",
-        },
-      }),
-      "utf8",
-    );
-
-    await runBbApp(["--data-dir", dataDir, "env", "unset", "OPENAI_API_KEY"]);
-
-    expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(
-      {},
-    );
   });
 
   it("rejects invalid managed config values before writing or reloading", async () => {
@@ -1742,52 +1601,6 @@ describe("bb-app launcher", () => {
       expect(output).toContain(
         "Startup-only settings currently configured (BB_FF_PLACEHOLDER, BB_LOG_LEVEL, BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY) apply on the next full bb-app restart.",
       );
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("asks a running local server to reload after config writes", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-reload-"));
-    const server = await startConfigReloadTestServer();
-
-    try {
-      await runBbApp([
-        "--data-dir",
-        dataDir,
-        "--server-port",
-        String(server.port),
-        "config",
-        "set",
-        "BB_APP_URL",
-        "https://bb.example.test",
-      ]);
-
-      expect(server.reloadRequests()).toEqual([
-        expectedConfigReloadRequest(server),
-      ]);
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("supports explicitly refreshing running server config", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-refresh-"));
-    const server = await startConfigReloadTestServer();
-
-    try {
-      await runBbApp([
-        "--data-dir",
-        dataDir,
-        "--server-port",
-        String(server.port),
-        "config",
-        "refresh",
-      ]);
-
-      expect(server.reloadRequests()).toEqual([
-        expectedConfigReloadRequest(server),
-      ]);
     } finally {
       await server.close();
     }

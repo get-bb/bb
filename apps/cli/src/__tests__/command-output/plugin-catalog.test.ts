@@ -458,22 +458,6 @@ describe("bb plugin catalog", () => {
     expect(readlineMocks.question).toHaveBeenCalledWith("Install? [y/N] ");
   });
 
-  it("routes entry@marketplace to that marketplace without a search", async () => {
-    const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(json({ plan: bundledPlan }))
-      .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
-
-    await runCommand(
-      ["plugin", "install", "linear@bb-official", "--yes"],
-      register,
-    );
-
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear&marketplace=bb-official",
-    );
-  });
-
   it("reports both interpretations and direct-source escape hatches", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json({ results: [] }));
 

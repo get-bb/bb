@@ -161,7 +161,7 @@ function signInPage(label: string, appUrl: string, returnTo: string): Response {
   );
 }
 
-export function offlinePage(
+function offlinePage(
   lastSeenAt: Date | null,
   kind: "server" | "machine",
 ): Response {

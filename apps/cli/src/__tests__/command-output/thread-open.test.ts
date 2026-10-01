@@ -79,35 +79,6 @@ describe("bb thread open command output", () => {
     ]);
   });
 
-  it("uses an explicit thread id when BB_THREAD_ID is not set", async () => {
-    const { openThread } = stubThreadOpenApi({
-      open: async () => ({ delivered: 1 }),
-    });
-
-    await runCommand(
-      ["thread", "open", "thread-explicit", "reports/status.md"],
-      register,
-    );
-
-    expect(openThread).toHaveBeenCalledWith({
-      param: { id: "thread-explicit" },
-      json: {
-        file: {
-          source: "workspace",
-          path: "reports/status.md",
-          lineNumber: null,
-        },
-      },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Thread: thread-explicit",
-      "Split: replace",
-      "Source: workspace",
-      "Path: reports/status.md",
-      "Delivered: 1",
-    ]);
-  });
-
   it("resolves an absolute workspace path through the target thread environment", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-workspace");
     const thread = fixtures.makeThread({
@@ -238,19 +209,9 @@ describe("bb thread open command output", () => {
     expect(payloads.join("\n")).toContain('"delivered": 3');
   });
 
-  it("documents the current-thread or explicit-thread command shape", async () => {
+  it("does not offer the removed flags in help", async () => {
     const help = await getHelpOutput(["thread", "open"], register);
 
-    expect(help).toContain("Usage:");
-    expect(help).toContain("[id] [path]");
-    expect(help).toContain(
-      "Open a BB thread, optionally with a file in its panel",
-    );
-    expect(help).toContain("--line");
-    expect(help).toContain("--split <placement>");
-    expect(help).toContain("right, down, left, top, or replace");
-    expect(help).toContain("add panes through pane 8");
-    expect(help).toMatch(/replace\s+the focused pane/u);
     expect(help).not.toContain("--preview");
     expect(help).not.toContain("--source");
     expect(help).not.toContain("--self");

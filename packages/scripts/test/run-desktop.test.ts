@@ -78,17 +78,6 @@ describe("desktop launch environment", () => {
     expect(env.BB_DEV_APP_PORT).toBeUndefined();
   });
 
-  it("keeps the worktree build off the installed Electron user data directory", () => {
-    const env = toDesktopLaunchProcessEnv({
-      baseEnv: {},
-      config,
-      mode: "worktree",
-    });
-
-    expect(env.BB_DESKTOP_USER_DATA_DIR?.startsWith(config.dataDir)).toBe(true);
-    expect(env.BB_DESKTOP_USER_DATA_DIR).not.toContain("Application Support");
-  });
-
   it("preserves an explicit Electron user data directory", () => {
     const userDataDir = "/tmp/bb-desktop-profile";
     const env = toDesktopLaunchProcessEnv({

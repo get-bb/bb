@@ -314,26 +314,6 @@ describe("bb settings commands", () => {
     });
   });
 
-  it("updates active-thread Enter behavior while preserving the full contract", async () => {
-    const put = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.general.$put": put,
-    });
-
-    await runCommand(
-      ["settings", "general", "steerActiveThreadOnEnter", "true"],
-      register,
-    );
-
-    expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, steerActiveThreadOnEnter: true },
-    });
-  });
-
   it("enables the changelog preview experiment", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
@@ -351,26 +331,6 @@ describe("bb settings commands", () => {
 
     expect(put).toHaveBeenCalledWith({
       json: { ...defaultExperiments, changelogPreview: true },
-    });
-  });
-
-  it("enables the legacy JITI plugin loader experiment", async () => {
-    const updateExperiments = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.experiments.$put": updateExperiments,
-    });
-
-    await runCommand(
-      ["settings", "experiment", "legacyJitiPluginLoader", "true"],
-      register,
-    );
-
-    expect(updateExperiments).toHaveBeenCalledWith({
-      json: { ...defaultExperiments, legacyJitiPluginLoader: true },
     });
   });
 

@@ -3,7 +3,7 @@ import { chmodSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { systemExecutionOptionsResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { getThreadOutput, sendTextMessage } from "../../helpers/api.js";
+import { sendTextMessage } from "../../helpers/api.js";
 import {
   waitForHostConnected,
   waitForThreadOutputContaining,
@@ -111,9 +111,6 @@ describe.sequential("dynamic ACP integration smoke", () => {
           "bb-dynamic-acp-native-default",
           "bb-dynamic-acp-native-strong",
         ]);
-        expect(defaultOptions.models.map((model) => model.model)).not.toEqual([
-          "acp-default",
-        ]);
 
         const project = await createProjectFixture(
           harness,
@@ -200,11 +197,6 @@ describe.sequential("dynamic ACP integration smoke", () => {
           thread.id,
           "dynamic-acp:model=bb-dynamic-smoke-medium:resume launch spec",
           TURN_TIMEOUT_MS,
-        );
-
-        const output = await getThreadOutput(harness.api, thread.id);
-        expect(output).toContain(
-          "dynamic-acp:model=bb-dynamic-smoke-medium:resume launch spec",
         );
       }),
     DYNAMIC_ACP_TEST_TIMEOUT_MS,

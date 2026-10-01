@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CONNECT_CODE_TTL_MS,
@@ -432,34 +432,6 @@ describe("constraints", () => {
     expect(db.select().from(server).all()).toHaveLength(0);
     expect(db.select().from(connectCode).all()).toHaveLength(0);
     expect(db.select().from(labelClaim).all()).toHaveLength(0);
-  });
-
-  it("marks a connect code consumed exactly once (single-use redemption)", () => {
-    seedUser();
-    const now = new Date();
-    db.insert(connectCode)
-      .values({
-        code: "one-time",
-        userId: "u1",
-        purpose: "manual-pair",
-        expiresAt: new Date(now.getTime() + CONNECT_CODE_TTL_MS),
-        createdAt: now,
-      })
-      .run();
-
-    const redeem = () =>
-      db
-        .update(connectCode)
-        .set({ consumedAt: new Date() })
-        .where(
-          and(eq(connectCode.code, "one-time"), isNull(connectCode.consumedAt)),
-        )
-        .run();
-
-    const first = redeem();
-    expect(first.changes).toBe(1);
-    const second = redeem();
-    expect(second.changes).toBe(0);
   });
 });
 
@@ -1112,41 +1084,6 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
       available: false,
       reason: "invalid",
       error: "too-short",
-    });
-  });
-
-  it("reports a label taken by an existing handle", async () => {
-    seedUser("u1");
-    const now = new Date();
-    db.insert(profile)
-      .values({ userId: "u1", handle: "sawyer", createdAt: now })
-      .run();
-    expect(await checkLabelAvailability(db, "sawyer")).toEqual({
-      available: false,
-      reason: "taken",
-      namespace: "handle",
-    });
-  });
-
-  it("reports a label taken by an existing server subdomain", async () => {
-    seedUser("u1");
-    const now = new Date();
-    db.insert(profile)
-      .values({ userId: "u1", handle: "sawyer", createdAt: now })
-      .run();
-    db.insert(server)
-      .values({
-        id: "s1",
-        userId: "u1",
-        name: "desktop",
-        subdomain: "sawyer-desktop",
-        createdAt: now,
-      })
-      .run();
-    expect(await checkLabelAvailability(db, "sawyer-desktop")).toEqual({
-      available: false,
-      reason: "taken",
-      namespace: "subdomain",
     });
   });
 

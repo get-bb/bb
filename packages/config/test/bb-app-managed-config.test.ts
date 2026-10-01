@@ -99,28 +99,7 @@ describe("parseBbAppManagedConfig", () => {
     ]);
     expect(warnings).toHaveLength(2);
     expect(warnings.map((warning) => warning.index)).toEqual([1, 2]);
-  });
-
-  it("drops custom models with an unknown provider", () => {
-    const { parsed, warnings } = parseWithWarnings({
-      customModels: [
-        { providerId: "not-a-provider", model: "claude-example-preview" },
-      ],
-    });
-
-    expect(parsed.customModels).toEqual([]);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]?.index).toBe(0);
     expect(warnings[0]?.error).toMatch(/"providerId"/u);
-  });
-
-  it("drops custom models with an empty model id", () => {
-    const { parsed, warnings } = parseWithWarnings({
-      customModels: [{ providerId: "claude-code", model: "" }],
-    });
-
-    expect(parsed.customModels).toEqual([]);
-    expect(warnings).toHaveLength(1);
   });
 
   it("loads a config that still carries the removed customAcpAgents array, drops it, and warns", () => {

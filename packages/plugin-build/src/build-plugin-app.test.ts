@@ -285,7 +285,8 @@ describe("plugin app runtime shim", () => {
     );
     await writeFile(
       join(dir, "app.css"),
-      ".bb71-authored-decoration { text-decoration: underline; }\n",
+      ".bb71-authored-decoration { text-decoration: underline; }\n" +
+        "@keyframes bb71-authored-pulse { to { opacity: 0.5; } }\n",
     );
 
     const result = await buildPluginApp(
@@ -304,7 +305,11 @@ describe("plugin app runtime shim", () => {
     expect(css).not.toContain(`${scope}${sibling}`);
     expect(css).not.toContain("@scope");
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
-    expect(css).toContain(".bb71-authored-decoration");
+    expect(css).not.toContain(`${scope}.bb71-authored-decoration`);
+    expect(css.indexOf(".bb71-authored-decoration{")).toBeGreaterThan(
+      css.lastIndexOf("@layer utilities{"),
+    );
+    expect(css).toContain("@keyframes bb71-authored-pulse");
   });
 
   it("minifies app.js and app.css unless the caller asks for readable output", async () => {

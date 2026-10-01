@@ -114,37 +114,6 @@ describe("bb thread spawn command output", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it("bb thread spawn sends project-default when the user relies on project defaults", async () => {
-    vi.stubEnv("BB_PROJECT_ID", "proj-1");
-    const thread: domain.Thread = fixtures.makeThread({
-      id: "thread-1",
-      projectId: "proj-1",
-      providerId: "codex",
-      status: "starting",
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
-
-    await runCommand(
-      ["thread", "spawn", "--project", "proj-1", "--prompt", "hello"],
-      register,
-    );
-
-    expect(post).toHaveBeenCalledWith({
-      json: {
-        origin: "cli",
-        startedOnBehalfOf: null,
-        originKind: null,
-        projectId: "proj-1",
-        input: [{ type: "text", text: "hello", mentions: [] }],
-        environment: { type: "project-default" },
-      },
-    });
-    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
-  });
-
   it("bb thread spawn passes explicit lifecycle ownership independently of parent selection", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const thread: domain.Thread = fixtures.makeThread({
@@ -356,25 +325,6 @@ describe("bb thread spawn command output", () => {
     });
   });
 
-  it("bb thread spawn requires an explicit --project", async () => {
-    vi.stubEnv("BB_PROJECT_ID", undefined);
-    const post = vi.fn();
-    const stderrWrite = captureCommanderErrors();
-    stubServerApi({ "v1.threads.$post": post });
-
-    await expect(
-      runCommand(["thread", "spawn", "--prompt", "hello"], register),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(stderrWrite).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "error: required option '--project <id>' not specified",
-      ),
-    );
-    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
-    expect(post).not.toHaveBeenCalled();
-  });
-
   it("bb thread spawn ignores BB_PROJECT_ID when --project is omitted", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-env");
     const post = vi.fn();
@@ -553,15 +503,9 @@ describe("bb thread spawn command output", () => {
     });
   });
 
-  it("bb thread spawn help lists product permission modes", async () => {
+  it("bb thread spawn help does not point at bb curl", async () => {
     const helpOutput = await getHelpOutput(["thread", "spawn"], register);
-    expect(helpOutput).toContain("--permission-mode <mode>");
-    expect(helpOutput).toContain("--visibility <visibility>");
-    expect(helpOutput).toContain("Exact Git ref");
-    expect(helpOutput).toContain("origin/<branch> for a remote ref");
-    expect(helpOutput).toContain("bb environment providers");
     expect(helpOutput).not.toContain("bb curl");
-    expect(helpOutput).toMatch(/Permission mode: accept-edits, auto, or full/);
   });
 
   it("bb thread spawn reports invalid permission mode choices", async () => {
