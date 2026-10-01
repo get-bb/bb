@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
@@ -2095,7 +2095,7 @@ describe("acp bridge", () => {
     );
     expect(prompt).toContain("Available bb skills:");
     expect(prompt).toContain(
-      "- deploy: Ship the app. (SKILL.md: /staged/acp-skills/deploy/SKILL.md)",
+      `- deploy: Ship the app. (SKILL.md: ${join("/staged/acp-skills", "deploy", "SKILL.md")})`,
     );
     await waitForResponse(sendRequest("skills/configure", { roots: [] }));
   });
@@ -2203,7 +2203,7 @@ describe("acp bridge", () => {
         subject: {
           kind: "file_change",
           itemId: "write-tool-1",
-          writeScope: "/tmp/qa-1719",
+          writeScope: normalize("/tmp/qa-1719"),
         },
       },
     });

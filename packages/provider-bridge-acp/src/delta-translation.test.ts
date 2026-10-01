@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -1911,7 +1912,10 @@ describe("acp delta translation (raw payloads and real results)", () => {
         }),
       )[0],
     ).toMatchObject({
-      item: { type: "fileRead", path: "/workspace/app/README.md" },
+      item: {
+        type: "fileRead",
+        path: path.resolve("/workspace/app/README.md"),
+      },
     });
 
     expect(
@@ -1926,7 +1930,10 @@ describe("acp delta translation (raw payloads and real results)", () => {
         }),
       )[0],
     ).toMatchObject({
-      item: { type: "fileRead", path: "/workspace/app/src/index.ts" },
+      item: {
+        type: "fileRead",
+        path: path.resolve("/workspace/app/src/index.ts"),
+      },
     });
   });
 

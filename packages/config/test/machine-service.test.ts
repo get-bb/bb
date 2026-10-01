@@ -121,7 +121,12 @@ describe("findMachineServiceFile", () => {
 
   it("finds systemd user and system units that run a daemon for the data directory", async () => {
     const { dataDir, homeDir } = await createRoot();
-    const escapedDataDir = join(dataDir, 'with "quotes" 100%');
+    const escapedDataDir = join(
+      dataDir,
+      process.platform === "win32"
+        ? "with 'quotes' 100%"
+        : 'with "quotes" 100%',
+    );
     await mkdir(escapedDataDir, { recursive: true });
     const userUnit = await writeSystemdUnit({
       dataDir: escapedDataDir,

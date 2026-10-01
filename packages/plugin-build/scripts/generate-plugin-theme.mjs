@@ -28,16 +28,7 @@ const themeCssPath = path.join(
   "ui",
   "theme.css",
 );
-// Read through apps/app's node_modules link so we vendor exactly the version
-// the app ships (its package.json exports block require.resolve, so plain
-// path reads are the only way in).
-const twAnimateDir = path.join(
-  repoRoot,
-  "apps",
-  "app",
-  "node_modules",
-  "tw-animate-css",
-);
+const twAnimateDir = path.join(packageRoot, "node_modules", "tw-animate-css");
 const outPath = path.join(
   packageRoot,
   "src",

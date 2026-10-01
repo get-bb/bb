@@ -1490,6 +1490,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      bb-plugin-scripted-echo-provider:
+        specifier: workspace:*
+        version: link:../../tests/scripted-echo-provider
       tsx:
         specifier: ^4.23.1
         version: 4.23.1
@@ -2190,6 +2193,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
+      tw-animate-css:
+        specifier: ^1.4.0
+        version: 1.4.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
