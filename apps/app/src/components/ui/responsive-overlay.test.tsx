@@ -20,6 +20,13 @@ import {
 import { Popover, PopoverContent } from "@bb/shared-ui/popover";
 import { DropdownMenu, DropdownMenuContent } from "@bb/shared-ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@bb/shared-ui/select";
+import {
   measureDrawerKeyboardOverlap,
   PersistentResponsiveDrawerShell,
   ResponsiveDrawerShell,
@@ -240,6 +247,116 @@ describe("responsive DropdownMenu", () => {
     expect(sheet.style.maxWidth).toBe("none");
     expect(sheet.style.color).toBe("red");
   });
+});
+
+type DismissalCaseProps = {
+  onOpenChange: (open: boolean) => void;
+  guard: (event: Event) => void;
+};
+
+const compactDismissalCases: [
+  string,
+  (props: DismissalCaseProps) => React.ReactElement,
+][] = [
+  [
+    "Dialog",
+    ({ onOpenChange, guard }) => (
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent
+          onEscapeKeyDown={guard}
+          onPointerDownOutside={guard}
+          onInteractOutside={guard}
+        >
+          <DialogTitle>Details</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    ),
+  ],
+  [
+    "Popover",
+    ({ onOpenChange, guard }) => (
+      <Popover open onOpenChange={onOpenChange}>
+        <PopoverContent
+          onEscapeKeyDown={guard}
+          onPointerDownOutside={guard}
+          onInteractOutside={guard}
+        >
+          Details
+        </PopoverContent>
+      </Popover>
+    ),
+  ],
+  [
+    "DropdownMenu",
+    ({ onOpenChange, guard }) => (
+      <DropdownMenu open onOpenChange={onOpenChange}>
+        <DropdownMenuContent
+          onEscapeKeyDown={guard}
+          onPointerDownOutside={guard}
+          onInteractOutside={guard}
+        >
+          Details
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
+  ],
+  [
+    "Select",
+    ({ onOpenChange, guard }) => (
+      <Select open onOpenChange={onOpenChange} defaultValue="details">
+        <SelectTrigger aria-label="Details">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent onEscapeKeyDown={guard} onPointerDownOutside={guard}>
+          <SelectItem value="details">Details</SelectItem>
+        </SelectContent>
+      </Select>
+    ),
+  ],
+];
+
+describe("compact overlay dismissal callbacks", () => {
+  it.each(compactDismissalCases)(
+    "lets %s callers veto Escape and backdrop dismissal",
+    (_, renderOverlay) => {
+      mockPointerCoarse(true);
+      const onOpenChange = vi.fn();
+      let vetoed = true;
+      const guard = vi.fn((event: Event) => {
+        if (vetoed) event.preventDefault();
+      });
+      render(
+        <CompactViewportOverrideProvider isCompactViewport>
+          {renderOverlay({ onOpenChange, guard })}
+        </CompactViewportOverrideProvider>,
+      );
+      const backdrop = document.querySelector<HTMLElement>(
+        '[data-persistent-drawer-backdrop][data-state="open"]',
+      ) as HTMLElement;
+
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      fireEvent.pointerDown(backdrop);
+      fireEvent.click(backdrop);
+      expect(onOpenChange).not.toHaveBeenCalled();
+      const [escape, ...outside] = guard.mock.calls.map(([event]) => event);
+      expect(escape).toBeInstanceOf(KeyboardEvent);
+      expect(outside.length).toBeGreaterThan(0);
+      for (const event of outside) {
+        expect(event).toBeInstanceOf(CustomEvent);
+        expect(
+          (event as CustomEvent<{ originalEvent: Event }>).detail.originalEvent
+            .type,
+        ).toBe("pointerdown");
+      }
+
+      vetoed = false;
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(onOpenChange).toHaveBeenLastCalledWith(false);
+      fireEvent.pointerDown(backdrop);
+      fireEvent.click(backdrop);
+      expect(onOpenChange).toHaveBeenCalledTimes(2);
+    },
+  );
 });
 
 describe("responsive Dialog", () => {

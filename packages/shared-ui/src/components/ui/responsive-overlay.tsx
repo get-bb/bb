@@ -261,7 +261,17 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
   return result as Omit<T, RadixContentPropName>;
 }
 
-interface ResponsiveDrawerShellProps {
+type DrawerPointerDownOutsideEvent = CustomEvent<{
+  originalEvent: PointerEvent;
+}>;
+
+interface DrawerDismissalHandlers {
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
+  onPointerDownOutside?: (event: DrawerPointerDownOutsideEvent) => void;
+  onInteractOutside?: (event: DrawerPointerDownOutsideEvent) => void;
+}
+
+interface ResponsiveDrawerShellProps extends DrawerDismissalHandlers {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   closeOnBackdropClick?: boolean;
@@ -333,6 +343,9 @@ export function ResponsiveDrawerShell({
   describedBy,
   contentClassName,
   onContentAnimationEnd,
+  onEscapeKeyDown,
+  onPointerDownOutside,
+  onInteractOutside,
   children,
 }: ResponsiveDrawerShellProps) {
   const { isContentRealized } = useResponsiveDrawerRealization({ open });
@@ -352,6 +365,9 @@ export function ResponsiveDrawerShell({
       describedBy={describedBy}
       contentClassName={contentClassName}
       onContentAnimationEnd={onContentAnimationEnd}
+      onEscapeKeyDown={onEscapeKeyDown}
+      onPointerDownOutside={onPointerDownOutside}
+      onInteractOutside={onInteractOutside}
     >
       {isContentRealized ? (
         children
@@ -366,7 +382,7 @@ export function ResponsiveDrawerShell({
   );
 }
 
-interface PersistentResponsiveDrawerShellProps {
+interface PersistentResponsiveDrawerShellProps extends DrawerDismissalHandlers {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   closeOnBackdropClick?: boolean;
@@ -394,7 +410,7 @@ const PERSISTENT_DRAWER_FOCUSABLE_SELECTOR = [
 
 type PersistentDrawerStackEntry = {
   panel: () => HTMLElement | null;
-  requestClose: () => void;
+  dismissOnEscape: (event: KeyboardEvent) => void;
 };
 
 type PersistentDrawerStack = {
@@ -508,8 +524,8 @@ function registerOpenDrawer(
         return;
       }
       if (event.key === "Escape") {
+        topEntry.dismissOnEscape(event);
         event.preventDefault();
-        topEntry.requestClose();
       } else if (event.key === "Tab") {
         handleDrawerTab(event, panel);
       }
@@ -539,6 +555,7 @@ function registerOpenDrawer(
 interface UsePersistentOverlayFocusArgs {
   onAfterCloseAutoFocus?: () => void;
   onBeforeCloseAutoFocus?: () => void;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
   open: boolean;
   panelRef: React.RefObject<HTMLElement | null>;
   requestClose: () => void;
@@ -547,11 +564,16 @@ interface UsePersistentOverlayFocusArgs {
 export function usePersistentOverlayFocus({
   onAfterCloseAutoFocus,
   onBeforeCloseAutoFocus,
+  onEscapeKeyDown,
   open,
   panelRef,
   requestClose,
 }: UsePersistentOverlayFocusArgs): void {
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
+  const onEscapeKeyDownRef = React.useRef(onEscapeKeyDown);
+  React.useLayoutEffect(() => {
+    onEscapeKeyDownRef.current = onEscapeKeyDown;
+  }, [onEscapeKeyDown]);
 
   React.useLayoutEffect(() => {
     if (!open) return;
@@ -566,7 +588,10 @@ export function usePersistentOverlayFocus({
         : null;
     const unregister = registerOpenDrawer(ownerDocument, {
       panel: () => panelRef.current,
-      requestClose,
+      dismissOnEscape: (event) => {
+        onEscapeKeyDownRef.current?.(event);
+        if (!event.defaultPrevented) requestClose();
+      },
     });
     panel.focus({ preventScroll: true });
     return unregister;
@@ -629,10 +654,14 @@ export function PersistentResponsiveDrawerShell({
   contentClassName,
   motionDurationMs = 220,
   onContentAnimationEnd,
+  onEscapeKeyDown,
+  onPointerDownOutside,
+  onInteractOutside,
   children,
 }: PersistentResponsiveDrawerShellProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const backdropRef = React.useRef<HTMLDivElement>(null);
+  const backdropPointerDownRef = React.useRef<PointerEvent | null>(null);
   const dragRef = React.useRef<PersistentDrawerDrag | null>(null);
   const settledStateRef = React.useRef<boolean | null>(null);
   const labelId = React.useId();
@@ -656,10 +685,27 @@ export function PersistentResponsiveDrawerShell({
   usePersistentOverlayFocus({
     onAfterCloseAutoFocus,
     onBeforeCloseAutoFocus: prepareCloseAutoFocus,
+    onEscapeKeyDown,
     open,
     panelRef,
     requestClose,
   });
+
+  const handleBackdropClick = () => {
+    const originalEvent = backdropPointerDownRef.current;
+    backdropPointerDownRef.current = null;
+    if (!closeOnBackdropClick) return;
+    if (originalEvent !== null) {
+      const outsideEvent: DrawerPointerDownOutsideEvent = new CustomEvent(
+        "dismissableLayer.pointerDownOutside",
+        { cancelable: true, detail: { originalEvent } },
+      );
+      onPointerDownOutside?.(outsideEvent);
+      onInteractOutside?.(outsideEvent);
+      if (outsideEvent.defaultPrevented) return;
+    }
+    requestClose();
+  };
 
   useDrawerKeyboardInset(panelRef, open);
 
@@ -787,7 +833,10 @@ export function PersistentResponsiveDrawerShell({
           pointerEvents: open ? "auto" : "none",
           transition: backdropTransition,
         }}
-        onClick={closeOnBackdropClick ? requestClose : undefined}
+        onPointerDown={(event) => {
+          backdropPointerDownRef.current = event.nativeEvent;
+        }}
+        onClick={handleBackdropClick}
         onTouchMove={(event) => event.preventDefault()}
       />
       <div

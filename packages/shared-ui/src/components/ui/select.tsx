@@ -19,6 +19,7 @@ import {
 
 const SELECT_OPEN_KEYS = new Set([" ", "Enter", "ArrowUp", "ArrowDown"]);
 const ENABLED_OPTION_SELECTOR = '[role="option"]:not([aria-disabled="true"])';
+const TYPEAHEAD_RESET_MS = 1000;
 
 interface CompactSelectContextValue {
   open: boolean;
@@ -272,11 +273,35 @@ function moveOptionFocus(list: HTMLElement, key: string): boolean {
   return true;
 }
 
+function optionTextValue(option: HTMLElement): string {
+  return option.dataset.textValue ?? option.textContent?.trim() ?? "";
+}
+
+function findTypeaheadOption(
+  options: HTMLElement[],
+  current: HTMLElement | undefined,
+  search: string,
+): HTMLElement | undefined {
+  const firstChar = search.charAt(0);
+  const isRepeatedChar = Array.from(search).every((char) => char === firstChar);
+  const normalizedSearch = (isRepeatedChar ? firstChar : search).toLowerCase();
+  const start = current === undefined ? 0 : options.indexOf(current);
+  const wrapped = [...options.slice(start), ...options.slice(0, start)];
+  const candidates =
+    normalizedSearch.length === 1
+      ? wrapped.filter((option) => option !== current)
+      : wrapped;
+  return candidates.find((option) =>
+    optionTextValue(option).toLowerCase().startsWith(normalizedSearch),
+  );
+}
+
 const CompactSelectListbox = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { compact: CompactSelectContextValue }
->(({ compact, children, onKeyDown, ...props }, ref) => {
+>(({ compact, children, onKeyDown, onKeyDownCapture, ...props }, ref) => {
   const listRef = React.useRef<HTMLDivElement | null>(null);
+  const typeaheadRef = React.useRef({ search: "", timeout: 0 });
   const setListRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       listRef.current = node;
@@ -296,6 +321,11 @@ const CompactSelectListbox = React.forwardRef<
     target?.focus();
   }, [compact.open]);
 
+  React.useEffect(() => {
+    const typeahead = typeaheadRef.current;
+    return () => window.clearTimeout(typeahead.timeout);
+  }, []);
+
   return (
     <div
       ref={setListRef}
@@ -303,6 +333,29 @@ const CompactSelectListbox = React.forwardRef<
       id={compact.listboxId}
       aria-label={compact.label}
       {...props}
+      onKeyDownCapture={(event) => {
+        onKeyDownCapture?.(event);
+        const typeahead = typeaheadRef.current;
+        const isModifierKey = event.ctrlKey || event.altKey || event.metaKey;
+        if (event.defaultPrevented || isModifierKey || event.key.length !== 1) {
+          return;
+        }
+        if (event.key === " " && typeahead.search === "") return;
+        event.preventDefault();
+        typeahead.search += event.key;
+        window.clearTimeout(typeahead.timeout);
+        typeahead.timeout = window.setTimeout(() => {
+          typeahead.search = "";
+        }, TYPEAHEAD_RESET_MS);
+        const options = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>(
+            ENABLED_OPTION_SELECTOR,
+          ),
+        );
+        const activeElement = event.currentTarget.ownerDocument.activeElement;
+        const current = options.find((option) => option === activeElement);
+        findTypeaheadOption(options, current, typeahead.search)?.focus();
+      }}
       onKeyDown={(event) => {
         onKeyDown?.(event);
         if (event.defaultPrevented) return;
@@ -367,6 +420,8 @@ const SelectContent = React.forwardRef<
         open={compact.open}
         onOpenChange={compact.onOpenChange}
         srLabel={compact.label}
+        onEscapeKeyDown={props.onEscapeKeyDown}
+        onPointerDownOutside={props.onPointerDownOutside}
       >
         <CompactSelectListbox
           ref={ref}
@@ -460,6 +515,7 @@ const SelectItem = React.forwardRef<
         aria-disabled={disabled || undefined}
         data-disabled={disabled ? "" : undefined}
         data-state={selected ? "checked" : "unchecked"}
+        data-text-value={textValue}
         tabIndex={disabled ? undefined : 0}
         className={cn(
           "relative flex w-full cursor-default select-none items-center rounded-sm py-2 pl-2 pr-8 text-sm outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",

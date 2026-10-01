@@ -41,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function runNextFrame() {
@@ -74,7 +75,9 @@ function FolderOptions() {
         <SelectItem value="archive" disabled>
           Archive
         </SelectItem>
-        <SelectItem value="personal">Personal</SelectItem>
+        <SelectItem value="personal" textValue="Home">
+          Personal
+        </SelectItem>
       </SelectGroup>
       <SelectSeparator />
       <SelectItem value="new">New folder…</SelectItem>
@@ -212,6 +215,43 @@ describe("compact Select nested in a compact Dialog", () => {
     expect(trigger.textContent).toBe("Personal");
     expect(document.activeElement).toBe(trigger);
     expect(dialogState()).toBe("open");
+  });
+
+  it("moves focus by typeahead, honouring textValue and skipping disabled options", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { trigger } = renderCompactDialog();
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    runFrames();
+    const listbox = screen.getByRole("listbox", { name: "Folder" });
+    const option = (name: string) =>
+      within(listbox).getByRole("option", { name });
+    const type = (key: string) =>
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key });
+
+    type("w");
+    type("o");
+    expect(document.activeElement).toBe(option("Work"));
+    act(() => vi.advanceTimersByTime(1000));
+    type("h");
+    expect(document.activeElement).toBe(option("Personal"));
+    act(() => vi.advanceTimersByTime(1000));
+    type("a");
+    expect(document.activeElement).toBe(option("Personal"));
+    act(() => vi.advanceTimersByTime(1000));
+    type("n");
+    expect(document.activeElement).toBe(option("New folder…"));
+    type("n");
+    expect(document.activeElement).toBe(option("No folder"));
+    type(" ");
+    expect(screen.getByRole("listbox", { name: "Folder" })).toBe(listbox);
+    expect(trigger.textContent).toBe("No folder");
+
+    act(() => vi.advanceTimersByTime(1000));
+    type("h");
+    type("Enter");
+    runFrames();
+    expect(trigger.textContent).toBe("Personal");
   });
 
   it("leaves the app tree exposed and realizes options two frames after opening", () => {
