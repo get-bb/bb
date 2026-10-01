@@ -8,6 +8,7 @@ import {
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
+import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
 import {
   Select,
@@ -16,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { storageRpc, State, Policy, Preview } from "./src/contract.js";
 
@@ -50,51 +52,37 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function StoragePanel(props: PluginNavPanelProps) {
-  return <StoragePage key={props.subPath} {...props} />;
-}
+type StorageData = {
+  state: State;
+  hosts: Hosts;
+  machines: Record<string, Machine>;
+  primaryHostId: string | null;
+};
 
-function StoragePage({ subPath }: PluginNavPanelProps) {
+function StoragePanel(props: PluginNavPanelProps) {
   const rpc = useRpc<typeof storageRpc>();
   const sdk = useSdk();
-  const navigate = useBbNavigate();
-  const [state, setState] = useState<State | null>(null);
-  const [hosts, setHosts] = useState<Hosts>([]);
-  const [machines, setMachines] = useState<Record<string, Machine>>({});
-  const [primaryHostId, setPrimaryHostId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<HostReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Policy | null>(null);
-  const policy = draft ?? state?.policy ?? null;
-  const [confirmation, setConfirmation] = useState<{
-    policy: Policy;
-    preview: Preview;
-  } | null>(null);
-  const [cleanup, setCleanup] = useState<{
-    threadId: string | null;
-    title: string;
-  } | null>(null);
-  const hostId = subPath || null;
+  const [data, setData] = useState<StorageData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
-      const [next, reports, machines, machine, config] = await Promise.all([
+      const [state, reports, machines, config] = await Promise.all([
         rpc.call("state", null),
         rpc.call("hosts", null),
         sdk.hosts.list({ type: "persistent" }),
-        hostId ? rpc.call("host", { hostId }) : Promise.resolve(null),
         sdk.system.config(),
       ]);
-      setState(next);
-      setHosts(reports.hosts);
-      setMachines(Object.fromEntries(machines.map((host) => [host.id, host])));
-      setPrimaryHostId(config.primaryHostId);
-      setDetail(machine);
+      setData({
+        state,
+        hosts: reports.hosts,
+        machines: Object.fromEntries(machines.map((host) => [host.id, host])),
+        primaryHostId: config.primaryHostId,
+      });
+      setLoadError(null);
     } catch (error) {
-      setError(message(error));
+      setLoadError(message(error));
     }
-  }, [rpc, sdk, hostId]);
+  }, [rpc, sdk]);
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -117,6 +105,49 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
       connection();
     };
   }, [sdk, refresh]);
+  return (
+    <StoragePage
+      key={props.subPath}
+      hostId={props.subPath || null}
+      data={data}
+      loadError={loadError}
+      refresh={refresh}
+    />
+  );
+}
+
+function StoragePage({
+  hostId,
+  data,
+  loadError,
+  refresh,
+}: {
+  hostId: string | null;
+  data: StorageData | null;
+  loadError: string | null;
+  refresh: () => Promise<void>;
+}) {
+  const rpc = useRpc<typeof storageRpc>();
+  const navigate = useBbNavigate();
+  const state = data?.state ?? null;
+  const hosts = data?.hosts ?? [];
+  const machines = data?.machines ?? {};
+  const primaryHostId = data?.primaryHostId ?? null;
+  const detail = hosts.find((host) => host.hostId === hostId) ?? null;
+  const [actionError, setError] = useState<string | null>(null);
+  const error = actionError ?? loadError;
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Policy | null>(null);
+  const policy = draft ?? state?.policy ?? null;
+  const [confirmation, setConfirmation] = useState<{
+    policy: Policy;
+    preview: Preview;
+  } | null>(null);
+  const [cleanup, setCleanup] = useState<{
+    threadId: string | null;
+    title: string;
+  } | null>(null);
   async function perform(work: () => Promise<unknown>, success?: string) {
     setError(null);
     setNotice(null);
@@ -194,7 +225,7 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
   return (
     <div className="h-full w-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-10 px-4 pb-10 pt-4 md:px-5 md:pt-5">
-        {hostId && (
+        {hostId && state && (
           <header className="space-y-3">
             <button
               className="inline-flex items-center gap-1.5 text-xs leading-snug text-subtle-foreground/75 hover:text-foreground"
@@ -252,12 +283,11 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
           </p>
         )}
         {!state ? (
-          <div
-            role="status"
-            className="rounded-lg border border-border p-8 text-center text-xs leading-snug text-subtle-foreground/75"
-          >
-            Loading storage…
-          </div>
+          !loadError && (
+            <DelayedLoading>
+              <StorageSkeleton detail={hostId !== null} />
+            </DelayedLoading>
+          )
         ) : hostId ? (
           <div className="space-y-6">
             {offline && (
@@ -641,6 +671,54 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function StorageSkeleton({ detail }: { detail: boolean }) {
+  const rows = (count: number) => (
+    <div className="divide-y divide-border rounded-lg border border-border bg-card">
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="space-y-2 px-4 py-3.5">
+          <Skeleton className="h-3.5 w-28" />
+          <Skeleton className="h-3 w-56" />
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <div role="status" aria-label="Loading storage" className="space-y-10">
+      {detail ? (
+        <>
+          <div className="space-y-3">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3 w-72" />
+          </div>
+          <div className="space-y-4 rounded-lg border border-border bg-card px-4 py-3.5">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-1.5 w-full" />
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {Array.from({ length: 4 }, (_, index) => (
+                <Skeleton key={index} className="h-8" />
+              ))}
+            </div>
+          </div>
+          {rows(2)}
+        </>
+      ) : (
+        <>
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-32" />
+            {rows(3)}
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            {rows(2)}
+          </div>
+        </>
+      )}
     </div>
   );
 }
