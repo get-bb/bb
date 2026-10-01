@@ -8,6 +8,7 @@ function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   return {
     cwd: process.cwd(),
+    env,
     maxTurns: 0,
     persistSession: false,
     settingSources: ["user", "project", "local"],
@@ -15,9 +16,7 @@ function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
   };
 }
 
-export async function listClaudeCodeBridgeModels(
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<{
+async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
@@ -41,6 +40,24 @@ export async function listClaudeCodeBridgeModels(
     throw translateMissingClaudeCliCatalogError(error);
   } finally {
     session.close();
+  }
+}
+
+export async function listClaudeCodeBridgeModels(
+  env: NodeJS.ProcessEnv = process.env,
+): ReturnType<typeof probeClaudeCodeModels> {
+  try {
+    return await probeClaudeCodeModels(env);
+  } catch (error) {
+    if (
+      env.ANTHROPIC_MODEL &&
+      error instanceof Error &&
+      error.message.includes("--client-data-url:") &&
+      error.message.includes("pass the matching --model")
+    ) {
+      return probeClaudeCodeModels({ ...env, ANTHROPIC_MODEL: undefined });
+    }
+    throw error;
   }
 }
 

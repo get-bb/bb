@@ -2470,6 +2470,52 @@ describe("bridge", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it("recovers model discovery when an inherited model conflicts with client data", async () => {
+    const failedClose = vi.fn();
+    const recoveredClose = vi.fn();
+    queryMock
+      .mockReturnValueOnce({
+        initializationResult: vi
+          .fn()
+          .mockRejectedValue(
+            new Error(
+              "Error: --client-data-url: the document covers models matching ^claude-current, and this session runs claude-previous; pass the matching --model.",
+            ),
+          ),
+        close: failedClose,
+      })
+      .mockReturnValueOnce({
+        initializationResult: vi.fn().mockResolvedValue({
+          models: [
+            {
+              value: "sonnet",
+              resolvedModel: "claude-sonnet-5",
+              displayName: "Sonnet",
+              description: "Sonnet 5",
+            },
+          ],
+        }),
+        close: recoveredClose,
+      });
+    const env = {
+      ...process.env,
+      ANTHROPIC_MODEL: "claude-previous",
+      CLAUDE_CODE_CLIENT_DATA_URL: "https://example.com/client-data",
+    };
+
+    await expect(listClaudeCodeBridgeModels(env)).resolves.toMatchObject({
+      models: [expect.objectContaining({ model: "claude-sonnet-5" })],
+    });
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[1]?.[0]?.options.env).toEqual({
+      ...env,
+      ANTHROPIC_MODEL: undefined,
+    });
+    expect(env.ANTHROPIC_MODEL).toBe("claude-previous");
+    expect(failedClose).toHaveBeenCalledOnce();
+    expect(recoveredClose).toHaveBeenCalledOnce();
+  });
+
   it("propagates Claude model discovery failures and closes the probe", async () => {
     const close = vi.fn();
     queryMock.mockReturnValueOnce({
@@ -2482,6 +2528,7 @@ describe("bridge", () => {
     await expect(listClaudeCodeBridgeModels()).rejects.toThrow(
       "temporary discovery failure",
     );
+    expect(queryMock).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
   });
 
