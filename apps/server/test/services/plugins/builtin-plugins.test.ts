@@ -533,7 +533,7 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("preserves an installed builtin's choice when its default changes", async () => {
+  it("follows a changed default for a builtin the user never toggled", async () => {
     service = createService({
       db,
       dataDir: join(workDir, "data"),
@@ -550,9 +550,32 @@ describe("builtin plugin reconciliation", () => {
     await service.start();
 
     expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", enabled: true, status: "running" },
+    ]);
+    expect(loadCount()).toBe(1);
+  });
+
+  it("keeps a builtin the user turned off disabled when its default turns on", async () => {
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      defaultEnabled: false,
+    });
+    await service.start();
+    await service.setEnabled("builtin-fixture", true);
+    await service.setEnabled("builtin-fixture", false);
+    await service.stop();
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      defaultEnabled: true,
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
       { id: "builtin-fixture", enabled: false, status: "disabled" },
     ]);
-    expect(loadCount()).toBe(0);
   });
 
   it("ships each product builtin with its deliberate default", () => {

@@ -133,6 +133,7 @@ describe("prebuilt server bundle loading", () => {
       rootDir,
       version: "0.1.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     const before =
       ((globalThis as Record<string, unknown>).__prebuiltDistLoads as
@@ -305,6 +306,7 @@ export default function plugin() {
       rootDir,
       version: "0.1.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     await service.reload("minordist");
 
@@ -325,6 +327,7 @@ export default function plugin() {
       rootDir,
       version: "0.1.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     await service.reload("staledist");
 

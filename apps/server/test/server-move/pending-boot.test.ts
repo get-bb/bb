@@ -110,6 +110,7 @@ async function openImportedDataDir() {
     rootDir: `${SOURCE_DATA_DIR}/plugins/npm/tasks`,
     version: "1.0.0",
     enabled: true,
+    enabledFollowsDefault: false,
   });
   const registrationDir = join(dataDir, "plugins", "snapshots", "tasks", "1");
   await mkdir(registrationDir, { recursive: true });

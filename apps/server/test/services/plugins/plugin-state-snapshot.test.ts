@@ -73,6 +73,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: pluginDir,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     const previousRegistration = getInstalledPlugin(db, "snapshot-test");
     if (previousRegistration === undefined) {
@@ -161,6 +162,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: pluginDir,
       version: "1.2.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     const registration = getInstalledPlugin(db, "legacy-snapshot");
     if (registration === undefined) throw new Error("missing registration");
@@ -311,6 +313,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: nestedPath,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const warnings: string[] = [];
@@ -378,6 +381,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: checkout,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const warnings: string[] = [];
@@ -445,6 +449,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: checkout,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const warnings: string[] = [];
@@ -552,6 +557,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: activePath,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     const snapshotPath = join(
       dataDir,

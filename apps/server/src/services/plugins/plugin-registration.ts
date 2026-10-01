@@ -226,7 +226,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       current.activeArtifactId === expected.activeArtifactId &&
       current.rootDir === expected.rootDir &&
       current.version === expected.version &&
-      current.enabled === expected.enabled
+      current.enabled === expected.enabled &&
+      current.enabledFollowsDefault === expected.enabledFollowsDefault
     );
   }
 
@@ -377,6 +378,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           rootDir: args.rootDir,
           version: manifest.version,
           enabled: movedFrom?.enabled ?? true,
+          enabledFollowsDefault: false,
         });
         const row = getInstalledPlugin(deps.db, manifest.id);
         if (row) {
@@ -612,6 +614,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       rootDir: row.rootDir,
       version: row.version,
       enabled: row.enabled,
+      enabledFollowsDefault: row.enabledFollowsDefault,
     });
   }
 
@@ -685,6 +688,11 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       if (!bundled.autoInstall && existing === undefined) {
         continue;
       }
+      const enabledFollowsDefault =
+        existing === undefined || existing.enabledFollowsDefault;
+      const enabled = enabledFollowsDefault
+        ? bundled.defaultEnabled
+        : existing.enabled;
       const sameBundledSource =
         existing?.sourceKind === "builtin" &&
         existing.sourceBuiltinName === bundled.name;
@@ -708,7 +716,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           name: bundled.name,
         }) ||
         existing.version !== manifest.version ||
-        existing.rootDir !== bundled.rootDir
+        existing.rootDir !== bundled.rootDir ||
+        existing.enabled !== enabled
       ) {
         upsertInstalledPlugin(deps.db, {
           id: manifest.id,
@@ -720,7 +729,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           activeArtifactId: null,
           rootDir: bundled.rootDir,
           version: manifest.version,
-          enabled: existing?.enabled ?? bundled.defaultEnabled,
+          enabled,
+          enabledFollowsDefault,
         });
       }
     }

@@ -121,6 +121,7 @@ function builtinPlugin(id: string): UpsertInstalledPluginInput {
     rootDir: `/opt/bb-app/plugins/${id}`,
     version: "1.0.0",
     enabled: true,
+    enabledFollowsDefault: false,
   };
 }
 

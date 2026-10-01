@@ -80,6 +80,7 @@ const installedPluginRowFields = {
   rootDir: z.string(),
   version: z.string(),
   enabled: z.boolean(),
+  enabledFollowsDefault: z.boolean().default(false),
   removedAt: z.number().int().nullable(),
   installedAt: z.number().int(),
   updatedAt: z.number().int(),

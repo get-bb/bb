@@ -542,6 +542,7 @@ describe("third-party marketplaces", () => {
       rootDir: "/plugins/notes",
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const removed = await catalog.removeMarketplace("acme-plugins");

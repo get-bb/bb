@@ -9,6 +9,7 @@ import {
   migrate,
   noopNotifier,
 } from "../src/index.js";
+import { dropPluginEnabledFollowsDefaultColumn } from "./helpers/rewind.js";
 
 const THREAD_DRAFTS_MIGRATION_TIMESTAMP = 1790322211064;
 const originalMigration = readFileSync(
@@ -104,6 +105,7 @@ it.each([false, true])(
         .all();
       expect(queueBefore).toHaveLength(alreadyMigrated ? 2 : 5);
 
+      dropPluginEnabledFollowsDefaultColumn(db);
       migrate(db);
       migrate(db);
 

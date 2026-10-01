@@ -326,6 +326,9 @@ export const installedPlugins = sqliteTable("plugins", {
   rootDir: text("root_dir").notNull(),
   version: text("version").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  enabledFollowsDefault: integer("enabled_follows_default", { mode: "boolean" })
+    .notNull()
+    .default(false),
   removedAt: integer("removed_at"),
   installedAt: integer("installed_at").notNull(),
   updatedAt: integer("updated_at").notNull(),

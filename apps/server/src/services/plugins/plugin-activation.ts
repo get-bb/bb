@@ -253,6 +253,7 @@ export function createPluginActivation(context: PluginActivationContext) {
           rootDir: args.rootDir,
           version: args.manifest.version,
           enabled: args.row.enabled,
+          enabledFollowsDefault: args.row.enabledFollowsDefault,
         });
         pointerWritten = true;
         const current = getInstalledPlugin(deps.db, args.row.id);
