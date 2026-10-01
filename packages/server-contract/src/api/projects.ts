@@ -339,6 +339,7 @@ export const skillSummarySchema = z.object({
   id: installedSkillIdSchema,
   name: z.string(),
   description: z.string().nullable(),
+  contentHash: skillRevisionSchema.nullable(),
   provider: skillProviderSchema.nullable(),
   scope: skillScopeSchema,
   pluginId: z.string().min(1).nullable(),

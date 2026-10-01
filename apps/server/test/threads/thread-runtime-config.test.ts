@@ -1506,6 +1506,7 @@ describe("thread runtime config", () => {
               id: `skill_${"b".repeat(64)}`,
               name: "portable-review",
               description: "Review code from one shared source.",
+              contentHash: null,
               filePath: skillFilePath,
               rootKind: "shared-project",
               linked: false,

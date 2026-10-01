@@ -745,6 +745,10 @@ const discoveredSkillSchema = z.object({
   id: z.string().regex(/^skill_[a-f0-9]{64}$/u),
   name: z.string(),
   description: z.string().nullable(),
+  contentHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/u)
+    .nullable(),
   filePath: z.string(),
   rootKind: skillRootKindSchema,
   linked: z.boolean(),
@@ -2029,9 +2033,7 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [
-    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
-  ]: Descriptor["resultSchema"];
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

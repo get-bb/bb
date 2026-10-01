@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createHash } from "node:crypto";
 import type { ComponentProps } from "react";
 import {
   cleanup,
@@ -47,10 +48,11 @@ afterEach(() => {
 });
 
 function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
-  return {
+  const skill: SkillSummary = {
     id: `skill_${"a".repeat(64)}`,
     name: "code-review",
     description: "Review the current diff.",
+    contentHash: null,
     provider: "claude-code",
     scope: "provider-user",
     pluginId: null,
@@ -59,6 +61,14 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     registrySkillId: null,
     ...overrides,
   };
+  return "contentHash" in overrides
+    ? skill
+    : {
+        ...skill,
+        contentHash: createHash("sha256")
+          .update(`${skill.name}\0${skill.provider}\0${skill.filePath}`)
+          .digest("hex"),
+      };
 }
 
 function makeRegistrySkill(
@@ -312,6 +322,160 @@ describe("SkillsOverview", () => {
     expect(markup.indexOf("aa-user-skill")).toBeLessThan(
       markup.indexOf("claude-skill"),
     );
+  });
+
+  it("merges identical skills into one row that lists every provider", async () => {
+    const sharedHash = "1".repeat(64);
+    const onSelectSkill = vi.fn();
+    renderDom(
+      <SkillsOverview
+        providerRoster={DEFAULT_PROVIDER_ROSTER}
+        skills={[
+          makeSkill({
+            id: `skill_${"b".repeat(64)}`,
+            name: "agent-browser",
+            provider: "claude-code",
+            contentHash: sharedHash,
+            filePath: "/home/u/.claude/skills/agent-browser/SKILL.md",
+            manageable: false,
+          }),
+          makeSkill({
+            id: `skill_${"c".repeat(64)}`,
+            name: "agent-browser",
+            provider: "codex",
+            contentHash: sharedHash,
+            filePath: "/home/u/.agents/skills/agent-browser/SKILL.md",
+          }),
+          makeSkill({
+            id: `skill_${"d".repeat(64)}`,
+            name: "gitbutler",
+            provider: "claude-code",
+            contentHash: "2".repeat(64),
+            filePath: "/home/u/.claude/skills/gitbutler/SKILL.md",
+          }),
+          makeSkill({
+            id: `skill_${"e".repeat(64)}`,
+            name: "gitbutler",
+            provider: "codex",
+            contentHash: "3".repeat(64),
+            filePath: "/home/u/.codex/skills/gitbutler/SKILL.md",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={onSelectSkill}
+      />,
+    );
+
+    expect(screen.getAllByText("agent-browser")).toHaveLength(1);
+    expect(
+      screen.getByRole("img", { name: "Available in Claude Code, Codex" }),
+    ).toBeTruthy();
+    expect(screen.getAllByText("gitbutler")).toHaveLength(2);
+
+    fireEvent.click(screen.getByText("agent-browser"));
+    expect(onSelectSkill).toHaveBeenCalledWith(
+      expect.objectContaining({ id: `skill_${"c".repeat(64)}` }),
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Codex" }));
+    await waitFor(() => {
+      expect(screen.getAllByText("agent-browser")).toHaveLength(1);
+      expect(screen.getAllByText("gitbutler")).toHaveLength(1);
+    });
+  });
+
+  it("requires one copy to match combined filters and opens that copy", async () => {
+    const claudeCopy = makeSkill({
+      id: `skill_${"b".repeat(64)}`,
+      name: "review",
+      provider: "claude-code",
+      scope: "plugin",
+      pluginId: "review-plugin",
+      contentHash: "1".repeat(64),
+      manageable: false,
+    });
+    const codexCopy = makeSkill({
+      id: `skill_${"c".repeat(64)}`,
+      name: "review",
+      provider: "codex",
+      contentHash: "1".repeat(64),
+    });
+    const onSelectSkill = vi.fn();
+    renderDom(
+      <SkillsOverview
+        providerRoster={DEFAULT_PROVIDER_ROSTER}
+        skills={[claudeCopy, codexCopy]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={onSelectSkill}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Codex" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
+    await waitFor(() => expect(screen.queryByText("review")).toBeNull());
+
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
+    fireEvent.click(await screen.findByText("review"));
+    expect(onSelectSkill).toHaveBeenLastCalledWith(codexCopy);
+
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Codex" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
+    );
+    fireEvent.click(await screen.findByText("review"));
+    expect(onSelectSkill).toHaveBeenLastCalledWith(claudeCopy);
+  });
+
+  it("lists every copy of a merged skill in its detail view", () => {
+    const sharedHash = "1".repeat(64);
+    const claudeCopy = makeSkill({
+      id: `skill_${"b".repeat(64)}`,
+      name: "agent-browser",
+      provider: "claude-code",
+      contentHash: sharedHash,
+      filePath: "/home/u/.claude/skills/agent-browser/SKILL.md",
+    });
+    const codexCopy = makeSkill({
+      id: `skill_${"c".repeat(64)}`,
+      name: "agent-browser",
+      provider: "codex",
+      contentHash: sharedHash,
+      filePath: "/home/u/.agents/skills/agent-browser/SKILL.md",
+    });
+    const onSelectCopy = vi.fn();
+    renderSkillDetailDialog(claudeCopy, {
+      copies: [claudeCopy, codexCopy],
+      onSelectCopy,
+    });
+
+    expect(screen.getByText("Available in")).toBeTruthy();
+    const current = screen.getByRole("button", {
+      name: "Claude Code: /home/u/.claude/skills/agent-browser/SKILL.md",
+    });
+    expect(current.getAttribute("aria-current")).toBe("true");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Codex: /home/u/.agents/skills/agent-browser/SKILL.md",
+      }),
+    );
+    expect(onSelectCopy).toHaveBeenCalledWith(codexCopy);
+  });
+
+  it("omits the copy list for a skill with a single location", () => {
+    const skill = makeSkill();
+    renderSkillDetailDialog(skill, { copies: [skill] });
+
+    expect(screen.queryByText("Available in")).toBeNull();
   });
 
   it("labels the Type filter and preserves independent source toggles", async () => {

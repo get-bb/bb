@@ -57,6 +57,7 @@ function toSharedSkill(
       id: skill.id,
       name: skill.name,
       description: skill.description,
+      contentHash: skill.contentHash,
       provider: null,
       scope: sourceType,
       pluginId: null,

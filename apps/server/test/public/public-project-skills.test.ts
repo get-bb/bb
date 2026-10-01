@@ -176,6 +176,7 @@ function discovered(
     id: skillId(filePath),
     name,
     description: `${name} skill`,
+    contentHash: skillContentHash(filePath),
     rootKind,
     filePath,
     linked: false,
@@ -184,6 +185,10 @@ function discovered(
 
 function skillId(filePath: string): string {
   return `skill_${createHash("sha256").update(filePath).digest("hex")}`;
+}
+
+function skillContentHash(filePath: string): string {
+  return createHash("sha256").update(`content:${filePath}`).digest("hex");
 }
 
 async function writePluginSkillFixture(rootPath: string): Promise<{
@@ -282,6 +287,9 @@ describe("public project skills route", () => {
           ),
           name: "portable-review",
           description: "portable-review skill",
+          contentHash: skillContentHash(
+            "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
+          ),
           provider: null,
           scope: "shared-project",
           pluginId: null,
@@ -1128,6 +1136,7 @@ describe("public project skills route", () => {
           id: skillId("/data/skills/bb-helper/SKILL.md"),
           name: "bb-helper",
           description: "bb-helper skill",
+          contentHash: skillContentHash("/data/skills/bb-helper/SKILL.md"),
           provider: null,
           scope: "bb-user",
           pluginId: null,
@@ -1139,6 +1148,9 @@ describe("public project skills route", () => {
           id: skillId("/cwd/.cursor/skills/impeccable/SKILL.md"),
           name: "impeccable",
           description: "impeccable skill",
+          contentHash: skillContentHash(
+            "/cwd/.cursor/skills/impeccable/SKILL.md",
+          ),
           provider: "acp-cursor",
           scope: "provider-project",
           pluginId: null,
@@ -1150,6 +1162,7 @@ describe("public project skills route", () => {
           id: skillId("/cwd/.claude/skills/cp/SKILL.md"),
           name: "cp",
           description: "cp skill",
+          contentHash: skillContentHash("/cwd/.claude/skills/cp/SKILL.md"),
           provider: "claude-code",
           scope: "provider-project",
           pluginId: null,
@@ -1161,6 +1174,7 @@ describe("public project skills route", () => {
           id: skillId("/home/.claude/skills/cu/SKILL.md"),
           name: "cu",
           description: "cu skill",
+          contentHash: skillContentHash("/home/.claude/skills/cu/SKILL.md"),
           provider: "claude-code",
           scope: "provider-user",
           pluginId: null,
@@ -1172,6 +1186,7 @@ describe("public project skills route", () => {
           id: skillId("/home/.codex/skills/cx/SKILL.md"),
           name: "cx",
           description: "cx skill",
+          contentHash: skillContentHash("/home/.codex/skills/cx/SKILL.md"),
           provider: "codex",
           scope: "provider-user",
           pluginId: null,
@@ -1330,6 +1345,8 @@ describe("public project skills route", () => {
         expect(matches[0]).toMatchObject({
           name: "plugin-notes",
           description: "Read notes contributed by the fixture plugin.",
+          contentHash:
+            "e40e191bc6388e90d02d928851b1ff6566afe886467c321e3ed10450228c3b3c",
           provider: null,
           scope: "plugin",
           pluginId: installed.id,

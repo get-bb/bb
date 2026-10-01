@@ -41,6 +41,7 @@ interface SkillDetailViewProps {
   titleBadge?: SkillDetailTitleBadge;
   headerActions?: ReactNode;
   overflowMenu?: ReactNode;
+  availableIn?: ReactNode;
   files: readonly string[];
   selectedPath: string;
   onSelectFile: (path: string) => void;
@@ -221,6 +222,7 @@ export function SkillDetailView({
   titleBadge,
   headerActions,
   overflowMenu,
+  availableIn,
   files,
   selectedPath,
   onSelectFile,
@@ -249,6 +251,11 @@ export function SkillDetailView({
       actions={headerActions}
     >
       <ResourceDetailStack>
+        {availableIn ? (
+          <ResourceDetailIncludesSection label="Available in">
+            <ResourceDetailCollection>{availableIn}</ResourceDetailCollection>
+          </ResourceDetailIncludesSection>
+        ) : null}
         {files.length > 1 ? (
           <ResourceDetailIncludesSection label="Files">
             <SkillFileList

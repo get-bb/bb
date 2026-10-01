@@ -104,7 +104,7 @@ Fields beyond those shown exist; these are the ones scripts use.
     {plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)
 
   bb skill list --json
-    {skills: [{id, name, description, scope, provider, filePath}]}    (wrapped in .skills)
+    {skills: [{id, name, description, scope, provider, filePath, contentHash}]}    (wrapped in .skills; identical SKILL.md copies share contentHash)
 
   bb marketplace list --json
     bare array

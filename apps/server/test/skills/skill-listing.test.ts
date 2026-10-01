@@ -139,6 +139,7 @@ describe("assembleSkillList", () => {
       id: `skill_${createHash("sha256").update(filePath).digest("hex")}`,
       name,
       description: null,
+      contentHash: null,
       rootKind,
       filePath,
       linked: false,
