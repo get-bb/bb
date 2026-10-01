@@ -181,7 +181,7 @@ function FooterIconTile({
         type="button"
         aria-label={`Remove ${item.label} from footer`}
         data-footer-placement-toggle={item.key}
-        className={cn(BADGE_CLASS, "absolute -right-1 -top-1")}
+        className={cn(BADGE_CLASS, "absolute -top-1.5 right-0")}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={onRemove}
       >
