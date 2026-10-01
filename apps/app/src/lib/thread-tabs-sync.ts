@@ -174,15 +174,17 @@ export function mergeThreadTabChanges(
     .map((tab) => {
       const before = previousById.get(tab.id);
       const after = nextById.get(tab.id);
-      return after !== undefined &&
-        (before === undefined || !areFixedPanelTabsEquivalent(before, after))
+      return before !== undefined &&
+        after !== undefined &&
+        !areFixedPanelTabsEquivalent(before, after)
         ? withServerDesktopTarget(after, tab)
         : tab;
     });
   for (const [index, tab] of next.entries()) {
-    if (previousById.has(tab.id) || merged.some((item) => item.id === tab.id)) {
-      continue;
-    }
+    if (previousById.has(tab.id)) continue;
+    const existingIndex = merged.findIndex((item) => item.id === tab.id);
+    const existing =
+      existingIndex === -1 ? undefined : merged.splice(existingIndex, 1)[0];
     const followingIds = new Set(next.slice(index + 1).map((item) => item.id));
     const insertionIndex = merged.findIndex((item) =>
       followingIds.has(item.id),
@@ -190,7 +192,7 @@ export function mergeThreadTabChanges(
     merged.splice(
       insertionIndex === -1 ? merged.length : insertionIndex,
       0,
-      tab,
+      existing ?? tab,
     );
   }
   const retainedIds = new Set(merged.map((tab) => tab.id));
