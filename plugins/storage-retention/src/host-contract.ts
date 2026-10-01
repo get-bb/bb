@@ -37,10 +37,10 @@ export type MeasuredTarget = z.infer<typeof measuredTargetSchema>;
 export const diskUsageOutputSchema = z.object({
   targets: z.array(measuredTargetSchema),
 });
-const storageEntrySchema = z
+const storageEntriesSchema = z
   .object({
     rootPath: z.string().min(1),
-    name: z.string().min(1),
+    names: z.array(z.string().min(1)).min(1).max(500),
     recreate: z.boolean(),
   })
   .strict();
@@ -55,7 +55,7 @@ export const hostStorageContract = defineRpcContract({
     output: diskCapacitySchema,
   },
   discard: {
-    input: storageEntrySchema,
-    output: z.object({ removed: z.boolean() }),
+    input: storageEntriesSchema,
+    output: z.object({ removed: z.array(z.string()) }),
   },
 });

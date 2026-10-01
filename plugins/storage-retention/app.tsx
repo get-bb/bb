@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   definePluginApp,
   useBbNavigate,
@@ -145,17 +145,22 @@ function StoragePage({
     preview: Preview;
   } | null>(null);
   const [cleanup, setCleanup] = useState<{
-    threadId: string | null;
+    key: string;
     title: string;
+    detail: string;
+    run: () => Promise<string>;
   } | null>(null);
-  async function perform(work: () => Promise<unknown>, success?: string) {
+  async function perform<T>(
+    work: () => Promise<T>,
+    success?: (result: T) => string,
+  ) {
     setError(null);
     setNotice(null);
     setBusy(true);
     try {
-      await work();
+      const result = await work();
       await refresh();
-      if (success) setNotice(success);
+      if (success) setNotice(success(result));
     } catch (error) {
       setError(message(error));
     } finally {
@@ -182,6 +187,33 @@ function StoragePage({
     policy !== null &&
     (policy.archiveAfterDays !== state.policy.archiveAfterDays ||
       policy.deleteAfterDays !== state.policy.deleteAfterDays);
+  function archivedCleanup(target: string | null, size: number) {
+    return {
+      key: "archived",
+      title: `Clear ${bytes(size)} of archived thread files?`,
+      detail:
+        "Conversations stay in your archive. Pinned and running threads are skipped.",
+      run: async () => {
+        const cleared = await rpc.call("clearArchived", { hostId: target });
+        return `Cleared ${bytes(cleared.clearedBytes)} from ${cleared.clearedCount.toLocaleString()} archived ${cleared.clearedCount === 1 ? "thread" : "threads"}.`;
+      },
+    };
+  }
+  const scannable = hosts.filter(
+    (host) =>
+      machines[host.hostId]?.status === "connected" &&
+      host.scan.state !== "scanning",
+  );
+  const archivedTotals = hosts.reduce(
+    (totals, host) =>
+      host.report && machines[host.hostId]?.status === "connected"
+        ? {
+            bytes: totals.bytes + host.report.archivedThreadBytes,
+            count: totals.count + host.report.archivedThreadCount,
+          }
+        : totals,
+    { bytes: 0, count: 0 },
+  );
   const cleanupConfirmation = cleanup && (
     <div
       role="region"
@@ -190,10 +222,7 @@ function StoragePage({
     >
       <p className="text-sm font-normal">{cleanup.title}</p>
       <p className="text-xs leading-snug text-subtle-foreground/75">
-        Files are permanently removed. This cannot be undone.
-        {cleanup.threadId
-          ? " The thread and its history are kept."
-          : " Storage belonging to existing threads is kept."}
+        Files are permanently removed. This cannot be undone. {cleanup.detail}
       </p>
       <div className="flex flex-wrap justify-end gap-2">
         <Button
@@ -209,12 +238,14 @@ function StoragePage({
           size="sm"
           disabled={busy}
           onClick={() =>
-            void perform(async () => {
-              if (cleanup.threadId)
-                await rpc.call("clearThread", { threadId: cleanup.threadId });
-              else if (hostId) await rpc.call("removeOrphans", { hostId });
-              setCleanup(null);
-            }, "Storage removed.")
+            void perform(
+              async () => {
+                const done = await cleanup.run();
+                setCleanup(null);
+                return done;
+              },
+              (done) => done,
+            )
           }
         >
           {busy ? "Removing…" : "Confirm removal"}
@@ -316,7 +347,7 @@ function StoragePage({
             {!report ? (
               <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
                 <Icon
-                  name="FolderOpen"
+                  name="DatabaseRestore"
                   className="size-8 text-muted-foreground"
                 />
                 <h2 className="text-base font-medium">
@@ -364,6 +395,43 @@ function StoragePage({
                       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-normal">
+                            Archived thread files{" "}
+                            <span className="ml-2 whitespace-nowrap font-normal text-muted-foreground">
+                              {bytes(report.archivedThreadBytes)}
+                            </span>
+                          </p>
+                          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                            {report.archivedThreadCount
+                              ? `${report.archivedThreadCount.toLocaleString()} archived ${report.archivedThreadCount === 1 ? "thread" : "threads"}. Conversations stay in your archive.`
+                              : "No archived thread files found in the last scan."}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={
+                            locked ||
+                            report.archivedThreadCount === 0 ||
+                            cleanup !== null
+                          }
+                          onClick={() =>
+                            setCleanup(
+                              archivedCleanup(
+                                report.hostId,
+                                report.archivedThreadBytes,
+                              ),
+                            )
+                          }
+                        >
+                          Clear files
+                        </Button>
+                      </div>
+                      {cleanup?.key === "archived" && cleanupConfirmation}
+                    </div>
+                    <div className="space-y-3 px-4 py-3.5">
+                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-normal">
                             Orphaned storage{" "}
                             <span className="ml-2 whitespace-nowrap font-normal text-muted-foreground">
                               {bytes(report.orphanBytes)}
@@ -385,15 +453,24 @@ function StoragePage({
                           }
                           onClick={() =>
                             setCleanup({
-                              threadId: null,
+                              key: "orphans",
                               title: `Remove ${bytes(report.orphanBytes)} of orphaned storage?`,
+                              detail:
+                                "Storage belonging to existing threads is kept.",
+                              run: async () => {
+                                const removed = await rpc.call(
+                                  "removeOrphans",
+                                  { hostId: report.hostId },
+                                );
+                                return `Removed ${bytes(removed.removedBytes)} of orphaned storage.`;
+                              },
                             })
                           }
                         >
                           Remove orphans
                         </Button>
                       </div>
-                      {cleanup?.threadId === null && cleanupConfirmation}
+                      {cleanup?.key === "orphans" && cleanupConfirmation}
                     </div>
                     <div className="space-y-3 px-4 py-3.5">
                       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
@@ -421,7 +498,7 @@ function StoragePage({
                               await rpc.call("retryWorktreeCleanup", {
                                 hostId,
                               });
-                            }, "Cleanup requested. Rescan after it finishes to update usage.")
+                            }, () => "Cleanup requested. Rescan after it finishes to update usage.")
                           }
                         >
                           Retry cleanup
@@ -483,15 +560,22 @@ function StoragePage({
                             }
                             onClick={() =>
                               setCleanup({
-                                threadId: thread.threadId,
+                                key: thread.threadId,
                                 title: `Clear files for “${thread.title}”?`,
+                                detail: "The thread and its history are kept.",
+                                run: async () => {
+                                  await rpc.call("clearThread", {
+                                    threadId: thread.threadId,
+                                  });
+                                  return `Cleared ${bytes(thread.sizeBytes)}.`;
+                                },
                               })
                             }
                           >
                             Clear
                           </Button>
                         </div>
-                        {cleanup?.threadId === thread.threadId &&
+                        {cleanup?.key === thread.threadId &&
                           cleanupConfirmation}
                       </div>
                     ))}
@@ -503,7 +587,20 @@ function StoragePage({
         ) : (
           <>
             <section className="space-y-3">
-              <SectionHeading title="Machine storage" />
+              <SectionHeading
+                title="Machine storage"
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || scannable.length === 0}
+                    onClick={() => void perform(() => rpc.call("scanAll", null))}
+                  >
+                    <Icon name="RotateCcw" />
+                    Scan all
+                  </Button>
+                }
+              />
               <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
                 {hosts.length === 0 && (
                   <div className="space-y-2 p-6 text-center">
@@ -522,12 +619,48 @@ function StoragePage({
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
+                    busy={busy}
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
+                    }
+                    onScan={() =>
+                      void perform(() =>
+                        rpc.call("scanHost", { hostId: host.hostId }),
+                      )
                     }
                   />
                 ))}
               </div>
+              {archivedTotals.bytes > 0 && (
+                <div className="space-y-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                    <Icon
+                      name="Archive"
+                      className="hidden size-4 shrink-0 text-subtle-foreground sm:block"
+                    />
+                    <p className="min-w-0 flex-1 text-xs leading-snug text-subtle-foreground">
+                      <span className="text-foreground">
+                        Archived threads use {bytes(archivedTotals.bytes)}.
+                      </span>{" "}
+                      Clear files from {archivedTotals.count.toLocaleString()}{" "}
+                      archived {archivedTotals.count === 1 ? "thread" : "threads"}{" "}
+                      to free up space. Conversations stay in your archive.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={busy || cleanup !== null}
+                      onClick={() =>
+                        setCleanup(archivedCleanup(null, archivedTotals.bytes))
+                      }
+                    >
+                      Clear archived files
+                    </Button>
+                  </div>
+                  {cleanup?.key === "archived" && cleanupConfirmation}
+                </div>
+              )}
             </section>
             <section className="space-y-3">
               <SectionHeading
@@ -659,7 +792,7 @@ function StoragePage({
                           await rpc.call("configure", confirmation.policy);
                           setDraft(null);
                           setConfirmation(null);
-                        }, "Retention policy saved.")
+                        }, () => "Retention policy saved.")
                       }
                     >
                       Save policy
@@ -735,22 +868,27 @@ function SectionHeading({
   title,
   description,
   badge,
+  action,
 }: {
   title: string;
   description?: string;
   badge?: string;
+  action?: ReactNode;
 }) {
   return (
-    <div className="min-w-0">
-      <div className="flex min-w-0 items-center gap-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {badge && <Pill>{badge}</Pill>}
+    <div className="flex items-end justify-between gap-4">
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          {badge && <Pill>{badge}</Pill>}
+        </div>
+        {description && (
+          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+            {description}
+          </p>
+        )}
       </div>
-      {description && (
-        <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-          {description}
-        </p>
-      )}
+      {action}
     </div>
   );
 }
@@ -779,14 +917,19 @@ function MachineRow({
   host,
   machine,
   server,
+  busy,
   onOpen,
+  onScan,
 }: {
   host: Hosts[number];
   machine: Machine | undefined;
   server: boolean;
+  busy: boolean;
   onOpen: () => void;
+  onScan: () => void;
 }) {
   const report = host.report;
+  const scanning = host.scan.state === "scanning";
   const details = [
     ...(report
       ? [
@@ -794,7 +937,7 @@ function MachineRow({
           `${report.archivedThreadCount.toLocaleString()} archived`,
         ]
       : []),
-    host.scan.state === "scanning"
+    scanning
       ? "scanning…"
       : host.scan.state === "failed"
         ? "scan failed"
@@ -803,9 +946,16 @@ function MachineRow({
           : "not scanned",
   ];
   return (
-    <button
-      className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      onClick={onOpen}
+    <div
+      className="group flex w-full cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+      onClick={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest("button") !== null
+        )
+          return;
+        onOpen();
+      }}
     >
       <span className="min-w-0 flex-1 space-y-1">
         <span className="flex min-w-0 items-center gap-1.5">
@@ -813,9 +963,12 @@ function MachineRow({
             name="Laptop"
             className="size-3.5 shrink-0 text-subtle-foreground"
           />
-          <span className="min-w-0 truncate text-sm font-medium">
+          <button
+            className="min-w-0 truncate rounded-sm text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
             {machine?.name ?? host.hostId}
-          </span>
+          </button>
           {server && <Pill>server</Pill>}
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
@@ -840,11 +993,22 @@ function MachineRow({
           )}
         </span>
       )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="shrink-0"
+        aria-label={`Scan ${machine?.name ?? host.hostId}`}
+        disabled={busy || scanning || machine?.status !== "connected"}
+        onClick={onScan}
+      >
+        <Icon name="RotateCcw" className={scanning ? "animate-spin" : ""} />
+        {scanning ? "Scanning" : report ? "Rescan" : "Scan"}
+      </Button>
       <Icon
         name="ChevronRight"
         className="size-4 shrink-0 text-muted-foreground"
       />
-    </button>
+    </div>
   );
 }
 
@@ -993,7 +1157,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: PANEL,
     title: "Storage & retention",
-    icon: "FolderOpen",
+    icon: "DatabaseRestore",
     path: PANEL,
     component: StoragePanel,
   });

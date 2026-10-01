@@ -142,6 +142,90 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
   }
 });
 
+it("clears archived thread storage on scanned online machines, keeping pinned and live threads", async () => {
+  const root = await directory();
+  for (const name of ["thr_live", "thr_old", "thr_pinned"]) {
+    await fs.mkdir(path.join(root, name));
+    await fs.writeFile(path.join(root, name, "data"), Buffer.alloc(16384));
+  }
+  const worker = experimental_createHostEntryHarness(hostEntry);
+  const threads = [
+    makeThreadResponse({ id: "thr_live", status: "idle" }),
+    makeThreadResponse({ id: "thr_old", status: "idle", archivedAt: 1 }),
+    makeThreadResponse({
+      id: "thr_pinned",
+      status: "idle",
+      archivedAt: 1,
+      pinnedAt: 1,
+    }),
+  ];
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "measure")
+        return worker.experimental_call(
+          "measure",
+          hostStorageContract.measure.input.parse(call.input),
+        );
+      if (call.method === "capacity")
+        return worker.experimental_call(
+          "capacity",
+          hostStorageContract.capacity.input.parse(call.input),
+        );
+      if (call.method === "discard")
+        return worker.experimental_call(
+          "discard",
+          hostStorageContract.discard.input.parse(call.input),
+        );
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host_test", status: "connected" }),
+        ],
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: root,
+        }),
+      },
+      environments: { list: async () => [] },
+      threads: { list: async () => threads },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanAll", null);
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).report?.archivedThreadCount,
+      )
+      .toBe(2);
+    const cleared = await host.harness.callRpc("clearArchived", {
+      hostId: null,
+    });
+    expect(cleared).toMatchObject({ clearedCount: 1 });
+    expect(await fs.readdir(path.join(root, "thr_old"))).toEqual([]);
+    expect(await fs.readdir(path.join(root, "thr_pinned"))).toEqual(["data"]);
+    expect(await fs.readdir(path.join(root, "thr_live"))).toEqual(["data"]);
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).report,
+    ).toMatchObject({ archivedThreadCount: 1, threadsWithStorageCount: 2 });
+    await expect
+      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+      .toBe(0);
+  } finally {
+    await host.harness.dispose();
+    await worker.experimental_dispose();
+  }
+});
+
 it("rejects traversal and symlinks without deleting their targets", async () => {
   const root = await directory();
   const outside = await directory();
@@ -152,14 +236,14 @@ it("rejects traversal and symlinks without deleting their targets", async () => 
     await expect(
       worker.experimental_call("discard", {
         rootPath: root,
-        name: "../escape",
+        names: ["../escape"],
         recreate: false,
       }),
     ).rejects.toThrow("Invalid storage entry");
     await expect(
       worker.experimental_call("discard", {
         rootPath: root,
-        name: "thr_link",
+        names: ["thr_link"],
         recreate: false,
       }),
     ).rejects.toThrow("symbolic link");
@@ -167,10 +251,10 @@ it("rejects traversal and symlinks without deleting their targets", async () => 
     expect(
       await worker.experimental_call("discard", {
         rootPath: root,
-        name: "thr_gone",
+        names: ["thr_gone"],
         recreate: false,
       }),
-    ).toEqual({ removed: false });
+    ).toEqual({ removed: [] });
   } finally {
     await worker.experimental_dispose();
   }

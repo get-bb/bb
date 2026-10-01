@@ -104,15 +104,16 @@ export function registerCli(
             machine: MACHINE,
             rescan: {
               type: "boolean",
-              description: "Start a scan; requires --machine",
+              description:
+                "Start a scan of --machine, or of every online machine",
             },
           },
           run: (input) =>
             output(async () => {
               if (input.options.rescan)
-                return storage.scanHost({
-                  hostId: required(input.options.machine, "machine"),
-                });
+                return input.options.machine
+                  ? storage.scanHost({ hostId: input.options.machine })
+                  : storage.scanAll();
               return input.options.machine
                 ? storage.host({
                     hostId: input.options.machine,
@@ -131,6 +132,21 @@ export function registerCli(
                 );
               return storage.removeOrphans({
                 hostId: required(input.options.machine, "machine"),
+              });
+            }),
+        }),
+        "clear-archived": cliCommand({
+          summary:
+            "Empty storage of archived threads on --machine, or on every scanned online machine",
+          options: { machine: MACHINE, yes: YES },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to permanently clear archived thread storage.",
+                );
+              return storage.clearArchived({
+                hostId: input.options.machine ?? null,
               });
             }),
         }),

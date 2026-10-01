@@ -284,6 +284,31 @@ export function createStorage(bb: BbPluginApi) {
     void job.finally(() => jobs.delete(job));
     return host({ hostId });
   }
+  async function discard(
+    hostId: string,
+    rootPath: string,
+    cached: Scan,
+    entries: Scan["entries"],
+    recreate: boolean,
+  ) {
+    let count = 0;
+    let bytes = 0;
+    for (let offset = 0; offset < entries.length; offset += 500) {
+      lifecycle.signal.throwIfAborted();
+      const batch = entries.slice(offset, offset + 500);
+      await worker.call(
+        "discard",
+        { rootPath, names: batch.map((entry) => entry.name), recreate },
+        { hostId, signal: lifecycle.signal },
+      );
+      const names = new Set(batch.map((entry) => entry.name));
+      cached.entries = cached.entries.filter((entry) => !names.has(entry.name));
+      store(hostId, cached);
+      count += batch.length;
+      bytes += batch.reduce((total, entry) => total + entry.sizeBytes, 0);
+    }
+    return { count, bytes };
+  }
   async function removeOrphans({ hostId }: { hostId: string }) {
     await requireHost(hostId, true);
     const release = acquire(hostId);
@@ -296,35 +321,85 @@ export function createStorage(bb: BbPluginApi) {
         readThreads(bb, lifecycle.signal),
       ]);
       const ids = new Set(threads.map((thread) => thread.id));
-      const removed = new Set<string>();
-      let removedBytes = 0;
-      for (const entry of cached.entries) {
-        if (ids.has(entry.name)) continue;
-        lifecycle.signal.throwIfAborted();
-        await worker.call(
-          "discard",
-          {
-            rootPath,
-            name: entry.name,
-            recreate: false,
-          },
-          { hostId, signal: lifecycle.signal },
-        );
-        removed.add(entry.name);
-        removedBytes += entry.sizeBytes;
-        cached.entries = cached.entries.filter(
-          (item) => item.name !== entry.name,
-        );
-        store(hostId, cached);
-      }
+      const removed = await discard(
+        hostId,
+        rootPath,
+        cached,
+        cached.entries.filter((entry) => !ids.has(entry.name)),
+        false,
+      );
       return {
-        removedCount: removed.size,
-        removedBytes,
+        removedCount: removed.count,
+        removedBytes: removed.bytes,
         report: await report(hostId, cached),
       };
     } finally {
       release();
     }
+  }
+  async function clearArchivedOn(hostId: string) {
+    await requireHost(hostId, true);
+    const release = acquire(hostId);
+    try {
+      const cached = read(hostId);
+      if (!cached)
+        throw new Error("Scan the machine before clearing archived storage");
+      const [rootPath, threads] = await Promise.all([
+        storageRoot(hostId),
+        readThreads(bb, lifecycle.signal),
+      ]);
+      const archived = new Set(
+        threads
+          .filter(
+            (thread) =>
+              thread.archivedAt !== null &&
+              thread.pinnedAt === null &&
+              !["starting", "active", "stopping"].includes(thread.status),
+          )
+          .map((thread) => thread.id),
+      );
+      return await discard(
+        hostId,
+        rootPath,
+        cached,
+        cached.entries.filter((entry) => archived.has(entry.name)),
+        true,
+      );
+    } finally {
+      release();
+    }
+  }
+  async function clearArchived({ hostId }: { hostId: string | null }) {
+    lifecycle.signal.throwIfAborted();
+    const targets =
+      hostId === null
+        ? (await bb.sdk.hosts.list({ type: "persistent" }))
+            .filter(
+              (machine) =>
+                machine.status === "connected" && read(machine.id) !== null,
+            )
+            .map((machine) => machine.id)
+        : [hostId];
+    let clearedCount = 0;
+    let clearedBytes = 0;
+    for (const target of targets) {
+      const cleared = await clearArchivedOn(target);
+      clearedCount += cleared.count;
+      clearedBytes += cleared.bytes;
+    }
+    return { clearedCount, clearedBytes };
+  }
+  async function scanAll() {
+    lifecycle.signal.throwIfAborted();
+    const machines = await bb.sdk.hosts.list({ type: "persistent" });
+    for (const machine of machines)
+      if (
+        machine.status === "connected" &&
+        !busy.has(machine.id) &&
+        scans.get(machine.id)?.state !== "scanning"
+      )
+        await scanHost({ hostId: machine.id });
+    return hosts();
   }
   async function clearThread({ threadId }: { threadId: string }) {
     lifecycle.signal.throwIfAborted();
@@ -338,11 +413,7 @@ export function createStorage(bb: BbPluginApi) {
       const rootPath = await storageRoot(location.hostId);
       await worker.call(
         "discard",
-        {
-          rootPath,
-          name: threadId,
-          recreate: true,
-        },
+        { rootPath, names: [threadId], recreate: true },
         { hostId: location.hostId, signal: lifecycle.signal },
       );
       const cached = read(location.hostId);
@@ -378,7 +449,9 @@ export function createStorage(bb: BbPluginApi) {
     host,
     hosts,
     scanHost,
+    scanAll,
     removeOrphans,
+    clearArchived,
     clearThread,
     retryWorktreeCleanup,
   };

@@ -456,10 +456,12 @@ without losing the saved policy. The plugin uses existing SDK thread listing and
 archive/delete APIs, accepting changes between inspection and mutation.
 
 Storage reads use cached reports and never trigger disk scans. Start a background
-scan with `bb storage usage --machine HOST_ID --rescan`; rerun usage to see its
-status and results. The plugin coordinates its scans and cleanup per machine. The existing
+scan with `bb storage usage --machine HOST_ID --rescan`, or omit `--machine` to
+scan every online machine; rerun usage to see its status and results. The plugin coordinates its scans and cleanup per machine. The existing
 bounded idle orphan sweep remains independent of the plugin.
 `bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
+`bb storage clear-archived [--machine HOST_ID] --yes` empties the storage of
+archived threads from the last scan, skipping pinned and running threads;
 `bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
 `bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
 The plugin owns the disk scanner, cached reports, classification, and host-worker

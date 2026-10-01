@@ -37,6 +37,7 @@ export const storageRpc = defineRpcContract({
   hosts: { input: z.null(), output: hostStorageListResponseSchema },
   host: { input: machineInput, output: hostStorageResponseSchema },
   scanHost: { input: machineInput, output: hostStorageResponseSchema },
+  scanAll: { input: z.null(), output: hostStorageListResponseSchema },
   removeOrphans: {
     input: machineInput,
     output: hostStorageRemoveOrphansResponseSchema,
@@ -44,6 +45,13 @@ export const storageRpc = defineRpcContract({
   retryWorktreeCleanup: {
     input: machineInput,
     output: hostStorageRetryWorktreeCleanupResponseSchema,
+  },
+  clearArchived: {
+    input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
+    output: z.object({
+      clearedCount: z.number().int().nonnegative(),
+      clearedBytes: z.number().int().nonnegative(),
+    }),
   },
   clearThread: {
     input: z.object({ threadId: z.string().min(1) }).strict(),

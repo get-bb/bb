@@ -15,9 +15,12 @@ bb storage retention --archive-after 30 --delete-after 90
 bb storage retention --archive-after 30 --delete-after 90 --save --yes
 bb storage retention --archive-after never --delete-after never --save --yes
 bb storage usage
+bb storage usage --rescan
 bb storage usage --machine HOST_ID --rescan
 bb storage usage --machine HOST_ID
 bb storage remove-orphans --machine HOST_ID --yes
+bb storage clear-archived --yes
+bb storage clear-archived --machine HOST_ID --yes
 bb storage retry-worktree-cleanup --machine HOST_ID
 bb storage clear-thread --thread THREAD_ID --yes
 ```
@@ -30,10 +33,13 @@ members. Archiving can remove worktrees including uncommitted changes. Deleting
 removes history and thread storage. Preview first and save only when authorized.
 
 Scans run in the background; rerun usage to read completion, progress, or failure.
+`--rescan` without `--machine` scans every online machine that is not already busy.
 A completed report includes `disk` (total and free bytes of the volume holding thread storage).
 Reads never start scans. Remove-orphans requires a completed scan and only removes
-storage the plugin identifies as orphaned from current SDK thread rows. Clear-thread requires a stopped thread and
-an online machine. The plugin serializes its scans and cleanup per machine. Reports are cached
+storage the plugin identifies as orphaned from current SDK thread rows. Clear-archived empties
+the storage of archived threads found in the last scan, skipping pinned and running threads; without
+`--machine` it covers every online machine with a completed scan. Conversations stay in the archive.
+Clear-thread requires a stopped thread and an online machine. The plugin serializes its scans and cleanup per machine. Reports are cached
 snapshots; rescan to see external filesystem changes.
 
 Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, deleteAfterDays})`,

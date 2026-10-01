@@ -127,7 +127,7 @@
   {
     "id": "storage-retention",
     "name": "Storage & retention",
-    "icon": "FolderOpen"
+    "icon": "DatabaseRestore"
   },
   {
     "id": "tasks",

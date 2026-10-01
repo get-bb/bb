@@ -26,53 +26,64 @@ export default experimental_defineHostEntry({
         }
       }
     },
-    async discard({ rootPath, name, recreate }, context) {
-      if (
-        !path.isAbsolute(rootPath) ||
-        name === "." ||
-        name === ".." ||
-        name.includes("/") ||
-        name.includes("\\") ||
-        !/^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name)
-      )
-        throw new Error("Invalid storage entry");
-      if (recreate && name.startsWith(".bb-trash-"))
-        throw new Error("Cannot recreate a trash directory");
+    async discard({ rootPath, names, recreate }, context) {
+      for (const name of names) {
+        if (
+          !path.isAbsolute(rootPath) ||
+          name === "." ||
+          name === ".." ||
+          name.includes("/") ||
+          name.includes("\\") ||
+          !/^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name)
+        )
+          throw new Error("Invalid storage entry");
+        if (recreate && name.startsWith(".bb-trash-"))
+          throw new Error("Cannot recreate a trash directory");
+      }
       context.signal.throwIfAborted();
       if (recreate) await fs.mkdir(rootPath, { recursive: true });
       let root: string;
       try {
         root = await fs.realpath(rootPath);
       } catch (error) {
-        if (isFsErrorWithCode(error, "ENOENT")) return { removed: false };
+        if (isFsErrorWithCode(error, "ENOENT")) return { removed: [] };
         throw error;
       }
-      const source = path.join(root, name);
-      let removed = false;
-      let trash: string | null = null;
+      const removed: string[] = [];
+      const trashes: string[] = [];
       try {
-        const stat = await fs.lstat(source);
-        if (stat.isSymbolicLink() || !stat.isDirectory())
-          throw new Error(
-            "Storage entry must be a directory, not a symbolic link",
-          );
-        trash = name.startsWith(".bb-trash-")
-          ? source
-          : path.join(root, `.bb-trash-${name}-${randomUUID()}`);
-        if (source !== trash) await fs.rename(source, trash);
-        removed = true;
-      } catch (error) {
-        if (!isFsErrorWithCode(error, "ENOENT")) throw error;
-      }
-      if (recreate) await fs.mkdir(source, { recursive: true });
-      if (trash !== null) {
-        const lease = context.experimental_retainWorker();
-        void fs
-          .rm(trash, { recursive: true, force: true })
-          .catch((error) => {
-            console.error("Storage trash cleanup failed", error);
-          })
-          .finally(() => lease.dispose());
+        for (const name of names) {
+          context.signal.throwIfAborted();
+          const source = path.join(root, name);
+          try {
+            const stat = await fs.lstat(source);
+            if (stat.isSymbolicLink() || !stat.isDirectory())
+              throw new Error(
+                "Storage entry must be a directory, not a symbolic link",
+              );
+            const trash = name.startsWith(".bb-trash-")
+              ? source
+              : path.join(root, `.bb-trash-${name}-${randomUUID()}`);
+            if (source !== trash) await fs.rename(source, trash);
+            trashes.push(trash);
+            removed.push(name);
+          } catch (error) {
+            if (!isFsErrorWithCode(error, "ENOENT")) throw error;
+          }
+          if (recreate) await fs.mkdir(source, { recursive: true });
+        }
+      } finally {
+        if (trashes.length > 0) {
+          const lease = context.experimental_retainWorker();
+          void (async () => {
+            for (const trash of trashes)
+              await fs
+                .rm(trash, { recursive: true, force: true })
+                .catch((error) => {
+                  console.error("Storage trash cleanup failed", error);
+                });
+          })().finally(() => lease.dispose());
+        }
       }
       return { removed };
     },

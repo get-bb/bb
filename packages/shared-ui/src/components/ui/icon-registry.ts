@@ -39,6 +39,7 @@ export const EXTENDED_ICON_NAMES = [
   "Columns2",
   "CornerDownLeft",
   "CornerDownRight",
+  "DatabaseRestore",
   "DiffAdded",
   "DiffConflict",
   "DiffModified",
