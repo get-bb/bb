@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,19 +17,6 @@ let stateDirectory: string;
 let output = "";
 
 beforeAll(async () => {
-  const port = await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (address === null || typeof address === "string") {
-        reject(new Error("Expected a TCP address"));
-        return;
-      }
-      server.close(() => resolve(address.port));
-    });
-  });
-  origin = `http://127.0.0.1:${port}`;
   stateDirectory = await mkdtemp(join(tmpdir(), "bb-demo-worker-"));
   worker = spawn(
     process.execPath,
@@ -38,8 +24,10 @@ beforeAll(async () => {
       "node_modules/wrangler/bin/wrangler.js",
       "dev",
       "--local",
+      "--ip",
+      "127.0.0.1",
       "--port",
-      String(port),
+      "0",
       "--persist-to",
       stateDirectory,
     ],
@@ -52,11 +40,13 @@ beforeAll(async () => {
     output += chunk.toString();
   });
   const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    try {
-      if ((await fetch(`${origin}/health`)).ok) return;
-    } catch {
-      if (worker.exitCode !== null) break;
+  while (Date.now() < deadline && worker.exitCode === null) {
+    const ready = /Ready on (http:\/\/127\.0\.0\.1:\d+)/.exec(output);
+    if (ready) {
+      origin = ready[1];
+      try {
+        if ((await fetch(`${origin}/health`)).ok) return;
+      } catch {}
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
