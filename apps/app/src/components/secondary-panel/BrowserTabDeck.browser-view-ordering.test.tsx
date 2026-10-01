@@ -15,6 +15,7 @@ import {
   createNoopDesktopBrowserApi,
 } from "@/test/bb-desktop-test-utils";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { sdk } from "@/lib/sdk";
 import { BrowserTabDeck } from "./BrowserTabDeck";
 import { BrowserTabLifecycleObserver } from "./BrowserTabLifecycleObserver";
 import {
@@ -239,45 +240,88 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     });
   });
 
-  it.each(["hostId", "instanceId", "generation"] as const)(
-    "does not clone a native tab with a different %s",
-    async (field) => {
-      const { api, attachments } = createRecordingBrowserApi();
-      const desktopTarget = {
-        hostId: "host-1",
-        instanceId: "instance-1",
-        generation: "generation-1",
-      };
-      api.getTarget = async () => desktopTarget;
-      installDesktopBrowser(api);
-      const tab = {
-        ...makeBrowserTab("native-tab", "https://example.com"),
-        desktopTarget: { ...desktopTarget, [field]: "elsewhere" },
-      };
-      allowBrowserViewRecreation(tab.id, tab.desktopTarget);
-      const deck = (browserTab: BrowserFixedPanelTab) => (
-        <BrowserTabDeck
-          browserTabs={[browserTab]}
-          activeBrowserTabId={browserTab.id}
-          environmentId="env-1"
-          canShowNativeBrowserView
-          threadId="thread-1"
-          onUpdate={() => {}}
-        />
-      );
-      const view = render(deck(tab));
-      await act(async () => {});
-      expect(
-        screen.getByText(
-          "This browser tab is unavailable on this desktop connection.",
-        ),
-      ).not.toBeNull();
-      expect(attachments).toEqual([]);
-      view.rerender(deck({ ...tab, desktopTarget }));
-      await waitFor(() => expect(attachments).toHaveLength(1));
-      expect(attachments[0]?.existingOnly).toBe(true);
-    },
+  const desktopTarget = {
+    hostId: "host-1",
+    instanceId: "instance-1",
+    generation: "generation-1",
+  };
+  const renderTargetDeck = (browserTab: BrowserFixedPanelTab) => (
+    <BrowserTabDeck
+      browserTabs={[browserTab]}
+      activeBrowserTabId={browserTab.id}
+      environmentId="env-1"
+      canShowNativeBrowserView
+      threadId="thread-1"
+      onUpdate={() => {}}
+    />
   );
+  const savedTab = (saved: Partial<typeof desktopTarget>) => ({
+    ...makeBrowserTab("native-tab", "https://example.com/saved"),
+    desktopTarget: { ...desktopTarget, ...saved },
+  });
+
+  it("shows the saved URL instead of attaching a tab from another machine", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    api.getTarget = async () => desktopTarget;
+    installDesktopBrowser(api);
+    const tab = savedTab({ hostId: "host-2" });
+    const view = render(renderTargetDeck(tab));
+    await screen.findByText("This tab isn't available in this window");
+    expect(screen.getByText("https://example.com/saved")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Open in browser" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Copy link" })).not.toBeNull();
+    expect(attachments).toEqual([]);
+    view.rerender(renderTargetDeck({ ...tab, desktopTarget }));
+    await waitFor(() => expect(attachments).toHaveLength(1));
+    expect(attachments[0]?.existingOnly).toBe(true);
+  });
+
+  it("does not clone a tab that another live window still owns", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    api.getTarget = async () => desktopTarget;
+    installDesktopBrowser(api);
+    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+      instances: [
+        { ...desktopTarget, label: "BB window 1" },
+        { ...desktopTarget, instanceId: "elsewhere", label: "BB window 2" },
+      ],
+    });
+    render(renderTargetDeck(savedTab({ instanceId: "elsewhere" })));
+    await screen.findByText("This tab is open in another bb window");
+    expect(attachments).toEqual([]);
+  });
+
+  it("reopens the saved URL when the window that owned the tab is gone", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    api.getTarget = async () => desktopTarget;
+    installDesktopBrowser(api);
+    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+      instances: [{ ...desktopTarget, label: "BB window 1" }],
+    });
+    render(renderTargetDeck(savedTab({ instanceId: "closed-window" })));
+    await waitFor(() => expect(attachments).toHaveLength(1));
+    expect(attachments[0]).toMatchObject({
+      tabId: "native-tab",
+      url: "https://example.com/saved",
+    });
+    expect(attachments[0]?.existingOnly).toBeUndefined();
+    expect(screen.queryByText("This tab is open in another bb window")).toBeNull();
+  });
+
+  it("reattaches its own window's tab after a reconnect rotates the generation", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    api.getTarget = async () => desktopTarget;
+    installDesktopBrowser(api);
+    render(renderTargetDeck(savedTab({ generation: "before-reconnect" })));
+    await waitFor(() => expect(attachments).toHaveLength(1));
+    expect(attachments[0]?.existingOnly).toBe(true);
+  });
+
+  it("explains that desktop tabs need the desktop app on web", async () => {
+    render(renderTargetDeck(savedTab({})));
+    await screen.findByText("Browser tabs need the desktop app");
+    expect(screen.getByText("https://example.com/saved")).not.toBeNull();
+  });
 
   it("recreates an explicitly reopened page once when its owning desktop activates it", async () => {
     const { api, attachments } = createRecordingBrowserApi();
