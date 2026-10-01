@@ -1,11 +1,19 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import {
+  spawnPortablePipedProcess,
+  stopProcessGroupLeaderFirst,
+  supportsProcessGroups,
+} from "@bb/process-utils";
 import { createInterface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { z } from "zod";
 import { ACP_PROTOCOL_VERSION, acpInitializeResultSchema } from "../wire.js";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
-const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+const CLOSED_STDIN_ERROR_CODES = new Set([
+  "EPIPE",
+  "EOF",
+  "ERR_STREAM_DESTROYED",
+]);
 
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;
@@ -42,7 +50,7 @@ interface AcpAgentRequestArgs<TResult> {
 export interface AcpAgentConnection {
   request<TResult>(args: AcpAgentRequestArgs<TResult>): Promise<TResult>;
   notify(method: string, params: unknown): void;
-  kill(): void;
+  kill(): Promise<void>;
   readonly exited: boolean;
 }
 
@@ -139,10 +147,12 @@ function parseAgentLine(line: string): ParsedAgentMessage | null {
 export function createAcpAgentConnection(
   options: CreateAcpAgentConnectionOptions,
 ): AcpAgentConnection {
-  const child: ChildProcess = spawn(options.command, options.args, {
+  const child = spawnPortablePipedProcess({
+    command: options.command,
+    args: options.args,
     cwd: options.cwd,
     env: options.env,
-    stdio: ["pipe", "pipe", "pipe"],
+    detached: supportsProcessGroups(),
   });
   experimental_recordProviderChildIo(child, {
     threadId: options.recordThreadId,
@@ -153,6 +163,7 @@ export function createAcpAgentConnection(
   let nextRequestId = 1;
   let exited = false;
   let stopping = false;
+  let stopPromise: Promise<void> | undefined;
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -174,9 +185,15 @@ export function createAcpAgentConnection(
     rejectAllPending(
       new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
     );
-    child.kill("SIGKILL");
+    stopPromise = stopProcessGroupLeaderFirst({
+      child,
+      timeoutMs: 0,
+      killGraceMs: 0,
+    });
     const stderrTail = [...stderrChunks, detail].join("\n");
-    options.onExit({ code: null, signal: null, stderrTail });
+    void stopPromise.then(() =>
+      options.onExit({ code: null, signal: null, stderrTail }),
+    );
   }
 
   function writeLine(message: object): void {
@@ -354,16 +371,20 @@ export function createAcpAgentConnection(
     },
 
     kill() {
-      if (stopping || exited) {
-        return;
-      }
+      if (stopPromise) return stopPromise;
+      if (exited) return Promise.resolve();
       stopping = true;
       rejectAllPending(
         new AcpAgentExitedError(
           `ACP agent "${options.command}" is not running`,
         ),
       );
-      child.kill("SIGTERM");
+      stopPromise = stopProcessGroupLeaderFirst({
+        child,
+        timeoutMs: 1_000,
+        killGraceMs: 0,
+      });
+      return stopPromise;
     },
   };
 }

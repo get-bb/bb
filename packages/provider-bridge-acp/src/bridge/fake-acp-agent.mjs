@@ -162,7 +162,7 @@ process.on("SIGTERM", () => {
 });
 
 if (process.env.FAKE_ACP_READY_FILE) {
-  writeFileSync(process.env.FAKE_ACP_READY_FILE, "ready\n");
+  writeFileSync(process.env.FAKE_ACP_READY_FILE, String(process.pid));
 }
 
 if (process.env.FAKE_ACP_LAUNCH_LOG) {

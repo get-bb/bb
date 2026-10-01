@@ -35,7 +35,7 @@ import type {
   BridgeToolCallContent,
   BridgeToolCallImage,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import { execFile } from "node:child_process";
+import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
@@ -762,35 +762,33 @@ async function authenticateAcpAgent(args: {
 async function loadAgentModelCatalog(
   listCommand: AcpAgentCommandParam,
 ): Promise<AgentModelCatalog | null> {
-  const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
-    execFile(
-      listCommand.command,
-      listCommand.args,
-      {
-        ...(listCommand.cwd !== undefined ? { cwd: listCommand.cwd } : {}),
-        env: {
-          ...withoutBridgeRuntimeEnv(process.env),
-          ...(listCommand.envVars ?? {}),
-        },
-        timeout: MODEL_LIST_TIMEOUT_MS,
-      },
-      (error, out, stderr) => {
-        if (!error) {
-          resolveExec(out);
-          return;
-        }
-        if (isMissingExecutableError(error)) {
-          rejectExec(error);
-          return;
-        }
-        if (isAuthRequiredModelListError(error, out, stderr)) {
-          rejectExec(new AcpModelListAuthRequiredError());
-          return;
-        }
-        resolveExec(null);
-      },
-    );
-  });
+  const stdout = await execPortableFile(listCommand.command, listCommand.args, {
+    cwd: listCommand.cwd ?? process.cwd(),
+    env: {
+      ...withoutBridgeRuntimeEnv(process.env),
+      ...(listCommand.envVars ?? {}),
+    },
+    maxBuffer: 1024 * 1024,
+    timeout: MODEL_LIST_TIMEOUT_MS,
+  }).then(
+    ({ stdout }) => stdout,
+    (error: unknown) => {
+      if (isMissingExecutableError(error)) throw error;
+      const output = z
+        .object({ stdout: z.string(), stderr: z.string() })
+        .safeParse(error);
+      if (
+        isAuthRequiredModelListError(
+          error,
+          output.success ? output.data.stdout : "",
+          output.success ? output.data.stderr : "",
+        )
+      ) {
+        throw new AcpModelListAuthRequiredError();
+      }
+      return null;
+    },
+  );
   const key = JSON.stringify(listCommand);
   if (stdout === null) {
     process.stderr.write(
@@ -924,7 +922,7 @@ async function loadSessionDiscoveredModels(
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
-    connection.kill();
+    await connection.kill();
   }
 }
 
@@ -1941,7 +1939,7 @@ async function startAgentSession(
   } catch (error) {
     session.stopping = true;
     session.deferStartEmit = undefined;
-    connection.kill();
+    await connection.kill();
     removeSession(session);
     await releaseCursorMcpApproval(session);
     throw error;
@@ -1974,7 +1972,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
   }
   settleInterruptedPrompt(session);
 
-  session.connection.kill();
+  await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
 }
@@ -2002,7 +2000,7 @@ async function releaseSession(session: AcpThreadSession): Promise<void> {
     "ACP session released before the steer was sent",
   );
   cancelPendingPermissions(session);
-  session.connection.kill();
+  await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
 }

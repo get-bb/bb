@@ -1,3 +1,4 @@
+import { stopProcessGroupLeaderFirst } from "@bb/process-utils";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -251,9 +252,11 @@ async function runMcpInitialize(config: AdvertisedMcpServer): Promise<{
 afterEach(async () => {
   await Promise.all(
     children.splice(0).map(async ({ child, closed }) => {
-      if (child.exitCode === null && child.signalCode === null) {
-        child.kill("SIGKILL");
-      }
+      await stopProcessGroupLeaderFirst({
+        child,
+        timeoutMs: 0,
+        killGraceMs: 0,
+      });
       await closed;
     }),
   );

@@ -1,5 +1,5 @@
-import { execFile, type ExecFileException } from "node:child_process";
-import path from "node:path";
+import type { ExecFileException } from "node:child_process";
+import { stopWindowsProcessTree } from "./windows-process-tree.js";
 import crossSpawn from "cross-spawn";
 
 interface ExecPortableFileOptions {
@@ -47,21 +47,7 @@ export function execPortableFile(
       if (failure) return;
       failure = error;
       if (process.platform === "win32" && child.pid !== undefined) {
-        stopping = new Promise<void>((resolveStop) => {
-          execFile(
-            path.join(
-              process.env.SystemRoot ?? "C:\\Windows",
-              "System32",
-              "taskkill.exe",
-            ),
-            ["/pid", String(child.pid), "/T", "/F"],
-            { windowsHide: true, timeout: 5_000 },
-            () => {
-              child.kill();
-              resolveStop();
-            },
-          );
-        });
+        stopping = stopWindowsProcessTree(child);
       } else {
         child.kill();
       }
@@ -83,7 +69,7 @@ export function execPortableFile(
       failure ??= error;
     });
     childInput.on("error", (error: NodeJS.ErrnoException) => {
-      if (error.code !== "EPIPE") stop(error);
+      if (error.code !== "EPIPE" && error.code !== "EOF") stop(error);
     });
     const collect = (stream: "stdout" | "stderr", chunk: Buffer) => {
       const length = stream === "stdout" ? stdoutBytes : stderrBytes;
@@ -116,7 +102,12 @@ export function execPortableFile(
     child.once("close", async (code, signal) => {
       clearTimeout(timeout);
       options.signal?.removeEventListener("abort", abort);
-      await stopping;
+      try {
+        await stopping;
+      } catch (error) {
+        reject(error);
+        return;
+      }
       const output = {
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderr: Buffer.concat(stderr).toString("utf8"),

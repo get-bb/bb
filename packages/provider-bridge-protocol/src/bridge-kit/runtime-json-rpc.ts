@@ -132,7 +132,11 @@ interface SettleJsonRpcResponseArgs {
   response: JsonRpcObject;
 }
 
-const closedJsonRpcStdinErrorCodes = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+const closedJsonRpcStdinErrorCodes = new Set([
+  "EPIPE",
+  "EOF",
+  "ERR_STREAM_DESTROYED",
+]);
 const jsonRpcStdinErrorHandledStreams = new WeakSet<Writable>();
 
 function isJsonRpcObject(value: unknown): value is JsonRpcObject {

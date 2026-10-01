@@ -566,6 +566,23 @@ function callDynamicToolBridge(args: {
   });
 }
 
+async function waitForAgentExit(readyFile: string): Promise<void> {
+  const pid = Number(readFileSync(readyFile, "utf8"));
+  expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
+  await waitFor(
+    () => {
+      try {
+        process.kill(pid, 0);
+        return undefined;
+      } catch {
+        return true;
+      }
+    },
+    "agent termination",
+    5_000,
+  );
+}
+
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-acp-bridge-test-"));
   output = captureBridgeJsonRpcOutput();
@@ -1085,11 +1102,7 @@ describe("acp bridge", () => {
       models: [{ id: "acp-default", isDefault: true }],
       selectedOnlyModels: [],
     });
-    await waitFor(
-      () => (existsSync(signalFile) ? true : undefined),
-      "discovery agent termination",
-      5_000,
-    );
+    await waitForAgentExit(readyFile);
   });
 
   it("serves ACP-native discovered models from cache within the TTL and re-discovers after it", async () => {
@@ -3252,8 +3265,7 @@ describe("acp bridge", () => {
     const start = await waitForResponse(startId);
     expect(start.result).toBeUndefined();
     expect(start.error?.message).toMatch(/exited|not running|released/u);
-    await waitForFileWithRealTimer(signalFile);
-    expect(readFileSync(signalFile, "utf8")).toContain("SIGTERM");
+    await waitForAgentExit(readyFile);
     expect(
       messagesForThread(threadId).filter(
         (message) => message.method === "thread/identity",
@@ -3318,7 +3330,7 @@ describe("acp bridge", () => {
     const first = await waitForResponse(firstStartId);
     expect(first.result).toBeUndefined();
     expect(first.error).toBeDefined();
-    await waitForFileWithRealTimer(slowSignalFile);
+    await waitForAgentExit(slowReadyFile);
     expect(
       messagesForThread(threadId)
         .filter((message) => message.method === "thread/identity")

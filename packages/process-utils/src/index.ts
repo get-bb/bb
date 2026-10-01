@@ -1,3 +1,4 @@
+import { stopWindowsProcessTree } from "./windows-process-tree.js";
 export * from "./event-loop-delay.js";
 export * from "./plugin-process-paths.js";
 export * from "./socket-type-of-service.js";
@@ -223,6 +224,7 @@ export function stopProcessGroupLeaderFirst(
   args: StopProcessGroupLeaderFirstArgs,
 ): Promise<void> {
   const { child, timeoutMs, killGraceMs } = args;
+  if (process.platform === "win32") return stopWindowsProcessTree(child);
   if (hasChildExited(child) && !isProcessGroupAlive(child)) {
     return Promise.resolve();
   }

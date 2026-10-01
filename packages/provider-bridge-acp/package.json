@@ -23,7 +23,8 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@bb/process-utils": "workspace:*"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

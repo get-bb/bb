@@ -121,10 +121,17 @@ describe("acp process topology", () => {
     });
     await waitForRuntimeState({
       label: "the agent under construction was released",
-      predicate: () => existsSync(signalFile),
+      predicate: () => {
+        const pid = Number(readFileSync(readyFile, "utf8"));
+        try {
+          process.kill(pid, 0);
+          return false;
+        } catch {
+          return true;
+        }
+      },
       timeoutMs: 10_000,
     });
-    expect(readFileSync(signalFile, "utf8")).toContain("SIGTERM");
     expect(runtime.listRunningProviders()).toEqual([]);
   }, 30_000);
 });

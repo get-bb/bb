@@ -1,3 +1,4 @@
+import { execPortableFile } from "@bb/process-utils";
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import { access } from "node:fs/promises";
@@ -50,7 +51,10 @@ export async function commandOutput(
   args: readonly string[],
 ): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync(command, [...args], {
+    const { stdout, stderr } = await execPortableFile(command, [...args], {
+      cwd: process.cwd(),
+      env: process.env,
+      maxBuffer: 1024 * 1024,
       timeout: INSTALLATION_CHECK_TIMEOUT_MS,
     });
     return `${stdout}\n${stderr}`.trim();
@@ -68,11 +72,12 @@ export function versionFrom(value: string | null): string | null {
 
 export async function readCliVersion(command: string): Promise<string | null> {
   try {
-    const probe = execFileAsync(command, ["--version"], {
+    const { stdout, stderr } = await execPortableFile(command, ["--version"], {
+      cwd: process.cwd(),
+      env: process.env,
+      maxBuffer: 1024 * 1024,
       timeout: CLI_PROBE_TIMEOUT_MS,
     });
-    probe.child.stdin?.end();
-    const { stdout, stderr } = await probe;
     return versionFrom(`${stdout}\n${stderr}`);
   } catch {
     return null;

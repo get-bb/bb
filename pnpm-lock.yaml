@@ -2193,9 +2193,6 @@ importers:
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
-      tw-animate-css:
-        specifier: ^1.4.0
-        version: 1.4.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -2450,6 +2447,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../provider-bridge-protocol

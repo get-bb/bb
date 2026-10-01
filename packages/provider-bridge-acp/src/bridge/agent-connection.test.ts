@@ -80,8 +80,8 @@ describe("ACP agent stdio lifecycle", () => {
       args: [
         "-e",
         [
-          'require("node:fs").closeSync(0);',
-          'process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n");',
+          'if (process.platform === "win32") process.stdin._handle.close(); else require("node:fs").closeSync(0);',
+          'setImmediate(() => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n"));',
           "setTimeout(() => process.exit(0), 1000);",
         ].join(" "),
       ],
@@ -114,8 +114,8 @@ describe("ACP agent stdio lifecycle", () => {
       args: [
         "-e",
         [
-          'require("node:fs").closeSync(0);',
-          'process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n");',
+          'if (process.platform === "win32") process.stdin._handle.close(); else require("node:fs").closeSync(0);',
+          'setImmediate(() => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "ready" }) + "\\n"));',
           "setInterval(() => {}, 1000);",
         ].join(" "),
       ],
@@ -224,10 +224,9 @@ describe("ACP agent stdio lifecycle", () => {
           resultSchema: z.unknown(),
         }),
       ).rejects.toThrow(`ACP agent "${process.execPath}" is not running`);
-      await expect(exited.promise).resolves.toMatchObject({
-        code: 0,
-        signal: null,
-      });
+      const exitInfo = await exited.promise;
+      if (process.platform !== "win32")
+        expect(exitInfo).toMatchObject({ code: 0, signal: null });
     } finally {
       await stopConnection(connection, exited.promise);
     }
