@@ -42,6 +42,10 @@ export function selectActiveBrowserTab(
 const WINDOW_TARGET_PENDING_ATTEMPTS = 4;
 const WINDOW_TARGET_MAX_RETRY_MS = 2000;
 
+function windowRetryDelay(attempt: number): number {
+  return Math.min(250 * 2 ** (attempt - 1), WINDOW_TARGET_MAX_RETRY_MS);
+}
+
 type WindowTargetCheck =
   | { status: "pending" }
   | { status: "ready"; target: BbDesktopBrowserTarget | null };
@@ -123,10 +127,7 @@ export function BrowserTabDeck({
           attempt += 1;
           if (attempt >= WINDOW_TARGET_PENDING_ATTEMPTS)
             setWindowTarget({ status: "ready", target: null });
-          retry = setTimeout(
-            check,
-            Math.min(250 * 2 ** (attempt - 1), WINDOW_TARGET_MAX_RETRY_MS),
-          );
+          retry = setTimeout(check, windowRetryDelay(attempt));
         });
     };
     check();
@@ -152,26 +153,35 @@ export function BrowserTabDeck({
     )
       return;
     let current = true;
-    void sdk.experimental_desktopBrowsers
-      .listInstances({ hostId: targetHostId })
-      .then(
-        ({ instances }) => {
-          if (!current) return;
-          const live = instances.some(
-            (instance) => instance.instanceId === savedInstanceId,
-          );
-          setSavedWindowCheck({
-            key: savedWindowKey,
-            status: live ? "live" : "gone",
-          });
-        },
-        () => {
-          if (current)
-            setSavedWindowCheck({ key: savedWindowKey, status: "unknown" });
-        },
-      );
+    let attempt = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      void sdk.experimental_desktopBrowsers
+        .listInstances({ hostId: targetHostId })
+        .then(
+          ({ instances }) => {
+            if (!current) return;
+            const live = instances.some(
+              (instance) => instance.instanceId === savedInstanceId,
+            );
+            setSavedWindowCheck({
+              key: savedWindowKey,
+              status: live ? "live" : "gone",
+            });
+          },
+          () => {
+            if (!current) return;
+            attempt += 1;
+            if (attempt >= WINDOW_TARGET_PENDING_ATTEMPTS)
+              setSavedWindowCheck({ key: savedWindowKey, status: "unknown" });
+            retry = setTimeout(check, windowRetryDelay(attempt));
+          },
+        );
+    };
+    check();
     return () => {
       current = false;
+      clearTimeout(retry);
     };
   }, [savedWindowKey, targetHostId, savedInstanceId]);
 
@@ -198,7 +208,11 @@ export function BrowserTabDeck({
             ? "desktop-required"
             : savedWindowStatus === "live"
               ? "other-window"
-              : "other-connection"
+              : windowTarget.status === "ready" &&
+                  windowTarget.target !== null &&
+                  windowTarget.target.hostId !== target?.hostId
+                ? "other-computer"
+                : "reconnecting"
         }
       />
     );
@@ -239,9 +253,13 @@ const BROWSER_TAB_ELSEWHERE_COPY = {
     title: "This tab is open in another bb window",
     body: "Switch to that window to keep browsing.",
   },
-  "other-connection": {
-    title: "This tab isn't available in this window",
-    body: "It was opened in bb on another computer or connection.",
+  "other-computer": {
+    title: "This tab is open on another computer",
+    body: "It was opened in bb on a different computer.",
+  },
+  reconnecting: {
+    title: "Reconnecting to this tab",
+    body: "bb can't reach this computer's browser right now. The tab opens once it reconnects.",
   },
 } as const;
 

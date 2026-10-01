@@ -266,7 +266,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     installDesktopBrowser(api);
     const tab = savedTab({ hostId: "host-2" });
     const view = render(renderTargetDeck(tab));
-    await screen.findByText("This tab isn't available in this window");
+    await screen.findByText("This tab is open on another computer");
     expect(screen.getByText("https://example.com/saved")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Open in browser" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Copy link" })).not.toBeNull();
@@ -353,11 +353,38 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       instances: [{ ...desktopTarget, label: "BB window 1" }],
     });
     render(renderTargetDeck(savedTab({ instanceId: "closed-window" })));
-    expect(screen.queryByText("This tab isn't available in this window")).toBeNull();
+    expect(screen.queryByText("Reconnecting to this tab")).toBeNull();
     await waitFor(() => expect(attachments).toHaveLength(1), { timeout: 3000 });
     expect(getTarget).toHaveBeenCalledTimes(3);
     expect(attachments[0]?.existingOnly).toBeUndefined();
-    expect(screen.queryByText("This tab isn't available in this window")).toBeNull();
+    expect(screen.queryByText("Reconnecting to this tab")).toBeNull();
+  });
+
+  it("says it is reconnecting, not that the tab is elsewhere, while the desktop stays offline", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    api.getTarget = async () => null;
+    installDesktopBrowser(api);
+    render(renderTargetDeck(savedTab({})));
+    await screen.findByText("Reconnecting to this tab", undefined, {
+      timeout: 4000,
+    });
+    expect(screen.queryByText("This tab is open on another computer")).toBeNull();
+    expect(attachments).toEqual([]);
+  });
+
+  it("retries the open-window check when it fails", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    api.getTarget = async () => desktopTarget;
+    installDesktopBrowser(api);
+    const listInstances = vi
+      .spyOn(sdk.experimental_desktopBrowsers, "listInstances")
+      .mockRejectedValueOnce(new Error("host busy"))
+      .mockRejectedValueOnce(new Error("host busy"))
+      .mockResolvedValue({ instances: [{ ...desktopTarget, label: "BB window 1" }] });
+    render(renderTargetDeck(savedTab({ instanceId: "closed-window" })));
+    await waitFor(() => expect(attachments).toHaveLength(1), { timeout: 3000 });
+    expect(listInstances).toHaveBeenCalledTimes(3);
+    expect(attachments[0]?.existingOnly).toBeUndefined();
   });
 
   it("reattaches its own window's tab after a reconnect rotates the generation", async () => {
