@@ -924,7 +924,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
         ?.closest("[role=dialog]"),
     ).toBeFalsy();
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Back to sidebar" })).toBe(
+      expect(screen.getByRole("button", { name: "Done" })).toBe(
         document.activeElement,
       ),
     );
@@ -953,7 +953,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
         ?.classList.contains("max-md:pointer-coarse:h-9"),
     ).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to sidebar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
     expect(onCustomizingChange).toHaveBeenLastCalledWith(false);
     expect(
@@ -1013,9 +1013,6 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     ).not.toBeNull();
     expect(
       screen.queryByRole("button", { name: "More sidebar navigation" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Back to sidebar" }),
     ).toBeNull();
     await waitFor(() =>
       expect(

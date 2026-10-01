@@ -37,11 +37,11 @@ function FooterCustomizePlaceholder({
         <div role="status" aria-label="Loading footer customization">
           <div
             ref={footerRowRef}
-            className="relative flex items-center gap-1 py-2 text-xs text-muted-foreground"
+            className="relative mx-3 my-2 flex items-center gap-1 text-xs text-muted-foreground"
           >
             <div
               aria-hidden="true"
-              className="flex h-8 w-full items-center px-2 max-md:pointer-coarse:h-9"
+              className="flex h-8 w-full items-center max-md:pointer-coarse:h-9"
             >
               <Skeleton className="h-3 w-2/3 rounded-sm" />
             </div>

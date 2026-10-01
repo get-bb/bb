@@ -61,58 +61,60 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
       }}
     >
       <SidebarFooterCustomizeHeader onDone={onDone} />
-      <div
-        ref={footerRowRef}
-        className="flex items-center gap-1 overflow-hidden bg-sidebar-accent py-2"
-      >
-        <ul
-          aria-label="Footer icons"
-          className="flex min-w-0 items-center gap-1"
-          onClickCapture={footerDnd.onClickCapture}
+      <div className="bg-sidebar-accent px-3">
+        <div
+          ref={footerRowRef}
+          className="flex items-center gap-1 overflow-hidden py-2"
         >
-          <DndContext {...footerDnd.dndContextProps}>
-            <SortableContext
-              items={preferences.footer.map((item) => item.key)}
-              strategy={horizontalListSortingStrategy}
-            >
-              {preferences.footer.map((item) => (
-                <FooterIconTile
-                  key={item.key}
-                  item={item}
-                  reorderDisabled={preferences.footer.length < 2}
-                  onRemove={() => preferences.removeFromFooter(item.key)}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-          {Array.from({ length: emptySlots }, (_, index) => (
-            <li
-              key={index}
-              aria-hidden="true"
-              className={cn(
-                SIDEBAR_FOOTER_ACTION_CLASS,
-                "shrink-0 rounded-md border border-dashed border-sidebar-foreground/20",
-              )}
-            />
-          ))}
-        </ul>
-        <span
-          ref={moreGlyphRef}
-          aria-hidden="true"
-          className={cn(
-            SIDEBAR_FOOTER_ACTION_CLASS,
-            "flex shrink-0 items-center justify-center text-muted-foreground",
-          )}
-        >
-          <Icon name="MoreHorizontal" />
-        </span>
+          <ul
+            aria-label="Footer icons"
+            className="flex min-w-0 items-center gap-1"
+            onClickCapture={footerDnd.onClickCapture}
+          >
+            <DndContext {...footerDnd.dndContextProps}>
+              <SortableContext
+                items={preferences.footer.map((item) => item.key)}
+                strategy={horizontalListSortingStrategy}
+              >
+                {preferences.footer.map((item) => (
+                  <FooterIconTile
+                    key={item.key}
+                    item={item}
+                    reorderDisabled={preferences.footer.length < 2}
+                    onRemove={() => preferences.removeFromFooter(item.key)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+            {Array.from({ length: emptySlots }, (_, index) => (
+              <li
+                key={index}
+                aria-hidden="true"
+                className={cn(
+                  SIDEBAR_FOOTER_ACTION_CLASS,
+                  "shrink-0 rounded-md border border-dashed border-sidebar-foreground/20",
+                )}
+              />
+            ))}
+          </ul>
+          <span
+            ref={moreGlyphRef}
+            aria-hidden="true"
+            className={cn(
+              SIDEBAR_FOOTER_ACTION_CLASS,
+              "flex shrink-0 items-center justify-center text-muted-foreground",
+            )}
+          >
+            <Icon name="MoreHorizontal" />
+          </span>
+        </div>
       </div>
       {preferences.more.length > 0 && (
         <>
           <ZoneLabel label="More menu" />
           <ul
             aria-label="More menu items"
-            className="space-y-0.5 px-1"
+            className="space-y-0.5 px-2"
             onClickCapture={moreDnd.onClickCapture}
           >
             <DndContext {...moreDnd.dndContextProps}>
@@ -140,7 +142,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
 
 function ZoneLabel({ label }: { label: string }) {
   return (
-    <div className="px-2 pb-1 pt-2 text-xs text-muted-foreground">{label}</div>
+    <div className="px-3 pb-1 pt-2 text-xs text-muted-foreground">{label}</div>
   );
 }
 
