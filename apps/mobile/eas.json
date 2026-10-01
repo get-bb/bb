@@ -19,7 +19,11 @@
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk", "autoIncrement": true }
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a",
+        "autoIncrement": true
+      }
     },
     "production": {
       "autoIncrement": true
