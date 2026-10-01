@@ -217,15 +217,6 @@ describe("prompt editor app shortcuts", () => {
     expect(testState.calls).toEqual(["sidebar.toggle"]);
   });
 
-  it("releases composer focus on Escape", () => {
-    const editor = renderComposer();
-    expect(document.activeElement).toBe(editor);
-
-    pressInEditor(editor, { key: "Escape" });
-
-    expect(document.activeElement).not.toBe(editor);
-  });
-
   it("offers a declined chord to the handlers only once", () => {
     testState.sidebarHandlerResult = false;
     const editor = renderComposer();

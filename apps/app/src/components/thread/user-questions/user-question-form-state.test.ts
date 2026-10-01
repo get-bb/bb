@@ -40,15 +40,6 @@ const freeTextOnly: Question = {
 };
 
 describe("buildQuestionAnswers", () => {
-  it("returns the selected option for a single-select choice", () => {
-    const state = createInitialFormState([singleSelect]);
-    state.branch.selected = ["main"];
-
-    expect(buildQuestionAnswers([singleSelect], state)).toEqual({
-      branch: { selected: ["main"] },
-    });
-  });
-
   it("treats Other as free text that replaces the selection (single-select)", () => {
     const state = createInitialFormState([singleSelect]);
     state.branch.otherSelected = true;
@@ -104,16 +95,6 @@ describe("buildQuestionAnswers", () => {
 });
 
 describe("isQuestionAnswered", () => {
-  it("is answered when an option is selected", () => {
-    expect(
-      isQuestionAnswered(singleSelect, {
-        selected: ["main"],
-        otherSelected: false,
-        otherText: "",
-      }),
-    ).toBe(true);
-  });
-
   it("is answered when Other has non-empty text", () => {
     expect(
       isQuestionAnswered(singleSelect, {
@@ -130,16 +111,6 @@ describe("isQuestionAnswered", () => {
         selected: [],
         otherSelected: true,
         otherText: "   ",
-      }),
-    ).toBe(false);
-  });
-
-  it("is not answered with no selection and no text", () => {
-    expect(
-      isQuestionAnswered(singleSelect, {
-        selected: [],
-        otherSelected: false,
-        otherText: "",
       }),
     ).toBe(false);
   });

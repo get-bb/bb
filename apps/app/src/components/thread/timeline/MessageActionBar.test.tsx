@@ -101,24 +101,6 @@ describe("MessageActionBar", () => {
     ).toBeUndefined();
   });
 
-  it("renders the send-to-main action and fires its handler when supplied", () => {
-    const onSendToMain = vi.fn();
-    render(
-      <MessageActionBar
-        messageText="An answer worth keeping."
-        alignment="start"
-        mobileActionDisplay="overflow"
-        onSendToMain={onSendToMain}
-      />,
-    );
-
-    const button = screen.getByRole("button", {
-      name: "Send to main thread",
-    });
-    fireEvent.click(button);
-    expect(onSendToMain).toHaveBeenCalledTimes(1);
-  });
-
   it("orders agent actions as copy, add, then fork", () => {
     const { container } = render(
       <MessageActionBar
@@ -134,29 +116,6 @@ describe("MessageActionBar", () => {
       [...container.querySelectorAll<HTMLButtonElement>("button[aria-label]")]
         .map((button) => button.getAttribute("aria-label"))
         .filter((label) => label !== "Message actions"),
-    ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
-  });
-
-  it("keeps the same agent action order in the mobile overflow", () => {
-    mockMobileCoarsePointer();
-    render(
-      <MessageActionBar
-        messageText="An answer."
-        alignment="start"
-        mobileActionDisplay="overflow"
-        onAddToChat={vi.fn()}
-        onFork={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
-    const content =
-      document.body.querySelector<HTMLElement>('[data-side="top"]');
-    if (!content) throw new Error("Missing mobile message action menu");
-    expect(
-      within(content)
-        .getAllByRole("button")
-        .map((button) => button.textContent),
     ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
   });
 

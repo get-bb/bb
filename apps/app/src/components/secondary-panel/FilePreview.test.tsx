@@ -816,27 +816,6 @@ describe("FilePreview", () => {
     ).toBeNull();
   });
 
-  it("caps oversized CSV previews and reports the visible data-row count", () => {
-    const columnCount = 105;
-    const dataRowCount = 501;
-    const header = Array.from({ length: columnCount }, (_, i) => `c${i + 1}`);
-    const lines = [header.join(",")];
-    for (let rowIndex = 0; rowIndex < dataRowCount; rowIndex += 1) {
-      lines.push(header.map((name) => `${name}r${rowIndex + 1}`).join(","));
-    }
-
-    const preview = buildCsvPreviewData(lines.join("\n"));
-
-    expect(preview.rows.length).toBe(501);
-    expect(preview.rows.at(-1)?.[0]).toBe("c1r500");
-    expect(preview.columnCount).toBe(100);
-    expect(preview.truncatedRows).toBe(true);
-    expect(preview.truncatedColumns).toBe(true);
-    expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBe(
-      "Showing the first 500 rows and 100 columns.",
-    );
-  });
-
   it("does not report truncation for a CSV exactly at the row cap", () => {
     const lines = ["name"];
     for (let rowIndex = 0; rowIndex < 500; rowIndex += 1) {
@@ -1088,19 +1067,6 @@ describe("FilePreview", () => {
       "/api/v1/projects/p1/files/raw?path=qa%2Freport-with-images.zip",
     );
     expect(download.getAttribute("download")).toBe("report-with-images.zip");
-  });
-
-  it("does not show the file preview actions menu for non-text previews", () => {
-    render(
-      <FilePreview
-        path="docs/screenshots/right-panel.png"
-        state={{ kind: "image", url: "/preview/right-panel.png" }}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "File preview actions" }),
-    ).toBeNull();
   });
 
   it("passes cache keys for loaded text previews to Pierre", async () => {

@@ -19,7 +19,6 @@ import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 
 const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
-  markThreadReadMutate: vi.fn(),
   onOpenLink: vi.fn(),
   onOpenLocalFileLink: vi.fn(),
   pendingInteractions: [] as
@@ -33,7 +32,6 @@ const mocks = vi.hoisted(() => ({
   pendingInteractionsIsFetching: false,
   pendingInteractionsIsLoading: false,
   queuedMessages: [] as Array<{ id: string }>,
-  readTrackingThreads: [] as Array<unknown>,
   sendQueuedMessageMutateAsync: vi.fn(),
   sendThreadMessageMutateAsync: vi.fn(),
   threadRuntimeDisplayStatus: "idle" as string,
@@ -336,14 +334,13 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
 }));
 
-vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useMarkThreadRead: () => ({ mutate: mocks.markThreadReadMutate }),
-}));
+vi.mock("@/hooks/mutations/thread-state-mutations", () => {
+  const mutate = vi.fn();
+  return { useMarkThreadRead: () => ({ mutate }) };
+});
 
 vi.mock("@/hooks/useThreadReadTracking", () => ({
-  useThreadReadTracking: ({ thread }: { thread?: unknown }) => {
-    mocks.readTrackingThreads.push(thread);
-  },
+  useThreadReadTracking: () => {},
 }));
 
 vi.mock("@/hooks/mutations/project-mutations", () => ({
@@ -403,7 +400,6 @@ describe("EmbeddedThreadChat", () => {
     window.localStorage.clear();
     mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.sendThreadMessageMutateAsync.mockReset().mockResolvedValue({});
-    mocks.markThreadReadMutate.mockReset();
     mocks.onOpenLink.mockReset();
     mocks.onOpenLocalFileLink.mockReset();
     mocks.pendingInteractions = [];
@@ -411,7 +407,6 @@ describe("EmbeddedThreadChat", () => {
     mocks.pendingInteractionsIsFetching = false;
     mocks.pendingInteractionsIsLoading = false;
     mocks.queuedMessages = [];
-    mocks.readTrackingThreads = [];
     mocks.sendQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.threadRuntimeDisplayStatus = "idle";
     mocks.timelineRows = [];

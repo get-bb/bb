@@ -155,9 +155,6 @@ function ThreadDetailSecondaryContentBody({
               presentation === "inline" && isMainCollapsed
             }
             onToggleConversationCollapse={onToggleMainCollapse}
-            {...(presentation === "inline"
-              ? { inlinePanelToggle: "button" as const }
-              : {})}
             resizablePanelId={resizablePanelId}
             metadataContent={metadataContent}
           />

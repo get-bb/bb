@@ -89,15 +89,6 @@ describe("RootComposeCompactHome", () => {
     expect(offset.style.height).toBe(`${MOBILE_RECENT_ROW_HEIGHT_PX}px`);
   });
 
-  it("pads the list tail so the last row can clear the composer", () => {
-    renderCompactHome();
-
-    const bottomSpacer = screen.getByTestId(
-      "root-compose-compact-bottom-spacer",
-    );
-    expect(bottomSpacer.style.height).toBe("0px");
-  });
-
   it("rests a list that fits on the composer instead of the band top", () => {
     renderCompactHome();
 

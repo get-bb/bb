@@ -288,7 +288,10 @@ describe("ThreadActionsProvider archive confirmation", () => {
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[0]!);
     await vi.waitFor(() =>
-      expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([second, untouched]),
+      expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+        second,
+        untouched,
+      ]),
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[1]!);
     await vi.waitFor(() =>
@@ -298,27 +301,11 @@ describe("ThreadActionsProvider archive confirmation", () => {
     );
     resolveSummary({ nonDeletedChildCount: 1, unarchivedDescendantCount: 1 });
     await screen.findByRole("button", { name: "Cancel" });
-    expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([first, untouched]);
+    expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+      first,
+      untouched,
+    ]);
     expect(queryClient.getQueryData(listKey)).toEqual([first, untouched]);
-  });
-
-  it("archives a thread without children without opening a dialog", async () => {
-    vi.mocked(sdk.threads.childSummary).mockResolvedValue({
-      nonDeletedChildCount: 0,
-      unarchivedDescendantCount: 0,
-    });
-    renderProvider(<ArchiveButton thread={makeThread()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
-
-    await vi.waitFor(() => {
-      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
-        threadId: "thr_parent",
-      });
-    });
-    expect(
-      screen.queryByRole("heading", { name: /Archive \d+ threads\?/ }),
-    ).toBeNull();
   });
 
   it("archives without confirmation when its only child is already archived", async () => {

@@ -4,36 +4,47 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { Thread } from "@bb/domain";
 import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { defaultAppSettings } from "@bb/domain";
+import type { ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
+import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
 const mocks = vi.hoisted(() => ({
   requestArchive: vi.fn(),
+  requestRename: vi.fn(),
 }));
 
-const testState = vi.hoisted(() => ({
-  keybindings: [
-    {
-      command: "thread.archive" as const,
-      desktopOnly: false,
-      shortcut: {
-        key: "a",
-        mod: true,
-        meta: false,
-        control: false,
-        alt: false,
-        shift: true,
-      },
-      when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
+const testState = vi.hoisted(() => {
+  const keybinding = (
+    command: "thread.archive" | "thread.rename",
+    key: string,
+  ) => ({
+    command,
+    desktopOnly: false,
+    shortcut: {
+      key,
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: true,
     },
-  ],
-}));
+    when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
+  });
+  return {
+    keybindings: [
+      keybinding("thread.archive", "a"),
+      keybinding("thread.rename", "r"),
+    ],
+  };
+});
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
     requestArchive: mocks.requestArchive,
+    requestRename: mocks.requestRename,
   }),
 }));
 
@@ -84,10 +95,14 @@ function paneContext(paneId: string, isFocused: boolean): PaneContextValue {
   };
 }
 
-function SplitArchiveHandlers({
+type ThreadCommandHandler = ComponentType<{ thread: Thread }>;
+
+function SplitHandlers({
+  Handler,
   firstPaneThread = firstThread,
   focusedThreadId,
 }: {
+  Handler: ThreadCommandHandler;
   firstPaneThread?: Thread;
   focusedThreadId: string | null;
 }) {
@@ -99,21 +114,21 @@ function SplitArchiveHandlers({
           focusedThreadId === firstPaneThread.id,
         )}
       >
-        <ThreadArchiveCommandHandler thread={firstPaneThread} />
+        <Handler thread={firstPaneThread} />
       </PaneContext.Provider>
       <PaneContext.Provider
         value={paneContext("pane-second", focusedThreadId === secondThread.id)}
       >
-        <ThreadArchiveCommandHandler thread={secondThread} />
+        <Handler thread={secondThread} />
       </PaneContext.Provider>
     </AppCommandProvider>
   );
 }
 
-function pressArchiveShortcut() {
+function pressShortcut(letter: "A" | "R") {
   fireEvent.keyDown(window, {
-    key: "A",
-    code: "KeyA",
+    key: letter,
+    code: `Key${letter}`,
     ctrlKey: true,
     shiftKey: true,
   });
@@ -124,39 +139,57 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ThreadArchiveCommandHandler", () => {
-  it("archives only the focused pane's thread as focus changes", () => {
+describe.each([
+  {
+    command: "archive",
+    Handler: ThreadArchiveCommandHandler,
+    request: mocks.requestArchive,
+    letter: "A" as const,
+  },
+  {
+    command: "rename",
+    Handler: ThreadRenameCommandHandler,
+    request: mocks.requestRename,
+    letter: "R" as const,
+  },
+])("thread $command command handler", ({ Handler, request, letter }) => {
+  it("routes the command to the focused pane's thread as focus changes", () => {
     const view = render(
-      <SplitArchiveHandlers focusedThreadId={firstThread.id} />,
+      <SplitHandlers Handler={Handler} focusedThreadId={firstThread.id} />,
     );
 
-    pressArchiveShortcut();
-    expect(mocks.requestArchive.mock.calls).toEqual([[firstThread]]);
+    pressShortcut(letter);
+    expect(request.mock.calls).toEqual([[firstThread]]);
 
-    mocks.requestArchive.mockClear();
-    view.rerender(<SplitArchiveHandlers focusedThreadId={secondThread.id} />);
-    pressArchiveShortcut();
-    expect(mocks.requestArchive.mock.calls).toEqual([[secondThread]]);
+    request.mockClear();
+    view.rerender(
+      <SplitHandlers Handler={Handler} focusedThreadId={secondThread.id} />,
+    );
+    pressShortcut(letter);
+    expect(request.mock.calls).toEqual([[secondThread]]);
   });
 
   it("does nothing when no pane is focused", () => {
-    render(<SplitArchiveHandlers focusedThreadId={null} />);
+    render(<SplitHandlers Handler={Handler} focusedThreadId={null} />);
 
-    pressArchiveShortcut();
+    pressShortcut(letter);
 
-    expect(mocks.requestArchive).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
+});
 
+describe("ThreadArchiveCommandHandler", () => {
   it("does nothing when the focused thread is archived", () => {
     const archivedThread = { ...firstThread, archivedAt: 2 };
     render(
-      <SplitArchiveHandlers
+      <SplitHandlers
+        Handler={ThreadArchiveCommandHandler}
         firstPaneThread={archivedThread}
         focusedThreadId={archivedThread.id}
       />,
     );
 
-    pressArchiveShortcut();
+    pressShortcut("A");
 
     expect(mocks.requestArchive).not.toHaveBeenCalled();
   });

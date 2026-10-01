@@ -22,7 +22,6 @@ import {
   AppThreadSectionMoveProvider,
   ThreadSectionMoveProvider,
 } from "./ThreadSectionMoveProvider";
-import { useSidebarRename } from "../sidebar/SidebarInlineRename";
 
 const moveThreadToSection = vi.hoisted(() => vi.fn());
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn());
@@ -84,29 +83,6 @@ function renderCompact(children: ReactNode) {
   );
 }
 
-function InlineRenameMenuHarness() {
-  const rename = useSidebarRename({
-    kind: "thread",
-    id: thread.id,
-    name: thread.title ?? "Thread",
-    label: "Thread name",
-    onSave: async () => {},
-  });
-  return (
-    <div data-sidebar-rename-row="" data-testid="thread-row">
-      <button type="button" data-sidebar-rename-anchor="">
-        Open thread
-      </button>
-      {rename.editor ?? <span>{thread.title}</span>}
-      <ThreadActionsMenu
-        thread={thread}
-        onRename={rename.startEditingFromMenu}
-        onCloseAutoFocus={rename.onCloseAutoFocus}
-      />
-    </div>
-  );
-}
-
 async function openMoveSubmenu() {
   const trigger = await screen.findByRole("menuitem", {
     name: "Move to section",
@@ -125,7 +101,7 @@ afterEach(() => {
 });
 
 describe("ThreadActionsMenu", () => {
-  it("keeps the existing rename dialog for callers without an inline override", async () => {
+  it("opens the rename dialog from the menu", async () => {
     renderWide(<ThreadActionsMenu thread={thread} />);
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Thread actions" }),
@@ -138,23 +114,6 @@ describe("ThreadActionsMenu", () => {
       expect(threadActions.requestRename).toHaveBeenCalledWith(thread);
     });
   });
-
-  it.each([{ compact: false }, { compact: true }])(
-    "hands focus to inline rename ($compact)",
-    async ({ compact }) => {
-      (compact ? renderCompact : renderWide)(<InlineRenameMenuHarness />);
-      const trigger = screen.getByRole("button", { name: "Thread actions" });
-      if (compact) fireEvent.click(trigger);
-      else fireEvent.pointerDown(trigger, { button: 0 });
-      const item = await screen.findByRole("menuitem", { name: "Rename" });
-      if (compact) fireEvent.click(item);
-      else fireEvent.keyDown(item, { key: "Enter" });
-      const input = await screen.findByRole("textbox", { name: "Thread name" });
-      await waitFor(() => expect(document.activeElement).toBe(input));
-      expect(input).toHaveProperty("value", "Move me");
-      expect(threadActions.requestRename).not.toHaveBeenCalled();
-    },
-  );
 
   it("copies the canonical thread URL from every menu instance", () => {
     renderWide(<ThreadActionsMenu thread={thread} />);

@@ -1770,21 +1770,9 @@ describe("PluginDetail runtime health", () => {
     ).toBeTruthy();
   });
 
-  it("offers Reload for degraded runtime status without a bottom rule", () => {
+  it("offers Reload for degraded runtime status and keeps diagnostics out of the banner", () => {
     renderRuntimeStatus("degraded", {
       statusDetail: "service issue-sync did not stop",
-    });
-
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("A service is still stopping.");
-    expect(alert.textContent).toContain("Wait, then reload.");
-    expect(alert.textContent).not.toContain("issue-sync");
-    expect(alert.textContent).not.toContain("Restart bb");
-    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
-  });
-
-  it("does not fold cumulative handler diagnostics into the runtime banner", () => {
-    renderRuntimeStatus("degraded", {
       handlerStats: {
         ...GITHUB_PLUGIN.handlerStats,
         errorCount: 3,
@@ -1793,24 +1781,21 @@ describe("PluginDetail runtime health", () => {
 
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(1);
-    expect(alerts[0]?.textContent).toContain("Degraded");
-    expect(alerts[0]?.textContent).not.toContain("handler");
+    const alertText = alerts[0]?.textContent;
+    expect(alertText).toContain("Degraded");
+    expect(alertText).toContain("A service is still stopping.");
+    expect(alertText).toContain("Wait, then reload.");
+    expect(alertText).not.toContain("issue-sync");
+    expect(alertText).not.toContain("handler");
+    expect(alertText).not.toContain("Restart bb");
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
-
-  it.each(["incompatible", "missing"] as const)(
-    "does not offer Reload for %s runtime status",
-    (status) => {
-      renderRuntimeStatus(status);
-
-      expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
-    },
-  );
 
   it.each([
     ["incompatible", "This version is incompatible with bb.", "Update bb."],
     ["missing", "Plugin files are missing.", "Update or reinstall bb."],
   ] as const)(
-    "explains the %s condition and a supported recovery",
+    "explains the %s condition and a supported recovery without offering Reload",
     (status, condition, recovery) => {
       renderRuntimeStatus(status);
 
@@ -1818,6 +1803,7 @@ describe("PluginDetail runtime health", () => {
       expect(alert.textContent).toContain(condition);
       expect(alert.textContent).toContain(recovery);
       expect(alert.textContent).not.toContain("runtime reported");
+      expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
     },
   );
 
@@ -2412,35 +2398,7 @@ describe("plugin detail source and settings", () => {
   });
 
   it("opens settings in place from the detail gear and returns to details", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url === "/api/v1/plugins") {
-          return Response.json({
-            enabled: true,
-            plugins: [
-              makeInstalledPlugin({
-                id: "github",
-                name: "GitHub",
-                hasSettings: true,
-              }),
-            ],
-          });
-        }
-        if (url.startsWith("/api/v1/plugin-catalog/search")) {
-          return Response.json({ results: [], collections: [] });
-        }
-        if (url === "/api/v1/plugins/github/settings") {
-          return Response.json({
-            ok: true,
-            schema: { repository: { type: "string", label: "Repository" } },
-            values: { repository: "get-bb/bb" },
-          });
-        }
-        return Response.json({ error: "not found" }, { status: 404 });
-      }),
-    );
+    stubConfigurablePlugin("running");
     const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/plugins/github?view=installed"]}>
@@ -2453,7 +2411,9 @@ describe("plugin detail source and settings", () => {
       { wrapper },
     );
 
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
@@ -2464,10 +2424,10 @@ describe("plugin detail source and settings", () => {
       "?view=installed&configure=github",
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Plugin details" }),
-    );
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
     expect(screen.getByTestId("route-search").textContent).toBe(
       "?view=installed",
     );
@@ -2557,35 +2517,7 @@ describe("plugin detail source and settings", () => {
   });
 
   it("keeps in-place settings out of the URL when the detail pane is embedded in a thread", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url === "/api/v1/plugins") {
-          return Response.json({
-            enabled: true,
-            plugins: [
-              makeInstalledPlugin({
-                id: "github",
-                name: "GitHub",
-                hasSettings: true,
-              }),
-            ],
-          });
-        }
-        if (url.startsWith("/api/v1/plugin-catalog/search")) {
-          return Response.json({ results: [], collections: [] });
-        }
-        if (url === "/api/v1/plugins/github/settings") {
-          return Response.json({
-            ok: true,
-            schema: { repository: { type: "string", label: "Repository" } },
-            values: { repository: "get-bb/bb" },
-          });
-        }
-        return Response.json({ error: "not found" }, { status: 404 });
-      }),
-    );
+    stubConfigurablePlugin("running");
     const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/threads/thr_1?panel=files"]}>
@@ -2597,21 +2529,21 @@ describe("plugin detail source and settings", () => {
       { wrapper },
     );
 
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
       "value",
       "get-bb/bb",
     );
     expect(screen.getByTestId("route-path").textContent).toBe("/threads/thr_1");
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?panel=files",
-    );
+    expect(screen.getByTestId("route-search").textContent).toBe("?panel=files");
 
     fireEvent.click(screen.getByRole("button", { name: "Plugin details" }));
-    expect(await screen.findByRole("heading", { name: "Details" })).toBeTruthy();
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?panel=files",
-    );
+    expect(
+      await screen.findByRole("heading", { name: "Details" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("route-search").textContent).toBe("?panel=files");
   });
 });

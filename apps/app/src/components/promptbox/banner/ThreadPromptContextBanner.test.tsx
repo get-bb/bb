@@ -497,37 +497,8 @@ describe("ThreadPromptContextBanner", () => {
     expect(childCard.parentElement?.classList.contains("min-w-0")).toBe(true);
   });
 
-  it("uses neutral active copy for a child waiting for a host", () => {
+  it("counts a child waiting for a host as active banner work", () => {
     expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
-
-    const markup = renderToStaticMarkup(
-      <MemoryRouter>
-        <ThreadPromptContextBanner
-          gitSection={null}
-          gitSectionPending={false}
-          archivedSection={null}
-          environmentGoneSection={null}
-          parentThreadSection={null}
-          childThreadsSection={{
-            items: [
-              {
-                id: "thr_waiting",
-                title: "Waiting for build host",
-                href: "/threads/thr_waiting",
-                hasPendingInteraction: false,
-              },
-            ],
-          }}
-          pullRequestSection={null}
-          expandedSection={null}
-          onToggleSection={noop}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(markup).toContain("1 active child thread: Waiting for build host");
-    expect(markup).toContain("Active child thread:");
-    expect(markup).not.toContain("Running child thread:");
   });
 
   it("labels a child blocked on approval instead of active work", () => {

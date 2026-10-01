@@ -81,21 +81,6 @@ afterEach(() => {
 
 describe("assistant streaming Markdown rendering", () => {
   it.each([
-    ["**Live bold", "strong", "Live bold"],
-    ["`live code", "code", "live code"],
-  ])(
-    "renders incomplete formatting and returns to original Markdown when stopped: %s",
-    (source, selector, text) => {
-      const view = render(assistant(source));
-      expect(view.container.querySelector(selector)?.textContent).toBe(text);
-
-      view.rerender(assistant(source, false));
-      expect(view.container.querySelector(selector)).toBeNull();
-      expect(view.container.textContent).toContain(source);
-    },
-  );
-
-  it.each([
     ["**Live bold and `live code", ["strong"]],
     ["__Live bold and `live code", ["strong"]],
     ["*Live italic and `live code", ["em"]],

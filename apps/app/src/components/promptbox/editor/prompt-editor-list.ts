@@ -8,7 +8,7 @@ interface SplitListEditorContext {
   };
 }
 
-export function createSplitPromptListItemTransaction(args: {
+function createSplitPromptListItemTransaction(args: {
   state: EditorState;
   editor: SplitListEditorContext;
 }): Transaction | null {

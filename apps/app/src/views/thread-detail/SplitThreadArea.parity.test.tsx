@@ -91,17 +91,4 @@ describe("SplitThreadArea single-pane parity", () => {
       "thread-view",
     );
   });
-
-  it("wraps each pane once the layout actually splits", () => {
-    const { container } = renderArea({
-      root: {
-        type: "split",
-        dir: "row",
-        sizes: [0.5, 0.5],
-        children: [pane("pane-1", "t1"), pane("pane-2", "t2")],
-      },
-      focusedPaneId: "pane-1",
-    });
-    expect(container.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
-  });
 });

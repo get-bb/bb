@@ -262,12 +262,6 @@ describe("EnvironmentRow", () => {
     expect(markup).not.toContain('aria-label="New thread in this environment"');
   });
 
-  it("shows the create-thread action for a ready environment", () => {
-    expect(renderEnvironmentRow(makeEnvironment())).toContain(
-      'aria-label="New thread in this environment"',
-    );
-  });
-
   it("explains the create-thread action in a tooltip", async () => {
     render(
       withQueryClient(

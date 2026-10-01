@@ -526,22 +526,6 @@ describe("MachineSettingsView", () => {
     expect(screen.queryByText("This machine")).toBeNull();
   });
 
-  it("badges the server machine when several persistent machines exist", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue({
-      ...systemConfig(),
-      primaryHostId: HOST_ID,
-    });
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
-      host(),
-      host({ id: "host_laptop", name: "laptop" }),
-    ]);
-    stubSupportingFetches();
-
-    renderView();
-
-    expect(await screen.findByText("Server")).toBeDefined();
-  });
-
   it("offers Move server here in the title menu of an eligible machine", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);

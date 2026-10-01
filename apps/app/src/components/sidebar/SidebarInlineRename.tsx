@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 const loadRenameEditor = () => import("./SidebarRenameEditor");
 const SidebarRenameEditor = lazy(loadRenameEditor);
 
@@ -119,8 +118,6 @@ function useRenameController() {
 export type RenameController = ReturnType<typeof useRenameController>;
 
 export function useSidebarRename(args: SidebarRenameArgs) {
-  const compact = useIsCompactViewport();
-  const pendingMenuRename = useRef<(() => void) | null>(null);
   const controller = useRenameController();
   const generatedOwnerKey = useId();
   const ownerKey = args.ownerKey ?? generatedOwnerKey;
@@ -157,17 +154,5 @@ export function useSidebarRename(args: SidebarRenameArgs) {
     ) : null,
     isEditing,
     startEditing,
-    startEditingFromMenu: () => {
-      if (compact) startEditing();
-      else pendingMenuRename.current = startEditing;
-    },
-    onCloseAutoFocus: (event: Event) => {
-      const begin = pendingMenuRename.current;
-      if (begin) {
-        pendingMenuRename.current = null;
-        event.preventDefault();
-        begin();
-      }
-    },
   };
 }

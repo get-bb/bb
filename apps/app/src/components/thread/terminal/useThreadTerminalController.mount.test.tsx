@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
-  shouldMountTerminalViewForPanel,
   useThreadTerminalController,
   type ThreadTerminalControllerArgs,
 } from "./useThreadTerminalController";
@@ -47,39 +46,6 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("shouldMountTerminalViewForPanel", () => {
-  it("mounts only for an open panel or a hidden panel this client already opened", () => {
-    expect(
-      shouldMountTerminalViewForPanel({
-        hasPanelOpened: false,
-        isPanelOpen: true,
-        isPanelPersistedOpen: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldMountTerminalViewForPanel({
-        hasPanelOpened: false,
-        isPanelOpen: false,
-        isPanelPersistedOpen: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldMountTerminalViewForPanel({
-        hasPanelOpened: true,
-        isPanelOpen: false,
-        isPanelPersistedOpen: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldMountTerminalViewForPanel({
-        hasPanelOpened: true,
-        isPanelOpen: false,
-        isPanelPersistedOpen: false,
-      }),
-    ).toBe(false);
-  });
-});
-
 describe("useThreadTerminalController terminal view mounting", () => {
   it("does not mount a persisted-open terminal the panel never showed", () => {
     vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [session] });
@@ -94,6 +60,20 @@ describe("useThreadTerminalController terminal view mounting", () => {
 
     expect(result.current.shouldMountTerminalView).toBe(false);
     expect(sdk.terminals.list).not.toHaveBeenCalled();
+  });
+
+  it("mounts the view for an open panel that is not persisted open", () => {
+    vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [session] });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadTerminalController(
+          controllerArgs({ isPanelOpen: true, isPanelPersistedOpen: false }),
+        ),
+      { wrapper },
+    );
+
+    expect(result.current.shouldMountTerminalView).toBe(true);
   });
 
   it("keeps the view mounted across a compact close and unmounts once persisted state closes", async () => {

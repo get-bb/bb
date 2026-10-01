@@ -29,8 +29,6 @@ import { useThreadSectionMove } from "./ThreadSectionMoveProvider";
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
   onOpenInSplit?: () => void;
-  onRename?: () => void;
-  onCloseAutoFocus?: (event: Event) => void;
 }
 
 export interface ThreadActionsMenuResponsiveAction {
@@ -149,7 +147,6 @@ function ThreadSectionMoveMenu({
 function ThreadActionsMenuItems({
   thread,
   onOpenInSplit,
-  onRename,
   compactStep = "actions",
   onCompactStepChange,
   responsiveActions = [],
@@ -256,10 +253,6 @@ function ThreadActionsMenuItems({
         surface="dropdown"
         icon="Edit"
         onSelect={() => {
-          if (onRename) {
-            onRename();
-            return;
-          }
           window.setTimeout(() => {
             requestRename(thread);
           }, 0);
@@ -318,8 +311,6 @@ function useThreadActionsMenuLifecycle(onOpenChange?: (open: boolean) => void) {
 export function ThreadActionsMenu({
   thread,
   onOpenInSplit,
-  onRename,
-  onCloseAutoFocus,
   responsiveActions,
   onOpenChange,
   triggerClassName,
@@ -350,11 +341,10 @@ export function ThreadActionsMenu({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onCloseAutoFocus={onCloseAutoFocus}>
+      <DropdownMenuContent align="end">
         <ThreadActionsMenuItems
           thread={thread}
           onOpenInSplit={onOpenInSplit}
-          onRename={onRename}
           compactStep={compactStep}
           onCompactStepChange={setCompactStep}
           responsiveActions={responsiveActions}
