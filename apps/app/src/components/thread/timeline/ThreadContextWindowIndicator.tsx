@@ -193,9 +193,18 @@ export function ThreadContextWindowIndicator({
         <button
           type="button"
           {...triggerHoverProps}
-          className="-m-1 inline-flex size-8 cursor-pointer max-md:my-0 max-md:-mr-3 max-md:-ml-1 max-md:size-11 items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="-m-1 inline-flex size-8 cursor-pointer max-md:my-0 max-md:-mr-3 max-md:-ml-1 max-md:h-11 max-md:w-auto max-md:gap-1.5 max-md:pl-2 max-md:pr-3.5 items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Context window ${usedPercent}% used`}
         >
+          <span
+            aria-hidden="true"
+            className={cn(
+              "hidden text-xs tabular-nums max-md:inline",
+              toneClass,
+            )}
+          >
+            {usedPercent}%
+          </span>
           <svg
             viewBox="0 0 16 16"
             className={cn("size-4", toneClass)}
