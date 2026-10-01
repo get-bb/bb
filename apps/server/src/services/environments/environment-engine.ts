@@ -42,6 +42,8 @@ import {
   threads,
 } from "@bb/db";
 import {
+  canonicalizeHostPath,
+  isAbsoluteHostPath,
   jsonValueSchema,
   type Environment,
   type EnvironmentMachineSelection,
@@ -373,11 +375,11 @@ async function runCreate(
         const path = z
           .string()
           .min(1)
-          .startsWith("/")
+          .refine(isAbsoluteHostPath)
           .refine((path) => !path.includes("\0"))
           .parse(value);
         if (signal.aborted) return false;
-        const normalizedPath = path.replace(/\/+$/u, "") || "/";
+        const normalizedPath = canonicalizeHostPath(path);
         if (
           findBlockingEnvironmentPathClaim(deps, {
             hostId: context.host.id,
@@ -419,7 +421,7 @@ async function runCreate(
       let adoptedExistingEnvironment = false;
       let existingProviderOwnsLifecycle = false;
       try {
-        const producedPath = result.path.replace(/\/+$/u, "") || "/";
+        const producedPath = canonicalizeHostPath(result.path);
         await ensureHostSessionReadyForWork(deps, {
           hostId: context.host.id,
         });

@@ -120,8 +120,25 @@ Not available on the phone (use the web app or desktop for these):
   the WSL filesystem, but they are a tradeoff:
   slower filesystem I/O and weaker file-watching behavior than the WSL
   filesystem.
-- Native Windows drive-letter and UNC paths are rejected at the app/server
-  boundary so unsupported input fails clearly.
+- A machine that reported macOS, Linux, or WSL refuses Windows drive-letter
+  paths at the app/server boundary so unsupported input fails clearly. Use the
+  `/mnt/c/...` form from inside WSL2.
+
+### Windows drive-letter paths
+
+Native Windows hosts are not a supported product path yet, but the path model
+accepts their project and workspace paths:
+
+- A drive-letter path such as `C:\Users\me\repo` is stored in one spelling:
+  upper-case drive letter, backslash separators, and no trailing separator.
+  `c:/Users/me/repo/` names the same project.
+- Windows paths are compared without regard to case, so `C:\src\Repo` and
+  `C:\src\repo` are one project source and one environment. POSIX paths stay
+  case-sensitive.
+- UNC network paths (`\\server\share\repo`) are refused; map the share to a
+  drive letter.
+- Paths relative to a workspace stay `/`-separated in the API on every
+  platform.
 
 ### Maintainer-only or best-effort surfaces
 

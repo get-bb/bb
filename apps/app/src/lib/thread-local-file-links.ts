@@ -1,5 +1,6 @@
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
 import type { FilePreviewLineRange } from "@bb/client-core";
+import { areHostPathsEqual, getRelativeHostPath } from "@bb/domain";
 import type { WorkspaceOpenTargetId } from "@bb/host-daemon-contract";
 import {
   isAbsoluteFilePathWithinRoot,
@@ -111,15 +112,16 @@ function normalizeLocalFilePathWithinRoot(
       candidatePath: normalizedPath,
       rootPath: normalizedRootPath,
     }) ||
-    normalizedPath === normalizedRootPath
+    areHostPathsEqual(normalizedPath, normalizedRootPath)
   ) {
     return null;
   }
 
   const relativePath =
-    normalizedRootPath === "/"
-      ? normalizedPath.slice(1)
-      : normalizedPath.slice(normalizedRootPath.length + 1);
+    getRelativeHostPath({
+      rootPath: normalizedRootPath,
+      candidatePath: normalizedPath,
+    }) ?? "";
 
   return {
     path: normalizedPath,
