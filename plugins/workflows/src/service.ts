@@ -423,6 +423,11 @@ export function createWorkflowService(
     });
   }
 
+  function publishRunProgress(runId: string): void {
+    const run = getRun(db, runId);
+    if (run !== null) publishRunsChanged(run.originThreadId);
+  }
+
   const spawningCalls = new Set<string>();
 
   async function onOriginUnavailable(threadId: string): Promise<void> {
@@ -864,6 +869,7 @@ export function createWorkflowService(
             });
             if (sameRunCall.cacheKey === cacheKey && reuse.reusable) {
               markCallReplayedSameRun(db, sameRunCall.id);
+              publishRunsChanged(run.originThreadId);
               return reuse.result;
             }
           }
@@ -896,6 +902,7 @@ export function createWorkflowService(
                 selection,
                 replay: { callId: candidate.id, result: reuse.result },
               });
+              publishRunsChanged(run.originThreadId);
               return reuse.result;
             }
           }
@@ -912,6 +919,7 @@ export function createWorkflowService(
         selection,
         replay: null,
       });
+      publishRunsChanged(run.originThreadId);
     } finally {
       replayDecision.release();
     }
@@ -952,6 +960,7 @@ export function createWorkflowService(
           await stopChild(child.id);
           throw new Error("Workflow cancelled");
         }
+        publishRunsChanged(run.originThreadId);
         spawningCalls.delete(call.id);
         const stopOnAbort = () => void stopChild(child.id);
         signal.addEventListener("abort", stopOnAbort, { once: true });
@@ -993,6 +1002,7 @@ export function createWorkflowService(
         const queued = queueCallProviderRetry(db, call.id, detail);
         if (queued === null) throw error;
         call = queued;
+        publishRunsChanged(run.originThreadId);
         bb.log.warn(
           `[${run.id}] Retrying agent call ${callIndex + 1} after transient provider failure ` +
             `(${call.providerRetryAttempts}/${PROVIDER_RETRY_DELAYS_MS.length}) in ${delay} ms: ${detail}`,
@@ -1003,6 +1013,7 @@ export function createWorkflowService(
   }
 
   function wakeCall(call: WorkflowCallRow): void {
+    publishRunProgress(call.runId);
     const waiter = waiters.get(call.id);
     if (waiter === undefined) return;
     waiters.delete(call.id);
@@ -1084,6 +1095,7 @@ export function createWorkflowService(
         wakeCall(call);
         return;
       }
+      publishRunProgress(call.runId);
       const detail = fallback.parsed
         ? fallback.validation.valid
           ? "a structured result was already recorded"
@@ -1226,6 +1238,7 @@ export function createWorkflowService(
             : "A different structured result was already accepted for this workflow call",
       };
     }
+    publishRunProgress(call.runId);
     if (attempts > MAX_REPAIR_ATTEMPTS) {
       const error = `Structured output failed after ${MAX_REPAIR_ATTEMPTS} corrective retries: ${validation.error}`;
       settleCall(db, { id: call.id, status: "failed", result: null, error });
@@ -1466,6 +1479,7 @@ export function createWorkflowService(
       },
       phase(title) {
         updateRunPhase(db, run.id, title);
+        publishRunsChanged(run.originThreadId);
       },
     };
     try {

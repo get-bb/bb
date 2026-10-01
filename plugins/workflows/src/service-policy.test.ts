@@ -954,6 +954,39 @@ describe("workflow service policy integration", () => {
     await worker;
   });
 
+  it("publishes a workflow-runs signal for phase and call progress, not only run lifecycle", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const signalCount = () =>
+      test.harness.realtimeSignals.filter(
+        (signal) =>
+          signal.channel === "workflow-runs" &&
+          (signal.payload as { threadId?: unknown }).threadId === "origin",
+      ).length;
+    const run = await test.start(
+      source(`phase("Review"); return await agent("one");`, "progress-run"),
+    );
+    const afterStart = signalCount();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    await eventually(() =>
+      expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+    );
+    expect(signalCount()).toBeGreaterThanOrEqual(afterStart + 4);
+
+    const beforeSettle = signalCount();
+    test.service.onThreadIdle("child-1", "done");
+    await eventually(() =>
+      expect(getCall(test.db, run.id, 0)?.status).toBe("succeeded"),
+    );
+    expect(signalCount()).toBeGreaterThan(beforeSettle);
+    await eventually(() =>
+      expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+    );
+    controller.abort();
+    await worker;
+  });
+
   it("does not create or orphan a call when cancellation wins catalog or spawn", async () => {
     const catalogBlocked = setup();
     harnesses.push(catalogBlocked.harness);
