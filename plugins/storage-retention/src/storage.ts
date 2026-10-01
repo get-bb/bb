@@ -6,6 +6,7 @@ import {
   type MeasuredTarget,
 } from "./host-contract.js";
 import { readThreads } from "./sdk-data.js";
+import { CLEARABLE_ARCHIVED_MIN_BYTES } from "./clearable.js";
 import type {
   HostStorageReport,
   HostStorageResponse,
@@ -31,6 +32,11 @@ const cachedScanSchema = z.object({
   ),
 });
 type Scan = z.infer<typeof cachedScanSchema>;
+const clearableArchived = (thread: Thread, sizeBytes: number) =>
+  thread.archivedAt !== null &&
+  thread.pinnedAt === null &&
+  !["starting", "active", "stopping"].includes(thread.status) &&
+  sizeBytes >= CLEARABLE_ARCHIVED_MIN_BYTES;
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
 
@@ -152,6 +158,9 @@ export function createStorage(bb: BbPluginApi) {
     const sum = (entries: { sizeBytes: number }[]) =>
       entries.reduce((total, entry) => total + entry.sizeBytes, 0);
     const archived = owned.filter((entry) => entry.thread.archivedAt !== null);
+    const clearable = archived.filter((entry) =>
+      clearableArchived(entry.thread, entry.sizeBytes),
+    );
     return {
       hostId,
       scannedAt: scan.scannedAt,
@@ -165,6 +174,7 @@ export function createStorage(bb: BbPluginApi) {
       threadsWithStorageCount: owned.length,
       archivedThreadCount: archived.length,
       orphanCount: orphans.length,
+      clearableArchived: { count: clearable.length, bytes: sum(clearable) },
       largestThreads: owned
         .sort((a, b) => b.sizeBytes - a.sizeBytes)
         .slice(0, 20)
@@ -348,21 +358,15 @@ export function createStorage(bb: BbPluginApi) {
         storageRoot(hostId),
         readThreads(bb, lifecycle.signal),
       ]);
-      const archived = new Set(
-        threads
-          .filter(
-            (thread) =>
-              thread.archivedAt !== null &&
-              thread.pinnedAt === null &&
-              !["starting", "active", "stopping"].includes(thread.status),
-          )
-          .map((thread) => thread.id),
-      );
+      const byId = new Map(threads.map((thread) => [thread.id, thread]));
       return await discard(
         hostId,
         rootPath,
         cached,
-        cached.entries.filter((entry) => archived.has(entry.name)),
+        cached.entries.filter((entry) => {
+          const thread = byId.get(entry.name);
+          return thread !== undefined && clearableArchived(thread, entry.sizeBytes);
+        }),
         true,
       );
     } finally {

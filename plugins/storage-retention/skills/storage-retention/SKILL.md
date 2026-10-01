@@ -37,7 +37,8 @@ Scans run in the background; rerun usage to read completion, progress, or failur
 A completed report includes `disk` (total and free bytes of the volume holding thread storage).
 Reads never start scans. Remove-orphans requires a completed scan and only removes
 storage the plugin identifies as orphaned from current SDK thread rows. Clear-archived empties
-the storage of archived threads found in the last scan, skipping pinned and running threads; without
+the storage of archived threads holding 100 MB or more in the last scan, skipping pinned and running
+threads; reports show the matching total as `clearableArchived`. Without
 `--machine` it covers every online machine with a completed scan. Conversations stay in the archive.
 Clear-thread requires a stopped thread and an online machine. The plugin serializes its scans and cleanup per machine. Reports are cached
 snapshots; rescan to see external filesystem changes.

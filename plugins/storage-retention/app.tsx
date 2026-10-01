@@ -20,6 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { storageRpc, State, Policy, Preview } from "./src/contract.js";
+import { CLEARABLE_ARCHIVED_MIN_BYTES } from "./src/clearable.js";
 
 type HostReport = import("./src/storage-types.js").HostStorageResponse;
 type Hosts = import("./src/storage-types.js").HostStorageListResponse["hosts"];
@@ -32,7 +33,7 @@ const DELETE_PRESETS = [7, 30, 90, 180, 365];
 function bytes(value: number) {
   if (value < 1024) return `${value} B`;
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), 4);
-  return `${(value / 1024 ** index).toFixed(1)} ${["B", "KB", "MB", "GB", "TB"][index]}`;
+  return `${Number((value / 1024 ** index).toFixed(1))} ${["B", "KB", "MB", "GB", "TB"][index]}`;
 }
 function ago(timestamp: number) {
   const minutes = Math.round((Date.now() - timestamp) / 60_000);
@@ -187,12 +188,15 @@ function StoragePage({
     policy !== null &&
     (policy.archiveAfterDays !== state.policy.archiveAfterDays ||
       policy.deleteAfterDays !== state.policy.deleteAfterDays);
-  function archivedCleanup(target: string | null, size: number) {
+  function archivedCleanup(
+    target: string | null,
+    totals: { count: number; bytes: number },
+  ) {
     return {
       key: "archived",
-      title: `Clear ${bytes(size)} of archived thread files?`,
+      title: `Clear ${bytes(totals.bytes)} from ${totals.count.toLocaleString()} archived ${totals.count === 1 ? "thread" : "threads"}?`,
       detail:
-        "Conversations stay in your archive. Pinned and running threads are skipped.",
+        "Only files in thread storage are removed; conversation history is kept. Pinned threads are skipped.",
       run: async () => {
         const cleared = await rpc.call("clearArchived", { hostId: target });
         return `Cleared ${bytes(cleared.clearedBytes)} from ${cleared.clearedCount.toLocaleString()} archived ${cleared.clearedCount === 1 ? "thread" : "threads"}.`;
@@ -204,12 +208,12 @@ function StoragePage({
       machines[host.hostId]?.status === "connected" &&
       host.scan.state !== "scanning",
   );
-  const archivedTotals = hosts.reduce(
+  const clearable = hosts.reduce(
     (totals, host) =>
       host.report && machines[host.hostId]?.status === "connected"
         ? {
-            bytes: totals.bytes + host.report.archivedThreadBytes,
-            count: totals.count + host.report.archivedThreadCount,
+            bytes: totals.bytes + host.report.clearableArchived.bytes,
+            count: totals.count + host.report.clearableArchived.count,
           }
         : totals,
     { bytes: 0, count: 0 },
@@ -395,15 +399,15 @@ function StoragePage({
                       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-normal">
-                            Archived thread files{" "}
+                            Large archived threads{" "}
                             <span className="ml-2 whitespace-nowrap font-normal text-muted-foreground">
-                              {bytes(report.archivedThreadBytes)}
+                              {bytes(report.clearableArchived.bytes)}
                             </span>
                           </p>
                           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            {report.archivedThreadCount
-                              ? `${report.archivedThreadCount.toLocaleString()} archived ${report.archivedThreadCount === 1 ? "thread" : "threads"}. Conversations stay in your archive.`
-                              : "No archived thread files found in the last scan."}
+                            {report.clearableArchived.count
+                              ? `${report.clearableArchived.count.toLocaleString()} archived ${report.clearableArchived.count === 1 ? "thread has" : "threads have"} ${bytes(CLEARABLE_ARCHIVED_MIN_BYTES)} or more in thread storage. Conversation history is kept.`
+                              : `No archived threads with ${bytes(CLEARABLE_ARCHIVED_MIN_BYTES)} or more in thread storage.`}
                           </p>
                         </div>
                         <Button
@@ -411,14 +415,14 @@ function StoragePage({
                           size="sm"
                           disabled={
                             locked ||
-                            report.archivedThreadCount === 0 ||
+                            report.clearableArchived.count === 0 ||
                             cleanup !== null
                           }
                           onClick={() =>
                             setCleanup(
                               archivedCleanup(
                                 report.hostId,
-                                report.archivedThreadBytes,
+                                report.clearableArchived,
                               ),
                             )
                           }
@@ -586,6 +590,40 @@ function StoragePage({
           </div>
         ) : (
           <>
+            {clearable.count > 0 && (
+              <div className="space-y-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                  <Icon
+                    name="Clean"
+                    className="hidden size-4 shrink-0 text-subtle-foreground sm:block"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-normal">
+                      Free up {bytes(clearable.bytes)} from archived threads
+                    </p>
+                    <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                      {clearable.count.toLocaleString()} archived{" "}
+                      {clearable.count === 1 ? "thread has" : "threads have"}{" "}
+                      {bytes(CLEARABLE_ARCHIVED_MIN_BYTES)} or more of files
+                      that agents saved to thread storage. Clearing them keeps
+                      every conversation.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    disabled={busy || cleanup !== null}
+                    onClick={() =>
+                      setCleanup(archivedCleanup(null, clearable))
+                    }
+                  >
+                    Clear files
+                  </Button>
+                </div>
+                {cleanup?.key === "archived" && cleanupConfirmation}
+              </div>
+            )}
             <section className="space-y-3">
               <SectionHeading
                 title="Machine storage"
@@ -631,36 +669,6 @@ function StoragePage({
                   />
                 ))}
               </div>
-              {archivedTotals.bytes > 0 && (
-                <div className="space-y-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                    <Icon
-                      name="Archive"
-                      className="hidden size-4 shrink-0 text-subtle-foreground sm:block"
-                    />
-                    <p className="min-w-0 flex-1 text-xs leading-snug text-subtle-foreground">
-                      <span className="text-foreground">
-                        Archived threads use {bytes(archivedTotals.bytes)}.
-                      </span>{" "}
-                      Clear files from {archivedTotals.count.toLocaleString()}{" "}
-                      archived {archivedTotals.count === 1 ? "thread" : "threads"}{" "}
-                      to free up space. Conversations stay in your archive.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      disabled={busy || cleanup !== null}
-                      onClick={() =>
-                        setCleanup(archivedCleanup(null, archivedTotals.bytes))
-                      }
-                    >
-                      Clear archived files
-                    </Button>
-                  </div>
-                  {cleanup?.key === "archived" && cleanupConfirmation}
-                </div>
-              )}
             </section>
             <section className="space-y-3">
               <SectionHeading

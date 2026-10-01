@@ -1,0 +1,1 @@
+export const CLEARABLE_ARCHIVED_MIN_BYTES = 100 * 1024 * 1024;

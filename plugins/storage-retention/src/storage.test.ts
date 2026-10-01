@@ -142,15 +142,21 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
   }
 });
 
-it("clears archived thread storage on scanned online machines, keeping pinned and live threads", async () => {
+it("clears large archived thread storage on scanned online machines, keeping small, pinned and live threads", async () => {
   const root = await directory();
-  for (const name of ["thr_live", "thr_old", "thr_pinned"]) {
+  for (const [name, size] of [
+    ["thr_live", 16384],
+    ["thr_small", 16384],
+    ["thr_old", 101 * 1024 * 1024],
+    ["thr_pinned", 101 * 1024 * 1024],
+  ] as const) {
     await fs.mkdir(path.join(root, name));
-    await fs.writeFile(path.join(root, name, "data"), Buffer.alloc(16384));
+    await fs.writeFile(path.join(root, name, "data"), Buffer.alloc(size, 1));
   }
   const worker = experimental_createHostEntryHarness(hostEntry);
   const threads = [
     makeThreadResponse({ id: "thr_live", status: "idle" }),
+    makeThreadResponse({ id: "thr_small", status: "idle", archivedAt: 1 }),
     makeThreadResponse({ id: "thr_old", status: "idle", archivedAt: 1 }),
     makeThreadResponse({
       id: "thr_pinned",
@@ -202,21 +208,26 @@ it("clears archived thread storage on scanned online machines, keeping pinned an
         async () =>
           hostStorageResponseSchema.parse(
             await host.harness.callRpc("host", { hostId: "host_test" }),
-          ).report?.archivedThreadCount,
+          ).report?.clearableArchived.count,
       )
-      .toBe(2);
+      .toBe(1);
     const cleared = await host.harness.callRpc("clearArchived", {
       hostId: null,
     });
     expect(cleared).toMatchObject({ clearedCount: 1 });
     expect(await fs.readdir(path.join(root, "thr_old"))).toEqual([]);
     expect(await fs.readdir(path.join(root, "thr_pinned"))).toEqual(["data"]);
+    expect(await fs.readdir(path.join(root, "thr_small"))).toEqual(["data"]);
     expect(await fs.readdir(path.join(root, "thr_live"))).toEqual(["data"]);
     expect(
       hostStorageResponseSchema.parse(
         await host.harness.callRpc("host", { hostId: "host_test" }),
       ).report,
-    ).toMatchObject({ archivedThreadCount: 1, threadsWithStorageCount: 2 });
+    ).toMatchObject({
+      archivedThreadCount: 2,
+      threadsWithStorageCount: 3,
+      clearableArchived: { count: 0, bytes: 0 },
+    });
     await expect
       .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
       .toBe(0);

@@ -461,7 +461,8 @@ scan every online machine; rerun usage to see its status and results. The plugin
 bounded idle orphan sweep remains independent of the plugin.
 `bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
 `bb storage clear-archived [--machine HOST_ID] --yes` empties the storage of
-archived threads from the last scan, skipping pinned and running threads;
+archived threads holding 100 MB or more in the last scan, skipping pinned and
+running threads;
 `bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
 `bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
 The plugin owns the disk scanner, cached reports, classification, and host-worker

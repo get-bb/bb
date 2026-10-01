@@ -39,6 +39,10 @@ export const hostStorageReportSchema = z.object({
   threadsWithStorageCount: z.number().int().nonnegative(),
   archivedThreadCount: z.number().int().nonnegative(),
   orphanCount: z.number().int().nonnegative(),
+  clearableArchived: z.object({
+    count: z.number().int().nonnegative(),
+    bytes: byteCountSchema,
+  }),
   largestThreads: z
     .array(hostStorageThreadSchema)
     .max(HOST_STORAGE_LARGEST_THREADS_LIMIT),
