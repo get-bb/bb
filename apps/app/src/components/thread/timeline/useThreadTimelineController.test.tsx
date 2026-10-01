@@ -903,13 +903,14 @@ describe("useThreadTimelineController", () => {
   it("loads older history for a message link and reports a removed message as not found", async () => {
     const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
     onTestFinished(() => toastSpy.mockRestore());
+    const adjacentMessageRow = {
+      ...makeUserRow("thread-1:user-seed:5", 5),
+      sourceSeqStart: 4,
+    };
     vi.mocked(sdk.threads.timeline)
       .mockResolvedValueOnce(
         makeTimelineResponse({
-          rows: [
-            makeUserRow("thread-1:user-seed:3", 3),
-            makeUserRow("thread-1:user-seed:5", 5),
-          ],
+          rows: [makeUserRow("thread-1:user-seed:3", 3), adjacentMessageRow],
           maxSeq: 5,
           timelinePage: {
             historySnapshot: "snapshot-1",
@@ -967,7 +968,7 @@ describe("useThreadTimelineController", () => {
     expect(rowIds(result.current)).toEqual([
       newestLoadedRow.id,
       "thread-1:user-seed:3",
-      "thread-1:user-seed:5",
+      adjacentMessageRow.id,
     ]);
     expect(toastSpy).toHaveBeenCalledTimes(1);
   });

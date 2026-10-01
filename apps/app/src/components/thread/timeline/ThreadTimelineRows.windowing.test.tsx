@@ -297,7 +297,7 @@ describe("ThreadTimelineRows windowing", () => {
       conversationRow({
         id: `search-message-${index}`,
         role: index % 2 === 0 ? "user" : "assistant",
-        sourceSeqEnd: index + 1,
+        sourceSeqEnd: index === 20 ? 22 : index + 1,
         sourceSeqStart: index + 1,
         text: `Search message ${index}`,
         threadId: "thr_large_search",
@@ -305,7 +305,11 @@ describe("ThreadTimelineRows windowing", () => {
     );
     const queryClient = new QueryClient();
     expect(
-      collectSearchedMessageAncestorRowIds(buildTimelineViewRows(rows), 21),
+      collectSearchedMessageAncestorRowIds(
+        buildTimelineViewRows(rows),
+        21,
+        "sequence",
+      ),
     ).toContain("search-message-20");
     const view = render(
       <MemoryRouter

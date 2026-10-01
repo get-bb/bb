@@ -24,6 +24,7 @@ interface SeqAnchoredRow {
 }
 
 interface SearchMessageTarget {
+  match: "message" | "sequence";
   seq: number;
   threadId: string | null;
 }
@@ -107,6 +108,16 @@ function findDeepestSeqAnchoredRow(
   );
 }
 
+function findSearchTargetRow(
+  rows: readonly SeqAnchoredRow[],
+  seq: number,
+  match: SearchMessageTarget["match"],
+): SeqAnchoredRow | null {
+  return match === "message"
+    ? (findMessageSeqRowPath(rows, seq)?.at(-1) ?? null)
+    : findDeepestSeqAnchoredRow(rows, seq);
+}
+
 function findDeepestContainingRow(
   rows: readonly SeqAnchoredRow[],
   seq: number,
@@ -166,10 +177,6 @@ function getRowsSeqWindowKey(rows: readonly SeqAnchoredRow[]): string {
     .join("|");
 }
 
-function rowsContainSeq(rows: readonly SeqAnchoredRow[], seq: number): boolean {
-  return rows.some((row) => containsSeq(row, seq));
-}
-
 function collectSearchedMessageAncestorRowIdsInRows({
   ancestorIds,
   rows,
@@ -205,10 +212,14 @@ function collectSearchedMessageAncestorRowIdsInRows({
 export function collectSearchedMessageAncestorRowIds(
   rows: readonly SeqAnchoredRow[],
   seq: number,
+  match: SearchMessageTarget["match"],
 ): ReadonlySet<string> {
   const messagePath = findMessageSeqRowPath(rows, seq);
   if (messagePath !== null) {
     return new Set(messagePath.map((row) => row.id));
+  }
+  if (match === "message") {
+    return new Set();
   }
   const ancestorIds = new Set<string>();
   collectSearchedMessageAncestorRowIdsInRows({ ancestorIds, rows, seq });
@@ -230,6 +241,7 @@ export function readSearchMessageTarget(
     const threadIdValue = (state as { searchThreadId?: unknown })
       .searchThreadId;
     return {
+      match: "sequence",
       seq: value,
       threadId: typeof threadIdValue === "string" ? threadIdValue : null,
     };
@@ -261,12 +273,19 @@ export function SearchMessageLocationProvider({
     locationKeyRef.current = location.key;
   }, [location.key]);
   const readLocationKey = useCallback(() => locationKeyRef.current, []);
+  const searchTarget = readSearchMessageTarget(location.state);
+  const messageLinkTarget = parseMessageLink(
+    `${location.pathname}${location.search}`,
+  );
   const target =
-    readSearchMessageTarget(location.state) ??
-    parseMessageLink(`${location.pathname}${location.search}`);
+    searchTarget ??
+    (messageLinkTarget === null
+      ? null
+      : { ...messageLinkTarget, match: "message" as const });
   const applies =
     target !== null && searchTargetAppliesToThread(target, threadId);
   const targetLocationKey = applies ? location.key : null;
+  const targetMatch = applies ? target.match : null;
   const targetSeq = applies ? target.seq : null;
   const targetThreadId = applies ? target.threadId : null;
   const value = useMemo<SearchMessageLocation>(
@@ -276,12 +295,19 @@ export function SearchMessageLocationProvider({
           ? null
           : {
               locationKey: targetLocationKey,
+              match: targetMatch,
               seq: targetSeq,
               threadId: targetThreadId,
             },
       readLocationKey,
     }),
-    [readLocationKey, targetLocationKey, targetSeq, targetThreadId],
+    [
+      readLocationKey,
+      targetLocationKey,
+      targetMatch,
+      targetSeq,
+      targetThreadId,
+    ],
   );
   return createElement(
     SearchMessageLocationContext.Provider,
@@ -326,12 +352,14 @@ export function useScrollToSearchedMessage(
     };
   }, []);
   const targetLocationKey = target?.locationKey ?? null;
+  const targetMatch = target?.match ?? null;
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
 
   useEffect(() => {
     if (
       targetLocationKey === null ||
+      targetMatch === null ||
       targetSeq === null ||
       handledKeyRef.current === targetLocationKey
     ) {
@@ -342,16 +370,21 @@ export function useScrollToSearchedMessage(
         return;
       }
     }
-    const targetLeafRow = findDeepestSeqAnchoredRow(rows, targetSeq);
+    const targetLeafRow = findSearchTargetRow(rows, targetSeq, targetMatch);
     if (targetLeafRow === null) {
       const loadedRange = getRowsSeqRange(rows);
       const targetIsOlderThanLoadedRows =
         loadedRange !== null && targetSeq < loadedRange.max;
+      const targetIsMissing =
+        loadedRange !== null &&
+        (targetMatch === "message" || targetIsOlderThanLoadedRows);
+      const canLoadOlderTarget = targetIsOlderThanLoadedRows && hasOlderRows;
       const olderLoadAttemptKey =
         loadedRange === null
           ? null
           : [
               targetLocationKey,
+              targetMatch,
               targetThreadId ?? "",
               targetSeq,
               loadedRange.min,
@@ -359,9 +392,7 @@ export function useScrollToSearchedMessage(
               getRowsSeqWindowKey(rows),
             ].join("::");
       if (
-        targetIsOlderThanLoadedRows &&
-        !rowsContainSeq(rows, targetSeq) &&
-        hasOlderRows &&
+        canLoadOlderTarget &&
         !isLoadingOlderRows &&
         onLoadOlderRows !== undefined &&
         olderLoadAttemptKey !== null &&
@@ -373,9 +404,8 @@ export function useScrollToSearchedMessage(
       }
       if (
         reportsMissingTarget &&
-        targetIsOlderThanLoadedRows &&
-        !rowsContainSeq(rows, targetSeq) &&
-        !hasOlderRows &&
+        targetIsMissing &&
+        !canLoadOlderTarget &&
         !isLoadingOlderRows
       ) {
         handledKeyRef.current = targetLocationKey;
@@ -445,6 +475,7 @@ export function useScrollToSearchedMessage(
     reportsMissingTarget,
     rows,
     targetLocationKey,
+    targetMatch,
     targetSeq,
     targetThreadId,
     threadId,

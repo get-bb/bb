@@ -530,7 +530,11 @@ function useTimelineSearchExpansionRowIds(
     ) {
       return inheritedRowIds;
     }
-    const localRowIds = collectSearchedMessageAncestorRowIds(rows, target.seq);
+    const localRowIds = collectSearchedMessageAncestorRowIds(
+      rows,
+      target.seq,
+      target.match,
+    );
     if (localRowIds.size === 0) {
       return inheritedRowIds;
     }
