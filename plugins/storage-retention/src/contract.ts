@@ -46,10 +46,10 @@ export const storageRpc = defineRpcContract({
     input: machineInput,
     output: hostStorageRetryWorktreeCleanupResponseSchema,
   },
-  clearArchived: {
+  clearLargeFiles: {
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
     output: z.object({
-      clearedCount: z.number().int().nonnegative(),
+      clearedFiles: z.number().int().nonnegative(),
       clearedBytes: z.number().int().nonnegative(),
     }),
   },

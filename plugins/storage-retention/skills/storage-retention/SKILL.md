@@ -19,8 +19,8 @@ bb storage usage --rescan
 bb storage usage --machine HOST_ID --rescan
 bb storage usage --machine HOST_ID
 bb storage remove-orphans --machine HOST_ID --yes
-bb storage clear-archived --yes
-bb storage clear-archived --machine HOST_ID --yes
+bb storage clear-large-files --yes
+bb storage clear-large-files --machine HOST_ID --yes
 bb storage retry-worktree-cleanup --machine HOST_ID
 bb storage clear-thread --thread THREAD_ID --yes
 ```
@@ -36,10 +36,12 @@ Scans run in the background; rerun usage to read completion, progress, or failur
 `--rescan` without `--machine` scans every online machine that is not already busy.
 A completed report includes `disk` (total and free bytes of the volume holding thread storage).
 Reads never start scans. Remove-orphans requires a completed scan and only removes
-storage the plugin identifies as orphaned from current SDK thread rows. Clear-archived empties
-the storage of archived threads holding 100 MB or more in the last scan, skipping pinned and running
-threads; reports show the matching total as `clearableArchived`. Without
-`--machine` it covers every online machine with a completed scan. Conversations stay in the archive.
+storage the plugin identifies as orphaned from current SDK thread rows. Clear-large-files deletes
+individual files of 10 MB or more from the thread storage of archived threads found in the last scan,
+keeping smaller files and skipping pinned and running threads; reports show the matching totals as
+`archivedLargeFiles`. Without `--machine` it covers every online machine with a completed scan.
+Conversation history is never affected. The Storage page suggests it once archived threads hold 1 GB
+or more of large files.
 Clear-thread requires a stopped thread and an online machine. The plugin serializes its scans and cleanup per machine. Reports are cached
 snapshots; rescan to see external filesystem changes.
 

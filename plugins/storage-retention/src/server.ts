@@ -13,7 +13,7 @@ export default function plugin(bb: BbPluginApi) {
     scanHost: storage.scanHost,
     scanAll: () => storage.scanAll(),
     removeOrphans: storage.removeOrphans,
-    clearArchived: storage.clearArchived,
+    clearLargeFiles: storage.clearLargeFiles,
     retryWorktreeCleanup: storage.retryWorktreeCleanup,
     clearThread: storage.clearThread,
     state: () => service.state(),

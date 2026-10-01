@@ -6,7 +6,7 @@ import {
   type MeasuredTarget,
 } from "./host-contract.js";
 import { readThreads } from "./sdk-data.js";
-import { CLEARABLE_ARCHIVED_MIN_BYTES } from "./clearable.js";
+import { LARGE_FILE_MIN_BYTES } from "./rules.js";
 import type {
   HostStorageReport,
   HostStorageResponse,
@@ -20,6 +20,15 @@ type Environment = Awaited<
 const cachedScanSchema = z.object({
   scannedAt: z.number(),
   disk: diskCapacitySchema.nullable().default(null),
+  largeFiles: z
+    .array(
+      z.object({
+        name: z.string(),
+        sizeBytes: z.number().int().nonnegative(),
+        count: z.number().int().nonnegative(),
+      }),
+    )
+    .default([]),
   entries: z.array(
     z.object({ name: z.string(), sizeBytes: z.number().int().nonnegative() }),
   ),
@@ -32,11 +41,10 @@ const cachedScanSchema = z.object({
   ),
 });
 type Scan = z.infer<typeof cachedScanSchema>;
-const clearableArchived = (thread: Thread, sizeBytes: number) =>
+const clearableArchived = (thread: Thread) =>
   thread.archivedAt !== null &&
   thread.pinnedAt === null &&
-  !["starting", "active", "stopping"].includes(thread.status) &&
-  sizeBytes >= CLEARABLE_ARCHIVED_MIN_BYTES;
+  !["starting", "active", "stopping"].includes(thread.status);
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
 
@@ -158,9 +166,10 @@ export function createStorage(bb: BbPluginApi) {
     const sum = (entries: { sizeBytes: number }[]) =>
       entries.reduce((total, entry) => total + entry.sizeBytes, 0);
     const archived = owned.filter((entry) => entry.thread.archivedAt !== null);
-    const clearable = archived.filter((entry) =>
-      clearableArchived(entry.thread, entry.sizeBytes),
-    );
+    const clearable = scan.largeFiles.filter((entry) => {
+      const thread = byId.get(entry.name);
+      return thread !== undefined && clearableArchived(thread);
+    });
     return {
       hostId,
       scannedAt: scan.scannedAt,
@@ -174,7 +183,11 @@ export function createStorage(bb: BbPluginApi) {
       threadsWithStorageCount: owned.length,
       archivedThreadCount: archived.length,
       orphanCount: orphans.length,
-      clearableArchived: { count: clearable.length, bytes: sum(clearable) },
+      archivedLargeFiles: {
+        threadCount: clearable.length,
+        fileCount: clearable.reduce((total, entry) => total + entry.count, 0),
+        bytes: sum(clearable),
+      },
       largestThreads: owned
         .sort((a, b) => b.sizeBytes - a.sizeBytes)
         .slice(0, 20)
@@ -238,6 +251,11 @@ export function createStorage(bb: BbPluginApi) {
           { path: rootPath },
           { hostId, signal: lifecycle.signal },
         );
+        const largeFiles = await worker.call(
+          "largeFiles",
+          { rootPath, minBytes: LARGE_FILE_MIN_BYTES },
+          { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
+        );
         const measured = new Map<string, MeasuredTarget>();
         for (let offset = 0; offset < targets.length; offset += 500) {
           const result = await worker.call(
@@ -257,6 +275,7 @@ export function createStorage(bb: BbPluginApi) {
         store(hostId, {
           scannedAt: Date.now(),
           disk,
+          largeFiles: largeFiles.entries,
           entries:
             root?.outcome === "measured"
               ? (root.children ?? []).filter((entry) =>
@@ -299,7 +318,6 @@ export function createStorage(bb: BbPluginApi) {
     rootPath: string,
     cached: Scan,
     entries: Scan["entries"],
-    recreate: boolean,
   ) {
     let count = 0;
     let bytes = 0;
@@ -308,7 +326,11 @@ export function createStorage(bb: BbPluginApi) {
       const batch = entries.slice(offset, offset + 500);
       await worker.call(
         "discard",
-        { rootPath, names: batch.map((entry) => entry.name), recreate },
+        {
+          rootPath,
+          names: batch.map((entry) => entry.name),
+          recreate: false,
+        },
         { hostId, signal: lifecycle.signal },
       );
       const names = new Set(batch.map((entry) => entry.name));
@@ -336,7 +358,6 @@ export function createStorage(bb: BbPluginApi) {
         rootPath,
         cached,
         cached.entries.filter((entry) => !ids.has(entry.name)),
-        false,
       );
       return {
         removedCount: removed.count,
@@ -347,33 +368,59 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
-  async function clearArchivedOn(hostId: string) {
+  async function clearLargeFilesOn(hostId: string) {
     await requireHost(hostId, true);
     const release = acquire(hostId);
     try {
       const cached = read(hostId);
       if (!cached)
-        throw new Error("Scan the machine before clearing archived storage");
+        throw new Error("Scan the machine before clearing large files");
       const [rootPath, threads] = await Promise.all([
         storageRoot(hostId),
         readThreads(bb, lifecycle.signal),
       ]);
       const byId = new Map(threads.map((thread) => [thread.id, thread]));
-      return await discard(
-        hostId,
-        rootPath,
-        cached,
-        cached.entries.filter((entry) => {
+      const names = cached.largeFiles
+        .filter((entry) => {
           const thread = byId.get(entry.name);
-          return thread !== undefined && clearableArchived(thread, entry.sizeBytes);
-        }),
-        true,
-      );
+          return thread !== undefined && clearableArchived(thread);
+        })
+        .map((entry) => entry.name);
+      let fileCount = 0;
+      let bytes = 0;
+      for (let offset = 0; offset < names.length; offset += 500) {
+        lifecycle.signal.throwIfAborted();
+        const { removed } = await worker.call(
+          "discardLargeFiles",
+          {
+            rootPath,
+            names: names.slice(offset, offset + 500),
+            minBytes: LARGE_FILE_MIN_BYTES,
+          },
+          { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
+        );
+        const freed = new Map(
+          removed.map((entry) => [entry.name, entry.sizeBytes]),
+        );
+        cached.entries = cached.entries.map((entry) => ({
+          ...entry,
+          sizeBytes: Math.max(0, entry.sizeBytes - (freed.get(entry.name) ?? 0)),
+        }));
+        cached.largeFiles = cached.largeFiles.filter(
+          (entry) => !freed.has(entry.name),
+        );
+        store(hostId, cached);
+        for (const entry of removed) {
+          fileCount += entry.count;
+          bytes += entry.sizeBytes;
+        }
+      }
+      return { fileCount, bytes };
     } finally {
       release();
     }
   }
-  async function clearArchived({ hostId }: { hostId: string | null }) {
+  async function clearLargeFiles({ hostId }: { hostId: string | null }) {
     lifecycle.signal.throwIfAborted();
     const targets =
       hostId === null
@@ -384,14 +431,14 @@ export function createStorage(bb: BbPluginApi) {
             )
             .map((machine) => machine.id)
         : [hostId];
-    let clearedCount = 0;
+    let clearedFiles = 0;
     let clearedBytes = 0;
     for (const target of targets) {
-      const cleared = await clearArchivedOn(target);
-      clearedCount += cleared.count;
+      const cleared = await clearLargeFilesOn(target);
+      clearedFiles += cleared.fileCount;
       clearedBytes += cleared.bytes;
     }
-    return { clearedCount, clearedBytes };
+    return { clearedFiles, clearedBytes };
   }
   async function scanAll() {
     lifecycle.signal.throwIfAborted();
@@ -455,7 +502,7 @@ export function createStorage(bb: BbPluginApi) {
     scanHost,
     scanAll,
     removeOrphans,
-    clearArchived,
+    clearLargeFiles,
     clearThread,
     retryWorktreeCleanup,
   };

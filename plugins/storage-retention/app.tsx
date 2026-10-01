@@ -20,10 +20,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { storageRpc, State, Policy, Preview } from "./src/contract.js";
-import { CLEARABLE_ARCHIVED_MIN_BYTES } from "./src/clearable.js";
+import {
+  LARGE_FILE_MIN_BYTES,
+  LARGE_FILE_NUDGE_MIN_BYTES,
+} from "./src/rules.js";
 
 type HostReport = import("./src/storage-types.js").HostStorageResponse;
 type Hosts = import("./src/storage-types.js").HostStorageListResponse["hosts"];
+type LargeFileTotals = NonNullable<HostReport["report"]>["archivedLargeFiles"];
 type Machine = Awaited<
   ReturnType<ReturnType<typeof useSdk>["hosts"]["list"]>
 >[number];
@@ -48,6 +52,9 @@ function duration(days: number) {
   if (days % 7 === 0 && days <= 28)
     return days === 7 ? "1 week" : `${days / 7} weeks`;
   return days === 1 ? "1 day" : `${days} days`;
+}
+function plural(count: number, noun: string) {
+  return `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
 }
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -188,18 +195,17 @@ function StoragePage({
     policy !== null &&
     (policy.archiveAfterDays !== state.policy.archiveAfterDays ||
       policy.deleteAfterDays !== state.policy.deleteAfterDays);
-  function archivedCleanup(
+  function largeFilesCleanup(
     target: string | null,
-    totals: { count: number; bytes: number },
+    totals: LargeFileTotals,
   ) {
     return {
-      key: "archived",
-      title: `Clear ${bytes(totals.bytes)} from ${totals.count.toLocaleString()} archived ${totals.count === 1 ? "thread" : "threads"}?`,
-      detail:
-        "Only files in thread storage are removed; conversation history is kept. Pinned threads are skipped.",
+      key: "large-files",
+      title: `Delete ${totals.fileCount.toLocaleString()} large ${totals.fileCount === 1 ? "file" : "files"} (${bytes(totals.bytes)})?`,
+      detail: `Files of ${bytes(LARGE_FILE_MIN_BYTES)} or more are deleted from the thread storage of ${plural(totals.threadCount, "archived thread")}. Smaller files like reports stay, conversation history is kept, and pinned threads are skipped.`,
       run: async () => {
-        const cleared = await rpc.call("clearArchived", { hostId: target });
-        return `Cleared ${bytes(cleared.clearedBytes)} from ${cleared.clearedCount.toLocaleString()} archived ${cleared.clearedCount === 1 ? "thread" : "threads"}.`;
+        const cleared = await rpc.call("clearLargeFiles", { hostId: target });
+        return `Deleted ${plural(cleared.clearedFiles, "large file")} (${bytes(cleared.clearedBytes)}).`;
       },
     };
   }
@@ -208,16 +214,30 @@ function StoragePage({
       machines[host.hostId]?.status === "connected" &&
       host.scan.state !== "scanning",
   );
-  const clearable = hosts.reduce(
+  const archivedLargeFiles = hosts.reduce<LargeFileTotals>(
     (totals, host) =>
       host.report && machines[host.hostId]?.status === "connected"
         ? {
-            bytes: totals.bytes + host.report.clearableArchived.bytes,
-            count: totals.count + host.report.clearableArchived.count,
+            threadCount:
+              totals.threadCount + host.report.archivedLargeFiles.threadCount,
+            fileCount:
+              totals.fileCount + host.report.archivedLargeFiles.fileCount,
+            bytes: totals.bytes + host.report.archivedLargeFiles.bytes,
           }
         : totals,
-    { bytes: 0, count: 0 },
+    { threadCount: 0, fileCount: 0, bytes: 0 },
   );
+  const suggestions =
+    archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES
+      ? [
+          {
+            title: `Free up ${bytes(archivedLargeFiles.bytes)} from archived threads`,
+            description: `${plural(archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more sit in the thread storage of ${plural(archivedLargeFiles.threadCount, "archived thread")}. Deleting them keeps smaller files like reports, and conversation history isn’t affected.`,
+            action: "Delete large files",
+            cleanup: largeFilesCleanup(null, archivedLargeFiles),
+          },
+        ]
+      : [];
   const cleanupConfirmation = cleanup && (
     <div
       role="region"
@@ -399,15 +419,15 @@ function StoragePage({
                       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-normal">
-                            Large archived threads{" "}
+                            Large files in archived threads{" "}
                             <span className="ml-2 whitespace-nowrap font-normal text-muted-foreground">
-                              {bytes(report.clearableArchived.bytes)}
+                              {bytes(report.archivedLargeFiles.bytes)}
                             </span>
                           </p>
                           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            {report.clearableArchived.count
-                              ? `${report.clearableArchived.count.toLocaleString()} archived ${report.clearableArchived.count === 1 ? "thread has" : "threads have"} ${bytes(CLEARABLE_ARCHIVED_MIN_BYTES)} or more in thread storage. Conversation history is kept.`
-                              : `No archived threads with ${bytes(CLEARABLE_ARCHIVED_MIN_BYTES)} or more in thread storage.`}
+                            {report.archivedLargeFiles.fileCount
+                              ? `${plural(report.archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more across ${plural(report.archivedLargeFiles.threadCount, "archived thread")}. Smaller files and conversation history are kept.`
+                              : `No files of ${bytes(LARGE_FILE_MIN_BYTES)} or more in archived threads.`}
                           </p>
                         </div>
                         <Button
@@ -415,22 +435,22 @@ function StoragePage({
                           size="sm"
                           disabled={
                             locked ||
-                            report.clearableArchived.count === 0 ||
+                            report.archivedLargeFiles.fileCount === 0 ||
                             cleanup !== null
                           }
                           onClick={() =>
                             setCleanup(
-                              archivedCleanup(
+                              largeFilesCleanup(
                                 report.hostId,
-                                report.clearableArchived,
+                                report.archivedLargeFiles,
                               ),
                             )
                           }
                         >
-                          Clear files
+                          Delete large files
                         </Button>
                       </div>
-                      {cleanup?.key === "archived" && cleanupConfirmation}
+                      {cleanup?.key === "large-files" && cleanupConfirmation}
                     </div>
                     <div className="space-y-3 px-4 py-3.5">
                       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
@@ -590,23 +610,20 @@ function StoragePage({
           </div>
         ) : (
           <>
-            {clearable.count > 0 && (
-              <div className="space-y-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+            {suggestions.map((suggestion) => (
+              <div
+                key={suggestion.cleanup.key}
+                className="space-y-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
+              >
                 <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                   <Icon
                     name="Clean"
                     className="hidden size-4 shrink-0 text-subtle-foreground sm:block"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-normal">
-                      Free up {bytes(clearable.bytes)} from archived threads
-                    </p>
+                    <p className="text-sm font-normal">{suggestion.title}</p>
                     <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                      {clearable.count.toLocaleString()} archived{" "}
-                      {clearable.count === 1 ? "thread has" : "threads have"}{" "}
-                      {bytes(CLEARABLE_ARCHIVED_MIN_BYTES)} or more of files
-                      that agents saved to thread storage. Clearing them keeps
-                      every conversation.
+                      {suggestion.description}
                     </p>
                   </div>
                   <Button
@@ -614,16 +631,14 @@ function StoragePage({
                     size="sm"
                     className="shrink-0"
                     disabled={busy || cleanup !== null}
-                    onClick={() =>
-                      setCleanup(archivedCleanup(null, clearable))
-                    }
+                    onClick={() => setCleanup(suggestion.cleanup)}
                   >
-                    Clear files
+                    {suggestion.action}
                   </Button>
                 </div>
-                {cleanup?.key === "archived" && cleanupConfirmation}
+                {cleanup?.key === suggestion.cleanup.key && cleanupConfirmation}
               </div>
-            )}
+            ))}
             <section className="space-y-3">
               <SectionHeading
                 title="Machine storage"

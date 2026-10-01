@@ -54,6 +54,16 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
           "capacity",
           hostStorageContract.capacity.input.parse(call.input),
         );
+      if (call.method === "largeFiles")
+        return worker.experimental_call(
+          "largeFiles",
+          hostStorageContract.largeFiles.input.parse(call.input),
+        );
+      if (call.method === "discardLargeFiles")
+        return worker.experimental_call(
+          "discardLargeFiles",
+          hostStorageContract.discardLargeFiles.input.parse(call.input),
+        );
       if (call.method === "discard")
         return worker.experimental_call(
           "discard",
@@ -142,16 +152,18 @@ it("scans through the host entry, preserves live storage, cleans orphans and cle
   }
 });
 
-it("clears large archived thread storage on scanned online machines, keeping small, pinned and live threads", async () => {
+it("deletes only large files from archived threads on scanned online machines, keeping small files, pinned and live threads", async () => {
   const root = await directory();
-  for (const [name, size] of [
-    ["thr_live", 16384],
-    ["thr_small", 16384],
-    ["thr_old", 101 * 1024 * 1024],
-    ["thr_pinned", 101 * 1024 * 1024],
+  const large = 11 * 1024 * 1024;
+  for (const [name, file, size] of [
+    ["thr_live", "dump.db", large],
+    ["thr_small", "report.md", 16384],
+    ["thr_old", "dump.db", large],
+    ["thr_old", "report.md", 16384],
+    ["thr_pinned", "dump.db", large],
   ] as const) {
-    await fs.mkdir(path.join(root, name));
-    await fs.writeFile(path.join(root, name, "data"), Buffer.alloc(size, 1));
+    await fs.mkdir(path.join(root, name), { recursive: true });
+    await fs.writeFile(path.join(root, name, file), Buffer.alloc(size, 1));
   }
   const worker = experimental_createHostEntryHarness(hostEntry);
   const threads = [
@@ -178,6 +190,16 @@ it("clears large archived thread storage on scanned online machines, keeping sma
         return worker.experimental_call(
           "capacity",
           hostStorageContract.capacity.input.parse(call.input),
+        );
+      if (call.method === "largeFiles")
+        return worker.experimental_call(
+          "largeFiles",
+          hostStorageContract.largeFiles.input.parse(call.input),
+        );
+      if (call.method === "discardLargeFiles")
+        return worker.experimental_call(
+          "discardLargeFiles",
+          hostStorageContract.discardLargeFiles.input.parse(call.input),
         );
       if (call.method === "discard")
         return worker.experimental_call(
@@ -208,25 +230,29 @@ it("clears large archived thread storage on scanned online machines, keeping sma
         async () =>
           hostStorageResponseSchema.parse(
             await host.harness.callRpc("host", { hostId: "host_test" }),
-          ).report?.clearableArchived.count,
+          ).report?.archivedLargeFiles,
       )
-      .toBe(1);
-    const cleared = await host.harness.callRpc("clearArchived", {
+      .toEqual({ threadCount: 1, fileCount: 1, bytes: large });
+    const cleared = await host.harness.callRpc("clearLargeFiles", {
       hostId: null,
     });
-    expect(cleared).toMatchObject({ clearedCount: 1 });
-    expect(await fs.readdir(path.join(root, "thr_old"))).toEqual([]);
-    expect(await fs.readdir(path.join(root, "thr_pinned"))).toEqual(["data"]);
-    expect(await fs.readdir(path.join(root, "thr_small"))).toEqual(["data"]);
-    expect(await fs.readdir(path.join(root, "thr_live"))).toEqual(["data"]);
+    expect(cleared).toEqual({ clearedFiles: 1, clearedBytes: large });
+    expect(await fs.readdir(path.join(root, "thr_old"))).toEqual(["report.md"]);
+    expect(await fs.readdir(path.join(root, "thr_pinned"))).toEqual([
+      "dump.db",
+    ]);
+    expect(await fs.readdir(path.join(root, "thr_small"))).toEqual([
+      "report.md",
+    ]);
+    expect(await fs.readdir(path.join(root, "thr_live"))).toEqual(["dump.db"]);
     expect(
       hostStorageResponseSchema.parse(
         await host.harness.callRpc("host", { hostId: "host_test" }),
       ).report,
     ).toMatchObject({
-      archivedThreadCount: 2,
-      threadsWithStorageCount: 3,
-      clearableArchived: { count: 0, bytes: 0 },
+      threadsWithStorageCount: 4,
+      archivedThreadCount: 3,
+      archivedLargeFiles: { threadCount: 0, fileCount: 0, bytes: 0 },
     });
     await expect
       .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
@@ -284,9 +310,9 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
     experimental_callHostRpc: async (call) => {
       await blocked;
       if (fail) throw new Error("machine disconnected");
-      return call.method === "capacity"
-        ? { totalBytes: 2048, freeBytes: 1024 }
-        : { targets: [] };
+      if (call.method === "capacity") return { totalBytes: 2048, freeBytes: 1024 };
+      if (call.method === "largeFiles") return { entries: [] };
+      return { targets: [] };
     },
     sdk: {
       hosts: {

@@ -170,7 +170,7 @@ async function mapWithConcurrency<TItem, TResult>(
   return results;
 }
 
-function lowerPriority(pid: number): void {
+export function lowerPriority(pid: number): void {
   try {
     os.setPriority(pid, DU_NICENESS);
   } catch {

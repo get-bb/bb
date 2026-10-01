@@ -135,17 +135,17 @@ export function registerCli(
               });
             }),
         }),
-        "clear-archived": cliCommand({
+        "clear-large-files": cliCommand({
           summary:
-            "Empty storage of archived threads on --machine, or on every scanned online machine",
+            "Delete files of 10 MB or more from archived threads on --machine, or on every scanned online machine",
           options: { machine: MACHINE, yes: YES },
           run: (input) =>
             output(async () => {
               if (!input.options.yes)
                 throw new Error(
-                  "Pass --yes to permanently clear archived thread storage.",
+                  "Pass --yes to permanently delete large files from archived threads.",
                 );
-              return storage.clearArchived({
+              return storage.clearLargeFiles({
                 hostId: input.options.machine ?? null,
               });
             }),

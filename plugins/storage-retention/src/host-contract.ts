@@ -48,7 +48,30 @@ export const diskCapacitySchema = z.object({
   totalBytes: z.number().int().nonnegative(),
   freeBytes: z.number().int().nonnegative(),
 });
+const largeFileTotalsSchema = z.object({
+  name: z.string(),
+  sizeBytes: z.number().int().nonnegative(),
+  count: z.number().int().nonnegative(),
+});
+export type LargeFileTotals = z.infer<typeof largeFileTotalsSchema>;
+const minBytesSchema = z.number().int().min(1);
 export const hostStorageContract = defineRpcContract({
+  largeFiles: {
+    input: z
+      .object({ rootPath: z.string().min(1), minBytes: minBytesSchema })
+      .strict(),
+    output: z.object({ entries: z.array(largeFileTotalsSchema) }),
+  },
+  discardLargeFiles: {
+    input: z
+      .object({
+        rootPath: z.string().min(1),
+        names: z.array(z.string().min(1)).min(1).max(500),
+        minBytes: minBytesSchema,
+      })
+      .strict(),
+    output: z.object({ removed: z.array(largeFileTotalsSchema) }),
+  },
   measure: { input: diskUsageInputSchema, output: diskUsageOutputSchema },
   capacity: {
     input: z.object({ path: z.string().min(1) }).strict(),

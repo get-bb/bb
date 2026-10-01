@@ -5,12 +5,83 @@ import { randomUUID } from "node:crypto";
 import { hostStorageContract } from "./host-contract.js";
 import { measureDiskUsage } from "./disk-usage.js";
 import { isFsErrorWithCode } from "./fs-errors.js";
+import { findLargeFiles } from "./large-files.js";
+
+const STORAGE_ENTRY = /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/;
+
+function assertStorageEntry(rootPath: string, name: string) {
+  if (
+    !path.isAbsolute(rootPath) ||
+    name === "." ||
+    name === ".." ||
+    name.includes("/") ||
+    name.includes("\\") ||
+    !STORAGE_ENTRY.test(name)
+  )
+    throw new Error("Invalid storage entry");
+}
 
 export default experimental_defineHostEntry({
   contract: hostStorageContract,
   handlers: {
     measure: (input, context) =>
       measureDiskUsage(input, undefined, context.signal),
+    async largeFiles({ rootPath, minBytes }, context) {
+      if (!path.isAbsolute(rootPath)) throw new Error("Invalid storage path");
+      const totals = new Map<string, { sizeBytes: number; count: number }>();
+      for (const file of await findLargeFiles(
+        rootPath,
+        minBytes,
+        context.signal,
+      )) {
+        const [name] = path.relative(rootPath, file.path).split(path.sep);
+        if (name === undefined || !STORAGE_ENTRY.test(name)) continue;
+        const total = totals.get(name) ?? { sizeBytes: 0, count: 0 };
+        total.sizeBytes += file.sizeBytes;
+        total.count++;
+        totals.set(name, total);
+      }
+      return {
+        entries: [...totals].map(([name, total]) => ({ name, ...total })),
+      };
+    },
+    async discardLargeFiles({ rootPath, names, minBytes }, context) {
+      for (const name of names) assertStorageEntry(rootPath, name);
+      let root: string;
+      try {
+        root = await fs.realpath(rootPath);
+      } catch (error) {
+        if (isFsErrorWithCode(error, "ENOENT")) return { removed: [] };
+        throw error;
+      }
+      const removed = [];
+      for (const name of names) {
+        const directory = path.join(root, name);
+        const stats = await fs.lstat(directory).catch((error: unknown) => {
+          if (isFsErrorWithCode(error, "ENOENT")) return null;
+          throw error;
+        });
+        if (stats === null) continue;
+        if (stats.isSymbolicLink() || !stats.isDirectory())
+          throw new Error(
+            "Storage entry must be a directory, not a symbolic link",
+          );
+        let sizeBytes = 0;
+        let count = 0;
+        for (const file of await findLargeFiles(
+          directory,
+          minBytes,
+          context.signal,
+        )) {
+          context.signal.throwIfAborted();
+          await fs.rm(file.path, { force: true });
+          sizeBytes += file.sizeBytes;
+          count++;
+        }
+        removed.push({ name, sizeBytes, count });
+      }
+      return { removed };
+    },
     async capacity({ path: target }) {
       if (!path.isAbsolute(target)) throw new Error("Invalid storage path");
       for (let current = target; ; current = path.dirname(current)) {
@@ -28,15 +99,7 @@ export default experimental_defineHostEntry({
     },
     async discard({ rootPath, names, recreate }, context) {
       for (const name of names) {
-        if (
-          !path.isAbsolute(rootPath) ||
-          name === "." ||
-          name === ".." ||
-          name.includes("/") ||
-          name.includes("\\") ||
-          !/^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name)
-        )
-          throw new Error("Invalid storage entry");
+        assertStorageEntry(rootPath, name);
         if (recreate && name.startsWith(".bb-trash-"))
           throw new Error("Cannot recreate a trash directory");
       }
