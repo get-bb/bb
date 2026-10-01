@@ -1,28 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { SystemAppUpdateResult } from "@bb/server-contract";
 import {
-  describeAppUpdateResult,
   formatAppUpdateRevision,
   formatAppUpdateTarget,
   runningThreadsWarning,
 } from "./app-update-presentation";
-
-function result(
-  overrides: Partial<SystemAppUpdateResult>,
-): SystemAppUpdateResult {
-  return {
-    acknowledged: false,
-    finishedAt: "2026-09-23T00:00:00.000Z",
-    from: { commit: null, version: "1.0.0" },
-    id: "update-1",
-    logTail: [],
-    message: null,
-    outcome: "updated",
-    phase: null,
-    to: { commit: null, version: "1.1.0" },
-    ...overrides,
-  };
-}
 
 describe("app update presentation", () => {
   it("labels source revisions with a short commit", () => {
@@ -38,19 +19,6 @@ describe("app update presentation", () => {
         version: "1.0.0",
       }),
     ).toBe("abcdef1 (+1 commit)");
-  });
-
-  it("names the target version and carries the failure message", () => {
-    expect(
-      describeAppUpdateResult(
-        result({ message: "npm install failed", outcome: "failed" }),
-      ),
-    ).toEqual({
-      description: "npm install failed",
-      title: "Update to 1.1.0 failed",
-      tone: "error",
-    });
-    expect(describeAppUpdateResult(result({})).tone).toBe("success");
   });
 
   it("warns in the singular and plural", () => {

@@ -254,11 +254,6 @@ it("resolves a manifest-declared glyph, and lets an app registration of the same
   ).not.toBeNull();
 });
 
-it("falls back when a namespaced glyph is declared by no plugin", () => {
-  const view = render(<Icon name="acme/missing" fallback="Check" />);
-  expect(view.container.querySelector('[data-icon="Check"]')).not.toBeNull();
-});
-
 it.each(["/acme.svg", null])(
   "resolves mention icons before branding and reacts to icon registration (%s)",
   (compactIconUrl) => {

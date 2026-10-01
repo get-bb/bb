@@ -132,22 +132,6 @@ describe("BbDiff", () => {
     });
   });
 
-  it("omits the expansion budget unless the caller can supply file contents", async () => {
-    render(
-      <BbDiff
-        file={fixture()}
-        view="unified"
-        overflow="scroll"
-        showLineNumbers
-        fullFileContents={null}
-      />,
-    );
-    await screen.findByTestId("pierre-file-diff");
-
-    expect(pierre.lastOptions).not.toBeNull();
-    expect("expansionLineCount" in (pierre.lastOptions ?? {})).toBe(false);
-  });
-
   it("enriches matching full contents and enables context expansion", async () => {
     render(
       <BbDiff

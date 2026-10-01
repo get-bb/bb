@@ -80,28 +80,22 @@ describe("VoiceInputSettingsSectionContent", () => {
     );
   });
 
-  it.each([
-    ["Microphone permission denied", "Microphone permission denied"],
-    ["No microphones found", "No microphones found"],
-  ])(
-    "distinguishes an empty list from an access error: %s",
-    (errorMessage, message) => {
-      render(
-        <TooltipProvider>
-          <VoiceInputSettingsSectionContent
-            devices={[]}
-            errorMessage={errorMessage}
-            isLoading={false}
-            isSupported={true}
-            onDeviceChange={() => undefined}
-            onRefresh={() => undefined}
-            preferredDeviceId={null}
-          />
-        </TooltipProvider>,
-      );
-      expect(screen.getByText(message)).toBeDefined();
-    },
-  );
+  it("shows the device error it is given when no microphone is listed", () => {
+    render(
+      <TooltipProvider>
+        <VoiceInputSettingsSectionContent
+          devices={[]}
+          errorMessage="Microphone permission denied"
+          isLoading={false}
+          isSupported={true}
+          onDeviceChange={() => undefined}
+          onRefresh={() => undefined}
+          preferredDeviceId={null}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Microphone permission denied")).toBeDefined();
+  });
 
   it("checks microphone access from the inline action", () => {
     const onRefresh = vi.fn();

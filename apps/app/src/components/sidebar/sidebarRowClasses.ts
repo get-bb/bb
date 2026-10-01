@@ -2,7 +2,6 @@ import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -29,10 +28,6 @@ export const SIDEBAR_CONTROL_TONE_CLASS =
   "text-subtle-foreground hover:text-muted-foreground data-[state=open]:text-muted-foreground";
 
 export const SIDEBAR_CONTROL_STATE_CLASS = `${SIDEBAR_CONTROL_TONE_CLASS} hover:bg-state-hover active:bg-state-active data-[state=open]:bg-state-active data-[state=open]:hover:bg-state-active`;
-
-const SIDEBAR_CONTROL_BUTTON_BASE_CLASS = `${SIDEBAR_CONTROL_STATE_CLASS} relative m-0 shrink-0 cursor-pointer rounded-md p-0 outline-none`;
-
-export const SIDEBAR_CONTROL_BUTTON_CLASS = `${COARSE_POINTER_ROW_ACTION_SIZE_CLASS} ${SIDEBAR_CONTROL_BUTTON_BASE_CLASS}`;
 
 export function getSidebarThreadRowPaddingLeft(depth: number): number {
   return (

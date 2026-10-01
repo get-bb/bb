@@ -854,6 +854,9 @@ describe("PluginSettingsPage", () => {
     const section = await screen.findByText("Custom connect settings");
     expect(section.closest(".overflow-hidden")).toBeNull();
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Remote access" }),
+    ).toBeTruthy();
   });
 
   it("keeps the recessed unavailable hint for a section-only plugin", async () => {
@@ -997,41 +1000,5 @@ describe("PluginSettingsDetail settings gating", () => {
     render(<PluginSettingsDetail plugin={rowPlugin("error")} />, { wrapper });
     expect(screen.queryByLabelText("Greeting")).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("renders a slot-only plugin configuration without a recessed panel", async () => {
-    function ConnectSettings() {
-      return <div>Custom connect settings</div>;
-    }
-    setPluginSlotRegistrations(
-      "connect",
-      makePluginRegistrationSet({
-        settingsSections: [
-          { id: "remote", title: "Remote access", component: ConnectSettings },
-        ],
-      }),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginSettingsDetail
-        plugin={{
-          ...rowPlugin("running"),
-          id: "connect",
-          provenance: "builtin",
-          hasSettings: false,
-        }}
-      />,
-      { wrapper },
-    );
-
-    expect(
-      await screen.findByRole("heading", {
-        level: 3,
-        name: "Remote access",
-      }),
-    ).toBeDefined();
-    const section = screen.getByText("Custom connect settings");
-    expect(section.closest(".overflow-hidden")).toBeNull();
-    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 });

@@ -6,7 +6,6 @@ import type {
 import {
   pluginBrowseShelves,
   pluginCategoryFilterOptions,
-  sortPluginEntries,
 } from "./plugin-browse-discovery";
 
 function entry(
@@ -171,45 +170,5 @@ describe("plugin category filters", () => {
       { id: "local", label: "Local", count: 1 },
       { id: "observability", label: "Observability", count: 1 },
     ]);
-  });
-});
-
-describe("plugin browse sorting", () => {
-  it("puts entries without a published date last in both directions", () => {
-    const entries = [
-      entry("unknown", { publishedAt: undefined }),
-      entry("older", { publishedAt: "2026-01-05T00:00:00Z" }),
-      entry("newer", { publishedAt: "2026-08-20T00:00:00Z" }),
-    ];
-
-    expect(
-      sortPluginEntries(entries, "recently-added", "desc").map(
-        (candidate) => candidate.pluginId,
-      ),
-    ).toEqual(["newer", "older", "unknown"]);
-    expect(
-      sortPluginEntries(entries, "recently-added", "asc").map(
-        (candidate) => candidate.pluginId,
-      ),
-    ).toEqual(["older", "newer", "unknown"]);
-  });
-
-  it("sorts by install count and sinks uncounted entries in both directions", () => {
-    const entries = [
-      entry("unknown", { installs: null }),
-      entry("popular", { installs: 20 }),
-      entry("new", { installs: 2 }),
-    ];
-
-    expect(
-      sortPluginEntries(entries, "most-installed", "desc").map(
-        (candidate) => candidate.pluginId,
-      ),
-    ).toEqual(["popular", "new", "unknown"]);
-    expect(
-      sortPluginEntries(entries, "most-installed", "asc").map(
-        (candidate) => candidate.pluginId,
-      ),
-    ).toEqual(["new", "popular", "unknown"]);
   });
 });

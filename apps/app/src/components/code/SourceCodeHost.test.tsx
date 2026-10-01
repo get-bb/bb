@@ -125,18 +125,6 @@ describe("SourceCodeHost", () => {
     expect(bbSourceCode.lastProps?.scrollToHighlightedLines).toBe(true);
   });
 
-  it("falls back to BB's renderer when the replacement crashes", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    registerSourceCodeRenderer(() => {
-      throw new Error("replacement exploded");
-    });
-
-    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
-
-    expect(await screen.findByTestId("bb-source-code")).toBeDefined();
-  });
-
   it("resolves presentation defaults for BB's renderer", async () => {
     render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
 

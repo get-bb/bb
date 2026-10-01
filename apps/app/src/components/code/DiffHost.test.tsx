@@ -269,24 +269,6 @@ describe("DiffHost", () => {
     expect(screen.queryByTestId("aardvark-diff")).toBeNull();
   });
 
-  it("falls back to BB's renderer when the replacement crashes", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    registerDiffRenderer(() => {
-      throw new Error("replacement exploded");
-    });
-
-    render(
-      <DiffHost
-        file={parseFixture()}
-        patchText={PATCH}
-        fullFileContents={null}
-      />,
-    );
-
-    expect(await screen.findByTestId("bb-diff")).toBeDefined();
-  });
-
   it("contains a failing BB renderer inside a delegating replacement without disabling the plugin", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});

@@ -732,63 +732,55 @@ describe("MarkdownPreview thread mentions", () => {
     );
   });
 
-  it("leaves a labeled text directive on the authored directive rendering path", () => {
-    const { container } = renderMarkdown(
-      <MarkdownPreview
-        content="@thread:thr_child[label]"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
+  it.each([
+    ["a labeled", "@thread:thr_child[label]"],
+    ["an attributed", "@thread:thr_child{#authored-directive}"],
+  ])(
+    "leaves %s text directive on the authored directive rendering path",
+    (_label, content) => {
+      const { container } = renderMarkdown(
+        <MarkdownPreview
+          content={content}
+          threadMentions={{
+            mentions: [THREAD_MENTION],
+            preserveSoftBreaks: true,
+            resolveLinkHref: resolveThreadLink,
+          }}
+          messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
+        />,
+      );
 
-    const paragraph = container.querySelector("p");
-    expect(paragraph?.textContent).toBe("@thread:thr_child[label]");
-    expect(paragraph?.querySelector("a")).toBeNull();
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
-  });
+      const paragraph = container.querySelector("p");
+      expect(paragraph?.textContent).toBe(content);
+      expect(paragraph?.querySelector("a")).toBeNull();
+      expect(screen.queryByText("Rebuild comments")).toBeNull();
+    },
+  );
 
-  it("leaves an attributed text directive on the authored directive rendering path", () => {
-    const { container } = renderMarkdown(
-      <MarkdownPreview
-        content="@thread:thr_child{#authored-directive}"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
+  it.each([
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+  ])(
+    "leaves a thread token inside an authored Markdown link %s",
+    (_label, messageDirectives) => {
+      renderMarkdown(
+        <MarkdownPreview
+          content="[@thread:thr_child](https://example.com)"
+          threadMentions={{
+            mentions: [THREAD_MENTION],
+            preserveSoftBreaks: true,
+            resolveLinkHref: resolveThreadLink,
+          }}
+          messageDirectives={messageDirectives}
+        />,
+      );
 
-    const paragraph = container.querySelector("p");
-    expect(paragraph?.textContent).toBe(
-      "@thread:thr_child{#authored-directive}",
-    );
-    expect(paragraph?.querySelector("a")).toBeNull();
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
-  });
-
-  it("leaves a raw thread token inside an authored Markdown link", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content="[@thread:thr_child](https://example.com)"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-      />,
-    );
-
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
-  });
+      const link = screen.getByRole("link", { name: "@thread:thr_child" });
+      expect(link.getAttribute("href")).toBe("https://example.com");
+      expect(screen.getAllByRole("link")).toHaveLength(1);
+      expect(screen.queryByText("Rebuild comments")).toBeNull();
+    },
+  );
 
   it("replaces a resolvable raw-id Markdown link label with one thread pill", () => {
     renderMarkdown(
@@ -928,25 +920,6 @@ describe("MarkdownPreview thread mentions", () => {
     });
     expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-  });
-
-  it("reconstructs a directive-split thread token inside an authored Markdown link", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content="[@thread:thr_child](https://example.com)"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
-
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 
   it("leaves assistant content (no mentions prop) untouched — token stays literal", () => {

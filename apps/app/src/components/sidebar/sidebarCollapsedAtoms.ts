@@ -1,10 +1,7 @@
 import type { SidebarOrganizationMode } from "@bb/domain";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
-export type {
-  CollapsibleSidebarSectionId,
-  SidebarSectionId,
-} from "@bb/client-core";
+export type { CollapsibleSidebarSectionId } from "@bb/client-core";
 
 export type { SidebarOrganizationMode };
 
@@ -24,16 +21,8 @@ export const collapsedSidebarSectionIdsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedSections",
 );
 
-export const sidebarSectionOrderAtom = createSyncedPreferenceAtom(
-  "sidebar.sectionOrder",
-);
-
 export const sidebarManualSectionOrderAtom = createSyncedPreferenceAtom(
   "sidebar.manualSectionOrder",
-);
-
-export const sidebarMachineSectionOrderAtom = createSyncedPreferenceAtom(
-  "sidebar.machineSectionOrder",
 );
 
 export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom(

@@ -18,26 +18,18 @@ function RenameRow({
   id = "first",
   name = "Original name",
   onSave,
-  onClear,
-  kind = "thread",
-  maxLength,
 }: {
   id?: string;
   name?: string;
   onSave: (name: string) => Promise<unknown>;
-  onClear?: () => Promise<unknown>;
-  kind?: "thread" | "section" | "environment";
-  maxLength?: number;
 }) {
   const rename = useSidebarRename({
-    kind,
+    kind: "thread",
     id,
     name,
     label: `${id} name`,
     ownerKey: id,
     onSave,
-    onClear,
-    maxLength,
   });
   return (
     <div data-sidebar-rename-row="">
@@ -106,40 +98,30 @@ describe("sidebar inline rename", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("validates empty and overlong values and treats a trimmed unchanged name as a no-op", async () => {
+  it("validates empty values and treats a trimmed unchanged name as a no-op", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow onSave={onSave} maxLength={20} />);
+    render(<RenameRow onSave={onSave} />);
     const input = await start("   ");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByRole("alert").textContent).toBe("Name cannot be empty.");
     expect(input.getAttribute("aria-invalid")).toBe("true");
-    fireEvent.change(input, { target: { value: "A name that is too long" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Name must be 20 characters or fewer.",
-    );
     fireEvent.change(input, { target: { value: " Original name " } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("does not submit composition Enter or blur within the editor", async () => {
+  it("does not submit composition Enter", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const onClear = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
+    render(<RenameRow onSave={onSave} />);
     const input = await start();
     await waitFor(() => expect(document.activeElement).toBe(input));
     fireEvent.compositionStart(input);
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     fireEvent.compositionEnd(input);
-    fireEvent.blur(input, {
-      relatedTarget: screen.getByRole("button", { name: "Clear custom name" }),
-    });
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(onSave).not.toHaveBeenCalled();
-    expect(onClear).not.toHaveBeenCalled();
   });
 
   it("retains a rejected draft and retries with the same value", async () => {
@@ -162,36 +144,17 @@ describe("sidebar inline rename", () => {
     expect(onSave.mock.calls).toEqual([["New name"], ["New name"]]);
   });
 
-  it("uses the server section conflict and prevents retry for deleted entities", async () => {
-    const onSave = vi
-      .fn()
-      .mockRejectedValueOnce(
-        new BbHttpError({
-          body: null,
-          code: "section_name_conflict",
-          message: "Conflict",
-          status: 409,
-        }),
-      )
-      .mockRejectedValueOnce(
-        new BbHttpError({
-          body: null,
-          code: null,
-          message: "Missing",
-          status: 404,
-        }),
-      );
-    render(<RenameRow kind="section" onSave={onSave} />);
-    fireEvent.keyDown(await start(), { key: "Enter" });
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toBe(
-        "A section with this name already exists.",
-      ),
+  it("prevents retry for deleted entities", async () => {
+    const onSave = vi.fn().mockRejectedValueOnce(
+      new BbHttpError({
+        body: null,
+        code: null,
+        message: "Missing",
+        status: 404,
+      }),
     );
-    fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "Another name" },
-    });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    render(<RenameRow onSave={onSave} />);
+    fireEvent.keyDown(await start(), { key: "Enter" });
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
         "This item no longer exists.",
@@ -199,7 +162,7 @@ describe("sidebar inline rename", () => {
     );
     expect(screen.getByRole("textbox").hasAttribute("readonly")).toBe(true);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(screen.queryByRole("textbox")).toBeNull();
   });
@@ -237,15 +200,5 @@ describe("sidebar inline rename", () => {
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(screen.getByText("Changed elsewhere")).not.toBeNull();
     expect(onSave).not.toHaveBeenCalled();
-  });
-
-  it("clears environment names when the submitted value is empty", async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    const onClear = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
-    fireEvent.keyDown(await start(" "), { key: "Enter" });
-    await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
-    expect(onSave).not.toHaveBeenCalled();
-    expect(onClear).toHaveBeenCalledOnce();
   });
 });

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -25,22 +28,20 @@ export function SidebarVisibilityCustomize({
   onExit,
   onReorder,
   onVisibleChange,
-  testIdPrefix = "sidebar-navigation",
   title,
   variant,
   visibleIds,
 }: {
   items: readonly SidebarVisibilityItem[];
   listLabel: string;
-  onActivate?: (
+  onActivate: (
     item: SidebarVisibilityItem,
     event: SidebarActivationModifiers,
   ) => void;
   onDone: () => void;
-  onExit?: () => void;
+  onExit: () => void;
   onReorder: (activeId: string, overId: string) => void;
   onVisibleChange: (id: string, visible: boolean) => void;
-  testIdPrefix?: string;
   title: string;
   variant: "compact" | "card";
   visibleIds: readonly string[];
@@ -92,16 +93,11 @@ export function SidebarVisibilityCustomize({
               item={item}
               checked={visibleIdSet.has(item.id)}
               reorderDisabled={items.length < 2}
-              onActivate={
-                onActivate
-                  ? (event) => {
-                      onActivate(item, event);
-                      onExit?.();
-                    }
-                  : undefined
-              }
+              onActivate={(event) => {
+                onActivate(item, event);
+                onExit();
+              }}
               onCheckedChange={(checked) => onVisibleChange(item.id, checked)}
-              testIdPrefix={testIdPrefix}
             />
           ))}
         </SortableContext>
@@ -114,7 +110,7 @@ export function SidebarVisibilityCustomize({
       containerRef={containerRef}
       doneButtonRef={doneButtonRef}
       onDone={onDone}
-      testId={`${testIdPrefix}-customize-inline`}
+      testId="sidebar-navigation-customize-inline"
       title={title}
       variant={variant}
     >
@@ -129,21 +125,18 @@ function SidebarCustomizeItem({
   onActivate,
   onCheckedChange,
   reorderDisabled,
-  testIdPrefix,
 }: {
   checked: boolean;
   item: SidebarVisibilityItem;
-  onActivate?: ((event: SidebarActivationModifiers) => void) | undefined;
+  onActivate: (event: SidebarActivationModifiers) => void;
   onCheckedChange: (checked: boolean) => void;
   reorderDisabled: boolean;
-  testIdPrefix: string;
 }) {
   const checkboxId = useId();
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
     id: item.id,
     disabled: reorderDisabled,
   });
-  const isNavigation = testIdPrefix === "sidebar-navigation";
 
   return (
     <div
@@ -156,7 +149,7 @@ function SidebarCustomizeItem({
         "text-sidebar-foreground hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
       )}
       data-sidebar-customize-item={item.id}
-      data-plugin-nav-customize-item={isNavigation ? item.id : undefined}
+      data-plugin-nav-customize-item={item.id}
     >
       <button
         type="button"
@@ -170,9 +163,7 @@ function SidebarCustomizeItem({
           "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
         )}
         onClick={(event) => event.stopPropagation()}
-        data-plugin-nav-customize-drag-handle={
-          isNavigation ? item.id : undefined
-        }
+        data-plugin-nav-customize-drag-handle={item.id}
       >
         <Icon
           name="DragDropVertical"
@@ -186,15 +177,11 @@ function SidebarCustomizeItem({
           "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left outline-none disabled:cursor-default disabled:opacity-50",
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         )}
-        onClick={(event) => {
-          if (onActivate)
-            onActivate({ metaKey: event.metaKey, ctrlKey: event.ctrlKey });
-          else onCheckedChange(!checked);
-        }}
-        data-sidebar-customize-launch={item.id}
-        data-sidebar-navigation-customize-launch={
-          isNavigation ? item.id : undefined
+        onClick={(event) =>
+          onActivate({ metaKey: event.metaKey, ctrlKey: event.ctrlKey })
         }
+        data-sidebar-customize-launch={item.id}
+        data-sidebar-navigation-customize-launch={item.id}
       >
         {item.icon ? (
           <span className="flex size-4 shrink-0 items-center justify-center">
@@ -218,9 +205,7 @@ function SidebarCustomizeItem({
           onCheckedChange={(nextChecked) =>
             onCheckedChange(nextChecked === true)
           }
-          data-plugin-nav-customize-checkbox={
-            isNavigation ? item.id : undefined
-          }
+          data-plugin-nav-customize-checkbox={item.id}
         />
       </label>
     </div>

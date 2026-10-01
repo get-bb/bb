@@ -1245,30 +1245,6 @@ The canonical release summary.
     expect(screen.queryByText("Checking provider CLIs…")).toBeNull();
   });
 
-  it("offers a way out of a failed CLI check", async () => {
-    useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: null,
-      desktopInfo: null,
-      isDesktop: false,
-    });
-    const host = makeHost({ id: "host_1", name: "workstation" });
-    useUpdateInventoryMock.mockReturnValue(
-      makeInventory({
-        machines: [makeMachine({ host, statusError: true })],
-      }),
-    );
-
-    renderSection();
-
-    await waitFor(() => {
-      expect(screen.getByText("Couldn't check for updates")).toBeDefined();
-    });
-    const retry = screen.getByRole("button", {
-      name: /Check workstation's CLIs again/,
-    });
-    expect(retry.hasAttribute("disabled")).toBe(false);
-  });
-
   it("keeps error red on the reason and off the recovery", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
@@ -1304,10 +1280,11 @@ The canonical release summary.
     ]) {
       expect(failedStatus.className).not.toContain(className);
     }
-    expect(
-      screen.getByRole("button", { name: /Check workstation's CLIs again/ })
-        .className,
-    ).not.toContain("text-destructive");
+    const retry = screen.getByRole("button", {
+      name: /Check workstation's CLIs again/,
+    });
+    expect(retry.className).not.toContain("text-destructive");
+    expect(retry.hasAttribute("disabled")).toBe(false);
   });
 
   it("leaves never-installed CLIs off an update page", () => {

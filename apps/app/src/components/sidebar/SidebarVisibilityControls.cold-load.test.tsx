@@ -30,6 +30,8 @@ it("keeps Done, Escape and compact Back usable through a held import, failure an
     listLabel: "Sections",
     onVisibleChange: vi.fn(),
     onReorder: vi.fn(),
+    onActivate: vi.fn(),
+    onExit: vi.fn(),
     onDone,
   };
   const view = render(<SidebarVisibilityCustomize {...props} variant="card" />);
@@ -61,7 +63,9 @@ it("keeps Done, Escape and compact Back usable through a held import, failure an
     importOriginal(),
   );
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Review" }));
+  fireEvent.click(
+    await screen.findByRole("checkbox", { name: "Show Review in sidebar" }),
+  );
   expect(props.onVisibleChange).toHaveBeenCalledWith("section:review", true);
   expect(screen.queryByRole("alert")).toBeNull();
 });

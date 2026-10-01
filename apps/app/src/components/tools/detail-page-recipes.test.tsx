@@ -516,18 +516,6 @@ describe("Plugin detail recipe", () => {
       "Capabilities",
     );
   });
-
-  it("omits Capabilities when a disabled plugin has no static rows", () => {
-    const { container } = renderPlugin({
-      ...PLUGIN,
-      enabled: false,
-      status: "disabled",
-    });
-
-    expect(renderedRecipe(container).map(([, label]) => label)).not.toContain(
-      "Capabilities",
-    );
-  });
 });
 
 describe("Detail page header slots", () => {

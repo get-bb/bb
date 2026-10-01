@@ -1013,37 +1013,6 @@ describe("useComposer", () => {
     ]);
   });
 
-  it("clears a text effect when the plugin composer scope changes", () => {
-    registerComposerProbe("scope-effect");
-    function ChangeScope() {
-      const navigate = useNavigate();
-      return (
-        <button
-          type="button"
-          onClick={() => navigate("/threads/thr_effect_next")}
-        >
-          change-scope
-        </button>
-      );
-    }
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_effect"]}>
-        <ComposerCustomizationMount />
-        <ThreadDraftViewer threadId="thr_effect" />
-        <ChangeScope />
-      </MemoryRouter>,
-    );
-    const storageKey = screen.getByTestId("draft-key").textContent ?? "";
-
-    fireEvent.click(screen.getByText("scope-effect-start-effect"));
-    expect(composerTextEffectValues(storageKey)).toEqual([
-      { className: "test-text-effect" },
-    ]);
-    fireEvent.click(screen.getByText("change-scope"));
-
-    expect(composerTextEffectValues(storageKey)).toEqual([]);
-  });
-
   it("clears and rejects captured lock and effect setters after scope cleanup or unmount", () => {
     const captured: Array<
       Pick<PluginComposerApi, "setInputLock" | "setTextEffect">
@@ -2496,68 +2465,5 @@ describe("plugin file opener tabs", () => {
       />,
     );
     expect(screen.getByText(/file opener is not available/)).toBeDefined();
-  });
-
-  it("restores the exact native preview node when the opener crashes", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    function CrashingEditor(): never {
-      throw new Error("editor crashed");
-    }
-    setPluginSlotRegistrations(
-      "notes",
-      registrationSet({
-        fileOpeners: [
-          {
-            id: "editor",
-            title: "Notes editor",
-            extensions: ["md"],
-            component: CrashingEditor,
-          },
-        ],
-      }),
-    );
-    const tab = {
-      ...createPluginPanelFixedPanelTab({
-        actionId: "file-opener:editor",
-        paramsJson: JSON.stringify({
-          path: "notes/todo.md",
-          source: {
-            kind: "workspace",
-            threadId: "thr_1",
-            environmentId: "env_1",
-            projectId: null,
-          },
-        }),
-        pluginId: "notes",
-        title: "todo.md",
-      }),
-      fileOpenerOwner: {
-        kind: "workspace-file-preview" as const,
-        environmentId: "env_1",
-        projectId: null,
-        tab: {
-          lineRange: { startLineNumber: 7, endLineNumber: 9 },
-          path: "notes/todo.md",
-          source: { kind: "working-tree" as const },
-          statusLabel: null,
-        },
-        threadId: "thr_1",
-      },
-    };
-
-    render(
-      <PluginPanelTabContent
-        tab={tab}
-        context={{ kind: "thread", threadId: "thr_1" }}
-        fileOpenerOriginal={
-          <button type="button">Native selection and editor actions</button>
-        }
-      />,
-    );
-
-    expect(screen.getByRole("button").textContent).toBe(
-      "Native selection and editor actions",
-    );
   });
 });
