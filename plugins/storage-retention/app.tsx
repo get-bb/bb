@@ -61,7 +61,6 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
   const [state, setState] = useState<State | null>(null);
   const [hosts, setHosts] = useState<Hosts>([]);
   const [machines, setMachines] = useState<Record<string, Machine>>({});
-  const [threadCounts, setThreadCounts] = useState<Record<string, number>>({});
   const [primaryHostId, setPrimaryHostId] = useState<string | null>(null);
   const [detail, setDetail] = useState<HostReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,25 +79,16 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
   const hostId = subPath || null;
   const refresh = useCallback(async () => {
     try {
-      const [next, reports, machines, machine, counts, config] =
-        await Promise.all([
-          rpc.call("state", null),
-          rpc.call("hosts", null),
-          sdk.hosts.list({ type: "persistent" }),
-          hostId ? rpc.call("host", { hostId }) : Promise.resolve(null),
-          sdk.threads.count({ groupBy: "host" }),
-          sdk.system.config(),
-        ]);
+      const [next, reports, machines, machine, config] = await Promise.all([
+        rpc.call("state", null),
+        rpc.call("hosts", null),
+        sdk.hosts.list({ type: "persistent" }),
+        hostId ? rpc.call("host", { hostId }) : Promise.resolve(null),
+        sdk.system.config(),
+      ]);
       setState(next);
       setHosts(reports.hosts);
       setMachines(Object.fromEntries(machines.map((host) => [host.id, host])));
-      setThreadCounts(
-        Object.fromEntries(
-          (counts.groups ?? []).flatMap((group) =>
-            group.key === null ? [] : [[group.key, group.count]],
-          ),
-        ),
-      );
       setPrimaryHostId(config.primaryHostId);
       setDetail(machine);
     } catch (error) {
@@ -502,7 +492,6 @@ function StoragePage({ subPath }: PluginNavPanelProps) {
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
-                    threadCount={threadCounts[host.hostId] ?? 0}
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
@@ -712,18 +701,21 @@ function MachineRow({
   host,
   machine,
   server,
-  threadCount,
   onOpen,
 }: {
   host: Hosts[number];
   machine: Machine | undefined;
   server: boolean;
-  threadCount: number;
   onOpen: () => void;
 }) {
   const report = host.report;
   const details = [
-    `${threadCount} ${threadCount === 1 ? "thread" : "threads"}`,
+    ...(report
+      ? [
+          `${(report.threadsWithStorageCount - report.archivedThreadCount).toLocaleString()} active`,
+          `${report.archivedThreadCount.toLocaleString()} archived`,
+        ]
+      : []),
     host.scan.state === "scanning"
       ? "scanning…"
       : host.scan.state === "failed"
@@ -840,21 +832,25 @@ function categories(report: NonNullable<HostReport["report"]>) {
     {
       label: "Active threads",
       value: report.activeThreadBytes,
+      count: report.threadsWithStorageCount - report.archivedThreadCount,
       color: "bg-foreground/70",
     },
     {
       label: "Archived threads",
       value: report.archivedThreadBytes,
+      count: report.archivedThreadCount,
       color: "bg-foreground/40",
     },
     {
       label: "Orphaned files",
       value: report.orphanBytes,
+      count: report.orphanCount,
       color: "bg-foreground/20",
     },
     {
       label: "Leftover worktrees",
       value: report.leftoverWorktreeBytes,
+      count: report.leftoverWorktrees.length,
       color: "bg-foreground/10",
     },
   ];
@@ -904,6 +900,9 @@ function StorageBreakdown({
             </dt>
             <dd className="mt-1.5 text-sm font-normal tabular-nums">
               {bytes(category.value)}
+              <span className="ml-1.5 text-xs text-muted-foreground">
+                {category.count.toLocaleString()}
+              </span>
             </dd>
           </div>
         ))}
