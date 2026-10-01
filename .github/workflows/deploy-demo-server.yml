@@ -1,23 +1,22 @@
 name: Deploy Demo Server
 
-# The bb demo server is the mock bb server an App Store reviewer connects to
-# (apps/demo-server). It has no database, no secrets, and no route of its
-# own, so this is the short form of deploy-connect.yml: install, typecheck
-# and test, deploy. It serves from workers.dev; see the wrangler config for
-# why it is not on demo.getbb.app.
-#
-# Paths: the worker bundles @bb/server-contract from source, and the
-# contract is what its tests check the fixtures against, so a contract change
-# redeploys the demo too. That is the point: a demo that has drifted from the
-# contract is a demo that crashes in front of a reviewer.
-
 on:
   push:
     branches:
       - main
     paths:
       - "apps/demo-server/**"
-      - "packages/server-contract/**"
+      - "apps/app/**"
+      - "packages/**"
+      - "plugins/**"
+      - "scripts/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - "vitest.shared.ts"
+      - "CHANGELOG.md"
+      - "changelog-*.ts"
       - ".github/workflows/deploy-demo-server.yml"
   workflow_dispatch:
 
@@ -62,12 +61,9 @@ jobs:
       # The tests parse every fixture with the contract's own schemas. Run
       # them here too, not only in ci.yml: this job also fires on a contract
       # change, and that is exactly when a fixture can go stale.
-      - name: Typecheck and test
-        run: pnpm exec turbo run typecheck test --filter=@bb/demo-server
+      - name: Build, typecheck and test
+        run: pnpm exec turbo run build typecheck test --filter=@bb/demo-server
 
-      # No build step: wrangler's esbuild bundles the worker and its workspace
-      # dependency straight from source. The account is pinned in
-      # wrangler.jsonc, so the token never has to pick one.
       - name: Deploy demo server
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

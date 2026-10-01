@@ -102,30 +102,6 @@ describe("public thread parenting routes", () => {
     },
   );
 
-  it("does not expose the removed parent-only archive endpoint", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const parent = seedThread(harness.deps, { projectId: project.id });
-      const child = seedThread(harness.deps, {
-        projectId: project.id,
-        parentThreadId: parent.id,
-      });
-      const response = await harness.app.request(
-        `/api/v1/threads/${parent.id}/archive`,
-        { method: "POST" },
-      );
-      expect(response.status).toBe(404);
-      expect(getThread(harness.db, parent.id)?.archivedAt).toBeNull();
-      expect(getThread(harness.db, child.id)).toMatchObject({
-        archivedAt: null,
-        parentThreadId: parent.id,
-      });
-    });
-  });
-
   it("creates a child thread under a parent", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -398,37 +374,6 @@ describe("public thread parenting routes", () => {
     });
   });
 
-  it("requires delete confirmation for a parent with children", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const parentThread = seedThread(harness.deps, {
-        projectId: project.id,
-      });
-      seedThread(harness.deps, {
-        parentThreadId: parentThread.id,
-        projectId: project.id,
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${parentThread.id}`,
-        {
-          method: "DELETE",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ childThreadsConfirmed: false }),
-        },
-      );
-
-      expect(response.status).toBe(409);
-      const error = apiErrorSchema.parse(await readJson(response));
-      expect(error).toMatchObject({
-        code: "child_threads_confirmation_required",
-      });
-    });
-  });
-
   it("keeps hidden children in ordinary confirmation and archive cascades", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -454,6 +399,9 @@ describe("public thread parenting routes", () => {
       );
 
       expect(deleteResponse.status).toBe(409);
+      expect(
+        apiErrorSchema.parse(await readJson(deleteResponse)),
+      ).toMatchObject({ code: "child_threads_confirmation_required" });
       expect(getThread(harness.db, deleteParent.id)?.deletedAt).toBeNull();
       expect(getThread(harness.db, hiddenDeleteChild.id)?.deletedAt).toBeNull();
 

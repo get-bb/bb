@@ -71,11 +71,6 @@ interface CachedGlobalThreadListInvalidationParams {
   queryClient: QueryClient;
 }
 
-interface RootOrderThreadListInvalidationParams {
-  projectId?: string;
-  queryClient: QueryClient;
-}
-
 type SidebarNavigationProject = SidebarBootstrapResponse["projects"][number];
 export type CachedThreadListsAndSidebarNavigationMapper = (
   threads: ThreadListEntry[],
@@ -276,25 +271,6 @@ export function getCachedGlobalThreadListInvalidationQueryKeys({
     if (filters !== undefined && filters.projectId === undefined) {
       queryKeys.push(queryKey);
     }
-  }
-  return queryKeys;
-}
-
-export function getCachedRootOrderThreadListInvalidationQueryKeys({
-  projectId,
-  queryClient,
-}: RootOrderThreadListInvalidationParams): QueryKey[] {
-  const queryKeys: QueryKey[] = [];
-  for (const [queryKey] of queryClient.getQueriesData({
-    queryKey: threadsQueryKey(),
-  })) {
-    const filters = getThreadListFiltersFromQueryKey(queryKey);
-    if (filters === undefined) continue;
-    if (filters.projectId !== projectId) continue;
-    if (filters.archived) continue;
-    if (filters.parentThreadId !== undefined) continue;
-    if (filters.hasParent === true) continue;
-    queryKeys.push(queryKey);
   }
   return queryKeys;
 }

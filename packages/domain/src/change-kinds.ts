@@ -24,7 +24,6 @@ export const THREAD_CHANGE_KINDS = [
   "parent-changed",
   "environment-changed",
   "read-state-changed",
-  "order-changed",
   "tabs-changed",
   "terminals-changed",
 ] as const;
@@ -134,18 +133,15 @@ const subscribeMessageSchema = z.object({
   type: z.literal("subscribe"),
   target: realtimeSubscriptionTargetSchema,
 });
-export type SubscribeMessage = z.infer<typeof subscribeMessageSchema>;
 
 const unsubscribeMessageSchema = z.object({
   type: z.literal("unsubscribe"),
   target: realtimeSubscriptionTargetSchema,
 });
-export type UnsubscribeMessage = z.infer<typeof unsubscribeMessageSchema>;
 
 export const pingMessageSchema = z.object({
   type: z.literal("ping"),
 });
-export type PingMessage = z.infer<typeof pingMessageSchema>;
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
   subscribeMessageSchema,
@@ -261,7 +257,6 @@ export const hostChangedMessageSchema = z
     changes: z.array(hostChangeKindSchema).readonly(),
   })
   .strict();
-export type HostChangedMessage = z.infer<typeof hostChangedMessageSchema>;
 
 export const systemChangedMessageSchema = z
   .object({
@@ -270,7 +265,6 @@ export const systemChangedMessageSchema = z
     changes: z.array(systemChangeKindSchema).readonly(),
   })
   .strict();
-export type SystemChangedMessage = z.infer<typeof systemChangedMessageSchema>;
 
 export const changedMessageSchema = z.discriminatedUnion("entity", [
   threadChangedMessageSchema,

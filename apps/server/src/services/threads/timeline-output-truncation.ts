@@ -84,6 +84,22 @@ export function truncateTimelineResponseOutputs(
   response: ThreadTimelineResponse,
   max: number = DEFAULT_MAX_INLINE_OUTPUT_CHARS,
 ): ThreadTimelineResponse {
-  const rows = truncateRows(response.rows, max);
-  return rows === response.rows ? response : { ...response, rows };
+  return mapTimelineResponseRows(response, (rows) => truncateRows(rows, max));
+}
+
+export function mapTimelineResponseRows(
+  response: ThreadTimelineResponse,
+  map: (rows: TimelineRow[]) => TimelineRow[],
+): ThreadTimelineResponse {
+  const rows = map(response.rows);
+  const updates = response.timelinePage.olderRowUpdates;
+  const olderRowUpdates = updates && map(updates);
+  if (rows === response.rows && olderRowUpdates === updates) {
+    return response;
+  }
+  return {
+    ...response,
+    rows,
+    timelinePage: { ...response.timelinePage, olderRowUpdates },
+  };
 }

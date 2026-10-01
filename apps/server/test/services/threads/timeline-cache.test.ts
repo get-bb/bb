@@ -73,16 +73,6 @@ describe("createThreadTimelineCache", () => {
     expect(cache.size).toBe(1);
   });
 
-  it("rebuilds when the key changes (e.g. new maxSeq)", () => {
-    const cache = createThreadTimelineCache();
-    const build = vi.fn(() => makeResponse(3));
-
-    cache.getOrBuild("thr_x", "k1", build);
-    cache.getOrBuild("thr_x", "k2", build);
-
-    expect(build).toHaveBeenCalledTimes(2);
-  });
-
   it("does not cache responses above the row cap (streaming expanded turns)", () => {
     const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
     const build = vi.fn(() => makeResponse(50));

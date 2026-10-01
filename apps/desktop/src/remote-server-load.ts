@@ -17,7 +17,7 @@ export interface LoadRemoteServerPageArgs {
   serverUrl: string;
 }
 
-export function describeServerUrl(serverUrl: string): string {
+function describeServerUrl(serverUrl: string): string {
   let parsed: URL;
   try {
     parsed = new URL(serverUrl);

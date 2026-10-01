@@ -18,12 +18,8 @@ const sidebarChronologicalSortSchema = z.enum([
   "alpha",
   "none",
 ]);
-export type SidebarChronologicalSort = z.infer<
-  typeof sidebarChronologicalSortSchema
->;
 
 const sidebarThreadGroupingSchema = z.union([z.literal("auto"), z.boolean()]);
-export type SidebarThreadGrouping = z.infer<typeof sidebarThreadGroupingSchema>;
 
 const collapsibleSidebarSectionIdSchema = z.enum(["pinned", "threads"]);
 

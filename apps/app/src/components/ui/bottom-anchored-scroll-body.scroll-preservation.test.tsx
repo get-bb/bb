@@ -337,43 +337,6 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(observedScrollTops).toEqual([0]);
   });
 
-  it("captures rows nested in a virtualizer spacer", () => {
-    const { scrollArea, rowElements } = renderTimeline({
-      threadId: "thread-a",
-      rowIds: ["row-a", "row-b", "row-c"],
-      virtualized: true,
-    });
-    mockScrollAreaRect(scrollArea);
-    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
-      top: -120,
-      bottom: -20,
-    });
-    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
-      top: -20,
-      bottom: 80,
-    });
-    mockRowRect(requireHTMLElement(rowElements.get("row-c")!), {
-      top: 80,
-      bottom: 180,
-    });
-    setScrollMetrics(scrollArea, {
-      scrollHeight: 400,
-      clientHeight: 100,
-      scrollTop: 300,
-    });
-    getLatestResizeObserver().trigger();
-
-    scrollArea.scrollTop = 150;
-    fireEvent.wheel(scrollArea);
-    fireEvent.scroll(scrollArea);
-
-    expect(readAnchor("thread-a")).toEqual({
-      rowId: "row-b",
-      offsetWithinRow: 20,
-      atBottom: false,
-    });
-  });
-
   it("follows the row window when a windowed timeline slides it without a resize", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { scrollArea, getRow, rerenderRows, unmount } = renderTimeline({

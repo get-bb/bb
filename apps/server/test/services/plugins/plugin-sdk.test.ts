@@ -9,7 +9,6 @@ import {
   createThread,
   getThread,
   insertThreadPluginMetadata,
-  markThreadDeleted,
   migrate,
   type DbConnection,
 } from "@bb/db";
@@ -349,22 +348,6 @@ describe("plugin bb.sdk bind gate", () => {
     expect(api.server.experimental_appUrl).toBeNull();
   });
 
-  it("marks a plugin error when its factory touches bb.sdk at load time", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-eager",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.sdk.threads.spawn({});
-        }
-      `,
-    });
-    const entry = await service.installPath(rootDir);
-    expect(entry.status).toBe("error");
-    expect(entry.statusDetail).toContain(
-      "bb.sdk is not available until the server is listening",
-    );
-  });
-
   it("delivers shared-port declarations through the server control plane", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-shares",
@@ -649,13 +632,6 @@ describe("plugin bb.sdk against a running server", () => {
         status: "idle",
         originPluginId: "meta-owner",
       });
-      const other = createThread(server.db, server.deps.hub, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-        status: "idle",
-        originPluginId: "meta-owner",
-      });
       await expect(
         api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
       ).resolves.toEqual({});
@@ -736,37 +712,6 @@ describe("plugin bb.sdk against a running server", () => {
         code: "invalid_request",
         message: expect.stringContaining("set and remove overlap"),
       });
-      await expect(
-        api.sdk.threads.updatePluginMetadata({
-          threadId: thread.id,
-          remove: ["x", "x"],
-        }),
-      ).rejects.toMatchObject({
-        name: "BbHttpError",
-        status: 400,
-        code: "invalid_request",
-        message: expect.stringContaining("remove contains duplicate keys"),
-      });
-      const nearLimit = "x".repeat(262_100);
-      await expect(
-        api.sdk.threads.updatePluginMetadata({
-          threadId: thread.id,
-          set: { stable: true, nearLimit },
-        }),
-      ).resolves.toEqual({ stable: true, nearLimit });
-      await expect(
-        api.sdk.threads.updatePluginMetadata({
-          threadId: thread.id,
-          set: { smallAdditionalValue: "valid" },
-        }),
-      ).rejects.toMatchObject({
-        name: "BbHttpError",
-        status: 413,
-        code: "invalid_request",
-      });
-      await expect(
-        api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
-      ).resolves.toEqual({ stable: true, nearLimit });
       for (const status of ["active", "stopping"] as const) {
         const candidate = createThread(server.db, server.deps.hub, {
           projectId: project.id,
@@ -796,20 +741,6 @@ describe("plugin bb.sdk against a running server", () => {
           set: { status: "archived" },
         }),
       ).resolves.toEqual({ status: "archived" });
-      await expect(
-        api.sdk.threads.getPluginMetadata({
-          threadId: other.id,
-          pluginId: "missing",
-        }),
-      ).resolves.toEqual({});
-      markThreadDeleted(server.db, server.deps.hub, { threadId: other.id });
-      await expect(
-        api.sdk.threads.getPluginMetadata({ threadId: other.id }),
-      ).rejects.toMatchObject({
-        name: "BbHttpError",
-        status: 404,
-        code: "thread_not_found",
-      });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });

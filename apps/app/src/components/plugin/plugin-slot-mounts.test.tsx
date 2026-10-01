@@ -34,7 +34,6 @@ import {
 import {
   AUTOMATIONS_PLUGIN_ID,
   PLUGIN_PANEL_ROUTE_PATH,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
 import {
   markPluginFrontendsSettled,
@@ -47,7 +46,6 @@ import {
   PluginPanelHeaderCenter,
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
-import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
 import { applyPluginCss, resetPluginCssForTest } from "@/lib/plugin-css";
 import { ComposerActionsSlot } from "./PluginComposerActions";
 import { PluginContext } from "./plugin-context";
@@ -86,6 +84,8 @@ import { NewTabActions } from "@/components/secondary-panel/NewTabActions";
 import { buildFileOpenerPanelTab } from "./file-opener-tabs";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@bb/client-core";
+
+const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 
 function composerTextEffectValues(storageKey: string | null) {
   return getComposerTextEffects(storageKey).map(({ effect }) => effect);
@@ -1011,37 +1011,6 @@ describe("useComposer", () => {
     expect(composerTextEffectValues("shared-scope-effect")).toEqual([
       { className: "test-text-effect" },
     ]);
-  });
-
-  it("clears a text effect when the plugin composer scope changes", () => {
-    registerComposerProbe("scope-effect");
-    function ChangeScope() {
-      const navigate = useNavigate();
-      return (
-        <button
-          type="button"
-          onClick={() => navigate("/threads/thr_effect_next")}
-        >
-          change-scope
-        </button>
-      );
-    }
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_effect"]}>
-        <ComposerCustomizationMount />
-        <ThreadDraftViewer threadId="thr_effect" />
-        <ChangeScope />
-      </MemoryRouter>,
-    );
-    const storageKey = screen.getByTestId("draft-key").textContent ?? "";
-
-    fireEvent.click(screen.getByText("scope-effect-start-effect"));
-    expect(composerTextEffectValues(storageKey)).toEqual([
-      { className: "test-text-effect" },
-    ]);
-    fireEvent.click(screen.getByText("change-scope"));
-
-    expect(composerTextEffectValues(storageKey)).toEqual([]);
   });
 
   it("clears and rejects captured lock and effect setters after scope cleanup or unmount", () => {
@@ -2496,167 +2465,5 @@ describe("plugin file opener tabs", () => {
       />,
     );
     expect(screen.getByText(/file opener is not available/)).toBeDefined();
-  });
-
-  it("restores the exact native preview node when the opener crashes", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    function CrashingEditor(): never {
-      throw new Error("editor crashed");
-    }
-    setPluginSlotRegistrations(
-      "notes",
-      registrationSet({
-        fileOpeners: [
-          {
-            id: "editor",
-            title: "Notes editor",
-            extensions: ["md"],
-            component: CrashingEditor,
-          },
-        ],
-      }),
-    );
-    const tab = {
-      ...createPluginPanelFixedPanelTab({
-        actionId: "file-opener:editor",
-        paramsJson: JSON.stringify({
-          path: "notes/todo.md",
-          source: {
-            kind: "workspace",
-            threadId: "thr_1",
-            environmentId: "env_1",
-            projectId: null,
-          },
-        }),
-        pluginId: "notes",
-        title: "todo.md",
-      }),
-      fileOpenerOwner: {
-        kind: "workspace-file-preview" as const,
-        environmentId: "env_1",
-        projectId: null,
-        tab: {
-          lineRange: { startLineNumber: 7, endLineNumber: 9 },
-          path: "notes/todo.md",
-          source: { kind: "working-tree" as const },
-          statusLabel: null,
-        },
-        threadId: "thr_1",
-      },
-    };
-
-    render(
-      <PluginPanelTabContent
-        tab={tab}
-        context={{ kind: "thread", threadId: "thr_1" }}
-        fileOpenerOriginal={
-          <button type="button">Native selection and editor actions</button>
-        }
-      />,
-    );
-
-    expect(screen.getByRole("button").textContent).toBe(
-      "Native selection and editor actions",
-    );
-  });
-});
-
-describe("file opener experimental_Original alias", () => {
-  beforeEach(() => {
-    resetDeprecatedAliasWarningsForTests();
-  });
-
-  function registerOpener(
-    component: (props: PluginFileOpenerProps) => React.ReactNode,
-  ) {
-    setPluginSlotRegistrations(
-      "notes",
-      registrationSet({
-        fileOpeners: [
-          {
-            id: "editor",
-            title: "Notes editor",
-            extensions: ["md"],
-            component,
-          },
-        ],
-      }),
-    );
-  }
-
-  const tab = buildFileOpenerPanelTab(
-    { id: "editor", pluginId: "notes" },
-    {
-      path: "notes/todo.md",
-      source: {
-        kind: "workspace",
-        environmentId: "env_1",
-        projectId: null,
-        threadId: "thr_1",
-      },
-    },
-    {
-      kind: "workspace-file-preview",
-      environmentId: "env_1",
-      projectId: null,
-      tab: {
-        lineRange: { startLineNumber: 7, endLineNumber: 9 },
-        path: "notes/todo.md",
-        source: { kind: "working-tree" },
-        statusLabel: null,
-      },
-      threadId: "thr_1",
-    },
-  );
-
-  function renderOpener(nativePreview: string) {
-    return (
-      <PluginPanelTabContent
-        tab={tab}
-        context={{ kind: "thread", threadId: "thr_1" }}
-        fileOpenerOriginal={<button type="button">{nativePreview}</button>}
-      />
-    );
-  }
-
-  it("delegates to the native preview through the alias and warns once across renders", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    let renders = 0;
-    registerOpener(({ experimental_Original: LegacyOriginal }) => {
-      renders += 1;
-      return LegacyOriginal === undefined ? (
-        <div>alias missing</div>
-      ) : (
-        <LegacyOriginal />
-      );
-    });
-
-    const { rerender } = render(renderOpener("Native preview and actions"));
-    expect(screen.getByRole("button").textContent).toBe(
-      "Native preview and actions",
-    );
-
-    rerender(renderOpener("Native preview for line 7"));
-    expect(screen.getByRole("button").textContent).toBe(
-      "Native preview for line 7",
-    );
-    expect(renders).toBe(2);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      "experimental_Original is deprecated; use Original. Removed in bb 0.42",
-    );
-  });
-
-  it("never warns for an opener that reads Original", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    registerOpener(({ Original }) => <Original />);
-
-    render(renderOpener("Native preview and actions"));
-
-    expect(screen.getByRole("button").textContent).toBe(
-      "Native preview and actions",
-    );
-    expect(warn).not.toHaveBeenCalled();
   });
 });

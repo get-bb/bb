@@ -45,7 +45,6 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain(
       '<span>More plugins</span><span class="marketplace-count">1</span>',
     );
-    expect(html).not.toContain("marketplace-category-pill");
     expect(html).not.toContain("marketplace-category-filters");
     expect(html).toContain("mask-image");
     expect(html).toContain("marketplace-svg-icon");
@@ -82,7 +81,6 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain(
       '<span class="marketplace-card-category">Code &amp; Reviews</span>',
     );
-    expect(html).not.toContain("marketplace-category-pill");
     expect(html).toContain("Review Companion");
     expect(html).not.toContain("Prompt Library");
     expect(html).not.toContain("New &amp; notable");

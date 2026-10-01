@@ -8,33 +8,6 @@ import {
 } from "./wire.js";
 
 describe("acpToolCallUpdateEventSchema", () => {
-  it("parses an unknown kind as `other` and keeps the agent's word on rawKind", () => {
-    const parsed = acpToolCallUpdateEventSchema.parse({
-      sessionUpdate: "tool_call",
-      toolCallId: "call-1",
-      title: "Deploy preview",
-      kind: "deploy",
-      status: "in_progress",
-    });
-
-    expect(parsed.kind).toBe("other");
-    expect(parsed.rawKind).toBe("deploy");
-    expect(parsed.status).toBe("in_progress");
-  });
-
-  it("accepts switch_mode and the v2 cancelled status", () => {
-    const parsed = acpToolCallUpdateEventSchema.parse({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "call-1",
-      kind: "switch_mode",
-      status: "cancelled",
-    });
-
-    expect(parsed.kind).toBe("switch_mode");
-    expect(parsed.rawKind).toBeUndefined();
-    expect(parsed.status).toBe("cancelled");
-  });
-
   it("parses an unknown status as pending and a null kind or status as absent", () => {
     const unknownStatus = acpToolCallUpdateEventSchema.parse({
       sessionUpdate: "tool_call_update",

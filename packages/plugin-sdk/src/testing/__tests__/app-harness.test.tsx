@@ -172,7 +172,7 @@ afterEach(() => {
 describe("experimental_ProviderModelPicker test runtime", () => {
   it("applies all execution edits as one controlled value", () => {
     const onChange = vi.fn();
-    const picker = render(
+    const view = () => (
       <ProviderModelPicker
         value={{
           providerId: "codex",
@@ -183,12 +183,14 @@ describe("experimental_ProviderModelPicker test runtime", () => {
         onChange={onChange}
         routing={{ kind: "host", hostId: "host-test" }}
         align="end"
-      />,
+      />
     );
+    const picker = render(view());
 
     fireEvent.change(picker.getByRole("textbox", { name: "Provider ID" }), {
       target: { value: "claude-code" },
     });
+    picker.rerender(view());
     fireEvent.change(picker.getByRole("textbox", { name: "Model" }), {
       target: { value: "claude-opus-4-7" },
     });

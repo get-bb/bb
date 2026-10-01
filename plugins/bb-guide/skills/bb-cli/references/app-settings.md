@@ -111,6 +111,15 @@ so they carry over between navigation plugins.
   software-keyboard Return path stays a newline; iPadOS WebKit preserves the
   Enter shortcuts for a connected Magic Keyboard.
 
+## Archive confirmation
+
+- `confirmThreadArchive` defaults to true. Set it with
+  `bb settings general confirmThreadArchive <true|false|on|off>`.
+- Turn it off to archive a parent and child threads without the confirmation
+  popup. Undo remains available in the archive toast. This server-wide setting
+  applies to all connected app clients. CLI and SDK archive calls remain
+  non-interactive.
+
 ## Streamer mode
 
 - `streamerMode` defaults to false. Set it with
@@ -194,23 +203,6 @@ so they carry over between navigation plugins.
 - The `changelogPreview` experiment defaults to false.
 - Enable it with `bb settings experiment changelogPreview true` to show the
   latest release notes on Settings → Updates.
-
-## Legacy plugin loader
-
-- The `legacyJitiPluginLoader` experiment defaults to false.
-- Enable it with `bb settings experiment legacyJitiPluginLoader true`.
-- Running plugins are unchanged when it is toggled. The selected loader applies
-  the next time a plugin is installed, reloaded, enabled, updated, or loaded
-  after a server restart.
-
-## Sidebar progressive disclosure
-
-- The `sidebarProgressiveDisclosure` experiment defaults to false.
-- Enable it with `bb settings experiment sidebarProgressiveDisclosure true`.
-- In **By project** and **By machine**, it shows the first five groups in the
-  current sort order, keeps attention groups visible, and reveals ten more per
-  **Show more** click. Revealed groups stay visible through activity and
-  sort-order changes. **Manually** is unchanged.
 
 ## Timeline windowing
 

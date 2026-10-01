@@ -30,19 +30,6 @@ const DISALLOWED_CACHE_IMPORT_SUFFIXES = [
   "/queries/thread-list-cache-data",
 ] as const;
 
-const DEPRECATED_CACHE_SHIM_MODULES = new Set([
-  "hooks/cache-effect-utils",
-  "hooks/cache-effects",
-  "hooks/cache-invalidation-groups",
-  "hooks/environment-cache-effects",
-  "hooks/mutation-cache-effects",
-  "hooks/mutations/thread-archive-cache",
-  "hooks/queries/query-cache",
-  "hooks/queries/thread-list-cache-data",
-  "hooks/realtime-cache-registry",
-  "hooks/system-cache-effects",
-]);
-
 const QUERY_KEYS_MODULE_PATH = "hooks/queries/query-keys";
 
 const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
@@ -579,40 +566,6 @@ function resolveAppImportModulePath(
   return null;
 }
 
-function collectDeprecatedCacheShimImportViolations(): SourceFileViolation[] {
-  const violations: SourceFileViolation[] = [];
-  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
-    const relativePath = toAppRelativePath(filePath);
-    const sourceFile = parseSourceFile(filePath);
-    sourceFile.forEachChild((node) => {
-      if (
-        !ts.isImportDeclaration(node) ||
-        !ts.isStringLiteral(node.moduleSpecifier)
-      ) {
-        return;
-      }
-      const resolvedModulePath = resolveAppImportModulePath(
-        relativePath,
-        node.moduleSpecifier.text,
-      );
-      if (
-        resolvedModulePath &&
-        DEPRECATED_CACHE_SHIM_MODULES.has(resolvedModulePath)
-      ) {
-        violations.push(
-          violationForNode(
-            sourceFile,
-            filePath,
-            node,
-            node.moduleSpecifier.text,
-          ),
-        );
-      }
-    });
-  }
-  return violations;
-}
-
 describe("cache owner boundaries", () => {
   it("keeps raw frontend-domain cache writes inside cache owners", () => {
     expect(collectRawCacheWriteViolations()).toEqual([]);
@@ -624,9 +577,5 @@ describe("cache owner boundaries", () => {
 
   it("keeps mutation, realtime, and action-provider files off query-key imports", () => {
     expect(collectCacheImportBoundaryViolations()).toEqual([]);
-  });
-
-  it("keeps imports off deprecated cache-owner re-export shims", () => {
-    expect(collectDeprecatedCacheShimImportViolations()).toEqual([]);
   });
 });

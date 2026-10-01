@@ -9,7 +9,6 @@ interface DescriptionSaverOptions {
   save(taskId: string, markdown: string): Promise<DescriptionSaveOutcome>;
   onError(message: string): void;
   delayMs: number;
-  schedule?(run: () => void, delayMs: number): () => void;
 }
 
 export interface DescriptionSaver {
@@ -21,12 +20,10 @@ export interface DescriptionSaver {
 export function createDescriptionSaver(
   options: DescriptionSaverOptions,
 ): DescriptionSaver {
-  const schedule =
-    options.schedule ??
-    ((run: () => void, delayMs: number) => {
-      const timer = setTimeout(run, delayMs);
-      return () => clearTimeout(timer);
-    });
+  const schedule = (run: () => void, delayMs: number) => {
+    const timer = setTimeout(run, delayMs);
+    return () => clearTimeout(timer);
+  };
 
   let cancelTimer: (() => void) | undefined;
   let pending: { taskId: string; markdown: string } | undefined;

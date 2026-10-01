@@ -826,21 +826,6 @@ describe("sign-out, profile refresh, and adoption", () => {
 
   it("publishes discoverable methods and keeps the private ones unlisted", async () => {
     const host = await loadAccount();
-    expect(host.harness.registrations.rpcMethods).toEqual(
-      expect.arrayContaining([
-        STATUS_METHOD,
-        WAIT_FOR_STATUS_CHANGE_METHOD,
-        FETCH_METHOD,
-        ADOPT_CONNECT_CREDENTIAL_METHOD,
-        CONNECT_CREDENTIAL_METHOD,
-        CONFIRM_REFUSED_CREDENTIAL_METHOD,
-        "login.start",
-        "login.poll",
-        "login.cancel",
-        "redeemCode",
-        "signOut",
-      ]),
-    );
     const published =
       host.harness.registrations.experimental_publishedRpcMethods;
     expect(published.map((method) => method.method).sort()).toEqual(

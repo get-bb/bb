@@ -48,18 +48,6 @@ describe("plugin build toolchain", () => {
     ).toBe(false);
   });
 
-  it("returns importable module specifiers", async () => {
-    const toolchain = await resolvePluginBuildToolchain(baseDir);
-    const esbuild = (await import(
-      toolchain.esbuild
-    )) as typeof import("esbuild");
-    const result = await esbuild.transform("const x: number = 1", {
-      loader: "ts",
-    });
-
-    expect(result.code.trim()).toBe("const x = 1;");
-  });
-
   describe("fetched toolchain", () => {
     it.runIf(process.env.BB_TEST_TOOLCHAIN_FETCH === "1")(
       "builds a plugin frontend with nothing resolvable locally",

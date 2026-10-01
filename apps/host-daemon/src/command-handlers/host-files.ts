@@ -22,7 +22,6 @@ import {
   readFileForTransport,
   readFileChunkForTransport,
   readFileFromGitRef,
-  readFileMetadataForTransport,
   readRootRelativeFileForTransport,
   type ReadFileContentForTransportResult,
 } from "./file-read.js";
@@ -254,17 +253,6 @@ export async function readHostFileChunk(
     offset: command.offset,
     length: command.length,
     revision: command.revision,
-  });
-}
-
-export async function readHostFileMetadata(
-  command: CommandOf<"host.file_metadata">,
-): Promise<HostDaemonOnlineRpcResult<"host.file_metadata">> {
-  assertAbsoluteHostDiskPathCommand(command);
-  return readFileMetadataForTransport({
-    resolvedPath: command.path,
-    resultPath: command.path,
-    ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
   });
 }
 

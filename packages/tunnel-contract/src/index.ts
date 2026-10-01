@@ -89,6 +89,54 @@ export type Frame =
   | WsDataFrame
   | CloseStreamFrame;
 
+const FRAME_TYPE_NAMES = new Map<number, Frame["type"]>([
+  [FRAME_TYPE.openHttp, "open-http"],
+  [FRAME_TYPE.bodyChunk, "body-chunk"],
+  [FRAME_TYPE.bodyEnd, "body-end"],
+  [FRAME_TYPE.respHead, "resp-head"],
+  [FRAME_TYPE.openWs, "open-ws"],
+  [FRAME_TYPE.wsOpenAck, "ws-open-ack"],
+  [FRAME_TYPE.wsData, "ws-data"],
+  [FRAME_TYPE.closeStream, "close-stream"],
+]);
+
+const FRAME_HEADER_BYTES = 5;
+
+function frameBytes(message: ArrayBuffer | Uint8Array): Uint8Array {
+  const buf = message instanceof Uint8Array ? message : new Uint8Array(message);
+  if (buf.length < FRAME_HEADER_BYTES) {
+    throw new Error(`tunnel-contract: frame too short (${buf.length} bytes)`);
+  }
+  return buf;
+}
+
+export function peekFrame(message: ArrayBuffer | Uint8Array): {
+  type: Frame["type"];
+  streamId: number;
+} {
+  const buf = frameBytes(message);
+  const type = FRAME_TYPE_NAMES.get(buf[0]);
+  if (type === undefined) {
+    throw new Error(`tunnel-contract: unknown frame type ${buf[0]}`);
+  }
+  return {
+    type,
+    streamId: new DataView(buf.buffer, buf.byteOffset).getUint32(1),
+  };
+}
+
+export function setFrameStreamId(
+  message: ArrayBuffer | Uint8Array,
+  streamId: number,
+): Uint8Array {
+  if (!Number.isInteger(streamId) || streamId < 0 || streamId > 0xffffffff) {
+    throw new Error(`tunnel-contract: stream id out of range: ${streamId}`);
+  }
+  const buf = frameBytes(message);
+  new DataView(buf.buffer, buf.byteOffset).setUint32(1, streamId);
+  return buf;
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 

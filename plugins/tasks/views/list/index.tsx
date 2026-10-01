@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Label } from "../../shared/contract.js";
-import { useProjects } from "../../shell/data.js";
+import type { Label, Task } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
+import { useProjects, useTasksRpc } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
@@ -70,6 +71,7 @@ function LoadingRows() {
 
 export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   const navigation = useTasksNavigation();
+  const rpc = useTasksRpc();
   const openTask = useCallback(
     (taskKey: string) => navigation.go({ kind: "task", taskKey }),
     [navigation],
@@ -140,6 +142,22 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     }
     return map;
   }, [labels.data]);
+  const moveToProject = useCallback(
+    (task: Task, targetProjectId: string) => {
+      rpc
+        .call("moveTaskToProject", {
+          taskId: task.id,
+          projectId: targetProjectId,
+        })
+        .then(
+          (result) => {
+            if (!result.ok) push(result.error.message);
+          },
+          (error: unknown) => push(errorMessage(error)),
+        );
+    },
+    [rpc, push],
+  );
   const projectsById = useMemo(
     () =>
       new Map((projects.data ?? []).map((project) => [project.id, project])),
@@ -289,6 +307,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               showProject={showProject}
               labelsById={labelsById}
               projectLabels={labelsByProject.get(task.projectId) ?? NO_LABELS}
+              projects={projects.data ?? []}
+              onMoveToProject={moveToProject}
               onEdit={edits.edit}
               onOpen={openTask}
               pending={edits.pending.has(task.id)}

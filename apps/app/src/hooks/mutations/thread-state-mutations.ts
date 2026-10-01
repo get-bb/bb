@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
 import type {
-  ReorderPinnedThreadRequest,
   ThreadArchiveAllResponse,
   ThreadResponse,
   UpdateThreadRequest,
@@ -10,7 +9,6 @@ import type {
 import { sdk } from "@/lib/sdk";
 import type { LifecycleErrorOperation } from "@/lib/lifecycle-errors";
 import {
-  applyReorderPinnedThreadResult,
   applyThreadPinStateResult,
   applyThreadReadStateResult,
   applyThreadUpdateResult,
@@ -19,13 +17,11 @@ import {
   beginPinThreadTransaction,
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
-  beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinAndMoveThreadTransaction,
   beginUnpinThreadTransaction,
   rollbackArchiveThreadsTransaction,
   rollbackDeleteThreadTransaction,
-  rollbackReorderPinnedThreadTransaction,
   rollbackThreadListMutationTransaction,
   rollbackThreadReadStateTransaction,
   type ThreadReadStateTransaction,
@@ -35,7 +31,6 @@ import {
   settleThreadReadStateTransaction,
   type ArchiveThreadsTransaction,
   type DeleteThreadTransaction,
-  type PinnedThreadOrderTransaction,
   type ThreadListMutationTransaction,
 } from "../cache-owners/thread-state-cache-owner";
 
@@ -44,8 +39,6 @@ interface ThreadMutationRequest {
 }
 
 type UpdateThreadMutationRequest = ThreadMutationRequest & UpdateThreadRequest;
-type ReorderPinnedThreadMutationRequest = ThreadMutationRequest &
-  ReorderPinnedThreadRequest;
 type UnpinAndMoveThreadMutationRequest = ThreadMutationRequest & {
   sectionId: string | null;
 };
@@ -259,38 +252,6 @@ export function useMoveThreadToSection() {
     },
     [unpinAndMoveThread, unpinThread, updateThread],
   );
-}
-
-export function useReorderPinnedThread() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to reorder pinned threads.",
-      showErrorToast: false,
-    },
-    mutationFn: ({
-      id,
-      previousThreadId,
-      nextThreadId,
-    }: ReorderPinnedThreadMutationRequest) =>
-      sdk.threads.reorderPinned({
-        threadId: id,
-        previousThreadId,
-        nextThreadId,
-      }),
-    onMutate: async (request): Promise<PinnedThreadOrderTransaction> =>
-      beginReorderPinnedThreadTransaction({ queryClient, request }),
-    onError: (_error, _variables, context) => {
-      rollbackReorderPinnedThreadTransaction({
-        queryClient,
-        transaction: context,
-      });
-    },
-    onSuccess: (orderedRoots) => {
-      applyReorderPinnedThreadResult({ orderedRoots, queryClient });
-    },
-  });
 }
 
 export function useArchiveThreadAndChildren() {

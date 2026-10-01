@@ -69,6 +69,7 @@
     },
     "plugins": [
       "./plugins/with-selection-accent",
+      "./plugins/with-push-consent",
       "expo-router",
       "expo-secure-store",
       "expo-image",
@@ -92,7 +93,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/android-icon-monochrome.png",
+          "icon": "./assets/android-notification-icon.png",
           "color": "#000000",
           "defaultChannel": "threads"
         }

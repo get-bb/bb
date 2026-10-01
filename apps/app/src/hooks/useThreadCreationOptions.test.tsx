@@ -528,39 +528,6 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("migrates legacy model preferences without leaking them to another provider", async () => {
-    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
-    window.localStorage.setItem("bb.promptbox.model", "global-remembered");
-    window.localStorage.setItem("bb.promptbox.reasoning", "medium");
-    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
-      providerExecutionOptionsResponse(args?.providerId),
-    );
-    const { result } = renderHook(
-      () => useThreadCreationOptions({ scope: "new-thread" }),
-      { wrapper: createQueryClientTestHarness().wrapper },
-    );
-
-    await waitFor(() => {
-      expect(result.current.selectedModel).toBe("global-remembered");
-    });
-    act(() => {
-      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
-    });
-    await waitFor(() => {
-      expect(result.current.selectedModel).toBe("project-default");
-      expect(result.current.reasoningLevel).toBe("medium");
-    });
-    expect(window.localStorage.getItem("bb.promptbox.model")).toBeNull();
-
-    act(() => {
-      result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
-    });
-    await waitFor(() => {
-      expect(result.current.selectedModel).toBe("global-remembered");
-      expect(result.current.reasoningLevel).toBe("medium");
-    });
-  });
-
   it("restores each provider's model and reasoning selection", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
@@ -723,7 +690,6 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.selectedModel).toBe("global-remembered");
       expect(result.current.reasoningLevel).toBe("medium");
     });
-    expect(window.localStorage.getItem("bb.promptbox.model")).toBeNull();
   });
 
   it("preserves a model's nested provider route for the picker", async () => {
@@ -760,9 +726,15 @@ describe("useThreadCreationOptions", () => {
 
   it("routes root-composer provider discovery through the selected project host", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
-    window.localStorage.setItem("bb.promptbox.model", "global-model");
+    window.localStorage.setItem(
+      `bb.promptbox.model-${GLOBAL_PROVIDER_ID}-1`,
+      "global-model",
+    );
     window.localStorage.setItem("bb.promptbox.service-tier", "default");
-    window.localStorage.setItem("bb.promptbox.reasoning", "high");
+    window.localStorage.setItem(
+      `bb.promptbox.reasoning-${GLOBAL_PROVIDER_ID}-1`,
+      "high",
+    );
     window.localStorage.setItem(
       "bb.promptbox.permission-mode",
       "workspace-write",

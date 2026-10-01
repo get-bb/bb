@@ -56,7 +56,6 @@ interface FakePreventableEvent {
 interface FakeWebContentsEvent {}
 
 interface FakeNavigationEvent extends FakePreventableEvent {
-  initiator?: FakeWebFrameMain | null;
   isMainFrame: boolean;
   url: string;
 }
@@ -185,10 +184,6 @@ interface FakeDebuggerEventMap {
   ) => void;
 }
 
-interface FakeWebFrameMain {
-  origin: string;
-}
-
 interface FakeSessionEvent {
   preventDefault(): void;
 }
@@ -284,22 +279,11 @@ const electronMock = vi.hoisted(() => {
     extends FakePreventableEventImpl
     implements FakeNavigationEvent
   {
-    public readonly initiator?: FakeWebFrameMain | null;
     public readonly isMainFrame: boolean;
     public readonly url: string;
 
-    constructor(args: {
-      initiatorOrigin?: string | null;
-      isMainFrame: boolean;
-      url: string;
-    }) {
+    constructor(args: { isMainFrame: boolean; url: string }) {
       super();
-      this.initiator =
-        args.initiatorOrigin === undefined
-          ? undefined
-          : args.initiatorOrigin === null
-            ? null
-            : { origin: args.initiatorOrigin };
       this.isMainFrame = args.isMainFrame;
       this.url = args.url;
     }
@@ -379,7 +363,6 @@ const electronMock = vi.hoisted(() => {
     setBackgroundThrottling(value: boolean): void {
       this.backgroundThrottling = value;
     }
-    public activeHistoryIndex = 0;
     public canGoBackResult = false;
     public canGoForwardResult = false;
     public destroyed = false;
@@ -387,7 +370,6 @@ const electronMock = vi.hoisted(() => {
     public nativelyFocused = false;
     public readonly goBackCalls: string[] = [];
     public readonly goForwardCalls: string[] = [];
-    public historyEntries: Array<{ title: string; url: string }> = [];
     public readonly id: number;
     public readonly loadURLCalls: string[] = [];
     public readonly findInPageCalls: FakeFindInPageCall[] = [];
@@ -425,9 +407,6 @@ const electronMock = vi.hoisted(() => {
     public readonly navigationHistory = {
       canGoBack: (): boolean => this.canGoBackResult,
       canGoForward: (): boolean => this.canGoForwardResult,
-      getActiveIndex: (): number => this.activeHistoryIndex,
-      getEntryAtIndex: (index: number): { title: string; url: string } | null =>
-        this.historyEntries[index] ?? null,
       goBack: (): void => {
         this.goBackCalls.push("goBack");
       },
@@ -640,32 +619,16 @@ const electronMock = vi.hoisted(() => {
       return event.defaultPrevented;
     }
 
-    emitWillFrameNavigate(
-      url: string,
-      isMainFrame: boolean,
-      initiatorOrigin?: string | null,
-    ): boolean {
-      const event = new FakeNavigationEventImpl({
-        initiatorOrigin,
-        isMainFrame,
-        url,
-      });
+    emitWillFrameNavigate(url: string, isMainFrame: boolean): boolean {
+      const event = new FakeNavigationEventImpl({ isMainFrame, url });
       for (const listener of this.listeners["will-frame-navigate"]) {
         listener(event);
       }
       return event.defaultPrevented;
     }
 
-    emitWillRedirect(
-      url: string,
-      isMainFrame: boolean,
-      initiatorOrigin?: string | null,
-    ): boolean {
-      const event = new FakeNavigationEventImpl({
-        initiatorOrigin,
-        isMainFrame,
-        url,
-      });
+    emitWillRedirect(url: string, isMainFrame: boolean): boolean {
+      const event = new FakeNavigationEventImpl({ isMainFrame, url });
       for (const listener of this.listeners["will-redirect"]) {
         listener(event, url, false, isMainFrame);
       }
@@ -2865,102 +2828,57 @@ describe("DesktopBrowserViewManager", () => {
     expect(findResultPushesOf(hostWindow)).toHaveLength(1);
   });
 
-  it("surfaces a loopback popup as an in-panel tab, never a native window", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 58,
-    });
+  it.each([
+    {
+      name: "a loopback popup",
+      tabUrl: "http://localhost:5173/",
+      popupUrl: "http://localhost:38886/",
+      details: { frameName: "_blank" },
+    },
+    {
+      name: "a public popup",
+      tabUrl: "https://example.com/",
+      popupUrl: "https://example.com/docs",
+      details: { frameName: "_blank" },
+    },
+    {
+      name: "a noopener blank link",
+      tabUrl: "https://example.com/",
+      popupUrl: "https://example.com/docs",
+      details: { features: "noopener,noreferrer", frameName: "_blank" },
+    },
+  ])(
+    "surfaces $name as an in-panel tab with its source tab id, never a native window",
+    ({ tabUrl, popupUrl, details }) => {
+      const manager = createDesktopBrowserViewManager({
+        partition: "persist:test",
+      });
+      const hostWindow = new FakeHostWindow({
+        contentBounds: { width: 700, height: 450 },
+        webContentsId: 58,
+      });
 
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-
-    expect(
-      view.webContents.emitWindowOpen("http://localhost:38886/", {
-        frameName: "_blank",
-      }),
-    ).toEqual({
-      action: "deny",
-    });
-    expect(openTabPushesOf(hostWindow)).toEqual(["http://localhost:38886/"]);
-    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
-      { tabId: "browser:a", url: "http://localhost:38886/" },
-    ]);
-  });
-
-  it("surfaces public popups with their source browser tab id", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 61,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com/",
-    });
-    const view = requireFakeView(0);
-
-    expect(
-      view.webContents.emitWindowOpen("https://example.com/docs", {
-        frameName: "_blank",
-      }),
-    ).toEqual({
-      action: "deny",
-    });
-    expect(openTabPushesOf(hostWindow)).toEqual(["https://example.com/docs"]);
-    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
-      {
+      attachBrowserTab({
+        manager,
+        hostWindow,
         tabId: "browser:a",
-        url: "https://example.com/docs",
-      },
-    ]);
-  });
+        url: tabUrl,
+      });
+      const view = requireFakeView(0);
 
-  it("keeps noopener blank links in the browser panel", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 63,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com/",
-    });
-    const view = requireFakeView(0);
-
-    expect(
-      view.webContents.emitWindowOpen("https://example.com/docs", {
-        disposition: "foreground-tab",
-        features: "noopener,noreferrer",
-        frameName: "_blank",
-      }),
-    ).toEqual({ action: "deny" });
-    expect(electronMock.fakeWindows).toEqual([]);
-    expect(openTabPushesOf(hostWindow)).toEqual(["https://example.com/docs"]);
-    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
-      {
-        tabId: "browser:a",
-        url: "https://example.com/docs",
-      },
-    ]);
-  });
+      expect(
+        view.webContents.emitWindowOpen(popupUrl, {
+          disposition: "foreground-tab",
+          ...details,
+        }),
+      ).toEqual({ action: "deny" });
+      expect(electronMock.fakeWindows).toEqual([]);
+      expect(openTabPushesOf(hostWindow)).toEqual([popupUrl]);
+      expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
+        { tabId: "browser:a", url: popupUrl },
+      ]);
+    },
+  );
 
   it("opens popup dispositions in a hardened native window", () => {
     const manager = createDesktopBrowserViewManager({
@@ -3293,45 +3211,6 @@ describe("DesktopBrowserViewManager", () => {
     expect(view.visible).toBe(true);
   });
 
-  it("never grows a view past its renderer-desired rect on a native window grow", async () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 43,
-    });
-
-    manager.attach({
-      hostWindow,
-      request: {
-        threadId: "thread-1",
-        tabId: "browser:a",
-        url: "",
-        bounds: { x: 100, y: 50, width: 500, height: 350 },
-        visible: true,
-      },
-    });
-
-    const view = electronMock.fakeViews[0];
-    expect(view).toBeDefined();
-    if (view === undefined) {
-      throw new Error("Expected the browser view to be created.");
-    }
-
-    manager.beginWindowResize(hostWindow);
-    await settlePendingCaptures(view);
-    hostWindow.contentBounds = { width: 900, height: 640 };
-    manager.endWindowResize(hostWindow);
-
-    expect(view.boundsCalls[1]).toEqual({
-      x: 100,
-      y: 50,
-      width: 500,
-      height: 350,
-    });
-  });
-
   it("applies renderer pushes that land mid-resize on the reveal", async () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
@@ -3448,30 +3327,6 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(view.boundsCalls).toHaveLength(1);
     expect(view.visible).toBe(false);
-  });
-
-  it("focuses a freshly-attached active tab so Cmd+C targets its webContents", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 70,
-    });
-
-    manager.attach({
-      hostWindow,
-      request: {
-        threadId: "thread-1",
-        tabId: "browser:a",
-        url: "",
-        bounds: { x: 100, y: 50, width: 500, height: 350 },
-        visible: true,
-      },
-    });
-
-    const view = requireFakeView(0);
-    expect(view.webContents.focusCalls).toBe(1);
   });
 
   it("reports user focus but suppresses programmatic focus used for restoration", () => {
@@ -3607,30 +3462,6 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(view.webContents.reloadCalls).toBe(2);
     expect(view.visible).toBe(true);
-  });
-
-  it("does not focus a freshly-attached inactive tab", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 71,
-    });
-
-    manager.attach({
-      hostWindow,
-      request: {
-        threadId: "thread-1",
-        tabId: "browser:a",
-        url: "",
-        bounds: { x: 100, y: 50, width: 500, height: 350 },
-        visible: false,
-      },
-    });
-
-    const view = requireFakeView(0);
-    expect(view.webContents.focusCalls).toBe(0);
   });
 
   it("focuses on a real hidden → visible setVisible transition only once", () => {

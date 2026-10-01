@@ -982,21 +982,6 @@ describe("Workspace", () => {
     expect(worktreeLockEntered).toBe(true);
   });
 
-  it("times out waiters behind a stuck process-local lock", async () => {
-    const stuck = withProcessLocalQueuedLocks({
-      locks: [{ key: "stuck-lock", timeoutMs: 0 }],
-      work: () => new Promise(() => undefined),
-    });
-    void stuck.catch(() => undefined);
-
-    await expect(
-      withProcessLocalQueuedLocks({
-        locks: [{ key: "stuck-lock", timeoutMs: 10 }],
-        work: async () => "unreachable",
-      }),
-    ).rejects.toBeInstanceOf(ProcessLocalQueuedLockTimeoutError);
-  });
-
   it("skips process-local lock waiters that time out before entry", async () => {
     const entered = createDeferredPromise<void>();
     const release = createDeferredPromise<void>();

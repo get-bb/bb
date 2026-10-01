@@ -2,11 +2,8 @@
 
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import type { WorkspaceDiffTarget } from "@bb/domain";
-import type {
-  EnvironmentDiffFileResponse,
-  EnvironmentDiffFilesResponse,
-} from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EnvironmentDiffFilesResponse } from "@bb/server-contract";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
@@ -22,8 +19,7 @@ import {
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
-    environments: { diffFiles: vi.fn(), diffFile: vi.fn() },
-    files: { createPreview: vi.fn(), read: vi.fn() },
+    environments: { diffFiles: vi.fn() },
   },
 }));
 
@@ -48,17 +44,22 @@ const emptyDiff: EnvironmentDiffFilesResponse = {
   initialPatches: [],
 };
 
-const previewFile: EnvironmentDiffFileResponse = {
-  path: "src/index.ts",
-  content: "export const answer = 42;\n",
-  contentEncoding: "utf8",
-  mimeType: "text/plain",
-  sizeBytes: 26,
-};
+const PREVIEW_PATH = "src/index.ts";
+const fetchMock = vi.fn(
+  async () =>
+    new Response("export const answer = 42;\n", {
+      headers: { "content-type": "text/plain" },
+    }),
+);
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", fetchMock);
+});
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("GitDiffTabContent panel gating", () => {
@@ -106,12 +107,11 @@ describe("GitDiffTabContent panel gating", () => {
 
 describe("WorkspaceFilePreviewTabContent panel gating", () => {
   it("does not refetch an invalidated preview while the panel is closed", async () => {
-    vi.mocked(sdk.environments.diffFile).mockResolvedValue(previewFile);
     const { queryClient, wrapper: Wrapper } = createQueryClientTestHarness();
     const renderTab = (isPanelOpen: boolean) => (
       <Wrapper>
         <WorkspaceFilePreviewTabContent
-          activePath={previewFile.path}
+          activePath={PREVIEW_PATH}
           environmentId={ENVIRONMENT_ID}
           isPanelOpen={isPanelOpen}
           lineRange={null}
@@ -124,7 +124,7 @@ describe("WorkspaceFilePreviewTabContent panel gating", () => {
 
     const view = render(renderTab(true));
     await waitFor(() => {
-      expect(sdk.environments.diffFile).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     view.rerender(renderTab(false));
@@ -133,30 +133,17 @@ describe("WorkspaceFilePreviewTabContent panel gating", () => {
         queryKey: environmentFilePreviewQueryKeyPrefix(ENVIRONMENT_ID),
       });
     });
-    expect(sdk.environments.diffFile).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
     view.rerender(renderTab(true));
     await waitFor(() => {
-      expect(sdk.environments.diffFile).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 });
 
 describe("HostScopedFilePreviewTabContent panel gating", () => {
   it("does not start or refetch a host read while the retained panel is closed", async () => {
-    vi.mocked(sdk.files.createPreview).mockResolvedValue({
-      baseUrl: "/api/v1/file-previews/lease-1",
-      expiresAtMs: Date.now() + 60_000,
-    });
-    vi.mocked(sdk.files.read).mockResolvedValue({
-      path: "/tmp/example.txt",
-      content: "hello\n",
-      contentEncoding: "utf8",
-      mimeType: "text/plain",
-      modifiedAtMs: 1,
-      sha256: "hash",
-      sizeBytes: 6,
-    });
     const { queryClient, wrapper: Wrapper } = createQueryClientTestHarness();
     const renderTab = (isPanelOpen: boolean) => (
       <Wrapper>
@@ -170,12 +157,11 @@ describe("HostScopedFilePreviewTabContent panel gating", () => {
     );
 
     const view = render(renderTab(false));
-    expect(sdk.files.read).not.toHaveBeenCalled();
-    expect(sdk.files.createPreview).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
 
     view.rerender(renderTab(true));
     await waitFor(() => {
-      expect(sdk.files.read).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     view.rerender(renderTab(false));
@@ -184,11 +170,11 @@ describe("HostScopedFilePreviewTabContent panel gating", () => {
         queryKey: hostFilePreviewQueryKey("host-1", "/tmp/example.txt"),
       });
     });
-    expect(sdk.files.read).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
     view.rerender(renderTab(true));
     await waitFor(() => {
-      expect(sdk.files.read).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 });

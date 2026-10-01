@@ -9,7 +9,6 @@ import {
   filterMarketplaceEntries,
   marketplaceAuthorEntries,
   marketplaceCategoryOptions,
-  marketplaceInstallCommand,
   marketplaceRepositoryUrl,
   marketplaceShelves,
   moreInMarketplaceCategory,
@@ -135,12 +134,6 @@ describe("public marketplace view model", () => {
     ).toEqual(["review-companion", "review-notes"]);
     expect(marketplaceAuthorEntries(MARKETPLACE_V2_FIXTURE, "missing")).toEqual(
       [],
-    );
-  });
-
-  it("builds the install command", () => {
-    expect(marketplaceInstallCommand("prompt-library")).toBe(
-      "bb plugin install prompt-library",
     );
   });
 

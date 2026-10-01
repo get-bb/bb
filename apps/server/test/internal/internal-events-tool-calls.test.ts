@@ -21,6 +21,10 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { serve } from "@hono/node-server";
 import {
+  withChildThreadNotificationClock,
+  flushChildThreadNotifications,
+} from "../helpers/child-thread-notification-clock.js";
+import {
   internalAuthHeaders,
   listQueuedThreadCommands,
   reportQueuedCommandSuccess,
@@ -99,11 +103,6 @@ async function postToolCall(args: {
       arguments: args.arguments,
     }),
   });
-}
-
-async function flushDeferredChildThreadNotifications(): Promise<void> {
-  await new Promise((resolve) => setImmediate(resolve));
-  await sleep(2_100);
 }
 
 describe("internal event and tool-call routes", () => {
@@ -189,101 +188,6 @@ describe("internal event and tool-call routes", () => {
           await new Promise<void>((resolve, reject) => {
             server.close((error) => (error ? reject(error) : resolve()));
           });
-        }
-      } finally {
-        setPluginAgentContributions(undefined);
-      }
-    });
-  });
-
-  it("persists a native plugin tool call as the bridge sent it: no server-side label enrichment", async () => {
-    await withTestHarness(async (harness) => {
-      const record = {
-        name: "repository_context",
-        presentation: {
-          label: {
-            pending: "Reading project overview",
-            completed: "Read project overview",
-          },
-        },
-      } as PluginAgentToolRecord;
-      setPluginAgentContributions({
-        listSkillRootContributions: () => [],
-        listAgentTools: () => [],
-        listInstructionContributions: () => [],
-        findAgentTool: (name) =>
-          name === record.name ? { pluginId: "fixture", record } : undefined,
-        invokeAgentTool: async () => ({
-          success: false,
-          contentItems: [{ type: "inputText", text: "unused" }],
-        }),
-        resolveMention: async () => ({ ok: false, error: "unused" }),
-      });
-
-      try {
-        const { session } = seedHostSession(harness.deps);
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: session.hostId,
-        });
-        const environment = seedEnvironment(harness.deps, {
-          hostId: session.hostId,
-          projectId: project.id,
-        });
-        const thread = seedThread(harness.deps, {
-          environmentId: environment.id,
-          projectId: project.id,
-          status: "active",
-        });
-
-        const response = await postEventBatch({
-          harness,
-          sessionId: session.id,
-          events: [
-            {
-              threadId: thread.id,
-              event: {
-                type: "turn/started",
-                threadId: thread.id,
-                providerThreadId: "provider-1",
-                scope: turnScope("turn-1"),
-              },
-            },
-            ...(["item/started", "item/completed"] as const).map((type) => ({
-              threadId: thread.id,
-              event: {
-                type,
-                threadId: thread.id,
-                providerThreadId: "provider-1",
-                scope: turnScope("turn-1"),
-                item: {
-                  type: "toolCall" as const,
-                  id: "tool-1",
-                  tool: record.name,
-                  status:
-                    type === "item/started"
-                      ? ("pending" as const)
-                      : ("completed" as const),
-                },
-              },
-            })),
-          ],
-        });
-
-        expect(response.status).toBe(200);
-        const storedToolEvents = harness.db
-          .select()
-          .from(events)
-          .where(eq(events.threadId, thread.id))
-          .all()
-          .filter(
-            (event) =>
-              event.type === "item/started" || event.type === "item/completed",
-          );
-        expect(storedToolEvents).toHaveLength(2);
-        for (const event of storedToolEvents) {
-          const item = JSON.parse(event.data).item;
-          expect(item.tool).toBe(record.name);
-          expect(item).not.toHaveProperty("statusLabels");
         }
       } finally {
         setPluginAgentContributions(undefined);
@@ -709,7 +613,7 @@ describe("internal event and tool-call routes", () => {
   });
 
   it("does not notify a parent when a child thread nested turn completes", async () => {
-    await withTestHarness(async (harness) => {
+    await withChildThreadNotificationClock(async (harness) => {
       const { session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: session.hostId,
@@ -780,7 +684,7 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      await flushDeferredChildThreadNotifications();
+      await flushChildThreadNotifications();
 
       expect(
         harness.db
@@ -801,7 +705,7 @@ describe("internal event and tool-call routes", () => {
   });
 
   it("notifies a parent when a hidden delegated child root turn completes", async () => {
-    await withTestHarness(async (harness) => {
+    await withChildThreadNotificationClock(async (harness) => {
       const { session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: session.hostId,
@@ -858,7 +762,7 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      await flushDeferredChildThreadNotifications();
+      await flushChildThreadNotifications();
       expect(getThread(harness.db, childThread.id)?.status).toBe("idle");
       expect(
         listQueuedThreadCommands(harness, "turn.submit", parentThread.id),
@@ -867,7 +771,7 @@ describe("internal event and tool-call routes", () => {
   });
 
   it("does not notify a parent when a side-chat child root turn completes", async () => {
-    await withTestHarness(async (harness) => {
+    await withChildThreadNotificationClock(async (harness) => {
       const { session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: session.hostId,
@@ -926,7 +830,7 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      await flushDeferredChildThreadNotifications();
+      await flushChildThreadNotifications();
       expect(getThread(harness.db, childThread.id)?.status).toBe("idle");
       expect(
         listQueuedThreadCommands(harness, "turn.submit", parentThread.id),

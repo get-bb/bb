@@ -743,24 +743,21 @@ describe("PluginPanelRightPanelHost", () => {
     resetPluginLogoStoreForTest();
   });
 
-  it("shows the side-panel glyph on the trigger for a compact viewport", async () => {
-    viewportState.isCompactViewport = true;
-    renderHost();
+  it.each([
+    ["compact", true],
+    ["wide", false],
+  ])(
+    "shows the side-panel glyph on the trigger for a %s viewport",
+    async (_label, isCompactViewport) => {
+      viewportState.isCompactViewport = isCompactViewport;
+      renderHost();
 
-    const showButton = await screen.findByRole("button", {
-      name: "Show right panel",
-    });
-    expect(showButton.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
-  });
-
-  it("shows the side-panel glyph on the trigger for a wide viewport", async () => {
-    renderHost();
-
-    const showButton = await screen.findByRole("button", {
-      name: "Show right panel",
-    });
-    expect(showButton.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
-  });
+      const showButton = await screen.findByRole("button", {
+        name: "Show right panel",
+      });
+      expect(showButton.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
+    },
+  );
 
   it("keeps one panel toggle and retains the panel after its first opening", async () => {
     renderHost();

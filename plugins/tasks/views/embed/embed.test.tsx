@@ -276,6 +276,24 @@ describe("Task directive card", () => {
 });
 
 describe("Task embed panel", () => {
+  it("keeps an aliased task in the side panel until the user opens Tasks", async () => {
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr_1", params: { taskKey: "OLD-4" } },
+      { rpc: taskDetailRpc(() => ({ task })) },
+    );
+    await slot.findByRole("textbox", { name: "Task title" });
+    expect(slot.navigateCalls).toEqual([]);
+    fireEvent.click(slot.getByRole("button", { name: "Open OLD-4 in Tasks" }));
+    expect(slot.navigateCalls).toEqual([
+      {
+        method: "toPluginPanel",
+        path: "tasks",
+        options: { subPath: "task/OLD-4" },
+      },
+    ]);
+  });
+
   it("renders the task detail for the panel params and links to the app", async () => {
     const slot = renderSlot(
       app.threadPanelActions[0]!,

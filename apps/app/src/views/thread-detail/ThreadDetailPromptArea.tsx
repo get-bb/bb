@@ -84,7 +84,10 @@ import {
   QueuedMessagesPendingCard,
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
-import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import {
+  ThreadDetailsButton,
+  ThreadEnvironmentSummary,
+} from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { MachineLabelHost } from "@/components/machines/MachineLabel";
 import type { MachineProviderPresentation } from "@/components/plugin/MachineProviderIcon";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
@@ -193,6 +196,7 @@ interface ThreadDetailPromptAreaProps {
   environmentLabel?: string;
   environmentProviderName?: string;
   onCreateNewThreadInEnvironment?: () => void;
+  onOpenThreadInfo?: () => void;
   onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
   onPullRequestReady?: () => void;
@@ -407,6 +411,7 @@ export function ThreadDetailPromptArea({
   environmentLabel,
   environmentProviderName,
   onCreateNewThreadInEnvironment,
+  onOpenThreadInfo,
   onPullRequestDraft,
   onPullRequestMerge,
   onPullRequestReady,
@@ -1015,8 +1020,10 @@ export function ThreadDetailPromptArea({
       supportsServiceTier,
     ],
   );
-  const { getSelection, subscribeSelection } =
-    useComposerHostSelection(promptDraft.storageKey, composerSelection);
+  const { getSelection, subscribeSelection } = useComposerHostSelection(
+    promptDraft.storageKey,
+    composerSelection,
+  );
   const pendingSelectionRef = useRef<Promise<unknown>>(Promise.resolve());
   const applySelection = useCallback(
     async (
@@ -1738,6 +1745,34 @@ export function ThreadDetailPromptArea({
       thread.environmentId,
     ],
   );
+  const compactEnvironmentSummary = useMemo(() => {
+    if (!onOpenThreadInfo) return null;
+    if (environmentCheckout) {
+      return (
+        <ThreadDetailsButton
+          icon="GitBranch"
+          label={environmentCheckout.label}
+          onOpenDetails={onOpenThreadInfo}
+        />
+      );
+    }
+    if (environmentLabel) {
+      return (
+        <ThreadDetailsButton
+          icon={environmentIcon ?? "Layers"}
+          label={environmentCompactLabel ?? environmentLabel}
+          onOpenDetails={onOpenThreadInfo}
+        />
+      );
+    }
+    return null;
+  }, [
+    environmentCheckout,
+    environmentCompactLabel,
+    environmentIcon,
+    environmentLabel,
+    onOpenThreadInfo,
+  ]);
   const activePromptModeCard = useMemo(
     () => (
       <ThreadPromptModeCard
@@ -2275,6 +2310,7 @@ export function ThreadDetailPromptArea({
       collapseResetKey={thread.id}
       focusEndKey={bottomFocusEndKey}
       environmentSummary={environmentSummary}
+      compactEnvironmentSummary={compactEnvironmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       execution={bottomExecutionConfig}
       permission={bottomPermissionConfig}

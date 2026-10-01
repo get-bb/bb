@@ -7,7 +7,6 @@ import { promptEditorValueFromDoc } from "./prompt-editor-serialization";
 import {
   applyPromptListNewline,
   createPromptListNewlineTransaction,
-  createSplitPromptListItemTransaction,
 } from "./prompt-editor-list";
 
 const schema = getSchema([
@@ -43,102 +42,6 @@ function stateFromJson(docJson: unknown, selectionPosition: number) {
   });
 }
 
-describe("createSplitPromptListItemTransaction", () => {
-  it("turns a newline at the end of a bullet item into the next list item", () => {
-    const state = stateFromJson(
-      {
-        type: "doc",
-        content: [
-          {
-            type: "bulletList",
-            content: [
-              {
-                type: "listItem",
-                content: [
-                  {
-                    type: "paragraph",
-                    content: [{ type: "text", text: "first" }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      8,
-    );
-
-    const transaction = createSplitPromptListItemTransaction({
-      state,
-      editor: editorContext,
-    });
-    expect(transaction).not.toBeNull();
-    const nextState = state.apply(transaction!);
-
-    expect(nextState.doc.toString()).toBe(
-      'doc(bulletList(listItem(paragraph("first")), listItem(paragraph)))',
-    );
-    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("- first\n- ");
-  });
-
-  it("turns a newline at the end of an ordered item into the next list item", () => {
-    const state = stateFromJson(
-      {
-        type: "doc",
-        content: [
-          {
-            type: "orderedList",
-            attrs: { start: 1 },
-            content: [
-              {
-                type: "listItem",
-                content: [
-                  {
-                    type: "paragraph",
-                    content: [{ type: "text", text: "first" }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      8,
-    );
-
-    const transaction = createSplitPromptListItemTransaction({
-      state,
-      editor: editorContext,
-    });
-    expect(transaction).not.toBeNull();
-    const nextState = state.apply(transaction!);
-
-    expect(nextState.doc.toString()).toBe(
-      'doc(orderedList(listItem(paragraph("first")), listItem(paragraph)))',
-    );
-    expect(promptEditorValueFromDoc(nextState.doc).text).toBe("1. first\n2. ");
-  });
-
-  it("does not handle ordinary paragraphs", () => {
-    const state = stateFromJson(
-      {
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: "first" }],
-          },
-        ],
-      },
-      6,
-    );
-
-    expect(
-      createSplitPromptListItemTransaction({ state, editor: editorContext }),
-    ).toBeNull();
-  });
-});
-
 describe("createPromptListNewlineTransaction", () => {
   it("splits then breaks out of a bullet list", () => {
     const state = stateFromJson(
@@ -173,6 +76,7 @@ describe("createPromptListNewlineTransaction", () => {
     expect(splitState.doc.toString()).toBe(
       'doc(bulletList(listItem(paragraph("first")), listItem(paragraph)))',
     );
+    expect(promptEditorValueFromDoc(splitState.doc).text).toBe("- first\n- ");
 
     const exitTransaction = createPromptListNewlineTransaction({
       state: splitState,
@@ -221,6 +125,7 @@ describe("createPromptListNewlineTransaction", () => {
     expect(splitState.doc.toString()).toBe(
       'doc(orderedList(listItem(paragraph("first")), listItem(paragraph)))',
     );
+    expect(promptEditorValueFromDoc(splitState.doc).text).toBe("1. first\n2. ");
 
     const exitTransaction = createPromptListNewlineTransaction({
       state: splitState,

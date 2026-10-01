@@ -87,6 +87,7 @@ describe("plugin contracts", () => {
       official: false,
       author: null,
       installed: false,
+      conflictingInstallSource: null,
       compatible: true,
       incompatibleReason: null,
     };

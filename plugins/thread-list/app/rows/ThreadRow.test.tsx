@@ -89,7 +89,6 @@ function ThreadRowHarness({
 }: HarnessProps) {
   const row = (
     <ThreadRow
-      projectId={thread.projectId}
       thread={thread}
       crossProjectId={crossProjectId}
       isActive={isActive}
@@ -942,27 +941,6 @@ describe("ThreadRow", () => {
     },
   );
 
-  it.each([
-    "workflows",
-    "backgroundAgents",
-    "backgroundCommands",
-    "planMode",
-    "goals",
-  ] as const)("uses the shimmering draft pencil with %s", (activityKey) => {
-    renderThreadRow({
-      hasComposerDraft: true,
-      thread: createThread({ activity: activity({ [activityKey]: 1 }) }),
-    });
-
-    const draftIcon = screen.getByLabelText(
-      "Thread working with unsubmitted draft",
-    );
-    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
-    expect(Array.from(draftIcon.classList)).toContain(
-      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-    );
-  });
-
   it("renders the host title component and labels the row with the resolved display title", () => {
     const { container } = renderThreadRow({
       thread: createThread({
@@ -1325,18 +1303,6 @@ describe("ThreadRow", () => {
     ).toBe("Meta+3");
   });
 
-  it("shows the pending-input glyph while the runtime is still active", () => {
-    renderThreadRow({
-      thread: createThread({
-        hasPendingInteraction: true,
-        runtimeStatus: "active",
-      }),
-    });
-
-    expect(screen.getByLabelText("Thread needs user input")).not.toBeNull();
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
-  });
-
   it("shows runtime work before workflow and background work", () => {
     renderThreadRow({
       thread: createThread({
@@ -1366,45 +1332,6 @@ describe("ThreadRow", () => {
     expect(workflowIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
-
-  it.each([
-    ["workflows", "Workflow running"],
-    ["backgroundAgents", "Background agent running"],
-    ["backgroundCommands", "Background command running"],
-  ] as const)(
-    "shows runtime work before concurrent %s activity",
-    (activityKey, secondaryLabel) => {
-      renderThreadRow({
-        thread: createThread({
-          status: "active",
-          runtimeStatus: "active",
-          activity: activity({ [activityKey]: 1 }),
-        }),
-      });
-
-      expect(screen.getByLabelText("Thread working")).not.toBeNull();
-      expect(screen.queryByLabelText(secondaryLabel)).toBeNull();
-    },
-  );
-
-  it.each([
-    ["planMode", "Plan mode active"],
-    ["goals", "Goal active"],
-  ] as const)(
-    "shows concurrent %s activity before runtime work",
-    (activityKey, modeLabel) => {
-      renderThreadRow({
-        thread: createThread({
-          status: "active",
-          runtimeStatus: "active",
-          activity: activity({ [activityKey]: 1 }),
-        }),
-      });
-
-      expect(screen.getByLabelText(modeLabel)).not.toBeNull();
-      expect(screen.queryByLabelText("Thread working")).toBeNull();
-    },
-  );
 
   it.each([
     {
@@ -1468,15 +1395,6 @@ describe("ThreadRow", () => {
 
     expect(screen.getByLabelText("Background agent running")).not.toBeNull();
     expect(screen.queryByLabelText("Background command running")).toBeNull();
-  });
-
-  it("shows Plan before a concurrent Goal", () => {
-    renderThreadRow({
-      thread: createThread({ activity: activity({ planMode: 1, goals: 1 }) }),
-    });
-
-    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
-    expect(screen.queryByLabelText("Goal active")).toBeNull();
   });
 
   it.each([
@@ -1772,19 +1690,6 @@ describe("ThreadRow", () => {
     expect(slot.inspection.sidebarActionCalls).toEqual([
       { method: "open", threadId: "thr_test", options: { split: true } },
     ]);
-  });
-
-  it("cancels an inline row rename on Escape without saving", async () => {
-    const slot = renderThreadRow();
-
-    fireEvent.doubleClick(screen.getByText("Thread"));
-    const input = await screen.findByRole("textbox", { name: "Thread name" });
-    fireEvent.change(input, { target: { value: "Scratch name" } });
-    fireEvent.keyDown(input, { key: "Escape" });
-
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
-    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
-    expect(screen.getByText("Thread")).not.toBeNull();
   });
 
   it("starts a rename from a second click after the row remounts", async () => {

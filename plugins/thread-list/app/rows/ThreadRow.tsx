@@ -137,7 +137,6 @@ export type ThreadRowOptions =
     });
 
 interface ThreadRowProps {
-  projectId: string;
   thread: SidebarThread;
   crossProjectId: string | null;
   isActive: boolean;
@@ -320,7 +319,6 @@ function useThreadSplitMiniMap(
 }
 
 function ThreadRowComponent({
-  projectId,
   thread,
   crossProjectId,
   isActive,

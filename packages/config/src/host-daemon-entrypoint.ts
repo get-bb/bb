@@ -12,7 +12,6 @@ import {
   BB_HOST_DAEMON_AUTO_UPDATE_ENV,
   BB_HOST_DAEMON_SUPERVISED_ENV,
   BB_HOST_ID_ENV,
-  BB_HOST_NAME_ENV,
 } from "./env-vars.js";
 import { assignIfDefined } from "./objects.js";
 
@@ -24,7 +23,6 @@ export interface HostDaemonEntrypointConfig {
   BB_HOST_DAEMON_AUTO_UPDATE?: boolean;
   BB_HOST_DAEMON_SUPERVISED?: boolean;
   BB_HOST_ID?: string;
-  BB_HOST_NAME?: string;
 }
 
 type LoadHostDaemonEntrypointConfigArgs = EnvLoaderArgs;
@@ -78,11 +76,6 @@ export function loadHostDaemonEntrypointConfig(
     definition: BB_HOST_ID_ENV,
     env: loader.env,
   });
-  const hostName = readOptionalEnvVar({
-    context: loader.context,
-    definition: BB_HOST_NAME_ENV,
-    env: loader.env,
-  });
 
   assignIfDefined({
     key: "BB_BRIDGE_DIR",
@@ -118,11 +111,6 @@ export function loadHostDaemonEntrypointConfig(
     key: "BB_HOST_ID",
     target: config,
     value: hostId,
-  });
-  assignIfDefined({
-    key: "BB_HOST_NAME",
-    target: config,
-    value: hostName,
   });
   return config;
 }

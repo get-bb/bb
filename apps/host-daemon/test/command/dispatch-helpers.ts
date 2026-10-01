@@ -24,12 +24,16 @@ import type {
   PullRequestActionOptions,
 } from "@bb/host-workspace";
 import { RuntimeManager } from "../../src/runtime-manager.js";
-import { noopEventSink } from "../../src/command-dispatch-support.js";
 import type { CommandDispatchOptions } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
 
 const tempDirs: string[] = [];
 const execFileAsync = promisify(execFile);
+export const noopEventSink: CommandDispatchOptions["eventSink"] = {
+  emit: () => undefined,
+  flush: async () => undefined,
+};
+
 export const silentLogger: CommandDispatchOptions["logger"] = {
   debug: () => undefined,
   warn: () => undefined,
@@ -581,6 +585,3 @@ export function dispatchTestRuntimeBridgeLaunch(
     envPassthrough: [],
   };
 }
-
-export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch =
-  dispatchTestRuntimeBridgeLaunch();

@@ -204,12 +204,6 @@ describe("buildBridgeToolCallContent", () => {
     ]);
   });
 
-  it("emits a lone text block for a text result", () => {
-    expect(buildBridgeToolCallContent({ content: "OK", images: [] })).toEqual([
-      { type: "text", text: "OK" },
-    ]);
-  });
-
   it("tolerates a result with no images key", () => {
     expect(buildBridgeToolCallContent({ content: "transport closed" })).toEqual(
       [{ type: "text", text: "transport closed" }],

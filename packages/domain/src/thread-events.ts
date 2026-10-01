@@ -132,81 +132,12 @@ export const turnRequestRejectedEventDataSchema = z.object({
   message: z.string().min(1),
 });
 
-export const systemErrorEventDataSchema = z
-  .object({
-    code: z.string().optional(),
-    message: z.string(),
-    detail: z.string().optional(),
-    reconnectAttempt: z.number().int().positive().optional(),
-    reconnectTotal: z.number().int().positive().optional(),
-  })
-  .superRefine((value, ctx) => {
-    const hasReconnectAttempt = value.reconnectAttempt !== undefined;
-    const hasReconnectTotal = value.reconnectTotal !== undefined;
-    if (hasReconnectAttempt !== hasReconnectTotal) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "system/error reconnectAttempt and reconnectTotal must be provided together",
-      });
-      return;
-    }
-
-    if (
-      value.reconnectAttempt !== undefined &&
-      value.reconnectTotal !== undefined &&
-      value.reconnectAttempt > value.reconnectTotal
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "system/error reconnectAttempt cannot be greater than reconnectTotal",
-      });
-    }
-  });
+export const systemErrorEventDataSchema = z.object({
+  code: z.string().optional(),
+  message: z.string(),
+  detail: z.string().optional(),
+});
 export type SystemErrorEventData = z.infer<typeof systemErrorEventDataSchema>;
-
-export function resolveSystemErrorReconnectProgress(args: {
-  code?: string;
-  message: string;
-  reconnectAttempt?: number;
-  reconnectTotal?: number;
-}): { attempt: number; total: number } | null {
-  if (
-    args.reconnectAttempt !== undefined &&
-    args.reconnectTotal !== undefined
-  ) {
-    return {
-      attempt: args.reconnectAttempt,
-      total: args.reconnectTotal,
-    };
-  }
-
-  if (args.code !== "provider_reconnect") {
-    return null;
-  }
-
-  const match = args.message
-    .trim()
-    .match(/^Reconnecting\.\.\.\s+(\d+)\/(\d+)$/);
-  if (!match) {
-    return null;
-  }
-
-  const attempt = Number.parseInt(match[1] ?? "", 10);
-  const total = Number.parseInt(match[2] ?? "", 10);
-  if (
-    !Number.isFinite(attempt) ||
-    !Number.isFinite(total) ||
-    attempt <= 0 ||
-    total <= 0 ||
-    attempt > total
-  ) {
-    return null;
-  }
-
-  return { attempt, total };
-}
 
 const ownershipChangeOperationActionValues = [
   "assign",

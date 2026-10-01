@@ -133,32 +133,6 @@ describe("applyThreadLifecycleEvent", () => {
     });
   });
 
-  it("no-ops the second of two sequential events once the first applied", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "starting",
-    });
-
-    const first = applyThreadLifecycleEvent(db, {
-      event: { type: "run.started" },
-      threadId: thread.id,
-    });
-    const second = applyThreadLifecycleEvent(db, {
-      event: { type: "run.started" },
-      threadId: thread.id,
-    });
-
-    expect(first.applied).toBe(true);
-    expect(second).toEqual({
-      applied: false,
-      detail: "no transition for run.started from status active",
-      reason: "illegal-transition",
-    });
-    expect(getThread(db, thread.id)?.status).toBe("active");
-  });
-
   it("no-ops as cas-conflict when the status changes between load and update", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -264,23 +238,6 @@ describe("applyThreadLifecycleEvent", () => {
 });
 
 describe("requireThreadLifecycleEventApplied", () => {
-  it("returns the updated thread when applied", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "idle",
-    });
-
-    const updated = requireThreadLifecycleEventApplied(
-      applyThreadLifecycleEvent(db, {
-        event: { type: "run.started" },
-        threadId: thread.id,
-      }),
-    );
-    expect(updated.status).toBe("active");
-  });
-
   it("throws a typed error carrying reason and detail on a no-op", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {

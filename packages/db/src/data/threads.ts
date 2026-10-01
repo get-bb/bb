@@ -2035,12 +2035,12 @@ export function markThreadDeleted(
 
 export function markThreadStorageDeleted(
   db: ThreadWriteConnection,
-  args: { threadId: string; deletedAt?: number },
+  args: { threadId: string },
 ) {
   return (
     db
       .update(threads)
-      .set({ storageDeletedAt: args.deletedAt ?? Date.now() })
+      .set({ storageDeletedAt: Date.now() })
       .where(eq(threads.id, args.threadId))
       .returning()
       .get() ?? null

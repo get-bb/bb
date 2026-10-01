@@ -33,7 +33,7 @@ export async function reserveBudget(
   db: ConnectDb,
   key: BudgetKey,
   limitMicros: number,
-  reserveMicros: number = RESERVE_MICROS,
+  reserveMicros: number,
 ): Promise<boolean> {
   await db
     .insert(aiUsageDay)
@@ -61,7 +61,7 @@ export async function settleBudget(
   db: ConnectDb,
   key: BudgetKey,
   costMicros: number,
-  reserveMicros: number = RESERVE_MICROS,
+  reserveMicros: number,
 ): Promise<{ spentTodayMicros: number }> {
   const charged = Math.max(0, Math.round(costMicros));
   const settled = await db

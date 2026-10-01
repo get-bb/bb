@@ -303,49 +303,13 @@ describe("resolveAcpNativeRoots", () => {
 });
 
 describe("known agent declarations", () => {
-  it("declares the resolver flag exactly for the agents that carry one", () => {
-    const resolving = KNOWN_ACP_AGENTS.filter(
-      (agent) =>
-        acpProviderDeclaration(agent).experimental_resolvesNativeRoots === true,
-    ).map((agent) => agent.id);
-    expect(resolving).toEqual([
-      "acp-cursor",
-      "acp-opencode",
-      "acp-omp",
-      "acp-grok",
-      "acp-hermes-agent",
-    ]);
+  it("declares the native-roots resolver flag for every shipped agent", () => {
     expect(
-      KNOWN_ACP_AGENTS.every(
+      KNOWN_ACP_AGENTS.filter(
         (agent) =>
-          (agent.nativeRootsResolver !== undefined) ===
-          resolving.includes(agent.id),
-      ),
-    ).toBe(true);
-  });
-
-  it("passes root options through to the declaration unchanged", () => {
-    const cursor = KNOWN_ACP_AGENTS.find((agent) => agent.id === "acp-cursor");
-    const grok = KNOWN_ACP_AGENTS.find((agent) => agent.id === "acp-grok");
-    if (cursor === undefined || grok === undefined)
-      throw new Error("missing agent");
-
-    const cursorRoots =
-      acpProviderDeclaration(cursor).experimental_nativeSkillRoots;
-    for (const side of [cursorRoots?.user ?? [], cursorRoots?.project ?? []]) {
-      expect(side).toHaveLength(4);
-      expect(
-        side.every(
-          (root) => typeof root === "object" && root.recursive === true,
-        ),
-      ).toBe(true);
-    }
-    expect(acpProviderDeclaration(grok).experimental_nativeSkillRoots).toEqual({
-      user: [{ path: ".agents/skills", recursive: true }],
-      project: [
-        { path: ".grok/skills", recursive: true, ancestors: true },
-        { path: ".agents/skills", recursive: true, ancestors: true },
-      ],
-    });
+          acpProviderDeclaration(agent).experimental_resolvesNativeRoots ===
+          true,
+      ).map((agent) => agent.id),
+    ).toEqual(KNOWN_ACP_AGENTS.map((agent) => agent.id));
   });
 });

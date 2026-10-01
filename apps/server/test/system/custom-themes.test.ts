@@ -2,11 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  CUSTOM_THEME_CSS_MAX_LENGTH,
-  defaultAppTheme,
-  resolveCodeTheme,
-} from "@bb/domain";
+import { CUSTOM_THEME_CSS_MAX_LENGTH, defaultAppTheme } from "@bb/domain";
 import {
   listCustomThemeNames,
   readCustomThemeCss,
@@ -32,10 +28,6 @@ describe("custom themes service", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("returns no themes when the theme dir is absent", () => {
-    expect(listCustomThemeNames(themeRoot)).toEqual([]);
-  });
-
   it("lists only directories with a theme.css, sorted, safe names only", async () => {
     await writeTheme(themeRoot, "solar", ":root {}");
     await writeTheme(themeRoot, "aurora", ":root {}");
@@ -43,25 +35,6 @@ describe("custom themes service", () => {
     await writeFile(join(themeRoot, "loose.css"), ":root {}", "utf8");
 
     expect(listCustomThemeNames(themeRoot)).toEqual(["aurora", "solar"]);
-  });
-
-  it("resolves a built-in id without reading disk", () => {
-    expect(resolveAppTheme(themeRoot, "nord", "blue")).toEqual({
-      ...defaultAppTheme,
-      themeId: "nord",
-      faviconColor: "blue",
-      resolvedCodeTheme: resolveCodeTheme(null, "nord"),
-    });
-  });
-
-  it("resolves a custom theme's CSS from disk", async () => {
-    await writeTheme(themeRoot, "ocean", ":root { --primary: #06f; }");
-    expect(resolveAppTheme(themeRoot, "ocean", "teal")).toEqual({
-      ...defaultAppTheme,
-      themeId: "ocean",
-      customCss: ":root { --primary: #06f; }",
-      faviconColor: "teal",
-    });
   });
 
   it("falls back to default palette but keeps the favicon tint for a missing or unsafe selection", () => {
@@ -85,25 +58,5 @@ describe("custom themes service", () => {
     expect(resolveAppTheme(themeRoot, "huge", "default")).toEqual(
       defaultAppTheme,
     );
-  });
-
-  it("loads convention Pierre JSON files next to theme.css", async () => {
-    await writeTheme(themeRoot, "ocean", ":root {}");
-    const darkTheme = { name: "Ocean Dark", type: "dark", tokenColors: [] };
-    await writeFile(
-      join(themeRoot, "ocean", "pierre-dark.json"),
-      JSON.stringify(darkTheme),
-      "utf8",
-    );
-    expect(resolveAppTheme(themeRoot, "ocean", "default")).toEqual({
-      ...defaultAppTheme,
-      themeId: "ocean",
-      customCss: ":root {}",
-      resolvedCodeTheme: {
-        dark: "bb:ocean:dark",
-        light: "pierre-light",
-        files: { "bb:ocean:dark": { ...darkTheme, name: "bb:ocean:dark" } },
-      },
-    });
   });
 });

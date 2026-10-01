@@ -232,7 +232,7 @@ export async function completeProviderSelection(
     }
     machine = selection.machine;
   } else {
-    const prepared = await prepareMachineProviderSelection(deps, {
+    const prepared = await prepareMachineProviderSelection({
       machineProviderId: selection.machine.machineProviderId,
       inputs: selection.machine.inputs,
     });

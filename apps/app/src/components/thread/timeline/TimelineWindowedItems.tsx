@@ -53,11 +53,11 @@ export function TimelineWindowedItems({
   getScrollElement,
   itemKeys,
   measurements,
-  minItemCount = DEFAULT_WINDOWING_MIN_ITEM_COUNT,
   renderItem,
 }: TimelineWindowedItemsProps) {
   const configured =
-    itemKeys.length >= minItemCount && getScrollElement !== null;
+    itemKeys.length >= DEFAULT_WINDOWING_MIN_ITEM_COUNT &&
+    getScrollElement !== null;
   const [scrollRootStatus, setScrollRootStatus] = useState<
     "pending" | "usable" | "unusable"
   >("pending");

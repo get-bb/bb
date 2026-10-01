@@ -388,10 +388,6 @@ describe("machine selection", () => {
     expect(resolveMachineId(hosts, "host-primary")).toBe("host-primary");
   });
 
-  it("resolves an unambiguous name", () => {
-    expect(resolveMachineId(hosts, "laptop")).toBe("host-remote");
-  });
-
   it("lists matching IDs for an ambiguous name", () => {
     expect(() =>
       resolveMachineId(

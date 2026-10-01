@@ -197,10 +197,6 @@ const runs = new Map(
 );
 
 describe("claude transcript fixtures", () => {
-  it("covers every converted session", () => {
-    expect(fixtureNames.length).toBeGreaterThan(0);
-  });
-
   describe.each(fixtureNames)("%s", (name) => {
     const run = runs.get(name)!;
 

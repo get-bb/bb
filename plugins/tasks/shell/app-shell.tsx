@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { useProjects } from "./data.js";
 import {
@@ -55,7 +55,7 @@ function RouteOutlet({
     case "manage":
       return <ManagePanel />;
     case "task":
-      return <DetailView taskKey={route.taskKey} />;
+      return <TaskRouteView taskKey={route.taskKey} />;
     case "project":
       return route.view === "board" && boardUsable ? (
         <BoardView projectId={route.projectId} />
@@ -63,6 +63,28 @@ function RouteOutlet({
         <ListView projectId={route.projectId} />
       );
   }
+}
+
+function TaskRouteView({ taskKey }: { taskKey: string }) {
+  const navigation = useTasksNavigation();
+  const onCanonicalKey = useCallback(
+    (canonicalKey: string) => {
+      if (canonicalKey.toUpperCase() !== taskKey.toUpperCase()) {
+        navigation.go(
+          { kind: "task", taskKey: canonicalKey },
+          { replace: true },
+        );
+      }
+    },
+    [navigation, taskKey],
+  );
+  return (
+    <DetailView
+      key={taskKey}
+      taskKey={taskKey}
+      onCanonicalKey={onCanonicalKey}
+    />
+  );
 }
 
 function resolveRoute(route: TasksRoute): ResolvedTasksRoute {

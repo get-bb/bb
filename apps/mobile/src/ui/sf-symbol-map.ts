@@ -31,7 +31,6 @@ export const SF_SYMBOL_MAP = {
   CircleCheckFilled: "checkmark.circle.fill",
   CircleX: "xmark.circle",
   Cloud: "cloud",
-  Eye: "eye",
   Globe: "globe",
   GridView: "square.grid.2x2",
   Info: "info.circle",
@@ -44,7 +43,6 @@ export const SF_SYMBOL_MAP = {
   Settings: "gearshape",
   Smartphone: "iphone",
   Trash2: "trash",
-  Zap: "bolt",
 } as const satisfies Partial<Record<IconName, SFSymbol>>;
 
 const SYMBOL_BY_NAME: Partial<Record<IconName, SFSymbol>> = SF_SYMBOL_MAP;

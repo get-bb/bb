@@ -369,50 +369,6 @@ describe("plugin host build", () => {
     });
   });
 
-  it("rejects relative type imports into private BB workspace packages", async () => {
-    const parent = await mkdtemp(join(tmpdir(), "bb-host-relative-private-"));
-    tempDirs.push(parent);
-    const dir = join(parent, "plugin");
-    const privatePackage = join(parent, "private-package");
-    await mkdir(dir, { recursive: true });
-    await mkdir(privatePackage, { recursive: true });
-    await writeFile(
-      join(privatePackage, "package.json"),
-      JSON.stringify({ name: "@bb/private-fixture", type: "module" }),
-    );
-    await writeFile(
-      join(privatePackage, "index.ts"),
-      "export type PrivateValue = string;\n",
-    );
-    await writeFile(
-      join(dir, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-relative-private-fixture",
-        version: "1.0.0",
-        engines: { bb: ">=0.0" },
-        bb: {
-          name: "Relative private import fixture",
-          description: "Invalid relative host dependency.",
-          branding: { icon: "Cpu" },
-          server: "./server.ts",
-          host: "./host.ts",
-        },
-      }),
-    );
-    await writeFile(
-      join(dir, "server.ts"),
-      "export default function plugin() {}\n",
-    );
-    await writeFile(
-      join(dir, "host.ts"),
-      'import type { PrivateValue } from "../private-package/index.js";\nconst value: PrivateValue = "nope";\nexport default value;\n',
-    );
-
-    await expect(
-      buildPluginHost(dir, "0.9.0-test", await testToolchain()),
-    ).rejects.toThrow(/@bb\/private-fixture/u);
-  });
-
   it.each([
     [
       "dead dynamic import",

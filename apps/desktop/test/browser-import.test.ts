@@ -1228,6 +1228,7 @@ describe("browser cookie readers", () => {
 
   it("skips expired cookies so they cannot overwrite live sessions", async () => {
     const set = vi.fn(async () => undefined);
+    const nowSeconds = Math.floor(Date.now() / 1000);
     const outcome = await writeCookies(
       { cookies: { set, flushStore: vi.fn(async () => undefined) } },
       {
@@ -1240,7 +1241,7 @@ describe("browser cookie readers", () => {
             path: "/",
             secure: true,
             httpOnly: false,
-            expirationDate: 1_000,
+            expirationDate: nowSeconds - 60,
             sameSite: "lax",
           },
           {
@@ -1251,15 +1252,13 @@ describe("browser cookie readers", () => {
             path: "/",
             secure: true,
             httpOnly: false,
-            expirationDate: 3_000,
+            expirationDate: nowSeconds + 60,
             sameSite: "lax",
           },
         ],
         undecryptable: 0,
         undecryptableHosts: [],
       },
-      undefined,
-      2_000_000,
     );
     expect(outcome).toEqual({
       ok: true,

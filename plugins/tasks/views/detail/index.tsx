@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface DetailViewProps {
   taskKey: string;
+  onCanonicalKey?: (taskKey: string) => void;
 }
 
 const DESCRIPTION_SAVE_DELAY_MS = 800;
@@ -233,6 +234,7 @@ function TaskDetail({ task }: { task: Task }) {
         : null,
     ["tasks:changed"],
     [task.parentTaskId],
+    { relevantTaskIds: task.parentTaskId ? [task.parentTaskId] : [] },
   );
   const subtasks = useTasksQuery(
     async (query) => listAllTasks(query, { parentTaskId: task.id }),
@@ -250,12 +252,14 @@ function TaskDetail({ task }: { task: Task }) {
       (await query.call("listAttachments", { taskId: task.id })).attachments,
     ["tasks:changed"],
     [task.id],
+    { relevantTaskIds: [task.id] },
   );
   const threads = useTasksQuery(
     async (query) =>
       (await query.call("listTaskThreads", { taskId: task.id })).taskThreads,
     ["threads:changed"],
     [task.id],
+    { relevantTaskIds: [task.id] },
   );
   const presets = useTasksQuery(
     async (query) => (await query.call("listPresets")).presets,
@@ -265,6 +269,7 @@ function TaskDetail({ task }: { task: Task }) {
     async (query) => query.call("listTaskPullRequests", { taskId: task.id }),
     ["threads:changed"],
     [task.id],
+    { relevantTaskIds: [task.id] },
   );
   const refreshPullRequests = pullRequests.refresh;
   const hasActivePullRequest = (pullRequests.data?.pullRequests ?? []).some(
@@ -277,10 +282,9 @@ function TaskDetail({ task }: { task: Task }) {
   }, [refreshPullRequests]);
   useEffect(() => {
     if (!hasActivePullRequest) return;
-    const timer = window.setInterval(
-      refreshPullRequests,
-      ACTIVE_PULL_REQUEST_REFRESH_MS,
-    );
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") refreshPullRequests();
+    }, ACTIVE_PULL_REQUEST_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [hasActivePullRequest, refreshPullRequests]);
 
@@ -293,6 +297,26 @@ function TaskDetail({ task }: { task: Task }) {
         ...input,
       });
       if (!result.ok) push(result.error.message);
+    } catch (error) {
+      push(errorMessage(error));
+    }
+  };
+
+  const moveToProject = async (projectId: string) => {
+    saverRef.current?.flush(task.id);
+    try {
+      const result = await rpc.call("moveTaskToProject", {
+        taskId: task.id,
+        projectId,
+      });
+      if (!result.ok) {
+        push(result.error.message);
+        return;
+      }
+      navigation.go(
+        { kind: "task", taskKey: result.task.key },
+        { replace: true },
+      );
     } catch (error) {
       push(errorMessage(error));
     }
@@ -392,9 +416,12 @@ function TaskDetail({ task }: { task: Task }) {
 
           <InlineProperties
             task={task}
+            project={project}
+            projects={projects.data}
             labels={labels.data}
             presets={presets.data}
             onUpdate={(update) => void updateTask(update)}
+            onMoveToProject={(projectId) => void moveToProject(projectId)}
             onError={(message) => push(message)}
             className="mb-4 @[45rem]:hidden"
           />
@@ -490,10 +517,12 @@ function TaskDetail({ task }: { task: Task }) {
         <PropertiesRail
           task={task}
           project={project}
+          projects={projects.data}
           labels={labels.data}
           threads={threads.data ?? []}
           presets={presets.data}
           onUpdate={(update) => void updateTask(update)}
+          onMoveToProject={(projectId) => void moveToProject(projectId)}
           onError={(message) => push(message)}
           className="hidden @[45rem]:block"
         />
@@ -503,12 +532,16 @@ function TaskDetail({ task }: { task: Task }) {
   );
 }
 
-export function DetailView({ taskKey }: DetailViewProps) {
+export function DetailView({ taskKey, onCanonicalKey }: DetailViewProps) {
   const query = useTasksQuery(
     async (rpc) => (await rpc.call("getTaskByKey", { taskKey })).task,
     ["tasks:changed"],
     [taskKey],
   );
+  const canonicalKey = query.data?.key;
+  useEffect(() => {
+    if (canonicalKey) onCanonicalKey?.(canonicalKey);
+  }, [canonicalKey, onCanonicalKey]);
 
   if (query.data === undefined) {
     return query.error ? (

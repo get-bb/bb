@@ -255,20 +255,6 @@ describe("@bb/sdk", () => {
     ]);
   });
 
-  it("keeps realtime subscriptions distinct under subscribe", () => {
-    const queue = createFetchQueue([]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-
-    expect(typeof sdk.subscribe).toBe("function");
-    expect("on" in sdk).toBe(false);
-  });
-
   it("maps thread event filters and reverse pagination onto the public query", async () => {
     const queue = createFetchQueue([{ body: [] }]);
     const sdk = createBbSdk({
@@ -648,16 +634,10 @@ describe("@bb/sdk", () => {
         },
       }),
       new Response("remote text", {
-        headers: {
-          "content-type": "text/plain",
-          "x-bb-content-encoding": "utf8",
-        },
+        headers: { "content-type": "text/plain" },
       }),
       new Response(new Uint8Array([0, 1, 254, 255]), {
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-bb-content-encoding": "base64",
-        },
+        headers: { "content-type": "application/octet-stream" },
       }),
     ];
     const fetch: FetchImplementation = async (input, init) => {
@@ -711,9 +691,16 @@ describe("@bb/sdk", () => {
 
     expect(requests.map((request) => request.url)).toEqual([
       "http://bb.test/api/v1/projects/proj_remote/files?hostId=host_remote",
-      "http://bb.test/api/v1/projects/proj_remote/files/content?environmentId=env_remote&path=remote.txt",
-      "http://bb.test/api/v1/projects/proj_remote/files/content?hostId=host_remote&path=image.bin",
+      "http://bb.test/api/v1/environments/env_remote/files/remote.txt",
+      "http://bb.test/api/v1/projects/proj_remote/hosts/host_remote/files/image.bin",
     ]);
+
+    for (const path of ["../../hosts", "docs/./a.md", "/etc/hosts", "a\\b"]) {
+      await expect(
+        sdk.projects.fileContent({ projectId: "proj_remote", path }),
+      ).rejects.toThrow(`Invalid file path: ${path}`);
+    }
+    expect(requests).toHaveLength(3);
   });
 
   it("routes provider list and model discovery through portable host selectors", async () => {
@@ -1829,6 +1816,7 @@ describe("@bb/sdk", () => {
               official: false,
               author: { name: "Acme", url: null },
               installed: true,
+              conflictingInstallSource: null,
               compatible: true,
               incompatibleReason: null,
             },

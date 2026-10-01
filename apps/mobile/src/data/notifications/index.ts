@@ -7,6 +7,7 @@ export {
 export {
   describePushStatus,
   isPushRegistrationAllowed,
+  shouldOfferPushPrompt,
   type PushNotificationsModule,
   type PushPermissionState,
   type PushSyncOutcome,

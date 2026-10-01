@@ -24,6 +24,7 @@ import {
 } from "./ThreadActionsProvider";
 
 const mocks = vi.hoisted(() => ({
+  confirmThreadArchive: true as boolean | undefined,
   closePanesForThreads: vi.fn(),
   mutation: vi.fn(),
   navigate: vi.fn(),
@@ -101,6 +102,19 @@ vi.mock("@/lib/sdk", () => ({
   },
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data:
+      mocks.confirmThreadArchive === undefined
+        ? undefined
+        : {
+            generalSettings: {
+              confirmThreadArchive: mocks.confirmThreadArchive,
+            },
+          },
+  }),
+}));
+
 vi.mock("@/hooks/useRouteState", () => ({
   useRouteState: () => ({ threadId: mocks.viewedThreadId }),
 }));
@@ -138,6 +152,7 @@ function renderProvider(children: ReactNode) {
 let queryClient: QueryClient;
 
 beforeEach(() => {
+  mocks.confirmThreadArchive = true;
   mocks.pathname = "/";
   mocks.viewedThreadId = undefined;
   queryClient = new QueryClient({
@@ -167,6 +182,39 @@ afterEach(() => {
 });
 
 describe("ThreadActionsProvider archive confirmation", () => {
+  it("archives parent and children immediately when confirmation is disabled", async () => {
+    mocks.confirmThreadArchive = false;
+    renderProvider(<ArchiveButton thread={makeThread()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    await vi.waitFor(() => expect(appToast.success).toHaveBeenCalledTimes(1));
+    expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
+      threadId: "thr_parent",
+    });
+    expect(sdk.threads.childSummary).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    const undo = vi.mocked(appToast.success).mock.calls[0]?.[1]?.cancel;
+    if (undo === undefined) throw new Error("Expected archive Undo");
+    render(<button onClick={undo.onClick}>Undo archive</button>);
+    fireEvent.click(screen.getByRole("button", { name: "Undo archive" }));
+    await vi.waitFor(() =>
+      expect(sdk.threads.unarchive).toHaveBeenCalledTimes(2),
+    );
+    expect(sdk.threads.unarchive).toHaveBeenNthCalledWith(1, {
+      threadId: "thr_parent",
+    });
+    expect(sdk.threads.unarchive).toHaveBeenNthCalledWith(2, {
+      threadId: "thr_child",
+    });
+  });
+
+  it("keeps confirmation enabled before settings are available", async () => {
+    mocks.confirmThreadArchive = undefined;
+    renderProvider(<ArchiveButton thread={makeThread()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    await screen.findByRole("button", { name: "Cancel" });
+    expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+  });
+
   it.each(["archive", "confirmation", "error", "archive-error"] as const)(
     "optimistically removes the sidebar row during the child check and handles %s",
     async (outcome) => {
@@ -288,7 +336,10 @@ describe("ThreadActionsProvider archive confirmation", () => {
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[0]!);
     await vi.waitFor(() =>
-      expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([second, untouched]),
+      expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+        second,
+        untouched,
+      ]),
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[1]!);
     await vi.waitFor(() =>
@@ -298,27 +349,11 @@ describe("ThreadActionsProvider archive confirmation", () => {
     );
     resolveSummary({ nonDeletedChildCount: 1, unarchivedDescendantCount: 1 });
     await screen.findByRole("button", { name: "Cancel" });
-    expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([first, untouched]);
+    expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+      first,
+      untouched,
+    ]);
     expect(queryClient.getQueryData(listKey)).toEqual([first, untouched]);
-  });
-
-  it("archives a thread without children without opening a dialog", async () => {
-    vi.mocked(sdk.threads.childSummary).mockResolvedValue({
-      nonDeletedChildCount: 0,
-      unarchivedDescendantCount: 0,
-    });
-    renderProvider(<ArchiveButton thread={makeThread()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
-
-    await vi.waitFor(() => {
-      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
-        threadId: "thr_parent",
-      });
-    });
-    expect(
-      screen.queryByRole("heading", { name: /Archive \d+ threads\?/ }),
-    ).toBeNull();
   });
 
   it("archives without confirmation when its only child is already archived", async () => {

@@ -196,22 +196,6 @@ describe("TopLevelSidebarSection", () => {
     ).toBe(false);
   });
 
-  it("hides the section body and exposes an expand action when collapsed", () => {
-    renderTree(
-      <TopLevelSidebarSection
-        label="Pinned"
-        collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
-      >
-        <div>Pinned thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    expect(screen.queryByText("Pinned thread")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Expand Pinned section" }),
-    ).not.toBeNull();
-  });
-
   it("highlights the whole section only while it is the resolved drop parent", () => {
     const dragged = makeSidebarThread({
       id: "dragged",

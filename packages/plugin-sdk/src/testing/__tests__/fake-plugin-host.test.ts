@@ -4,14 +4,9 @@ import {
   PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type BbPluginApi,
   type PluginAgentConfigurationContext,
-  type PluginRowPresentation,
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
-import {
-  parsePluginRowPresentation,
-  PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
-  RESERVED_BB_CLI_COMMANDS,
-} from "../../internal/host-policy.js";
+import { RESERVED_BB_CLI_COMMANDS } from "../../internal/host-policy.js";
 import {
   createFakePluginHost,
   makeHostResponse,
@@ -1296,44 +1291,6 @@ describe("agent tools", () => {
     ).not.toThrow();
   });
 
-  it("rejects a presentation with the production host's exact messages", () => {
-    const { bb } = createFakePluginHost();
-    const register = (presentation: PluginRowPresentation) =>
-      bb.agents.registerTool({
-        name: "lookup_doc",
-        description: "Look up a doc",
-        presentation,
-        parameters: { type: "object" },
-        execute: () => "ok",
-      });
-    expect(() =>
-      register({
-        label: {
-          pending: "p".repeat(PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS + 1),
-          completed: "Looked up a doc",
-        },
-      }),
-    ).toThrow(
-      `tool "lookup_doc" presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
-    );
-    expect(() =>
-      register({ label: { pending: "Looking up a doc", completed: "  " } }),
-    ).toThrow(
-      `tool "lookup_doc" presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
-    );
-    expect(() => register({ icon: { glyph: "" } })).toThrow(
-      'tool "lookup_doc" presentation.icon must be { glyph: string }',
-    );
-    expect(() =>
-      // @ts-expect-error — a plugin compiled against its own types can still
-      register({ icon: "Book" }),
-    ).toThrow('tool "lookup_doc" presentation.icon must be { glyph: string }');
-    expect(() =>
-      // @ts-expect-error — an array is not a presentation object.
-      register([]),
-    ).toThrow('tool "lookup_doc" presentation must be an object');
-  });
-
   it("records a valid presentation normalized the way the production host stores it", () => {
     const { bb, harness } = createFakePluginHost();
     const declared = {
@@ -1349,9 +1306,6 @@ describe("agent tools", () => {
       execute: () => "ok",
     });
     const recorded = harness.registrations.agentTools[0]?.presentation;
-    expect(recorded).toEqual(
-      parsePluginRowPresentation('tool "lookup_doc"', declared),
-    );
     expect(recorded).toEqual({
       label: { pending: "Looking up a doc", completed: "Looked up a doc" },
       icon: { glyph: "Book" },

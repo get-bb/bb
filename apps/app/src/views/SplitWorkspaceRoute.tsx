@@ -1,4 +1,5 @@
 import { idleSplitDownload } from "@/lib/split-prefetch";
+import { pluginDetailKeyFromRoute } from "@/components/plugin/plugin-detail-key";
 import { ModelReasoningMenu } from "@/components/pickers/ModelReasoningMenuSplit";
 import { useSplitPreload } from "@/lib/define-split";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
@@ -93,7 +94,14 @@ export default function SplitWorkspaceRoute() {
     routeContent.kind === "plugin-detail" &&
     !holdsPluginDetailPane(layout, routeContent.pluginId)
   ) {
-    return <PluginsView pluginId={routeContent.pluginId} />;
+    return (
+      <PluginsView
+        detailKey={pluginDetailKeyFromRoute(
+          routeContent.pluginId,
+          location.search,
+        )}
+      />
+    );
   }
   return <SplitThreadArea routeContent={routeContent} />;
 }

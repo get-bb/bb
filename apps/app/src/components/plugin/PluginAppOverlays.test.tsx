@@ -59,6 +59,10 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({ data: [] }),
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({ data: undefined }),
+}));
+
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
     data: {

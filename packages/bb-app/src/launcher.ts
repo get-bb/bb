@@ -48,7 +48,6 @@ import {
   bbAppManagedEnvFileSchema,
   formatBbAppConfigPath,
   formatBbAppEnvPath,
-  formatCustomAcpAgentProviderId,
   parseBbAppManagedConfig,
   REMOVED_AI_SERVICE_CONFIG_KEYS,
   REMOVED_AI_SERVICE_CONFIG_MESSAGE,
@@ -229,11 +228,7 @@ type ManagedConfigValues = BbAppManagedConfigValues;
 type ManagedEnvConfig = BbAppManagedEnvConfig;
 type ManagedEnvFile = BbAppManagedEnvFile;
 type ManagedConfig = BbAppManagedConfig;
-type ManagedConfigForWrite = Omit<
-  ManagedConfig,
-  "customAcpAgents" | "customModels"
-> & {
-  customAcpAgents?: unknown[];
+type ManagedConfigForWrite = Omit<ManagedConfig, "customModels"> & {
   customModels?: unknown[];
 };
 
@@ -1107,9 +1102,6 @@ function readManagedConfigForWrite(
         return parsedConfig;
       }
       const configForWrite: ManagedConfigForWrite = { ...parsedConfig };
-      if (Array.isArray(parsedJson.customAcpAgents)) {
-        configForWrite.customAcpAgents = parsedJson.customAcpAgents;
-      }
       if (Array.isArray(parsedJson.customModels)) {
         configForWrite.customModels = parsedJson.customModels;
       }
@@ -1184,9 +1176,6 @@ function mergeManagedConfig(
   if (patchConfig.customModels !== undefined) {
     nextConfig.customModels = patchConfig.customModels;
   }
-  if (patchConfig.customAcpAgents !== undefined) {
-    nextConfig.customAcpAgents = patchConfig.customAcpAgents;
-  }
 
   return nextConfig;
 }
@@ -1198,8 +1187,6 @@ function pruneManagedConfig(
   if (nextConfig.config && Object.keys(nextConfig.config).length === 0)
     delete nextConfig.config;
   if (nextConfig.customModels?.length === 0) delete nextConfig.customModels;
-  if (nextConfig.customAcpAgents?.length === 0)
-    delete nextConfig.customAcpAgents;
   return nextConfig;
 }
 
@@ -1663,11 +1650,6 @@ function formatManagedConfig(config: ManagedConfig): string {
   for (const [index, customModel] of (config.customModels ?? []).entries()) {
     lines.push(
       `customModels[${index}]=${customModel.providerId}:${customModel.model}`,
-    );
-  }
-  for (const [index, customAgent] of (config.customAcpAgents ?? []).entries()) {
-    lines.push(
-      `customAcpAgents[${index}]=${formatCustomAcpAgentProviderId(customAgent.id)}:${customAgent.command}`,
     );
   }
   return lines.length > 0 ? `${lines.join("\n")}\n` : "No bb-app config set.\n";

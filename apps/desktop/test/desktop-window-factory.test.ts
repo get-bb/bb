@@ -199,45 +199,55 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   }
 }
 
-describe("desktop window factory", () => {
-  it("creates distinct windows against the existing runtime URL", async () => {
-    const tempDir = await createTempDir();
-    const createdWindows: FakeDesktopWindow[] = [];
-    const generatedStateKeys: WindowStateKey[] = ["window-second"];
-    let runtimeSupervisorInvocations = 0;
-    const browserWindowCreator: DesktopBrowserWindowCreator = {
-      create(options) {
-        const browserWindow = new FakeDesktopWindow({ options });
-        createdWindows.push(browserWindow);
-        return browserWindow;
-      },
-    };
-    const factory = createDesktopWindowFactory({
-      browserWindowCreator,
-      createWindowStateKey() {
-        return generatedStateKeys.shift() ?? "window-fallback";
-      },
-      displayWorkAreas: [
-        {
-          height: 900,
-          width: 1440,
-          x: 0,
-          y: 0,
-        },
-      ],
-      icon: undefined,
-      isMac: true,
-      isLinuxTransparent: false,
-      isLinuxFrameless: false,
-      isQuitting() {
-        return false;
-      },
-      openExternalUrl() {},
-      preloadPath: "/tmp/preload.cjs",
-      userDataPath: tempDir.path,
-    });
+interface FactoryHarness {
+  createdWindows: FakeDesktopWindow[];
+  factory: ReturnType<typeof createDesktopWindowFactory>;
+  userDataPath: string;
+}
 
-    runtimeSupervisorInvocations += 1;
+async function createFactoryHarness(
+  overrides: Partial<Parameters<typeof createDesktopWindowFactory>[0]> = {},
+): Promise<FactoryHarness> {
+  const tempDir = await createTempDir();
+  const createdWindows: FakeDesktopWindow[] = [];
+  const browserWindowCreator: DesktopBrowserWindowCreator = {
+    create(options) {
+      const browserWindow = new FakeDesktopWindow({ options });
+      createdWindows.push(browserWindow);
+      return browserWindow;
+    },
+  };
+  const factory = createDesktopWindowFactory({
+    browserWindowCreator,
+    createWindowStateKey() {
+      return "window-fallback";
+    },
+    displayWorkAreas: [{ height: 900, width: 1440, x: 0, y: 0 }],
+    icon: undefined,
+    isMac: true,
+    isLinuxTransparent: false,
+    isLinuxFrameless: false,
+    isQuitting() {
+      return false;
+    },
+    openExternalUrl() {},
+    preloadPath: "/tmp/preload.cjs",
+    userDataPath: tempDir.path,
+    ...overrides,
+  });
+  return { createdWindows, factory, userDataPath: tempDir.path };
+}
+
+describe("desktop window factory", () => {
+  it("creates distinct windows that load the same URL", async () => {
+    const generatedStateKeys: WindowStateKey[] = ["window-second"];
+    const { createdWindows, factory, userDataPath } =
+      await createFactoryHarness({
+        createWindowStateKey() {
+          return generatedStateKeys.shift() ?? "window-fallback";
+        },
+      });
+
     const firstWindow = await factory.createWindow({
       initialUrl: "http://127.0.0.1:38886",
       stateKey: null,
@@ -265,11 +275,10 @@ describe("desktop window factory", () => {
     expect(createdWindows[1]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(createdWindows[0]?.webContents.zoomFactors).toEqual([1]);
     expect(createdWindows[1]?.webContents.zoomFactors).toEqual([1]);
-    expect(runtimeSupervisorInvocations).toBe(1);
 
     await factory.persistOpenWindows();
     await expect(
-      readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
+      readPersistedWindowStateEntries({ userDataPath }),
     ).resolves.toEqual([
       {
         bounds: {
@@ -297,40 +306,13 @@ describe("desktop window factory", () => {
   });
 
   it("allocates distinct state keys for concurrent implicit windows", async () => {
-    const tempDir = await createTempDir();
-    const createdWindows: FakeDesktopWindow[] = [];
     const generatedStateKeys: WindowStateKey[] = ["window-concurrent"];
-    const browserWindowCreator: DesktopBrowserWindowCreator = {
-      create(options) {
-        const browserWindow = new FakeDesktopWindow({ options });
-        createdWindows.push(browserWindow);
-        return browserWindow;
-      },
-    };
-    const factory = createDesktopWindowFactory({
-      browserWindowCreator,
-      createWindowStateKey() {
-        return generatedStateKeys.shift() ?? "window-fallback";
-      },
-      displayWorkAreas: [
-        {
-          height: 900,
-          width: 1440,
-          x: 0,
-          y: 0,
+    const { createdWindows, factory, userDataPath } =
+      await createFactoryHarness({
+        createWindowStateKey() {
+          return generatedStateKeys.shift() ?? "window-fallback";
         },
-      ],
-      icon: undefined,
-      isMac: true,
-      isLinuxTransparent: false,
-      isLinuxFrameless: false,
-      isQuitting() {
-        return false;
-      },
-      openExternalUrl() {},
-      preloadPath: "/tmp/preload.cjs",
-      userDataPath: tempDir.path,
-    });
+      });
 
     const [firstWindow, secondWindow] = await Promise.all([
       factory.createWindow({
@@ -348,7 +330,7 @@ describe("desktop window factory", () => {
 
     await factory.persistOpenWindows();
     const persistedEntries = await readPersistedWindowStateEntries({
-      userDataPath: tempDir.path,
+      userDataPath,
     });
     const stateKeys = persistedEntries.map((entry) => entry.stateKey);
 
@@ -357,41 +339,11 @@ describe("desktop window factory", () => {
   });
 
   it("opens only policy-approved blank-target links externally and denies every popup", async () => {
-    const tempDir = await createTempDir();
-    const createdWindows: FakeDesktopWindow[] = [];
     const openedExternalUrls: string[] = [];
-    const browserWindowCreator: DesktopBrowserWindowCreator = {
-      create(options) {
-        const browserWindow = new FakeDesktopWindow({ options });
-        createdWindows.push(browserWindow);
-        return browserWindow;
-      },
-    };
-    const factory = createDesktopWindowFactory({
-      browserWindowCreator,
-      createWindowStateKey() {
-        return "window-link-test";
-      },
-      displayWorkAreas: [
-        {
-          height: 900,
-          width: 1440,
-          x: 0,
-          y: 0,
-        },
-      ],
-      icon: undefined,
-      isMac: true,
-      isLinuxTransparent: false,
-      isLinuxFrameless: false,
-      isQuitting() {
-        return false;
-      },
+    const { createdWindows, factory } = await createFactoryHarness({
       openExternalUrl({ url }) {
         openedExternalUrls.push(url);
       },
-      preloadPath: "/tmp/preload.cjs",
-      userDataPath: tempDir.path,
     });
 
     await factory.createWindow({
@@ -450,31 +402,10 @@ describe("desktop window factory", () => {
   ])(
     "$name for Linux windows",
     async ({ isLinuxFrameless, isLinuxTransparent, present, absent }) => {
-      const tempDir = await createTempDir();
-      const createdWindows: FakeDesktopWindow[] = [];
-      const browserWindowCreator: DesktopBrowserWindowCreator = {
-        create(options) {
-          const browserWindow = new FakeDesktopWindow({ options });
-          createdWindows.push(browserWindow);
-          return browserWindow;
-        },
-      };
-      const factory = createDesktopWindowFactory({
-        browserWindowCreator,
-        createWindowStateKey() {
-          return "linux-window";
-        },
-        displayWorkAreas: [{ height: 900, width: 1440, x: 0, y: 0 }],
-        icon: undefined,
+      const { createdWindows, factory } = await createFactoryHarness({
         isMac: false,
         isLinuxTransparent,
         isLinuxFrameless,
-        isQuitting() {
-          return false;
-        },
-        openExternalUrl() {},
-        preloadPath: "/tmp/preload.cjs",
-        userDataPath: tempDir.path,
       });
 
       await factory.createWindow({ initialUrl: null, stateKey: null });

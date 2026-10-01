@@ -227,6 +227,13 @@ describe("appendQuoteToDraftText", () => {
     expect(next.text).toBe("existing reply\n> quoted\n");
   });
 
+  it("stacks a second quote below the first, separated by a blank line", () => {
+    const first = appendQuoteToDraftText(emptyPromptDraftState(), "first");
+    expect(appendQuoteToDraftText(first, "second").text).toBe(
+      "> first\n\n> second\n",
+    );
+  });
+
   it("ignores an empty or whitespace-only quote", () => {
     const base = emptyPromptDraftState();
     expect(appendQuoteToDraftText(base, "")).toBe(base);

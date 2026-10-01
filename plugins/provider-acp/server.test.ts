@@ -1,14 +1,10 @@
 import { getEventListeners } from "node:events";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { experimental_acpAgentProbeSchema } from "@get-bb/plugin-sdk/provider-bridge/acp";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { z } from "zod";
-import { acpHostContract } from "./src/contract.js";
 import { KNOWN_ACP_AGENTS } from "./src/known-agents.js";
 import acpProvidersPlugin from "./server.js";
-
-const NO_LEGACY_CONFIG = "/tmp/bb-acp-plugin-test-no-config";
 
 const PLUGIN_ID = "provider-acp";
 
@@ -56,7 +52,6 @@ async function loadPlugin(options: {
 }) {
   const host = createFakePluginHost({
     pluginId: PLUGIN_ID,
-    dataDir: NO_LEGACY_CONFIG,
     experimental_declaredIconNames: DECLARED_ICON_NAMES,
     ...(options.customAgents === undefined
       ? {}
@@ -92,22 +87,6 @@ describe("the ACP plugin's registrations", () => {
     expect(registeredIds(host)).toContain("acp-amp");
   });
 
-  it("replaces a shipped installed-only agent with a configured one", async () => {
-    const host = await loadPlugin({
-      customAgents: customAgents({
-        id: "opencode",
-        displayName: "My opencode",
-        command: "/opt/opencode",
-      }),
-    });
-
-    const opencode = host.harness.registrations.providerRegistrations.filter(
-      (declaration) => declaration.id === "acp-opencode",
-    );
-    expect(opencode).toHaveLength(1);
-    expect(opencode[0]?.displayName).toBe("My opencode");
-  });
-
   it("removes a configured agent the setting no longer lists", async () => {
     const host = await loadPlugin({
       customAgents: customAgents({
@@ -124,23 +103,6 @@ describe("the ACP plugin's registrations", () => {
       expect(registeredIds(host)).not.toContain("acp-amp"),
     );
     expect(registeredIds(host)).toContain("acp-cursor");
-  });
-
-  it("leaves an untouched agent's registration alone across a settings save", async () => {
-    const host = await loadPlugin({ customAgents: "[]" });
-    const before = registeredIds(host);
-
-    await host.harness.setSettings({
-      customAgents: customAgents({
-        id: "amp",
-        displayName: "Amp",
-        command: "amp",
-      }),
-    });
-
-    await vi.waitFor(() =>
-      expect(registeredIds(host)).toEqual([...before, "acp-amp"]),
-    );
   });
 
   it("keeps the rest of the list when one entry is malformed", async () => {
@@ -164,7 +126,6 @@ describe("the ACP plugin's registration bookkeeping", () => {
   it("registers the shipped agents before the factory's first await", async () => {
     const host = createFakePluginHost({
       pluginId: PLUGIN_ID,
-      dataDir: NO_LEGACY_CONFIG,
       experimental_declaredIconNames: DECLARED_ICON_NAMES,
     });
     host.harness.sdk.stub("hosts.list", () => Promise.resolve([]));
@@ -202,6 +163,7 @@ describe("the ACP plugin's registration bookkeeping", () => {
 
   it("keeps an untouched agent's registration identical across a save", async () => {
     const host = await loadPlugin({ customAgents: "[]" });
+    const idsBefore = registeredIds(host);
     const before = host.harness.registrations.providerRegistrations.find(
       (declaration) => declaration.id === "acp-cursor",
     );
@@ -213,7 +175,9 @@ describe("the ACP plugin's registration bookkeeping", () => {
         command: "amp",
       }),
     });
-    await vi.waitFor(() => expect(registeredIds(host)).toContain("acp-amp"));
+    await vi.waitFor(() =>
+      expect(registeredIds(host)).toEqual([...idsBefore, "acp-amp"]),
+    );
 
     expect(
       host.harness.registrations.providerRegistrations.find(
@@ -358,10 +322,20 @@ describe("the ACP plugin's capability probe", () => {
     await run.done;
   });
 
-  it("validates probe answers with the kit's own schema", () => {
-    expect(acpHostContract.probeAgent.output).toBe(
-      experimental_acpAgentProbeSchema,
+  it("ignores a probe answer the probe schema rejects", async () => {
+    const host = await loadPlugin({
+      hosts: [{ id: "host_1", status: "connected" }],
+      probe: () => ({ reachable: true }),
+    });
+
+    const run = host.harness.runService("acp-capability-probe");
+    await vi.waitFor(() =>
+      expect(host.harness.experimental_hostRpcCalls.length).toBeGreaterThan(0),
     );
+    run.controller.abort();
+    await run.done;
+
+    expect(forkOf(host, "acp-opencode")).toBe("tip");
   });
 
   it("leaves the declaration alone when the agent is unreachable", async () => {

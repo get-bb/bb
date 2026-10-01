@@ -548,7 +548,7 @@ export function toCodexServiceTier(
   return tier === "default" ? null : tier;
 }
 
-export function toCodexReasoningEffort(
+function toCodexReasoningEffort(
   reasoningLevel: ReasoningLevel,
 ): CodexReasoningEffort {
   const codexEffort = mapBbReasoningLevelToCodex(reasoningLevel);

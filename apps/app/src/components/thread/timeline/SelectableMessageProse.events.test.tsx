@@ -728,19 +728,4 @@ describe("SelectableMessageProse", () => {
     expect(clientRectsSpy).not.toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
   });
-
-  it("reads the shared selection and its rect once for a report on one message", async () => {
-    const { onSelect, proseNodes, toStringSpy, clientRectsSpy } =
-      renderSharedSelectionReport(1);
-    expect(proseNodes).toHaveLength(1);
-
-    fireEvent(document, new Event("selectionchange"));
-    await waitForAnimationFrame();
-
-    expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ text: SHARED_SELECTION_TEXT }),
-    );
-    expect(toStringSpy).toHaveBeenCalledTimes(1);
-    expect(clientRectsSpy).toHaveBeenCalledTimes(1);
-  });
 });

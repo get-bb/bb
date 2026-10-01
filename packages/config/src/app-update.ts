@@ -60,7 +60,6 @@ export const appUpdatePendingSchema = z
 export type AppUpdatePending = z.infer<typeof appUpdatePendingSchema>;
 
 export const appUpdateOutcomeSchema = z.enum(["updated", "failed"]);
-export type AppUpdateOutcome = z.infer<typeof appUpdateOutcomeSchema>;
 
 export const appUpdateResultSchema = z
   .object({

@@ -105,7 +105,7 @@ import {
   getSettingsMachineRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
-import { getProviderIconInfo } from "@/lib/provider-icon";
+import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import {
   useSystemConfig,
   useSystemProviders,
@@ -161,8 +161,6 @@ export function UpdateActionButton({
   className,
   variant,
   loading = false,
-  disabled = false,
-  disabledReason,
   onClick,
 }: {
   label: string;
@@ -173,8 +171,6 @@ export function UpdateActionButton({
   className?: string;
   variant?: ButtonProps["variant"];
   loading?: boolean;
-  disabled?: boolean;
-  disabledReason?: ReactNode;
   onClick?: () => void;
 }) {
   if (visibleLabel === undefined) {
@@ -184,8 +180,6 @@ export function UpdateActionButton({
         tooltipLabel={tooltipLabel}
         icon={icon}
         loading={loading}
-        disabled={disabled}
-        disabledReason={disabledReason}
         className={cn(
           "size-7",
           variant === "default" &&
@@ -204,7 +198,6 @@ export function UpdateActionButton({
       size="sm"
       aria-label={label}
       aria-busy={loading}
-      disabled={disabled}
       className={cn(
         "h-7 gap-1.5 px-2.5 font-normal",
         isQuiet && "text-subtle-foreground hover:text-foreground",
@@ -1211,11 +1204,6 @@ export function MachineUpdatesRows({
     const providerInfo = providerRoster?.find(
       (candidate) => candidate.id === providerId,
     );
-    const ProviderIcon = getProviderIconInfo(
-      "agent",
-      providerId,
-      providerInfo ?? null,
-    )?.icon;
     return (
       <ResourceRow
         key={provider}
@@ -1224,15 +1212,17 @@ export function MachineUpdatesRows({
         openLabel={`Open ${status.displayName} settings`}
         onOpen={() => onOpenProvider(providerId)}
         leading={
-          ProviderIcon === undefined ? null : (
-            <span
-              data-provider-icon={providerId}
-              aria-hidden
-              className="flex size-3.5 shrink-0 items-center justify-center"
-            >
-              <ProviderIcon className="size-3.5 text-muted-foreground" />
-            </span>
-          )
+          <span
+            data-provider-icon={providerId}
+            aria-hidden
+            className="flex size-3.5 shrink-0 items-center justify-center"
+          >
+            <ProviderIcon
+              providerKind="agent"
+              provider={providerInfo ?? { id: providerId }}
+              className="size-3.5 text-muted-foreground"
+            />
+          </span>
         }
         title={status.displayName}
         titleMeta={

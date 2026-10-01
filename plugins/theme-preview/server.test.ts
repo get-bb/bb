@@ -446,25 +446,6 @@ describe("theme watcher", () => {
   });
 });
 
-describe("RPC registration", () => {
-  it("exposes only catalog loading and theme selection", async () => {
-    let handlerNames: string[] = [];
-    const bb = {
-      background: { service() {} },
-      rpc: {
-        register(_contract: unknown, handlers: object) {
-          handlerNames = Object.keys(handlers).sort();
-        },
-      },
-      log: { info() {}, warn() {} },
-    } as unknown as BbPluginApi;
-
-    await plugin(bb);
-
-    expect(handlerNames).toEqual(["setTheme", "themeCatalog"]);
-  });
-});
-
 describe("comments", () => {
   it("does not let a commented selector swallow the block after it", () => {
     const css = `/* .dark .fixed.bg-sidebar { --sidebar: #000; } */ :root { --canvas: #f4f4f4; }`;

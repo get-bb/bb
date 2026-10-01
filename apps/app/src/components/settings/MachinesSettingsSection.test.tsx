@@ -552,22 +552,6 @@ describe("MachinesSettingsSection", () => {
     });
   });
 
-  it("keeps the row menu open without navigating when its trigger is clicked", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
-    stubSidebarBootstrapFetch();
-
-    renderSection();
-
-    await screen.findByText("dev-vm");
-    await openHostMenu("dev-vm");
-
-    expect(
-      await screen.findByRole("menuitem", { name: "Rename" }),
-    ).toBeDefined();
-    expect(screen.getByTestId("location").textContent).toBe("/");
-  });
-
   it("stays on the machines list when a row menu item is selected", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
@@ -575,8 +559,12 @@ describe("MachinesSettingsSection", () => {
 
     renderSection();
 
-    await screen.findByText("dev-vm");
-    await openHostMenu("dev-vm");
+    const trigger = await screen.findByRole("button", {
+      name: "dev-vm actions",
+    });
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("location").textContent).toBe("/");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
     expect(await screen.findByLabelText("Machine name")).toBeDefined();
@@ -804,9 +792,7 @@ describe("MachinesSettingsSection", () => {
     for (const name of ["MacBook Pro", "paused-vm"]) {
       await openHostMenu(name);
       await screen.findByRole("menuitem", { name: "Rename" });
-      expect(
-        screen.queryByRole("menuitem", { name: "Reconnect" }),
-      ).toBeNull();
+      expect(screen.queryByRole("menuitem", { name: "Reconnect" })).toBeNull();
       fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       await waitFor(() => {
         expect(screen.queryByRole("menu")).toBeNull();
@@ -862,18 +848,14 @@ describe("MachinesSettingsSection", () => {
 
     await screen.findByText("dev-vm");
     await openHostMenu("dev-vm");
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Reconnect" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Reconnect" }));
 
     await waitFor(() => {
-      expect(
-        vi.mocked(sdk.hosts.experimental_reconnect),
-      ).toHaveBeenCalledWith({ hostId: offlineHost.id });
+      expect(vi.mocked(sdk.hosts.experimental_reconnect)).toHaveBeenCalledWith({
+        hostId: offlineHost.id,
+      });
     });
-    expect(
-      await screen.findByText(/X-BB-Enrollment: bbde_test/),
-    ).toBeDefined();
+    expect(await screen.findByText(/X-BB-Enrollment: bbde_test/)).toBeDefined();
     expect(
       await screen.findByText("Waiting for the machine to reconnect…"),
     ).toBeDefined();

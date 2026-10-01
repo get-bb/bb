@@ -139,7 +139,7 @@ export function registerHostRoutes(
     return context.json(await submitMachine(deps, payload), 201);
   });
 
-  post(routes.createJoinCode, async (context, payload) => {
+  post(routes.createJoinCode, async (context) => {
     assertHostManagementAllowed(context);
     const issued = await issueHostEnrollKey(deps, {
       enrollSource: "public-multi-machine",

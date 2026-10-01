@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  describeServerUrl,
   loadRemoteServerPage,
   type LoadRemoteServerPageArgs,
 } from "../src/remote-server-load.js";
@@ -74,19 +73,29 @@ describe("loadRemoteServerPage", () => {
 
   it("keeps credentials and query tokens off the screen and out of the log", async () => {
     const harness = createHarness({
-      serverUrl: "https://user:hunter2@bb.example.com:8443/?token=s3cret",
+      serverUrl:
+        "https://user:hunter2@bb.example.com:8443/app?token=s3cret#frag",
     });
 
     await expect(loadRemoteServerPage(harness)).resolves.toBe(false);
 
-    const details = harness.shownErrors[0]?.details ?? "";
-    expect(details).toContain("https://bb.example.com:8443");
-    expect(details).not.toContain("hunter2");
-    expect(details).not.toContain("s3cret");
+    expect(harness.shownErrors[0]?.details).toBe(
+      "The bb server at https://bb.example.com:8443 did not answer. Check that the machine is awake and reachable.",
+    );
     const logged = harness.warnings[0] ?? "";
     expect(logged).toContain("https://bb.example.com:8443");
     expect(logged).not.toContain("hunter2");
     expect(logged).not.toContain("s3cret");
+  });
+
+  it("falls back to a generic label for an unparseable saved URL", async () => {
+    const harness = createHarness({ serverUrl: "not a url" });
+
+    await expect(loadRemoteServerPage(harness)).resolves.toBe(false);
+
+    expect(harness.shownErrors[0]?.details).toBe(
+      "The saved bb server did not answer. Check that the machine is awake and reachable.",
+    );
   });
 
   it("shows nothing for a load the user already superseded", async () => {
@@ -105,17 +114,5 @@ describe("loadRemoteServerPage", () => {
 
     expect(harness.shownErrors).toHaveLength(0);
     expect(harness.warnings).toHaveLength(0);
-  });
-});
-
-describe("describeServerUrl", () => {
-  it("names only the origin", () => {
-    expect(
-      describeServerUrl("http://user:pw@host.ts.net:38886/app?token=x#y"),
-    ).toBe("the bb server at http://host.ts.net:38886");
-  });
-
-  it("falls back to a generic label for an unparseable URL", () => {
-    expect(describeServerUrl("not a url")).toBe("the saved bb server");
   });
 });

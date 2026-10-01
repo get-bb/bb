@@ -6,6 +6,7 @@ import {
   SERVER_OFFLINE_AFTER_MS,
   checkLabelAvailability,
   connectCode,
+  isLive,
   labelClaim,
   machine,
   machineRoutingKey,
@@ -14,9 +15,14 @@ import {
   rowsChanged,
   server,
   sha256Hex,
+  tunnelConnectedLookup,
   user,
 } from "@bb/connect-db";
-import type { ConnectDb, LabelAvailability } from "@bb/connect-db";
+import type {
+  ConnectDb,
+  LabelAvailability,
+  TunnelConnectedLookup,
+} from "@bb/connect-db";
 import type { Env } from "./env.js";
 import { generateConnectCode, generateToken } from "./tokens.js";
 
@@ -25,6 +31,7 @@ export interface Deps {
   appUrl: string;
   serverUrlTemplate: string;
   closeTunnel: (routingKey: string) => Promise<void>;
+  tunnelConnected: TunnelConnectedLookup | null;
 }
 
 export function resolveServerUrlTemplate(
@@ -76,6 +83,7 @@ export function depsFromEnv(env: Env): Deps {
         throw new Error(`tunnel close failed (${response.status})`);
       }
     },
+    tunnelConnected: tunnelConnectedLookup(env, env.TUNNEL_DO),
   };
 }
 
@@ -201,6 +209,7 @@ export function toServerSummary(
   handle: string,
   serverUrlTemplate: string,
   now: number,
+  tunnelConnected: boolean | null,
 ): ServerSummary {
   const lastSeenMs = srv.lastSeenAt?.getTime() ?? null;
   const connected = srv.credentialHash != null && srv.revokedAt == null;
@@ -212,13 +221,46 @@ export function toServerSummary(
     connected,
     online:
       connected &&
-      lastSeenMs != null &&
-      now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+      isLive({
+        lastSeenMs,
+        now,
+        offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+        tunnelConnected,
+      }),
     lastSeenAt: lastSeenMs,
     version: srv.version,
     createdAt: srv.createdAt.getTime(),
     serverUrl: serverUrlForLabel(srv.subdomain, serverUrlTemplate),
   };
+}
+
+export async function listServerSummaries(
+  deps: Pick<Deps, "serverUrlTemplate" | "tunnelConnected">,
+  rows: readonly ServerRow[],
+  handle: string,
+  now: number,
+): Promise<ServerSummary[]> {
+  const lookup = deps.tunnelConnected;
+  const summaries = await Promise.all(
+    rows.map(async (srv) =>
+      toServerSummary(
+        srv,
+        handle,
+        deps.serverUrlTemplate,
+        now,
+        lookup !== null && srv.credentialHash != null && srv.revokedAt == null
+          ? await lookup(srv.subdomain)
+          : null,
+      ),
+    ),
+  );
+  return summaries.sort((a, b) =>
+    a.isPrimary !== b.isPrimary
+      ? a.isPrimary
+        ? -1
+        : 1
+      : a.createdAt - b.createdAt,
+  );
 }
 
 async function resolveServer(
@@ -283,6 +325,7 @@ export async function getAccountState(
     .from(machine)
     .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
     .all();
+  const machineTunnels = await machineTunnelsConnected(deps, userId);
   const machines = machineRows
     .map((row) => {
       const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
@@ -291,7 +334,13 @@ export async function getAccountState(
         name: row.name,
         subdomain: row.subdomain,
         online:
-          lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+          machineTunnels.get(row.id) === true ||
+          isLive({
+            lastSeenMs,
+            now,
+            offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+            tunnelConnected: null,
+          }),
         lastSeenAt: lastSeenMs,
         createdAt: row.createdAt.getTime(),
       };
@@ -308,17 +357,37 @@ export async function getAccountState(
     .where(eq(server.userId, userId))
     .all();
 
-  const servers = serverRows
-    .map((srv) => toServerSummary(srv, prof.handle, serverUrlTemplate, now))
-    .sort((a, b) =>
-      a.isPrimary !== b.isPrimary
-        ? a.isPrimary
-          ? -1
-          : 1
-        : a.createdAt - b.createdAt,
-    );
+  const servers = await listServerSummaries(deps, serverRows, prof.handle, now);
 
   return { handle: prof.handle, machines, servers, ...base };
+}
+
+async function machineTunnelsConnected(
+  deps: Pick<Deps, "db" | "tunnelConnected">,
+  userId: string,
+): Promise<Map<string, boolean | null>> {
+  const lookup = deps.tunnelConnected;
+  if (lookup === null) return new Map();
+  const claims = await deps.db
+    .select({
+      machineId: labelClaim.ownerId,
+      label: labelClaim.label,
+      generation: labelClaim.generation,
+    })
+    .from(labelClaim)
+    .where(and(eq(labelClaim.userId, userId), eq(labelClaim.kind, "machine")))
+    .all();
+  return new Map(
+    await Promise.all(
+      claims.map(
+        async (claim) =>
+          [
+            claim.machineId,
+            await lookup(machineRoutingKey(claim.label, claim.generation)),
+          ] as const,
+      ),
+    ),
+  );
 }
 
 export async function revokeMachine(
@@ -504,6 +573,7 @@ export async function createServer(
       prof.handle,
       serverUrlTemplate,
       Date.now(),
+      null,
     ),
   };
 }

@@ -20,6 +20,13 @@ import {
 import { Popover, PopoverContent } from "@bb/shared-ui/popover";
 import { DropdownMenu, DropdownMenuContent } from "@bb/shared-ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@bb/shared-ui/select";
+import {
   measureDrawerKeyboardOverlap,
   PersistentResponsiveDrawerShell,
   ResponsiveDrawerShell,
@@ -240,6 +247,116 @@ describe("responsive DropdownMenu", () => {
     expect(sheet.style.maxWidth).toBe("none");
     expect(sheet.style.color).toBe("red");
   });
+});
+
+type DismissalCaseProps = {
+  onOpenChange: (open: boolean) => void;
+  guard: (event: Event) => void;
+};
+
+const compactDismissalCases: [
+  string,
+  (props: DismissalCaseProps) => React.ReactElement,
+][] = [
+  [
+    "Dialog",
+    ({ onOpenChange, guard }) => (
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent
+          onEscapeKeyDown={guard}
+          onPointerDownOutside={guard}
+          onInteractOutside={guard}
+        >
+          <DialogTitle>Details</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    ),
+  ],
+  [
+    "Popover",
+    ({ onOpenChange, guard }) => (
+      <Popover open onOpenChange={onOpenChange}>
+        <PopoverContent
+          onEscapeKeyDown={guard}
+          onPointerDownOutside={guard}
+          onInteractOutside={guard}
+        >
+          Details
+        </PopoverContent>
+      </Popover>
+    ),
+  ],
+  [
+    "DropdownMenu",
+    ({ onOpenChange, guard }) => (
+      <DropdownMenu open onOpenChange={onOpenChange}>
+        <DropdownMenuContent
+          onEscapeKeyDown={guard}
+          onPointerDownOutside={guard}
+          onInteractOutside={guard}
+        >
+          Details
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
+  ],
+  [
+    "Select",
+    ({ onOpenChange, guard }) => (
+      <Select open onOpenChange={onOpenChange} defaultValue="details">
+        <SelectTrigger aria-label="Details">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent onEscapeKeyDown={guard} onPointerDownOutside={guard}>
+          <SelectItem value="details">Details</SelectItem>
+        </SelectContent>
+      </Select>
+    ),
+  ],
+];
+
+describe("compact overlay dismissal callbacks", () => {
+  it.each(compactDismissalCases)(
+    "lets %s callers veto Escape and backdrop dismissal",
+    (_, renderOverlay) => {
+      mockPointerCoarse(true);
+      const onOpenChange = vi.fn();
+      let vetoed = true;
+      const guard = vi.fn((event: Event) => {
+        if (vetoed) event.preventDefault();
+      });
+      render(
+        <CompactViewportOverrideProvider isCompactViewport>
+          {renderOverlay({ onOpenChange, guard })}
+        </CompactViewportOverrideProvider>,
+      );
+      const backdrop = document.querySelector<HTMLElement>(
+        '[data-persistent-drawer-backdrop][data-state="open"]',
+      ) as HTMLElement;
+
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      fireEvent.pointerDown(backdrop);
+      fireEvent.click(backdrop);
+      expect(onOpenChange).not.toHaveBeenCalled();
+      const [escape, ...outside] = guard.mock.calls.map(([event]) => event);
+      expect(escape).toBeInstanceOf(KeyboardEvent);
+      expect(outside.length).toBeGreaterThan(0);
+      for (const event of outside) {
+        expect(event).toBeInstanceOf(CustomEvent);
+        expect(
+          (event as CustomEvent<{ originalEvent: Event }>).detail.originalEvent
+            .type,
+        ).toBe("pointerdown");
+      }
+
+      vetoed = false;
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(onOpenChange).toHaveBeenLastCalledWith(false);
+      fireEvent.pointerDown(backdrop);
+      fireEvent.click(backdrop);
+      expect(onOpenChange).toHaveBeenCalledTimes(2);
+    },
+  );
 });
 
 describe("responsive Dialog", () => {
@@ -477,6 +594,60 @@ describe("PersistentResponsiveDrawerShell", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByTestId("parent-state").textContent).toBe("false");
+  });
+
+  it("closes the top drawer first when it comes from a separately bundled copy", async () => {
+    mockPointerCoarse(true);
+    vi.resetModules();
+    const pluginCopy = await import("@bb/shared-ui/responsive-overlay");
+    const PluginDrawerShell = pluginCopy.PersistentResponsiveDrawerShell;
+    expect(PluginDrawerShell).not.toBe(PersistentResponsiveDrawerShell);
+
+    function HostShelfWithPluginDialog() {
+      const [shelfOpen, setShelfOpen] = useState(true);
+      const [dialogOpen, setDialogOpen] = useState(false);
+      return (
+        <>
+          <output data-testid="shelf-state">{String(shelfOpen)}</output>
+          <output data-testid="dialog-state">{String(dialogOpen)}</output>
+          <PersistentResponsiveDrawerShell
+            open={shelfOpen}
+            onOpenChange={setShelfOpen}
+            srLabel="Right panel"
+          >
+            <button type="button" onClick={() => setDialogOpen(true)}>
+              New project
+            </button>
+            <PluginDrawerShell
+              open={dialogOpen}
+              onOpenChange={setDialogOpen}
+              srLabel="New project"
+            >
+              <input aria-label="Project name" />
+            </PluginDrawerShell>
+          </PersistentResponsiveDrawerShell>
+        </>
+      );
+    }
+
+    render(<HostShelfWithPluginDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    const pluginDialog = screen.getByRole("dialog", { name: "New project" });
+    const name = screen.getByRole("textbox", { name: "Project name" });
+    name.focus();
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab" });
+    expect(pluginDialog.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    expect(screen.getByTestId("dialog-state").textContent).toBe("false");
+    expect(screen.getByTestId("shelf-state").textContent).toBe("true");
+
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    expect(screen.getByTestId("shelf-state").textContent).toBe("false");
   });
 
   it("traps focus on coarse pointers and restores the trigger after close", () => {

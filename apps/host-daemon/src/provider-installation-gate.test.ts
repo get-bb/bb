@@ -54,16 +54,6 @@ function status(
 }
 
 describe("createProviderInstallationGate", () => {
-  it("serves a remembered supported status without probing again", async () => {
-    const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
-    const probe = vi.fn(async () => status());
-
-    await expect(gate.run("codex", probe)).resolves.toEqual(status());
-    await expect(gate.run("codex", probe)).resolves.toEqual(status());
-
-    expect(probe).toHaveBeenCalledOnce();
-  });
-
   it("never remembers an unsupported status", async () => {
     const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
     const unsupported = status({

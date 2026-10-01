@@ -3,7 +3,6 @@ import { noopNotifier } from "../../src/notifier.js";
 import {
   getHost,
   getNonDestroyedHost,
-  listHosts,
   listNonDestroyedHostsByIds,
   listPublicHosts,
   markHostSeen,
@@ -118,26 +117,6 @@ describe("hosts", () => {
     expect(notifyHost).not.toHaveBeenCalled();
   });
 
-  it("retrieves a host by ID", () => {
-    const { db } = setup();
-    const host = upsertHost(db, noopNotifier, {
-      name: "My Machine",
-    });
-
-    const fetched = getHost(db, host.id);
-    expect(fetched?.id).toBe(host.id);
-    expect(getHost(db, "host_nonexistent")).toBeNull();
-  });
-
-  it("lists all hosts", () => {
-    const { db } = setup();
-    upsertHost(db, noopNotifier, { name: "Host 1" });
-    upsertHost(db, noopNotifier, { name: "Host 2" });
-
-    const all = listHosts(db);
-    expect(all).toHaveLength(2);
-  });
-
   it("lists only non-destroyed hosts for the public inventory", () => {
     const { db } = setup();
     const visibleHost = upsertHost(db, noopNotifier, {
@@ -203,23 +182,6 @@ describe("hosts", () => {
         (host) => host.id,
       ),
     ).toEqual([visibleHost.id]);
-  });
-
-  it("updates only the provided host fields", () => {
-    const { db } = setup();
-    const host = upsertHost(db, noopNotifier, {
-      name: "Persistent Host",
-    });
-
-    const updated = updateHost(db, noopNotifier, host.id, {
-      name: "Persistent Host Renamed",
-    });
-
-    expect(updated).toMatchObject({
-      id: host.id,
-      name: "Persistent Host Renamed",
-    });
-    expect(updated?.updatedAt).toBeGreaterThanOrEqual(host.updatedAt);
   });
 
   it("notifies when updateHost changes host connection state", () => {

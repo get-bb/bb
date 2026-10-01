@@ -7,7 +7,6 @@ import {
   deleteMachineEnvironmentVariable,
 } from "../services/machines/environment-storage.js";
 import { getGateAuthKind } from "../request-context.js";
-import path from "node:path";
 import {
   countProjectSources,
   findOrCreateProjectByLocalPathSource,
@@ -69,11 +68,7 @@ import {
   readProjectSkill,
   writeProjectSkill,
 } from "../services/skills/skill-listing.js";
-import {
-  createDaemonFileContentResponse,
-  serveDaemonFileContent,
-  requestMatchesEntityTag,
-} from "../services/hosts/daemon-file-response.js";
+import { requestMatchesEntityTag } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
   buildCommandListResponse,
@@ -95,7 +90,6 @@ import {
   parseBranchListLimit,
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
-import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
 import { resolveSharedSkills } from "../services/skills/shared-skills.js";
@@ -343,11 +337,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     await deleteMachineEnvironmentVariable(deps.db, payload.name, project.id);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 
@@ -367,11 +357,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
     deps.hub.notifySystem(["config-changed"]);
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 
@@ -391,22 +377,14 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
     deps.hub.notifySystem(["config-changed"]);
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 
   get(routes.machineEnvironment, async (context) => {
     const project = requirePublicProject(deps.db, context.req.param("id"));
     return context.json(
-      await projectMachineEnvironmentView(
-        deps.db,
-        deps.config.dataDir,
-        project.id,
-      ),
+      await projectMachineEnvironmentView(deps.db, project.id),
     );
   });
 
@@ -672,32 +650,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       },
     });
     return context.json({ files: result.files, truncated: result.truncated });
-  });
-
-  get(routes.fileContent, async (context, query) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-    const target = resolveProjectWorkspaceTarget(deps, {
-      projectId,
-      environmentId: query.environmentId,
-      hostId: query.hostId,
-    });
-    const filePath = parseSafeRelativeRoutePath(query.path);
-
-    return serveDaemonFileContent(
-      deps,
-      {
-        hostId: target.hostId,
-        ifNoneMatch: context.req.header("if-none-match"),
-        path: path.join(target.path, filePath.relativePath),
-        rootPath: target.path,
-      },
-      (result) =>
-        createDaemonFileContentResponse(result, {
-          headers: { "x-bb-content-encoding": result.contentEncoding },
-          ifNoneMatch: context.req.header("if-none-match"),
-        }),
-    );
   });
 
   get(routes.paths, async (context, query) => {

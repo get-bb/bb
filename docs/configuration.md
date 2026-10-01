@@ -33,6 +33,18 @@ removes that worktree. See [Worktrees, setup scripts, and teardown
 scripts](worktrees.md) for the lifecycle, environment, timeout, and failure
 contracts.
 
+## Linux machine installer
+
+The machine installer normally installs a persistent systemd user service. If
+the current user's bus is unavailable, it retries using the runtime path from
+`loginctl`. On a systemd host it then fails before enrolling if the bus still
+cannot be reached. In containers and on machines without systemd as init, it
+runs a detached daemon instead. Set
+`BB_INSTALL_SKIP_SERVICE=1` on the installer command only when running without
+a service is intentional. No service starts the daemon after a reboot. The
+temporary daemon used for a first join is not supervised; a previously joined
+daemon started by the installer is supervised while its launcher runs.
+
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
 
@@ -313,6 +325,14 @@ it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
+The "Thread archive confirmation" switch in Settings → General defaults to on.
+Turn it off to archive a thread and its child threads immediately without a
+confirmation popup. The archive toast still offers Undo. This server-wide
+preference applies to all connected app clients. Set it with
+`bb settings general confirmThreadArchive false` or
+`bb.sdk.system.updateGeneralSettings` using `confirmThreadArchive`.
+CLI and SDK archive operations remain non-interactive.
+
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
 `bb provider models`, and `sdk.providers.models`. Turn it on before a screen
@@ -387,6 +407,13 @@ tools on for bb threads with
 Claude Code with `--chrome`. The host needs the Claude in Chrome extension and a
 claude.ai login; API-key sessions keep Chrome off. A change restarts the thread's
 Claude process before its next turn and keeps the conversation.
+
+In Accept Edits and Approve for me modes, bb runs Claude Code's Bash commands in
+Claude Code's sandbox. Turn it off with
+`bb plugin config provider-claude-code set sandboxEnabled false`. Bash commands
+then go through Claude Code's normal approvals and your own Claude Code
+permission and sandbox settings. A change restarts the thread's Claude process
+before its next turn and keeps the conversation.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a
@@ -639,18 +666,6 @@ setting changes, with no restart and no `config refresh`.
 
 A configured agent's command is local code execution and only works with a
 co-located daemon.
-
-### The deprecated `customAcpAgents` config array
-
-Before ACP agents were plugin-owned, custom agents lived in `customAcpAgents`
-in `~/.bb/config.json`. bb still **reads** that array so an existing agent keeps
-working, logs a deprecation warning for each one, and never writes to it.
-Support ends in 0.41 — move each entry into the `customAgents` setting above.
-The two shapes are identical except that the setting has no `logo` field: a
-plugin-registered provider's icon is a host glyph or an asset the plugin ships,
-so a configured agent shows the generic tool glyph, and bb drops the field when
-it reads the old array. A setting entry wins over a config entry with the same
-`id`.
 
 ## OpenCode Go Usage
 
@@ -966,7 +981,10 @@ value. A change on one device reaches every other connected window through the
 `ui-preferences-changed` broadcast without a reload.
 
 Sidebar width and open state stay in the browser because they depend on the
-window size.
+window size, and each browser tab or desktop window keeps its own. Collapsing or
+resizing the sidebar in one tab leaves every other open tab alone; a newly
+opened tab or window starts from the most recent choice made anywhere in this
+browser.
 
 ### Thread-list visibility
 
@@ -1294,22 +1312,10 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The default-off `legacyJitiPluginLoader` experiment restores the previous JITI
-plugin server loader. Toggling it leaves running plugin instances unchanged;
-the selected loader applies on the next install, reload, enable, update, or
-server restart. Set it with `bb settings experiment legacyJitiPluginLoader
-<true|false>`.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
-
-The `sidebarProgressiveDisclosure` experiment is off by default. In **By
-project** and **By machine**, it shows the first five groups in the current sort
-order, keeps attention groups visible, and reveals ten more per **Show more**
-click. Revealed groups stay visible through activity and sort-order changes.
-**Manually** is unchanged. Toggle it with `bb settings experiment
-sidebarProgressiveDisclosure <true|false>`.
 
 Long timelines and large expanded timeline details retain stable
 height-preserving wrappers while mounting only rows near their active
@@ -1681,7 +1687,7 @@ The Browser Automation plugin supports desktop attachment and headless Chrome on
 
 On each selected browser host, the plugin's host worker installs that release automatically on first use under `<plugin host dataDir>/runtime/npm/`, using the host's `npm` with scripts disabled, verifying the registry signature and SLSA provenance, downloading the matching GitHub release binary, and checking its digest before launch. Later sessions reuse the verified install without network access. Headless mode discovers installed Chrome/Chromium or uses `<plugin host dataDir>/runtime/chrome`. These files belong to the plugin host storage directory; they are not paths on the server or invoking agent host, and the user's global npm installation is never modified. No runtime sandbox-disabling setting is provided.
 
-For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke, `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path, and `DEV_BROWSER_SMOKE_NO_SANDBOX=1` enables the fixture's no-sandbox wrapper where the test host requires it. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
+For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke and `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
 
 ## Agent guidance plugin settings
 

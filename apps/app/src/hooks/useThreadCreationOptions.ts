@@ -76,7 +76,7 @@ import {
   resolveModelReasoningLevel,
 } from "./thread-creation-options/model-catalog-selection";
 
-export { formatModelLabel, resolvePermissionModeSelection };
+export { formatModelLabel };
 
 const EMPTY_PROVIDERS: ProviderInfo[] = [];
 const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];

@@ -30,9 +30,9 @@
     },
     "packages/config/src/bb-app-managed-config.ts": {
       "count": 4,
-      "reason": "BUNDLED_PROVIDER_IDS: the legacy `customAcpAgents` reader refuses an agent id that shadows a bundled provider, AND `customModelProviderIdSchema` (live `customModels` config) accepts only a bundled id or an `acp-*` id, so a third-party provider cannot carry custom models today (documented DEBT in the file).",
-      "owner": "provider-acp (legacy reader); core config (customModels enum)",
-      "diesAt": "the reader with LEGACY_CUSTOM_AGENTS_REMOVED_IN (0.41); the enum when customModels accepts any registered provider id"
+      "reason": "BUNDLED_PROVIDER_IDS: `customModelProviderIdSchema` (live `customModels` config) accepts only a bundled id or an `acp-*` id, so a third-party provider cannot carry custom models today.",
+      "owner": "core config (customModels enum)",
+      "diesAt": "when customModels accepts any registered provider id"
     },
     "packages/scripts/src/commands/archive-codex-tmp-bb-sessions.ts": {
       "count": 1,

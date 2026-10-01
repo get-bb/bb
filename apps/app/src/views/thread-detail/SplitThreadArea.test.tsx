@@ -63,13 +63,6 @@ const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
 }));
 const panelGroupLayoutState = vi.hoisted(() => ({ layout: [100, 0] }));
-const panelCallbacks = vi.hoisted(
-  () =>
-    new Map<
-      string,
-      { onCollapse?: () => void; onResize?: (size: number) => void }
-    >(),
-);
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 const paneContextRenders = vi.hoisted(
   () => new Map<string, Array<PaneContextValue | null>>(),
@@ -78,16 +71,6 @@ const timelineProbe = vi.hoisted(() => ({
   active: false,
   calls: new Map<string, number>(),
 }));
-interface ShortcutPresentationFixture {
-  ariaKeyshortcuts: string;
-  label: string;
-}
-const commandPresentationState = vi.hoisted(
-  (): {
-    isModifierHeld: boolean;
-    shortcut: ShortcutPresentationFixture | null;
-  } => ({ isModifierHeld: false, shortcut: null }),
-);
 
 function HostedComposerScopeProbe({ threadId }: { threadId: string }) {
   const composerHost = usePluginComposerHost();
@@ -150,8 +133,8 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandHandler: (command: string, handler: () => boolean) => {
     commandHandlers.set(command, handler);
   },
-  useAppCommandShortcut: () => commandPresentationState.shortcut,
-  useIsAppCommandModifierHeld: () => commandPresentationState.isModifierHeld,
+  useAppCommandShortcut: () => null,
+  useIsAppCommandModifierHeld: () => false,
   useIndexedAppCommandHandlers: (
     commands: readonly string[],
     handler: (index: number) => boolean,
@@ -188,24 +171,11 @@ vi.mock("react-resizable-panels", async () => {
     );
   });
   PanelGroup.displayName = "MockPanelGroup";
-  const Panel = ({
-    children,
-    id,
-    onCollapse,
-    onResize,
-  }: {
-    children?: ReactNode;
-    id?: string;
-    onCollapse?: () => void;
-    onResize?: (size: number) => void;
-  }) => {
-    if (id !== undefined) panelCallbacks.set(id, { onCollapse, onResize });
-    return (
-      <div data-testid="workspace-panel" data-panel-id={id}>
-        {children}
-      </div>
-    );
-  };
+  const Panel = ({ children, id }: { children?: ReactNode; id?: string }) => (
+    <div data-testid="workspace-panel" data-panel-id={id}>
+      {children}
+    </div>
+  );
   const PanelResizeHandle = ({
     children,
     className,
@@ -413,8 +383,7 @@ vi.mock("./ThreadDetailView", () => ({
   },
 }));
 
-const { queryClient, wrapper: _wrapper } = createQueryClientTestHarness();
-void _wrapper;
+const { queryClient } = createQueryClientTestHarness();
 
 function threadContent(threadId: string) {
   return {
@@ -781,16 +750,14 @@ beforeEach(() => {
   paneContextRenders.clear();
   timelineProbe.active = false;
   timelineProbe.calls.clear();
-  commandPresentationState.isModifierHeld = false;
-  commandPresentationState.shortcut = null;
   threadStore.set("thr-a", { archivedAt: null, deletedAt: null });
   threadStore.set("thr-b", { archivedAt: null, deletedAt: null });
 });
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   threadStore.clear();
-  panelCallbacks.clear();
   resetPluginSlotStoreForTest();
   delete window.bbDesktop;
   window.localStorage.clear();
@@ -1011,7 +978,27 @@ describe("SplitThreadArea", () => {
     await waitFor(() => expect(hiddenScroller.scrollTop).toBe(0));
   });
 
-  it("stops the restore loop once positions settle instead of burning 30 frames", async () => {
+  it("stops the restore loop once positions settle instead of burning 30 frames", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      const id = ++frameId;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    const flushFrames = () => {
+      for (let round = 0; frames.size > 0 && round < 30; round += 1) {
+        const callbacks = [...frames.values()];
+        frames.clear();
+        act(() => {
+          for (const callback of callbacks) callback(performance.now());
+        });
+      }
+      expect(frames.size).toBe(0);
+    };
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
@@ -1032,7 +1019,7 @@ describe("SplitThreadArea", () => {
     });
 
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    flushFrames();
     expect(writes).toHaveLength(0);
 
     Object.defineProperty(hiddenScroller, "scrollTop", {
@@ -1043,7 +1030,7 @@ describe("SplitThreadArea", () => {
       },
     });
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    flushFrames();
     expect(writes.length).toBeGreaterThan(0);
     expect(writes.length).toBeLessThanOrEqual(6);
   });
@@ -2176,16 +2163,6 @@ describe("SplitThreadArea", () => {
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(2);
   });
 
-  it("restores a persisted layout on load", async () => {
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-
-    expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
-    expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
-  });
-
   it("leaves uninvolved panes unrendered and pane callbacks stable when focus moves in a four-pane split", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
@@ -2399,15 +2376,9 @@ describe("SplitThreadArea", () => {
   });
 
   it("restores eight successive default-right opens, then focuses and closes with valid URL state", async () => {
-    const layout = eightPaneThreadLayout();
-    expect(layout.root).toMatchObject({
-      type: "split",
-      dir: "row",
-      sizes: Array.from({ length: 8 }, () => 1 / 8),
-    });
     window.localStorage.setItem(
       SPLIT_LAYOUT_STORAGE_KEY,
-      serializeSplitLayout(layout),
+      serializeSplitLayout(eightPaneThreadLayout()),
     );
 
     const store = renderSplitArea({ path: threadPath("thr-h") });

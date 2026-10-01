@@ -56,6 +56,43 @@ describe("client system notifications", () => {
     },
   );
 
+  it.each([
+    { platform: "linux", native: true },
+    { platform: "macos", native: false },
+    { platform: "web", native: false },
+    { platform: "older-linux", native: false },
+  ])(
+    "focuses the notification window on $platform",
+    async ({ platform, native }) => {
+      const focusWindow = vi.fn();
+      if (platform !== "web") {
+        vi.stubGlobal(
+          "bbDesktop",
+          platform === "older-linux"
+            ? { platform: "linux" }
+            : { platform, focusWindow },
+        );
+      }
+      const navigate = vi.fn();
+      const delivery = createClientDelivery(navigate);
+      await delivery.deliver(
+        {
+          ...message,
+          channels: [platform === "web" ? "web" : "desktop"],
+        },
+        true,
+      );
+      expect(focusWindow).not.toHaveBeenCalled();
+      const notification = TestNotification.instances[0]!;
+      notification.onclick?.();
+      expect(focusWindow).toHaveBeenCalledTimes(native ? 1 : 0);
+      expect(window.focus).toHaveBeenCalledOnce();
+      expect(navigate).toHaveBeenCalledWith(message.threadId);
+      expect(notification.close).toHaveBeenCalled();
+      delivery.dispose();
+    },
+  );
+
   it("deduplicates windows, navigates on click, and cleans up on disposal", async () => {
     const navigate = vi.fn();
     const first = createClientDelivery(navigate);

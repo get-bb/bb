@@ -258,6 +258,7 @@ export interface PluginCatalogSearchEntry {
   official: boolean;
   author: PluginCatalogAuthor | null;
   installed: boolean;
+  conflictingInstallSource: string | null;
   installs: number | null;
   compatible: boolean;
   incompatibleReason: string | null;
@@ -291,6 +292,7 @@ function toPluginCatalogSearchEntry(
     official: data.official,
     author: data.author,
     installed: data.installed,
+    conflictingInstallSource: data.conflictingInstallSource,
     installs: data.installs,
     compatible: data.compatible,
     incompatibleReason: data.incompatibleReason ?? null,

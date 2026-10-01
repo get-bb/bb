@@ -9,10 +9,7 @@ import {
 import { useCallback, useMemo } from "react";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
-import type {
-  PendingInteraction,
-  ThreadListEntry,
-} from "@bb/domain";
+import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
@@ -503,7 +500,6 @@ export function useProjectThreadSubset({
   const enabled = (enabledOption ?? true) && Boolean(projectId);
   useThreadListRealtimeSubscription({ enabled });
   const { hasParent, parentThreadId } = filters;
-  const canDeriveFromActiveProjectThreads = true;
   const activeProjectThreadListQueryKey =
     enabled && projectId
       ? threadListQueryKey({ archived: false, projectId })
@@ -511,7 +507,6 @@ export function useProjectThreadSubset({
           projectId ? { archived: false, projectId } : { archived: false },
         );
   const activeProjectThreadListIsCached =
-    canDeriveFromActiveProjectThreads &&
     enabled &&
     projectId !== undefined &&
     queryClient.getQueryData<ThreadListResponse>(

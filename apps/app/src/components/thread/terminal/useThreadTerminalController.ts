@@ -64,7 +64,7 @@ type ThreadTerminalIdHandler = (terminalId: string) => void;
 type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 
-export function shouldMountTerminalViewForPanel({
+function shouldMountTerminalViewForPanel({
   hasPanelOpened,
   isPanelOpen,
   isPanelPersistedOpen,

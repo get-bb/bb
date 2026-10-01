@@ -95,7 +95,7 @@ describe("GeneratedConversationMessage images", () => {
     expect(
       screen.getByRole("img", { name: "report" }).getAttribute("src"),
     ).toBe(
-      "/api/v1/threads/thr_parent/host-files/content?path=%2Fworkspace%2Freports%2Fresult.png",
+      "/api/v1/threads/thr_parent/host-files/workspace/reports/result.png",
     );
   });
 });

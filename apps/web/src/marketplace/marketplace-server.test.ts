@@ -15,18 +15,6 @@ import {
 } from "./marketplace-v2.fixture.js";
 
 describe("public marketplace data", () => {
-  it("keeps the normal status when the v2 document loads", () => {
-    expect(
-      marketplaceResponseStatus("/marketplace/author/acme-tools", [
-        {
-          status: "available",
-          manifest: MARKETPLACE_V2_FIXTURE,
-          stats: MARKETPLACE_STATS_FIXTURE,
-        },
-      ]),
-    ).toBeNull();
-  });
-
   it("does not change another route status", () => {
     expect(
       marketplaceResponseStatus("/dashboard", [{ status: "unavailable" }]),

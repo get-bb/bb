@@ -32,9 +32,8 @@ import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
 import { CREATE_SKILL_PROMPT } from "@bb/client-core";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
-import { useHostFilePreview } from "@/hooks/queries/host-file-preview-query";
 import { getAbsoluteDirname } from "@/lib/absolute-file-path";
-import { buildMarkdownLeaseImageRouting } from "@/components/ui/markdown-file-image-routing";
+import { buildMarkdownHostFileImageRouting } from "@/components/ui/markdown-file-image-routing";
 import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
@@ -96,11 +95,6 @@ function SkillDetailPage({
   const primaryHost = usePrimaryHost({ enabled: skill !== null });
   const previewHostId =
     primaryHost?.status === "connected" ? primaryHost.id : null;
-  const skillFilePreview = useHostFilePreview(
-    previewHostId,
-    skill?.filePath ?? null,
-    { enabled: skill !== null && previewHostId !== null },
-  );
   const deleteSkill = useDeleteSkill(projectId);
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
     useLocalOpenTargets({ enabled: skill !== null });
@@ -111,12 +105,12 @@ function SkillDetailPage({
     skill && isSkillEditable(skill) ? skill.scope : null;
   const markdownLinkRouting = useMemo(() => {
     if (skill === null) return undefined;
-    return buildMarkdownLeaseImageRouting({
+    return buildMarkdownHostFileImageRouting({
       path: selectedPath,
       rootPath: getAbsoluteDirname({ path: skill.filePath }),
-      previewUrl: skillFilePreview.data?.url,
+      hostId: previewHostId,
     });
-  }, [selectedPath, skill, skillFilePreview.data?.url]);
+  }, [previewHostId, selectedPath, skill]);
 
   return (
     <SkillDetailDialogView

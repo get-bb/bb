@@ -256,10 +256,6 @@ export function schedulePreferenceWrite(
   pending.timer = window.setTimeout(() => flushWrite(key), WRITE_DEBOUNCE_MS);
 }
 
-export function hasPendingPreferenceWrite(key: PreferenceKey): boolean {
-  return state.pendingWrites.has(key);
-}
-
 export async function flushPreferenceWritesForTest(): Promise<void> {
   for (const [key, pending] of [...state.pendingWrites]) {
     if (pending.timer !== null) {

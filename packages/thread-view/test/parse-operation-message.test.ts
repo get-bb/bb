@@ -162,11 +162,6 @@ describe("parseOperationMessage operation titles", () => {
         "Provisioning thread interrupted",
       );
     });
-
-    it("does not depend on whether the thread is named", () => {
-      expect(provisioningTitle("active", "")).toBe("Provisioning thread");
-      expect(provisioningTitle("completed", "")).toBe("Provisioned thread");
-    });
   });
 
   describe("thread-interrupted", () => {

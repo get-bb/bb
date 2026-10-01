@@ -487,8 +487,6 @@ export interface EventProjectionErrorMessage extends EventProjectionMessageBase 
   detail: string | null;
   rawType: string;
   providerErrorInfo?: ProviderErrorInfo;
-  reconnectAttempt?: number;
-  reconnectTotal?: number;
   willRetry?: boolean;
 }
 

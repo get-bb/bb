@@ -84,6 +84,7 @@ import {
   buildMutableFlagSettings,
   buildSessionOptions,
   buildWorkspaceWriteDenialMessage,
+  buildWorkspaceWriteSandbox,
   toSdkEffort,
   type BuildSessionOptionsArgs,
   type PermissionEscalationWorkContext,
@@ -398,6 +399,8 @@ function requireSkillPluginsRoot(): string {
 
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
 const CLAUDE_CHROME_SETTING_RESTART_REASON = "Claude in Chrome setting changed";
+const CLAUDE_SANDBOX_SETTING_RESTART_REASON =
+  "Claude Code sandbox setting changed";
 
 const { send, sendResult, sendError } = createBridgeIo<
   BridgeEventNotification | BridgeToolCallRequest
@@ -455,6 +458,29 @@ function applyContextWindowSetting(
   if (attachment.residentSession) {
     attachment.residentSession.restartBeforeNextTurn = {
       reason: "Claude Code 1M context setting changed",
+      showRuntimeNote: false,
+    };
+  }
+}
+
+function applySandboxSetting(
+  attachment: ThreadAttachment,
+  enabled: boolean | undefined,
+): void {
+  const sessionOptions = attachment.sessionConstructionConfig.sessionOptions;
+  if (enabled === undefined || sessionOptions.sandboxEnabled === enabled) {
+    return;
+  }
+  sessionOptions.sandboxEnabled = enabled;
+  const sandbox = buildWorkspaceWriteSandbox(sessionOptions);
+  if (sandbox) {
+    attachment.sessionOptions.sandbox = sandbox;
+  } else {
+    delete attachment.sessionOptions.sandbox;
+  }
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurn = {
+      reason: CLAUDE_SANDBOX_SETTING_RESTART_REASON,
       showRuntimeNote: false,
     };
   }
@@ -879,11 +905,11 @@ function toSessionConstructionConfig(
       chromeEnabled: params.chromeEnabled,
       disable1MContext: params.disable1MContext,
       cwd: params.cwd,
-      disallowedTools: params.disallowedTools,
       instructionMode: params.instructionMode,
       permissionMode: params.permissionMode,
       permissionScope: params.permissionScope,
       plugins: params.plugins,
+      sandboxEnabled: params.sandboxEnabled,
     },
   };
 }
@@ -2050,7 +2076,10 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(request.id, await getClaudeProviderUsage());
       break;
     case "provider/installation/status":
-      sendResult(request.id, await getClaudeProviderInstallationStatus());
+      sendResult(
+        request.id,
+        await getClaudeProviderInstallationStatus(request.params.checkUpdates),
+      );
       break;
     case "provider/installation/run":
       sendResult(
@@ -2271,7 +2300,6 @@ function toClaudeSessionParams(
     options: params.options,
     instructionMode: params.instructionMode,
     dynamicTools: params.dynamicTools,
-    disallowedTools: params.disallowedTools,
     skillRoots: configuredSkillRoots ?? undefined,
   });
 }
@@ -2295,6 +2323,7 @@ async function runTurnInput(
     }
     applyChromeSetting(attachment, params.chromeEnabled);
     applyContextWindowSetting(attachment, params.disable1MContext);
+    applySandboxSetting(attachment, params.sandboxEnabled);
   }
 
   const threadSession = await getWritableThreadSession(params.threadId, intent);

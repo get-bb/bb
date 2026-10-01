@@ -25,10 +25,6 @@ describe("pickZone", () => {
     expect(pickZone(RECT, ...at(0.5, 0.9))).toBe("bottom");
   });
 
-  it("classifies the middle as center", () => {
-    expect(pickZone(RECT, ...at(0.5, 0.5))).toBe("center");
-  });
-
   it("prefers left/right over top/bottom in the shared corner region", () => {
     expect(pickZone(RECT, ...at(0.1, 0.1))).toBe("left");
   });

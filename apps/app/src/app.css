@@ -187,10 +187,9 @@
     box-shadow: var(--pill-shadow);
   }
 
-  /* Leading mention identity: a plain near-black outline glyph or section
-   * marker (near-white in dark), with no fill. */
-  .prompt-mention-pill svg,
-  .prompt-mention-pill [data-section-mention-marker] {
+  /* Leading mention identity: a plain near-black outline glyph (near-white in
+   * dark), with no fill. */
+  .prompt-mention-pill svg {
     color: var(--pill-icon);
   }
 
@@ -429,6 +428,28 @@
       display: none !important;
     }
   }
+
+  @media (width < 48rem) {
+    [data-new-thread-footer] button {
+      min-block-size: 2.75rem;
+    }
+
+    [data-new-thread-footer]
+      [data-promptbox-shrinkable-control]:has(~ :not(:empty))
+      [data-promptbox-compact-label] {
+      display: none !important;
+    }
+
+    [data-new-thread-footer]
+      [data-promptbox-icon-only-control]
+      [data-promptbox-full-label] {
+      display: block !important;
+    }
+
+    [data-new-thread-footer] [data-promptbox-icon-only-control] {
+      flex-shrink: 1;
+    }
+  }
 }
 
 /*
@@ -486,15 +507,17 @@
   }
 
   [data-follow-up-composer] [data-promptbox-submit-action] {
+    width: auto;
+    aspect-ratio: 1;
     margin-left: 0;
-    padding: 0;
   }
 
   [data-follow-up-composer] [data-promptbox-submit-label] {
     display: none;
   }
 
-  [data-follow-up-composer] [data-follow-up-composer-footer] {
+  [data-follow-up-composer]:not([data-follow-up-composer-footer-visible])
+    [data-follow-up-composer-footer] {
     min-height: 0;
     max-height: 0;
     margin-top: 0;
@@ -771,26 +794,6 @@
 
   .persistent-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
-  }
-
-  /*
-   * Soft right-edge fade for single-line text that is clipped horizontally
-   * (e.g. a queued-message preview). Fades the text out instead of a hard
-   * `…` ellipsis. Self-gating: short text doesn't reach the fade zone, so the
-   * fade only shows when content is actually truncated. Pair with
-   * `overflow-hidden whitespace-nowrap` (no scroll).
-   */
-  .fade-clip-right {
-    -webkit-mask-image: linear-gradient(
-      to right,
-      #000 calc(100% - 1.5rem),
-      transparent
-    );
-    mask-image: linear-gradient(
-      to right,
-      #000 calc(100% - 1.5rem),
-      transparent
-    );
   }
 }
 

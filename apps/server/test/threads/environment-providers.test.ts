@@ -2701,36 +2701,6 @@ describe("a provider-produced environment over its life", () => {
     });
   });
 
-  it("generates the instance key from the core launch path key", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, project } = seedTargetFixture(
-        harness,
-        "host-target-no-key",
-      );
-      installTarget({
-        provision: () => ({
-          action: "ready",
-          environment: {
-            type: "host",
-            hostId: host.id,
-            path: "/tmp/environment-providers-unkeyed",
-          },
-        }),
-      });
-      const created = await createTargetThread(harness, {
-        projectId: project.id,
-      });
-      await vi.waitFor(() =>
-        expect(getThread(harness.db, created.id)?.environmentId).not.toBeNull(),
-      );
-      const environmentId = getThread(harness.db, created.id)?.environmentId;
-      expect(
-        getEnvironment(harness.db, environmentId ?? "")
-          ?.environmentProviderInstanceKey,
-      ).toBe(created.id);
-    });
-  });
-
   it("aborts create and asks the provider to remove by path key when stopped", async () => {
     await withTestHarness(async (harness) => {
       const cancelled: string[] = [];

@@ -61,11 +61,9 @@ describe("ConversationMessageContent assistant images", () => {
       screen
         .getByRole("img", { name: "Generated diagram" })
         .getAttribute("src"),
-    ).toBe(
-      "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
-    );
+    ).toBe("/api/v1/threads/thr_image/host-files/workspace/output/diagram.png");
     expect(screen.getByLabelText("Clip").getAttribute("src")).toBe(
-      "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fclip.mp4",
+      "/api/v1/threads/thr_image/host-files/workspace/output/clip.mp4",
     );
   });
 });
@@ -101,9 +99,7 @@ describe("ConversationMessageContent user images", () => {
 
     expect(
       screen.getByRole("img", { name: "diagram" }).getAttribute("src"),
-    ).toBe(
-      "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
-    );
+    ).toBe("/api/v1/threads/thr_image/host-files/workspace/output/diagram.png");
   });
 });
 
@@ -343,50 +339,6 @@ describe("ConversationMessageContent long user messages", () => {
 });
 
 describe("ConversationMessageContent user thread mentions", () => {
-  it("renders an exact raw thread id inline-code span as a linked mention pill", () => {
-    const mentionedThread = threadListEntry({
-      id: "thr_dcwivn5n8w",
-      projectId: "proj_personal",
-      title: "Inline user mention target",
-    });
-
-    const { container } = render(
-      <MemoryRouter>
-        <RouteNavigationProvider>
-          <ThreadTitleMentionResourcesProvider
-            sectionNamesById={new Map()}
-            projectNamesById={new Map()}
-            threadById={new Map([[mentionedThread.id, mentionedThread]])}
-          >
-            <ConversationMessageContent
-              role="user"
-              attachments={null}
-              originKind={null}
-              initiator="user"
-              mentions={[]}
-              senderThreadId={null}
-              senderThreadTitle={null}
-              senderIsPluginSideChat={false}
-              systemMessageKind="unlabeled"
-              systemMessageSubject={null}
-              text="Use `thr_dcwivn5n8w` for the follow-up."
-              turnRequest={{
-                isGrouped: false,
-                kind: "message",
-                status: "accepted",
-              }}
-            />
-          </ThreadTitleMentionResourcesProvider>
-        </RouteNavigationProvider>
-      </MemoryRouter>,
-    );
-
-    expect(
-      screen.getByRole("link", { name: "Inline user mention target" }),
-    ).not.toBeNull();
-    expect(container.querySelector("code")).toBeNull();
-  });
-
   it("renders a raw thread id in message text as a linked mention pill", () => {
     const mentionedThread = threadListEntry({
       id: "thr_dcwivn5n8w",
@@ -432,51 +384,6 @@ describe("ConversationMessageContent user thread mentions", () => {
     });
     expect(mentionLink.getAttribute("href")).toBe("/threads/thr_dcwivn5n8w");
     expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
-  });
-
-  it("renders a raw thread token as the canonical pill when structured mentions are empty", () => {
-    const mentionedThread = threadListEntry({
-      id: "thr_ti4st72wgs",
-      projectId: "proj_personal",
-      title: "Mention pill QA thread",
-    });
-
-    render(
-      <MemoryRouter>
-        <RouteNavigationProvider>
-          <ThreadTitleMentionResourcesProvider
-            sectionNamesById={new Map()}
-            projectNamesById={new Map()}
-            threadById={new Map([[mentionedThread.id, mentionedThread]])}
-          >
-            <ConversationMessageContent
-              role="user"
-              attachments={null}
-              originKind={null}
-              initiator="user"
-              mentions={[]}
-              senderThreadId={null}
-              senderThreadTitle={null}
-              senderIsPluginSideChat={false}
-              systemMessageKind="unlabeled"
-              systemMessageSubject={null}
-              text="Why was @thread:thr_ti4st72wgs not a pill?"
-              turnRequest={{
-                isGrouped: false,
-                kind: "message",
-                status: "accepted",
-              }}
-            />
-          </ThreadTitleMentionResourcesProvider>
-        </RouteNavigationProvider>
-      </MemoryRouter>,
-    );
-
-    const mentionLink = screen.getByRole("link", {
-      name: "Mention pill QA thread",
-    });
-    expect(mentionLink.getAttribute("href")).toBe("/threads/thr_ti4st72wgs");
-    expect(screen.queryByText("@thread", { exact: false })).toBeNull();
   });
 
   it("routes a raw thread token through the target thread project", () => {

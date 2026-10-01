@@ -646,12 +646,6 @@ export function createApp(
       );
     }
   });
-  app.use("/api/v1/development-only/*", async (_context, next) => {
-    if (!deps.config.isDevelopment) {
-      throw new ApiError(404, "not_found", "Not found");
-    }
-    return next();
-  });
   app.use("/internal/*", async (context, next) => {
     const normalizedPath = normalizeInternalAuthPath(context.req.path);
     if (normalizedPath === "/internal/hosts/enroll-key") {

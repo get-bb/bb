@@ -32,7 +32,6 @@ export interface WorkflowRunRow {
   error: string | null;
   phase: string | null;
   replaySafetyVersion: number;
-  replayBarrierIndex: number | null;
   notificationSent: boolean;
   notificationOutcome: "pending" | "delivered" | "abandoned";
   notificationAttemptCount: number;
@@ -113,7 +112,6 @@ const RUN_SELECT = `
     settings_json AS settingsJson, status,
     resumed_from_run_id AS resumedFromRunId, result_json AS resultJson, error,
     phase, replay_safety_version AS replaySafetyVersion,
-    replay_barrier_index AS replayBarrierIndex,
     notification_sent AS notificationSent,
     notification_outcome AS notificationOutcome,
     notification_attempt_count AS notificationAttemptCount,
@@ -243,7 +241,6 @@ export function createRun(
     | "error"
     | "phase"
     | "replaySafetyVersion"
-    | "replayBarrierIndex"
     | "notificationSent"
     | "notificationOutcome"
     | "notificationAttemptCount"

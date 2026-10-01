@@ -148,31 +148,48 @@ export function signalTaskIds(
 
 function useSignalBatches(
   channels: readonly InvalidationChannel[],
+  relevantTaskIds: readonly string[] | undefined,
   onBatch: (signals: TaskSignal[]) => void,
 ): void {
-  const ref = useRef({ channels, onBatch });
-  ref.current = { channels, onBatch };
-  const pending = useRef<TaskSignal[]>([]);
+  const ref = useRef({ channels, relevantTaskIds, onBatch });
+  ref.current = { channels, relevantTaskIds, onBatch };
+  const pending = useRef(new Map<string, TaskSignal>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
+  const flush = useCallback(() => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+    if (document.visibilityState === "hidden") return;
+    const batch = [...pending.current.values()];
+    pending.current = new Map();
+    if (batch.length > 0) ref.current.onBatch(batch);
+  }, []);
+  useEffect(() => {
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", flush);
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = null;
-      pending.current = [];
+      pending.current = new Map();
+    };
+  }, [flush]);
+  const push = useCallback(
+    (channel: InvalidationChannel, payload: unknown) => {
+      if (!ref.current.channels.includes(channel)) return;
+      const taskId = signalTaskId(payload);
+      const relevant = ref.current.relevantTaskIds;
+      if (
+        relevant !== undefined &&
+        taskId !== null &&
+        !relevant.includes(taskId)
+      ) {
+        return;
+      }
+      pending.current.set(`${channel}\n${taskId ?? ""}`, { channel, taskId });
+      if (timer.current !== null) return;
+      timer.current = setTimeout(flush, SIGNAL_BATCH_MS);
     },
-    [],
+    [flush],
   );
-  const push = useCallback((channel: InvalidationChannel, payload: unknown) => {
-    if (!ref.current.channels.includes(channel)) return;
-    pending.current.push({ channel, taskId: signalTaskId(payload) });
-    if (timer.current !== null) return;
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      const batch = pending.current;
-      pending.current = [];
-      if (batch.length > 0) ref.current.onBatch(batch);
-    }, SIGNAL_BATCH_MS);
-  }, []);
   useRealtime("tasks:changed", (payload) => push("tasks:changed", payload));
   useRealtime("projects:changed", (payload) =>
     push("projects:changed", payload),
@@ -208,6 +225,7 @@ export function useTasksQuery<T>(
   options: {
     snapshot?: TasksQuerySnapshot<T>;
     applySignals?: ApplySignals<T>;
+    relevantTaskIds?: readonly string[];
   } = {},
 ): TasksQuery<T> {
   const rpc = useTasksRpc();
@@ -234,6 +252,10 @@ export function useTasksQuery<T>(
   const seqRef = useRef(0);
   const dataRef = useRef(state.data);
   const inFlightRef = useRef(0);
+  const latestFetchRef = useRef<Promise<void>>(Promise.resolve());
+  const refetchQueuedRef = useRef(false);
+  const mountedRef = useRef(true);
+  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const patchChainRef = useRef<Promise<void>>(Promise.resolve());
   const previousGenerationRef = useRef(generation);
   const depsKey = JSON.stringify(deps);
@@ -250,7 +272,7 @@ export function useTasksQuery<T>(
       setState({ data: partial, error: null, isLoading: true });
     };
     inFlightRef.current += 1;
-    return fetcherRef
+    const fetching = fetcherRef
       .current(rpc, publish)
       .then(
         (data) => {
@@ -275,8 +297,22 @@ export function useTasksQuery<T>(
       )
       .finally(() => {
         inFlightRef.current -= 1;
+        if (inFlightRef.current > 0 || !refetchQueuedRef.current) return;
+        refetchQueuedRef.current = false;
+        if (mountedRef.current) void refreshRef.current();
       });
+    latestFetchRef.current = fetching;
+    return fetching;
   }, [rpc, depsKey]);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   useEffect(() => {
     const generationBumped = previousGenerationRef.current !== generation;
     previousGenerationRef.current = generation;
@@ -298,14 +334,19 @@ export function useTasksQuery<T>(
       const apply = applySignalsRef.current;
       if (
         apply === undefined ||
-        inFlightRef.current > 0 ||
         signals.some((signal) => signal.taskId === null)
       ) {
-        void refresh();
+        if (inFlightRef.current > 0) {
+          refetchQueuedRef.current = true;
+        } else {
+          void refresh();
+        }
         return;
       }
       const seq = seqRef.current;
+      const fetchInFlight = latestFetchRef.current;
       patchChainRef.current = patchChainRef.current.then(async () => {
+        await fetchInFlight.catch(() => undefined);
         const current = dataRef.current;
         if (seq !== seqRef.current || current === undefined) return;
         let next: T | null;
@@ -326,7 +367,7 @@ export function useTasksQuery<T>(
     },
     [refresh, rpc],
   );
-  useSignalBatches(channels, onSignals);
+  useSignalBatches(channels, options.relevantTaskIds, onSignals);
   return { ...state, refresh };
 }
 

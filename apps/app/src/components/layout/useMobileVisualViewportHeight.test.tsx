@@ -50,7 +50,6 @@ function VisualViewportShell({
         <CompactSecondaryPanelShelf
           open
           onClose={vi.fn()}
-          presentation="full"
           srLabel="Thread details"
         >
           <div />

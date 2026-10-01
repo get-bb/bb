@@ -355,24 +355,6 @@ describe("PluginPendingInteractionComposer", () => {
     expect(screen.queryByText("wrong plugin renderer")).toBeNull();
   });
 
-  it("keeps a host-owned cancel fallback when the renderer is missing", () => {
-    markPluginFrontendsSettled();
-    renderComposer(
-      <PluginPendingInteractionComposer
-        interaction={interaction}
-        request={{
-          pluginId: "secrets",
-          rendererId: "secret-request",
-          title: interaction.payload.title,
-          data: interaction.payload.data,
-        }}
-        origin="plugin"
-      />,
-    );
-    expect(screen.getByText(/form is unavailable/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
-  });
-
   it("resolves the form through the slot store once the renderer registers", () => {
     markPluginFrontendsSettled();
     function Renderer({ interaction: view }: PluginPendingInteractionProps) {

@@ -1,7 +1,6 @@
 import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import { describe, expect, it } from "vitest";
 import {
-  parseLauncherArgs,
   superviseHostDaemonProcess,
   type ManagedProcessRun,
   type ProcessExitResult,
@@ -113,14 +112,5 @@ describe("superviseHostDaemonProcess", () => {
 
     await expect(run.result).resolves.toEqual(code(1));
     expect(run.starts()).toBe(0);
-  });
-});
-
-describe("parseLauncherArgs --supervise", () => {
-  it("parses the host daemon supervision flag", () => {
-    expect(
-      parseLauncherArgs(["host-daemon", "--auto-update", "--supervise"])
-        .options,
-    ).toMatchObject({ autoUpdate: true, supervise: true });
   });
 });

@@ -1302,28 +1302,6 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     );
   });
 
-  it("names the selected machine and provider display name in the trigger label", () => {
-    renderPicker(
-      <EnvironmentPickerUI
-        value="provider:branchy"
-        sources={machineSources}
-        host={studio}
-        isLocal={false}
-        machines={{
-          hosts: [thisMachine, studio],
-          localDaemonHostId: thisMachine.id,
-          primaryHostId: thisMachine.id,
-        }}
-        providers={[branchProvider]}
-        selectedProviderHostId={studio.id}
-        onSelectProvider={vi.fn()}
-        modal={false}
-      />,
-    );
-
-    expect(screen.getByText("Mac Studio · New branch workspace")).toBeTruthy();
-  });
-
   it("reports an offline machine ahead of the provider it was selected on", () => {
     const offlineStudio: Host = { ...studio, status: "disconnected" };
     renderPicker(

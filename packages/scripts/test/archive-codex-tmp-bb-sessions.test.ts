@@ -8,7 +8,6 @@ import {
   escapeSqlString,
   parseArchiveTmpBbSessionsArgs,
   parseThreadPreviewRows,
-  renderHelpText,
   resolveCodexStateDbPath,
 } from "../src/commands/archive-codex-tmp-bb-sessions.js";
 
@@ -103,17 +102,6 @@ describe("archive-codex-tmp-bb-sessions", () => {
     expect(() =>
       parseArchiveTmpBbSessionsArgs(["--concurrency", "0"], {}, "/tmp"),
     ).toThrow("--concurrency must be a positive integer");
-  });
-
-  it("documents the command and default pattern", () => {
-    const help = renderHelpText();
-    expect(help).toContain("pnpm codex:archive-tmp-bb-sessions");
-    expect(help).toContain("*/bb-standalone-*");
-    expect(help).toContain("*/bb-integration-*");
-    expect(help).toContain("*/bb-integ-*");
-    expect(help).toContain("*/bb-qa-smoke-*");
-    expect(help).toContain("repeatable");
-    expect(help).toContain("state_<n>.sqlite");
   });
 
   it("resolves the highest numbered Codex state DB", () => {

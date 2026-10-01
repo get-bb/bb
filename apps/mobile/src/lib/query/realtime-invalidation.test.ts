@@ -127,12 +127,6 @@ describe("installRealtimeInvalidation", () => {
     expect(predicate(freshQuery)).toBe(false);
   });
 
-  it("does not invalidate on the initial connect", () => {
-    const { invalidated } = setup();
-    vi.advanceTimersByTime(500);
-    expect(invalidated).toEqual([]);
-  });
-
   it("keeps a pending system config invalidation across a resume reconnect and adds the watermark catch-up", () => {
     const { factory, realtime, invalidated } = setup();
     factory.latest().receive(

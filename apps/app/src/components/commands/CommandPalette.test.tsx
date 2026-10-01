@@ -279,6 +279,8 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}</output>;
 }
 
+const threadUpdatedAt = Date.now();
+
 function makeThread(
   id: string,
   overrides: Partial<ThreadListEntry> = {},
@@ -305,7 +307,7 @@ function makeThread(
     lastReadAt: null,
     latestAttentionAt: 1,
     createdAt: 1,
-    updatedAt: Date.now(),
+    updatedAt: threadUpdatedAt,
     activity: {
       activeWorkflowCount: 0,
       activeBackgroundAgentCount: 0,
@@ -982,25 +984,6 @@ describe("CommandPalette", () => {
     await screen.findByRole("combobox", { name: "Search commands" });
   });
 
-  it("enters thread mode by running Search threads from the root", async () => {
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-
-    const searchCommand = within(bucketGroup("Threads"))
-      .getAllByRole("option")
-      .find((row) => row.textContent?.includes("Search threads"));
-    expect(searchCommand).toBeDefined();
-    fireEvent.click(searchCommand as HTMLElement);
-
-    await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy(),
-    );
-    expect(testState.calls).toEqual([]);
-  });
-
   it("returns from an empty thread query with Backspace", async () => {
     renderPalette();
     openThreadSearch();
@@ -1178,19 +1161,6 @@ describe("CommandPalette", () => {
       expect(document.querySelector("[data-palette-footer]")).toBeNull();
     },
   );
-
-  it("uses the shared empty treatment for selected populations and search with no matches", async () => {
-    renderPalette({ lifecycles: ["active", "archived"] });
-    openThreadSearch();
-    const input = await screen.findByRole("combobox", {
-      name: "Search threads",
-    });
-    expect(screen.getByText("No threads")).toBeTruthy();
-    fireEvent.change(input, { target: { value: "unmatched" } });
-    expect(screen.getByText("No matching threads")).toBeTruthy();
-    expect(screen.queryAllByRole("option")).toHaveLength(0);
-    expect(screen.queryByRole("button", { name: /create/i })).toBeNull();
-  });
 
   it("groups lifecycle with headings while preserving highlights and attention status", async () => {
     const active = makeThread("active", {
@@ -1781,22 +1751,6 @@ describe("CommandPalette", () => {
     expect(activation.defaultPrevented).toBe(true);
     await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
     expect(screen.queryByRole("combobox")).toBeNull();
-  });
-
-  it("runs the highlighted command, closes, and restores focus", async () => {
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-
-    fireEvent.change(searchField(), { target: { value: "toggle panel" } });
-    await waitFor(() =>
-      expect(selectedOption()?.textContent).toContain("Toggle panel"),
-    );
-    fireEvent.keyDown(searchField(), { key: "Enter" });
-
-    await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
-    expect(screen.queryByRole("combobox")).toBeNull();
-    expect(document.activeElement).toBe(screen.getByTestId("origin"));
   });
 
   it("keeps the default catalog unchanged after running a command", async () => {

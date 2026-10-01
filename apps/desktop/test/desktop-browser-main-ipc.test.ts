@@ -87,9 +87,6 @@ type NavigateCall = Parameters<DesktopBrowserViewManager["navigate"]>[0];
 type SetBoundsCall = Parameters<DesktopBrowserViewManager["setBounds"]>[0];
 type SetVisibleCall = Parameters<DesktopBrowserViewManager["setVisible"]>[0];
 type TabCommandCall = Parameters<DesktopBrowserViewManager["reload"]>[0];
-type WindowResizeCall = Parameters<
-  DesktopBrowserViewManager["beginWindowResize"]
->[0];
 type EvaluateCall = Parameters<DesktopBrowserViewManager["evaluate"]>[0];
 
 interface FakeWebContents {
@@ -143,17 +140,13 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   }
 
   public readonly attachCalls: AttachCall[] = [];
-  public readonly beginWindowResizeCalls: WindowResizeCall[] = [];
-  public readonly destroyAllCalls: string[] = [];
   public readonly detachCalls: DetachCall[] = [];
-  public readonly endWindowResizeCalls: WindowResizeCall[] = [];
   public readonly focusCalls: TabCommandCall[] = [];
   public readonly findInPageCalls: FindInPageCall[] = [];
   public readonly stopFindInPageCalls: StopFindInPageCall[] = [];
   public readonly goBackCalls: TabCommandCall[] = [];
   public readonly goForwardCalls: TabCommandCall[] = [];
   public readonly navigateCalls: NavigateCall[] = [];
-  public readonly releaseWindowCalls: number[] = [];
   public readonly reloadCalls: TabCommandCall[] = [];
   public readonly setBoundsCalls: SetBoundsCall[] = [];
   public readonly setVisibleCalls: SetVisibleCall[] = [];
@@ -170,23 +163,17 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.attachCalls.push(args);
   }
 
-  beginWindowResize(hostWindow: WindowResizeCall): void {
-    this.beginWindowResizeCalls.push(hostWindow);
-  }
+  beginWindowResize(): void {}
 
   prepareWindowReload(): void {}
 
-  destroyAll(): void {
-    this.destroyAllCalls.push("destroyAll");
-  }
+  destroyAll(): void {}
 
   detach(args: DetachCall): void {
     this.detachCalls.push(args);
   }
 
-  endWindowResize(hostWindow: WindowResizeCall): void {
-    this.endWindowResizeCalls.push(hostWindow);
-  }
+  endWindowResize(): void {}
 
   focus(args: TabCommandCall): void {
     this.focusCalls.push(args);
@@ -212,9 +199,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.navigateCalls.push(args);
   }
 
-  releaseWindow(hostWebContentsId: number): void {
-    this.releaseWindowCalls.push(hostWebContentsId);
-  }
+  releaseWindow(): void {}
 
   reload(args: TabCommandCall): void {
     this.reloadCalls.push(args);

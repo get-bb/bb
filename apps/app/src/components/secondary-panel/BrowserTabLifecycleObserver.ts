@@ -17,7 +17,7 @@ interface BuildBrowserTabIdSetArgs {
   browserTabs: readonly BrowserFixedPanelTab[];
 }
 
-export function buildBrowserTabIdSet({
+function buildBrowserTabIdSet({
   browserTabs,
 }: BuildBrowserTabIdSetArgs): ReadonlySet<string> {
   return new Set(browserTabs.map((tab) => tab.id));

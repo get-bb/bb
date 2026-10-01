@@ -64,13 +64,19 @@ describe("PluginThreadList", () => {
     expect(
       container.querySelector('[data-thread-list-placeholder="loading"]'),
     ).not.toBeNull();
+    expect(screen.getByLabelText("Loading sidebar navigation")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
 
     act(() => markPluginFrontendsSettled());
 
     expect(
       container.querySelector('[data-thread-list-placeholder="missing"]'),
     ).not.toBeNull();
-    expect(screen.getByText("No thread list plugin is enabled.")).toBeDefined();
+    expect(screen.getByRole("status").textContent).toContain(
+      "No thread list plugin is enabled.",
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("renders the plugin list with the host props and no delegation component", () => {
@@ -106,7 +112,9 @@ describe("PluginThreadList", () => {
     expect(
       container.querySelector('[data-thread-list-placeholder="crashed"]'),
     ).not.toBeNull();
-    expect(screen.getByText("Demo list stopped working.")).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Demo list stopped working.",
+    );
     expect(toast.error).toHaveBeenCalledTimes(1);
 
     shouldCrash = false;

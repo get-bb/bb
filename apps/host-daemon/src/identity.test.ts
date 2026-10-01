@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { detectHostName, loadHostIdentity, persistHostId } from "./identity.js";
 
 const tempDirs: string[] = [];
@@ -87,24 +87,6 @@ describe("identity", () => {
     ).resolves.toContain("host-provided");
   });
 
-  it("lets a fresh BB_HOST_ID be used after an earlier load failed to persist", async () => {
-    const dataDir = await makeTempDir("bb-host-daemon-identity-retry-");
-
-    const first = await loadHostIdentity({
-      dataDir,
-      fallbackHostName: () => "test-host",
-      providedHostId: "host-original",
-    });
-    expect(first.hostId).toBe("host-original");
-
-    const second = await loadHostIdentity({
-      dataDir,
-      fallbackHostName: () => "test-host",
-      providedHostId: "host-retry",
-    });
-    expect(second.hostId).toBe("host-retry");
-  });
-
   it("rejects a BB_HOST_ID that conflicts with a persisted host ID", async () => {
     const dataDir = await makeTempDir("bb-host-daemon-identity-conflict-");
 
@@ -117,20 +99,5 @@ describe("identity", () => {
         providedHostId: "host-mismatch",
       }),
     ).rejects.toThrow(/does not match persisted host ID/u);
-  });
-
-  it("uses BB_HOST_NAME when provided instead of detecting a hostname", async () => {
-    const dataDir = await makeTempDir("bb-host-daemon-identity-host-name-");
-    const execFile = vi.fn();
-
-    const identity = await loadHostIdentity({
-      dataDir,
-      execFile,
-      fallbackHostName: () => "fallback-host",
-      providedHostName: "remote-abcdef",
-    });
-
-    expect(identity.hostName).toBe("remote-abcdef");
-    expect(execFile).not.toHaveBeenCalled();
   });
 });

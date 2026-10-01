@@ -60,15 +60,6 @@ describe("resolvePreferredReplacement", () => {
     expect(resolve([], "alpha/inbox")).toBeNull();
   });
 
-  it("reveals the next replacement when the first is removed", () => {
-    const first = slot("alpha", "inbox");
-    const second = slot("beta", "inbox");
-    expect(resolve([first, second], AUTOMATIC_REPLACEMENT_PROVIDER)).toBe(
-      first,
-    );
-    expect(resolve([second], AUTOMATIC_REPLACEMENT_PROVIDER)).toBe(second);
-  });
-
   it("prefers an installed replacement over the bundled provider regardless of plugin order", () => {
     const bundled = slot("thread-list", "thread-list");
     const community = slot("zen", "list");

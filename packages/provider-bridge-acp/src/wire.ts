@@ -234,8 +234,6 @@ export const acpInitializeResultSchema = z
         promptCapabilities: z
           .object({
             image: z.boolean().optional(),
-            audio: z.boolean().optional(),
-            embeddedContext: z.boolean().optional(),
           })
           .passthrough()
           .optional(),

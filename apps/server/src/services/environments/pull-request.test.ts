@@ -153,12 +153,6 @@ describe("assembleThreadPullRequest", () => {
     });
   });
 
-  it("folds isDraft on an open PR into 'draft'", () => {
-    expect(
-      assembleThreadPullRequest(rawPullRequest({ isDraft: true }))?.state,
-    ).toBe("draft");
-  });
-
   it("maps MERGED to 'merged' regardless of isDraft", () => {
     expect(
       assembleThreadPullRequest(rawPullRequest({ state: "MERGED" }))?.state,

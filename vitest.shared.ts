@@ -1,5 +1,4 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeConfig, type ViteUserConfig } from "vitest/config";
@@ -310,34 +309,12 @@ function globRoot(glob: string): string {
   return literal.length > 0 ? literal.join("/") : ".";
 }
 
-function hugeiconsBundleAlias(): { find: RegExp; replacement: string }[] {
-  try {
-    const require = createRequire(path.join(process.cwd(), "package.json"));
-    const packageJson =
-      require.resolve("@hugeicons/core-free-icons/package.json");
-    return [
-      {
-        find: /^@hugeicons\/core-free-icons$/,
-        replacement: path.join(
-          path.dirname(packageJson),
-          "dist",
-          "esm",
-          "index.min.js",
-        ),
-      },
-    ];
-  } catch {
-    return [];
-  }
-}
-
 export function defineWorkspaceTestConfig(
   config: ViteUserConfig,
 ): ViteUserConfig {
   return mergeConfig(
     {
       resolve: {
-        alias: hugeiconsBundleAlias(),
         conditions: ["source"],
       },
       test: {

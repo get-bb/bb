@@ -74,7 +74,6 @@ interface SecondaryPanelLayoutProps {
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   renderHostedPanel?: (panel: ReactNode) => ReactNode;
   composerHost: PluginComposerHost | null;
-  compactPresentation: "shelf" | "full";
 }
 
 export function SecondaryPanelLayout({
@@ -93,16 +92,10 @@ export function SecondaryPanelLayout({
   renderPanel: renderWorkspacePanel,
   renderHostedPanel,
   composerHost,
-  compactPresentation: workspaceCompactPresentation,
 }: SecondaryPanelLayoutProps) {
   const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing();
   const paneContext = useOptionalPaneContext();
   const pluginDetails = useContext(PluginDetailPanelContext);
-  const isPluginDetailOpen =
-    pluginDetails !== null && pluginDetails.activePluginId !== null;
-  const compactPresentation = isPluginDetailOpen
-    ? "full"
-    : workspaceCompactPresentation;
   const renderPanel = useCallback(
     (args: SecondaryPanelRenderArgs) => (
       <PluginDetailPanelContext.Provider value={pluginDetails}>
@@ -390,7 +383,6 @@ export function SecondaryPanelLayout({
         <CompactSecondaryPanelShelf
           open={open}
           onClose={onClose}
-          presentation={compactPresentation}
           srLabel={drawerLabel}
           onContentAnimationEnd={handleDrawerContentAnimationEnd}
         >

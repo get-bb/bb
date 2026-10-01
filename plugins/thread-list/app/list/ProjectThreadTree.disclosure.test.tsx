@@ -46,7 +46,6 @@ function renderThreadTree(
           selectedThreadId={selectedThreadId}
           collapsedThreadIds={new Set()}
           collapsedEnvironmentIds={new Set()}
-          variant="section"
           onToggleThreadCollapsed={vi.fn()}
           onToggleEnvironmentCollapsed={vi.fn()}
         />
@@ -97,7 +96,6 @@ describe("ProjectThreadTree without progressive disclosure", () => {
             compareThreads={() => 0}
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={new Set()}
-            variant="section"
             onToggleThreadCollapsed={vi.fn()}
             onToggleEnvironmentCollapsed={vi.fn()}
           />

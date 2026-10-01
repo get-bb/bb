@@ -213,9 +213,7 @@ Custom ACP agents are configured through the ACP providers plugin's
 `reasoningCli` or `nativeReasoning` reasoning settings. The optional
 `nativeSkillRoots` field adds provider-native skills to the composer. Its
 `user` paths resolve from the target host home directory. Its `project` paths
-resolve from the selected workspace. The `customAcpAgents` array in
-`~/.bb/config.json` is the deprecated form of the same list; bb reads it, warns
-about each entry, and stops reading it in 0.41.
+resolve from the selected workspace.
 Top-level `sharedSkillRoots` uses the same `user` and `project` path format.
 BB lists these sources as read-only skills. BB injects them into Codex, Claude,
 Pi, and ACP threads. This permits one physical skill collection for BB and a

@@ -560,12 +560,6 @@ vi.mock(
   }),
 );
 
-vi.mock("@/components/plugin/PluginPendingInteractionComposer", () => ({
-  PluginPendingInteractionComposer: () => (
-    <div data-testid="composer-stack-item">Plugin pending interaction</div>
-  ),
-}));
-
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: { error: mocks.toastError },
 }));
@@ -821,29 +815,6 @@ function makePendingInteraction(): PendingInteraction {
           allowFreeText: true,
         },
       ],
-    },
-    resolution: null,
-    status: "pending",
-    statusReason: null,
-    createdAt: 1,
-    resolvedAt: null,
-  };
-}
-
-function makePluginPendingInteraction(): PendingInteraction {
-  return {
-    id: "plugin-interaction-1",
-    threadId: "thr_1",
-    turnId: null,
-    origin: {
-      kind: "plugin",
-      pluginId: "example-plugin",
-      rendererId: "example-form",
-    },
-    payload: {
-      kind: "plugin",
-      title: "Plugin input",
-      data: null,
     },
     resolution: null,
     status: "pending",
@@ -1993,20 +1964,6 @@ describe("ThreadDetailPromptArea", () => {
       activePromptMode: activePlan,
       goal: activeGoal,
       pendingInteractions: [makePendingInteraction()],
-    });
-
-    expect(
-      screen
-        .getAllByTestId("composer-stack-item")
-        .map((item) => item.textContent),
-    ).toEqual(["Plan banner", "Goal banner", "Pending interaction"]);
-  });
-
-  it("keeps independent Plan and Goal banners above plugin input", () => {
-    renderPromptArea({
-      activePromptMode: activePlan,
-      goal: activeGoal,
-      pendingInteractions: [makePluginPendingInteraction()],
     });
 
     expect(

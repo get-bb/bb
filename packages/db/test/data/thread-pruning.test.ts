@@ -16,8 +16,6 @@ import {
 import type { ThreadPruningPolicy } from "../../src/data/thread-pruning.js";
 import {
   appendDaemonEventsInTransaction,
-  pruneResolvedItemDeltas,
-  pruneBackgroundTaskProgressEvents,
   getHighWaterMarks,
   deleteThreadEventSuffixInTransaction,
   getLastStoredProviderThreadId,
@@ -211,26 +209,38 @@ describe("thread pruning", () => {
           for (let i = 1; i <= 600; i++)
             seed(fixture, i, { type: "item/agentMessage/delta" });
         });
-        pruneResolvedItemDeltas(f.db, { threadId: fixture.thread.id });
+        for (let i = 0; i < 4; i++)
+          advanceThreadPruning(f.db, { threadId: fixture.thread.id });
       }
       advanceThreadPruning(f.db, "rate-limits");
       const before = f.db.select().from(threadPruningCursors).all();
-      expect(before).toHaveLength(3);
       expect(
         before
           .filter((row) => row.policy === "deltas")
           .map((row) => row.scope)
           .sort(),
       ).toEqual([f.thread.id, other.thread.id].sort());
-      pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      const hasLiveDeltaCursor = () =>
+        f.db
+          .select()
+          .from(threadPruningCursors)
+          .all()
+          .some((row) => row.policy === "deltas" && row.scope === f.thread.id);
+      for (let i = 0; i < 1000 && hasLiveDeltaCursor(); i++)
+        advanceThreadPruning(f.db, { threadId: f.thread.id });
+      expect(hasLiveDeltaCursor()).toBe(false);
       const remaining = f.db.select().from(threadPruningCursors).all();
-      expect(remaining).toEqual(
+      expect(remaining.filter((row) => row.scope !== f.thread.id)).toEqual(
         before.filter((row) => row.scope !== f.thread.id),
       );
       f.db.delete(threads).where(eq(threads.id, other.thread.id)).run();
-      expect(f.db.select().from(threadPruningCursors).all()).toEqual(
-        before.filter((row) => row.scope === ""),
-      );
+      expect(
+        f.db
+          .select()
+          .from(threadPruningCursors)
+          .all()
+          .filter((row) => row.scope !== f.thread.id),
+      ).toEqual(before.filter((row) => row.scope === ""));
     } finally {
       f.db.$client.close();
     }
@@ -295,34 +305,31 @@ describe("thread pruning", () => {
         seed(f, 252, { type: "turn/completed" });
       });
       f.db.run(
-        sql`CREATE TRIGGER fail_live_insert BEFORE INSERT ON thread_pruning_cursors BEGIN SELECT RAISE(ABORT, 'live insert failed'); END`,
+        sql`CREATE TRIGGER fail_live_insert BEFORE INSERT ON thread_pruning_cursors WHEN NEW.policy = 'deltas' BEGIN SELECT RAISE(ABORT, 'live insert failed'); END`,
       );
-      expect(() =>
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id }),
-      ).toThrow("live insert failed");
+      expect(() => advanceThreadPruning(f.db, "resolved-items")).toThrow(
+        "live insert failed",
+      );
       expect(sequences(f)).toContain(126);
       expect(f.db.select().from(threadPruningCursors).all()).toEqual([]);
       f.db.run(sql`DROP TRIGGER fail_live_insert`);
-      let removed = 0;
-      for (let i = 0; i < 5; i++)
-        removed += pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
-      expect(removed).toBe(1);
+      expect(
+        cycle(f, "resolved-items").reduce((n, r) => n + r.removed, 0),
+      ).toBe(1);
       expect(sequences(f)).not.toContain(126);
       expect(sequences(f).filter((sequence) => sequence <= 125)).toHaveLength(
         125,
       );
       seed(f, 253, { type: "item/agentMessage/delta", itemId: "late" });
       seed(f, 254, { type: "item/agentMessage/delta", itemId: "late" });
-      for (let i = 0; i < 5; i++)
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).toContain(254);
       seed(f, 255, {
         type: "item/completed",
         itemKind: "agentMessage",
         itemId: "late",
       });
-      for (let i = 0; i < 5; i++)
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).toContain(253);
       expect(sequences(f)).not.toContain(254);
     } finally {
@@ -358,26 +365,33 @@ describe("thread pruning", () => {
           parentToolCallId: "target",
         });
       });
-      expect(pruneResolvedItemDeltas(f.db, { threadId: f.thread.id })).toBe(0);
+      expect(advanceThreadPruning(f.db, "resolved-items").removed).toBe(0);
       const before = f.db.select().from(threadPruningCursors).all();
-      expect(before[0]?.probeSequence).toBeGreaterThan(0);
+      expect(
+        before.find((row) => row.policy === "deltas")?.probeSequence,
+      ).toBeGreaterThan(0);
       f.db.run(
         sql`CREATE TRIGGER fail_live_cursor BEFORE UPDATE ON thread_pruning_cursors BEGIN SELECT RAISE(ABORT, 'live cursor failed'); END`,
       );
-      expect(() =>
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id }),
-      ).toThrow("live cursor failed");
+      expect(() => advanceThreadPruning(f.db, "resolved-items")).toThrow(
+        "live cursor failed",
+      );
       expect(f.db.select().from(threadPruningCursors).all()).toEqual(before);
       f.db.run(sql`DROP TRIGGER fail_live_cursor`);
       const saved = f.db.$client.serialize();
       f.db.$client.close();
       f = { ...f, db: createConnection(saved) };
-      for (let i = 0; i < 20; i++)
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).toContain(1);
       expect(sequences(f)).not.toContain(2);
       f.db.delete(threads).where(eq(threads.id, f.thread.id)).run();
-      expect(f.db.select().from(threadPruningCursors).all()).toEqual([]);
+      expect(
+        f.db
+          .select()
+          .from(threadPruningCursors)
+          .all()
+          .filter((row) => row.scope !== ""),
+      ).toEqual([]);
     } finally {
       f.db.$client.close();
     }
@@ -398,8 +412,7 @@ describe("thread pruning", () => {
         });
         seed(f, 512, { type: "turn/completed" });
       });
-      for (let i = 0; i < 8; i++)
-        pruneBackgroundTaskProgressEvents(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).not.toContain(1);
       expect(sequences(f)).toContain(511);
       seed(f, 513, { type: "item/agentMessage/delta", itemId: "message" });
@@ -698,25 +711,27 @@ describe("thread pruning", () => {
           itemKind: "commandExecution",
           data: '{"item":{"aggregatedOutput":"x"}}',
         });
-        seed(f, 1202, {
-          type: "item/commandExecution/outputDelta",
-          itemId: "cmd",
-          turnId: "other",
-          data: '{"delta":"keep"}',
-        });
-        seed(f, 1203, {
-          type: "item/commandExecution/outputDelta",
-          itemId: "cmd",
-          parentToolCallId: "nested",
-          data: '{"delta":"keep"}',
-        });
+        for (let i = 1202; i <= 1203; i++)
+          seed(f, i, {
+            type: "item/commandExecution/outputDelta",
+            itemId: "cmd",
+            turnId: "other",
+            data: '{"delta":"keep"}',
+          });
         for (let i = 1204; i <= 1205; i++)
+          seed(f, i, {
+            type: "item/commandExecution/outputDelta",
+            itemId: "cmd",
+            parentToolCallId: "nested",
+            data: '{"delta":"keep"}',
+          });
+        for (let i = 1206; i <= 1207; i++)
           seed(f, i, {
             type: "item/commandExecution/outputDelta",
             itemId: "no-output",
             data: '{"delta":"keep"}',
           });
-        seed(f, 1206, {
+        seed(f, 1208, {
           type: "item/completed",
           itemId: "no-output",
           itemKind: "commandExecution",
@@ -724,7 +739,9 @@ describe("thread pruning", () => {
         });
       });
       cycle(f, "resolved-items");
-      expect(sequences(f)).toEqual([1, 1201, 1202, 1203, 1204, 1205, 1206]);
+      expect(sequences(f)).toEqual([
+        1, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208,
+      ]);
     } finally {
       f.db.$client.close();
     }

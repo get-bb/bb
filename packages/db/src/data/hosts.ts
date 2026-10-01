@@ -28,7 +28,6 @@ export interface UpdateHostInput {
   machineOperationId?: string | null;
   launchKey?: string | null;
   inputs?: JsonValue | null;
-  attempt?: number;
   pendingLog?: string;
   destroyedAt?: number | null;
   lastRejectedProtocolVersion?: number | null;
@@ -275,7 +274,6 @@ export function updateHost(
         : {}),
       ...(input.launchKey !== undefined ? { launchKey: input.launchKey } : {}),
       ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
-      ...(input.attempt !== undefined ? { attempt: input.attempt } : {}),
       ...(input.pendingLog !== undefined
         ? { pendingLog: input.pendingLog }
         : {}),

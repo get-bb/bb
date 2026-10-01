@@ -18,8 +18,8 @@ import {
   createServer,
   denyOutstandingLinkApprovals,
   findProfile,
+  listServerSummaries,
   serverUrlForLabel,
-  toServerSummary,
   tunnelUrlForServerUrl,
 } from "./api.js";
 import { generateConnectCode, generateToken } from "./tokens.js";
@@ -121,7 +121,7 @@ export function linkVerificationUrl(appUrl: string, userCode: string): string {
   return url.toString();
 }
 
-export function stripControlCharacters(value: string): string {
+function stripControlCharacters(value: string): string {
   return value.replace(INVISIBLE_CONTROL_CHARACTERS, "").trim();
 }
 
@@ -566,17 +566,7 @@ export async function getLinkRequestView(
     .from(server)
     .where(eq(server.userId, userId))
     .all();
-  const servers = rows
-    .map((srv) =>
-      toServerSummary(srv, prof.handle, deps.serverUrlTemplate, now),
-    )
-    .sort((a, b) =>
-      a.isPrimary !== b.isPrimary
-        ? a.isPrimary
-          ? -1
-          : 1
-        : a.createdAt - b.createdAt,
-    );
+  const servers = await listServerSummaries(deps, rows, prof.handle, now);
   return {
     state: "choose-server",
     request,

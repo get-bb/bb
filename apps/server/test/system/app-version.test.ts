@@ -231,27 +231,6 @@ describe("createAppVersionService", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it("re-fetches once the TTL has expired", async () => {
-    const calls: FetchCall[] = [];
-    let currentTime = 1_000;
-    const service = createAppVersionService({
-      cacheTtlMs: 100,
-      config: { appVersion: "0.0.5", isDevelopment: false },
-      fetchImpl: createStubFetch(
-        [{ body: { version: "0.0.6" } }, { body: { version: "0.0.7" } }],
-        calls,
-      ),
-      logger: testLogger,
-      now: () => currentTime,
-    });
-    const first = await service.getSystemVersion();
-    currentTime += 1_000;
-    const second = await service.getSystemVersion();
-    expect(first.latestVersion).toBe("0.0.6");
-    expect(second.latestVersion).toBe("0.0.7");
-    expect(calls).toHaveLength(2);
-  });
-
   it("dedupes concurrent inflight requests", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({

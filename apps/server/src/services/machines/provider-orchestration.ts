@@ -411,13 +411,10 @@ export async function parseMachineProviderInputs(
   return parsed.data;
 }
 
-export async function prepareMachineProviderSelection(
-  deps: Deps,
-  args: {
-    machineProviderId: string;
-    inputs: JsonValue | null;
-  },
-): Promise<{ record: PluginMachineProviderRecord; inputs: JsonValue | null }> {
+export async function prepareMachineProviderSelection(args: {
+  machineProviderId: string;
+  inputs: JsonValue | null;
+}): Promise<{ record: PluginMachineProviderRecord; inputs: JsonValue | null }> {
   const record = getMachineProvider(args.machineProviderId);
   if (record === undefined) {
     throw new ApiError(
@@ -596,7 +593,7 @@ export async function submitMachine(
   },
 ): Promise<Host> {
   const key = args.key ?? `machine-${randomUUID()}`;
-  const prepared = await prepareMachineProviderSelection(deps, args);
+  const prepared = await prepareMachineProviderSelection(args);
   const decision = askMachineLaunch(deps, {
     key,
     lifetime: "standalone",

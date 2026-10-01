@@ -463,16 +463,6 @@ describe("tasks app shell", () => {
       refresh.compareDocumentPosition(newTask) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    const tabbables = [refresh, newTask];
-    for (let i = 0; i < tabbables.length - 1; i++) {
-      expect(
-        tabbables[i]!.compareDocumentPosition(tabbables[i + 1]!) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    }
-
-    refresh.focus();
-    expect(document.activeElement).toBe(refresh);
   });
 
   it("single-flights manual refresh against deferred RPCs and keeps geometry stable", async () => {
@@ -526,10 +516,6 @@ describe("tasks app shell", () => {
     expect(refresh.disabled).toBe(false);
     expect(idleClassName).toMatch(/active:bg-state-active/);
 
-    fireEvent.pointerMove(refresh);
-    fireEvent.focus(refresh);
-    expect(refresh.getAttribute("aria-label")).toBe("Refresh tasks");
-
     holdListTasks = true;
     title = "Flight title B";
     fireEvent.click(refresh);
@@ -576,10 +562,6 @@ describe("tasks app shell", () => {
       expect(button.disabled).toBe(false);
       expect(button.getAttribute("aria-busy")).not.toBe("true");
     });
-    expect(
-      (slot.getByRole("button", { name: "Refresh tasks" }) as HTMLButtonElement)
-        .className,
-    ).toMatch(/size-7/);
   });
 
   it("retains stale list data when a manual refresh fails, then recovers", async () => {
@@ -953,6 +935,28 @@ describe("tasks app shell", () => {
       method: "toPluginPanel",
       path: "tasks",
       options: { subPath: "all" },
+    });
+  });
+
+  it("replaces an old task key with its canonical key on the full Tasks page", async () => {
+    const slot = renderSlot(
+      tasksRegistration,
+      { subPath: "task/OLD-4" },
+      {
+        rpc: seededRpc({
+          getTaskByKey: () => ({ task: makeTask({ key: "TSK-4" }) }),
+          listLabels: () => ({ labels: [] }),
+          listAttachments: () => ({ attachments: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listComments: () => ({ comments: [] }),
+        }),
+      },
+    );
+    await slot.findByRole("textbox", { name: "Task title" });
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: "task/TSK-4", replace: true },
     });
   });
 

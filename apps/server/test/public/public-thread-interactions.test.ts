@@ -1178,54 +1178,6 @@ describe("public thread interaction routes", () => {
     });
   });
 
-  it("resolves file-change interactions through thread routes", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedThreadFixture(harness, {
-        session: {
-          id: "host-public-thread-extra-interactions",
-        },
-      });
-
-      const fileChange = registerPendingInteraction(
-        harness.deps,
-        harness.deps.pendingInteractions,
-        {
-          threadId: thread.id,
-          turnId: "turn-file-change",
-          providerId: "codex",
-          providerThreadId: "provider-thread-file-change",
-          providerRequestId: "request-file-change",
-          payload: createFileChangeApprovalPayload({
-            itemId: "item-file-change",
-            reason: "Approve file changes",
-          }),
-        },
-      );
-      if (fileChange.outcome === "rejected") {
-        throw new Error(
-          `Expected file-change interaction registration to succeed: ${fileChange.reason}`,
-        );
-      }
-
-      const fileChangeResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/interactions/${fileChange.interaction.id}/resolve`,
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify(createAllowOnceResolution()),
-        },
-      );
-      expect(fileChangeResponse.status).toBe(200);
-      await expect(readJson(fileChangeResponse)).resolves.toMatchObject({
-        id: fileChange.interaction.id,
-        status: "resolving",
-        resolution: createAllowOnceResolution(),
-      });
-    });
-  });
-
   it("keeps a pending interaction answerable across a host disconnect", async () => {
     await withTestHarness(async (harness) => {
       const { host, session, thread } = seedThreadFixture(harness, {

@@ -65,14 +65,6 @@ This index lists every command path that the core CLI registers, including alias
 - `bb provider disable`
 - `bb provider models`
 
-## manager
-
-- `bb manager`
-- `bb manager hire`
-- `bb manager list`
-- `bb manager status`
-- `bb manager delete`
-
 ## machine
 
 - `bb machine`

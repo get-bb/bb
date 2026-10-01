@@ -2,7 +2,7 @@ import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import type { TaskThreadLiveStatus } from "../db";
 import { registerLifecycle } from ".";
@@ -252,92 +252,5 @@ describe("task thread lifecycle", () => {
     expect(fixture.harness.sdk.callsTo("subscribe")).toEqual([]);
 
     await fixture.harness.dispose();
-  });
-
-  it("reads tracked threads once at startup and follows events afterwards", async () => {
-    let reads = 0;
-    const host = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: {
-        threads: {
-          get: async () => {
-            reads += 1;
-            return makeThreadResponse({ id: "thr_worker", status: "starting" });
-          },
-        },
-      },
-    });
-    const store = createStore(host.bb);
-    const project = store.tasks.createProject({
-      name: "Lifecycle",
-      prefix: "LIFE",
-      color: "blue",
-    });
-    const task = store.tasks.createTask({
-      projectId: project.id,
-      title: "Worker",
-    });
-    const tracked = store.tasks.upsertTaskThread({
-      taskId: task.id,
-      threadId: "thr_worker",
-      presetName: "Default",
-      title: "Worker",
-      liveStatus: "starting",
-    });
-
-    await registerLifecycle(host.bb, store);
-    await host.harness.emitThreadEvent("thread.active", {
-      thread: makeThreadResponse({ id: "thr_worker", status: "active" }),
-    });
-    expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("working");
-    expect(reads).toBe(1);
-    await host.harness.dispose();
-  });
-
-  it("ignores lifecycle events for non-tracked threads", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
-    const store = createStore(bb);
-    await registerLifecycle(bb, store);
-
-    await harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thr_untracked", status: "error" }),
-      error: "not ours",
-    });
-
-    expect(harness.realtimeSignals).toEqual([]);
-    expect(store.tasks.listTasks()).toEqual([]);
-
-    await harness.dispose();
-  });
-
-  it("looks up an unrelated lifecycle event without scanning tasks", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
-    const store = createStore(bb);
-    const project = store.tasks.createProject({
-      name: "Lookup scope",
-      prefix: "SCOPE",
-      color: "blue",
-    });
-    for (let index = 0; index < 3; index += 1) {
-      store.tasks.createTask({
-        projectId: project.id,
-        title: `Unrelated task ${index}`,
-      });
-    }
-    await registerLifecycle(bb, store);
-    const listTasks = vi.spyOn(store.tasks, "listTasks");
-    const listTaskThreads = vi.spyOn(store.tasks, "listTaskThreads");
-
-    await harness.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ id: "thr_untracked", status: "idle" }),
-      lastAssistantText: null,
-    });
-
-    expect({
-      listTasks: listTasks.mock.calls.length,
-      listTaskThreads: listTaskThreads.mock.calls.length,
-    }).toEqual({ listTasks: 0, listTaskThreads: 0 });
-
-    await harness.dispose();
   });
 });

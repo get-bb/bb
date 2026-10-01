@@ -159,7 +159,7 @@ describe("bb.experimental_aiServices.register (server)", () => {
     });
   });
 
-  it("fails the load on the host build error when a first install's bb.host entry does not build", async () => {
+  it("fails the load on the host build error for a plugin that registers only an AI service", async () => {
     await withTestHarness(async (harness) => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-broken-host-ai",
@@ -172,7 +172,6 @@ describe("bb.experimental_aiServices.register (server)", () => {
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("error");
       expect(entry.statusDetail).toContain("Could not resolve");
-      expect(entry.statusDetail).not.toContain("needs a bb.host entry");
       expect(
         harness.deps.aiServices.get({
           pluginId: "broken-host-ai",

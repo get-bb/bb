@@ -583,11 +583,6 @@
     oklch(0.8 0.13 88),
     var(--canvas) 76%
   );
-  --sidebar-search-match-border: color-mix(
-    in oklab,
-    oklch(0.8 0.13 88),
-    var(--canvas) 60%
-  );
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
@@ -806,11 +801,6 @@
     in oklab,
     oklch(0.8 0.13 88),
     var(--canvas) 80%
-  );
-  --sidebar-search-match-border: color-mix(
-    in oklab,
-    oklch(0.8 0.13 88),
-    var(--canvas) 67%
   );
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;

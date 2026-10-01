@@ -201,12 +201,6 @@ export const terminalClientMessageSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
-      type: z.literal("close"),
-      reason: z.literal("user"),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("ping"),
     })
     .strict(),

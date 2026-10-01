@@ -200,8 +200,6 @@ function BrowserChrome({
   const addressValue = isEditing ? addressDraft : currentUrl;
   return (
     <div
-      data-testid="browser-tab-nav-bar"
-      data-state="expanded"
       role="region"
       aria-label="Browser navigation"
       tabIndex={-1}
@@ -211,7 +209,6 @@ function BrowserChrome({
       )}
     >
       <div
-        data-testid="browser-tab-nav-controls"
         className={cn(
           "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 py-1.5 pl-2 pr-4 opacity-100 max-md:pointer-coarse:h-[52px]",
         )}

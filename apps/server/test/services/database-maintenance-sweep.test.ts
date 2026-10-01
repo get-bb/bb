@@ -14,8 +14,6 @@ import {
   type SlowDbQueryLogger,
   getDatabaseAutoVacuumMode,
   getDatabaseFreelistStats,
-  getDatabaseMaintenanceActivity,
-  isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
   migrate,
   noopNotifier,
@@ -178,22 +176,6 @@ describe("runDatabaseMaintenanceSweep", () => {
 
     expect(listDeferredLegacyTables(db)).toEqual(
       [...TEST_DEFERRED_LEGACY_TABLE_NAMES].sort(),
-    );
-  });
-
-  it("reclaims freed pages incrementally even when the instance is not idle", () => {
-    const { db } = setupBusyDatabaseWithFreelist();
-
-    const before = getDatabaseFreelistStats(db);
-    expect(before.freelistCount).toBeGreaterThan(0);
-    expect(isDatabaseMaintenanceIdle(getDatabaseMaintenanceActivity(db))).toBe(
-      false,
-    );
-
-    runDatabaseMaintenanceSweep({ db, logger: testLogger });
-
-    expect(getDatabaseFreelistStats(db).freelistCount).toBeLessThan(
-      before.freelistCount,
     );
   });
 

@@ -444,15 +444,15 @@ describe("mobile sidebar shelf stacking", () => {
     }
 
     expect(inset.className).not.toContain("data-[sidebar-shelf=open]:rounded");
-    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:rounded");
+    expect(inset.className).not.toContain("data-[panel-shelf=full]:rounded");
     expect(inset.className).not.toContain(
       "data-[sidebar-shelf=open]:overflow-hidden",
     );
     expect(inset.className).not.toContain(
-      "data-[panel-shelf=shelf]:overflow-hidden",
+      "data-[panel-shelf=full]:overflow-hidden",
     );
     expect(inset.className).not.toContain("data-[sidebar-shelf=open]:shadow");
-    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:shadow");
+    expect(inset.className).not.toContain("data-[panel-shelf=full]:shadow");
   });
 
   it("leaves the page untouched by the shelf on desktop", () => {

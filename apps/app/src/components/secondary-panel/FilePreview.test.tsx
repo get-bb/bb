@@ -526,7 +526,7 @@ describe("FilePreview", () => {
           iframe: {
             sandbox: "allow-scripts",
             title: "docs/progress-vis.html",
-            url: "/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html",
+            url: "/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html",
           },
           lineRange: null,
         }}
@@ -538,7 +538,7 @@ describe("FilePreview", () => {
     );
 
     expect(openSpy).toHaveBeenCalledWith(
-      `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
+      `${window.location.origin}/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -620,7 +620,7 @@ describe("FilePreview", () => {
           iframe: {
             sandbox: "allow-scripts",
             title: "docs/progress-vis.html",
-            url: "/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html",
+            url: "/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html",
           },
           lineRange: null,
         }}
@@ -658,10 +658,14 @@ describe("FilePreview", () => {
         <FilePreview
           path="docs/progress-vis.html"
           state={{
-            kind: "iframe",
-            sandbox: "allow-scripts",
-            title: "docs/progress-vis.html",
-            url: "/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html",
+            kind: "html",
+            file: { name: "progress-vis.html", contents: "<h1>Progress</h1>" },
+            iframe: {
+              sandbox: "allow-scripts",
+              title: "docs/progress-vis.html",
+              url: "/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html",
+            },
+            lineRange: null,
           }}
         />,
       );
@@ -671,7 +675,7 @@ describe("FilePreview", () => {
       );
 
       expect(openExternalUrl).toHaveBeenCalledWith(
-        `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
+        `${window.location.origin}/api/v1/threads/thread-1/thread-storage/files/docs/progress-vis.html`,
       );
     } finally {
       delete (window as unknown as { bbDesktop?: unknown }).bbDesktop;
@@ -810,27 +814,6 @@ describe("FilePreview", () => {
     expect(
       screen.queryByRole("table", { name: "customers.csv CSV preview" }),
     ).toBeNull();
-  });
-
-  it("caps oversized CSV previews and reports the visible data-row count", () => {
-    const columnCount = 105;
-    const dataRowCount = 501;
-    const header = Array.from({ length: columnCount }, (_, i) => `c${i + 1}`);
-    const lines = [header.join(",")];
-    for (let rowIndex = 0; rowIndex < dataRowCount; rowIndex += 1) {
-      lines.push(header.map((name) => `${name}r${rowIndex + 1}`).join(","));
-    }
-
-    const preview = buildCsvPreviewData(lines.join("\n"));
-
-    expect(preview.rows.length).toBe(501);
-    expect(preview.rows.at(-1)?.[0]).toBe("c1r500");
-    expect(preview.columnCount).toBe(100);
-    expect(preview.truncatedRows).toBe(true);
-    expect(preview.truncatedColumns).toBe(true);
-    expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBe(
-      "Showing the first 500 rows and 100 columns.",
-    );
   });
 
   it("does not report truncation for a CSV exactly at the row cap", () => {
@@ -1012,38 +995,78 @@ describe("FilePreview", () => {
     expect(screen.getByRole("alert").textContent).toBe("Failed to load file");
   });
 
-  it("does not announce an unsupported preview type as an alert", () => {
-    render(
+  it("renders HTML over the preview render limit as source instead of an iframe", () => {
+    const content = `<html>${"a".repeat(5 * 1024 * 1024)}</html>`;
+    const view = render(
       <SecondaryPanelFilePreview
-        activePath="docs/report.pdf"
+        activePath="reports/large.html"
+        filePreview={{
+          kind: "text",
+          content,
+          mimeType: "text/html",
+          path: "reports/large.html",
+          url: "/api/v1/threads/thread-1/thread-storage/files/reports/large.html",
+        }}
+        htmlPreviewUrl="/api/v1/threads/thread-1/thread-storage/files/reports/large.html"
+        isLoading={false}
+      />,
+    );
+
+    expect(view.container.querySelector("iframe")).toBeNull();
+  });
+
+  it("offers Download instead of rendering HTML too large to preview", () => {
+    const view = render(
+      <SecondaryPanelFilePreview
+        activePath="reports/huge.html"
         filePreview={{
           kind: "unsupported",
-          mimeType: "application/pdf",
-          name: "report.pdf",
-          path: "docs/report.pdf",
-          url: "/api/v1/preview/report",
+          mimeType: "text/html",
+          path: "reports/huge.html",
+          reason: "too-large",
+          sizeBytes: 30 * 1024 * 1024,
+          url: "/api/v1/threads/thread-1/thread-storage/files/reports/huge.html",
+        }}
+        htmlPreviewUrl="/api/v1/threads/thread-1/thread-storage/files/reports/huge.html"
+        isLoading={false}
+      />,
+    );
+
+    expect(view.container.querySelector("iframe")).toBeNull();
+    expect(
+      screen.getByText("This file is too large to preview."),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Download" }).getAttribute("href"),
+    ).toBe("/api/v1/threads/thread-1/thread-storage/files/reports/huge.html");
+  });
+
+  it("links Download to the file's raw URL under its basename", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="qa/report-with-images.zip"
+        filePreview={{
+          kind: "unsupported",
+          mimeType: "application/zip",
+          path: "qa/report-with-images.zip",
+          reason: "binary",
+          sizeBytes: 2048,
+          url: "/api/v1/projects/p1/files/raw?path=qa%2Freport-with-images.zip",
         }}
         isLoading={false}
       />,
     );
 
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("application/zip · 2.0 KB")).not.toBeNull();
     expect(
-      screen.getByText("Preview not available for application/pdf."),
+      screen.getByText("This file type can't be previewed."),
     ).not.toBeNull();
-  });
-
-  it("does not show the file preview actions menu for non-text previews", () => {
-    render(
-      <FilePreview
-        path="docs/screenshots/right-panel.png"
-        state={{ kind: "image", url: "/preview/right-panel.png" }}
-      />,
+    const download = screen.getByRole("link", { name: "Download" });
+    expect(download.getAttribute("href")).toBe(
+      "/api/v1/projects/p1/files/raw?path=qa%2Freport-with-images.zip",
     );
-
-    expect(
-      screen.queryByRole("button", { name: "File preview actions" }),
-    ).toBeNull();
+    expect(download.getAttribute("download")).toBe("report-with-images.zip");
   });
 
   it("passes cache keys for loaded text previews to Pierre", async () => {

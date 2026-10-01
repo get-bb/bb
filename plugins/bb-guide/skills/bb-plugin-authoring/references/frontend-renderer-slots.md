@@ -21,9 +21,6 @@ Original }`. `experimental_fullFileContents` is either
   Every value is already resolved. Render `Original` (bb's
   renderer, bound to this call) to delegate without re-entering resolution —
   behind a plugin setting, by language, over a size threshold:
-  A bundle compiled against an SDK before 0.4.16 may still read
-  `experimental_Original`: every host passes the same component under that
-  name for one release (it warns once; removed in bb 0.42).
 
   ```tsx
   app.slots.experimental_diffRenderer({

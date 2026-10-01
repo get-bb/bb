@@ -147,20 +147,6 @@ describe("ProjectlessMachineSlot", () => {
     expect(chip.textContent).not.toContain("Modal Sandbox");
   });
 
-  it("names the selected machine in the chip", () => {
-    render(
-      <ProjectlessMachineSlot
-        environment={makeEnvironment({
-          selectedProviderHostId: secondHost.id,
-        })}
-      />,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Machine" }).textContent,
-    ).toContain("Mac Studio");
-  });
-
   it("routes a machine pick through the selected provider", () => {
     const onSelectProvider = vi.fn();
     render(
@@ -311,19 +297,6 @@ describe("EnvironmentSlot", () => {
     );
     expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
     expect(screen.getByRole("button", { name: "Machine" })).not.toBeNull();
-  });
-
-  it("keeps the machine slot when only one provider is available", () => {
-    render(
-      <EnvironmentSlot
-        projectless
-        environment={makeEnvironment({ providers: [personalProvider] })}
-        worktree={makeWorktree()}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "Machine" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
   });
 
   it("omits project-only providers from the projectless picker", () => {

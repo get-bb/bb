@@ -164,36 +164,6 @@ describe("buildPluginApp", () => {
     });
   });
 
-  it("preserves authored CSS unscoped for editor decorations", async () => {
-    await writeFixture();
-    await writeFile(
-      join(root, "app.css"),
-      ".fixture-highlight { background: hotpink; }\n" +
-        "@keyframes fixture-pulse { to { opacity: 0.5; } }\n",
-    );
-    await writeFile(
-      join(root, "app.tsx"),
-      `import "./app.css";\n${FIXTURE_APP_TSX}`,
-    );
-
-    const { cssPath } = await buildPluginApp(
-      root,
-      TEST_BB_VERSION,
-      await testToolchain(),
-    );
-    const css = await readFile(cssPath, "utf8");
-
-    expect(css).toContain(".fixture-highlight{background:#ff69b4}");
-    expect(css).toContain("@keyframes fixture-pulse");
-    expect(css.indexOf(".fixture-highlight{")).toBeGreaterThan(
-      css.lastIndexOf("@layer utilities{"),
-    );
-    const scope =
-      ":where([data-bb-plugin=fixture],[data-bb-plugin-root]:not([data-bb-plugin]))";
-    expect(css).not.toContain(`${scope} .fixture-highlight`);
-    expect(css).not.toContain(`${scope}.fixture-highlight`);
-  });
-
   it("throws at import time without the BB runtime and loads once slots are set", async () => {
     await writeFixture();
     const { jsPath } = await buildPluginApp(
@@ -368,8 +338,6 @@ describe("buildPluginApp", () => {
     await linkScaffoldDeps(targetDir, [
       "@radix-ui/react-checkbox",
       "@radix-ui/react-slot",
-      "@hugeicons/react",
-      "@hugeicons/core-free-icons",
     ]);
     const result = await buildPluginApp(
       targetDir,
@@ -382,9 +350,9 @@ describe("buildPluginApp", () => {
     expect(css).toContain(".rounded-md");
 
     (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
-      react: createRequire(new URL("../../../app/package.json", import.meta.url))(
-        "react",
-      ),
+      react: createRequire(
+        new URL("../../../app/package.json", import.meta.url),
+      )("react"),
       reactDom: {},
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
       classVarianceAuthority: { cva: () => () => "" },

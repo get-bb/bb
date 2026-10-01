@@ -746,44 +746,6 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("excludes side-chat threads from sidebar bootstrap", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/thread-defaults-sidebar-side-chat",
-      });
-      const parentThread = seedThread(harness.deps, {
-        projectId: project.id,
-        title: "Parent",
-      });
-      const sideChatThread = seedThread(harness.deps, {
-        projectId: project.id,
-        sourceThreadId: parentThread.id,
-        originKind: "fork",
-        originPluginId: "side-chat",
-        visibility: "hidden",
-        title: "Side chat",
-      });
-
-      const response = await harness.app.request("/api/v1/sidebar-bootstrap");
-
-      expect(response.status).toBe(200);
-      const bootstrap = sidebarBootstrapResponseSchema.parse(
-        await readJson(response),
-      );
-      const sidebarProject = bootstrap.projects.find(
-        (candidate) => candidate.id === project.id,
-      );
-      expect(sidebarProject?.threads.map((thread) => thread.id)).toContain(
-        parentThread.id,
-      );
-      expect(sidebarProject?.threads.map((thread) => thread.id)).not.toContain(
-        sideChatThread.id,
-      );
-    });
-  });
-
   it("excludes hidden threads from sidebar bootstrap", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

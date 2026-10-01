@@ -80,7 +80,6 @@ import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
-import { deprecatedAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
@@ -330,10 +329,6 @@ export function useBbContext(): BbContext {
   );
 }
 
-interface BbNavigateWithDeprecatedAliases extends BbNavigate {
-  experimental_openUrl: BbNavigate["openUrl"];
-}
-
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const location = useLocation();
@@ -416,7 +411,7 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
-  return useMemo<BbNavigateWithDeprecatedAliases>(
+  return useMemo<BbNavigate>(
     () => ({
       toThread,
       toProject,
@@ -426,11 +421,6 @@ export function useBbNavigate(): BbNavigate {
       experimental_openFileExternally,
       experimental_openFilePreview,
       openUrl,
-      experimental_openUrl: deprecatedAlias(
-        "experimental_openUrl",
-        "openUrl",
-        openUrl,
-      ),
     }),
     [
       toThread,

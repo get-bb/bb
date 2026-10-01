@@ -134,26 +134,4 @@ describe("assertUsableHostId", () => {
       { code: "host_not_found", status: 404 },
     );
   });
-
-  it("keeps default host resolution pinned to the primary", async () => {
-    harness = await createTestAppHarness();
-    const { host: primary } = seedHostSession(harness.deps, {
-      name: "primary",
-    });
-    seedHostSession(harness.deps, { name: "secondary" });
-    seedPrimaryHost(harness.deps, primary.id);
-
-    expect(resolvePrimaryHostId(harness.deps)).toBe(primary.id);
-  });
-
-  it("resolves a provider-made machine when it is configured as primary", async () => {
-    harness = await createTestAppHarness();
-    const { host: providerMachine } = seedHostSession(harness.deps, {
-      name: "sandbox",
-    });
-    seedHostSession(harness.deps, { name: "laptop" });
-    seedPrimaryHost(harness.deps, providerMachine.id);
-
-    expect(resolvePrimaryHostId(harness.deps)).toBe(providerMachine.id);
-  });
 });

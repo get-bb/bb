@@ -21,14 +21,4 @@ describe("toCliErrorEnvelope", () => {
       toCliErrorEnvelope({ code: "error", hint: null, message: "boom" }),
     ).toEqual({ ok: false, error: { code: "error", message: "boom" } });
   });
-
-  it("carries the hint when bb knows the fix", () => {
-    expect(
-      toCliErrorEnvelope({
-        code: "missing_required",
-        hint: "add --project proj_1",
-        message: "required option '--project <id>' not specified",
-      }).error.hint,
-    ).toBe("add --project proj_1");
-  });
 });

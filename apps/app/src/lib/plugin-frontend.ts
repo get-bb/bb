@@ -127,7 +127,6 @@ export type PluginFrontendDiagnostic =
 
 interface PluginFrontendLoaderDeps {
   importModule: (url: string) => Promise<unknown>;
-  injectCss: (pluginId: string, url: string) => void;
   warn: (message: string) => void;
 }
 
@@ -160,7 +159,6 @@ async function loadOneBundle(
     };
   }
   try {
-    if (bundle.cssUrl !== null) deps.injectCss(pluginId, bundle.cssUrl);
     const mod = await deps.importModule(bundle.jsUrl);
     if (typeof mod !== "object" || mod === null) {
       throw new Error("bundle did not evaluate to a module namespace");
@@ -297,7 +295,7 @@ export async function fetchFrontendCandidates(
 
 export { applyPluginCss } from "./plugin-css";
 
-export const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
+const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
 
 export function orderPluginFrontendCandidates(
   candidates: readonly PluginFrontendCandidate[],
@@ -689,7 +687,6 @@ async function reconcileCandidates(
         ],
         {
           importModule: deps.importModule,
-          injectCss: () => {},
           warn: deps.warn,
         },
       );

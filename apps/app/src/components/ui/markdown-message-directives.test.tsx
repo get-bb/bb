@@ -444,7 +444,7 @@ describe("MarkdownPreview message directives", () => {
     expect(screen.getByText(/::inline-vis/)).toBeTruthy();
   });
 
-  it("normalizes omitted projectId to null on the message prop", () => {
+  it("hands null turn and project ids to the directive without substituting a value", () => {
     const registry = buildMessageDirectiveRegistry([
       slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
     ]);

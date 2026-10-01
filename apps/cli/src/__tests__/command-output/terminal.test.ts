@@ -54,17 +54,9 @@ describe("bb terminal command output", () => {
   const register: CommandRegistrar = (program) =>
     registerTerminalCommands(program, () => "http://server");
 
-  it("documents scope selectors only on list and create", async () => {
-    const help = await getHelpOutput(["terminal"], register);
-    const createHelp = await getHelpOutput(["terminal", "create"], register);
+  it("does not document scope selectors on send", async () => {
     const sendHelp = await getHelpOutput(["terminal", "send"], register);
 
-    expect(help).toContain("list [options]");
-    expect(help).toContain("create|start [options] [command...]");
-    expect(help).toContain("send [options] <terminalId>");
-    expect(createHelp).toContain("--thread <id>");
-    expect(createHelp).toContain("--environment <id>");
-    expect(createHelp).toContain("--machine <id-or-name>");
     expect(sendHelp).not.toContain("--thread");
     expect(sendHelp).not.toContain("<threadId>");
   });

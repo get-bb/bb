@@ -98,28 +98,19 @@ function renderBrowserChrome(
 ) {
   window.bbDesktop = createBbDesktopApi(desktopInfo, harness.api);
   return render(
-    <>
-      <BrowserTabContent
-        tabId="browser:test"
-        initialUrl={initialUrl}
-        addressFocusRequest={null}
-        canHandleBrowserCommands={options.canHandleBrowserCommands}
-        canShowNativeBrowserView={options.canShowNativeBrowserView ?? false}
-        onNativeFocus={options.onNativeFocus}
-        visibilityCoordinator={null}
-        environmentId={null}
-        threadId="thread-1"
-        onUpdate={() => {}}
-      />
-      <button type="button">Outside browser</button>
-    </>,
+    <BrowserTabContent
+      tabId="browser:test"
+      initialUrl={initialUrl}
+      addressFocusRequest={null}
+      canHandleBrowserCommands={options.canHandleBrowserCommands}
+      canShowNativeBrowserView={options.canShowNativeBrowserView ?? false}
+      onNativeFocus={options.onNativeFocus}
+      visibilityCoordinator={null}
+      environmentId={null}
+      threadId="thread-1"
+      onUpdate={() => {}}
+    />,
   );
-}
-
-function expectChromeVisible(): HTMLElement {
-  const chrome = screen.getByTestId("browser-tab-nav-bar");
-  expect(chrome.dataset.state).toBe("expanded");
-  return chrome;
 }
 
 describe("BrowserTabContent persistent navigation", () => {
@@ -130,23 +121,11 @@ describe("BrowserTabContent persistent navigation", () => {
     delete window.bbDesktop;
   });
 
-  it("keeps the top navigation visible through pointer and focus changes", () => {
-    const harness = createBrowserChromeHarness();
-    renderBrowserChrome(harness, "https://example.com/docs");
-    const chrome = expectChromeVisible();
-
-    fireEvent.pointerLeave(chrome);
-    act(() => screen.getByRole("button", { name: "Outside browser" }).focus());
-    expectChromeVisible();
-    expect(screen.getByLabelText("Address and search bar")).not.toBeNull();
-  });
-
   it("keeps navigation visible while loading and preserves the stop action", () => {
     const harness = createBrowserChromeHarness();
     renderBrowserChrome(harness, "https://example.com/docs");
 
     act(() => harness.emitState(browserState({ isLoading: true })));
-    expectChromeVisible();
 
     const stopButton = screen.getByRole("button", { name: "Stop loading" });
     fireEvent.click(stopButton);
@@ -156,7 +135,6 @@ describe("BrowserTabContent persistent navigation", () => {
   it("preserves browser navigation actions", () => {
     const harness = createBrowserChromeHarness();
     renderBrowserChrome(harness, "https://example.com/docs");
-    expectChromeVisible();
 
     act(() => harness.emitState(browserState({ canGoBack: true })));
     fireEvent.click(screen.getByRole("button", { name: "Go back" }));

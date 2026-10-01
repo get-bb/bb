@@ -10,7 +10,7 @@ on:
         default: preview
         options: [preview, production]
       publish:
-        description: Publish a preview APK for the Android App experiment on GitHub
+        description: Publish an ARM phone APK for Settings → Mobile on GitHub
         type: boolean
         default: false
       submit:
@@ -108,7 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           if ! gh release view android-testing >/dev/null 2>&1; then
-            gh release create android-testing --target "$GITHUB_SHA" --title "bb Android testing" --notes "Android APKs for the Android App experiment." --prerelease --latest=false
+            gh release create android-testing --target "$GITHUB_SHA" --title "bb Android testing" --notes "ARM Android phone APKs for Settings → Mobile." --prerelease --latest=false
           fi
           gh release upload android-testing android-release/android-testing/*.apk --clobber
           cp android-release/build.apk android-release/bb-android.apk

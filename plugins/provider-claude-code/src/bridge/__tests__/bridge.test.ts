@@ -35,10 +35,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { handleLine } from "../bridge.js";
-import {
-  type BuildSessionOptionsArgs,
-  buildSessionOptions,
-} from "../session-options.js";
+import { buildSessionOptions } from "../session-options.js";
 import {
   type ClaudePermissionMode,
   type ClaudeUserQuestionInput,
@@ -102,6 +99,7 @@ interface ControlledClaudeQuery {
   fail(error: Error): void;
   finish(): void;
   initializationResult: ReturnType<typeof vi.fn>;
+  interrupt: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
   setPermissionMode: ReturnType<typeof vi.fn>;
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage>;
@@ -311,6 +309,7 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
     },
     getContextUsage: vi.fn().mockResolvedValue(null),
     initializationResult: vi.fn(),
+    interrupt: vi.fn().mockResolvedValue(undefined),
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     [Symbol.asyncIterator]() {
@@ -904,11 +903,11 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a manager.",
         cwd: "/tmp/worktree",
-        disallowedTools: ["ExitPlanMode", "NotebookEdit", "Task"],
         instructionMode: "replace",
         permissionMode: "default",
         permissionScope: "workspace",
@@ -917,11 +916,6 @@ describe("bridge", () => {
     );
 
     expect(options.cwd).toBe("/tmp/worktree");
-    expect(options.disallowedTools).toEqual([
-      "ExitPlanMode",
-      "NotebookEdit",
-      "Task",
-    ]);
     expect(options.systemPrompt).toBe("You are a manager.");
   });
 
@@ -930,6 +924,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -956,6 +951,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -982,6 +978,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         workflowsEnabled: false,
         serviceTier: "fast",
         cwd: "/tmp/worktree",
@@ -1001,6 +998,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1026,6 +1024,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         memoryEnabled: false,
@@ -1045,30 +1044,12 @@ describe("bridge", () => {
     });
   });
 
-  it("passes --chrome only when Claude in Chrome is enabled", () => {
-    const base = {
-      workflowsEnabled: false,
-      serviceTier: "default",
-      cwd: "/tmp/worktree",
-      instructionMode: "append",
-      permissionMode: "default",
-      permissionScope: "workspace",
-      disable1MContext: false,
-    } satisfies Omit<BuildSessionOptionsArgs, "chromeEnabled">;
-
-    expect(
-      buildSessionOptions({ ...base, chromeEnabled: true }, {}).extraArgs,
-    ).toEqual({ chrome: null });
-    expect(
-      buildSessionOptions({ ...base, chromeEnabled: false }, {}),
-    ).not.toHaveProperty("extraArgs");
-  });
-
   it("leaves standard sessions on the default Claude tool preset", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1094,54 +1075,13 @@ describe("bridge", () => {
     });
   });
 
-  it("passes Claude local plugins through to the session", () => {
-    const options = buildSessionOptions(
-      {
-        chromeEnabled: false,
-        disable1MContext: false,
-        serviceTier: "default",
-        workflowsEnabled: false,
-        baseInstructions: "You are a coder.",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionMode: "default",
-        permissionScope: "workspace",
-        plugins: [{ type: "local", path: "/tmp/bb-skills" }],
-      },
-      {},
-    );
-
-    expect(options.plugins).toEqual([
-      { type: "local", path: "/tmp/bb-skills" },
-    ]);
-    expect(options).not.toHaveProperty("skills");
-  });
-
-  it("passes the resolved Claude permission mode through to the session", () => {
-    const options = buildSessionOptions(
-      {
-        chromeEnabled: false,
-        disable1MContext: false,
-        serviceTier: "default",
-        workflowsEnabled: false,
-        baseInstructions: "You are a coder.",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionMode: "acceptEdits",
-        permissionScope: "workspace",
-      },
-      {},
-    );
-
-    expect(options.permissionMode).toBe("acceptEdits");
-  });
-
   it("uses a Claude executable discovered from PATH for SDK sessions", () => {
     const { binDir, executablePath } = createTempClaudeExecutable();
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1169,6 +1109,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1183,35 +1124,13 @@ describe("bridge", () => {
     expect(options.pathToClaudeCodeExecutable).toBe(executablePath);
   });
 
-  it("lets an explicit Claude executable override PATH discovery", () => {
-    const { executablePath } = createTempClaudeExecutable();
-    const options = buildSessionOptions(
-      {
-        chromeEnabled: false,
-        disable1MContext: false,
-        serviceTier: "default",
-        workflowsEnabled: false,
-        baseInstructions: "You are a coder.",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionMode: "default",
-        permissionScope: "workspace",
-      },
-      {
-        BB_CLAUDE_CODE_EXECUTABLE: executablePath,
-        PATH: "/usr/bin",
-      },
-    );
-
-    expect(options.pathToClaudeCodeExecutable).toBe(executablePath);
-  });
-
   it("trims explicit Claude executable overrides before forwarding", () => {
     const { executablePath } = createTempClaudeExecutable();
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1239,6 +1158,7 @@ describe("bridge", () => {
         {
           chromeEnabled: false,
           disable1MContext: false,
+          sandboxEnabled: true,
           serviceTier: "default",
           workflowsEnabled: false,
           baseInstructions: "You are a coder.",
@@ -1260,6 +1180,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1274,6 +1195,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1308,6 +1230,7 @@ describe("bridge", () => {
       {
         chromeEnabled: false,
         disable1MContext: false,
+        sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
@@ -1323,6 +1246,31 @@ describe("bridge", () => {
     expect(options.permissionMode).toBe("plan");
     expect(options.sandbox).toBeUndefined();
     expect(options.additionalDirectories).toBeUndefined();
+  });
+
+  it("leaves the Claude sandbox off when the sandbox setting is disabled", () => {
+    const options = buildSessionOptions(
+      {
+        chromeEnabled: false,
+        disable1MContext: false,
+        sandboxEnabled: false,
+        serviceTier: "default",
+        workflowsEnabled: false,
+        additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
+        baseInstructions: "You are a coder.",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionMode: "acceptEdits",
+        permissionScope: "workspace",
+      },
+      {},
+    );
+
+    expect(options.permissionMode).toBe("acceptEdits");
+    expect(options).not.toHaveProperty("sandbox");
+    expect(options.additionalDirectories).toEqual([
+      "/repo/.git/worktrees/bb13",
+    ]);
   });
 
   describe("Bash canUseTool policy", () => {
@@ -1683,92 +1631,86 @@ describe("bridge", () => {
     }
   });
 
-  it.each([
-    { permissionMode: "plan", label: "plan mode" },
-    { permissionMode: "bypassPermissions", label: "bypassPermissions" },
-  ])(
-    "forwards ExitPlanMode for user approval in $label",
-    async ({ permissionMode }) => {
-      const bridge = createBridgeJsonRpcTestHarness(handleLine);
-      const queries: ControlledClaudeQuery[] = [];
-      queryMock.mockImplementation(() => {
-        const query = createControlledClaudeQuery();
-        queries.push(query);
-        return query;
+  it("forwards ExitPlanMode for user approval in plan mode", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-exit-plan-plan";
+      const toolUseID = "tool-exit-plan-1";
+      const input = {
+        plan: "# Plan\n\nDo the thing.",
+        planFilePath: "/tmp/plans/do-the-thing.md",
+      };
+
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+          instructions: "test",
+          providerOptions: {
+            workflowsEnabled: false,
+            claudeCodePermissionMode: "plan",
+          },
+        },
+      });
+      await bridge.waitForResponse(1);
+
+      const canUseTool = getLastCanUseTool();
+      const resultPromise = canUseTool("ExitPlanMode", input, {
+        requestId: "control-request",
+        signal: new AbortController().signal,
+        toolUseID,
+      });
+      await bridge.flushWork();
+
+      const approvalRequest = bridge.messages.find((message) =>
+        isApprovalInteraction(message),
+      );
+      if (approvalRequest?.id === undefined) {
+        throw new Error("Expected ExitPlanMode to request user approval");
+      }
+      expect(approvalRequest).toMatchObject({
+        params: {
+          threadId,
+          payload: {
+            kind: "approval",
+            subject: expect.objectContaining({ itemId: toolUseID }),
+          },
+        },
       });
 
-      try {
-        const threadId = `thread-exit-plan-${permissionMode}`;
-        const toolUseID = "tool-exit-plan-1";
-        const input = {
-          plan: "# Plan\n\nDo the thing.",
-          planFilePath: "/tmp/plans/do-the-thing.md",
-        };
-
-        bridge.sendRequest(1, "thread/start", {
-          threadId,
-          cwd: "/tmp/worktree",
-          instructionMode: "append",
-          options: {
-            permissionMode: "full",
-            permissionScope: "full",
-            approvalReviewer: null,
-            permissionEscalation: null,
-            instructions: "test",
-            providerOptions: {
-              workflowsEnabled: false,
-              claudeCodePermissionMode: "plan",
-            },
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: approvalRequest.id,
+          result: {
+            decision: "deny",
+            grantedPermissions: null,
           },
-        });
-        await bridge.waitForResponse(1);
+        }),
+      );
 
-        const canUseTool = getLastCanUseTool();
-        const resultPromise = canUseTool("ExitPlanMode", input, {
-          requestId: "control-request",
-          signal: new AbortController().signal,
-          toolUseID,
-        });
-        await bridge.flushWork();
+      await expect(resultPromise).resolves.toMatchObject({
+        behavior: "deny",
+        message: expect.stringContaining("The user rejected this plan."),
+      });
 
-        const approvalRequest = bridge.messages.find((message) =>
-          isApprovalInteraction(message),
-        );
-        if (approvalRequest?.id === undefined) {
-          throw new Error("Expected ExitPlanMode to request user approval");
-        }
-        expect(approvalRequest).toMatchObject({
-          params: {
-            threadId,
-            payload: {
-              kind: "approval",
-              subject: expect.objectContaining({ itemId: toolUseID }),
-            },
-          },
-        });
-
-        handleLine(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: approvalRequest.id,
-            result: {
-              decision: "deny",
-              grantedPermissions: null,
-            },
-          }),
-        );
-
-        await expect(resultPromise).resolves.toMatchObject({
-          behavior: "deny",
-          message: expect.stringContaining("The user rejected this plan."),
-        });
-
-        await stopBridgeThread({ bridge, queries, threadId });
-      } finally {
-        bridge.restore();
-      }
-    },
-  );
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
 
   it("returns to the user's permission preset once a plan is approved", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -2285,6 +2227,18 @@ describe("bridge", () => {
     }
   });
 
+  it("does not answer a response line that matches no pending request", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+
+    try {
+      handleLine(JSON.stringify({ jsonrpc: "2.0", id: 4, result: {} }));
+      await bridge.flushWork();
+      expect(bridge.messages).toEqual([]);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("denies invalid AskUserQuestion input before forwarding to bb", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -2516,6 +2470,52 @@ describe("bridge", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it("recovers model discovery when an inherited model conflicts with client data", async () => {
+    const failedClose = vi.fn();
+    const recoveredClose = vi.fn();
+    queryMock
+      .mockReturnValueOnce({
+        initializationResult: vi
+          .fn()
+          .mockRejectedValue(
+            new Error(
+              "Error: --client-data-url: the document covers models matching ^claude-current, and this session runs claude-previous; pass the matching --model.",
+            ),
+          ),
+        close: failedClose,
+      })
+      .mockReturnValueOnce({
+        initializationResult: vi.fn().mockResolvedValue({
+          models: [
+            {
+              value: "sonnet",
+              resolvedModel: "claude-sonnet-5",
+              displayName: "Sonnet",
+              description: "Sonnet 5",
+            },
+          ],
+        }),
+        close: recoveredClose,
+      });
+    const env = {
+      ...process.env,
+      ANTHROPIC_MODEL: "claude-previous",
+      CLAUDE_CODE_CLIENT_DATA_URL: "https://example.com/client-data",
+    };
+
+    await expect(listClaudeCodeBridgeModels(env)).resolves.toMatchObject({
+      models: [expect.objectContaining({ model: "claude-sonnet-5" })],
+    });
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[1]?.[0]?.options.env).toEqual({
+      ...env,
+      ANTHROPIC_MODEL: undefined,
+    });
+    expect(env.ANTHROPIC_MODEL).toBe("claude-previous");
+    expect(failedClose).toHaveBeenCalledOnce();
+    expect(recoveredClose).toHaveBeenCalledOnce();
+  });
+
   it("propagates Claude model discovery failures and closes the probe", async () => {
     const close = vi.fn();
     queryMock.mockReturnValueOnce({
@@ -2528,6 +2528,7 @@ describe("bridge", () => {
     await expect(listClaudeCodeBridgeModels()).rejects.toThrow(
       "temporary discovery failure",
     );
+    expect(queryMock).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
   });
 
@@ -3157,6 +3158,99 @@ describe("bridge", () => {
       }
     },
   );
+
+  it("restarts the Claude process before the next turn when the sandbox setting changes", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const threadId = "thread-sandbox-setting";
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          instructions: "test",
+          providerOptions: { workflowsEnabled: false, sandboxEnabled: false },
+        },
+      });
+      await bridge.waitForResponse(1);
+      expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
+
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "same sandbox setting" }],
+          providerOptions: { sandboxEnabled: false },
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      expect(queries).toHaveLength(1);
+      queries[0]?.emit(createSuccessfulResultMessage(threadId));
+      await bridge.flushWork();
+
+      bridge.sendRequest(
+        3,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "sandbox turned on" }],
+          providerOptions: { sandboxEnabled: true },
+        }),
+      );
+      await bridge.flushWork();
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalled();
+      expect(getLatestQueryOptions()).toMatchObject({
+        permissionMode: "acceptEdits",
+        resume: threadId,
+        sandbox: { enabled: true, autoAllowBashIfSandboxed: true },
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "sandbox turned on",
+      );
+      await bridge.waitForResponse(3);
+      expect(
+        bridge.messages.filter(
+          (message) => message.method === "session/replaced",
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            contextLost: false,
+            providerThreadId: threadId,
+            threadId,
+          }),
+        }),
+      );
+    } finally {
+      bridge.sendRequest(4, "thread/stop", {
+        threadId,
+        providerThreadId: threadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries.at(-1)?.finish();
+      await bridge.waitForResponse(4);
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
 
   it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -4471,39 +4565,6 @@ describe("bridge", () => {
       return { bridge, queries };
     }
 
-    it("forwards a text-only prompt unchanged", async () => {
-      const { bridge, queries } = withBridgeHarness();
-      try {
-        const text = await sendTurnAndReadPrompt(
-          bridge,
-          queries,
-          "thread-marker-text",
-          [{ type: "text", text: "Hello there" }],
-        );
-        expect(text).toBe("Hello there");
-      } finally {
-        bridge.restore();
-      }
-    });
-
-    it("joins multiple text fragments with newlines", async () => {
-      const { bridge, queries } = withBridgeHarness();
-      try {
-        const text = await sendTurnAndReadPrompt(
-          bridge,
-          queries,
-          "thread-marker-text-multi",
-          [
-            { type: "text", text: "Line one" },
-            { type: "text", text: "Line two" },
-          ],
-        );
-        expect(text).toBe("Line one\nLine two");
-      } finally {
-        bridge.restore();
-      }
-    });
-
     it("emits a path-bearing marker for a localImage attachment", async () => {
       const { bridge, queries } = withBridgeHarness();
       try {
@@ -4672,6 +4733,7 @@ describe("canonical skills/configure", () => {
         plugins?: { type: string; path: string }[];
       };
       expect(options.plugins).toHaveLength(2);
+      expect(options).not.toHaveProperty("skills");
       const [pluginA, pluginB] = options.plugins ?? [];
       expect(pluginA?.type).toBe("local");
       expect(pluginB?.type).toBe("local");

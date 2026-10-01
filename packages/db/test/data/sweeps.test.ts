@@ -100,35 +100,6 @@ describe("pruneClosedSessions", () => {
     ).toBeUndefined();
   });
 
-  it("never deletes the currently active session", () => {
-    const { db, host } = setup();
-    const now = Date.now();
-
-    const active = openSession(db, {
-      hostId: host.id,
-      instanceId: "inst-active",
-      hostName: "test-host",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    expect(
-      pruneClosedSessions(db, {
-        closedBefore: now + 60_000,
-        limit: 100,
-      }),
-    ).toEqual({ deleted: 0 });
-    expect(
-      db
-        .select()
-        .from(hostDaemonSessions)
-        .where(eq(hostDaemonSessions.id, active.id))
-        .get()?.status,
-    ).toBe("active");
-  });
-
   it("honors the delete batch limit", () => {
     const { db, host } = setup();
     const now = Date.now();

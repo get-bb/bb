@@ -65,12 +65,15 @@ export function MobileAppSection() {
               Android
             </span>
           }
-          description="Install the APK directly"
+          description="Direct download for Android phones"
           bodyClassName="space-y-4"
         >
           <p className="text-sm text-subtle-foreground">
-            Download the APK, open it on your phone, and allow installation from
-            your browser if prompted. Download new builds here to update.
+            Download the APK and open it on your phone to install. Allow
+            installation from your browser if prompted.
+          </p>
+          <p className="text-sm text-subtle-foreground">
+            Google Play access is under review. For now, return here for updates.
           </p>
           {android ? (
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">

@@ -35,24 +35,14 @@ export type TerminalSessionScope = TerminalStatusScope &
     | { environmentId: string; kind: "environment" }
     | { hostId: string; kind: "host" }
     | { kind: "terminal"; terminalId: string }
-    | { kind: "thread"; terminalId?: string; threadId: string }
-    | {
-        environmentId: string;
-        kind: "threadless-environment";
-        terminalId?: string;
-      }
+    | { kind: "thread"; threadId: string }
+    | { environmentId: string; kind: "threadless-environment" }
   );
 
 export type TerminalSessionSingleScope = TerminalStatusScope &
   (
     | { daemonSessionId: string; kind: "daemon"; terminalId: string }
     | { kind: "terminal"; terminalId: string }
-    | { kind: "thread"; terminalId: string; threadId: string }
-    | {
-        environmentId: string;
-        kind: "threadless-environment";
-        terminalId: string;
-      }
   );
 
 export type TerminalSessionMutation =
@@ -87,7 +77,6 @@ export interface UpdateTerminalSessionArgs {
 }
 
 export interface UpdateTerminalSessionsArgs {
-  now?: number;
   scope: TerminalSessionScope;
   update: TerminalSessionMutation;
 }
@@ -124,20 +113,12 @@ function terminalScope(
       scoped = eq(terminalSessions.id, scope.terminalId);
       break;
     case "thread":
-      scoped = and(
-        eq(terminalSessions.threadId, scope.threadId),
-        scope.terminalId
-          ? eq(terminalSessions.id, scope.terminalId)
-          : undefined,
-      );
+      scoped = eq(terminalSessions.threadId, scope.threadId);
       break;
     case "threadless-environment":
       scoped = and(
         eq(terminalSessions.environmentId, scope.environmentId),
         isNull(terminalSessions.threadId),
-        scope.terminalId
-          ? eq(terminalSessions.id, scope.terminalId)
-          : undefined,
       );
       break;
   }
@@ -278,7 +259,7 @@ export function updateTerminalSessions(
 ): TerminalSessionRow[] {
   return db
     .update(terminalSessions)
-    .set(mutationValues(args.update, args.now ?? Date.now()))
+    .set(mutationValues(args.update, Date.now()))
     .where(terminalScope(args.scope, mutationWhere(args.update)))
     .returning()
     .all();

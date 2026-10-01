@@ -315,9 +315,6 @@ export const systemAppUpdateBlockedSchema = z.object({
     "fetch-failed",
   ]),
 });
-export type SystemAppUpdateBlocked = z.infer<
-  typeof systemAppUpdateBlockedSchema
->;
 
 export const systemAppUpdateActivitySchema = z.discriminatedUnion("phase", [
   z.object({ phase: z.literal("idle") }),

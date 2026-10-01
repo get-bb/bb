@@ -168,6 +168,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  confirmThreadArchive: boolean;
+  onConfirmThreadArchiveChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
   generalSettingsDisabled: boolean;
   managedBranchPrefix: string;
@@ -849,6 +851,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  confirmThreadArchive,
+  onConfirmThreadArchiveChange,
   desktopBrowserAvailable,
   generalSettingsDisabled,
   managedBranchPrefix,
@@ -940,6 +944,18 @@ export function GeneralSettingsSection({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Thread archive confirmation"
+            description="Ask before archiving a thread with unarchived children."
+          >
+            <Switch
+              checked={confirmThreadArchive}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onConfirmThreadArchiveChange}
+              aria-label="Thread archive confirmation"
+            />
           </SettingsWithControl>
         </div>
       </SettingsSection>
@@ -1052,20 +1068,10 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Show the latest release notes as a compact preview on the Updates page.",
   },
-  legacyJitiPluginLoader: {
-    label: "Legacy plugin loader (JITI)",
-    description:
-      "Load plugin server code with the legacy JITI runtime. Takes effect the next time a plugin loads.",
-  },
   serverMove: {
     label: "Server move",
     description:
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
-  },
-  sidebarProgressiveDisclosure: {
-    label: "Sidebar progressive disclosure",
-    description:
-      "In By project and By machine, show the first five groups in the current sort order, keep attention groups visible, and reveal ten more per click. Manually is unchanged.",
   },
 };
 export function ExperimentsSettingsSection({
@@ -1277,6 +1283,13 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          confirmThreadArchive={generalSettings.confirmThreadArchive}
+          onConfirmThreadArchiveChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              confirmThreadArchive: enabled,
+            })
+          }
           desktopBrowserAvailable={desktopBrowserAvailable}
           generalSettingsDisabled={
             systemConfigQuery.data === undefined ||

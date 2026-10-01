@@ -1,6 +1,10 @@
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  experimental_npmLatestVersion as npmLatestVersion,
+  experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const probeState = vi.hoisted(() => ({
@@ -81,5 +85,16 @@ describe("Pi provider maintenance with a Bun-managed executable", () => {
         args: ["add", "-g", "@earendil-works/pi-coding-agent@latest"],
       },
     });
+
+    vi.clearAllMocks();
+    const compatibilityStatus = await getPiProviderInstallationStatus(false);
+    expect(compatibilityStatus).toMatchObject({
+      installed: true,
+      currentVersion: "0.84.0",
+      latestVersion: null,
+      versionUnsupported: false,
+    });
+    expect(npmLatestVersion).not.toHaveBeenCalled();
+    expect(probeNpmGlobalPackage).not.toHaveBeenCalled();
   });
 });

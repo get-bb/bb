@@ -1061,12 +1061,14 @@ describe("Navigation plugin in the sidebar navigation region", () => {
   it("closes the inline card on Escape", async () => {
     renderNavigation();
 
-    await openCustomizeFromContextMenu(
+    const list = await openCustomizeFromContextMenu(
       screen.getByRole("button", { name: "New thread" }),
     );
     fireEvent.keyDown(
-      screen.getByTestId("sidebar-navigation-customize-inline"),
-      { key: "Escape" },
+      within(list).getByRole("button", { name: "New thread" }),
+      {
+        key: "Escape",
+      },
     );
 
     expect(
@@ -1599,16 +1601,6 @@ describe("Navigation plugin in the sidebar navigation region", () => {
       ...HOST_KEYS,
       "docs/main",
     ]);
-  });
-
-  it("respects a stored choice to keep Search visible", () => {
-    renderNavigation({
-      storedOrder: HOST_KEYS,
-      storedVisibleKeys: HOST_KEYS,
-    });
-
-    expect(visibleRowKeys()).toEqual(HOST_KEYS);
-    expect(screen.queryByTestId("sidebar-navigation-more-row")).toBeNull();
   });
 
   it("shows More only while something is hidden", async () => {

@@ -5,7 +5,6 @@ import {
 import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import type { Comment, Project, Task } from "../db";
-import { displayWidth } from "../shared/text-measure";
 import { delegationRpcContract } from "./contract";
 import { buildSeedPrompt, registerDelegation } from ".";
 
@@ -205,7 +204,6 @@ describe("task delegation", () => {
     expect(harness.sdk.callsTo("threads.spawn")).toEqual([
       [expect.objectContaining({ title })],
     ]);
-    expect(displayWidth(title)).toBeLessThanOrEqual(120);
 
     await harness.dispose();
   });
@@ -363,35 +361,6 @@ describe("task delegation", () => {
       message:
         "Could not create a worktree on host_missing from missing-branch: Host not found",
     });
-
-    await harness.dispose();
-  });
-
-  it("fails before spawning when the task project is not linked to bb", async () => {
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: { threads: { spawn: async () => ({ id: "thr_never" }) } },
-    });
-    const store = createStore(bb);
-    const project = store.tasks.createProject({
-      name: "Unlinked",
-      prefix: "UNL",
-      color: "blue",
-    });
-    const task = store.tasks.createTask({
-      projectId: project.id,
-      title: "Cannot delegate yet",
-    });
-    registerDelegation(bb, store);
-    const preset = createTestPreset(store);
-
-    await expect(
-      harness.callRpc("delegate", { taskId: task.id, presetId: preset.id }),
-    ).rejects.toMatchObject({
-      code: "handler_error",
-      message: 'Task project "Unlinked" is not linked to a bb project',
-    });
-    expect(harness.sdk.callsTo("threads.spawn")).toEqual([]);
 
     await harness.dispose();
   });

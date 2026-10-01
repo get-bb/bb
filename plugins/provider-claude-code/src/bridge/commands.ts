@@ -16,6 +16,7 @@ import {
   bridgeRequestEnvelopeSchema,
   providerMaintenanceParamsSchema,
   providerInstallationRunParamsSchema,
+  providerInstallationStatusParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { claudePermissionModeSchema } from "../interactive-contract.js";
@@ -54,11 +55,11 @@ export const claudeThreadStartParamsSchema = z.object({
   workflowsEnabled: z.boolean(),
   chromeEnabled: z.boolean(),
   disable1MContext: z.boolean(),
+  sandboxEnabled: z.boolean(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
   instructionMode: bridgeInstructionModeSchema,
   dynamicTools: z.array(dynamicToolSchema).optional(),
-  disallowedTools: z.array(z.string()).optional(),
 });
 
 export const claudeThreadResumeParamsSchema =
@@ -84,6 +85,7 @@ export const claudeTurnStartParamsSchema = z.object({
   workflowsEnabled: z.boolean().optional(),
   chromeEnabled: z.boolean().optional(),
   disable1MContext: z.boolean().optional(),
+  sandboxEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
@@ -114,7 +116,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("provider/installation/status"),
-    params: providerMaintenanceParamsSchema,
+    params: providerInstallationStatusParamsSchema,
   }),
   z.object({
     method: z.literal("provider/installation/run"),

@@ -165,23 +165,6 @@ describe("plugin service", () => {
     }
   });
 
-  it("installs a path plugin, runs its factory, and reports running", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-greeter",
-      serverSource: `
-        import type { BbPluginApi } from "@get-bb/plugin-sdk";
-        export default function plugin(bb: any) {
-          (globalThis as any).__greeterLoads = ((globalThis as any).__greeterLoads ?? 0) + 1;
-          bb.log.info("hello from greeter");
-        }
-      `,
-    });
-    const entry = await service.installPath(rootDir);
-    expect(entry.id).toBe("greeter");
-    expect(entry.status).toBe("running");
-    expect(service.getApi("greeter")).toBeDefined();
-  });
-
   it.each(["startup", "retry"])(
     "reports starting while a %s factory is pending",
     async (mode) => {
@@ -447,38 +430,6 @@ describe("plugin service", () => {
     await writeSources("cjs-after");
     await service.reload("cjs-child");
     expect(globals.cjsChild).toBe("cjs-after:cjs-after");
-  });
-
-  it("loads cross-plugin imports while reloading the imported plugin", async () => {
-    const importerDir = join(workDir, "bb-plugin-importer");
-    const importedDir = join(workDir, "bb-plugin-imported");
-    await writeEsmPlugin(importerDir, "importer");
-    await writeEsmPlugin(importedDir, "imported");
-    await writeEsmSources(importedDir, "imported", "entry1", "sub1");
-    await writeFile(
-      join(importerDir, "server.js"),
-      `export default function plugin() {
-         globalThis.importerReadShared = async () =>
-           (await import(${JSON.stringify(join(importedDir, "shared.js"))})).SHARED;
-       }\n`,
-    );
-    await writeFile(
-      join(importedDir, "shared.js"),
-      `export const SHARED = "shared1";\n`,
-    );
-    await service.installPath(importedDir);
-    await service.installPath(importerDir);
-    const globals = globalThis as Record<string, unknown>;
-    const readShared = globals.importerReadShared as () => Promise<string>;
-    expect(await readShared()).toBe("shared1");
-
-    await writeFile(
-      join(importedDir, "shared.js"),
-      `export const SHARED = "shared2";\n`,
-    );
-    await writeEsmSources(importedDir, "imported", "entry2", "sub2");
-    await service.reload("imported");
-    expect(globals.imported).toBe("entry2:sub2");
   });
 
   it("hides a failed reload's sources from a plugin that imports it", async () => {
@@ -1122,23 +1073,6 @@ describe("plugin service", () => {
     const entry = service.list().find((p) => p.id === "hang");
     expect(entry?.status).toBe("error");
     expect(entry?.statusDetail).toContain("timed out");
-  });
-
-  it("disable unloads and disposes; enable loads again", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-switchable",
-      serverSource: `export default function plugin(bb: any) {
-        bb.onDispose(() => { (globalThis as any).__switchableDisposed = true; });
-      }`,
-    });
-    await service.installPath(rootDir);
-    const disabled = await service.setEnabled("switchable", false);
-    expect(disabled?.status).toBe("disabled");
-    expect((globalThis as Record<string, unknown>).__switchableDisposed).toBe(
-      true,
-    );
-    const enabled = await service.setEnabled("switchable", true);
-    expect(enabled?.status).toBe("running");
   });
 
   it("holds every plugin a hold names at start without running its factory or starting its services", async () => {

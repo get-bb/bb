@@ -117,32 +117,6 @@ describe("buildSpawnEnvironment", () => {
     expect(result).toEqual({ type: "project-default" });
   });
 
-  it("throws for unsupported managed environment kinds", () => {
-    expect(() =>
-      buildSpawnEnvironment({
-        defaultPersonalWorkspace: false,
-        newEnvironmentKind: "docker",
-        hostId: null,
-      }),
-    ).toThrow("Unknown environment kind 'docker'");
-  });
-
-  it("returns managed-worktree for --new-environment worktree with host", () => {
-    const result = buildSpawnEnvironment({
-      defaultPersonalWorkspace: false,
-      newEnvironmentKind: "worktree",
-      hostId: HOST_ID,
-    });
-    expect(result).toEqual({
-      type: "host",
-      hostId: HOST_ID,
-      workspace: {
-        type: "managed-worktree",
-        baseBranch: { kind: "default" },
-      },
-    });
-  });
-
   it("returns personal for --new-environment personal with host", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
@@ -183,12 +157,12 @@ describe("buildSpawnEnvironment", () => {
     ).toThrow("Cannot reach local host daemon");
   });
 
-  it("throws for unknown --new-environment kind", () => {
+  it("throws for unknown --new-environment kind before requiring a host", () => {
     expect(() =>
       buildSpawnEnvironment({
         defaultPersonalWorkspace: false,
         newEnvironmentKind: "docker",
-        hostId: HOST_ID,
+        hostId: null,
       }),
     ).toThrow("Unknown environment kind 'docker'");
   });

@@ -35,11 +35,6 @@ const textVariants = cva("font-sans text-foreground", {
   },
 });
 
-export type TextVariant = NonNullable<
-  VariantProps<typeof textVariants>["variant"]
->;
-export type TextTone = NonNullable<VariantProps<typeof textVariants>["tone"]>;
-
 export interface TextProps
   extends RNTextProps, VariantProps<typeof textVariants> {
   weight?: FontWeightName;

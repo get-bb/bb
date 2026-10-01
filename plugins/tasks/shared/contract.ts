@@ -541,6 +541,16 @@ export const tasksRpcContract = defineRpcContract({
       .strict(),
     output: taskMutationResultSchema,
   },
+  moveTaskToProject: {
+    input: z
+      .object({
+        taskId: idSchema,
+        projectId: idSchema,
+        authorName: nonBlankStringSchema.default("You"),
+      })
+      .strict(),
+    output: taskMutationResultSchema,
+  },
   createLabel: {
     input: z
       .object({
@@ -586,6 +596,7 @@ export const tasksRpcContract = defineRpcContract({
     input: z.union([
       z.object({ taskId: idSchema }).strict(),
       z.object({ commentId: idSchema }).strict(),
+      z.object({ commentsOfTaskId: idSchema }).strict(),
     ]),
     output: z.object({ attachments: z.array(attachmentSchema) }).strict(),
   },

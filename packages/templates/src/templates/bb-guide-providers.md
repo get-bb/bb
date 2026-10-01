@@ -120,6 +120,12 @@ default. Enable them with
 the Chrome extension and a claude.ai login. A change restarts the thread's
 Claude process before its next turn and keeps the conversation.
 
+Claude Code runs Bash commands in its sandbox under bb in Accept Edits and
+Approve for me modes. Disable it with
+`bb plugin config provider-claude-code set sandboxEnabled false` to use Claude
+Code's own command approvals and sandbox settings. A change restarts the
+thread's Claude process before its next turn and keeps the conversation.
+
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
@@ -191,12 +197,6 @@ if the agent accepts an explicit compaction request; it defaults to false, and
 bb hides the /compact command for agents that do not declare it. The plugin
 re-registers its providers as soon as the setting changes, so no restart or
 config refresh is needed.
-
-The old customAcpAgents array in the app data-dir config.json is deprecated. bb
-still reads it and logs a warning for each agent it finds, until 0.41. Move each
-entry into the customAgents setting. The shapes match except for logo, which the
-setting does not accept: bb drops that field when it reads the old array, and a
-configured agent shows the generic tool glyph.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots

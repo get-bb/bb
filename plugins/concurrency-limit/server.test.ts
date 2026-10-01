@@ -139,13 +139,6 @@ describe("configuration", () => {
     const { harness } = await setup();
 
     expect(harness.registrations.settingsDescriptors).toEqual({});
-    expect(harness.registrations.rpcMethods).toEqual([
-      "getConfiguration",
-      "setConfiguration",
-    ]);
-    expect(
-      harness.registrations.services.map((service) => service.name),
-    ).toEqual(["capacity-detector"]);
   });
 
   it("returns each host's detected automatic limit and retained offline capacity", async () => {

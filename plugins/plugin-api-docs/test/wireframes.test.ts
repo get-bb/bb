@@ -6,13 +6,12 @@ import {
   MAX_FIXTURE_SCALE,
   ProductMap,
   spatialFixtureScale,
-  SURFACE_NUMBERS,
 } from "../src/product-map";
 import {
   annotationChipCounterScale,
   MAX_CHIP_COUNTER_SCALE,
 } from "../src/annotation";
-import { SURFACE_GROUPS, SURFACES_BY_ID } from "../src/surfaces";
+import { SURFACE_GROUPS } from "../src/surfaces";
 import anatomy from "../src/anatomy-manifest.json";
 import {
   AppShellRightPanel,
@@ -30,7 +29,7 @@ const mapState: SurfaceMapState = {
   activeId: null,
   setActiveId: vi.fn(),
   expandedId: null,
-  numberOf: (id) => SURFACE_NUMBERS.get(id) ?? null,
+  numberOf: () => 1,
 };
 
 function renderWireframe(
@@ -463,23 +462,6 @@ describe("guide fixture boundaries", () => {
     );
     expect(transientMarkup).not.toContain(
       'data-guide-badge="mention-provider"',
-    );
-  });
-
-  it("keeps the message selection toolbar closed before activation", () => {
-    const markup = renderWireframe(createElement(AppShellWireframe));
-
-    expect(markup).toContain('data-guide-fixture="assistant-message"');
-    expect(markup).not.toContain(
-      'data-guide-fixture="message-action-selection-toolbar"',
-    );
-  });
-});
-
-describe("guide taxonomy", () => {
-  it("names the renderer surface for both code and diffs", () => {
-    expect(SURFACES_BY_ID.get("code-renderers")?.title).toBe(
-      "Code & diff renderers",
     );
   });
 });

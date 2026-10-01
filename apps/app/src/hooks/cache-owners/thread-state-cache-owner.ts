@@ -2,10 +2,8 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import type {
   ProjectResponse,
-  ReorderPinnedThreadRequest,
   ThreadArchiveAllResponse,
 } from "@bb/server-contract";
-import { applyNeighborReorder } from "@bb/client-core";
 import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
@@ -89,42 +87,13 @@ interface BeginThreadMetadataBatchTransactionArgs {
   updates: readonly ThreadMetadataUpdate[];
 }
 
-interface ReorderPinnedThreadTransactionRequest extends ReorderPinnedThreadRequest {
-  id: string;
-}
-
-interface ReorderPinnedThreadTransactionArgs {
-  queryClient: QueryClient;
-  request: ReorderPinnedThreadTransactionRequest;
-}
-
-interface PinnedRootResponseArgs {
-  orderedRoots: readonly ThreadListEntry[];
-  queryClient: QueryClient;
-}
-
-interface PinnedRootOrderListArgs {
-  list: ThreadListEntry[];
-  request: ReorderPinnedThreadTransactionRequest;
-}
-
 interface RollbackThreadListMutationTransactionArgs extends ThreadIdCacheArgs {
   transaction: ThreadListMutationTransaction | undefined;
-}
-
-interface RollbackPinnedThreadOrderTransactionArgs {
-  queryClient: QueryClient;
-  transaction: PinnedThreadOrderTransaction | undefined;
 }
 
 interface ArchiveThreadAndChildrenTransactionArgs {
   queryClient: QueryClient;
   threadId: string;
-}
-
-interface ArchiveEnvironmentThreadsTransactionArgs {
-  environmentId: string;
-  queryClient: QueryClient;
 }
 
 interface ArchiveMatchingThreadsTransactionArgs {
@@ -160,11 +129,6 @@ export interface ThreadListMutationTransaction {
 interface ThreadMetadataBatchTransaction {
   previousSidebarNavigation: CachedSidebarNavigationSnapshot;
   previousThreads: ReadonlyMap<string, ThreadWithRuntime | undefined>;
-  previousThreadLists: CachedThreadListSnapshot;
-}
-
-export interface PinnedThreadOrderTransaction {
-  previousSidebarNavigation: CachedSidebarNavigationSnapshot;
   previousThreadLists: CachedThreadListSnapshot;
 }
 
@@ -222,52 +186,6 @@ function getOptimisticLastReadAt(
     return null;
   }
   return Math.max(lastReadAt, thread.latestAttentionAt);
-}
-
-function applyPinnedRootResponseToLists({
-  orderedRoots,
-  queryClient,
-}: PinnedRootResponseArgs): void {
-  const rootsById = new Map(orderedRoots.map((thread) => [thread.id, thread]));
-  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-    list.map((candidate) => rootsById.get(candidate.id) ?? candidate),
-  );
-}
-
-function applyPinnedRootOrderToList({
-  list,
-  request,
-}: PinnedRootOrderListArgs): ThreadListEntry[] {
-  const pinnedRoots = list.filter(
-    (thread) => thread.pinnedAt !== null && thread.pinSortKey !== null,
-  );
-  const reorderedRoots = applyNeighborReorder({
-    items: pinnedRoots,
-    request: {
-      itemId: request.id,
-      previousItemId: request.previousThreadId,
-      nextItemId: request.nextThreadId,
-    },
-  });
-  const reorderedRootKeysById = new Map(
-    reorderedRoots.map((thread, index) => [
-      thread.id,
-      pinnedRoots[index]?.pinSortKey ?? thread.pinSortKey,
-    ]),
-  );
-  return list.map((thread) => {
-    const pinSortKey = reorderedRootKeysById.get(thread.id);
-    return pinSortKey === undefined ? thread : { ...thread, pinSortKey };
-  });
-}
-
-function applyOptimisticPinnedRootOrder({
-  queryClient,
-  request,
-}: ReorderPinnedThreadTransactionArgs): void {
-  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-    applyPinnedRootOrderToList({ list, request }),
-  );
 }
 
 export function applyThreadUpdateResult({
@@ -726,42 +644,6 @@ export function settleThreadListMembershipMutation({
   invalidateThreadListMembershipQueries({ queryClient, threadId });
 }
 
-export async function beginReorderPinnedThreadTransaction({
-  queryClient,
-  request,
-}: ReorderPinnedThreadTransactionArgs): Promise<PinnedThreadOrderTransaction> {
-  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
-  await queryClient.cancelQueries({ queryKey: sidebarNavigationQueryKey() });
-  const previousThreadLists = getCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-  });
-  const previousSidebarNavigation =
-    snapshotCachedSidebarNavigation(queryClient);
-  applyOptimisticPinnedRootOrder({ queryClient, request });
-  return { previousSidebarNavigation, previousThreadLists };
-}
-
-export function rollbackReorderPinnedThreadTransaction({
-  queryClient,
-  transaction,
-}: RollbackPinnedThreadOrderTransactionArgs): void {
-  if (!transaction) {
-    return;
-  }
-  restoreCachedThreadLists(queryClient, transaction.previousThreadLists);
-  restoreCachedSidebarNavigation(
-    queryClient,
-    transaction.previousSidebarNavigation,
-  );
-}
-
-export function applyReorderPinnedThreadResult({
-  orderedRoots,
-  queryClient,
-}: PinnedRootResponseArgs): void {
-  applyPinnedRootResponseToLists({ orderedRoots, queryClient });
-}
-
 export function beginUnarchiveThreadTransaction({
   queryClient,
   threadId,
@@ -839,17 +721,6 @@ export async function beginArchiveThreadAndChildrenTransaction({
   return beginArchiveMatchingThreadsTransaction({
     matchesThread: (thread) =>
       thread.id === threadId || thread.parentThreadId === threadId,
-    queryClient,
-  });
-}
-
-export async function beginArchiveEnvironmentThreadsTransaction({
-  environmentId,
-  queryClient,
-}: ArchiveEnvironmentThreadsTransactionArgs): Promise<ArchiveThreadsTransaction> {
-  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
-  return beginArchiveMatchingThreadsTransaction({
-    matchesThread: (thread) => thread.environmentId === environmentId,
     queryClient,
   });
 }

@@ -40,9 +40,11 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { formatByteSize } from "@/lib/format-byte-size";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type {
   FilePreviewLineRange,
+  UnsupportedFilePreviewReason,
   WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
 import {
@@ -60,6 +62,14 @@ export interface FilePreviewFile {
   contents: string;
 }
 
+export interface UnsupportedFilePreviewFile {
+  mimeType: string;
+  name: string;
+  reason: UnsupportedFilePreviewReason;
+  sizeBytes: number;
+  url: string;
+}
+
 type IframePreviewSandbox = "allow-scripts";
 
 interface IframeFilePreviewTarget {
@@ -73,10 +83,9 @@ export type FilePreviewState =
   | { kind: "empty" }
   | { kind: "not-found" }
   | { kind: "error"; message?: string }
-  | { kind: "unsupported"; message: string }
+  | { kind: "unsupported"; file: UnsupportedFilePreviewFile }
   | { kind: "image"; url: string }
   | { kind: "video"; url: string }
-  | ({ kind: "iframe" } & IframeFilePreviewTarget)
   | {
       kind: "html";
       file: FilePreviewFile;
@@ -171,6 +180,10 @@ interface FilePreviewVideoProps {
   title: string;
 }
 
+interface UnsupportedFilePreviewProps {
+  file: UnsupportedFilePreviewFile;
+}
+
 interface FilePreviewMessageProps {
   message: string;
   role?: "alert";
@@ -223,9 +236,6 @@ const FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS =
   "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9";
 
 function getFilePreviewExternalUrl(state: FilePreviewState): string | null {
-  if (state.kind === "iframe") {
-    return state.url;
-  }
   if (state.kind === "html") {
     return state.iframe.url;
   }
@@ -447,12 +457,7 @@ export function FilePreview({
   markdownLinkRouting,
   statusLabel = null,
 }: FilePreviewProps) {
-  const iframeTarget =
-    state.kind === "iframe"
-      ? state
-      : state.kind === "html"
-        ? state.iframe
-        : null;
+  const iframeTarget = state.kind === "html" ? state.iframe : null;
   const iframeKey = JSON.stringify([
     state.kind,
     iframeTarget?.url,
@@ -505,9 +510,7 @@ export function FilePreview({
     );
   }, [filePreviewLineRange, path, toggleKind]);
 
-  const usesIframeLayout =
-    state.kind === "iframe" ||
-    (state.kind === "html" && viewMode === "preview");
+  const usesIframeLayout = state.kind === "html" && viewMode === "preview";
   const bodyViewMode: FilePreviewViewMode =
     toggleKind === null ? "preview" : viewMode;
   const usesCodeLayout = usesCodeViewLayout(state, bodyViewMode);
@@ -603,16 +606,13 @@ function FilePreviewBody({
     );
   }
   if (state.kind === "unsupported") {
-    return <FilePreviewMessage message={state.message} />;
+    return <UnsupportedFilePreview file={state.file} />;
   }
   if (state.kind === "image") {
     return <FilePreviewImage url={state.url} alt={path} />;
   }
   if (state.kind === "video") {
     return <FilePreviewVideo url={state.url} title={path} />;
-  }
-  if (state.kind === "iframe") {
-    return iframePreview;
   }
   if (state.kind === "html") {
     return (
@@ -1296,6 +1296,35 @@ function IframeFilePreview({
         onLoad={() => onLoadStateChange("loaded")}
         onError={() => onLoadStateChange("error")}
       />
+    </div>
+  );
+}
+
+function UnsupportedFilePreview({ file }: UnsupportedFilePreviewProps) {
+  return (
+    <div className="flex flex-col items-center gap-4 px-6 py-12 text-center">
+      <div className="flex size-12 items-center justify-center rounded-lg bg-surface-raised text-muted-foreground">
+        <Icon name="File" className="size-6" aria-hidden />
+      </div>
+      <div className="flex max-w-full min-w-0 flex-col gap-1">
+        <p className="truncate text-sm font-medium text-foreground">
+          {file.name}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {`${file.mimeType} · ${formatByteSize(file.sizeBytes)}`}
+        </p>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {file.reason === "too-large"
+          ? "This file is too large to preview."
+          : "This file type can't be previewed."}
+      </p>
+      <Button asChild variant="outline" size="sm">
+        <a href={file.url} download={file.name}>
+          <Icon name="Download" aria-hidden />
+          Download
+        </a>
+      </Button>
     </div>
   );
 }

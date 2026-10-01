@@ -76,6 +76,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
   disable1MContext: boolean;
+  sandboxEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
@@ -90,7 +91,6 @@ function resolveClaudeSessionPermissionMode(
 interface BuildInternalSessionParamsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   cwd: string;
-  disallowedTools?: readonly string[] | undefined;
   dynamicTools?: readonly DynamicTool[] | undefined;
   instructionMode: InstructionMode;
   options: ClaudeSessionExecutionOptions;
@@ -137,12 +137,10 @@ function buildInternalSessionParams(
     workflowsEnabled: args.options.workflowsEnabled,
     chromeEnabled: args.options.chromeEnabled,
     disable1MContext: args.options.disable1MContext,
+    sandboxEnabled: args.options.sandboxEnabled,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
-    ...(args.disallowedTools && args.disallowedTools.length > 0
-      ? { disallowedTools: [...args.disallowedTools] }
-      : {}),
   };
 }
 
@@ -152,6 +150,7 @@ const claudeProviderOptionsSchema = z
     workflowsEnabled: z.boolean().optional(),
     chromeEnabled: z.boolean().optional(),
     disable1MContext: z.boolean().optional(),
+    sandboxEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
@@ -173,7 +172,6 @@ interface BuildClaudeSessionParamsArgs {
   options: ClaudeCanonicalExecutionOptions;
   instructionMode: InstructionMode;
   dynamicTools?: readonly DynamicTool[] | undefined;
-  disallowedTools?: readonly string[] | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
 }
 
@@ -188,7 +186,6 @@ export function buildClaudeSessionParams(
     additionalWorkspaceWriteRoots:
       providerOptions.additionalWorkspaceWriteRoots ?? [],
     cwd: args.cwd,
-    disallowedTools: args.disallowedTools,
     dynamicTools: args.dynamicTools,
     instructionMode: args.instructionMode,
     threadId: args.threadId,
@@ -199,6 +196,7 @@ export function buildClaudeSessionParams(
       workflowsEnabled: providerOptions.workflowsEnabled ?? false,
       chromeEnabled: providerOptions.chromeEnabled ?? false,
       disable1MContext: providerOptions.disable1MContext ?? false,
+      sandboxEnabled: providerOptions.sandboxEnabled ?? true,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     },
@@ -253,6 +251,7 @@ export function buildClaudeTurnParams(
     workflowsEnabled: providerOptions.workflowsEnabled,
     chromeEnabled: providerOptions.chromeEnabled,
     disable1MContext: providerOptions.disable1MContext,
+    sandboxEnabled: providerOptions.sandboxEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     ...(config ? { config } : {}),

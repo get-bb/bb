@@ -20,7 +20,6 @@
     "schedule-time.ts",
     "schedule-time.test.ts",
     "server.ts",
-    "server.test.ts",
     "app.tsx",
     "app.test.tsx",
     "vitest.config.ts"

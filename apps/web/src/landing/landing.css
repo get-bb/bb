@@ -598,12 +598,6 @@ code,
   text-wrap: balance;
 }
 
-.fine {
-  margin-top: 14px;
-  color: var(--subtle);
-  font-size: 13px;
-}
-
 .providers {
   display: flex;
   align-items: center;

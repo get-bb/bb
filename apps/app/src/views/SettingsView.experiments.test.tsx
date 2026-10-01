@@ -14,9 +14,7 @@ function renderSection(
       disabled={false}
       experiments={{
         changelogPreview: false,
-        legacyJitiPluginLoader: false,
         serverMove: false,
-        sidebarProgressiveDisclosure: false,
       }}
       onExperimentChange={onExperimentChange}
     />,
@@ -29,19 +27,5 @@ describe("ExperimentsSettingsSection", () => {
     renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Changelog preview"));
     expect(onChange).toHaveBeenCalledWith("changelogPreview", true);
-  });
-
-  it("reports legacy plugin loader changes", () => {
-    const onChange = vi.fn();
-    renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Legacy plugin loader (JITI)"));
-    expect(onChange).toHaveBeenCalledWith("legacyJitiPluginLoader", true);
-  });
-
-  it("reports sidebar progressive disclosure changes", () => {
-    const onChange = vi.fn();
-    renderSection(onChange);
-    fireEvent.click(screen.getByLabelText("Sidebar progressive disclosure"));
-    expect(onChange).toHaveBeenCalledWith("sidebarProgressiveDisclosure", true);
   });
 });

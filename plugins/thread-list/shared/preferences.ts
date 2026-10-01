@@ -32,7 +32,6 @@ export const environmentGroupingSchema = z.union([
   z.literal("auto"),
   z.boolean(),
 ]);
-export type EnvironmentGrouping = z.infer<typeof environmentGroupingSchema>;
 
 export const THREAD_ROW_ACTION_IDS = [
   "split",
@@ -260,6 +259,3 @@ export const preferencesChangedSignalSchema = z
     value: z.unknown(),
   })
   .strict();
-export type PreferencesChangedSignal = z.infer<
-  typeof preferencesChangedSignalSchema
->;

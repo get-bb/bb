@@ -329,7 +329,6 @@ export class ServerMoveService {
     const [
       serverEntry,
       bbAppVersion,
-      serviceDefinition,
       dataDirHasDatabase,
       oldServerCopyPending,
       importBackupPresent,
@@ -344,7 +343,6 @@ export class ServerMoveService {
         env: this.options.env,
         packageRoot: resolvePackagedBbAppRoot(this.options.daemonEntryPath),
       }),
-      this.findServiceDefinition(),
       this.dataDirHasDatabase(),
       this.oldServerCopyPending(),
       pathExists(join(dataDir, SERVER_IMPORT_BACKUP_DIR_NAME)),
@@ -372,7 +370,6 @@ export class ServerMoveService {
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
       bbAppVersion,
       serverEntryAvailable: serverEntry !== null,
-      serviceManager: serviceDefinition?.manager ?? "none",
       existingServerData:
         standaloneDatabaseSize === null
           ? null

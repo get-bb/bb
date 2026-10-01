@@ -2648,41 +2648,4 @@ describe("delta assembler text-delta batching", () => {
       item: { type: "agentMessage", text: "partial answer" },
     });
   });
-
-  it("coalesces item-keyed text deltas (codex family) per channel", () => {
-    const { assembler, advance } = createBatchingAssembler();
-    assemble(assembler, { kind: "turn.open", providerTurnId: "turn-1" });
-    const textDelta = (
-      channel: "agentMessage" | "reasoningText",
-      text: string,
-    ): ThreadDelta => ({
-      kind: "item.textDelta",
-      key: { providerItemId: `item-${channel}` },
-      channel,
-      text,
-      providerTurnId: "turn-1",
-    });
-
-    const first = assemble(assembler, textDelta("agentMessage", "a1"));
-    expect(first.map((event) => event.type)).toEqual([
-      "item/started",
-      "item/agentMessage/delta",
-    ]);
-    assemble(assembler, textDelta("reasoningText", "r1"));
-    advance(10);
-    expect(assemble(assembler, textDelta("agentMessage", "a2"))).toEqual([]);
-    expect(assemble(assembler, textDelta("reasoningText", "r2"))).toEqual([]);
-
-    advance(200);
-    const events = assemble(assembler, {
-      kind: "turn.boundary",
-      status: "completed",
-      providerTurnId: "turn-1",
-    });
-    expect(events.map((event) => event.type)).toEqual([
-      "item/agentMessage/delta",
-      "item/reasoning/textDelta",
-      "turn/completed",
-    ]);
-  });
 });

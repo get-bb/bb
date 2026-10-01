@@ -26,7 +26,6 @@ import {
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
-  EventProjectionErrorMessage,
   EventProjectionFileEditChange,
   EventProjectionMessage,
   EventProjection,
@@ -312,12 +311,6 @@ function isDelegationLifecycleChildRow(row: TimelineRow): boolean {
 
 function filterDelegationChildRows(childRows: TimelineRow[]): TimelineRow[] {
   return childRows.filter((row) => !isDelegationLifecycleChildRow(row));
-}
-
-function isReconnectErrorMessage(
-  message: EventProjectionErrorMessage,
-): boolean {
-  return message.reconnectAttempt !== undefined || message.willRetry === true;
 }
 
 function toConversationAttachments(
@@ -809,7 +802,7 @@ function convertMessage(
     }
     case "error": {
       const errorDisplay = buildTimelineErrorDisplay(message);
-      const isReconnect = isReconnectErrorMessage(message);
+      const isReconnect = message.willRetry === true;
       return [
         {
           ...buildTimelineRowBase(message, options.rowIdPrefix),

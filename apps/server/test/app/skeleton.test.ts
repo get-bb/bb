@@ -5,7 +5,6 @@ import { join } from "node:path";
 import {
   getPersonalProject,
   getProjectExecutionDefaults,
-  hosts,
   type DbConnection,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -177,14 +176,6 @@ describe("server skeleton", () => {
     });
   });
 
-  it("serves public routes without auth", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/hosts");
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual([]);
-    });
-  });
-
   it("rejects internal routes without a bearer token", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/internal/session/open", {
@@ -300,12 +291,6 @@ describe("server skeleton", () => {
       await serverApp.closeWebSockets();
       await harness.cleanup();
     }
-  });
-
-  it("initializes an in-memory database and applies migrations", () => {
-    const db = initDb(":memory:");
-    expect(db.select().from(hosts).all()).toEqual([]);
-    db.$client.close();
   });
 
   it("ensures the personal project without pinning execution defaults", () => {

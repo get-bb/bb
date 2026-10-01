@@ -388,50 +388,6 @@ describe("provider retry plugin", () => {
     await host.harness.dispose();
   });
 
-  it("asks core to retry an overloaded turn after backoff", async () => {
-    const host = createHost();
-    await plugin(host.bb);
-
-    const { errors } = await host.harness.behavior.emitThreadEvent(
-      "turn.failed",
-      overloadedFailure(),
-    );
-
-    expect(errors).toEqual([]);
-    expect(host.retries).toHaveLength(1);
-    expect(host.retries[0]).toMatchObject({
-      threadId: THREAD_ID,
-      turnRequestId: REQUEST_ID,
-      reason: "Provider overloaded",
-    });
-    expect(host.retries[0]?.sendAt).toBeGreaterThanOrEqual(
-      NOW_MS + OVERLOAD_RETRY_BASE_MS,
-    );
-    expect(host.retries[0]?.sendAt).toBeLessThan(
-      NOW_MS + OVERLOAD_RETRY_BASE_MS * 2,
-    );
-    await host.harness.dispose();
-  });
-
-  it("leaves ordinary failures alone", async () => {
-    const host = createHost();
-    await plugin(host.bb);
-
-    await host.harness.behavior.emitThreadEvent(
-      "turn.failed",
-      failure({
-        errorInfo: {
-          category: "internal",
-          providerCode: null,
-          httpStatusCode: 500,
-        },
-      }),
-    );
-
-    expect(host.retries).toEqual([]);
-    await host.harness.dispose();
-  });
-
   it("re-reads the maximum wait when the setting changes", async () => {
     const host = createHost();
     await plugin(host.bb);

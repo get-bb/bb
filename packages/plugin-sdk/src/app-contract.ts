@@ -494,8 +494,6 @@ export interface PluginFileOpenerProps {
    * @experimental Audit before relying on this as a stable contract.
    */
   Original: ComponentType;
-  /** @deprecated Renamed to `Original` in SDK 0.4.16; removed in bb 0.42. */
-  experimental_Original?: ComponentType;
 }
 
 // ---------------------------------------------------------------------------
@@ -600,8 +598,6 @@ export interface PluginSourceCodeRendererProps {
    * @experimental Audit before relying on this as a stable contract.
    */
   Original: ComponentType;
-  /** @deprecated Renamed to `Original` in SDK 0.4.16; removed in bb 0.42. */
-  experimental_Original?: ComponentType;
 }
 
 /**
@@ -630,8 +626,6 @@ export interface PluginDiffRendererProps {
    * @experimental Audit before relying on this as a stable contract.
    */
   Original: ComponentType;
-  /** @deprecated Renamed to `Original` in SDK 0.4.16; removed in bb 0.42. */
-  experimental_Original?: ComponentType;
 }
 
 /**
@@ -1480,7 +1474,7 @@ export interface PluginSidebarThreadActions {
   setRead(threadId: string, read: boolean): Promise<void>;
   /** Silent rename — no dialog. For inline editing in your own row. */
   rename(threadId: string, title: string): Promise<void>;
-  /** Archives immediately, or confirms first if child threads will also be archived. */
+  /** Confirms before including child threads unless archive confirmation is disabled in Settings → General. */
   archive(threadId: string): void;
   /**
    * Opens bb's delete confirmation, which counts child threads first. Deletion

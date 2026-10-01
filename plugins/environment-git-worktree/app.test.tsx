@@ -12,8 +12,6 @@ import type { JsonValue } from "@get-bb/plugin-sdk/app";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const app = await loadPluginApp(() => import("./app"));
-const { selectedBranchName, selectedExistingPath, worktreePathLabel } =
-  await import("./app");
 
 afterEach(() => {
   cleanup();
@@ -246,7 +244,7 @@ describe("worktree inputs control", () => {
     ).toContain("Branch from:release");
     cleanup();
 
-    const reused = render({ kind: "existing", path: "/code/app-feature" });
+    const reused = render({ kind: "existing", path: "/code/app-feature/" });
     expect(
       reused.slot.getByRole("combobox", { name: "Worktree" }).textContent,
     ).toContain("Reuse:code/app-feature");
@@ -294,17 +292,6 @@ describe("worktree inputs control", () => {
       expect(slot.getByText("No existing worktrees found.")).toBeTruthy(),
     );
     expect(list).toHaveBeenCalledTimes(1);
-  });
-
-  it("reads the current selection out of persisted inputs", () => {
-    expect(
-      selectedBranchName({ branch: { kind: "named", name: "main" } }),
-    ).toBe("main");
-    expect(selectedBranchName({ branch: { kind: "default" } })).toBeNull();
-    expect(selectedBranchName(null)).toBeNull();
-    expect(selectedExistingPath({ kind: "existing", path: "/x" })).toBe("/x");
-    expect(selectedExistingPath({ branch: { kind: "default" } })).toBeNull();
-    expect(worktreePathLabel("/code/app-feature/")).toBe("code/app-feature");
   });
 });
 

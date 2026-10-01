@@ -3,7 +3,11 @@ import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
-import type { Task, TaskMutationResult } from "../../shared/contract.js";
+import type {
+  Project,
+  Task,
+  TaskMutationResult,
+} from "../../shared/contract.js";
 import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
@@ -58,6 +62,8 @@ function task(overrides: Partial<Task> & Pick<Task, "id" | "number">): Task {
 }
 
 interface Options {
+  projects?: Project[];
+  moveTaskToProject?: (input: Record<string, unknown>) => TaskMutationResult;
   updateTask?: (input: Record<string, unknown>) => TaskMutationResult;
 }
 
@@ -67,7 +73,7 @@ function renderList(tasks: Task[], options: Options = {}) {
     { subPath: PROJECT_ID },
     {
       rpc: {
-        listProjects: () => ({ projects: [project] }),
+        listProjects: () => ({ projects: options.projects ?? [project] }),
         listFolders: () => ({ folders: [] }),
         listPresets: () => ({ presets: [] }),
         sidebarSummary: () => ({ projects: [] }),
@@ -76,6 +82,10 @@ function renderList(tasks: Task[], options: Options = {}) {
         listTaskThreads: () => ({ taskThreads: [] }),
         listComments: () => ({ comments: [] }),
         listAttachments: () => ({ attachments: [] }),
+        moveTaskToProject: (raw) => {
+          if (!options.moveTaskToProject) throw new Error("Unexpected move");
+          return options.moveTaskToProject(rpcInput(raw));
+        },
         updateTask: (raw) => {
           const input = rpcInput(raw);
           if (options.updateTask) return options.updateTask(input);
@@ -95,6 +105,48 @@ async function rowFor(slot: ReturnType<typeof renderList>, key: string) {
 }
 
 describe("inline row editing", () => {
+  it("opens a windowed row using its task key", async () => {
+    const slot = renderList([task({ id: "01HZT1", number: 1 })]);
+    const row = await rowFor(slot, "TSK-1");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Open TSK-1: Task 1" }),
+    );
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: "task/TSK-1" },
+    });
+  });
+
+  it("moves a windowed row through its project context menu", async () => {
+    const current = task({ id: "01HZT1", number: 1 });
+    const target = {
+      ...project,
+      id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+      name: "Personal",
+      prefix: "HOME",
+    };
+    const slot = renderList([current], {
+      projects: [project, target],
+      moveTaskToProject: () => ({
+        ok: true,
+        task: { ...current, projectId: target.id, key: "HOME-5", number: 5 },
+      }),
+    });
+    const row = await rowFor(slot, "TSK-1");
+    fireEvent.contextMenu(row);
+    fireEvent.click(
+      await slot.findByRole("menuitem", { name: "Move to project" }),
+    );
+    fireEvent.click(await slot.findByRole("menuitem", { name: /Personal/ }));
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "moveTaskToProject",
+        input: { taskId: current.id, projectId: target.id },
+      }),
+    );
+  });
+
   it("optimistically applies a status change and persists it", async () => {
     const slot = renderList([task({ id: "01HZT1", number: 1 })]);
     const row = await rowFor(slot, "TSK-1");

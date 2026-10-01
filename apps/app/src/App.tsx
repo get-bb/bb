@@ -18,6 +18,7 @@ import { AppNavigationUrlHost } from "./lib/url-open-routing";
 import { NativeShellReporter } from "./lib/native-shell";
 import { UiPreferencesSync } from "@/lib/ui-preferences/UiPreferencesSync";
 import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
+import { pluginDetailKeyFromRoute } from "./components/plugin/plugin-detail-key";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
@@ -126,7 +127,7 @@ function LegacyProjectSettingsRedirect() {
   );
 }
 
-export function LegacyAutomationDetailRedirect() {
+function LegacyAutomationDetailRedirect() {
   const location = useLocation();
   const { projectId, automationId } = useParams<{
     projectId?: string;
@@ -148,7 +149,7 @@ export function LegacyAutomationDetailRedirect() {
   );
 }
 
-export function LegacyAutomationCollectionRedirect() {
+function LegacyAutomationCollectionRedirect() {
   const location = useLocation();
   const browse =
     location.pathname.endsWith("/browse") ||
@@ -421,7 +422,16 @@ function RouteContentPaintSignal() {
 
 function PluginsRoute() {
   const { pluginId } = useParams<{ pluginId?: string }>();
-  return <PluginsView pluginId={pluginId} />;
+  const { search } = useLocation();
+  return (
+    <PluginsView
+      detailKey={
+        pluginId === undefined
+          ? undefined
+          : pluginDetailKeyFromRoute(pluginId, search)
+      }
+    />
+  );
 }
 
 export function App() {

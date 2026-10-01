@@ -18,7 +18,6 @@ export const secretRequestPayloadSchema = z.object({
     )
     .min(1),
 });
-export type SecretRequestPayload = z.infer<typeof secretRequestPayloadSchema>;
 
 const secretValueSchema = z
   .string()
@@ -34,4 +33,3 @@ const secretValueSchema = z
 export const secretRequestResponseSchema = z.object({
   values: z.record(secretNameSchema, secretValueSchema),
 });
-export type SecretRequestResponse = z.infer<typeof secretRequestResponseSchema>;

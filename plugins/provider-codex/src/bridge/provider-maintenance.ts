@@ -84,6 +84,7 @@ function codexUpdateCommand(): {
 
 export async function getCodexProviderInstallationStatus(
   requirement?: "thread_rewind",
+  checkUpdates = true,
 ): Promise<ProviderInstallationStatus> {
   const minimumSupportedVersion =
     minimumSupportedVersionForRequirement(requirement);
@@ -91,8 +92,10 @@ export async function getCodexProviderInstallationStatus(
     await Promise.all([
       resolveExecutablePath("codex"),
       commandOutput("codex", ["--version"]),
-      npmLatestVersion(CODEX_NPM_PACKAGE),
-      probeNpmGlobalPackage(CODEX_NPM_PACKAGE),
+      checkUpdates ? npmLatestVersion(CODEX_NPM_PACKAGE) : null,
+      checkUpdates
+        ? probeNpmGlobalPackage(CODEX_NPM_PACKAGE)
+        : { npmBin: null, npmGlobalPackageVersion: null },
     ]);
   const installed = resolvedExecutable !== null || versionOutput !== null;
   const currentVersion = versionFrom(versionOutput);

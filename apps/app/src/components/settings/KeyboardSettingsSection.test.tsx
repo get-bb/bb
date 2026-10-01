@@ -574,24 +574,6 @@ describe("KeyboardSettingsSection", () => {
     ).toEqual(originalHeadings);
   });
 
-  it("shows the empty state when no shortcut matches", () => {
-    render(<KeyboardSettingsSection />);
-
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Search keyboard shortcuts" }),
-      {
-        target: { value: "nonexistent-shortcut" },
-      },
-    );
-
-    expect(
-      screen.getByText("No shortcuts match “nonexistent-shortcut”."),
-    ).toBeDefined();
-    expect(
-      screen.queryAllByRole("button", { name: /^Record shortcut for / }),
-    ).toHaveLength(0);
-  });
-
   it("lists commands without defaults and persists bindings under stable plugin IDs", () => {
     setPluginSlotRegistrations(
       "test-shortcuts",

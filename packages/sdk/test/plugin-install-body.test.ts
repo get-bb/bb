@@ -82,20 +82,4 @@ describe("issue #1662: plugin install against a pre-0.38.0 server", () => {
     });
     expect(bodies).toEqual([{ source: "path:/tmp/my-plugin" }]);
   });
-
-  it("a subdirectory install still sends an explicit selection", async () => {
-    const { sdk, bodies } = createLegacyServerSdk();
-    await sdk.plugins
-      .install({
-        source: "git:github.com/acme/plugins",
-        subdirectory: "packages/notes",
-      })
-      .catch(() => undefined);
-    expect(bodies).toEqual([
-      {
-        source: "git:github.com/acme/plugins",
-        selection: { kind: "subdirectory", path: "packages/notes" },
-      },
-    ]);
-  });
 });

@@ -41,3 +41,31 @@ it("does not install incompatible catalog entries", () => {
   fireEvent.click(button);
   expect(install).not.toHaveBeenCalled();
 });
+
+it.each([
+  { state: "installable", disabled: false, installed: false, icon: "Download" },
+  { state: "blocked", disabled: true, installed: false, icon: "AlertTriangle" },
+  { state: "installed", disabled: false, installed: true, icon: "Check" },
+])("shows the $state state with the $icon icon", (state) => {
+  render(
+    state.installed ? (
+      <PluginCatalogInstallControl
+        displayName="Notes"
+        installed
+        included={false}
+        onUninstall={vi.fn()}
+      />
+    ) : (
+      <PluginCatalogInstallControl
+        displayName="Notes"
+        installed={false}
+        disabled={state.disabled}
+        onInstall={vi.fn()}
+      />
+    ),
+  );
+  const button = screen.getByRole("button");
+  expect(button.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe(
+    state.icon,
+  );
+});

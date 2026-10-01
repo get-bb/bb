@@ -364,7 +364,6 @@ interface ThreadTerminalViewProps {
   onSelectionAddToChat?: (text: string) => void;
   onSessionChange?: (session: TerminalSession) => void;
   onTitleChange?: TerminalTitleChangeHandler;
-  onUserInput?: () => void;
   session: TerminalSession;
 }
 
@@ -391,7 +390,6 @@ interface TerminalOutputWriteArgs {
 interface ForwardTerminalDataArgs {
   data: string;
   onInput: (dataBase64: string) => void;
-  onUserInput?: () => void;
   replayWriteState: TerminalReplayWriteState;
   sessionStatus: TerminalSession["status"];
 }
@@ -460,7 +458,6 @@ export function encodeTerminalInputChunks(value: string): string[] {
 export function forwardTerminalData({
   data,
   onInput,
-  onUserInput,
   replayWriteState,
   sessionStatus,
 }: ForwardTerminalDataArgs): void {
@@ -471,7 +468,6 @@ export function forwardTerminalData({
     return;
   }
 
-  onUserInput?.();
   for (const dataBase64 of encodeTerminalInputChunks(data)) {
     onInput(dataBase64);
   }
@@ -645,7 +641,6 @@ export function ThreadTerminalView({
   onSelectionAddToChat,
   onSessionChange,
   onTitleChange,
-  onUserInput,
   session,
 }: ThreadTerminalViewProps) {
   const [activeSelection, setActiveSelection] =
@@ -672,7 +667,6 @@ export function ThreadTerminalView({
   const onTitleChangeRef = useRef<TerminalTitleChangeHandler | undefined>(
     onTitleChange,
   );
-  const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
   const onAutoFocusHandledRef = useRef<(() => void) | undefined>(
     onAutoFocusHandled,
   );
@@ -700,7 +694,6 @@ export function ThreadTerminalView({
   onOpenLinkRef.current = effectiveOnOpenLink;
   onSessionChangeRef.current = onSessionChange;
   onTitleChangeRef.current = onTitleChange;
-  onUserInputRef.current = onUserInput;
 
   const reportTerminalSelection = useCallback(
     (anchor: SelectionAnchor | null) => {
@@ -1083,7 +1076,6 @@ export function ThreadTerminalView({
         forwardTerminalData({
           data,
           onInput: sendTerminalInput,
-          onUserInput: onUserInputRef.current,
           replayWriteState,
           sessionStatus: sessionStatusRef.current,
         });

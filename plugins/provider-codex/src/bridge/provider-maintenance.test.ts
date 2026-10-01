@@ -6,6 +6,7 @@ import { resetChatGptCloudflareCookiesForTests } from "../ai/chatgpt-fetch.js";
 import {
   __testing,
   getCodexProviderHealth,
+  getCodexProviderInstallationStatus,
   getCodexProviderUsage,
 } from "./provider-maintenance.js";
 
@@ -162,6 +163,40 @@ describe("Codex credential health and usage", () => {
         .map((dir) => fs.rm(dir, { force: true, recursive: true })),
     );
   });
+
+  it.each([
+    ["0.135.0", undefined, true],
+    ["0.140.0", undefined, false],
+    ["0.140.0", "thread_rewind", true],
+    ["0.150.0", "thread_rewind", false],
+    ["unparseable", "thread_rewind", true],
+  ] as const)(
+    "checks local compatibility without update discovery: %s / %s",
+    async (version, requirement, unsupported) => {
+      const binDir = path.join(homeDir, "bin");
+      const marker = path.join(homeDir, "npm-probed");
+      await fs.writeFile(
+        path.join(binDir, "codex"),
+        `#!/bin/sh\necho "codex-cli ${version}"\n`,
+        { mode: 0o755 },
+      );
+      await fs.writeFile(
+        path.join(binDir, "npm"),
+        `#!/bin/sh\ntouch '${marker}'\necho "1.1.0"\n`,
+        { mode: 0o755 },
+      );
+
+      const status = await getCodexProviderInstallationStatus(
+        requirement,
+        false,
+      );
+
+      expect(status.installed).toBe(true);
+      expect(status.versionUnsupported).toBe(unsupported);
+      expect(status.latestVersion).toBeNull();
+      await expect(fs.stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
 
   it("reports unauthenticated when auth.json is missing", async () => {
     await expect(getCodexProviderHealth()).resolves.toEqual({

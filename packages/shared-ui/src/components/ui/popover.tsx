@@ -157,6 +157,9 @@ const PopoverContent = React.forwardRef<
           closeOnBackdropClick={dismissOnOutsideInteraction}
           contentClassName={mobileClassName}
           onContentAnimationEnd={onMobileContentAnimationEnd}
+          onEscapeKeyDown={props.onEscapeKeyDown}
+          onPointerDownOutside={props.onPointerDownOutside}
+          onInteractOutside={onInteractOutside}
         >
           <div
             ref={ref}

@@ -24,7 +24,8 @@
     plugin code, and a failed refresh keeps the last catalog bb validated.
   - `bb plugin search <query> [--json]` — search the catalog by id,
     name, description, category, or tag; status shows installed / compatible /
-    requires newer bb. The table includes a **Category** column. An
+    requires newer bb / id in use by `<source>` (another installed plugin, such
+    as a local `path:` checkout, already uses the entry's id). The table includes a **Category** column. An
     **Installs** column appears once the curated
     marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
     null when unknown): anonymous-telemetry install counts for published

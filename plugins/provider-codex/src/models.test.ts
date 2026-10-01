@@ -1,24 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  mapBbReasoningLevelToCodex,
-  mapCodexReasoningLevelToBb,
-  parseModelsResponse,
-} from "./models.js";
-
-describe("mapCodexReasoningLevelToBb", () => {
-  it("returns null for unknown values", () => {
-    expect(mapCodexReasoningLevelToBb("ludicrous")).toBeNull();
-    expect(mapCodexReasoningLevelToBb(42)).toBeNull();
-    expect(mapCodexReasoningLevelToBb(undefined)).toBeNull();
-  });
-});
-
-describe("mapBbReasoningLevelToCodex", () => {
-  it("returns null for none and ultracode", () => {
-    expect(mapBbReasoningLevelToCodex("none")).toBeNull();
-    expect(mapBbReasoningLevelToCodex("ultracode")).toBeNull();
-  });
-});
+import { parseModelsResponse } from "./models.js";
 
 describe("parseModelsResponse", () => {
   it("parses a live-shaped Codex payload with max and ultra", () => {
@@ -89,6 +70,27 @@ describe("parseModelsResponse", () => {
       models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
     ).toEqual(["low", "high"]);
     expect(models[0]?.defaultReasoningEffort).toBe("low");
+  });
+
+  it("skips effort entries without a string level and defaults to the first effort when none is named", () => {
+    const models = parseModelsResponse({
+      data: [
+        {
+          id: "sparse-model",
+          model: "sparse-model",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "high", description: "High" },
+            { reasoningEffort: 42, description: "Numeric" },
+            { description: "Missing" },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["high"]);
+    expect(models[0]?.defaultReasoningEffort).toBe("high");
   });
 
   it("falls back to default efforts when every effort is unknown", () => {

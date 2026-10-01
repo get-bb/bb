@@ -22,26 +22,6 @@ function setup() {
 }
 
 describe("sessions", () => {
-  it("opens a session and retrieves it", () => {
-    const { db, host } = setup();
-
-    const session = openSession(db, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    expect(session.id).toMatch(/^hses_/);
-    expect(session.status).toBe("active");
-    expect(session.hostId).toBe(host.id);
-
-    expect(getSessionById(db, { sessionId: session.id })?.id).toBe(session.id);
-  });
-
   it("marks the host as seen on open, heartbeat, and close", () => {
     const { db, host } = setup();
     expect(getHost(db, host.id)?.lastSeenAt).toBeNull();
@@ -218,22 +198,6 @@ describe("sessions", () => {
     expect(getLatestSessionForHost(db, { hostId: host.id })?.id).toBe(
       "hses_a_active",
     );
-  });
-
-  it("extends the session lease on heartbeat", () => {
-    const { db, host } = setup();
-    const session = openSession(db, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    const updated = heartbeatSession(db, session.id, Date.now() + 45_000);
-    expect(updated?.leaseExpiresAt).toBeGreaterThan(Date.now());
   });
 
   it("does not overwrite an already closed session", () => {

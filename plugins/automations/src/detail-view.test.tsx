@@ -25,6 +25,7 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
     value,
     onChange,
     routing,
+    allowProviderChange,
     disabled,
   }: ExperimentalProviderModelPickerProps) => (
     <button
@@ -38,10 +39,13 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
             ? routing.hostId
             : routing.environmentId
       }
+      data-provider-change-allowed={
+        allowProviderChange === false ? "false" : "true"
+      }
       disabled={disabled}
       onClick={() =>
         onChange({
-          providerId: value.providerId,
+          providerId: "claude",
           model: "claude-sonnet-5",
           reasoningLevel: "high",
           serviceTier: "fast",
@@ -57,6 +61,7 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
     providerId,
     value,
     onChange,
+    routing,
     disabled,
   }: ExperimentalPermissionModePickerProps) => (
     <button
@@ -64,6 +69,7 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
       aria-label="Permission mode"
       data-testid="bb-permission-mode-picker"
       data-provider-id={providerId}
+      data-routing-kind={routing?.kind ?? "primary"}
       disabled={disabled}
       onClick={() => onChange(value === "full" ? "auto" : "full")}
     >
@@ -114,6 +120,31 @@ const AUTOMATION: AutomationDetailResponse = {
   lastError: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
+};
+
+const REUSE_ENVIRONMENT_EXECUTION = {
+  mode: "agent",
+  prompt: "Summarize the inbox",
+  providerId: "codex",
+  model: "gpt-5.6-codex",
+  reasoningLevel: "medium",
+  permissionMode: "accept-edits",
+  environment: { type: "reuse", environmentId: "env_test" },
+} satisfies AutomationDetailResponse["execution"];
+
+const REUSE_ENVIRONMENT_AUTOMATION: AutomationDetailResponse = {
+  ...AUTOMATION,
+  execution: REUSE_ENVIRONMENT_EXECUTION,
+};
+
+const NO_RUNS = {
+  runs: [],
+  nextCursor: null,
+  loading: false,
+  loadingMore: false,
+  error: null,
+  loadMore: () => {},
+  retry: () => {},
 };
 
 type TestAutomationDetailProps = Omit<
@@ -354,6 +385,92 @@ describe("Automation detail recipe", () => {
     expect(
       screen.queryByRole("textbox", { name: "Automation prompt" }),
     ).toBeNull();
+  });
+
+  it("uses the standard editor to complete an automation with a missing prompt", () => {
+    const onUpdate = vi.fn(async (_update: AgentExecutionUpdate) => {});
+    render(
+      <AutomationDetailView
+        automation={{
+          ...REUSE_ENVIRONMENT_AUTOMATION,
+          execution: { ...REUSE_ENVIRONMENT_EXECUTION, prompt: "" },
+        }}
+        projectLabel="Test project"
+        runsState={NO_RUNS}
+        actionPending={false}
+        editing
+        onUpdateAgent={onUpdate}
+        onToggle={() => {}}
+        onEdit={() => {}}
+        onRunNow={() => {}}
+        onDelete={() => {}}
+        onOpenThread={() => {}}
+      />,
+    );
+
+    expect(
+      (screen.getByRole("button", { name: "Edit prompt" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Run now" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    const save = screen.getByRole("button", { name: "Save Prompt" });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Automation prompt"), {
+      target: { value: "Review the failed build" },
+    });
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(save);
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      prompt: "Review the failed build",
+      providerId: "codex",
+      model: "gpt-5.6-codex",
+      reasoningLevel: "medium",
+      serviceTier: null,
+      permissionMode: "accept-edits",
+    });
+  });
+
+  it("routes both pickers to a reused environment and re-keys permissions on a provider change", () => {
+    const onUpdate = vi.fn(async (_update: AgentExecutionUpdate) => {});
+    render(
+      <AutomationDetailView
+        automation={REUSE_ENVIRONMENT_AUTOMATION}
+        projectLabel="Test project"
+        runsState={NO_RUNS}
+        actionPending={false}
+        editing
+        onUpdateAgent={onUpdate}
+        onToggle={() => {}}
+        onEdit={() => {}}
+        onRunNow={() => {}}
+        onDelete={() => {}}
+        onOpenThread={() => {}}
+      />,
+    );
+
+    const picker = screen.getByTestId("bb-provider-model-picker");
+    expect(picker.getAttribute("data-routing-kind")).toBe("environment");
+    expect(picker.getAttribute("data-routing-id")).toBe("env_test");
+    expect(picker.getAttribute("data-provider-change-allowed")).toBe("true");
+    fireEvent.click(picker);
+    const permission = screen.getByLabelText("Permission mode");
+    expect(permission.getAttribute("data-provider-id")).toBe("claude");
+    expect(permission.getAttribute("data-routing-kind")).toBe("environment");
+    fireEvent.click(permission);
+    fireEvent.click(screen.getByText("Save Prompt"));
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      prompt: "Summarize the inbox",
+      providerId: "claude",
+      model: "claude-sonnet-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
+      permissionMode: "full",
+    });
   });
 
   it("keeps project and environment metadata beside the host picker", () => {

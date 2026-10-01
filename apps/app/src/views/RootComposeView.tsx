@@ -217,7 +217,7 @@ interface LegacyProjectComposeRedirectProps {
   projectId: string;
 }
 
-export function readSectionIdFromLocationState(state: unknown): string | null {
+function readSectionIdFromLocationState(state: unknown): string | null {
   if (typeof state !== "object" || state === null) {
     return null;
   }

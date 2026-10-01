@@ -910,6 +910,7 @@ describe("thread runtime config", () => {
         disable1MContext: false,
         memoryEnabled: true,
         providerSubagentsEnabled: true,
+        sandboxEnabled: true,
         workflowsEnabled: true,
       });
 
@@ -1226,62 +1227,6 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("keeps local-host workspace .bb/AGENTS.md instructions unchanged", async () => {
-    await withTestHarness(async (harness) => {
-      const hostId = "host-runtime-agents-md";
-      seedHostSession(harness.deps, { id: hostId });
-      seedPrimaryHost(harness.deps, hostId);
-      const workspacePath = path.join(
-        harness.config.dataDir,
-        "agents-md-workspace",
-      );
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId,
-        path: workspacePath,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId,
-        projectId: project.id,
-        path: workspacePath,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-      });
-      await writeWorkspaceAgentInstructions({
-        content:
-          "# Project Rules\n\nAlways run the smoke test before pushing.\n",
-        workspacePath,
-      });
-
-      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
-        harness.deps,
-        {
-          thread,
-          model: "test-model",
-          environment: {
-            hostId: environment.hostId,
-            id: environment.id,
-            path: environment.path,
-            status: environment.status,
-          },
-        },
-      );
-
-      expect(runtimeConfig.instructionMode).toBe("append");
-      expect(runtimeConfig.instructions).not.toContain(
-        "You are working inside bb, an agentic IDE",
-      );
-      expect(runtimeConfig.instructions).toContain(
-        "The following workspace instructions come from .bb/AGENTS.md:",
-      );
-      expect(runtimeConfig.instructions).toContain(
-        "Always run the smoke test before pushing.",
-      );
-    });
-  });
-
   it("reads workspace .bb/AGENTS.md from a non-primary host", async () => {
     await withTestHarness(async (harness) => {
       const { host: primary } = seedHostSession(harness.deps, {
@@ -1590,6 +1535,7 @@ describe("thread runtime config", () => {
         },
       );
 
+      expect(runtimeConfig.instructionMode).toBe("append");
       const userSource =
         "The following user instructions come from <dataDir>/AGENTS.md:";
       const workspaceSource =

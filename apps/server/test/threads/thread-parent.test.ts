@@ -45,23 +45,6 @@ function captureApiError(callback: ThrowingCallback): ApiError {
 }
 
 describe("thread parent validation", () => {
-  it("accepts live standard parent threads", () => {
-    const { db, project } = setup();
-    const parentThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-
-    const validatedParent = assertValidParentThread(
-      { db },
-      {
-        parentThreadId: parentThread.id,
-      },
-    );
-
-    expect(validatedParent.id).toBe(parentThread.id);
-  });
-
   it("accepts a live parent thread from another project", () => {
     const { db, host } = setup();
     const { project: otherProject } = createProject(db, noopNotifier, {

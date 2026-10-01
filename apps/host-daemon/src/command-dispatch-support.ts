@@ -42,11 +42,6 @@ export type CommandOf<TType extends DispatchCommand["type"]> = Extract<
   { type: TType }
 >;
 
-export const noopEventSink: Pick<EventSink, "emit" | "flush"> = {
-  emit: () => undefined,
-  flush: async () => undefined,
-};
-
 export interface CommandDispatchOptions {
   emitEnvironmentHookProgress?: (
     message: EnvironmentHookProgressMessage,
@@ -82,6 +77,7 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
     requirement?: "thread_rewind";
+    checkUpdates?: boolean;
   }) => Promise<ProviderInstallationStatus>;
   providerInstallationRun: (args: {
     providerId: string;

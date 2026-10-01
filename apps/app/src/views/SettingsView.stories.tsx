@@ -122,6 +122,7 @@ function useSettingsStoryState() {
   const [richTextEditing, setRichTextEditing] = useState(false);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
+  const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
@@ -149,6 +150,8 @@ function useSettingsStoryState() {
     rewriteLocalhostLinks,
     richTextEditing,
     steerActiveThreadOnEnter,
+    confirmThreadArchive,
+    setConfirmThreadArchive,
     streamerMode,
     telemetryEnabled,
     setTelemetryEnabled,
@@ -197,6 +200,8 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
+        confirmThreadArchive={state.confirmThreadArchive}
+        onConfirmThreadArchiveChange={state.setConfirmThreadArchive}
         desktopBrowserAvailable={desktopBrowserAvailable}
         generalSettingsDisabled={false}
         managedBranchPrefix={state.managedBranchPrefix}

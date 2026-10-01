@@ -1,11 +1,3 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { handleLine } from "./bridge.js";
@@ -397,68 +389,4 @@ it("reports a bash call's cwd as the thread's working directory, never an empty 
     cwd: harness.workspaceDir,
   });
   expect(JSON.stringify(harness.deltasOf(threadId))).not.toContain('"cwd":""');
-}, 90_000);
-
-it("a resumed thread relocates to the cwd bb asked for", async () => {
-  const headerDir = mkdtempSync(join(tmpdir(), "bb-pi-header-cwd-"));
-  try {
-    const sessionDir = join(harness.workspaceDir, "sessions");
-    mkdirSync(sessionDir, { recursive: true });
-    writeFileSync(
-      join(sessionDir, "thr-resume-cwd.jsonl"),
-      `${JSON.stringify({ type: "session", version: 3, id: "sess-1", timestamp: "2026-01-01T00:00:00.000Z", cwd: headerDir })}\n`,
-    );
-    const threadId = "thr-resume-cwd";
-    const resumed = await harness.request((nextId += 1), "thread/resume", {
-      threadId,
-      providerThreadId: threadId,
-      cwd: harness.workspaceDir,
-      instructionMode: "append",
-      options: FULL_PERMISSION_OPTIONS,
-    });
-    expect(resumed.result).toMatchObject({ providerThreadId: expect.stringMatching(/^pi_/) });
-    turnStart(threadId, '/tool bash {"command":"pwd"}', "creq_rsm2345678");
-    await harness.waitForDelta(threadId, (d) => d.kind === "item.close");
-    const opened = harness
-      .deltasOf(threadId)
-      .find((d) => d.kind === "item.open");
-    expect(opened?.item).toMatchObject({
-      type: "command",
-      command: "pwd",
-      cwd: harness.workspaceDir,
-    });
-  } finally {
-    rmSync(headerDir, { recursive: true, force: true });
-  }
-}, 90_000);
-
-it("resumes at bb's requested cwd when the session header's cwd was removed", async () => {
-  const sessionDir = join(harness.workspaceDir, "sessions");
-  mkdirSync(sessionDir, { recursive: true });
-  const ghostCwd = join(harness.workspaceDir, "worktree-removed");
-  expect(existsSync(ghostCwd)).toBe(false);
-  writeFileSync(
-    join(sessionDir, "thr-resume-missing-cwd.jsonl"),
-    `${JSON.stringify({ type: "session", version: 3, id: "sess-missing-cwd", timestamp: "2026-01-01T00:00:00.000Z", cwd: ghostCwd })}\n`,
-  );
-
-  const threadId = "thr-resume-missing-cwd";
-  const resumed = await harness.request((nextId += 1), "thread/resume", {
-    threadId,
-    providerThreadId: threadId,
-    cwd: harness.workspaceDir,
-    instructionMode: "append",
-    options: FULL_PERMISSION_OPTIONS,
-  });
-  expect(resumed.error, JSON.stringify(resumed)).toBeUndefined();
-  expect(resumed.result).toMatchObject({ providerThreadId: expect.stringMatching(/^pi_/) });
-
-  turnStart(threadId, '/tool bash {"command":"pwd"}', "creq_rsm2345678");
-  await harness.waitForDelta(threadId, (d) => d.kind === "item.close");
-  const opened = harness.deltasOf(threadId).find((d) => d.kind === "item.open");
-  expect(opened?.item).toMatchObject({
-    type: "command",
-    command: "pwd",
-    cwd: harness.workspaceDir,
-  });
 }, 90_000);

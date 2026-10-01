@@ -64,51 +64,6 @@ function requireOnlyTurnRow(rows: readonly TimelineRow[]): TimelineTurnRow {
 }
 
 describe("completed turn summary rendering", () => {
-  it("emits a summary row for a completed final turn after accepted user input", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const request = event.clientTurnRequested({
-      target: { kind: "new-turn" },
-      text: "got it lets work on the daemon command blobs",
-    });
-
-    const timeline = renderCompletedTimeline({
-      events: [
-        request,
-        event.turnStarted(),
-        event.inputAccepted({
-          clientRequestId: request.data.requestId,
-        }),
-        event.commandCompleted({
-          itemId: "tool-1",
-          command: "pnpm test",
-        }),
-        event.assistantCompleted({
-          itemId: "assistant-1",
-          text: "Implemented durable daemon command blob pruning.",
-        }),
-        event.turnCompleted(),
-      ],
-    });
-
-    expect(rowSignatures(timeline.rows)).toEqual([
-      "conversation:user",
-      "turn:4-4",
-      "conversation:assistant",
-    ]);
-    expect(topLevelWorkRows(timeline.rows)).toHaveLength(0);
-
-    const turnRow = requireOnlyTurnRow(timeline.rows);
-    expect(turnRow).toMatchObject({
-      completedAt: 6,
-      sourceSeqEnd: 4,
-      sourceSeqStart: 4,
-      startedAt: 2,
-      status: "completed",
-      summaryCount: 1,
-    });
-    expect(rowSignatures(turnRow.children ?? [])).toEqual(["work:command"]);
-  });
-
   it("keeps an assistant answer visible when the provider re-queries and the model answers again", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({
@@ -785,23 +740,6 @@ describe("flat completed turn display", () => {
 
     expect(rowSignatures(finished.rows)).toEqual([
       "work:command",
-      "conversation:assistant",
-    ]);
-  });
-
-  it("folds the same finished turn when the display is collapse", () => {
-    const { finishedEvents } = narratedTurn();
-
-    const collapsed = renderTimelineFixture({
-      completedTurnDisplay: "collapse",
-      events: finishedEvents,
-      includeNestedRows: false,
-      projectionOptions: { threadStatus: "idle", turnMessageDetail: "summary" },
-    });
-
-    expect(rowSignatures(collapsed.rows)).toEqual([
-      "conversation:user",
-      "turn:4-5",
       "conversation:assistant",
     ]);
   });

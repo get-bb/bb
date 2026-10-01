@@ -7,12 +7,11 @@ import {
   type ThreadEventType,
 } from "@bb/domain";
 import {
+  advanceThreadPruning,
   createThread,
   deleteThreadEventSuffixInTransaction,
   getLatestThreadSequence,
   noopNotifier,
-  pruneContextWindowUsageEvents,
-  pruneResolvedItemDeltas,
 } from "@bb/db";
 import { pruneThreadEventHistory } from "../../../src/services/system/event-pruning.js";
 import {
@@ -642,6 +641,16 @@ function planStepsRow(turnId: string, id: string, step: string): RowSpec {
   });
 }
 
+function pruneUsageSnapshots(testThread: TestThread): void {
+  for (let pass = 0; pass < 100; pass += 1) {
+    if (
+      advanceThreadPruning(testThread.db, "usage").action === "cycle-complete"
+    )
+      return;
+  }
+  throw new Error("Usage pruning did not finish a cycle");
+}
+
 describe("latest timeline selection memo", () => {
   it("matches a cold build over randomized streaming, out-of-order deltas, rewrites, prunes and context clears", () => {
     let reused = 0;
@@ -675,9 +684,7 @@ describe("latest timeline selection memo", () => {
               { db: testThread.db },
               { mode: "active", threadId: testThread.thread.id },
             );
-            pruneContextWindowUsageEvents(testThread.db, {
-              threadId: testThread.thread.id,
-            });
+            pruneUsageSnapshots(testThread);
           } else {
             append(testThread, randomSessionRows(state, random));
           }
@@ -1012,9 +1019,7 @@ describe("latest timeline selection memo", () => {
     {
       name: "resolved deltas are pruned",
       rewrite: (testThread: TestThread) =>
-        pruneResolvedItemDeltas(testThread.db, {
-          threadId: testThread.thread.id,
-        }),
+        advanceThreadPruning(testThread.db, "resolved-items").removed,
     },
     {
       name: "another connection deletes a delta",

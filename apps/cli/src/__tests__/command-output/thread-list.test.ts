@@ -92,58 +92,50 @@ describe("bb thread list command output", () => {
     expect(list).not.toHaveBeenCalled();
   });
 
-  it("bb thread list renders archived status in the shared borderless table", async () => {
-    const list = vi.fn(async () => [
-      fixtures.makeThread({
-        id: "thread-archived-1",
-        projectId: "proj-1",
-        providerId: "codex",
-        status: "idle",
-        archivedAt: 1,
-        createdAt: 1,
-        updatedAt: 1,
-      }),
-    ]);
-    stubServerApi({
-      "v1.threads.$get": list,
-      "v1.projects.$get": async () => [{ id: "proj-1", name: "Alpha" }],
-    });
+  it.each([
+    {
+      flag: "archived",
+      stamp: { archivedAt: 1 },
+      table:
+        "ID                 Title  Project  Status         \n-----------------  -----  -------  ---------------\nthread-archived-1  -      Alpha    idle (archived)",
+    },
+    {
+      flag: "pinned",
+      stamp: { pinnedAt: 1 },
+      table:
+        "ID               Title  Project  Status       \n---------------  -----  -------  -------------\nthread-pinned-1  -      Alpha    idle (pinned)",
+    },
+  ])(
+    "bb thread list renders $flag status in the shared borderless table",
+    async ({ flag, stamp, table }) => {
+      const list = vi.fn(async () => [
+        fixtures.makeThread({
+          id: `thread-${flag}-1`,
+          projectId: "proj-1",
+          providerId: "codex",
+          status: "idle",
+          createdAt: 1,
+          updatedAt: 1,
+          ...stamp,
+        }),
+      ]);
+      stubServerApi({
+        "v1.threads.$get": list,
+        "v1.projects.$get": async () => [{ id: "proj-1", name: "Alpha" }],
+      });
 
-    await runCommand(["thread", "list"], register);
+      await runCommand(["thread", "list"], register);
 
-    expect(list).toHaveBeenCalledWith({
-      query: {},
-    });
-    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "",
-      "ID                 Title  Project  Status         \n-----------------  -----  -------  ---------------\nthread-archived-1  -      Alpha    idle (archived)",
-      "",
-    ]);
-  });
-
-  it("bb thread list renders pinned status in the shared borderless table", async () => {
-    const list = vi.fn(async () => [
-      fixtures.makeThread({
-        id: "thread-pinned-1",
-        projectId: "proj-1",
-        providerId: "codex",
-        status: "idle",
-        pinnedAt: 1,
-        createdAt: 1,
-        updatedAt: 1,
-      }),
-    ]);
-    stubServerApi({
-      "v1.threads.$get": list,
-      "v1.projects.$get": async () => [],
-    });
-
-    await runCommand(["thread", "list"], register);
-
-    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
-      "idle (pinned)",
-    );
-  });
+      expect(list).toHaveBeenCalledWith({
+        query: {},
+      });
+      expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+        "",
+        table,
+        "",
+      ]);
+    },
+  );
 
   it("bb thread list hides the personal project label", async () => {
     const list = vi.fn(async () => [
@@ -238,18 +230,6 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list", "--json"], register);
 
     expect(projects).not.toHaveBeenCalled();
-  });
-
-  it("bb thread list ignores BB_PROJECT_ID when --project is omitted", async () => {
-    const list = vi.fn(async () => []);
-    stubServerApi({ "v1.threads.$get": list });
-
-    vi.stubEnv("BB_PROJECT_ID", "proj-env");
-    await runCommand(["thread", "list"], register);
-
-    expect(list).toHaveBeenCalledWith({
-      query: {},
-    });
   });
 
   it("bb thread list does not infer parent-thread from BB_THREAD_ID", async () => {

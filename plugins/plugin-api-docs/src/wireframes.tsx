@@ -243,7 +243,6 @@ function MeasuredBadge({
   at,
   align = "center",
   flush = false,
-  onActivate,
   clipTo,
 }: {
   id: string;
@@ -252,7 +251,6 @@ function MeasuredBadge({
   at: "start" | "end" | "above" | "lane";
   align?: "start" | "center" | "end";
   flush?: boolean;
-  onActivate?: () => void;
   clipTo?: string;
 }) {
   const { numberOf, onSelect } = useSurfaceMap();
@@ -401,7 +399,7 @@ function MeasuredBadge({
       data-guide-badge-align={align}
       href={`#surface-${id}`}
       aria-label={`${label} — jump to details`}
-      onClick={(event) => selectAnnotation(event, id, onSelect, onActivate)}
+      onClick={(event) => selectAnnotation(event, id, onSelect, undefined)}
       {...hover}
       className={cn("pointer-events-auto absolute z-50", FOCUS_RING_CLASS)}
       style={position ?? { visibility: "hidden" }}

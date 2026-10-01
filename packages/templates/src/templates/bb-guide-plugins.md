@@ -602,7 +602,9 @@ version tags such as `v1` and `v1.2.3` are always the literal tag.
 
 `bb plugin search <query>` matches an id, name, description, category, or tag.
 It searches bb-official and each other registered marketplace. The output has a
-Category column. Status shows installed, compatible, or requires newer bb.
+Category column. Status shows installed, compatible, requires newer bb, or
+`id in use by <source>` when another installed plugin, such as a local `path:`
+checkout, already uses the entry's id.
 Install a bundled plugin by its bare name. Direct
 HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.
@@ -665,9 +667,6 @@ Path installs compile server.ts into a versioned bb-owned cache and load the
 result with native ESM. The cache follows source, SDK, bb, and Node versions,
 so `bb plugin dev`/reload sees edits immediately without running the source
 transformer on the server event loop.
-The Legacy plugin loader (JITI) experiment restores the previous loader on the
-next install, reload, enable, update, or server restart; running instances are
-unchanged when the experiment is toggled.
 
 `bb plugin dev` is the edit loop: it requires the directory to already be
 installed as a plugin (`bb plugin install .` first), ignores dist/,

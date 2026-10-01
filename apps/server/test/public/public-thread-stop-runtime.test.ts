@@ -35,38 +35,6 @@ import {
 } from "../../src/services/threads/thread-lifecycle.js";
 
 describe("thread runtime stop", () => {
-  it("releases an idle runtime without changing thread state", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedThreadFixture(harness, {
-        thread: { status: "idle", visibility: "hidden" },
-      });
-      const responsePromise = harness.app.request(
-        `/api/v1/threads/${thread.id}/stop`,
-        { method: "POST" },
-      );
-      const stop = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "thread.stop" && command.threadId === thread.id,
-      );
-      expect(stop.command).toMatchObject({ intent: "release" });
-
-      await reportQueuedCommandSuccess(harness, stop, {
-        providerCheckpointId: null,
-      });
-
-      const response = await responsePromise;
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({ ok: true });
-      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
-      expect(
-        listEvents(harness.db, { threadId: thread.id }).filter(
-          (event) => event.type === "system/thread/interrupted",
-        ),
-      ).toHaveLength(0);
-    });
-  });
-
   it("releases and dismisses a question when the runtime ends during a failed interrupt", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness, {

@@ -257,9 +257,6 @@ export const BB_DESKTOP_BROWSER_MAX_PAGE_EXPRESSION_LENGTH = 4_000_000;
 export const BB_DESKTOP_BROWSER_MAX_PAGE_CHANNEL_LENGTH = 256;
 
 export const bbDesktopBrowserPageWorldSchema = z.enum(["main", "isolated"]);
-export type BbDesktopBrowserPageWorld = z.infer<
-  typeof bbDesktopBrowserPageWorldSchema
->;
 
 export const bbDesktopBrowserEvaluateRequestSchema = z
   .object({

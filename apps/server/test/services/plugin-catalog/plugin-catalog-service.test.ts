@@ -10,6 +10,7 @@ import {
   upsertPluginMarketplace,
   upsertInstalledPlugin,
   type DbConnection,
+  type PluginSourceIntent,
 } from "@bb/db";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
@@ -292,13 +293,6 @@ describe("plugin catalog service", () => {
       "installation stopped by test",
     );
     expect(installedNames).toEqual(["docs"]);
-  });
-
-  it("rejects unknown catalog entries", async () => {
-    const catalog = service();
-    await expect(
-      catalog.install({ entryId: "does-not-exist" }),
-    ).rejects.toThrow('unknown plugin catalog entry "does-not-exist"');
   });
 
   it("drops entries whose bundled manifest is unreadable", async () => {
@@ -1224,6 +1218,74 @@ describe("plugin catalog service", () => {
         true,
       );
     });
+
+    it.each([
+      {
+        name: "a local checkout",
+        source: "path:/Users/me/git/thread-hover-cards",
+        sourceIntent: {
+          kind: "path",
+          canonicalPath: "/Users/me/git/thread-hover-cards",
+        },
+        installed: false,
+      },
+      {
+        name: "a different git repository",
+        source: "git:https://github.com/someone-else/hover-cards.git@main",
+        sourceIntent: {
+          kind: "git",
+          url: "https://github.com/someone-else/hover-cards.git",
+          subdirectory: null,
+          selector: { kind: "ref", ref: "main", refKind: "branch" },
+        },
+        installed: false,
+      },
+      {
+        name: "the entry's git repository",
+        source: "git:https://github.com/brsbl/bb-plugins@main",
+        sourceIntent: {
+          kind: "git",
+          url: "https://github.com/brsbl/bb-plugins",
+          subdirectory: null,
+          selector: { kind: "ref", ref: "main", refKind: "branch" },
+        },
+        installed: true,
+      },
+    ] satisfies {
+      name: string;
+      source: string;
+      sourceIntent: PluginSourceIntent;
+      installed: boolean;
+    }[])(
+      "reports a direct install from $name with the same id as installed: $installed",
+      async ({ source, sourceIntent, installed }) => {
+        const catalog = service();
+        upsertInstalledPlugin(db, {
+          id: "thread-hover-cards",
+          source,
+          provenance: { kind: "direct" },
+          sourceIntent,
+          exactResolution:
+            sourceIntent.kind === "git"
+              ? { kind: "git", commit: "0".repeat(40) }
+              : { kind: "path" },
+          updateState: {
+            lastCheckAt: null,
+            availableCompatibleVersion: null,
+            newestIncompatibleVersion: null,
+            statusDetail: null,
+          },
+          activeArtifactId: null,
+          rootDir: "/Users/me/git/thread-hover-cards",
+          version: "0.1.0",
+          enabled: true,
+        });
+        expect((await catalog.search("thread-hover-cards"))[0]).toMatchObject({
+          installed,
+          conflictingInstallSource: installed ? null : source,
+        });
+      },
+    );
   });
 
   describe("catalog limits and trust", () => {

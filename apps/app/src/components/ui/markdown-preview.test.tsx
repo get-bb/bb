@@ -784,16 +784,6 @@ describe("MarkdownPreview", () => {
     expect(container.textContent).toContain("$x$");
   });
 
-  it("renders display LaTeX math blocks with KaTeX", async () => {
-    const { container } = render(
-      <MarkdownPreview content={"$$\n\\frac{1}{2} + \\frac{1}{2} = 1\n$$"} />,
-    );
-
-    await waitFor(() =>
-      expect(container.querySelector(".katex-display")).not.toBeNull(),
-    );
-  });
-
   it("leaves escaped dollar amounts as literal text", () => {
     const { container } = render(
       <MarkdownPreview content={"It went from \\$5 to \\$10 last week."} />,

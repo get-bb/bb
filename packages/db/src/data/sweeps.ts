@@ -189,7 +189,7 @@ export function pruneClosedSessions(
 
 function buildCompletedEventOutputCursorId(
   args: RetainedEventOutputTarget,
-  policy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+  policy: string,
 ): string {
   return [
     policy,
@@ -202,8 +202,8 @@ function buildCompletedEventOutputCursorId(
 function getCompletedEventOutputScanState(
   db: DbQueryConnection,
   args: RetainedEventOutputTarget,
-  cursorPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
-  windowPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+  cursorPolicy: string,
+  windowPolicy: string,
 ): CompletedEventOutputScanState {
   const cursorId = buildCompletedEventOutputCursorId(args, cursorPolicy);
   const windowId = buildCompletedEventOutputCursorId(args, windowPolicy);
@@ -379,7 +379,7 @@ function findLegacyImageGenerationCandidate(
 function advanceCompletedEventOutputMigrationCursor(
   db: DbQueryConnection,
   args: AdvanceCompletedEventOutputMigrationCursorArgs,
-  policy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
+  policy: string,
 ): void {
   db.insert(maintenanceScanCursors)
     .values({
@@ -406,7 +406,7 @@ function advanceCompletedEventOutputMigrationCursor(
 function clearCompletedEventOutputMigrationWindow(
   db: DbQueryConnection,
   args: RetainedEventOutputTarget,
-  windowPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+  windowPolicy: string,
 ): void {
   db.delete(maintenanceScanCursors)
     .where(
@@ -444,8 +444,8 @@ function persistCompletedEventOutputMigrationPosition(
   args: MigrateNextCompletedEventItemOutputArgs,
   position: CompletedEventOutputScanCursor,
   window: CompletedEventOutputScanCursor,
-  cursorPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_POLICY,
-  windowPolicy: string = COMPLETED_EVENT_OUTPUT_MIGRATION_WINDOW_POLICY,
+  cursorPolicy: string,
+  windowPolicy: string,
 ): void {
   advanceCompletedEventOutputMigrationCursor(
     db,

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getActiveSecondaryPanelTab } from "@bb/client-core";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import {
-  createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
   createTerminalFixedPanelTab,
@@ -544,51 +543,6 @@ describe("useThreadFileTabs terminal pruning", () => {
       expect(
         result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
       ).toEqual([runningTab.id]);
-    });
-  });
-
-  it("keeps a disconnected terminal tab so it can reattach", async () => {
-    const threadId = "terminal-prune-disconnected";
-    const disconnectedTab = createTerminalFixedPanelTab({
-      terminalId: "term_disconnected",
-    });
-    const runningTab = createTerminalFixedPanelTab({
-      terminalId: "term_running",
-    });
-    window.localStorage.setItem(
-      getFixedPanelTabsStateStorageKey({ threadId }),
-      serializeFixedPanelTabsState({
-        state: createEmptyFixedPanelTabsState({
-          secondary: {
-            activeTabId: disconnectedTab.id,
-            isOpen: true,
-            tabs: [disconnectedTab, runningTab],
-          },
-          lastUsedAt: Date.now(),
-        }),
-      }),
-    );
-
-    const { result } = renderThreadHook(() =>
-      useThreadFileTabs({
-        panelStateId: threadId,
-        syncThreadId: threadId,
-        environmentId: "env_current",
-        storageFiles: undefined,
-        terminalSessions: [
-          terminalSession({
-            id: "term_disconnected",
-            status: "disconnected",
-          }),
-          terminalSession({ id: "term_running" }),
-        ],
-      }),
-    );
-
-    await waitFor(() => {
-      expect(
-        result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
-      ).toEqual([disconnectedTab.id, runningTab.id]);
     });
   });
 });
@@ -1183,58 +1137,6 @@ describe("useThreadFileTabs file opener diversion", () => {
     ).toEqual(["plugin-panel"]);
   });
 
-  it("keeps the built-in preview for an unmatched file search extension", () => {
-    registerNotesOpener();
-    const { result } = renderThreadHook(() =>
-      useThreadFileTabsWithActiveTab({
-        panelStateId: "opener-search-unmatched",
-        syncThreadId: "opener-search-unmatched",
-        environmentId: "env_1",
-        storageFiles: undefined,
-        terminalSessions: undefined,
-      }),
-    );
-
-    act(() => result.current.openTab({ kind: "new-tab" }));
-    act(() =>
-      result.current.selectFileSearchResult({
-        source: "workspace",
-        path: "src/main.rs",
-      }),
-    );
-
-    expect(result.current.activeTab?.kind).toBe("workspace-file-preview");
-    expect(result.current.activeWorkspaceFilePath).toBe("src/main.rs");
-  });
-
-  it("honors a pinned built-in preference from the file search", () => {
-    window.localStorage.setItem(
-      "bb.fileOpenerByExtension",
-      JSON.stringify({ md: "__builtin__" }),
-    );
-    registerNotesOpener();
-    const { result } = renderThreadHook(() =>
-      useThreadFileTabsWithActiveTab({
-        panelStateId: "opener-search-pinned",
-        syncThreadId: "opener-search-pinned",
-        environmentId: "env_1",
-        storageFiles: undefined,
-        terminalSessions: undefined,
-      }),
-    );
-
-    act(() => result.current.openTab({ kind: "new-tab" }));
-    act(() =>
-      result.current.selectFileSearchResult({
-        source: "workspace",
-        path: "notes/todo.md",
-      }),
-    );
-
-    expect(result.current.activeTab?.kind).toBe("workspace-file-preview");
-    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
-  });
-
   it("falls back to the built-in preview when no opener is registered", () => {
     const { result } = renderThreadHook(() =>
       useThreadFileTabsWithActiveTab({
@@ -1342,53 +1244,5 @@ describe("useThreadFileTabs file opener diversion", () => {
       actionId: "file-opener:editor",
       title: "other.md",
     });
-  });
-});
-
-describe("useThreadFileTabs legacy side-chat tabs", () => {
-  it("drops tabs persisted before the native side chat was removed", () => {
-    const threadId = "legacy-side-chat";
-    const browserTab = createBrowserFixedPanelTab({
-      environmentId: "env_current",
-      url: "https://example.com",
-    });
-    window.localStorage.setItem(
-      getFixedPanelTabsStateStorageKey({ threadId }),
-      JSON.stringify({
-        version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
-        lastUsedAt: Date.now(),
-        secondary: {
-          activeTabId: "side-chat:legacy",
-          isOpen: true,
-          tabs: [
-            browserTab,
-            {
-              id: "side-chat:legacy",
-              kind: "side-chat",
-              sourceMessageText: "anchor message",
-              sourceSeqEnd: null,
-              threadId: "thr_child",
-              title: "Side chat",
-            },
-          ],
-        },
-      }),
-    );
-
-    const { result } = renderHook(
-      () =>
-        useThreadFileTabs({
-          panelStateId: threadId,
-          syncThreadId: threadId,
-          environmentId: "env_current",
-          storageFiles: undefined,
-          terminalSessions: undefined,
-        }),
-      { wrapper: QueryWrapper },
-    );
-
-    expect(
-      result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
-    ).toEqual([browserTab.id]);
   });
 });

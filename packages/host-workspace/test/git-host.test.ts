@@ -8,14 +8,14 @@ import {
 
 const execFileMock = vi.hoisted(() => vi.fn());
 
-vi.mock("node:child_process", async () => {
+vi.mock("@bb/process-utils", async () => {
   const actual =
-    await vi.importActual<typeof import("node:child_process")>(
-      "node:child_process",
+    await vi.importActual<typeof import("@bb/process-utils")>(
+      "@bb/process-utils",
     );
-  const { promisify } = await import("node:util");
-  Object.defineProperty(execFileMock, promisify.custom, {
-    value: (file: string, args: readonly string[], options: object) =>
+  return {
+    ...actual,
+    execPortableFile: (file: string, args: string[], options: object) =>
       new Promise((resolve, reject) => {
         execFileMock(
           file,
@@ -27,10 +27,6 @@ vi.mock("node:child_process", async () => {
           },
         );
       }),
-  });
-  return {
-    ...actual,
-    execFile: execFileMock,
   };
 });
 
@@ -242,7 +238,6 @@ describe("runPullRequestActionForCurrentBranch", () => {
         expectedArgs,
         expect.objectContaining({
           cwd: "/tmp/workspace",
-          encoding: "utf8",
           env: expect.objectContaining({
             PATH: "/Users/test/.local/bin:/usr/bin",
           }),

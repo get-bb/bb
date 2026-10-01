@@ -101,8 +101,6 @@ e2e/subflows/            shared steps (launch-app.yaml: cold start through the
                          clear-open-confirmation.yaml: accept or cancel the
                          native `bb://` confirmation), called with
                          `runFlow: ../subflows/<name>.yaml`
-e2e/spike/               Phase 0 spike helpers (tap, tap-point, swipe, type,
-                         pair-direct) for the WebView spike screen
 e2e/scripts/             ci-run-flows.sh (the CI flow set against a Release
                          build; see "CI"), connect-stub-control.js (drives the
                          bb connect stub), pick-simulator.mjs (newest iPhone
@@ -438,6 +436,18 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
 
 ## Push notifications and deep links (Phase 5)
 
+Android disables Firebase Messaging auto-initialization and Analytics collection
+in the generated manifest. The app requests a push token only for a server with
+notifications enabled and OS permission granted. It refreshes registration on
+foreground/sync and token-change events. Turning notifications off for every
+server, removing the last enabled server, or revoking OS permission deletes the
+Android FCM token. Disabling one server preserves the shared token for other
+enabled servers. Failed server-subscription removal is retained for retry;
+local token deletion does not require that server to be reachable. This does not
+delete the Firebase installation ID or previously processed provider data.
+iOS keeps its existing APNs registration behavior.
+
+
 - Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)
   registers the phone's Expo push token with each enabled server through
   Settings → This device → Notifications. It calls the `push-notifications`
@@ -598,9 +608,10 @@ group, App Store Connect needs all of this:
   path works for a reviewer: a bb server's API is unauthenticated and runs
   commands, so it cannot be on the internet, and connect pairing codes are
   single-use and expire in ten minutes. Give them the **demo server** instead:
-  `apps/demo-server` is a Cloudflare Worker that answers the launch-path API
-  from fixed data, runs nothing, and isolates each client address. Deploy it
-  with `pnpm --filter @bb/demo-server deploy`, and rehearse the review notes
+  `apps/demo-server` is a Cloudflare Worker that serves the web app shell, sidebar plugin frontends, and API
+  from fixed data, runs nothing, and isolates each client address. Build it
+  with `pnpm exec turbo run build --filter=@bb/demo-server`, then deploy it
+  with `pnpm --filter @bb/demo-server exec wrangler deploy`, and rehearse the review notes
   below before every submission. Disclose it in the notes: a disclosed demo
   mode is sanctioned by guideline 2.1.
 
@@ -614,13 +625,19 @@ you. It serves sample conversations and scripted replies; it does not run a
 real coding agent.
 
 1. Open the app. It shows "Connect to a bb server".
-2. Under "Direct URL", in "Server URL", enter: https://<DEMO-HOST>
+2. In "Server URL", enter: https://bb-demo-server.sawyer-7bb.workers.dev
 3. Tap "Connect".
 4. The app shows a list of conversations. Open any of them to read it.
-5. Type a message and send it. The agent replies after a moment.
+5. Browse the sample conversations. No credentials or pairing code are needed.
 
 Write to <EMAIL> if the server does not respond.
 ```
+
+The same demo URL and connection steps apply to Google Play app access
+instructions. No sign-in or pairing code is needed. See
+[the demo server README](../demo-server/README.md) for build, local verification,
+and deployment steps. Verify the deployed shell with the actual store build
+before submitting either platform.
 
 Rehearse it before submitting: hand a colleague a phone that has never run bb,
 give them only these notes, and check that they reach a thread.
@@ -690,3 +707,10 @@ upload date. The server fetches only public metadata, caches it for five minutes
 and returns `android: null` if unavailable or inconsistent. Download links remain
 usable during metadata failures. iOS version and release date are shown in TestFlight.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+The preview Gradle command builds `arm64-v8a` and `armeabi-v7a`, supporting
+both 64-bit and 32-bit ARM phones. It omits Intel x86/x86_64 libraries to reduce
+the direct download; Intel devices and x86 emulators cannot install this APK.
+Production AABs retain all architectures so Google Play can deliver
+device-specific packages. Keep EAS signing credentials unchanged so existing
+sideload installations can update. The smaller APK still undergoes browser
+security scanning; reduced size does not guarantee a fix for scanning hangs.

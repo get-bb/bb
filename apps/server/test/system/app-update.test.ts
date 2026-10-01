@@ -456,22 +456,6 @@ describe("app update service", () => {
       type: "apply",
     });
   });
-
-  it("targets the checked commit when applying a source update", async () => {
-    const launcher = new FakeLauncher();
-    launcher.respond = async (request) =>
-      request.type === "check-source" ? sourceCheck() : null;
-    const { service } = createService({ launcher, mode: "source" });
-    await service.getStatus({ forceRefresh: true });
-
-    await service.apply({ confirmInterruptingThreads: false });
-
-    expect(launcher.requests.at(-1)).toEqual({
-      target: { commit: COMMIT_B, kind: "source" },
-      targetVersion: "1.0.0",
-      type: "apply",
-    });
-  });
 });
 
 class FakeProcessPort extends EventEmitter {

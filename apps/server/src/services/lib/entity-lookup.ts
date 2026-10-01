@@ -273,7 +273,7 @@ function ensureThreadEnvironmentAvailable(environment: EnvironmentRow): void {
   }
 }
 
-function requireThreadEnvironmentAllowingDestroyed(
+export function requireThreadEnvironmentAllowingDestroyed(
   db: DbConnection,
   threadId: string,
 ): ThreadEnvironmentLookupResult {

@@ -83,7 +83,6 @@ export const providerStringsSchema = z.object({
     .object({ light: z.string().min(1), dark: z.string().min(1) })
     .optional(),
 });
-export type ProviderStrings = z.infer<typeof providerStringsSchema>;
 
 export const providerOptionDescriptorSchema = z.object({
   id: z.string().min(1),
