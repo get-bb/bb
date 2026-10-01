@@ -35,6 +35,7 @@ type SkillDetailContentState =
 
 interface SkillDetailViewProps {
   leading?: ReactNode;
+  providerChips?: ReactNode;
   title: string;
   path: string;
   pathHref?: string;
@@ -216,6 +217,7 @@ function ScrollingSkillContent({
 
 export function SkillDetailView({
   leading,
+  providerChips,
   title,
   path,
   pathHref,
@@ -244,10 +246,14 @@ export function SkillDetailView({
   return (
     <ResourceDetailPage
       leading={leading}
-      leadingClassName="w-auto min-w-4"
       title={title}
       titleMeta={titleMeta}
-      metadata={<SkillPath path={directoryPath} href={pathHref} />}
+      metadata={
+        <div className="space-y-2">
+          {providerChips}
+          <SkillPath path={directoryPath} href={pathHref} />
+        </div>
+      }
       overflowMenu={overflowMenu}
       actions={headerActions}
     >

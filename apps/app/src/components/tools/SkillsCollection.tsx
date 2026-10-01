@@ -19,12 +19,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Pill } from "@bb/shared-ui/pill";
 import { BbLogo } from "@/components/ui/bb-logo";
 import {
   ConfirmDeleteDialog,
@@ -193,7 +188,7 @@ function ProviderFilterLogo({
   );
 }
 
-function SkillProviderStack({
+function SkillProviderChips({
   providers,
   providerRoster,
 }: {
@@ -204,58 +199,33 @@ function SkillProviderStack({
     .map((provider) => providerFilterLabel(provider, providerRoster))
     .join(", ")}`;
   return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="img"
-            aria-label={label}
-            data-skill-providers={providers.join(" ")}
-            className="flex shrink-0 items-center gap-1.5"
-          >
-            {providers.map((provider) => (
-              <ProviderFilterLogo
-                key={provider}
-                provider={provider}
-                providerRoster={providerRoster}
-                className="size-6 shrink-0"
-              />
-            ))}
+    <span
+      role="group"
+      aria-label={label}
+      data-skill-providers={providers.join(" ")}
+      className="mt-2 flex flex-wrap items-center gap-1.5"
+    >
+      {providers.map((provider) => (
+        <Pill
+          key={provider}
+          variant="outline"
+          size="sm"
+          className="min-w-0 max-w-full rounded-md border-border/40 bg-surface-recessed/45 px-2 py-1 text-2xs font-medium leading-none text-subtle-foreground shadow-none"
+        >
+          <span className="inline-flex max-w-full items-center gap-1.5">
+            <ProviderFilterLogo
+              provider={provider}
+              providerRoster={providerRoster}
+              className="size-3 shrink-0"
+            />
+            <span className="min-w-0 truncate">
+              {providerFilterLabel(provider, providerRoster)}
+            </span>
           </span>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        </Pill>
+      ))}
+    </span>
   );
-}
-
-function SkillLeading({
-  skill,
-  copies = [],
-  providerRoster,
-}: {
-  skill: SkillSummary;
-  copies?: readonly SkillSummary[];
-  providerRoster: ProviderRoster;
-}) {
-  const providers = [
-    ...new Set((copies.length > 0 ? copies : [skill]).map(skillProviderFilterId)),
-  ];
-  if (providers.length > 1) {
-    return (
-      <SkillProviderStack providers={providers} providerRoster={providerRoster} />
-    );
-  }
-  if (skill.provider !== null) {
-    return (
-      <ProviderLogo
-        providerId={skill.provider}
-        provider={providerRoster.get(skill.provider)}
-        className="size-6"
-      />
-    );
-  }
-  return <BbLogo className="size-6" />;
 }
 
 function skillDescription(
@@ -358,13 +328,6 @@ function SkillRow({
       onBlur={cancelScheduledPrefetch}
     >
       <ResourceRow
-        leading={
-          <SkillLeading
-            skill={skill}
-            copies={group.members}
-            providerRoster={providerRoster}
-          />
-        }
         title={skill.name}
         titleMeta={
           skill.scope === "bb-builtin" ? (
@@ -388,7 +351,15 @@ function SkillRow({
             />
           ) : undefined
         }
-        description={description}
+        description={
+          <>
+            <span className="block truncate">{description}</span>
+            <SkillProviderChips
+              providers={groupProviderFilterIds(group)}
+              providerRoster={providerRoster}
+            />
+          </>
+        }
         onOpen={onSelect}
         trailingVisual={<ResourceRowDetailChevron />}
       />
@@ -832,10 +803,13 @@ export function SkillDetailDialogView({
     ) : null;
   return (
     <SkillDetailView
-      leading={
-        <SkillLeading
-          skill={skill}
-          copies={copies}
+      providerChips={
+        <SkillProviderChips
+          providers={[
+            ...new Set(
+              (copies.length > 0 ? copies : [skill]).map(skillProviderFilterId),
+            ),
+          ]}
           providerRoster={providerRoster}
         />
       }

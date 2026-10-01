@@ -370,7 +370,7 @@ describe("SkillsOverview", () => {
 
     expect(screen.getAllByText("agent-browser")).toHaveLength(1);
     expect(
-      screen.getByRole("img", { name: "Available in Claude Code, Codex" }),
+      screen.getByRole("group", { name: "Available in Claude Code, Codex" }),
     ).toBeTruthy();
     expect(screen.getAllByText("gitbutler")).toHaveLength(2);
 
