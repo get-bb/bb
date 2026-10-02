@@ -51,16 +51,11 @@ provider, and directive are all Docs.
   directive when saved.
 
 - **Full HTML pages:** `.html` and `.htm` files appear in the vault tree and
-  open as full-pane previews. Loaded HTML source renders directly in the iframe,
-  so a transient read failure cannot replace it with a network error. The last
-  eight successful HTML previews are retained in memory by vault and path;
-  remounts revalidate in the background and keep the retained source on failure.
+  open as full-pane previews.
 - **Relative assets:** images and HTML use short-lived, path-shaped preview
   leases. Relative styles, scripts, modules, images, and data files stay under
   the selected vault root. HTML responses use `sandbox allow-scripts`, and the
-  iframe never receives `allow-same-origin`. Section links scroll within the
-  loaded document. Relative assets still require a working connection; active
-  leases for the same host and root are renewed without changing their URL.
+  iframe never receives `allow-same-origin`.
 - **Chat mentions:** `@` searches every vault's titles, previews, filenames,
   and folders. Searches share in-flight reads and cache summaries for up to
   ten seconds. Docs edits and local filesystem notifications invalidate the

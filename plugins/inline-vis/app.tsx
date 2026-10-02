@@ -4,7 +4,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { htmlPreviewContent } from "@/components/ui/html-preview-content";
 import { Icon } from "@/components/ui/icon";
 import {
   CONTEXT_CARD_CLASS,
@@ -41,7 +40,6 @@ type LoadState =
       source: PreviewSource;
       target: PreviewTarget;
       url: string;
-      content: string;
     }
   | {
       status: "ready";
@@ -404,7 +402,6 @@ function InlineVisDirective({
         <iframe
           title={`inline-vis: ${state.file}`}
           src={state.url}
-          srcDoc={htmlPreviewContent(state.content, state.url)}
           sandbox="allow-scripts"
           style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
           className="block w-full border-0 bg-background"

@@ -151,17 +151,15 @@ HTML and markdown resolve against the same route:
   `/api/v1/projects/:id/hosts/:hostId/files/:path` read the project's local-path
   source on the primary or named host.
 
-Media elements, markdown images, and Download links use these URLs directly.
-HTML viewers can render loaded source with `srcdoc` and use these URLs as
-the base for relative assets. The server resolves the root on every request,
-so these URLs need no setup and do not expire.
+Media elements, HTML iframes, markdown images, and Download links use these
+URLs directly. The server resolves the root on every request, so they need no
+setup and do not expire.
 
 Plugins that preview an arbitrary host directory instead mint a lease:
 `POST /api/v1/files/previews` with `{ hostId?, rootPath, ttlMs? }` returns
 `{ baseUrl, expiresAtMs }`, and `GET /api/v1/file-previews/:lease/:path` reads
-that root. Minting the same host and root while its lease is active reuses
-`baseUrl` and extends its expiry without shortening it. Leases live in server
-memory and do not survive a server restart.
+that root. Minting the same root again returns the same `baseUrl` and extends
+its expiry. Leases live in server memory and do not survive a server restart.
 
 File content reads support a single HTTP byte range for media playback, seeking, and
 file preview sampling. Responses advertise `Accept-Ranges: bytes`; bounded,

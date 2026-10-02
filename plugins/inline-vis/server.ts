@@ -130,7 +130,6 @@ export const inlineVisRpcContract = defineRpcContract({
           source: z.enum(["workspace", "thread-storage"]),
           target: previewTargetSchema,
           url: z.string(),
-          content: z.string(),
         })
         .strict(),
       z
@@ -235,7 +234,7 @@ export default async function plugin(bb: BbPluginApi) {
         target.kind === "thread-storage"
           ? `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodedFile}`
           : `/api/v1/environments/${encodeURIComponent(target.environmentId)}/files/${encodedFile}`;
-      return { kind, file, source, target, url, content: result.content };
+      return { kind, file, source, target, url };
     },
   });
 }

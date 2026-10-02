@@ -370,18 +370,8 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     for (const [id, lease] of previewLeases) {
       if (lease.expiresAtMs <= now) previewLeases.delete(id);
     }
-    const requestedExpiry = now + (payload.ttlMs ?? FILE_PREVIEW_TTL_MS);
-    for (const [id, lease] of previewLeases) {
-      if (lease.hostId === hostId && lease.rootPath === rootPath) {
-        lease.expiresAtMs = Math.max(lease.expiresAtMs, requestedExpiry);
-        return context.json({
-          baseUrl: `/api/v1/file-previews/${encodeURIComponent(id)}`,
-          expiresAtMs: lease.expiresAtMs,
-        });
-      }
-    }
     const id = randomUUID();
-    const expiresAtMs = requestedExpiry;
+    const expiresAtMs = now + (payload.ttlMs ?? FILE_PREVIEW_TTL_MS);
     previewLeases.set(id, { hostId, rootPath, expiresAtMs });
     return context.json({
       baseUrl: `/api/v1/file-previews/${encodeURIComponent(id)}`,

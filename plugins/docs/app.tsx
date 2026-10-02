@@ -73,7 +73,6 @@ import HtmlFile01Icon from "@hugeicons/core-free-icons/HtmlFile01Icon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { htmlPreviewContent } from "@/components/ui/html-preview-content";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
@@ -130,6 +129,11 @@ interface NotesData {
   notes: NoteSummary[];
   truncated: boolean;
   error: string | null;
+}
+
+interface PreviewLease {
+  baseUrl: string;
+  expiresAtMs: number;
 }
 
 function errorMessage(error: unknown): string {
@@ -1163,62 +1167,37 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   );
 }
 
-interface HtmlSnapshot {
-  baseUrl: string;
-  content: string;
-}
-const htmlSnapshots = new Map<string, HtmlSnapshot>();
-
-function HtmlPreview(props: DocumentRef & { panel?: boolean }) {
-  return (
-    <HtmlPreviewDocument
-      key={JSON.stringify([props.vaultId, props.path])}
-      {...props}
-    />
-  );
-}
-
-function HtmlPreviewDocument({
+function HtmlPreview({
   vaultId,
   path,
   title,
   panel = false,
 }: DocumentRef & { panel?: boolean }) {
   const rpc = useRpc<typeof docsRpcContract>();
-  const key = JSON.stringify([vaultId, path]);
-  const [state, setState] = useState<HtmlSnapshot | { error: string } | null>(
-    () => htmlSnapshots.get(key) ?? null,
+  const [state, setState] = useState<PreviewLease | { error: string } | null>(
+    null,
   );
   useEffect(() => {
     let active = true;
-    void rpc
-      .call("preparePreview", { vaultId, path })
-      .then((preview) => {
-        if (!active) return;
-        if (preview.content === null)
-          throw new Error("HTML preview must be valid UTF-8 text.");
-        const snapshot = { baseUrl: preview.baseUrl, content: preview.content };
-        htmlSnapshots.delete(key);
-        htmlSnapshots.set(key, snapshot);
-        while (htmlSnapshots.size > 8) {
-          const oldest = htmlSnapshots.keys().next().value;
-          if (oldest === undefined) break;
-          htmlSnapshots.delete(oldest);
-        }
-        setState(snapshot);
+    setState(null);
+    rpc
+      .call("preparePreview", {
+        vaultId,
+        path,
+      })
+      .then((lease) => {
+        if (active) setState(lease);
       })
       .catch((error: unknown) => {
         if (active)
-          setState((current) =>
-            current && "content" in current
-              ? current
-              : { error: errorMessage(error) },
-          );
+          setState({
+            error: errorMessage(error),
+          });
       });
     return () => {
       active = false;
     };
-  }, [key, path, vaultId, rpc]);
+  }, [path, vaultId, rpc]);
   if (!state) return <DocumentSkeleton />;
   if ("error" in state)
     return (
@@ -1228,14 +1207,12 @@ function HtmlPreviewDocument({
         {state.error}
       </div>
     );
-  const url = `${state.baseUrl}/${encodePath(path)}`;
   return (
     <iframe
-      className={`${panel ? "min-h-[32rem]" : "min-h-0"} flex-1 border-0 bg-background`}
+      className={`${panel ? "min-h-[32rem]" : "min-h-0"} flex-1 border-0 bg-white`}
       sandbox="allow-scripts"
       title={title}
-      src={url}
-      srcDoc={htmlPreviewContent(state.content, url)}
+      src={`${state.baseUrl}/${encodePath(path)}`}
     />
   );
 }

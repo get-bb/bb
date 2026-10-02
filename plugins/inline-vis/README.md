@@ -29,17 +29,15 @@ bb replaces that leaf with this plugin's React component, which:
 2. Calls the plugin RPC `preparePreview` with the message `threadId`, source,
    and file path to validate the target and surface clean inline errors.
 3. Shows loading / error states on the first read. The last eight successful
-   previews are retained in memory by thread, message, source, and path; remounts
+   preview results are retained in memory by thread, message, source, and path; remounts
    revalidate without discarding them on failure. Every preview includes a header action that
    opens the source file in bb's sidebar viewer, from the workspace or the
    thread's storage directory. For HTML previews that action is a link to the
    rendered page: Cmd-click, Ctrl-click, or middle-click opens it in a browser
    tab (the default browser in desktop bb). The header also collapses or expands the
    preview and remembers that preference on the current client.
-4. Renders the validated HTML source with `srcdoc` inside a sandboxed iframe,
-   avoiding a second document fetch. A base URL points relative assets at bb's
-   existing path-shaped worktree or thread storage route; section links scroll
-   within the loaded document. Relative sibling assets work, scripts are
+4. Points HTML files at bb's existing path-shaped worktree or thread storage
+   route inside a sandboxed iframe. Relative sibling assets work, scripts are
    enabled, and normal web loading is allowed. The iframe keeps an opaque
    origin (no `allow-same-origin`) so scripts cannot access the bb page, its
    cookies, or storage. Remote scripts, styles, images, fonts, media, fetches,
@@ -56,9 +54,10 @@ storage previews use `bb.sdk.threads.storageLocation` instead and do not resolve
 the workspace. Both sources confine the relative `.html`, `.htm`, `.md`, or
 `.markdown` path under the returned root and read it through `bb.sdk.files`
 (host-routed). Absolute paths, traversal, unsupported extensions, missing files,
-non-UTF-8 content, and files over 5 MiB are rejected. HTML and Markdown render
-this validated content; HTML relative assets use the confined file route and
-require a working connection when requested.
+non-UTF-8 content, and files over 5 MiB are rejected. HTML previews then use
+bb's existing confined worktree or thread-storage route to serve the document
+and relative assets; Markdown previews render the validated content returned by
+the RPC.
 
 It ships with bb and is reconciled through the builtin plugin lifecycle. Ship
 a supported file in either source, then ask the agent to show it with the

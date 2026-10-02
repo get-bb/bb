@@ -114,7 +114,6 @@ describe("InlineVisDirective", () => {
                 path: "charts/demo file.html",
               },
               url: "/api/v1/environments/env_1/files/charts/demo%20file.html",
-              content: "<h1>Chart</h1>",
             };
           },
         },
@@ -136,7 +135,7 @@ describe("InlineVisDirective", () => {
     expect(iframe.getAttribute("src")).toBe(
       "/api/v1/environments/env_1/files/charts/demo%20file.html",
     );
-    expect(iframe.getAttribute("srcdoc")).toContain("Chart");
+    expect(iframe.getAttribute("srcdoc")).toBeNull();
     expect(iframe.style.height).toBe("224px");
     fireEvent.click(
       slot.getByRole("link", {
@@ -198,7 +197,6 @@ describe("InlineVisDirective", () => {
                 path: "reports/result file.html",
               },
               url: "/api/v1/threads/thr_1/thread-storage/files/reports/result%20file.html",
-              content: "<h1>Chart</h1>",
             };
           },
         },
@@ -256,7 +254,6 @@ describe("InlineVisDirective", () => {
               path: "demo.html",
             },
             url: "/api/v1/environments/env_1/files/demo.html",
-            content: "<h1>Chart</h1>",
           }),
         },
       },
@@ -302,7 +299,6 @@ describe("InlineVisDirective", () => {
             path: "demo.html",
           },
           url: "/api/v1/environments/env_1/files/demo.html",
-          content: "<h1>Chart</h1>",
         }),
       },
     };
@@ -352,7 +348,6 @@ describe("InlineVisDirective", () => {
       source: "workspace" | "thread-storage";
       target: { kind: "workspace"; environmentId: string; path: string };
       url: string;
-      content: string;
     };
     let resolvePreview = (_result: HtmlPreview) => {};
     const pendingPreview = new Promise<HtmlPreview>((resolve) => {
@@ -395,7 +390,6 @@ describe("InlineVisDirective", () => {
         path: "demo.html",
       },
       url: "/api/v1/environments/env_1/files/demo.html",
-      content: "<h1>Chart</h1>",
     });
 
     const iframe = await waitFor(() => {

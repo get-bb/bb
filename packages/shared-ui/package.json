@@ -268,11 +268,6 @@
       "source": "./src/components/ui/question-form-host.tsx",
       "types": "./src/components/ui/question-form-host.tsx",
       "default": "./src/components/ui/question-form-host.tsx"
-    },
-    "./html-preview-content": {
-      "source": "./src/components/ui/html-preview-content.ts",
-      "types": "./src/components/ui/html-preview-content.ts",
-      "default": "./src/components/ui/html-preview-content.ts"
     }
   },
   "scripts": {
