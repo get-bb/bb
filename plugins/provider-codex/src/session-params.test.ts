@@ -540,7 +540,7 @@ describe("buildCodexConfig", () => {
     const config = configFor(FULL_OPTIONS);
 
     expect(config).toMatchObject({
-      "features.default_mode_request_user_input": true,
+      "features.default_mode_request_user_input": false,
     });
     expect(JSON.stringify(config)).not.toContain("tools.web_search");
   });

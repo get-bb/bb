@@ -83,11 +83,11 @@ describe("ask-user-question builtin plugin", () => {
     return command.dynamicTools;
   }
 
-  it("advertises the tool to pi, which has no native questions", async () => {
+  it("advertises the tool to codex", async () => {
     const tools = await dynamicToolsFor({
-      providerId: "pi",
-      model: "anthropic/claude-opus-4-6",
-      label: "pi-project",
+      providerId: "codex",
+      model: "gpt-5.6",
+      label: "codex-project",
     });
     const tool = tools.find(
       (candidate) => candidate.name === "AskUserQuestion",
@@ -99,18 +99,13 @@ describe("ask-user-question builtin plugin", () => {
     );
   });
 
-  it.each([
-    { providerId: "codex", model: "gpt-5.6" },
-    { providerId: "claude-code", model: "claude-opus-4-6" },
-  ])(
-    "withholds the tool from $providerId, which asks natively",
-    async ({ providerId, model }) => {
-      const tools = await dynamicToolsFor({
-        providerId,
-        model,
-        label: `${providerId}-project`,
-      });
-      expect(tools.map((tool) => tool.name)).not.toContain("AskUserQuestion");
-    },
-  );
+  it("withholds the tool from claude-code, which asks natively", async () => {
+    const tools = await dynamicToolsFor({
+      providerId: "claude-code",
+      model: "claude-opus-4-6",
+      label: "claude-project",
+    });
+
+    expect(tools.map((tool) => tool.name)).not.toContain("AskUserQuestion");
+  });
 });

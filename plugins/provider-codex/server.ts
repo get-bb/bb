@@ -40,7 +40,7 @@ export default function plugin(bb: BbPluginApi) {
     maintenance: { health: true, usage: true, installation: true },
     capabilities: {
       supportsServiceTier: true,
-      supportsNativeUserQuestion: true,
+      supportsNativeUserQuestion: false,
       fork: "checkpoint",
       supportsManualCompaction: true,
       supportsThreadArchive: true,

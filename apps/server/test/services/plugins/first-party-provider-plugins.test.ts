@@ -263,7 +263,7 @@ describe("first-party provider plugins", () => {
             supportsThreadArchive: true,
             supportsThreadRename: true,
             supportsServiceTier: true,
-            supportsNativeUserQuestion: true,
+            supportsNativeUserQuestion: false,
             permissionModes: ["accept-edits", "auto", "full"],
             supportsFork: true,
             supportsSessionRewind: true,
