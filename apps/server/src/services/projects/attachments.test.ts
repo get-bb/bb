@@ -1,4 +1,10 @@
-import { createConnection, migrate, projects } from "@bb/db";
+import type { PromptInput } from "@bb/domain";
+import {
+  createConnection,
+  getProjectAttachment,
+  migrate,
+  projects,
+} from "@bb/db";
 import { beforeEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,6 +14,7 @@ import {
   copyProjectAttachments,
   readAttachment,
   resolvePromptAttachmentReferences,
+  storeAttachment,
 } from "./attachments.js";
 
 const tempDirs: string[] = [];
@@ -74,6 +81,24 @@ describe("project attachments", () => {
     expect(copied.content.toString("utf8")).toBe("image bytes");
   });
 
+  it("keeps the uploaded name and image type when copying across projects", async () => {
+    const dataDir = await makeTempDir();
+    const uploaded = await storeAttachment(
+      db,
+      dataDir,
+      "proj_source",
+      new File(["png bytes"], "screenshot", { type: "image/png" }),
+    );
+
+    await copyProjectAttachments(db, dataDir, "proj_source", "proj_target", [
+      uploaded.path,
+    ]);
+
+    expect(
+      getProjectAttachment(db, "proj_target", uploaded.path),
+    ).toMatchObject({ originalName: "screenshot", mimeType: "image/png" });
+  });
+
   it("does not partially copy when one source attachment is missing", async () => {
     const dataDir = await makeTempDir();
     const sourceDir = join(dataDir, "attachments", "proj_source");
@@ -115,6 +140,7 @@ describe("project attachments", () => {
         db,
         dataDir,
         projectId: "proj_target",
+        hostId: null,
         input,
       }),
     ).rejects.toMatchObject({ status: 400 });
@@ -140,6 +166,7 @@ describe("project attachments", () => {
         db,
         dataDir,
         projectId: "proj_test",
+        hostId: null,
         input: [{ type: "localFile", path: "notes-uploaded.txt" }],
       }),
     ).resolves.toEqual([{ type: "localFile", path: "notes-uploaded.txt" }]);
@@ -153,6 +180,7 @@ describe("project attachments", () => {
         db,
         dataDir,
         projectId: "proj_test",
+        hostId: null,
         input: [{ type: "localFile", path: "alpha.txt" }],
       }),
     ).rejects.toMatchObject({
@@ -174,6 +202,7 @@ describe("project attachments", () => {
         db,
         dataDir,
         projectId: "proj_test",
+        hostId: null,
         input: [
           { type: "localFile", path: "/tmp/workspace/alpha.txt" },
           { type: "localImage", path: "C:\\Users\\michael\\screenshot.png" },
@@ -191,6 +220,7 @@ describe("project attachments", () => {
         db,
         dataDir,
         projectId: "proj_target",
+        hostId: null,
         input: [
           {
             type: "localFile",
@@ -199,6 +229,57 @@ describe("project attachments", () => {
           },
         ],
       }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("binds host file references to the destination machine", async () => {
+    const dataDir = await makeTempDir();
+    const resolve = (input: PromptInput[], hostId: string | null) =>
+      resolvePromptAttachmentReferences({
+        db,
+        dataDir,
+        projectId: "proj_test",
+        hostId,
+        input,
+      });
+
+    await expect(
+      resolve(
+        [
+          {
+            type: "localFile",
+            path: "/tmp/workspace/alpha.txt",
+            experimental_hostId: "host_a",
+          },
+        ],
+        "host_a",
+      ),
+    ).resolves.toEqual([
+      { type: "localFile", path: "/tmp/workspace/alpha.txt" },
+    ]);
+    await expect(
+      resolve(
+        [
+          {
+            type: "localImage",
+            path: "/tmp/workspace/shot.png",
+            experimental_hostId: "host_a",
+          },
+        ],
+        "host_b",
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      resolve(
+        [
+          {
+            type: "localFile",
+            path: "notes-uploaded.txt",
+            experimental_hostId: "host_a",
+          },
+        ],
+        "host_a",
+      ),
     ).rejects.toMatchObject({ status: 400 });
   });
 

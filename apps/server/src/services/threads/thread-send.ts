@@ -66,6 +66,7 @@ import {
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
 import { resolvePromptAttachmentReferences } from "../projects/attachments.js";
+import { threadTargetHostId } from "./dispatch-attempt.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { clearThreadContext } from "./thread-context-clear.js";
 import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
@@ -541,6 +542,7 @@ async function sendThreadMessageWithoutContextClear(
     dataDir: deps.config.dataDir,
     input,
     projectId: thread.projectId,
+    hostId: threadTargetHostId(deps, thread),
   });
   const resolvedByInput = new Map(
     input.map((item, index) => [item, resolvedInput[index]!]),

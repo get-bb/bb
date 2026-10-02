@@ -592,7 +592,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Uploaded attachments may omit mime type when the client could not determine one. A source project is present only while an uploaded attachment still belongs to a different project; destination-relative and legacy references omit it.",
+      "Uploaded attachments may omit mime type when the client could not determine one. A source project is present only while an uploaded attachment still belongs to a different project, and a machine only on an absolute-path attachment from prompt history or a draft; the server checks and strips both, and destination-relative and legacy references omit them.",
     fields: [
       "uploadedPromptAttachmentSchema.mimeType",
       "uploadedPromptAttachmentSchema.experimental_sourceProjectId",
@@ -602,6 +602,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "forkThreadRequestSchema.input.experimental_sourceProjectId",
       "sendMessageRequestSchema.input.experimental_sourceProjectId",
       "sendQueuedMessageResponseSchema.queuedMessage.content.experimental_sourceProjectId",
+      "createQueuedMessageRequestSchema.input.experimental_hostId",
+      "createThreadRequestSchema.input.experimental_hostId",
+      "forkThreadRequestSchema.agentContextSeed.experimental_hostId",
+      "forkThreadRequestSchema.input.experimental_hostId",
+      "sendMessageRequestSchema.input.experimental_hostId",
+      "sendQueuedMessageResponseSchema.queuedMessage.content.experimental_hostId",
     ],
   },
   {

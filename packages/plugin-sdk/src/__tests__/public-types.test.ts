@@ -8,7 +8,12 @@ import type {
   PluginEnvironments,
   ReadonlyJsonValue,
 } from "../index.js";
-import type { PluginProviderIconRegistration } from "../app-contract.js";
+import type {
+  ComposerAttachment,
+  ComposerDraftReplacement,
+  ComposerDraftSnapshot,
+  PluginProviderIconRegistration,
+} from "../app-contract.js";
 
 type ExpectedBbPluginApiKey =
   | "agents"
@@ -403,4 +408,22 @@ it("requires provider presentation fields in author-facing declarations", () => 
     description: string;
     icon: string;
   }>();
+});
+
+it("gives composer attachments one owner and round-trips draft snapshots", () => {
+  const base = {
+    type: "localFile",
+    path: "/tmp/a.txt",
+    name: "a.txt",
+  } as const;
+  expectTypeOf({
+    ...base,
+    experimental_hostId: "host_1",
+    experimental_sourceProjectId: "proj_1",
+  }).not.toMatchTypeOf<ComposerAttachment>();
+  expectTypeOf({
+    ...base,
+    experimental_hostId: "host_1",
+  }).toMatchTypeOf<ComposerAttachment>();
+  expectTypeOf<ComposerDraftSnapshot>().toMatchTypeOf<ComposerDraftReplacement>();
 });

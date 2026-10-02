@@ -43,6 +43,7 @@ import {
 } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { resolvePromptAttachmentReferences } from "../../services/projects/attachments.js";
+import { threadTargetHostId } from "../../services/threads/dispatch-attempt.js";
 import {
   createQueuedMessageForThread,
   sendQueuedMessageNow,
@@ -327,6 +328,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,
+      hostId: threadTargetHostId(deps, thread),
     });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
       content: input,

@@ -68,7 +68,7 @@ import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { hasMessageDispatchHooks } from "./dispatch-hooks.js";
-import { attemptDispatch } from "./dispatch-attempt.js";
+import { attemptDispatch, threadTargetHostId } from "./dispatch-attempt.js";
 import { deliverParentSystemMessage } from "./parent-system-messages.js";
 import {
   createQueuedMessageAutoSendPausedError,
@@ -225,6 +225,7 @@ export async function createQueuedMessageForThread(
     dataDir: deps.config.dataDir,
     input: payload.input,
     projectId: thread.projectId,
+    hostId: threadTargetHostId(deps, thread),
   });
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,

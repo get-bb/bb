@@ -356,6 +356,7 @@ describe("project attachment accounting", () => {
         db: h.db,
         dataDir: h.config.dataDir,
         projectId: project.id,
+        hostId: null,
         input: input("./event.txt"),
       });
       await completeBackfill(h, project.id);
@@ -439,6 +440,7 @@ describe("project attachment accounting", () => {
           db: h.db,
           dataDir: h.config.dataDir,
           projectId: project.id,
+          hostId: null,
           input: input("../escape.txt"),
         }),
       ).rejects.toThrow("escapes project directory");

@@ -623,12 +623,6 @@ export async function createThreadFromRequest(
       );
     }
   }
-  requestInput.input = await resolvePromptAttachmentReferences({
-    db: deps.db,
-    dataDir: deps.config.dataDir,
-    input: requestInput.input,
-    projectId: requestInput.projectId,
-  });
   await deps.providerRegistry.whenRegistrationsSettled();
   const {
     executionDefaults,
@@ -760,6 +754,13 @@ export async function createThreadFromRequest(
       projectId: request.projectId,
       requestedEnvironment: request.environment,
     });
+  request.input = await resolvePromptAttachmentReferences({
+    db: deps.db,
+    dataDir: deps.config.dataDir,
+    input: request.input,
+    projectId: request.projectId,
+    hostId: hostIdForEnvironmentIntent(deps, environmentIntent),
+  });
 
   const fork = resolveForkPoint(deps, {
     originKind: request.originKind ?? null,

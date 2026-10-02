@@ -44,6 +44,7 @@ interface ResolvePromptAttachmentReferencesArgs {
   dataDir: string;
   input: PromptInput[];
   projectId: string;
+  hostId: string | null;
 }
 
 function sanitizeFilename(name: string): string {
@@ -209,8 +210,27 @@ export async function resolvePromptAttachmentReferences(
           "A source project can only be specified for an uploaded attachment",
         );
       }
-      resolved.push(input);
+      const { experimental_hostId: hostId, ...attachment } = input;
+      if (
+        hostId !== undefined &&
+        args.hostId !== null &&
+        hostId !== args.hostId
+      ) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          `${input.path} is on another machine; upload the file to use it here`,
+        );
+      }
+      resolved.push(attachment);
       continue;
+    }
+    if (input.experimental_hostId !== undefined) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "A machine can only be specified for an absolute file path",
+      );
     }
     const {
       experimental_sourceProjectId: sourceProjectId = args.projectId,
@@ -344,17 +364,23 @@ export async function copyProjectAttachments(
   const attachments = [];
   for (const path of uniquePaths) {
     const { content } = await readAttachment(dataDir, sourceProjectId, path);
-    attachments.push({ path, content });
+    const source = getProjectAttachment(db, sourceProjectId, path);
+    attachments.push({
+      path,
+      content,
+      originalName: source?.originalName ?? basename(path),
+      mimeType: source ? source.mimeType : mimeTypes.lookup(path) || null,
+    });
   }
-  for (const { path, content } of attachments) {
+  for (const { path, content, originalName, mimeType } of attachments) {
     await writeInventoriedAttachment(
       db,
       dataDir,
       targetProjectId,
       path,
       content,
-      basename(path),
-      mimeTypes.lookup(path) || null,
+      originalName,
+      mimeType,
     );
   }
 }

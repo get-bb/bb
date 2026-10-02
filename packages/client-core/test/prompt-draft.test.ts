@@ -60,6 +60,12 @@ describe("prompt draft helpers", () => {
         mimeType: "text/plain",
         experimental_sourceProjectId: "proj_other",
       },
+      {
+        type: "localFile" as const,
+        path: "/tmp/report.txt",
+        name: "report.txt",
+        experimental_hostId: "host_1",
+      },
     ];
     const restored = parsePromptDraftStorage(
       serializePromptDraftStorage(promptInputToDraft(input)),

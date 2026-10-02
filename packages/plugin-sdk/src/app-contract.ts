@@ -2467,17 +2467,29 @@ export interface ComposerDraft {
   mentions: readonly ComposerMention[];
 }
 
-/** An already uploaded attachment; paths retain their original project or thread ownership. */
-export interface ComposerAttachment {
+/**
+ * A composer attachment: an uploaded file, optionally owned by another
+ * project, or an absolute path on one machine. Never both.
+ */
+export type ComposerAttachment = {
   type: "localImage" | "localFile";
   path: string;
-  /** Project that currently owns this uploaded path; omit for destination-relative attachments. */
-  experimental_sourceProjectId?: string;
   name: string;
   mimeType?: string;
   /** Exact size in bytes; omit when unknown. A wrong size can make the send fail when bb stages a file. */
   sizeBytes?: number;
-}
+} & (
+  | {
+      /** Project that currently owns this uploaded path; omit for destination-relative attachments. */
+      experimental_sourceProjectId?: string;
+      experimental_hostId?: never;
+    }
+  | {
+      /** Machine whose absolute `path` this is; core rejects sending it to a thread on another machine. */
+      experimental_hostId: string;
+      experimental_sourceProjectId?: never;
+    }
+);
 
 /** The complete current draft. Snapshots and their entries are immutable. */
 export interface ComposerDraftSnapshot extends ComposerDraft {

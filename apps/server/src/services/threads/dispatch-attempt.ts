@@ -177,6 +177,15 @@ export function intendedThreadHostId(
   return intent === null ? null : hostIdForEnvironmentIntent(deps, intent);
 }
 
+export function threadTargetHostId(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
+  thread: Pick<Thread, "id" | "environmentId">,
+): string | null {
+  return thread.environmentId !== null
+    ? (getEnvironment(deps.db, thread.environmentId)?.hostId ?? null)
+    : intendedThreadHostId(deps, thread.id);
+}
+
 /**
  * `listRunningThreads` with the intent-derived host filled in for rows whose
  * environment is not attached yet, so one starting cold thread and one active
@@ -309,6 +318,7 @@ async function runDispatchAttempt(
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,
+      hostId: threadTargetHostId(deps, thread),
     });
     payload = { ...payload, input };
     args = { ...args, payload };

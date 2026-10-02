@@ -8,6 +8,7 @@ import {
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
+  seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -111,6 +112,65 @@ describe("public prompt history list route", () => {
       });
     },
   );
+
+  it("reports the machine for host file history and rejects reuse on another machine", async () => {
+    await withTestHarness(async (harness) => {
+      const { host: hostA } = seedHostSession(harness.deps, { id: "host-a" });
+      const { host: hostB } = seedHostSession(harness.deps, { id: "host-b" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: hostA.id,
+      });
+      const threadOn = (hostId: string) =>
+        seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: seedEnvironment(harness.deps, {
+            hostId,
+            projectId: project.id,
+            path: `/tmp/${crypto.randomUUID()}`,
+          }).id,
+        });
+      const source = threadOn(hostA.id);
+      createPromptHistoryEntry(harness.deps.db, {
+        projectId: project.id,
+        threadId: source.id,
+        scope: "thread",
+        requestSequence: 1,
+        input: [{ type: "localFile", path: "/tmp/report.txt" }],
+      });
+      const history = promptHistoryListResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/prompt-history")),
+      );
+      const input = history.entries[0]!.input;
+      expect(input).toEqual([
+        {
+          type: "localFile",
+          path: "/tmp/report.txt",
+          experimental_hostId: "host-a",
+        },
+      ]);
+      const queue = (threadId: string) =>
+        harness.app.request(`/api/v1/threads/${threadId}/queued-messages`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input,
+            model: "gpt-5",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            serviceTier: "default",
+          }),
+        });
+
+      expect((await queue(threadOn(hostB.id).id)).status).toBe(400);
+      const sameMachine = threadOn(hostA.id);
+      expect((await queue(sameMachine.id)).status).toBe(201);
+      expect(
+        JSON.parse(
+          listQueuedThreadMessages(harness.deps.db, sameMachine.id)[0]!.content,
+        ),
+      ).toEqual([{ type: "localFile", path: "/tmp/report.txt" }]);
+    });
+  });
 
   it("pages every prompt newest first with project and thread locations", async () => {
     await withTestHarness(async (harness) => {

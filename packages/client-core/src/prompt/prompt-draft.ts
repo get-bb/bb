@@ -6,11 +6,33 @@ import {
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { z } from "zod";
 
-const promptDraftAttachmentSchema = uploadedPromptAttachmentSchema.extend({
-  sizeBytes: z.number().nonnegative().optional(),
-});
+const draftAttachmentFields = uploadedPromptAttachmentSchema
+  .omit({ experimental_sourceProjectId: true })
+  .extend({ sizeBytes: z.number().nonnegative().optional() });
+
+const promptDraftAttachmentSchema = z.union([
+  draftAttachmentFields.extend({
+    experimental_hostId: z.string().min(1),
+    experimental_sourceProjectId: z.undefined().optional(),
+  }),
+  draftAttachmentFields.extend({
+    experimental_sourceProjectId: z.string().min(1).optional(),
+    experimental_hostId: z.undefined().optional(),
+  }),
+]);
 
 export type PromptDraftAttachment = z.infer<typeof promptDraftAttachmentSchema>;
+
+function attachmentOwner(attachment: {
+  experimental_sourceProjectId?: string;
+  experimental_hostId?: string;
+}) {
+  if (attachment.experimental_hostId !== undefined)
+    return { experimental_hostId: attachment.experimental_hostId };
+  return attachment.experimental_sourceProjectId === undefined
+    ? {}
+    : { experimental_sourceProjectId: attachment.experimental_sourceProjectId };
+}
 
 export interface PromptDraftState {
   text: string;
@@ -226,12 +248,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       input.push({
         type: "localImage",
         path: attachment.path,
-        ...(attachment.experimental_sourceProjectId !== undefined
-          ? {
-              experimental_sourceProjectId:
-                attachment.experimental_sourceProjectId,
-            }
-          : {}),
+        ...attachmentOwner(attachment),
       });
       continue;
     }
@@ -239,12 +256,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
     input.push({
       type: "localFile",
       path: attachment.path,
-      ...(attachment.experimental_sourceProjectId !== undefined
-        ? {
-            experimental_sourceProjectId:
-              attachment.experimental_sourceProjectId,
-          }
-        : {}),
+      ...attachmentOwner(attachment),
       name: attachment.name,
       ...(attachment.sizeBytes === undefined
         ? {}
@@ -293,9 +305,7 @@ export function promptInputToDraft(
       attachments.push({
         type: "localImage",
         path: chunk.path,
-        ...(chunk.experimental_sourceProjectId !== undefined
-          ? { experimental_sourceProjectId: chunk.experimental_sourceProjectId }
-          : {}),
+        ...attachmentOwner(chunk),
         name: getFileNameFromPath(chunk.path),
       });
       continue;
@@ -305,9 +315,7 @@ export function promptInputToDraft(
       attachments.push({
         type: "localFile",
         path: chunk.path,
-        ...(chunk.experimental_sourceProjectId !== undefined
-          ? { experimental_sourceProjectId: chunk.experimental_sourceProjectId }
-          : {}),
+        ...attachmentOwner(chunk),
         name: chunk.name ?? getFileNameFromPath(chunk.path),
         ...(chunk.sizeBytes === undefined
           ? {}
