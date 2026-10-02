@@ -1,8 +1,14 @@
-import { defineConfig } from "vitest/config";
+import {
+  defineWorkspaceTestConfig,
+  sharedWorkerProjects,
+} from "../../vitest.shared.js";
 
-export default defineConfig({
+export default defineWorkspaceTestConfig({
   test: {
-    environment: "node",
-    include: ["src/**/*.test.ts"],
+    projects: sharedWorkerProjects({
+      pkgDir: __dirname,
+      name: "@bb/connect",
+      include: ["src/**/*.test.ts"],
+    }),
   },
 });

@@ -123,7 +123,8 @@ vi.mock("./session.js", async (importOriginal) => ({
   verifySessionCookieDetails: vi.fn(),
 }));
 
-vi.mock("./account-session.js", () => ({
+vi.mock("./account-session.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./account-session.js")>()),
   refreshAccountSessionCookies: vi.fn(),
 }));
 
@@ -426,6 +427,7 @@ describe("gate tunnel authentication", () => {
           headers: {
             authorization: `Bearer ${credential}`,
             "x-bb-cloud-dev-host": "smuggled",
+            cookie: "__Secure-better-auth.session_token=secret",
           },
         },
       ),
@@ -445,6 +447,7 @@ describe("gate tunnel authentication", () => {
     );
     expect(new URL(captured[0].url).searchParams.get("serverId")).toBeNull();
     expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
+    expect(captured[0].headers.get("cookie")).toBeNull();
   });
 
   it("dials immediately after a negative resolve and label assignment", async () => {
@@ -585,12 +588,26 @@ describe("machine gate auth", () => {
       machineId: "machine-owner",
       userId: OWNER,
     });
-    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const { env, ctx, captured } = makeEnv(
+      () =>
+        new Response("origin", {
+          headers: [
+            ["set-cookie", "tenant=kept; Path=/; HttpOnly"],
+            [
+              "set-cookie",
+              "__Secure-better-auth.session_token=stolen; Path=/; Secure",
+            ],
+            ["set-cookie", "parent=stolen; Domain=getbb.app; Path=/"],
+          ],
+        }),
+    );
     const internal = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/internal/session/open", {
         headers: {
           "x-bb-connect-machine": "bbcm_owner",
           "x-bb-cloud-dev-host": "smuggled",
+          cookie:
+            "tenant=kept; __Secure-better-auth.session_token=secret; __Secure-bb-connect.desktop_session=secret",
         },
       }),
       env as never,
@@ -601,6 +618,8 @@ describe("machine gate auth", () => {
         headers: {
           "x-bb-connect-machine": "bbcm_owner",
           "x-bb-cloud-dev-host": "smuggled",
+          cookie:
+            "tenant=kept; __Secure-better-auth.session_token=secret; __Secure-bb-connect.desktop_session=secret",
         },
       }),
       env as never,
@@ -621,6 +640,11 @@ describe("machine gate auth", () => {
     ).toBe(true);
     expect(
       captured.every(
+        (request) => request.headers.get("cookie") === "tenant=kept",
+      ),
+    ).toBe(true);
+    expect(
+      captured.every(
         (request) => request.headers.get(GATE_AUTH_HEADER) === "machine",
       ),
     ).toBe(true);
@@ -634,6 +658,10 @@ describe("machine gate auth", () => {
       "machine-owner",
       expect.anything(),
     );
+    expect(internal.headers.get("set-cookie")).toBe(
+      "tenant=kept; Path=/; HttpOnly",
+    );
+    expect(api.headers.get("set-cookie")).toBe("tenant=kept; Path=/; HttpOnly");
   });
 
   it("forbids machine credentials from minting join codes", async () => {
@@ -673,25 +701,59 @@ describe("machine gate auth", () => {
   });
 
   it.each([
-    "/install.sh",
-    "/install.ps1",
-    "/install/version",
-    "/install/bb-app.tgz",
-  ])("forwards GET %s without session or machine auth", async (path) => {
-    const { env, ctx, captured } = makeEnv(() => new Response("artifact"));
-    const response = await worker.fetch(
-      visitorRequest("sawyer.getbb.app", path, {
-        headers: { "x-bb-cloud-dev-host": "smuggled" },
-      }),
-      env as never,
-      ctx,
-    );
-    expect(response.status).toBe(200);
-    expect(await response.text()).toBe("artifact");
-    expect(captured).toHaveLength(1);
-    expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
-    expect(mockVerifyMachine).not.toHaveBeenCalled();
-  });
+    ["/install.sh", "text/plain; charset=utf-8", null],
+    ["/install.ps1", "text/plain; charset=utf-8", null],
+    ["/install/version", "text/plain; charset=utf-8", null],
+    [
+      "/install/bb-app.tgz",
+      "application/octet-stream",
+      'attachment; filename="bb-app.tgz"',
+    ],
+  ])(
+    "forwards GET %s without session or machine auth",
+    async (path, contentType, contentDisposition) => {
+      const { env, ctx, captured } = makeEnv(
+        () =>
+          new Response("artifact", {
+            headers: [
+              ["content-type", "text/html"],
+              ["set-cookie", "tenant=kept; Path=/; HttpOnly"],
+              [
+                "set-cookie",
+                "__Secure-better-auth.session_token=stolen; Path=/; Secure",
+              ],
+              ["set-cookie", "parent=stolen; Domain=getbb.app; Path=/"],
+            ],
+          }),
+      );
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", path, {
+          headers: {
+            "x-bb-cloud-dev-host": "smuggled",
+            cookie:
+              "tenant=kept; __Secure-better-auth.session_token=secret; __Secure-better-auth.oauth_state.0=secret; __Secure-bb-connect.desktop_session=secret",
+          },
+        }),
+        env as never,
+        ctx,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("artifact");
+      expect(captured).toHaveLength(1);
+      expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
+      expect(captured[0].headers.get("cookie")).toBe("tenant=kept");
+      expect(response.headers.get("set-cookie")).toBe(
+        "tenant=kept; Path=/; HttpOnly",
+      );
+      expect(response.headers.get("content-type")).toBe(contentType);
+      expect(response.headers.get("content-disposition")).toBe(
+        contentDisposition,
+      );
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("content-security-policy")).toBe("sandbox");
+      expect(mockVerifyMachine).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("gate replays through a tunnel object restart", () => {
@@ -997,25 +1059,79 @@ describe("gate worker share hosts", () => {
     vi.clearAllMocks();
   });
 
-  it("forwards share hosts to the DO with x-bb-tunnel-target", async () => {
-    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
-    const res = await worker.fetch(
-      visitorRequest("sawyer--8000.getbb.app", "/app", {
-        headers: { [TUNNEL_TARGET_HEADER]: "smuggled" },
-      }),
-      env as never,
-      ctx,
-    );
-    expect(res.status).toBe(200);
-    expect(captured).toHaveLength(1);
-    expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
-    expect(mockServeWithCache).toHaveBeenCalledWith(
-      expect.any(Request),
-      "sawyer--8000",
-      ctx,
-      expect.any(Function),
-    );
-  });
+  it.each([false, true])(
+    "isolates platform cookies while forwarding share hosts (local Cloud: %s)",
+    async (localCloud) => {
+      const tenantCookies = [
+        "tenant=kept; Path=/; HttpOnly",
+        "expiry=kept; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Path=/",
+      ];
+      const platformCookies = [
+        "__Secure-better-auth.session_token=stolen; Secure; Path=/",
+        "__Secure-better-auth.session_data.0=stolen; Secure; Path=/",
+        "__Secure-better-auth.state=stolen; Secure; Path=/",
+        "better-auth.session_token=stolen; Path=/",
+        "better-auth.session_data.1=stolen; Path=/",
+        "__Secure-bb-connect.desktop_session=stolen; Secure; Path=/",
+        "bb-connect.desktop_session=stolen; Path=/",
+      ];
+      const blockedCookies = [
+        ...platformCookies,
+        "parent=stolen; Domain=.getbb.app; Path=/",
+        "parent=stolen; dOmAiN = getbb.app; Path=/",
+        "parent=stolen; Domain=bb.localhost; Path=/",
+        "empty=stolen; Domain=; Path=/",
+        "combined=kept, __Secure-better-auth.session_token=stolen; Secure; Path=/",
+      ];
+      const { env, ctx, captured } = makeEnv(
+        () =>
+          new Response("ok", {
+            headers: [...tenantCookies, ...blockedCookies].map(
+              (cookie): [string, string] => ["set-cookie", cookie],
+            ),
+          }),
+      );
+      if (localCloud)
+        Object.assign(env, {
+          ACCOUNT_APP_URL: "http://bb.localhost:8787",
+          BASE_DOMAIN: "bb.localhost",
+          CLOUD_DEV: "true",
+        });
+      const cookie = [
+        "tenant=kept",
+        ...platformCookies.map((value) => value.split(";", 1)[0]),
+      ].join("; ");
+      const res = await worker.fetch(
+        visitorRequest(
+          localCloud
+            ? "sawyer--8000.bb.localhost:8787"
+            : "sawyer--8000.getbb.app",
+          "/app",
+          {
+            headers: {
+              [TUNNEL_TARGET_HEADER]: "smuggled",
+              cookie,
+              ...(localCloud ? { "x-bb-cloud-dev-host": "sawyer--8000" } : {}),
+            },
+          },
+        ),
+        env as never,
+        ctx,
+      );
+      expect(res.status).toBe(200);
+      expect(captured).toHaveLength(1);
+      expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
+      expect(captured[0].headers.get("cookie")).toBe("tenant=kept");
+      expect(res.headers.get("set-cookie")).toBe(tenantCookies.join(", "));
+      await expect(res.text()).resolves.toBe("ok");
+      expect(mockServeWithCache).toHaveBeenCalledWith(
+        expect.any(Request),
+        "sawyer--8000",
+        ctx,
+        expect.any(Function),
+      );
+    },
+  );
 
   it("renews an active owner session on an ordinary HTTP response", async () => {
     mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
@@ -1023,9 +1139,19 @@ describe("gate worker share hosts", () => {
       "__Secure-better-auth.session_token=renewed; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
       "__Secure-better-auth.session_data=cached; Max-Age=300; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
     ]);
-    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const { env, ctx, captured } = makeEnv(
+      () =>
+        new Response("ok", {
+          headers: {
+            "set-cookie":
+              "__Secure-better-auth.session_token=stolen; Domain=.getbb.app; Secure; Path=/",
+          },
+        }),
+    );
     const response = await worker.fetch(
-      visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+        headers: { cookie: "__Secure-better-auth.session_token=session-token" },
+      }),
       env as never,
       ctx,
     );
@@ -1036,6 +1162,8 @@ describe("gate worker share hosts", () => {
       expect.any(Function),
     );
     expect(mockInvalidateSession).toHaveBeenCalledWith("session-token");
+    expect(captured[0].headers.get("cookie")).toBeNull();
+    expect(response.headers.get("set-cookie")).not.toContain("stolen");
     expect(response.headers.get("set-cookie")).toContain(
       "__Secure-better-auth.session_token=renewed",
     );

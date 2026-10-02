@@ -40,6 +40,8 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
       new URL(frame.path, "http://origin.local").searchParams.get(
         "cacheable",
       ) === "1";
+    const cookieBoundary =
+      frame.path === "/cookie-boundary" || frame.path === "/install.sh";
     send({
       type: "resp-head",
       streamId: frame.streamId,
@@ -49,6 +51,20 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
         ["content-encoding", "gzip"],
         ["content-length", String(GZIP.byteLength)],
         ["cache-control", cacheable ? IMMUTABLE : "no-store"],
+        ...(cookieBoundary
+          ? ([
+              ["set-cookie", "tenant=kept; Path=/; HttpOnly"],
+              [
+                "set-cookie",
+                "__Secure-better-auth.session_token=stolen; Secure; Path=/",
+              ],
+              ["set-cookie", "parent=stolen; Domain=.relay.test; Path=/"],
+              [
+                "x-origin-cookie",
+                frame.headers.find(([name]) => name === "cookie")?.[1] ?? "",
+              ],
+            ] satisfies [string, string][])
+          : []),
       ],
     });
     send({
@@ -133,6 +149,41 @@ describe("relaying a gzip-encoded origin response", () => {
     expect(res.body.toString("utf8")).not.toBe(HTML);
     expect(gunzipSync(res.body).toString("utf8")).toBe(HTML);
   });
+
+  it.each(TRANSPORTS)(
+    "preserves compressed bodies when enforcing the cookie boundary (%s response)",
+    async (transport) => {
+      for (const path of ["/cookie-boundary", "/install.sh"]) {
+        const response = await mf.dispatchFetch(`https://relay.test${path}`, {
+          headers: {
+            "accept-encoding": "gzip",
+            "x-fixture-transport": transport,
+            cookie:
+              "tenant=kept; __Secure-better-auth.session_token=secret; __Secure-bb-connect.desktop_session=secret",
+          },
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.getSetCookie()).toEqual([
+          "tenant=kept; Path=/; HttpOnly",
+        ]);
+        expect(response.headers.get("x-origin-cookie")).toBe("tenant=kept");
+        expect(response.headers.get("content-type")).toBe(
+          path === "/install.sh"
+            ? "text/plain; charset=utf-8"
+            : "text/html; charset=utf-8",
+        );
+        if (path === "/install.sh") {
+          expect(response.headers.get("content-security-policy")).toBe(
+            "sandbox",
+          );
+          expect(response.headers.get("x-content-type-options")).toBe(
+            "nosniff",
+          );
+        }
+        expect(await response.text()).toBe(HTML);
+      }
+    },
+  );
 });
 
 describe("edge cache", () => {

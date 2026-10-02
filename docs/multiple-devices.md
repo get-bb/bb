@@ -195,6 +195,14 @@ slightly early through a paired tunnel is an accepted tradeoff. npm installs
 the package into the machine's bb data directory, not its system-wide global
 prefix, so enrollment needs neither `sudo` nor a PATH change.
 
+The Connect gate consumes platform authentication cookies without forwarding
+them to tunnels, including public installer requests and port shares. Tenant
+responses may set host-only cookies outside the `better-auth.*` and
+`bb-connect.*` namespaces (including their `__Secure-` variants); cookies
+with a `Domain` attribute are dropped. Only the gate can renew platform
+cookies. Public installer responses are served as sandboxed plain text, or
+as an attachment for `/install/bb-app.tgz`, with content sniffing disabled.
+
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
 installer), local API port, and launchd/systemd service. The installer persists
