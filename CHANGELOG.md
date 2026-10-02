@@ -2,51 +2,32 @@
 
 ## 0.45.0
 
-bb comes to Windows, adds hosted AI services through bb cloud, and gives you more control over providers and everyday navigation. This release also brings model-specific service tiers and faster long conversations.
+Native Windows support, hosted AI services, and faster conversations.
 
 ### Highlights
 
-- **Native Windows support.** Install the desktop app or run `npx bb-app` on Windows. Launch provider CLIs, open terminals, use Windows project paths and file links, and enroll a Windows machine with another bb server. The desktop app supports automatic updates.
-- **bb cloud AI.** Signed-in accounts can use hosted thread titles, commit messages, and voice transcription. Automatic AI routing prefers bb cloud when available and includes plugin-provided services.
-- **Choose your providers.** Enable or disable individual providers in Settings → Providers without removing their CLIs or sibling agents. Running turns and existing thread history are preserved.
-- **Customize navigation.** Choose thread-row quick actions and footer icons, search keyboard shortcuts by key, and keep sidebar layouts independent in each tab.
-- **Model-specific service tiers.** Choose from the tiers your provider exposes for the selected model. Models with one additional tier show a switch; models with several show a picker. Availability depends on your provider and account.
-- **Faster conversations.** Improvements to timeline ordering, conversation outlines, reopening recent threads, startup, and database activity reduce work during streaming and navigation. Hidden split panes pause their timeline queries.
+- **bb on Windows:** desktop installer and automatic updates, plus agents, terminals, and remote machine enrollment.
+- **bb cloud AI:** hosted thread titles, commit messages, and voice transcription for signed-in accounts.
+- **More provider control:** enable or disable individual providers and choose service tiers supported by your model and account.
+- **Faster conversations:** smoother streaming, quicker thread switching, and less background work.
+- **Customize navigation:** choose thread-row actions and footer icons, with independent sidebar layouts per tab.
 
-### Working with agents
+### Improvements
 
-- **Thread forks:** create a fork immediately, name it after its source thread, and open it ready for your next message.
-- **Codex choice questions:** answer native Codex questions through bb’s question UI when enabled in Codex, including selected options and free-text answers.
-- **Claude Code:** pooled sessions can use the native 1M Opus context window, with an opt-out setting. The sandbox is configurable, and session stopping and startup are more reliable.
-- **Account Pooler:** Claude and Codex accounts can fall back to eligible extra usage, and account availability is handled more consistently.
-- **Scheduled sends:** remember your last choices and choose new 5- or 10-minute presets.
-- **Skills:** the Skills page shows every provider’s skills by default and distinguishes forked Claude skills.
-- **Voice input:** send directly during dictation with a one-tap Send action.
-
-### Workspace and mobile
-
-- **Desktop browser:** download files from pages opened in bb and share the bb browser profile across tabs.
-- **Tasks:** retain task drafts and panel context, load open work first, and return saved comments while delivery to the agent continues.
-- **Mobile:** tap the conversation header to scroll to the top, with clearer message actions, better compact menus, and more consistent composer layouts. Submit taps stay on their intended control, and long question forms keep answers scrollable and Submit accessible.
-- **Mobile downloads:** find direct iOS and Android downloads in Mobile settings. Android has a smaller download, improved notification handling, and push registration after notification opt-in.
-- **Connections and machines:** revoke shared ports by machine, reuse Connect sessions on cold start, and improve tunnel reconnection, Linux machine installation, server moves, and Modal sandbox recovery.
-- **Updates:** failed update checks show a warning icon and a plain-language reason. Linux notification clicks focus bb correctly; macOS updates declare the macOS 13 minimum.
+- **Agents:** instant thread forks named after their source, native Codex questions when enabled, Claude’s 1M Opus context for pooled sessions, and configurable Claude sandboxing.
+- **Composer:** remembered scheduled-send choices, 5/10-minute presets, and one-tap Send during dictation.
+- **Mobile and desktop:** scroll to the top from the mobile header, clearer question forms, mobile downloads in Settings, and desktop browser file downloads.
+- **Tasks and connections:** preserved task drafts, faster task lists, more reliable Connect reconnection, and better machine and sandbox recovery.
 
 ### Fixes
 
-- **Claude Code permissions:** preserve full access after approving a plan, honor configured ask rules, and keep “Allow for session” limited to the command being approved.
-- **Providers:** refresh Pi’s model registry and resolve selections against the machine’s catalog; fix OpenCode question routing and credential discovery; recover Hermes after a steering failure; improve Claude model discovery and context estimates.
-- **Navigation and plugins:** fix cross-project thread mentions and editor file links, keep mentions menus inside the visible pane, restore input focus when switching plugin popups, distinguish marketplace entries from conflicting local installs, and let untouched bundled plugins follow updated defaults.
-- Preserve changing timeline history and failed-turn checkpoints for message editing. Keep manual queued drafts available and show typed HTML literally in user messages.
-- Fix platform cookie isolation and public installer responses through bb Connect. Protect against DNS rebinding while preserving remote access: custom DNS names, including MagicDNS and reverse-proxy names, now require a matching `BB_APP_URL`. Direct IP access and bb Connect continue to work.
+- Fix Claude permission handling, Pi model discovery, OpenCode questions, mobile submit taps, timeline history, file links, and plugin popup focus.
+- **Custom DNS access:** DNS rebinding protection now requires a matching `BB_APP_URL` for MagicDNS and reverse-proxy hostnames. Direct IP access and bb Connect continue to work.
 
-### CLI and plugin APIs
+### CLI and plugins
 
-- Page through stored prompts with `bb prompt-history list` or experimental `sdk.experimental_promptHistory.list`, returning prompt locations and a continuation cursor.
-- Manage providers with `bb provider list --all`, `bb provider enable`, and `bb provider disable`, or the corresponding SDK methods.
-- Inspect a machine’s recorded thread-storage path with `bb machine show` and explicitly clean up an unused managed environment with `bb environment cleanup` or `environments.experimental_cleanup`.
-- Attach files when creating queued messages through the CLI. Automations and Tasks presets accept provider-defined service tiers and offer `--clear-service-tier` to reset them.
-- Plugin additions include experimental shared composer popup slots, a unified composer API, per-model service tier declarations, and provider availability metadata.
+- New `bb prompt-history list`, provider enable/disable commands, and `bb environment cleanup`, with matching SDK APIs.
+- Plugin additions include composer popup slots, a unified composer API, and model-specific service tiers.
 
 ### Thanks
 
