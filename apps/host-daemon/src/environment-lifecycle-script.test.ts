@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  assertScriptProcessTreeStopped,
   buildLifecycleScriptCommand,
+  LifecycleScriptTerminationUnverifiedError,
   runSetupScript,
   runTeardownScript,
 } from "./environment-lifecycle-script.js";
@@ -142,6 +144,32 @@ describe("core environment scripts", () => {
         },
       }),
     ).rejects.toThrow("cancelled");
+  });
+
+  it("accepts a stopped script only when its whole process tree is confirmed gone", async () => {
+    await expect(
+      assertScriptProcessTreeStopped(undefined, ".bb-env-setup.sh"),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertScriptProcessTreeStopped(
+        Promise.resolve({ treeTermination: "confirmed" }),
+        ".bb-env-setup.sh",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertScriptProcessTreeStopped(
+        Promise.resolve({ treeTermination: "unverified" }),
+        ".bb-env-setup.sh",
+      ),
+    ).rejects.toBeInstanceOf(LifecycleScriptTerminationUnverifiedError);
+    await expect(
+      assertScriptProcessTreeStopped(
+        Promise.reject(new Error("Process did not exit after termination")),
+        ".bb-env-teardown.sh",
+      ),
+    ).rejects.toThrow(
+      ".bb-env-teardown.sh was stopped, but bb could not confirm that all of its processes exited",
+    );
   });
 
   it("runs hooks on Windows with the bash that Git installs", () => {

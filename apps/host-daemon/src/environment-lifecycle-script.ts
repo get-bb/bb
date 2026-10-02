@@ -12,6 +12,7 @@ import {
   spawnPortableOutputProcess,
   stopProcessGroupLeaderFirst,
   supportsProcessGroups,
+  type ProcessStopResult,
 } from "@bb/process-utils";
 import fs from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
@@ -84,10 +85,33 @@ export function buildLifecycleScriptCommand(
   };
 }
 
+export class LifecycleScriptTerminationUnverifiedError extends Error {
+  constructor(scriptName: string) {
+    super(
+      `${scriptName} was stopped, but bb could not confirm that all of its processes exited`,
+    );
+    this.name = "LifecycleScriptTerminationUnverifiedError";
+  }
+}
+
+export async function assertScriptProcessTreeStopped(
+  stop: Promise<ProcessStopResult> | undefined,
+  scriptName: string,
+): Promise<void> {
+  if (stop === undefined) {
+    return;
+  }
+  const result = await stop.catch(() => null);
+  if (result === null || result.treeTermination !== "confirmed") {
+    throw new LifecycleScriptTerminationUnverifiedError(scriptName);
+  }
+}
+
 const GIT_SHELL_LOOKUP_TIMEOUT_MS = 10_000;
 
 export async function resolveWindowsBashPath(
   env: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   let gitShellPath: string;
   try {
@@ -95,6 +119,7 @@ export async function resolveWindowsBashPath(
       cwd: process.cwd(),
       env,
       maxBuffer: 64 * 1024,
+      signal,
       timeout: GIT_SHELL_LOOKUP_TIMEOUT_MS,
     });
     gitShellPath = path.win32.normalize(result.stdout.trim());
@@ -151,13 +176,17 @@ async function runLifecycleScript(
     },
     true,
   );
+  const windowsBashPath =
+    process.platform === "win32"
+      ? await resolveWindowsBashPath(env, args.signal)
+      : null;
+  throwIfProvisionAborted(args.signal);
   const command = buildLifecycleScriptCommand({
     kind: args.kind,
     scriptName: args.scriptName,
     platform: process.platform,
     scriptPath,
-    windowsBashPath:
-      process.platform === "win32" ? await resolveWindowsBashPath(env) : null,
+    windowsBashPath,
   });
   const startedAt = Date.now();
   emitStep({
@@ -203,13 +232,15 @@ async function runLifecycleScript(
     return () => emit(decoder.end());
   });
 
+  let windowsTreeStop: Promise<ProcessStopResult> | undefined;
   const killScriptProcesses = (): void => {
     if (process.platform === "win32") {
-      void stopProcessGroupLeaderFirst({
+      windowsTreeStop ??= stopProcessGroupLeaderFirst({
         child,
         timeoutMs: 0,
         killGraceMs: 0,
-      }).catch(() => undefined);
+      });
+      windowsTreeStop.catch(() => undefined);
       return;
     }
     killProcessGroup({ child, signal: "SIGKILL" });
@@ -241,8 +272,10 @@ async function runLifecycleScript(
       child.on("close", (exitCode, signal) => resolve({ exitCode, signal }));
     });
 
-    if (abortRequested || timedOut)
+    if (abortRequested || timedOut) {
       while (isProcessGroupAlive(child)) await delay(25);
+      await assertScriptProcessTreeStopped(windowsTreeStop, args.scriptName);
+    }
 
     for (const flush of readers) flush();
     emitScriptOutputLines(outputLineReader.flush());
