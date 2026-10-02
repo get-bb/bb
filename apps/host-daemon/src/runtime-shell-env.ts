@@ -17,6 +17,7 @@ interface PrepareRuntimeShellEnvOptions {
   hostDaemonPort?: number;
   serverUrl: string;
   inheritedPath?: string;
+  powershellExecutionPolicy?: string | null;
 }
 
 interface ResolveUserShellPathOptions {
@@ -24,6 +25,10 @@ interface ResolveUserShellPathOptions {
   platform?: NodeJS.Platform;
   spawnUserShellEnv?: SpawnUserShellEnv;
   timeoutMs?: number;
+}
+
+interface ResolvePowerShellExecutionPolicyOptions extends ResolveUserShellPathOptions {
+  readTextFile?: (filePath: string) => Promise<string | null>;
 }
 
 export interface SpawnUserShellEnvArgs {
@@ -53,11 +58,18 @@ const SHELL_ENV_COMMAND = [
   `printf '%s\\n' ${SHELL_ENV_END_MARKER}`,
 ].join("; ");
 const USER_SHELL_ENV_TIMEOUT_MS = 3_000;
+const POWERSHELL_EXECUTION_POLICY_VARIABLE = "PSExecutionPolicyPreference";
 const WINDOWS_MACHINE_ENVIRONMENT_KEY =
   "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
 const WINDOWS_USER_ENVIRONMENT_KEY = "HKCU\\Environment";
-const WINDOWS_REGISTRY_PATH_PATTERN =
-  /^\s+Path\s+REG_(?:EXPAND_)?SZ\s+(.*)$/imu;
+const WINDOWS_REGISTRY_VALUE_PATTERN = /^ {4}(.+?) {4}REG_[A-Z_]+ {4}(.*)$/gmu;
+const WINDOWS_POWERSHELL_POLICY_KEYS = [
+  "HKCU\\Software\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell",
+  "HKLM\\SOFTWARE\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell",
+];
+const POWERSHELL_CONFIG_FILE_NAME = "powershell.config.json";
+const POWERSHELL_CONFIG_POLICY_PATTERN = /ExecutionPolicy"\s*:/u;
+const DEFAULT_POWERSHELL_EXECUTION_POLICY = "RemoteSigned";
 const WINDOWS_ENVIRONMENT_REFERENCE_PATTERN = /%([^%;\\/]+)%/gu;
 const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
@@ -335,38 +347,45 @@ function windowsEnvironmentValue(
   return key === undefined ? undefined : env[key];
 }
 
+function expandWindowsEnvironmentReferences(
+  value: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  return value.replace(
+    WINDOWS_ENVIRONMENT_REFERENCE_PATTERN,
+    (reference, name: string) =>
+      windowsEnvironmentValue(env, name) ?? reference,
+  );
+}
+
 function splitWindowsPath(
   value: string | undefined,
   env: NodeJS.ProcessEnv,
 ): string[] {
   return (value ?? "")
     .split(";")
-    .map((entry) =>
-      entry
-        .trim()
-        .replace(
-          WINDOWS_ENVIRONMENT_REFERENCE_PATTERN,
-          (reference, name: string) =>
-            windowsEnvironmentValue(env, name) ?? reference,
-        ),
-    )
+    .map((entry) => expandWindowsEnvironmentReferences(entry.trim(), env))
     .filter((entry) => entry.length > 0);
 }
 
-async function readWindowsRegistryPath(
+function windowsRegistryCommand(env: NodeJS.ProcessEnv): string {
+  return win32.join(
+    windowsEnvironmentValue(env, "SystemRoot") ?? "C:\\Windows",
+    "System32",
+    "reg.exe",
+  );
+}
+
+async function readWindowsRegistryEnvironment(
   options: ResolveUserShellPathOptions,
   env: NodeJS.ProcessEnv,
   key: string,
-): Promise<string | null> {
+): Promise<Map<string, string> | null> {
   const spawnUserShellEnv =
     options.spawnUserShellEnv ?? defaultSpawnUserShellEnv;
   const result = await spawnUserShellEnv({
-    command: win32.join(
-      windowsEnvironmentValue(env, "SystemRoot") ?? "C:\\Windows",
-      "System32",
-      "reg.exe",
-    ),
-    args: ["query", key, "/v", "Path"],
+    command: windowsRegistryCommand(env),
+    args: ["query", key],
     env,
     timeoutMs: options.timeoutMs ?? USER_SHELL_ENV_TIMEOUT_MS,
   });
@@ -377,31 +396,61 @@ async function readWindowsRegistryPath(
   ) {
     return null;
   }
-  return WINDOWS_REGISTRY_PATH_PATTERN.exec(result.stdout)?.[1]?.trim() ?? null;
+  const values = new Map<string, string>();
+  for (const match of result.stdout.matchAll(WINDOWS_REGISTRY_VALUE_PATTERN)) {
+    const name = match[1]?.trim();
+    if (name !== undefined && name.length > 0) {
+      values.set(name, (match[2] ?? "").trim());
+    }
+  }
+  return values;
+}
+
+function takeWindowsRegistryPath(values: Map<string, string>): string {
+  for (const [name, value] of values) {
+    if (name.toUpperCase() === "PATH") {
+      values.delete(name);
+      return value;
+    }
+  }
+  return "";
 }
 
 async function resolveWindowsRegistryPath(
   options: ResolveUserShellPathOptions,
   env: NodeJS.ProcessEnv,
 ): Promise<string | null> {
-  const machinePath = await readWindowsRegistryPath(
+  const machineValues = await readWindowsRegistryEnvironment(
     options,
     env,
     WINDOWS_MACHINE_ENVIRONMENT_KEY,
   );
-  if (machinePath === null) {
+  if (machineValues === null) {
     return null;
   }
-  const userPath = await readWindowsRegistryPath(
-    options,
-    env,
-    WINDOWS_USER_ENVIRONMENT_KEY,
-  );
+  const userValues =
+    (await readWindowsRegistryEnvironment(
+      options,
+      env,
+      WINDOWS_USER_ENVIRONMENT_KEY,
+    )) ?? new Map<string, string>();
+  const machinePath = takeWindowsRegistryPath(machineValues);
+  const userPath = takeWindowsRegistryPath(userValues);
+  const refreshedEnv: NodeJS.ProcessEnv = { ...env };
+  for (const [name, value] of [...machineValues, ...userValues]) {
+    const existingName = Object.keys(refreshedEnv).find(
+      (candidate) => candidate.toUpperCase() === name.toUpperCase(),
+    );
+    refreshedEnv[existingName ?? name] = expandWindowsEnvironmentReferences(
+      value,
+      refreshedEnv,
+    );
+  }
   const seen = new Set<string>();
   const entries: string[] = [];
   for (const entry of [
-    ...splitWindowsPath(machinePath, env),
-    ...splitWindowsPath(userPath ?? "", env),
+    ...splitWindowsPath(machinePath, refreshedEnv),
+    ...splitWindowsPath(userPath, refreshedEnv),
     ...splitWindowsPath(windowsEnvironmentValue(env, "PATH"), env),
   ]) {
     const key = entry.replace(/[\\/]+$/u, "").toLowerCase();
@@ -412,6 +461,76 @@ async function resolveWindowsRegistryPath(
     entries.push(entry);
   }
   return entries.length === 0 ? null : entries.join(";");
+}
+
+async function readOptionalTextFile(filePath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function powershellConfigPaths(env: NodeJS.ProcessEnv): string[] {
+  const paths: string[] = [];
+  const userProfile = windowsEnvironmentValue(env, "USERPROFILE");
+  if (userProfile !== undefined && userProfile.length > 0) {
+    paths.push(
+      win32.join(
+        userProfile,
+        "Documents",
+        "PowerShell",
+        POWERSHELL_CONFIG_FILE_NAME,
+      ),
+    );
+  }
+  for (const directory of (windowsEnvironmentValue(env, "PATH") ?? "").split(
+    ";",
+  )) {
+    if (/[\\/]PowerShell[\\/]\d+[^\\/]*[\\/]?$/iu.test(directory.trim())) {
+      paths.push(win32.join(directory.trim(), POWERSHELL_CONFIG_FILE_NAME));
+    }
+  }
+  return paths;
+}
+
+export async function resolvePowerShellExecutionPolicyDefault(
+  options: ResolvePowerShellExecutionPolicyOptions = {},
+): Promise<string | null> {
+  const env = options.env ?? process.env;
+  if ((options.platform ?? process.platform) !== "win32") {
+    return null;
+  }
+  if (
+    windowsEnvironmentValue(env, POWERSHELL_EXECUTION_POLICY_VARIABLE) !==
+    undefined
+  ) {
+    return null;
+  }
+  const spawnUserShellEnv =
+    options.spawnUserShellEnv ?? defaultSpawnUserShellEnv;
+  for (const key of WINDOWS_POWERSHELL_POLICY_KEYS) {
+    const result = await spawnUserShellEnv({
+      command: windowsRegistryCommand(env),
+      args: ["query", key, "/v", "ExecutionPolicy"],
+      env,
+      timeoutMs: options.timeoutMs ?? USER_SHELL_ENV_TIMEOUT_MS,
+    });
+    if (result.error !== undefined || result.signal !== null) {
+      return null;
+    }
+    if (result.status === 0) {
+      return null;
+    }
+  }
+  const readTextFile = options.readTextFile ?? readOptionalTextFile;
+  for (const configPath of powershellConfigPaths(env)) {
+    const config = await readTextFile(configPath);
+    if (config !== null && POWERSHELL_CONFIG_POLICY_PATTERN.test(config)) {
+      return null;
+    }
+  }
+  return DEFAULT_POWERSHELL_EXECUTION_POLICY;
 }
 
 async function resolveUserShellPathWithPrevious(
@@ -516,5 +635,12 @@ export function prepareRuntimeShellEnv(
         ? undefined
         : String(options.hostDaemonPort),
   });
+  if (
+    options.powershellExecutionPolicy !== undefined &&
+    options.powershellExecutionPolicy !== null
+  ) {
+    shellEnv[POWERSHELL_EXECUTION_POLICY_VARIABLE] =
+      options.powershellExecutionPolicy;
+  }
   return shellEnv;
 }
