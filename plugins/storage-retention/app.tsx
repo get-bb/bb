@@ -304,7 +304,12 @@ function StoragePage({
   );
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl space-y-10 px-4 pb-10 pt-4 md:px-5 md:pt-5">
+      <div
+        className={cn(
+          "mx-auto w-full max-w-3xl px-4 pb-10 pt-4 md:px-5 md:pt-5",
+          hostId ? "space-y-6" : "space-y-10",
+        )}
+      >
         {hostId && state && (
           <header className="space-y-3">
             <button
