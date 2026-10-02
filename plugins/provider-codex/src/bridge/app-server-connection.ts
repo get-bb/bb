@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
 import {
+  experimental_killPortableProcess,
   experimental_recordProviderChildIo,
   experimental_spawnPortableProcess,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -166,12 +167,14 @@ export function createCodexAppServerConnection(
     }
     killStarted = true;
     const termination = setTimeout(() => {
-      if (!finalized && exitStatus === null) child.kill("SIGTERM");
+      if (!finalized && exitStatus === null) {
+        experimental_killPortableProcess(child, "SIGTERM");
+      }
     }, TERMINATE_ESCALATION_MS);
     termination.unref?.();
     const escalation = setTimeout(() => {
       if (!finalized) {
-        child.kill("SIGKILL");
+        experimental_killPortableProcess(child, "SIGKILL");
       }
     }, KILL_ESCALATION_MS);
     escalation.unref?.();
@@ -196,7 +199,7 @@ export function createCodexAppServerConnection(
     stdinFailure = new CodexAppServerExitedError(`codex app-server ${detail}`);
     pushStderrChunk(detail);
     killStarted = true;
-    child.kill("SIGKILL");
+    experimental_killPortableProcess(child, "SIGKILL");
   }
 
   function writeLine(message: object): void {

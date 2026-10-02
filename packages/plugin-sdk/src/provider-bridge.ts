@@ -265,6 +265,14 @@ export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
  */
 export { spawnPortableProcess as experimental_spawnPortableProcess } from "@bb/process-utils";
 
+/**
+ * Ends a child started with `experimental_spawnPortableProcess`. On Windows it
+ * terminates the child's whole process tree, because an npm `.cmd` shim makes
+ * the child a `cmd.exe` wrapper and Windows delivers no signals; elsewhere it
+ * sends `signal` to the child. Use it in place of `child.kill(signal)`.
+ */
+export { killPortableProcess as experimental_killPortableProcess } from "@bb/process-utils";
+
 // ---------------------------------------------------------------------------
 // 4. The domain vocabulary the protocol's payloads reference
 // ---------------------------------------------------------------------------

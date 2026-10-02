@@ -214,11 +214,11 @@ describe("provider maintenance kit", () => {
     ).toBe(`${npmBin}\\codex.CMD`);
     expect(
       selectResolvedExecutable({
-        candidates: [`${npmBin}\\codex`],
+        candidates: [`${npmBin}\\codex`, `${npmBin}\\codex.cmd`],
         platform: "win32",
         pathExt: ".EXE",
       }),
-    ).toBe(`${npmBin}\\codex`);
+    ).toBeNull();
   });
 
   it("keeps the first lookup result on macOS and Linux", () => {

@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { PassThrough, Writable, type Readable } from "node:stream";
 import {
   experimental_isProviderBridgeRecording,
+  experimental_killPortableProcess,
   experimental_readBoundedLines,
   experimental_recordProviderChildIo,
   experimental_spawnPortableProcess,
@@ -266,12 +267,12 @@ export class PiRpcChild {
       this.killEscalation = setTimeout(() => {
         this.killEscalation = null;
         if (this.exitInfo === null) {
-          this.child.kill("SIGKILL");
+          experimental_killPortableProcess(this.child, "SIGKILL");
         }
       }, SIGKILL_ESCALATION_MS);
       this.killEscalation.unref?.();
     }
-    this.child.kill("SIGTERM");
+    experimental_killPortableProcess(this.child, "SIGTERM");
   }
 
   respondToExtensionUi(

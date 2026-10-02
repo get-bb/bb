@@ -2,17 +2,20 @@ import { once } from "node:events";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import {
   execPortableFile,
+  killPortableProcess,
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
+  spawnPortableProcess,
   spawnManagedProcess,
 } from "../src/index.js";
 
@@ -167,5 +170,69 @@ it.runIf(process.platform === "win32")(
       null,
       "preserved-token",
     ]);
+  },
+);
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+it.runIf(process.platform === "win32")(
+  "ends the process behind a Windows .cmd shim when the portable child is killed",
+  async () => {
+    const directory = realpathSync(
+      mkdtempSync(join(tmpdir(), "bb-portable-kill-")),
+    );
+    onTestFinished(() => rmSync(directory, { force: true, recursive: true }));
+    const pidFile = join(directory, "pid.txt");
+    writeFileSync(
+      join(directory, "sleeper.cjs"),
+      'require("node:fs").writeFileSync(process.argv[2], String(process.pid)); setInterval(() => {}, 1000);',
+    );
+    writeFileSync(
+      join(directory, "sleeper.cmd"),
+      `@echo off\r\n"${process.execPath}" "%~dp0sleeper.cjs" %*\r\n`,
+    );
+    const child = spawnPortableProcess({
+      command: join(directory, "sleeper.cmd"),
+      args: [pidFile],
+      stdio: "ignore",
+    });
+    const sleeperPid = await vi.waitFor(
+      () => Number.parseInt(readFileSync(pidFile, "utf8"), 10),
+      { timeout: 10_000 },
+    );
+    onTestFinished(() => {
+      if (isProcessRunning(sleeperPid)) process.kill(sleeperPid);
+    });
+    expect(sleeperPid).not.toBe(child.pid);
+    expect(isProcessRunning(sleeperPid)).toBe(true);
+
+    killPortableProcess(child, "SIGTERM");
+
+    await vi.waitFor(() => expect(isProcessRunning(sleeperPid)).toBe(false), {
+      timeout: 10_000,
+    });
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "signals the portable child directly where signals exist",
+  async () => {
+    const child = spawnPortableProcess({
+      command: process.execPath,
+      args: ["-e", "setInterval(() => {}, 1000)"],
+      stdio: "ignore",
+    });
+    const exited = once(child, "exit");
+
+    killPortableProcess(child, "SIGTERM");
+
+    expect(await exited).toEqual([null, "SIGTERM"]);
   },
 );

@@ -39,9 +39,7 @@ export function selectResolvedExecutable(args: {
   return (
     candidates.find((candidate) =>
       extensions.includes(path.win32.extname(candidate).toLowerCase()),
-    ) ??
-    candidates[0] ??
-    null
+    ) ?? null
   );
 }
 

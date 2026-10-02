@@ -33,6 +33,17 @@ export function killProcessGroup(args: KillProcessGroupArgs): void {
   args.child.kill(args.signal);
 }
 
+export function killPortableProcess(
+  child: ChildProcess,
+  signal: NodeJS.Signals,
+): void {
+  if (process.platform === "win32") {
+    stopWindowsProcessTree(child).catch(() => undefined);
+    return;
+  }
+  child.kill(signal);
+}
+
 export function isProcessGroupAlive(child: {
   pid?: number | undefined;
 }): boolean {

@@ -1128,20 +1128,24 @@ hook; confirm the `{ threadId | null }` scope is the right key once bridges
 multiplex several threads over one child; and settle the recording entry
 shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
-## Portable provider spawn (`experimental_spawnPortableProcess`) (`@get-bb/plugin-sdk/provider-bridge`)
+## Portable provider spawn (`experimental_spawnPortableProcess`, `experimental_killPortableProcess`) (`@get-bb/plugin-sdk/provider-bridge`)
 
-**What it does.** Spawns a provider executable with the daemon's portable
-launcher instead of `node:child_process` `spawn`. It takes
-`{ command, args, cwd?, env?, stdio?, detached? }` and returns a `ChildProcess`.
-On Windows it resolves the command through PATH and PATHEXT, runs npm `.cmd`
-shims, and hides the console window; on macOS and Linux it behaves like
-`spawn`. The Codex and Pi bridges launch their CLIs with it.
+**What it does.** `experimental_spawnPortableProcess` spawns a provider
+executable with the daemon's portable launcher instead of `node:child_process`
+`spawn`. It takes `{ command, args, cwd?, env?, stdio?, detached? }` and returns
+a `ChildProcess`. On Windows it resolves the command through PATH and PATHEXT,
+runs npm `.cmd` shims, and hides the console window; on macOS and Linux it
+behaves like `spawn`. `experimental_killPortableProcess(child, signal)` ends
+such a child: on Windows it terminates the child's whole process tree, because a
+`.cmd` shim makes the child a `cmd.exe` wrapper and Windows delivers no signals;
+on macOS and Linux it sends `signal` to the child. The Codex and Pi bridges
+launch and stop their CLIs with the pair.
 
 **Audit before stabilizing.** Decide whether bridges should receive the managed
-process handle (awaited stop that ends the whole process tree) instead of a raw
-`ChildProcess`: on Windows a `.cmd` shim makes `child.kill()` end only the
-`cmd.exe` wrapper. Confirm argument quoting for `.cmd` targets with untrusted
-arguments, and whether `detached` belongs in the public shape.
+process handle (an awaited stop that reports whether the tree is confirmed gone)
+instead of a raw `ChildProcess` plus a fire-and-forget kill. Confirm argument
+quoting for `.cmd` targets with untrusted arguments, and whether `detached`
+belongs in the public shape.
 
 ## `experimental_BridgeRecoveryError`
 
