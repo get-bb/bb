@@ -832,6 +832,37 @@ describe("thread pruning", () => {
     },
   );
 
+  it("retains the latest context snapshot boundary through pruning between estimates", () => {
+    const f = setup();
+    try {
+      const usage = (sequence: number, values: object) =>
+        seed(f, sequence, {
+          type: "thread/contextWindowUsage/updated",
+          data: JSON.stringify({
+            contextWindowUsage: { estimated: true, ...values },
+          }),
+        });
+      usage(1, {
+        usedTokens: 128000,
+        modelContextWindow: 256000,
+        snapshot: {
+          contextWindowTokens: 256000,
+          autoCompactAtTokens: 223000,
+        },
+      });
+      usage(2, { usedTokens: 140000, modelContextWindow: 1000000 });
+      usage(3, { usedTokens: 150000, modelContextWindow: 1000000 });
+      cycle(f, "usage");
+      expect(sequences(f)).toEqual([1, 3]);
+      usage(4, { usedTokens: null, modelContextWindow: null });
+      usage(5, { usedTokens: 160000, modelContextWindow: 1000000 });
+      cycle(f, "usage");
+      expect(sequences(f)).toEqual([4, 5]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("restarts usage keeper discovery after a keeper disappears during a visit", () => {
     const f = setup();
     try {
