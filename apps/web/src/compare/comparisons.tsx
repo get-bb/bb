@@ -4,6 +4,7 @@ import supersetIcon from "../assets/competitors/superset.png";
 import {
   AgentSplit,
   PhoneApproval,
+  PluginsPanel,
   TeamCost,
   type BrandLogo,
 } from "./compare-visuals";
@@ -123,6 +124,24 @@ const BB_VS_SUPERSET: Comparison = {
             browser. For push alerts, add the bb iOS app, in beta on TestFlight.
           </p>
           <p>Superset keeps its phone app behind Pro.</p>
+        </>
+      ),
+    },
+    {
+      title: "Make bb yours, on every screen",
+      wide: false,
+      visual: <PluginsPanel />,
+      body: (
+        <>
+          <p>
+            Add a task board, GitHub, or your own tools from the plugin gallery,
+            or ask an agent to build one. A panel, a command, or a theme shows
+            up in bb as soon as it’s done.
+          </p>
+          <p>
+            Your plugins come with you. bb’s phone app runs your own bb, so
+            everything you add works on mobile too.
+          </p>
         </>
       ),
     },

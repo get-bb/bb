@@ -1,3 +1,9 @@
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import Rocket01Icon from "@hugeicons/core-free-icons/Rocket01Icon";
+import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+import Coffee01Icon from "@hugeicons/core-free-icons/Coffee01Icon";
+import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
@@ -161,36 +167,120 @@ export function PhoneApproval() {
     <div
       className="cmp-phone"
       role="img"
-      aria-label="A push notification on a phone, and the thread open to approve a command"
+      aria-label="A phone showing a bb push notification and the thread open to approve a command"
     >
-      <div className="cmp-push">
-        <span aria-hidden="true" className="bb-mark cmp-push-mark" />
-        <span className="cmp-push-body">
-          <span className="cmp-push-title">Add rate limiting to uploads</span>
-          <span className="cmp-push-text">Approve command: pnpm test</span>
-        </span>
-        <span className="cmp-push-time">now</span>
-      </div>
-      <div className="cmp-screen">
-        <div className="cmp-thread cmp-thread-waiting">
-          <ClaudeIcon className="cmp-prov" />
-          <span className="cmp-thread-title">Add rate limiting to uploads</span>
-          <span className="cmp-thread-dot" />
+      <div className="cmp-phone-screen">
+        <div className="cmp-status" aria-hidden="true">
+          <span>9:41</span>
+          <span className="cmp-status-icons">
+            <span className="cmp-signal">
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="cmp-battery" />
+          </span>
         </div>
-        <div className="cmp-thread cmp-thread-child">
-          <OpenAiIcon className="cmp-prov" />
-          <span className="cmp-thread-title">Review the rate limiter</span>
-          <span className="cmp-thread-done">done</span>
+        <span className="cmp-island" aria-hidden="true" />
+        <div className="cmp-push">
+          <span aria-hidden="true" className="bb-mark cmp-push-mark" />
+          <span className="cmp-push-body">
+            <span className="cmp-push-title">Add rate limiting to uploads</span>
+            <span className="cmp-push-text">Approve command: pnpm test</span>
+          </span>
+          <span className="cmp-push-time">now</span>
         </div>
-        <div className="cmp-approval">
-          <span className="cmp-approval-label">Approval needed</span>
-          <code className="cmp-approval-cmd">pnpm test</code>
-          <div className="cmp-approval-actions">
-            <span className="cmp-chip cmp-chip-primary">Allow once</span>
-            <span className="cmp-chip">Deny</span>
-            <span className="cmp-chip">Allow for session</span>
+        <div className="cmp-app-bar">
+          <span aria-hidden="true" className="bb-mark cmp-app-mark" />
+          Threads
+        </div>
+        <div className="cmp-screen">
+          <div className="cmp-thread cmp-thread-waiting">
+            <ClaudeIcon className="cmp-prov" />
+            <span className="cmp-thread-title">
+              Add rate limiting to uploads
+            </span>
+            <span className="cmp-thread-dot" />
+          </div>
+          <div className="cmp-thread cmp-thread-child">
+            <OpenAiIcon className="cmp-prov" />
+            <span className="cmp-thread-title">Review the rate limiter</span>
+            <span className="cmp-thread-done">done</span>
+          </div>
+          <div className="cmp-approval">
+            <span className="cmp-approval-label">Approval needed</span>
+            <code className="cmp-approval-cmd">pnpm test</code>
+            <div className="cmp-approval-actions">
+              <span className="cmp-chip cmp-chip-primary">Allow once</span>
+              <span className="cmp-chip">Deny</span>
+              <span className="cmp-chip">Allow for session</span>
+            </div>
           </div>
         </div>
+        <span className="cmp-home" aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
+const PLUGINS = [
+  { icon: KanbanIcon, name: "Tasks", detail: "A board for your agents’ work" },
+  { icon: GithubIcon, name: "GitHub", detail: "Issues, PRs, and checks" },
+  {
+    icon: Clock01Icon,
+    name: "Automations",
+    detail: "Run agents on a schedule",
+  },
+  { icon: Coffee01Icon, name: "Keep Awake", detail: "Keep your Mac running" },
+] as const;
+
+export function PluginsPanel() {
+  return (
+    <div
+      className="cmp-plugins"
+      role="img"
+      aria-label="bb's plugin list, with a plugin Claude Code just built, also available on your phone"
+    >
+      <div className="cmp-plugins-head">
+        <span className="cmp-plugins-title">Plugins</span>
+        <span className="cmp-plugins-count">5 installed</span>
+      </div>
+      <ul className="cmp-plugins-list">
+        <li className="cmp-plugin cmp-plugin-new">
+          <span className="cmp-plugin-ic">
+            <HugeiconsIcon icon={Rocket01Icon} />
+          </span>
+          <span className="cmp-plugin-body">
+            <span className="cmp-plugin-name">
+              Release tracker <span className="cmp-plugin-badge">New</span>
+            </span>
+            <span className="cmp-plugin-detail">
+              <ClaudeIcon className="cmp-plugin-by" />
+              Built by Claude Code just now
+            </span>
+          </span>
+          <span className="cmp-toggle" />
+        </li>
+        {PLUGINS.map((plugin) => (
+          <li key={plugin.name} className="cmp-plugin">
+            <span className="cmp-plugin-ic">
+              <HugeiconsIcon icon={plugin.icon} />
+            </span>
+            <span className="cmp-plugin-body">
+              <span className="cmp-plugin-name">{plugin.name}</span>
+              <span className="cmp-plugin-detail">{plugin.detail}</span>
+            </span>
+            <span className="cmp-toggle" />
+          </li>
+        ))}
+      </ul>
+      <div className="cmp-plugins-foot">
+        <HugeiconsIcon
+          icon={SmartPhone01Icon}
+          className="cmp-plugins-foot-ic"
+        />
+        Also on your phone
       </div>
     </div>
   );
