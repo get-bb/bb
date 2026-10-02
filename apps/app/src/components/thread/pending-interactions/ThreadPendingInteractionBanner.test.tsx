@@ -476,6 +476,19 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       });
       expect(plugin.style.maxHeight).toBe("");
       expect(native.style.maxHeight).toBe("300px");
+      for (const footerHeight of [980, 1000]) {
+        Object.defineProperty(footer, "offsetHeight", { value: footerHeight });
+        act(() => {
+          for (const observer of observers) observer();
+        });
+        expect(native.style.maxHeight).toBe("160px");
+      }
+      fireEvent.click(toggle);
+      act(() => {
+        for (const observer of observers) observer();
+      });
+      expect(native.style.maxHeight).toBe("160px");
+      expect(plugin.style.maxHeight).toBe("160px");
     } finally {
       vi.unstubAllGlobals();
     }
