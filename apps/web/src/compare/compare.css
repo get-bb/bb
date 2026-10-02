@@ -766,6 +766,10 @@
   margin-left: auto;
 }
 
+.cmp-composer .composer-row {
+  margin-top: 4px;
+}
+
 .cmp-composer-input {
   font-size: 13.5px;
   color: var(--ink-strong);

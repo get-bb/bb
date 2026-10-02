@@ -1,10 +1,12 @@
-import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
+import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import SentIcon from "@hugeicons/core-free-icons/SentIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import UserIcon from "@hugeicons/core-free-icons/UserIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -26,10 +28,17 @@ export function BrandMark({
   return <img src={logo.src} alt="" className={className} />;
 }
 
-function ThreadPill({ title }: { title: string }) {
+function ThreadPill({
+  title,
+  agent,
+}: {
+  title: string;
+  agent: "claude" | "codex";
+}) {
+  const Icon = agent === "claude" ? ClaudeIcon : OpenAiIcon;
   return (
     <span className="cmp-pill">
-      <HugeiconsIcon icon={UserIcon} className="cmp-pill-ic" />
+      <Icon className="cmp-pill-ic" />
       {title}
     </span>
   );
@@ -79,7 +88,7 @@ export function AgentSplit() {
             <span className="cmp-message-head">
               <HugeiconsIcon icon={Message01Icon} className="cmp-message-ic" />
               <span className="cmp-message-label">Message from</span>
-              <ThreadPill title="Review the rate limiter" />
+              <ThreadPill title="Review the rate limiter" agent="codex" />
             </span>
             <span className="cmp-message-body">
               Found 2 issues: the limiter keys on the socket IP, not
@@ -93,16 +102,27 @@ export function AgentSplit() {
         </ol>
         <div className="cmp-composer">
           <span className="cmp-composer-head">
-            <HugeiconsIcon
-              icon={BubbleChatAddIcon}
-              className="cmp-composer-ic"
-            />
+            <OpenAiIcon className="cmp-composer-ic" />
             Handoff to new thread
             <HugeiconsIcon icon={Cancel01Icon} className="cmp-composer-x" />
           </span>
           <span className="cmp-composer-input">
             Write release notes for{" "}
-            <ThreadPill title="Add rate limiting to uploads" />
+            <ThreadPill title="Add rate limiting to uploads" agent="claude" />
+          </span>
+          <span className="composer-row">
+            <span className="model">
+              <OpenAiIcon className="model-ic" />
+              Codex
+              <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
+            </span>
+            <span className="composer-actions" aria-hidden="true">
+              <HugeiconsIcon icon={AttachmentIcon} className="composer-clip" />
+              <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
+              <span className="send-btn">
+                <HugeiconsIcon icon={SentIcon} className="send-ic" />
+              </span>
+            </span>
           </span>
         </div>
       </section>
@@ -122,7 +142,7 @@ export function AgentSplit() {
           </li>
           <li className="cmp-agent" style={{ animationDelay: "3s" }}>
             Found 2 issues. Sent them to{" "}
-            <ThreadPill title="Add rate limiting to uploads" />.
+            <ThreadPill title="Add rate limiting to uploads" agent="claude" />.
           </li>
         </ol>
       </section>
