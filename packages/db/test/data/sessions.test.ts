@@ -49,6 +49,26 @@ describe("sessions", () => {
     expect(seenAtClose!).toBeGreaterThanOrEqual(seenAtHeartbeat!);
   });
 
+  it("rolls back the lease renewal if updating host liveness fails", () => {
+    const { db, host } = setup();
+    const session = openSession(db, {
+      hostId: host.id,
+      instanceId: "inst-1",
+      hostName: "test-host",
+      dataDir: "/tmp/test-host-data",
+      protocolVersion: 1,
+      heartbeatIntervalMs: 5_000,
+      leaseTimeoutMs: 30_000,
+    });
+    db.$client.exec(`CREATE TRIGGER reject_host_liveness BEFORE UPDATE ON hosts
+      BEGIN SELECT RAISE(ABORT, 'host update failed'); END`);
+    expect(() =>
+      heartbeatSession(db, session.id, session.leaseExpiresAt + 10_000),
+    ).toThrow("host update failed");
+    expect(getSessionById(db, { sessionId: session.id })).toEqual(session);
+    db.$client.close();
+  });
+
   it("closes a session", () => {
     const { db, host } = setup();
 
