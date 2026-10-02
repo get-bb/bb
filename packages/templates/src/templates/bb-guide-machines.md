@@ -276,7 +276,8 @@ if the service is missing; until that succeeds (it needs Node.js 22.19 or newer
 on the PATH), the app keeps that machine connected only while it is open and
 explains why once. After a move from `bb-app`, or to retry by hand,
 `bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` installs
-the same service: it needs
+the same service on macOS and Linux (on Windows it refuses, because the service
+is launchd or systemd): it needs
 Node.js 22.19 or newer on the PATH, stops bb running from that directory, and
 runs `install-machine.sh --adopt --data-dir <dir>`, which keeps the machine ID,
 downloads the new server's bb-app package, and installs the launchd or systemd
