@@ -517,8 +517,15 @@ export function createStorage(bb: BbPluginApi) {
       : [hostId];
   }
   async function startClearLargeFiles({ hostId }: { hostId: string | null }) {
-    const targets = await largeFileTargets(hostId);
-    for (const target of targets) {
+    const candidates = await largeFileTargets(hostId);
+    const threads = await readThreads(bb, lifecycle.signal);
+    const eligible = new Set(
+      threads.filter(clearableArchived).map((thread) => thread.id),
+    );
+    const targets = candidates.filter((target) =>
+      read(target)?.largeFiles.some((entry) => eligible.has(entry.name)),
+    );
+    for (const target of candidates) {
       await requireHost(target, true);
       if (!read(target))
         throw new Error("Scan the machine before clearing large files");

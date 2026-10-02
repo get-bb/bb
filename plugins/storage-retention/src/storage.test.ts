@@ -421,6 +421,14 @@ it("deletes only large files from archived threads on scanned online machines, k
           ).largeFileCleanup,
       )
       .toEqual({ state: "completed", clearedFiles: 1, clearedBytes: large });
+    pendingCleanup = null;
+    await host.harness.callRpc("startClearLargeFiles", { hostId: null });
+    expect(pendingCleanup).toBeNull();
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).largeFileCleanup,
+    ).toEqual({ state: "completed", clearedFiles: 1, clearedBytes: large });
     expect(
       await host.harness.callRpc("clearLargeFiles", { hostId: null }),
     ).toEqual({ clearedFiles: 0, clearedBytes: 0 });

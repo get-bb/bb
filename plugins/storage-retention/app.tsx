@@ -258,12 +258,65 @@ function StoragePage({
         : totals,
     { threadCount: 0, fileCount: 0, bytes: 0 },
   );
+  const cleanupStatuses = hosts.filter((host) => {
+    const status = host.largeFileCleanup;
+    return (
+      (hostId === null || host.hostId === hostId) &&
+      status.state !== "idle" &&
+      (status.state !== "completed" || status.clearedFiles > 0)
+    );
+  });
+  const cleanupRunning = cleanupStatuses.some(
+    (host) => host.largeFileCleanup.state === "running",
+  );
+  const cleanupStatus = cleanupStatuses.length > 0 && (
+    <div className="space-y-2 border-t border-border pt-3">
+      {cleanupStatuses.map((host) => {
+        const status = host.largeFileCleanup;
+        if (status.state === "idle") return null;
+        return (
+          <p
+            key={host.hostId}
+            role={status.state === "failed" ? "alert" : "status"}
+            className={cn(
+              "flex items-center gap-2 text-xs",
+              status.state === "failed"
+                ? "text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            {status.state === "running" ? (
+              <Icon name="Spinner" className="size-3.5 shrink-0 animate-spin" />
+            ) : status.state === "completed" ? (
+              <Icon name="Check" className="size-3.5 shrink-0" />
+            ) : null}
+            {hostId === null &&
+              `${machines[host.hostId]?.name ?? host.hostId}: `}
+            {status.state === "running"
+              ? "Deleting large files…"
+              : status.state === "failed"
+                ? status.message
+                : `Deleted ${plural(status.clearedFiles, "large file")} · ${bytes(status.clearedBytes)} freed`}
+          </p>
+        );
+      })}
+    </div>
+  );
   const suggestions =
-    archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES
+    archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES ||
+    cleanupStatuses.length > 0
       ? [
           {
-            title: `Free up ${bytes(archivedLargeFiles.bytes)} from archived threads`,
-            description: `${plural(archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more sit in the thread storage of ${plural(archivedLargeFiles.threadCount, "archived thread")}. Deleting them keeps smaller files like reports, and conversation history isn’t affected.`,
+            title: cleanupRunning
+              ? "Deleting large files"
+              : archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES
+                ? `Free up ${bytes(archivedLargeFiles.bytes)} from archived threads`
+                : "Large-file cleanup",
+            description:
+              cleanupRunning ||
+              archivedLargeFiles.bytes < LARGE_FILE_NUDGE_MIN_BYTES
+                ? "Smaller files and conversation history are kept."
+                : `${plural(archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more sit in the thread storage of ${plural(archivedLargeFiles.threadCount, "archived thread")}. Deleting them keeps smaller files like reports, and conversation history isn’t affected.`,
             action: "Delete large files",
             cleanup: largeFilesCleanup(null, archivedLargeFiles),
           },
@@ -397,39 +450,20 @@ function StoragePage({
         {error && !(cleanup && actionError) && (
           <div
             role="alert"
-            className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
           >
-            {error}
+            <p>{error}</p>
+            {loadError && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refresh()}
+              >
+                Try again
+              </Button>
+            )}
           </div>
         )}
-        {hosts
-          .filter((host) => hostId === null || host.hostId === hostId)
-          .map((host) => {
-            const cleanup = host.largeFileCleanup;
-            if (cleanup.state === "idle") return null;
-            return (
-              <p
-                key={host.hostId}
-                role={cleanup.state === "failed" ? "alert" : "status"}
-                className={cn(
-                  "flex items-center gap-2 text-sm",
-                  cleanup.state === "failed"
-                    ? "text-destructive"
-                    : "text-muted-foreground",
-                )}
-              >
-                {cleanup.state === "running" && (
-                  <Icon name="Loader2" className="size-4 animate-spin" />
-                )}
-                {machines[host.hostId]?.name ?? host.hostId}:{" "}
-                {cleanup.state === "running"
-                  ? "Deleting large files in the background… You can leave this page."
-                  : cleanup.state === "failed"
-                    ? `Large-file cleanup failed: ${cleanup.message}`
-                    : `Deleted ${plural(cleanup.clearedFiles, "large file")} (${bytes(cleanup.clearedBytes)}).`}
-              </p>
-            );
-          })}
         {notice && (
           <p role="status" className="flex items-center gap-2 text-sm">
             <Icon name="Check" className="size-4" />
@@ -593,6 +627,7 @@ function StoragePage({
                         </Button>
                       </div>
                       {cleanup?.key === "large-files" && cleanupConfirmation}
+                      {cleanupStatus}
                     </div>
                     <div className="space-y-3 px-4 py-3.5">
                       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
@@ -709,10 +744,10 @@ function StoragePage({
                           key={thread.threadId}
                           className="flex flex-col gap-2 px-4 py-2"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
+                            <div className="flex w-full min-w-0 items-center gap-1.5 sm:w-auto sm:flex-1">
                               <button
-                                className="min-w-0 truncate text-left text-sm font-normal hover:underline"
+                                className="line-clamp-2 min-w-0 text-left text-sm font-normal hover:underline sm:truncate"
                                 title={thread.title}
                                 onClick={() =>
                                   navigate.toThread(thread.threadId)
@@ -726,7 +761,7 @@ function StoragePage({
                                 <Pill>archived</Pill>
                               ) : null}
                             </div>
-                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                            <span className="mr-auto shrink-0 text-xs tabular-nums text-muted-foreground sm:mr-0">
                               {bytes(thread.sizeBytes)}
                             </span>
                             <Button
@@ -796,13 +831,18 @@ function StoragePage({
                     variant="outline"
                     size="sm"
                     className="shrink-0"
-                    disabled={busy || cleanup !== null}
+                    disabled={
+                      busy ||
+                      cleanup !== null ||
+                      archivedLargeFiles.fileCount === 0
+                    }
                     onClick={() => setCleanup(suggestion.cleanup)}
                   >
                     {suggestion.action}
                   </Button>
                 </div>
                 {cleanup?.key === suggestion.cleanup.key && cleanupConfirmation}
+                {cleanupStatus}
               </div>
             ))}
             <section className="space-y-3">
@@ -1141,7 +1181,7 @@ function MachineRow({
   ];
   return (
     <div
-      className="group flex w-full cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+      className="group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/40 sm:flex"
       onClick={(event) => {
         if (
           event.target instanceof Element &&
@@ -1151,7 +1191,7 @@ function MachineRow({
         onOpen();
       }}
     >
-      <span className="min-w-0 flex-1 space-y-1">
+      <span className="col-span-3 min-w-0 flex-1 space-y-1">
         <span className="flex min-w-0 items-center gap-1.5">
           <Icon
             name="Laptop"
@@ -1175,7 +1215,7 @@ function MachineRow({
         </span>
       </span>
       {report && (
-        <span className="shrink-0 text-right">
+        <span className="shrink-0 text-left sm:text-right">
           <span className="block text-sm font-normal tabular-nums">
             {bytes(threadStorageBytes(report))}
           </span>
@@ -1189,7 +1229,7 @@ function MachineRow({
       <Button
         variant="ghost"
         size="sm"
-        className="shrink-0"
+        className="col-start-2 shrink-0"
         aria-label={`Scan ${machine?.name ?? host.hostId}`}
         disabled={busy || scanning || machine?.status !== "connected"}
         onClick={onScan}
@@ -1198,7 +1238,7 @@ function MachineRow({
       </Button>
       <Icon
         name="ChevronRight"
-        className="size-4 shrink-0 text-muted-foreground"
+        className="col-start-3 size-4 shrink-0 text-muted-foreground"
       />
     </div>
   );
