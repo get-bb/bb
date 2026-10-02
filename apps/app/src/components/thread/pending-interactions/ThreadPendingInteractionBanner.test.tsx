@@ -412,6 +412,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       const question: PendingInteraction = {
         ...planReview,
         id: "pint_height_question",
+        resolution: null,
         payload: {
           kind: "user_question",
           questions: [
