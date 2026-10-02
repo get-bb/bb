@@ -257,6 +257,7 @@ export async function buildPluginServer(
             );
             build.onResolve({ filter: BARE_PACKAGE_FILTER }, async (args) => {
               if (
+                args.kind === "entry-point" ||
                 args.pluginData === PLUGIN_RUNTIME_FALLBACK_RESOLVE_MARK ||
                 PLUGIN_SDK_SUBPATH_FILTER.test(args.path) ||
                 /^zod($|\/)/.test(args.path) ||
