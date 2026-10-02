@@ -2396,7 +2396,69 @@ describe("acp bridge", () => {
     expect(agentMessageTexts().join("")).toContain("echo:steered");
     expect(threadEventsOfType("turn/started")).toHaveLength(1);
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
+    expect(notifications("session/replaced")).toHaveLength(0);
   });
+
+  it.each(["0", "1"])(
+    "rebuilds a stuck agent after a steer cancellation error (session/load=%s)",
+    async (loadSession) => {
+      const promptLog = join(workspaceDir, "prompts.jsonl");
+      const { providerThreadId } = await startThread({
+        envVars: {
+          FAKE_ACP_LOAD_SESSION: loadSession,
+          FAKE_ACP_CANCEL_ERROR: "1",
+          FAKE_ACP_PROMPT_LOG: promptLog,
+        },
+      });
+      await waitForResponse(
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [{ type: "text", text: "hang", mentions: [] }],
+        }),
+      );
+      await waitFor(
+        () => (loggedPrompts(promptLog).includes("hang") ? true : undefined),
+        "pending prompt",
+      );
+      await waitForResponse(
+        sendTurnRequest("turn/steer", providerThreadId, {
+          expectedTurnId: "turn-1",
+          clientRequestId: "creq_bcdefghjkm",
+          input: [{ type: "text", text: "steered", mentions: [] }],
+        }),
+      );
+      expect(await waitForTurnCompleted()).toMatchObject({
+        status: "failed",
+      });
+      expect(notifications("error").at(-1)?.params).toMatchObject({
+        message:
+          "Internal error: 'NoneType' object has no attribute 'startswith'",
+      });
+      expect(agentMessageTexts()).not.toContain("echo:steered");
+      expect(
+        emittedDeltaKinds().filter((kind) => kind === "input.accepted"),
+      ).toHaveLength(1);
+
+      await waitForResponse(
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [{ type: "text", text: "follow-up", mentions: [] }],
+        }),
+      );
+      await waitFor(
+        () => threadEventsOfType("turn/completed")[1],
+        "follow-up completion",
+      );
+      expect(threadEventsOfType("turn/completed")[1]).toMatchObject({
+        status: "completed",
+      });
+      expect(agentMessageTexts()).toContain("echo:follow-up");
+      expect(agentMessageTexts()).not.toContain(
+        "Queued for the next turn. (1 queued)",
+      );
+      expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+        contextLost: loadSession === "0",
+      });
+    },
+  );
 
   it("delivers stacked steers on the same turn", async () => {
     const { providerThreadId } = await startThread();

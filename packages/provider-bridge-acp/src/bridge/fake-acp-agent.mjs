@@ -127,6 +127,7 @@ const fakeModels = [
 ];
 
 let activePromptId = null;
+let stuckAfterCancel = false;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
@@ -412,6 +413,15 @@ function captureMcpServers(message) {
 }
 
 async function handlePrompt(message) {
+  if (stuckAfterCancel) {
+    notifyUpdate(messageChunk("Queued for the next turn. (1 queued)"));
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { stopReason: "end_turn" },
+    });
+    return;
+  }
   activePromptId = message.id;
   const text = promptText(message.params?.prompt);
   if (process.env.FAKE_ACP_PROMPT_LOG) {
@@ -845,6 +855,19 @@ async function handleMessage(message) {
       if (activePromptId !== null) {
         const id = activePromptId;
         activePromptId = null;
+        if (process.env.FAKE_ACP_CANCEL_ERROR === "1") {
+          stuckAfterCancel = true;
+          send({
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: -32603,
+              message:
+                "Internal error: 'NoneType' object has no attribute 'startswith'",
+            },
+          });
+          return;
+        }
         send({ jsonrpc: "2.0", id, result: { stopReason: "cancelled" } });
       }
       return;

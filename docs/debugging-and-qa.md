@@ -12,6 +12,23 @@
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+## ACP Steer Cancellation Failures
+
+ACP steering cancels the active prompt before submitting the follow-up. If that
+prompt returns an error during cancellation, BB marks the session for rebuilding
+before the next turn. The replacement process attempts `session/load`; providers
+without working session restoration start fresh and report the loss of in-agent
+history. The failed turn stays failed, and an unsent steer is not acknowledged as
+accepted.
+
+Older Hermes adapters can throw `NoneType.startswith` during cancellation and
+leave their internal session marked running. Update Hermes to include
+[the null-response fix](https://github.com/NousResearch/hermes-agent/commit/8f0322da5b82029f3bc4d16fbaa2c986299abfc6)
+and [the running-state cleanup](https://github.com/NousResearch/hermes-agent/commit/bccd45618c16b605822dd179cd0399abdecaf698),
+then restart its retained process with `bb thread stop <thread-id>` before sending
+a new message. BB's recovery prevents reuse after a cancellation error; it does
+not repair the older adapter's failing turn.
+
 ## Native Draft Rollback
 
 Migration `0132_thread_drafts` now only adds the temporary `threads.draft`
