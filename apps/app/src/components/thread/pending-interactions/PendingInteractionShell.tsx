@@ -105,7 +105,9 @@ export function PendingInteractionShell({
       data-expanded={isExpanded ? "" : undefined}
       onKeyDown={handleKeyDown}
       style={
-        availableHeight === null ? undefined : { maxHeight: availableHeight }
+        availableHeight === null
+          ? undefined
+          : { maxHeight: Math.max(160, availableHeight) }
       }
       className="@container mb-2 flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-lg border border-border bg-surface-recessed text-xs text-muted-foreground"
     >
