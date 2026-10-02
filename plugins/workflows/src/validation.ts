@@ -1,5 +1,6 @@
 import Ajv from "ajv";
 import { z } from "zod";
+import { serviceTierSchema, type ServiceTier } from "@bb/domain";
 import { canonicalizeJson } from "./cache.js";
 import type {
   JsonObject,
@@ -8,11 +9,16 @@ import type {
   WorkflowAgentOptions,
 } from "./types.js";
 
+export function isServiceTier(value: string): value is ServiceTier {
+  return serviceTierSchema.safeParse(value).success;
+}
+
 export const MAX_WORKFLOW_SOURCE_BYTES = 512 * 1024;
 export const AGENT_OPTION_KEYS = new Set([
   "provider",
   "model",
   "reasoningLevel",
+  "serviceTier",
   "outputSchema",
   "schema",
   "title",
@@ -126,6 +132,7 @@ const storedAgentOptionsSchema = z
       })
       .strict()
       .nullable(),
+    serviceTier: serviceTierSchema.nullable().default(null),
     outputSchema: jsonSchemaValueSchema.nullable(),
     title: z.string().min(1).nullable(),
     phase: z.string().min(1).nullable().default(null),
@@ -357,6 +364,7 @@ export function parseAgentOptions(
   if (value === undefined) {
     return {
       selection: null,
+      serviceTier: null,
       outputSchema: null,
       title: null,
       phase: null,
@@ -372,6 +380,14 @@ export function parseAgentOptions(
   const provider = optionalNonEmptyString(value, "provider");
   const model = optionalNonEmptyString(value, "model");
   const reasoningLevel = optionalNonEmptyString(value, "reasoningLevel");
+  let serviceTier: ServiceTier | null = null;
+  if (value.serviceTier !== undefined) {
+    const result = serviceTierSchema.safeParse(value.serviceTier);
+    if (!result.success) {
+      throw new Error("agent options.serviceTier must be a valid ServiceTier");
+    }
+    serviceTier = result.data;
+  }
   const selectionCount = [provider, model, reasoningLevel].filter(
     (item) => item !== null,
   ).length;
@@ -415,6 +431,7 @@ export function parseAgentOptions(
       provider !== null && model !== null && reasoningLevel !== null
         ? { provider, model, reasoningLevel }
         : null,
+    serviceTier,
     outputSchema,
     title: title ?? label,
     phase: optionalNonEmptyString(value, "phase"),

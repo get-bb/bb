@@ -103,6 +103,17 @@ describe("workflow parser", () => {
     ).not.toThrow();
   });
 
+  it("validates nonempty literal service tiers in agent options", () => {
+    expect(() =>
+      parseWorkflowSource(
+        `${META}\nreturn agent("x", { serviceTier: "fast" });`,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      parseWorkflowSource(`${META}\nreturn agent("x", { serviceTier: "" });`),
+    ).toThrow("serviceTier");
+  });
+
   it("parses strict literal phase metadata in declaration order", () => {
     const parsed = parseWorkflowSource(`export const meta = {
       name: "phased-workflow",

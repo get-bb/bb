@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ServiceTier } from "@bb/domain";
 import type { JsonSchema, JsonValue } from "./types.js";
 
 export const WORKFLOW_CALL_CACHE_VERSION: "workflow-call-cache-v1" =
@@ -22,6 +23,7 @@ export interface WorkflowCallCacheInput {
   previousCacheKey: string | null;
   prompt: string;
   selection: ResolvedWorkflowExecutionSelection;
+  serviceTier?: ServiceTier;
   outputSchema: JsonSchema | null;
   executionSemantics: WorkflowCallExecutionSemantics;
 }
@@ -180,6 +182,9 @@ export function computeWorkflowCallCacheKey(
       reasoningLevel: input.selection.reasoningLevel,
       permissionMode: input.selection.permissionMode,
     },
+    ...(input.serviceTier === undefined
+      ? {}
+      : { serviceTier: input.serviceTier }),
     outputSchema: input.outputSchema,
     executionSemantics: {
       workerPromptVersion: input.executionSemantics.workerPromptVersion,

@@ -10,6 +10,7 @@ import {
   AGENT_OPTION_KEYS,
   assertValidJsonSchema,
   assertValidWorkflowSourceText,
+  isServiceTier,
 } from "./validation.js";
 import { canonicalizeJson } from "./cache.js";
 
@@ -143,6 +144,13 @@ function inspectAgentOptions(
   }
 
   const selectionKeys = ["provider", "model", "reasoningLevel"] as const;
+  const serviceTier = properties.get("serviceTier");
+  if (
+    serviceTier?.type === "Literal" &&
+    (typeof serviceTier.value !== "string" || !isServiceTier(serviceTier.value))
+  ) {
+    throw new Error("agent options.serviceTier must be a valid ServiceTier");
+  }
   const presentCount = selectionKeys.filter((key) =>
     properties.has(key),
   ).length;

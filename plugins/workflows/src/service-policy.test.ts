@@ -1,3 +1,4 @@
+import type { AvailableModel } from "@bb/domain";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -68,6 +69,8 @@ interface WorkerState {
 function setup(
   settings: WorkflowSettings = DEFAULT_WORKFLOW_SETTINGS,
   files: Record<string, string> = {},
+  supportsServiceTier = true,
+  supportedServiceTiers: AvailableModel["supportedServiceTiers"] = undefined,
 ) {
   let childCount = 0;
   let originDeleted = false;
@@ -147,17 +150,21 @@ function setup(
             capabilities: {
               supportsThreadArchive: true,
               supportsThreadRename: true,
-              supportsServiceTier: true,
+              supportsServiceTier,
               supportsNativeUserQuestion: false,
               supportsFork: true,
               permissionModes: ["full"],
             },
+            serviceTiers: [
+              { id: "default", label: "Default" },
+              { id: "fast", label: "Fast" },
+            ],
             composerActions: [],
           },
         ],
         models: async () => ({
           providers: [],
-          models: [model()],
+          models: [{ ...model(), supportedServiceTiers }],
           selectedOnlyModels: [],
           modelLoadError: null,
         }),
@@ -265,6 +272,98 @@ function expiredRunWithWorkers(
 }
 
 describe("workflow service policy integration", () => {
+  it("passes explicit service tiers to child threads and omits the field otherwise", async () => {
+    for (const [options, expectedTier, supportsServiceTier] of [
+      ['{ serviceTier: "fast" }', "fast", true],
+      ['{ serviceTier: "default" }', "default", true],
+      ["{}", undefined, true],
+      ["{}", undefined, false],
+    ] as const) {
+      const test = setup(DEFAULT_WORKFLOW_SETTINGS, {}, supportsServiceTier);
+      harnesses.push(test.harness);
+      const run = await test.start(
+        source(`return await agent("tier", ${options});`),
+      );
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      await eventually(() =>
+        expect(test.harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
+      );
+      const spawnInput = test.harness.sdk.callsTo("threads.spawn")[0]![0] as {
+        serviceTier?: string;
+      };
+      if (expectedTier === undefined)
+        expect(spawnInput).not.toHaveProperty("serviceTier");
+      else expect(spawnInput.serviceTier).toBe(expectedTier);
+      test.service.onThreadIdle("child-1", "done");
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+      );
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("rejects service tiers for an inherited provider that does not support them before spawning", async () => {
+    const test = setup(DEFAULT_WORKFLOW_SETTINGS, {}, false);
+    harnesses.push(test.harness);
+    const run = await test.start(
+      source('return await agent("tier", { serviceTier: "fast" });'),
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    await eventually(() =>
+      expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+    );
+    expect(test.childCount()).toBe(0);
+    expect(test.harness.sdk.callsTo("threads.spawn")).toHaveLength(0);
+    expect(getRunRequired(test.db, run.id).error).toContain(
+      'Service tier "fast" is not supported by codex/gpt-test',
+    );
+    controller.abort();
+    await worker;
+  });
+
+  it("uses model tiers ahead of provider tiers and rejects unavailable model tiers", async () => {
+    for (const [tier, expectedStatus] of [
+      ["priority", "succeeded"],
+      ["fast", "failed"],
+    ] as const) {
+      const test = setup(DEFAULT_WORKFLOW_SETTINGS, {}, true, [
+        { id: "priority" },
+      ]);
+      harnesses.push(test.harness);
+      const run = await test.start(
+        source(`return await agent("tier", { serviceTier: "${tier}" });`),
+      );
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        if (expectedStatus === "succeeded") {
+          await eventually(() =>
+            expect(test.harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
+          );
+          expect(
+            test.harness.sdk.callsTo("threads.spawn")[0]![0],
+          ).toMatchObject({ serviceTier: tier });
+          test.service.onThreadIdle("child-1", "done");
+        }
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe(expectedStatus),
+        );
+        if (expectedStatus === "failed") {
+          expect(test.harness.sdk.callsTo("threads.spawn")).toHaveLength(0);
+          expect(getRunRequired(test.db, run.id).error).toContain(
+            'Service tier "fast" is not supported',
+          );
+        }
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    }
+  });
+
   const harnesses: Array<ReturnType<typeof setup>["harness"]> = [];
 
   afterEach(async () => {

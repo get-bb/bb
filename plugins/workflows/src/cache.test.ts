@@ -65,6 +65,12 @@ describe("workflow call cache identity", () => {
     );
   });
 
+  it("includes a requested service tier in the call cache key", () => {
+    expect(
+      computeWorkflowCallCacheKey({ ...cacheInput(), serviceTier: "fast" }),
+    ).not.toBe(computeWorkflowCallCacheKey(cacheInput()));
+  });
+
   it.each([
     [
       "prompt",

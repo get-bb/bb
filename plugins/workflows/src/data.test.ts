@@ -124,6 +124,7 @@ describe("workflow durable data", () => {
         phase: null,
         outputSchema: null,
         selection: null,
+        serviceTier: null,
       },
       selection: resolvedSelection,
       replay: null,
@@ -197,6 +198,7 @@ describe("workflow durable data", () => {
         phase: null,
         outputSchema: null,
         selection: null,
+        serviceTier: null,
       },
       selection: resolvedSelection,
       replay: null,
@@ -230,6 +232,7 @@ describe("workflow durable data", () => {
           phase: null,
           outputSchema: null,
           selection: null,
+          serviceTier: null,
         },
         selection: resolvedSelection,
         replay: null,
@@ -293,6 +296,7 @@ describe("workflow durable data", () => {
       prompt: "inspect",
       options: {
         selection: null,
+        serviceTier: null,
         outputSchema: null,
         title: null,
         phase: null,
@@ -310,7 +314,7 @@ describe("workflow durable data", () => {
     expect(getCall(db, run.id, 0)).toMatchObject({
       cacheKey: "cache",
       optionsJson:
-        '{"selection":null,"outputSchema":null,"title":null,"phase":null}',
+        '{"selection":null,"serviceTier":null,"outputSchema":null,"title":null,"phase":null}',
       resolvedProvider: "codex",
       resolvedModel: "gpt-test",
       resolvedReasoningLevel: "medium",
@@ -331,6 +335,7 @@ describe("workflow durable data", () => {
       prompt: "inspect",
       options: {
         selection: null,
+        serviceTier: null,
         outputSchema: null,
         title: null,
         phase: null,
@@ -374,6 +379,7 @@ describe("workflow durable data", () => {
         prompt: `inspect ${callIndex}`,
         options: {
           selection: null,
+          serviceTier: null,
           outputSchema: null,
           title: null,
           phase: null,
@@ -430,6 +436,7 @@ describe("workflow durable data", () => {
       prompt: "inspect",
       options: {
         selection: null,
+        serviceTier: null,
         outputSchema: null,
         title: null,
         phase: null,
@@ -459,6 +466,7 @@ describe("workflow durable data", () => {
       prompt: "return null",
       options: {
         selection: null,
+        serviceTier: null,
         outputSchema: null,
         title: null,
         phase: null,
@@ -485,6 +493,7 @@ describe("workflow durable data", () => {
       prompt: "answer",
       options: {
         selection: null,
+        serviceTier: null,
         outputSchema: { type: "object" },
         title: null,
         phase: null,
@@ -523,6 +532,7 @@ describe("workflow durable data", () => {
       prompt: "answer",
       options: {
         selection: null,
+        serviceTier: null,
         outputSchema: { type: "number" },
         title: null,
         phase: null,
@@ -588,6 +598,7 @@ describe("workflow durable data", () => {
       prompt: "slow",
       options: {
         selection: null,
+        serviceTier: null,
         outputSchema: null,
         title: null,
         phase: null,
@@ -637,6 +648,7 @@ describe("workflow durable data", () => {
           prompt: "state matrix",
           options: {
             selection: null,
+            serviceTier: null,
             outputSchema: null,
             title: null,
             phase: null,
@@ -663,6 +675,7 @@ describe("workflow durable data", () => {
         prompt: "state matrix",
         options: {
           selection: null,
+          serviceTier: null,
           outputSchema: null,
           title: null,
           phase: null,

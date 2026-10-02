@@ -115,12 +115,18 @@ await agent("Inspect the implementation", {
   provider: "codex",
   model: "gpt-5.6-sol",
   reasoningLevel: "medium",
+  serviceTier: "fast",
 });
 ```
 
 BB validates the tuple against the live provider/model catalog immediately
 before spawning the worker. A provider disappearing between authoring and
 execution fails the call instead of silently substituting another model.
+`serviceTier` accepts a nonempty tier ID supported by the selected model or
+provider (for example, `"fast"` or `"default"`). Model tier declarations take
+precedence over provider tiers. Unsupported tiers fail before spawning; omit
+it to use normal project tier selection. Explicit tiers participate in resume
+cache identity.
 
 ## Structured agent results
 

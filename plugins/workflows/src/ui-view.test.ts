@@ -31,6 +31,7 @@ function call(index: number, phase: string | null): WorkflowCallInspection {
     finishedAt: index + 1,
     options: {
       selection: null,
+      serviceTier: null,
       outputSchema: null,
       title: `Agent ${index}`,
       phase,

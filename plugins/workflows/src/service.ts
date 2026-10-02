@@ -753,6 +753,17 @@ export function createWorkflowService(
         `Model ${JSON.stringify(requested.model)} is not available for provider ${requested.provider}`,
       );
     }
+    if (options.serviceTier !== null) {
+      const tiers = model.supportedServiceTiers ?? provider.serviceTiers ?? [];
+      if (
+        !provider.capabilities.supportsServiceTier ||
+        !tiers.some((tier) => tier.id === options.serviceTier)
+      ) {
+        throw new Error(
+          `Service tier ${JSON.stringify(options.serviceTier)} is not supported by ${requested.provider}/${requested.model}`,
+        );
+      }
+    }
     if (
       !model.supportedReasoningEfforts.some(
         (effort) => effort.reasoningEffort === requested.reasoningLevel,
@@ -947,6 +958,9 @@ export function createWorkflowService(
           providerId: selection.providerId,
           model: selection.model,
           reasoningLevel: selection.reasoningLevel,
+          ...(options.serviceTier === null
+            ? {}
+            : { serviceTier: options.serviceTier }),
           permissionMode: selection.permissionMode,
           visibility: "hidden",
         });
@@ -1373,6 +1387,9 @@ export function createWorkflowService(
             previousCacheKey: previousKey,
             prompt,
             selection,
+            ...(options.serviceTier === null
+              ? {}
+              : { serviceTier: options.serviceTier }),
             outputSchema: options.outputSchema,
             executionSemantics: {
               workerPromptVersion: WORKER_PROMPT_VERSION,

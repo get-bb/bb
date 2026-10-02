@@ -241,7 +241,10 @@ existing `title` and `outputSchema`. `label` resolves to canonical `title`, and
 `schema` resolves to canonical `outputSchema`. Both spellings of an alias may
 be provided only when structurally identical; schema object key order is
 ignored.
-`provider`, `model`, and `reasoningLevel` remain all-or-none. Title/label/phase
+`provider`, `model`, and `reasoningLevel` remain all-or-none. `serviceTier` may
+choose the spawned agent's service tier using an ID supported by the selected
+model or provider (for example, `"fast"` or `"default"`);
+omitting it preserves the project's normal tier selection. Title/label/phase
 are display-only and do not participate in resume cache identity. The canonical
 output schema does participate, regardless of which accepted spelling supplied
 it.

@@ -1,3 +1,5 @@
+import type { ServiceTier } from "@bb/domain";
+
 type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
   | JsonPrimitive
@@ -15,6 +17,7 @@ interface ExplicitModelSelection {
 
 export interface WorkflowAgentOptions {
   selection: ExplicitModelSelection | null;
+  serviceTier: ServiceTier | null;
   outputSchema: JsonSchema | null;
   title: string | null;
   phase: string | null;

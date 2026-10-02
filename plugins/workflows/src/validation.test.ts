@@ -126,6 +126,7 @@ describe("workflow agent option validation", () => {
       }),
     ).toEqual({
       selection: null,
+      serviceTier: null,
       outputSchema: { type: "object" },
       title: "Correctness review",
       phase: "Review",
@@ -148,6 +149,13 @@ describe("workflow agent option validation", () => {
     ).toMatchObject({
       outputSchema: { type: "object", required: ["ok"] },
     });
+  });
+
+  it("accepts service tier identifiers and rejects empty tiers", () => {
+    expect(parseAgentOptions({ serviceTier: "fast" })).toMatchObject({
+      serviceTier: "fast",
+    });
+    expect(() => parseAgentOptions({ serviceTier: "" })).toThrow("serviceTier");
   });
 
   it("rejects conflicting aliases, partial selections, and invalid display values", () => {
@@ -183,6 +191,7 @@ describe("workflow agent option validation", () => {
       }),
     ).toEqual({
       selection: null,
+      serviceTier: null,
       outputSchema: null,
       title: "Worker",
       phase: null,
