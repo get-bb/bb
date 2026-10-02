@@ -1270,9 +1270,7 @@ export function MachineUpdatesRows({
                       />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]} · View log
-                  </TooltipContent>
+                  <TooltipContent>View log</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </span>

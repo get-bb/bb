@@ -665,7 +665,7 @@ export function UpdateStates() {
 
         <State
           name="Update failed"
-          note="The red warning marks the failure; hovering gives the reason, clicking opens the log, and Retry is the recovery."
+          note="The red warning marks the failure and opens the log; Retry is the recovery."
         >
           <MachineUpdatesSection
             machine={providerFailed}
