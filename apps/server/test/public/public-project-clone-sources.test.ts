@@ -34,7 +34,7 @@ function cloneSourceRequest(args: {
     `http://localhost/api/v1/projects/${args.projectId}/sources`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { host: "localhost", "content-type": "application/json" },
       body: JSON.stringify({
         type: "clone",
         hostId: args.hostId,

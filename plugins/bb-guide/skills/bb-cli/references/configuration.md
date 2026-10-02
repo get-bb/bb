@@ -1,5 +1,20 @@
 # Configuration and skill management
 
+## Server addresses
+
+- The server binds only `127.0.0.1`. Wildcard `BB_SERVER_BIND_HOST` and
+  `--server-bind-host` values are rejected. Remove old saved values with
+  `bb-app env unset BB_SERVER_BIND_HOST` and fully restart bb.
+- Host must be `localhost`, `127.0.0.1`, or the exact hostname from `BB_APP_URL`
+  on every request, including GET without Origin and WebSocket handshakes.
+  For an alias, run `bb-app config set BB_APP_URL http://bb.test:38886`.
+  Config reload updates the allowlist live; unsetting removes the alias.
+- Unknown Host returns HTTP 403. Matching Origin/Host, DNS resolving to
+  loopback, and forwarded headers do not authorize a hostname.
+- Remote access uses bb connect or a private loopback proxy such as Tailscale
+  Serve, with `BB_APP_URL` set to its app URL. The proxy must forward a
+  permitted Host.
+
 ## Environment Setup And Teardown Scripts
 
 - To make a repo work with bb worktrees, run `bb guide environments`. It

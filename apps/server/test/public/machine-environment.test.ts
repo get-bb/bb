@@ -28,7 +28,7 @@ describe("machine environment settings", () => {
             baseUrl: "http://localhost",
             runtime: "node",
             fetch: async (input, init) =>
-              harness.app.fetch(new Request(input, init)),
+              harness.app.request(new Request(input, init)),
           }),
         });
         const result = await sdk.system.replaceMachineEnvironment({
@@ -151,7 +151,7 @@ it("isolates projects on a shared machine and restores global values after remov
         baseUrl: "http://localhost",
         runtime: "node",
         fetch: async (input, init) =>
-          harness.app.fetch(new Request(input, init)),
+          harness.app.request(new Request(input, init)),
       }),
     });
     harness.db

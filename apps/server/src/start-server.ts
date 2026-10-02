@@ -2,8 +2,7 @@ import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ServerConfig } from "@bb/config/server";
-import { isLoopbackHostname } from "@bb/config/loopback";
+import { parseServerBindHost, type ServerConfig } from "@bb/config/server";
 import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
 import {
@@ -69,7 +68,7 @@ interface StartHttpListenerArgs {
 
 export function startHttpListener(args: StartHttpListenerArgs) {
   return serve({
-    hostname: args.serverConfig.BB_SERVER_BIND_HOST,
+    hostname: parseServerBindHost(args.serverConfig.BB_SERVER_BIND_HOST),
     port: args.serverConfig.BB_SERVER_PORT,
     fetch: args.fetch,
   });
@@ -351,13 +350,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
     });
-  }
-
-  if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {
-    logger.warn(
-      { bindHost: serverConfig.BB_SERVER_BIND_HOST },
-      "SECURITY WARNING: The public API is unauthenticated and permits command execution and file reads. Wildcard server binding must only be used behind a trusted network boundary.",
-    );
   }
 
   const server = startHttpListener({

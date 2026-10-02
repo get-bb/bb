@@ -200,10 +200,10 @@ child; do not set it yourself.
 
 | Key                            | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------ | -------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BB_APP_URL`                   | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                                     |
+| `BB_APP_URL`                   | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links, allowed browser origins, and the explicit request hostname allowlist. Leave empty for localhost/127.0.0.1 only. Changes through `bb-app config` update the allowlist live. |
 | `BB_MARKETPLACE_URL`           | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change. |
 | `BB_SERVER_URL`                | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                                 |
-| `BB_SERVER_BIND_HOST`          | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                                        |
+| `BB_SERVER_BIND_HOST`          | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Only `127.0.0.1` is accepted; wildcard binding is rejected. A full launcher or desktop app restart is required to replace a listener from an older version. This is not a `bb-app config` key. |
 | `BB_SERVER_PORT`               | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                                   |
 | `BB_HOST_DAEMON_PORT`          | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                           |
 | `BB_LOG_LEVEL`                 | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                                                                                                                                                                                          |
@@ -1585,19 +1585,30 @@ Use launcher flags for per-run startup details:
 npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
 ```
 
-The server listens on `127.0.0.1` by default. Set
-`--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) only when a
-trusted network boundary must reach the listener directly. The public API is
-unauthenticated and permits command execution and file reads, so never expose a
-wildcard-bound server to an untrusted network. The only accepted bind hosts are
-`127.0.0.1` and `0.0.0.0`; this startup-only setting is not available through
-`bb-app config`.
+The server listens only on `127.0.0.1`. `--server-bind-host 0.0.0.0` and
+`BB_SERVER_BIND_HOST=0.0.0.0` are rejected. If an older installation saved a
+wildcard value, remove it with `bb-app env unset BB_SERVER_BIND_HOST`, then
+fully restart bb. The startup `Server listening` and `app` lines report the
+loopback listener.
 
-The startup `Server listening` and `app` lines show the actual listener address.
-With wildcard binding they show `http://0.0.0.0:<port>`, while bb's health check
-and colocated host daemon continue to connect through `127.0.0.1`. That local
-connection does not narrow the listener. `0.0.0.0` exposes IPv4 interfaces only;
-bb does not currently offer an IPv6 wildcard bind option.
+Every HTTP request and WebSocket upgrade must carry a valid Host with the exact
+hostname `localhost`, `127.0.0.1`, or the hostname explicitly configured in
+`BB_APP_URL`. Unknown hosts receive HTTP 403 even on GET requests without
+Origin. Forwarded headers, matching Origin/Host, and DNS answers do not grant
+trust. This is a browser DNS-rebinding boundary, not client authentication.
+
+For a local `/etc/hosts` alias such as `bb.test`, explicitly configure its URL:
+
+```bash
+npx bb-app config set BB_APP_URL http://bb.test:38886
+```
+
+The hostname is allowed immediately when runtime config reload succeeds.
+Replacing or unsetting `BB_APP_URL` removes the previous configured hostname.
+For remote access, use bb connect or a private reverse proxy such as Tailscale
+Serve pointed at loopback, and configure the public app URL with `BB_APP_URL`.
+The proxy must send a permitted Host; `X-Forwarded-Host` does not expand this
+allowlist. Browser Origin checks also require an explicitly allowed origin.
 
 The data directory is the root directory for all bb-managed state: the SQLite
 database, logs, host identity, thread storage, custom themes (`theme/`,
@@ -1624,7 +1635,7 @@ directory and reused by subsequent runs. Its generated command accepts
 ## Source Development
 
 For source development only, `pnpm dev`, `pnpm start:worktree`,
-`pnpm start:worktree-remote`, `pnpm start:worktree --dryrun`,
+`pnpm start:worktree --dryrun`,
 and `pnpm start` load the repo-root dotenv
 cascade. Add a repo-root `.env` only when you need to override the defaults
 described above.
@@ -1636,9 +1647,9 @@ selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, and Vite
 port) with deterministic values derived from the checkout path. The SQLite
 database path is always derived from `BB_DATA_DIR`. Both the main server and
 Vite app bind to loopback by default; an explicit `BB_DEV_APP_HOST` still
-overrides the Vite listener. Remote HTTP dev via `BB_DEV_APP_HOST` also requires
-`BB_SERVER_BIND_HOST=0.0.0.0` for realtime updates; the Tailscale Serve HTTPS
-path avoids this because WebSocket traffic goes through the Vite proxy.
+overrides the Vite listener. The main server remains loopback-only. For remote
+development, use Tailscale Serve with the Vite proxy and set `BB_APP_URL` to
+the HTTPS app origin so browser requests pass origin validation.
 `pnpm start:worktree` loads the same development dotenv cascade and uses the
 same checkout-specific data directory, server port, and host-daemon port. It
 builds production artifacts and serves the frontend bundle from the main
@@ -1653,10 +1664,8 @@ This writes build outputs and may repair native modules, but does not start
 services, migrate instance data or require ports to be free. Normal startup
 also runs Turbo preparation and preserves the command's runtime policy. See
 [Prepared Worktree Restarts](debugging-and-qa.md#prepared-worktree-restarts).
-`pnpm start:worktree-remote` applies the same policy while binding the main
-server to `0.0.0.0` for direct access on a trusted network. The API is
-unauthenticated and permits command execution and file reads, so protect the
-port with a trusted network boundary such as Tailscale and a host firewall.
+The former `pnpm start:worktree-remote` and `pnpm dev:remote` commands were
+removed because wildcard server binding is no longer supported.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 

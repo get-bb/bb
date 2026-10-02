@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../../src/server.js";
-import { createTestAppHarness } from "../helpers/test-app.js";
+import { createTestAppHarness, withTestHttpHost } from "../helpers/test-app.js";
 
 describe("production static cache headers", () => {
   it("revalidates index.html on every navigation while allowing immutable hashed assets", async () => {
@@ -37,7 +37,13 @@ describe("production static cache headers", () => {
 
     const harness = await createTestAppHarness();
     const serverApp = createApp(harness.deps, { staticDir });
+    withTestHttpHost(serverApp.app);
     try {
+      const rebound = await serverApp.app.request("/assets/index-test.js", {
+        headers: { host: "rebound.example" },
+      });
+      expect(rebound.status).toBe(403);
+      expect(await rebound.text()).not.toContain("fresh bundle");
       const rootResponse = await serverApp.app.request("/");
       expect(rootResponse.headers.get("cache-control")).toBe("no-cache");
       expect(rootResponse.headers.get("etag")).toMatch(/^W\/"[0-9a-f]{32}"$/u);

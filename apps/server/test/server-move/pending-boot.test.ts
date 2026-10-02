@@ -42,6 +42,7 @@ import {
   createTestDaemonHostKey,
   testLogger,
   withTestHarness,
+  withTestHttpHost,
 } from "../helpers/test-app.js";
 
 const SOURCE_DATA_DIR = "/home/old/.bb";
@@ -687,6 +688,7 @@ describe("manual import completion", () => {
           retireProcess() {},
         },
       }).app;
+      withTestHttpHost(app);
 
       const other = await app.request(
         "/internal/session/open",
@@ -730,6 +732,7 @@ describe("pending server mode", () => {
           retireProcess() {},
         },
       }).app;
+      withTestHttpHost(pendingApp);
 
       expect(await readJson(await pendingApp.request("/health"))).toEqual({
         ok: true,
@@ -840,6 +843,7 @@ describe("pending server mode", () => {
           retireProcess() {},
         },
       }).app;
+      withTestHttpHost(pendingApp);
       const foreignOrigin = { origin: "https://desk.example.test" };
 
       expect(await readJson(await pendingApp.request("/health"))).toEqual({

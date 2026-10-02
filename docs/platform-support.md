@@ -43,8 +43,8 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
   planned next; the code is platform-neutral but no Android build has been
   produced or tested yet.
 - Connecting: **Direct** mode takes any `http(s)://` URL the phone can reach
-  (the iOS Simulator's `http://127.0.0.1:<port>`, a LAN address with
-  `--server-bind-host 0.0.0.0`, a Tailscale Serve HTTPS URL). It is
+  (the iOS Simulator's `http://127.0.0.1:<port>`, a configured
+  Tailscale Serve HTTPS URL). The server is loopback-only. Direct mode is
   unauthenticated, the same trust model as the browser PWA on a LAN; iOS
   allows plain `http://` only for LAN IPs and `.local` names, so Tailscale
   hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
@@ -83,8 +83,7 @@ Not available on the phone (use the web app or desktop for these):
 
 - `npx bb-app`
 - `npx --package bb-app bb ...`
-- source checkout package startup with `pnpm start`, `pnpm start:worktree`, or
-  `pnpm start:worktree-remote`
+- source checkout package startup with `pnpm start` or `pnpm start:worktree`
 - source checkout validation with `pnpm install`, `pnpm build`,
   `pnpm exec turbo run typecheck`, and `pnpm exec turbo run test`
 - app + server + host-daemon startup on supported persistent-host OSes

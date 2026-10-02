@@ -57,10 +57,14 @@ startup-only change, run `bb-app stop && bb-app start` or restart the desktop
 app. Until then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a
 previous `0.0.0.0` listener.
 
-With `--server-bind-host 0.0.0.0`, the startup listener and `app` rows show
-`http://0.0.0.0:<port>`. Health checks and the colocated daemon still connect
-through loopback; this does not narrow the IPv4 wildcard listener. Containers
-must also publish the port to the host.
+Only `127.0.0.1` is accepted for `BB_SERVER_BIND_HOST` or `--server-bind-host`.
+Remove a saved wildcard value with `bb-app env unset BB_SERVER_BIND_HOST` and
+fully restart bb. Every request, including GET without Origin and WebSocket
+upgrades, requires Host `localhost`, `127.0.0.1`, or the exact hostname from
+`BB_APP_URL`. To use a local alias, run
+`bb-app config set BB_APP_URL http://bb.test:38886`. An `/etc/hosts` entry alone
+does not authorize a hostname. Forwarded headers do not grant trust. Remote
+access uses bb connect or a private loopback proxy with a configured app URL.
 
 Thread titles, commit messages, and voice transcripts come from AI services
 that plugins register, chosen per task with `bb settings ai-services` (see

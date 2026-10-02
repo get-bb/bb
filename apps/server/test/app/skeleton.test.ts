@@ -17,7 +17,11 @@ import {
   seedProjectWithSource,
   seedThread,
 } from "../helpers/seed.js";
-import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import {
+  createTestAppHarness,
+  withTestHarness,
+  withTestHttpHost,
+} from "../helpers/test-app.js";
 
 type InsertMigrationParameters = [string, number];
 
@@ -69,6 +73,7 @@ describe("server skeleton", () => {
         getVersion: async () => "3.2.1-test",
       },
     });
+    withTestHttpHost(app);
     try {
       const response = await app.request("/install/version");
       expect(response.status).toBe(200);
@@ -94,6 +99,7 @@ describe("server skeleton", () => {
     const { app } = createApp(harness.deps, {
       bbAppArtifactService: { getArtifact, getVersion: async () => "test" },
     });
+    withTestHttpHost(app);
     try {
       const response = await app.request("/install/bb-app.tgz");
       expect(response.status).toBe(200);
@@ -132,6 +138,7 @@ describe("server skeleton", () => {
         getVersion: async () => "test",
       },
     });
+    withTestHttpHost(app);
     try {
       const response = await app.request("/install/bb-app.tgz");
       expect(response.status).toBe(500);
@@ -237,6 +244,7 @@ describe("server skeleton", () => {
         slowApiRequestLogThresholdMs: 0,
       },
     );
+    withTestHttpHost(serverApp.app);
     try {
       const response = await serverApp.app.request("/api/v1/hosts");
       expect(response.status).toBe(200);
@@ -272,6 +280,7 @@ describe("server skeleton", () => {
         slowApiRequestLogThresholdMs: 0,
       },
     );
+    withTestHttpHost(serverApp.app);
     try {
       const { host } = seedHostSession(harness.deps, {
         id: "host-slow-api-events-wait",

@@ -43,15 +43,12 @@ Settings → Machines so its installer records the account-gated route. The
 private alternative is to open bb through the Tailscale Serve URL and re-run
 the Add machine installer from there.
 
-For compatibility only, `npx bb-app --server-bind-host 0.0.0.0` restores direct
-IPv4 network access. The public API is unauthenticated and permits command
-execution and file reads, so use wildcard binding only behind a trusted network
-boundary and never through Funnel or the public internet.
-
-Inside a container, `0.0.0.0` listens on the container's IPv4 interfaces; the
-container runtime must still publish that port to the host (for example,
-`docker run -p 3000:3000 ...`). Host firewall and upstream network rules also
-remain separate from bb's bind setting.
+Wildcard binding is no longer supported. Remove an old saved value with
+`npx bb-app env unset BB_SERVER_BIND_HOST` and fully restart bb. Every request
+requires a Host whose hostname is `localhost`, `127.0.0.1`, or the exact hostname
+from `BB_APP_URL`. Configure the Serve URL explicitly as above; forwarded
+headers do not authorize an unknown hostname. In a container, a proxy reaching
+bb must share its loopback network namespace.
 
 ### Use editors installed on the browser device
 
@@ -112,7 +109,7 @@ getbb.app dashboard machine list; its session stops working within about 20
 seconds. Every phone takes one of
 the account's machine slots, so a machine-limit error means an unused device
 should be revoked first. On a trusted network the app can also use a direct
-server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
+server URL through Tailscale Serve with the same
 caveats as a browser. Platforms (iOS first) and what the phone cannot do are
 listed in [platform-support.md](platform-support.md).
 

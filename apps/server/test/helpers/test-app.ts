@@ -72,6 +72,27 @@ export interface RunningTestServer extends TestAppHarness {
   close(): Promise<void>;
 }
 
+export function withTestHttpHost(app: TestAppHarness["app"]): typeof app {
+  const request = app.request.bind(app);
+  app.request = (input, init, ...args) => {
+    const headers = new Headers(
+      input instanceof Request ? input.headers : undefined,
+    );
+    new Headers(init?.headers).forEach((value, name) =>
+      headers.set(name, value),
+    );
+    if (!headers.has("host")) {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+        "http://localhost",
+      );
+      headers.set("host", url.host);
+    }
+    return request(input, { ...init, headers }, ...args);
+  };
+  return app;
+}
+
 export async function installTestBuiltinPlugin(
   harness: Pick<TestAppHarness, "pluginService">,
   name: "keep-awake",
@@ -314,6 +335,7 @@ export async function createTestAppHarness(
   };
   const { app, pluginCatalogService, pluginService, serverMove } =
     createApp(deps);
+  withTestHttpHost(app);
   installDefaultEnvironmentProviders();
 
   return {
@@ -375,6 +397,7 @@ export async function startTestServer(
   let addressInfo: AddressInfo | null = null;
   const { app, closeWebSockets, injectWebSocket, pluginService, serverMove } =
     createApp(harness.deps);
+  withTestHttpHost(app);
   const server = serve(
     {
       hostname: TEST_SERVER_HOST,

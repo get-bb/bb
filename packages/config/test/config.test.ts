@@ -344,14 +344,14 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
   });
 
-  it("honors an explicit wildcard server bind host", () => {
-    const serverConfig = loadServerConfig({
-      env: createServerRuntimeEnv({
-        BB_SERVER_BIND_HOST: "0.0.0.0",
+  it("rejects an explicit wildcard server bind host", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_SERVER_BIND_HOST: "0.0.0.0",
+        }),
       }),
-    });
-
-    expect(serverConfig.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
+    ).toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1"');
   });
 
   it("rejects an unsupported server bind host", () => {

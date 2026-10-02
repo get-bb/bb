@@ -37,7 +37,7 @@ function expectedCliSkillTreeHash(harness: TestAppHarness): string {
 }
 
 function installRequest(hostIds: string[]): Request {
-  return new Request("http://test/api/v1/system/cli-skills/install", {
+  return new Request("http://localhost/api/v1/system/cli-skills/install", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ hostIds }),

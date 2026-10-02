@@ -1442,7 +1442,7 @@ describe("core environment orchestration", () => {
               baseUrl: "http://localhost",
               runtime: "node",
               fetch: async (input, init) =>
-                harness.app.fetch(new Request(input, init)),
+                harness.app.request(new Request(input, init)),
             }),
           });
           await expect(

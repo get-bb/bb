@@ -136,36 +136,18 @@ printed app port, and publish the loopback Vite listener:
 
 ```bash
 tailscale serve --bg --https=443 http://127.0.0.1:<app-port>
+BB_APP_URL=https://<machine>.<tailnet>.ts.net pnpm dev
 ```
 
 Then open `https://<machine>.<tailnet>.ts.net`. Source dev binds both the Vite
 app and main server to loopback by default; Vite continues to proxy API and
 WebSocket traffic.
 
-For direct access at `http://<tailscale-ip>:<app-port>` instead, run:
-
-```bash
-pnpm dev:remote
-```
-
-This binds the Vite app and main server to all IPv4 interfaces. The remote
-browser must be able to reach both the printed app and server ports for realtime
-updates. The server API is unauthenticated and permits command execution and
-file reads, so use this only behind a trusted network boundary and restrict the
-ports to Tailscale traffic with the host firewall when the LAN is not trusted.
-
-To access the production-style worktree server directly from another machine,
-run:
-
-```bash
-pnpm start:worktree-remote
-```
-
-This uses the same checkout-specific data directory and ports as
-`pnpm start:worktree`, but binds its single server listener to all IPv4
-interfaces. The server API is unauthenticated and permits command execution and
-file reads, so use it only behind a trusted network boundary and restrict the
-port to Tailscale traffic with the host firewall when the LAN is not trusted.
+The main server binds only `127.0.0.1`; direct wildcard access and the former
+`dev:remote` / `start:worktree-remote` scripts are no longer supported. For a
+production-style worktree build, publish its loopback server through the private
+proxy and set `BB_APP_URL` to the app URL. Every request requires a Host with
+hostname `localhost`, `127.0.0.1`, or the configured `BB_APP_URL` hostname.
 
 To use the component storybook from another machine, run:
 

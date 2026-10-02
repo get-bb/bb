@@ -685,7 +685,7 @@ export function createServerMoveCoordinator(
                   version: move.bbApp.version,
                 },
           serverPort: environment.targetServerPort(),
-          bindHost: environment.bindHost === "0.0.0.0" ? "0.0.0.0" : null,
+          bindHost: null,
           sourceDataDir: deps.config.dataDir,
           sourceServerHostId: move.sourceServerHost.id,
           serverUrl: move.status.serverUrl,

@@ -103,7 +103,7 @@ describe("public host management", () => {
           baseUrl: "http://localhost",
           runtime: "node",
           fetch: async (input, init) =>
-            harness.app.fetch(new Request(input, init)),
+            harness.app.request(new Request(input, init)),
         }),
       });
       await expect(sdk.hosts.get({ hostId: host.id })).resolves.toMatchObject({
@@ -170,7 +170,9 @@ describe("public host management", () => {
         hostId: string;
       };
       expect(prepared).toMatchObject({ hostId: host.id });
-      expect(prepared.command).toContain("https://relay.example.com/install.sh");
+      expect(prepared.command).toContain(
+        "https://relay.example.com/install.sh",
+      );
       expect(release).not.toHaveBeenCalled();
       const credentialOf = (command: string) =>
         /X-BB-Enrollment: ([^']+)/u.exec(command)?.[1] ?? "";
@@ -217,7 +219,9 @@ describe("public host management", () => {
         headers: { "X-BB-Enrollment": credential },
       });
       expect(reused.status).toBe(403);
-      expect(reused.headers.get("content-type")).toContain("text/x-shellscript");
+      expect(reused.headers.get("content-type")).toContain(
+        "text/x-shellscript",
+      );
       const errorScript = spawnSync("sh", ["-c", await reused.text()], {
         encoding: "utf8",
       });

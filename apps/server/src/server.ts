@@ -476,6 +476,12 @@ export function createApp(
   const pendingServerMove = serverMoveOptions.pending;
 
   app.use("*", async (context, next) => {
+    const problem = browserRequestProblem(context, deps, {
+      checkOrigin: false,
+    });
+    if (problem !== null) {
+      throw new ApiError(problem.status, "forbidden_host", problem.error);
+    }
     captureTrustedRemoteAddress(context);
     return runWithTelemetryAppSurface(resolveRequestAppSurface(context), next);
   });
@@ -494,8 +500,7 @@ export function createApp(
           return "*";
         }
         const allowedCorsOrigins = allowedAppOrigins(deps);
-        const requestOrigin = new URL(context.req.url).origin;
-        if (origin === requestOrigin || allowedCorsOrigins.has(origin)) {
+        if (allowedCorsOrigins.has(origin)) {
           return origin;
         }
         return null;

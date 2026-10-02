@@ -736,8 +736,8 @@ describe("bb-app launcher", () => {
     );
   });
 
-  it("reports the server bind host separately from the loopback connection URL", async () => {
-    const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
+  it("reports the loopback listener and connection URL", async () => {
+    const parsedArgs = parseLauncherArgs(["--server-bind-host", "127.0.0.1"]);
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
     const runtime = await resolveBbAppRuntimeState({
       entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
@@ -747,14 +747,14 @@ describe("bb-app launcher", () => {
       serverUrlMode: "local",
     });
 
-    expect(parsedArgs.options.serverBindHost).toBe("0.0.0.0");
-    expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
+    expect(parsedArgs.options.serverBindHost).toBe("127.0.0.1");
+    expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
     expect(
       resolveServerListenerUrl({
         bindHost: runtime.serverEnv.BB_SERVER_BIND_HOST,
         port: runtime.context.serverPort,
       }),
-    ).toBe("http://0.0.0.0:38886");
+    ).toBe("http://127.0.0.1:38886");
     expect(runtime.context.serverUrl).toBe("http://127.0.0.1:38886");
   });
 
@@ -815,7 +815,7 @@ describe("bb-app launcher", () => {
 
     await expect(
       runBbApp(["--data-dir", dataDir, "--server-bind-host", "localhost"]),
-    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1"');
   });
 
   it("tells the bundled CLI where the server's machine installer is", async () => {
@@ -1293,7 +1293,7 @@ describe("bb-app launcher", () => {
         "BB_SERVER_BIND_HOST",
         "localhost",
       ]),
-    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1"');
 
     expect(JSON.parse(readFileSync(envPath, "utf8"))).toEqual(initialEnvFile);
   });
@@ -1557,7 +1557,7 @@ describe("bb-app launcher", () => {
         "env",
         "set",
         "BB_SERVER_BIND_HOST",
-        "0.0.0.0",
+        "127.0.0.1",
       ]),
     );
 

@@ -14,6 +14,7 @@ export interface BrowserRequestProblem {
 }
 
 interface BrowserRequestGuardOptions {
+  checkOrigin?: boolean;
   requireJsonForMutation?: boolean;
 }
 
@@ -35,15 +36,11 @@ export function allowedAppOrigins(deps: BrowserRequestGuardDeps): Set<string> {
   if (deps.config.devAppPort !== undefined) {
     args.devAppPort = deps.config.devAppPort;
   }
-  return new Set(buildLocalAppOrigins(args));
-}
-
-function knownAppPorts(deps: BrowserRequestGuardDeps): Set<number> {
-  const ports = new Set<number>([deps.config.serverPort]);
-  if (deps.config.devAppPort !== undefined) {
-    ports.add(deps.config.devAppPort);
-  }
-  return ports;
+  return new Set(
+    buildLocalAppOrigins(args).filter(
+      (origin) => origin.startsWith("http://") || origin.startsWith("https://"),
+    ),
+  );
 }
 
 export function effectivePort(url: URL): number | null {
@@ -60,76 +57,47 @@ export function effectivePort(url: URL): number | null {
   return null;
 }
 
-function parseRequestHost(host: string, protocol: string): URL | null {
+function parseRequestHostname(host: string | undefined): string | null {
+  if (host === undefined) {
+    return null;
+  }
+  const authority = /^(\[[0-9a-f:]+\]|[a-z0-9.-]+)(?::([0-9]+))?$/iu.exec(host);
+  if (authority === null) {
+    return null;
+  }
+  const hostname = authority[1]?.toLowerCase();
+  if (hostname === undefined) {
+    return null;
+  }
+  if (authority[2] !== undefined && Number(authority[2]) === 0) {
+    return null;
+  }
   try {
-    const url = new URL(`${protocol}//${host}`);
-    return url.username.length === 0 &&
-      url.password.length === 0 &&
-      url.pathname === "/" &&
-      url.search.length === 0 &&
-      url.hash.length === 0
-      ? url
-      : null;
+    const url = new URL(`http://${host}`);
+    return url.hostname === hostname ? hostname : null;
   } catch {
     return null;
   }
 }
 
-function requestTargets(context: BrowserRequestContext): URL[] {
-  const requestUrl = new URL(context.req.url);
-  const targets = [requestUrl];
-  const forwardedProtocol =
-    context.req.header("x-forwarded-proto")?.split(",", 1)[0]?.trim() ||
-    requestUrl.protocol.replace(/:$/u, "");
-
-  for (const rawHost of [
-    context.req.header("host"),
-    context.req.header("x-forwarded-host")?.split(",", 1)[0]?.trim(),
-  ]) {
-    if (rawHost === undefined || rawHost.length === 0) {
-      continue;
-    }
-    const target = parseRequestHost(rawHost, `${forwardedProtocol}:`);
-    if (target !== null) {
-      targets.push(target);
-    }
-  }
-  return targets;
-}
-
 function isTrustedOrigin(
   context: BrowserRequestContext,
   deps: BrowserRequestGuardDeps,
-  origin: string,
+  checkOrigin: boolean,
 ): boolean {
-  let originUrl: URL;
-  try {
-    originUrl = new URL(origin);
-  } catch {
+  const hostname = parseRequestHostname(context.req.header("host"));
+  if (hostname === null) {
     return false;
   }
-  if (
-    originUrl.origin !== origin ||
-    (originUrl.protocol !== "http:" && originUrl.protocol !== "https:")
-  ) {
+  const origins = allowedAppOrigins(deps);
+  if (![...origins].some((origin) => new URL(origin).hostname === hostname)) {
     return false;
   }
-
-  if (allowedAppOrigins(deps).has(originUrl.origin)) {
+  const origin = context.req.header("origin");
+  if (!checkOrigin || origin === undefined) {
     return true;
   }
-
-  const targets = requestTargets(context);
-  if (targets.some((target) => target.origin === originUrl.origin)) {
-    return true;
-  }
-
-  const originPort = effectivePort(originUrl);
-  if (originPort === null || !knownAppPorts(deps).has(originPort)) {
-    return false;
-  }
-
-  return targets.some((target) => target.hostname === originUrl.hostname);
+  return origins.has(origin);
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
@@ -143,11 +111,10 @@ export function browserRequestProblem(
   deps: BrowserRequestGuardDeps,
   options: BrowserRequestGuardOptions = {},
 ): BrowserRequestProblem | null {
-  const origin = context.req.header("origin");
-  if (origin !== undefined && !isTrustedOrigin(context, deps, origin)) {
+  if (!isTrustedOrigin(context, deps, options.checkOrigin !== false)) {
     return {
       status: 403,
-      error: `origin "${origin}" is not a local BB app origin`,
+      error: "Host or Origin is not a configured BB app address",
     };
   }
 

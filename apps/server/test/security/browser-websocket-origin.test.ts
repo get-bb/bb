@@ -28,9 +28,16 @@ function openWebSocket(url: string, origin?: string): Promise<WebSocket> {
   });
 }
 
-function rejectedWebSocketStatus(url: string, origin: string): Promise<number> {
+function rejectedWebSocketStatus(
+  url: string,
+  origin?: string,
+  host?: string,
+): Promise<number> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url, { origin });
+    const socket = new WebSocket(url, {
+      ...(origin === undefined ? {} : { origin }),
+      ...(host === undefined ? {} : { headers: { host } }),
+    });
     sockets.add(socket);
     socket.once("open", () =>
       reject(new Error(`WebSocket unexpectedly opened for ${origin}`)),
@@ -72,6 +79,27 @@ afterEach(async () => {
 });
 
 describe("browser WebSocket origin boundary", () => {
+  it("rejects rebound Host on all upgrade paths even without Origin", async () => {
+    server = await startTestServer();
+    const host = `rebound.example:${new URL(server.baseUrl).port}`;
+    for (const path of [
+      "/ws",
+      "/ws/terminals/missing",
+      "/api/v1/plugins/missing/http/socket",
+      "/internal/ws",
+    ]) {
+      for (const origin of [undefined, `http://${host}`, server.baseUrl]) {
+        await expect(
+          rejectedWebSocketStatus(
+            websocketUrl(server.baseUrl, path),
+            origin,
+            host,
+          ),
+        ).resolves.toBe(403);
+      }
+    }
+  });
+
   it("rejects hostile browser origins on realtime and terminal sockets", async () => {
     server = await startTestServer();
     const realtimeUrl = websocketUrl(server.baseUrl, "/ws");

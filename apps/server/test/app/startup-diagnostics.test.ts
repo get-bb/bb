@@ -43,9 +43,9 @@ describe("server startup diagnostics", () => {
       name: "binds the default server listener to IPv4 loopback",
     },
     {
-      bindHost: "0.0.0.0",
-      expectedAddress: "0.0.0.0",
-      name: "binds the explicit wildcard listener to IPv4 only",
+      bindHost: "127.0.0.1",
+      expectedAddress: "127.0.0.1",
+      name: "binds the explicit loopback listener to IPv4 only",
     },
   ])("$name", async ({ bindHost, expectedAddress }) => {
     const serverConfig = loadServerConfig({
@@ -81,5 +81,17 @@ describe("server startup diagnostics", () => {
         });
       });
     }
+  });
+
+  it("rejects wildcard binding at the listener boundary", () => {
+    const config = { BB_SERVER_BIND_HOST: "0.0.0.0", BB_SERVER_PORT: 0 };
+    expect(() =>
+      startHttpListener({
+        fetch: () => new Response("ok"),
+        serverConfig: config as Parameters<
+          typeof startHttpListener
+        >[0]["serverConfig"],
+      }),
+    ).toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1"');
   });
 });

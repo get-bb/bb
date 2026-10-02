@@ -229,7 +229,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(appOrigin.status).toBe(200);
   });
 
-  it("local auth rejects foreign origins but tolerates host-bound LAN/Tailscale serving", async () => {
+  it("local auth rejects foreign origins and requires configured proxy hostnames", async () => {
     const foreignOrigin = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
       { headers: { origin: EVIL_ORIGIN } },
@@ -237,7 +237,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(foreignOrigin.status).toBe(403);
     expect(await foreignOrigin.json()).toMatchObject({
       ok: false,
-      error: expect.stringContaining("not a local BB app origin"),
+      error: expect.stringContaining("not a configured BB app address"),
     });
 
     const copiedPort = await harness.app.request(
@@ -250,19 +250,19 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
       { headers: { origin: "http://100.64.158.8:3334" } },
     );
-    expect(sameOriginLan.status).toBe(200);
+    expect(sameOriginLan.status).toBe(403);
 
     const sameOriginReverseProxy = await harness.app.request(
       "https://bb.lan.test/api/v1/plugins/wire/http/hello",
       { headers: { origin: "https://bb.lan.test" } },
     );
-    expect(sameOriginReverseProxy.status).toBe(200);
+    expect(sameOriginReverseProxy.status).toBe(403);
 
     const directDev = await harness.app.request(
       "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
       { headers: { origin: "http://100.64.158.8:5173" } },
     );
-    expect(directDev.status).toBe(200);
+    expect(directDev.status).toBe(403);
 
     const proxiedDev = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
@@ -273,7 +273,14 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         },
       },
     );
-    expect(proxiedDev.status).toBe(200);
+    expect(proxiedDev.status).toBe(403);
+
+    harness.config.appUrl = "https://bb.lan.test";
+    const configuredProxy = await harness.app.request(
+      "https://bb.lan.test/api/v1/plugins/wire/http/hello",
+      { headers: { origin: "https://bb.lan.test" } },
+    );
+    expect(configuredProxy.status).toBe(200);
   });
 
   it("local auth requires application/json on non-GET requests", async () => {
