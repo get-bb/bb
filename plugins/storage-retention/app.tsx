@@ -285,6 +285,23 @@ function StoragePage({
       </div>
     </div>
   );
+  const storageInfo = (
+    <aside
+      aria-label="What is thread storage?"
+      className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
+    >
+      <Icon name="Info" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-sm font-medium">What is thread storage?</h2>
+        <p className="text-xs leading-snug text-subtle-foreground/75">
+          Files saved for a thread, such as attachments, screenshots, reports,
+          and temporary working files. They’re stored on the machine separately
+          from conversation history. Clearing files keeps the conversation, but
+          permanently removes those files.
+        </p>
+      </div>
+    </aside>
+  );
   return (
     <div className="h-full w-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-10 px-4 pb-10 pt-4 md:px-5 md:pt-5">
@@ -356,6 +373,7 @@ function StoragePage({
           )
         ) : hostId ? (
           <div className="space-y-6">
+            {storageInfo}
             {offline && (
               <div
                 role="status"
@@ -629,6 +647,7 @@ function StoragePage({
           </div>
         ) : (
           <>
+            {storageInfo}
             {suggestions.map((suggestion) => (
               <div
                 key={suggestion.cleanup.key}
