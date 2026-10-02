@@ -7,9 +7,9 @@ import {
   RAW_THREAD_ID_PATTERN_SOURCE,
   type PromptTextMention,
 } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import {
   PromptMentionPill,
+  resolveThreadMentionLinkHref,
   resolveThreadMentionResource,
 } from "@/components/thread/timeline/ConversationMessageMentions.js";
 import {
@@ -359,17 +359,6 @@ declare module "react" {
   }
 }
 
-function resolveThreadMentionHref(
-  threadId: string,
-  resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined,
-): string | undefined {
-  if (!resolveSegmentLinkHref) {
-    return undefined;
-  }
-  const link: TimelineTitleLink = { kind: "thread", threadId };
-  return resolveSegmentLinkHref(link) ?? undefined;
-}
-
 export function buildThreadMentionComponent({
   mentions,
   resolveSegmentLinkHref,
@@ -402,7 +391,11 @@ export function buildThreadMentionComponent({
       <PromptMentionPill
         resource={resource}
         serializedText={`@thread:${threadId}`}
-        linkHref={resolveThreadMentionHref(threadId, resolveSegmentLinkHref)}
+        linkHref={resolveThreadMentionLinkHref({
+          resolveLinkHref: resolveSegmentLinkHref,
+          resource,
+          threadId,
+        })}
       />
     );
   }
@@ -435,7 +428,11 @@ export function buildThreadMentionComponent({
       <PromptMentionPill
         resource={resource}
         serializedText={`@thread:${threadId}`}
-        linkHref={resolveThreadMentionHref(threadId, resolveSegmentLinkHref)}
+        linkHref={resolveThreadMentionLinkHref({
+          resolveLinkHref: resolveSegmentLinkHref,
+          resource,
+          threadId,
+        })}
       />
     );
   }

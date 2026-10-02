@@ -4,7 +4,10 @@ import type { Nodes, Parent, PhrasingContent, Text } from "mdast";
 import type {} from "mdast-util-to-hast";
 import { visit } from "unist-util-visit";
 import type { PromptTextMention } from "@bb/domain";
-import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
+import {
+  PromptMentionPill,
+  resolveThreadMentionLinkHref,
+} from "@/components/thread/timeline/ConversationMessageMentions.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { replaceTextMatches } from "./markdown-text-matches.js";
@@ -123,13 +126,14 @@ function resolveThreadMentionHref(
   resource: PromptTextMention["resource"],
   resolveLinkHref: TimelineTitleLinkResolver | undefined,
 ): string | undefined {
-  if (resource.kind !== "thread" || !resolveLinkHref) {
+  if (resource.kind !== "thread") {
     return undefined;
   }
-  return (
-    resolveLinkHref({ kind: "thread", threadId: resource.threadId }) ??
-    undefined
-  );
+  return resolveThreadMentionLinkHref({
+    resolveLinkHref,
+    resource,
+    threadId: resource.threadId,
+  });
 }
 
 export function buildPromptMentionComponent({

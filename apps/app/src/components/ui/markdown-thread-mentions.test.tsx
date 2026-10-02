@@ -67,12 +67,6 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
     : null;
 }
 
-function resolveUpdatedThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}?updated=1`
-    : null;
-}
-
 function threadResponse(
   overrides: Partial<ThreadResponse> = {},
 ): ThreadResponse {
@@ -638,7 +632,7 @@ describe("MarkdownPreview thread mentions", () => {
     expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(1);
   });
 
-  it("resolves and links a thread absent from sidebar resources through the authoritative thread query", () => {
+  it("links a queried thread mention through its own project", () => {
     const queriedThread = threadResponse({
       id: "thr_archived",
       projectId: "proj_archive",
@@ -652,6 +646,7 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
+          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [queriedThread],
@@ -692,7 +687,7 @@ describe("MarkdownPreview thread mentions", () => {
           threadMentions={{
             mentions: [UPDATED_THREAD_MENTION],
             preserveSoftBreaks: true,
-            resolveLinkHref: resolveUpdatedThreadLink,
+            resolveLinkHref: resolveThreadLink,
           }}
         />,
       ),
@@ -702,7 +697,7 @@ describe("MarkdownPreview thread mentions", () => {
     const pill = screen.getByText("Updated child").closest("a");
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_child?updated=1",
+      "/projects/proj_demo/threads/thr_child",
     );
   });
 

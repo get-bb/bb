@@ -14,6 +14,7 @@ import {
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
 
 interface PromptMentionPillProps {
   interactive?: boolean;
@@ -90,6 +91,22 @@ function mentionPillClassName(interactive: boolean): string {
     "bg-surface-raised/50 font-normal no-underline hover:no-underline",
     interactive ? "cursor-pointer hover:bg-state-hover" : "cursor-default",
   );
+}
+
+export function resolveThreadMentionLinkHref({
+  resolveLinkHref,
+  resource,
+  threadId,
+}: {
+  resolveLinkHref: TimelineTitleLinkResolver | undefined;
+  resource: PromptMentionResource;
+  threadId: string;
+}): string | undefined {
+  const projectId = resource.kind === "thread" ? resource.projectId : undefined;
+  if (projectId !== undefined) {
+    return getThreadRoutePath({ projectId, threadId });
+  }
+  return resolveLinkHref?.({ kind: "thread", threadId }) ?? undefined;
 }
 
 export function PromptMentionPill({

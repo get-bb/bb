@@ -119,6 +119,7 @@ import {
 } from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import { type ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import {
@@ -1996,13 +1997,19 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => buildMessageDirectiveRegistry(messageDirectiveSlots),
     [messageDirectiveSlots],
   );
+  const { threadById: mentionThreadById } = useThreadTitleMentionResources();
   const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
-      return projectId !== undefined
-        ? getThreadRoutePath({ projectId, threadId: link.threadId })
+      const targetProjectId =
+        mentionThreadById.get(link.threadId)?.projectId ?? projectId;
+      return targetProjectId !== undefined
+        ? getThreadRoutePath({
+            projectId: targetProjectId,
+            threadId: link.threadId,
+          })
         : null;
     };
-  }, [projectId]);
+  }, [mentionThreadById, projectId]);
   const onSelectionAddToChat = props.onSelectionAddToChat;
   const timelineThreadId = props.threadId;
   const hasPluginSelectionActions =

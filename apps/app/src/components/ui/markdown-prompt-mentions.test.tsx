@@ -31,7 +31,7 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 const THREAD_RESOURCE: PromptMentionResource = {
   kind: "thread",
   threadId: "thr_child",
-  projectId: "proj_demo",
+  projectId: "proj_target",
   label: "Rebuild comments",
 };
 
@@ -71,7 +71,7 @@ afterEach(() => {
 });
 
 describe("MarkdownPreview prompt mentions", () => {
-  it("renders a thread mention as a linked pill resolved from the offsets", () => {
+  it("links an offset-backed thread mention through its own project", () => {
     const text = "See @thread:thr_child for the report.";
     renderMarkdown(
       <MarkdownPreview
@@ -86,7 +86,7 @@ describe("MarkdownPreview prompt mentions", () => {
     const pill = screen.getByText("Rebuild comments").closest("a");
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_child",
+      "/projects/proj_target/threads/thr_child",
     );
   });
 
