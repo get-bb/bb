@@ -934,7 +934,7 @@ function mapDelegationTitle(row: TimelineViewDelegationWorkRow): TimelineTitle {
       status: row.status,
       startedAt: row.startedAt,
       completedAt: row.completedAt,
-      content: description,
+      content: row.presentation.title ?? description,
     });
   }
   const verb = delegationVerbForStatus(row.status);

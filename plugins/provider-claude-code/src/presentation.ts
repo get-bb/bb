@@ -241,6 +241,15 @@ export function builtinToolPresentation(
   );
 }
 
+export function forkedSkillPresentation(
+  presentation: DeltaPresentation,
+): DeltaPresentation {
+  return {
+    ...presentation,
+    label: { pending: "Running skill", completed: "Ran skill" },
+  };
+}
+
 export function mcpToolPresentation(args: {
   server: string;
   tool: string;
