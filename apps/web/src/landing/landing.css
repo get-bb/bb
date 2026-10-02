@@ -2481,6 +2481,37 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 /* ── Spawn sidebar (Band 5): a worker thread per provider, nested ──── */
 
+@keyframes rc-step {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes rc-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes rc-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rc-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes rc-leave {
+  to {
+    opacity: 0;
+  }
+}
+
 .spawnbar {
   width: 100%;
   background: var(--bg);

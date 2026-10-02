@@ -14,13 +14,18 @@ import {
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import type { CompareCell, Comparison, Mark } from "./comparisons";
-import { BrandMark, type BrandLogo } from "./compare-visuals";
+import {
+  BrandMark,
+  HandoffThread,
+  PriceAnchor,
+  type BrandLogo,
+} from "./compare-visuals";
 import compareCss from "./compare.css?url";
 
 export function compareHead(comparison: Comparison) {
   return {
     meta: pageMeta(
-      `${comparison.title} — bb`,
+      comparison.title,
       comparison.description,
       `/compare/${comparison.slug}`,
     ),
@@ -41,10 +46,13 @@ const MARKS: Record<
   no: { icon: Cancel01Icon, label: "No", className: "cmp-mark cmp-mark-no" },
 };
 
-function Cell({ cell }: { cell: CompareCell }) {
+function Cell({ cell, us }: { cell: CompareCell; us: boolean }) {
   const mark = cell.mark ? MARKS[cell.mark] : null;
+  const classes = ["cmp-cell", mark ? "" : "cmp-cell-text", us ? "cmp-us" : ""]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <td className={mark ? "cmp-cell" : "cmp-cell cmp-cell-text"}>
+    <td role="cell" className={classes}>
       <span className="cmp-cell-inner">
         {mark ? (
           <span className={mark.className}>
@@ -55,7 +63,11 @@ function Cell({ cell }: { cell: CompareCell }) {
         {cell.text || cell.pro ? (
           <span className="cmp-cell-note">
             {cell.text}
-            {cell.pro ? <span className="cmp-pro">Pro</span> : null}
+            {cell.pro ? (
+              <span className={cell.text ? "cmp-pro" : "cmp-pro cmp-pro-solo"}>
+                Pro<span className="cmp-sr"> plan only</span>
+              </span>
+            ) : null}
           </span>
         ) : null}
       </span>
@@ -63,9 +75,21 @@ function Cell({ cell }: { cell: CompareCell }) {
   );
 }
 
-function BrandHeader({ name, logo }: { name: string; logo: BrandLogo }) {
+function BrandHeader({
+  name,
+  logo,
+  us,
+}: {
+  name: string;
+  logo: BrandLogo;
+  us: boolean;
+}) {
   return (
-    <th scope="col" className="cmp-brand">
+    <th
+      role="columnheader"
+      scope="col"
+      className={us ? "cmp-brand cmp-us" : "cmp-brand"}
+    >
       <span className="cmp-brand-inner">
         <BrandMark logo={logo} className="cmp-brand-logo" />
         {name}
@@ -76,31 +100,34 @@ function BrandHeader({ name, logo }: { name: string; logo: BrandLogo }) {
 
 function CompareTable({ comparison }: { comparison: Comparison }) {
   return (
-    <table className="cmp-table">
-      <thead>
-        <tr>
-          <td className="cmp-corner" />
-          <BrandHeader name="bb" logo={{ kind: "bb" }} />
+    <table role="table" className="cmp-table" aria-labelledby="cmp-table-title">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader" scope="col" className="cmp-corner">
+            <span className="cmp-sr">Feature</span>
+          </th>
+          <BrandHeader name="bb" logo={{ kind: "bb" }} us />
           <BrandHeader
             name={comparison.competitor.name}
             logo={comparison.competitor.logo}
+            us={false}
           />
         </tr>
       </thead>
       {comparison.table.map((group) => (
-        <tbody key={group.title}>
-          <tr className="cmp-group">
-            <th scope="colgroup" colSpan={3}>
+        <tbody role="rowgroup" key={group.title}>
+          <tr role="row" className="cmp-group">
+            <th role="rowheader" scope="rowgroup" colSpan={3}>
               {group.title}
             </th>
           </tr>
           {group.rows.map((row) => (
-            <tr key={row.feature}>
-              <th scope="row" className="cmp-feature">
+            <tr role="row" key={row.feature}>
+              <th role="rowheader" scope="row" className="cmp-feature">
                 {row.feature}
               </th>
-              <Cell cell={row.bb} />
-              <Cell cell={row.competitor} />
+              <Cell cell={row.bb} us />
+              <Cell cell={row.competitor} us={false} />
             </tr>
           ))}
         </tbody>
@@ -115,21 +142,15 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
   const { competitor } = comparison;
 
   return (
-    <div className="wrap">
+    <div className="wrap cmp-page">
       <SiteNav />
 
       <header className="hero cmp-hero">
-        <div className="cmp-logos">
-          <span className="cmp-logo-item">
-            <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
-            bb
-          </span>
-          <span className="cmp-vs">vs</span>
-          <span className="cmp-logo-item">
-            <BrandMark logo={competitor.logo} className="cmp-logo" />
-            {competitor.name}
-          </span>
-        </div>
+        <PriceAnchor
+          plan={competitor.paidPlan}
+          logo={competitor.logo}
+          monthly={competitor.monthlyPrice}
+        />
         <h1>{comparison.headline}</h1>
         <p className="sub">{comparison.sub}</p>
         <InstallOptions placement="hero" />
@@ -137,13 +158,13 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
           {comparison.switchGuide.label}
           <HugeiconsIcon icon={ArrowRight01Icon} className="cmp-switch-arrow" />
         </a>
+        <HandoffThread />
       </header>
 
-      {comparison.highlights.map((highlight, index) => (
+      {comparison.highlights.map((highlight) => (
         <Band
           key={highlight.title}
           title={highlight.title}
-          flip={index % 2 === 1}
           visual={highlight.visual}
         >
           {highlight.body}
@@ -151,12 +172,14 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       ))}
 
       <section className="cmp-section" data-reveal>
-        <h2 className="sec-title">{comparison.tableTitle}</h2>
+        <h2 id="cmp-table-title" className="sec-title">
+          {comparison.tableTitle}
+        </h2>
         <CompareTable comparison={comparison} />
       </section>
 
       <section className="cmp-section cmp-faq" data-reveal>
-        <h2 className="sec-title">Frequently asked questions</h2>
+        <h2 className="sec-title">{comparison.faqTitle}</h2>
         <div className="cmp-faq-list">
           {comparison.faq.map((item) => (
             <details key={item.question} className="cmp-faq-item">
@@ -175,8 +198,8 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       </section>
 
       <section className="closer" data-reveal>
-        <h2 className="sec-title">Put your agents to work.</h2>
-        <p>Free, open source, and local-first. Install in under a minute.</p>
+        <h2 className="sec-title">{comparison.closer.title}</h2>
+        <p>{comparison.closer.body}</p>
         <InstallOptions placement="closer" />
       </section>
 
