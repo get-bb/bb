@@ -225,8 +225,10 @@ export class PiRpcSession {
     }
     if (this.options.model) {
       args.push(
+        "--provider",
+        this.options.model.provider,
         "--model",
-        `${this.options.model.provider}/${this.options.model.id}`,
+        this.options.model.id,
       );
     }
     if (this.options.thinkingLevel) {
