@@ -158,6 +158,7 @@ function StoragePage({
     key: string;
     title: string;
     detail: string;
+    action: string;
     run: () => Promise<string>;
   } | null>(null);
   async function perform<T>(
@@ -200,8 +201,9 @@ function StoragePage({
   function largeFilesCleanup(target: string | null, totals: LargeFileTotals) {
     return {
       key: "large-files",
+      action: "Delete large files",
       title: `Delete ${totals.fileCount.toLocaleString()} large ${totals.fileCount === 1 ? "file" : "files"} (${bytes(totals.bytes)})?`,
-      detail: `Files of ${bytes(LARGE_FILE_MIN_BYTES)} or more are deleted from the thread storage of ${plural(totals.threadCount, "archived thread")}. Smaller files like reports stay, conversation history is kept, and pinned threads are skipped.`,
+      detail: `Delete files of ${bytes(LARGE_FILE_MIN_BYTES)} or more from ${plural(totals.threadCount, "archived thread")}. Smaller files and conversation history will be kept. Pinned threads are skipped. This can’t be undone.`,
       run: async () => {
         const cleared = await rpc.call("clearLargeFiles", { hostId: target });
         return `Deleted ${plural(cleared.clearedFiles, "large file")} (${bytes(cleared.clearedBytes)}).`;
@@ -241,12 +243,14 @@ function StoragePage({
     <div
       role="region"
       aria-label="Confirm cleanup"
-      className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4"
+      className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3"
     >
-      <p className="text-sm font-normal">{cleanup.title}</p>
-      <p className="text-xs leading-snug text-subtle-foreground/75">
-        Files are permanently removed. This cannot be undone. {cleanup.detail}
-      </p>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium">{cleanup.title}</p>
+        <p className="text-xs leading-snug text-subtle-foreground/75">
+          {cleanup.detail}
+        </p>
+      </div>
       {actionError && (
         <p role="alert" className="text-sm text-destructive">
           {actionError}
@@ -276,7 +280,7 @@ function StoragePage({
             )
           }
         >
-          {busy ? "Removing…" : "Confirm removal"}
+          {busy ? "Removing…" : cleanup.action}
         </Button>
       </div>
     </div>
@@ -481,9 +485,10 @@ function StoragePage({
                           onClick={() =>
                             setCleanup({
                               key: "orphans",
+                              action: "Remove orphans",
                               title: `Remove ${bytes(report.orphanBytes)} of orphaned storage?`,
                               detail:
-                                "Storage belonging to existing threads is kept.",
+                                "Delete folders no longer attached to a thread. Existing threads and their files will be kept. This can’t be undone.",
                               run: async () => {
                                 const removed = await rpc.call(
                                   "removeOrphans",
@@ -565,7 +570,10 @@ function StoragePage({
                     {report.largestThreads.map((thread) => (
                       <div
                         key={thread.threadId}
-                        className="space-y-3 px-4 py-1.5"
+                        className={cn(
+                          "flex flex-col gap-2 px-4 py-2",
+                          cleanup?.key === thread.threadId && "pb-4",
+                        )}
                       >
                         <div className="flex items-center gap-3">
                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -595,8 +603,9 @@ function StoragePage({
                             onClick={() =>
                               setCleanup({
                                 key: thread.threadId,
-                                title: `Clear files for “${thread.title}”?`,
-                                detail: "The thread and its history are kept.",
+                                action: "Clear files",
+                                title: "Clear this thread’s files?",
+                                detail: `Delete ${bytes(thread.sizeBytes)} of stored files from this thread. Conversation history will be kept. This can’t be undone.`,
                                 run: async () => {
                                   await rpc.call("clearThread", {
                                     threadId: thread.threadId,
