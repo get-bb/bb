@@ -1,4 +1,5 @@
 import {
+  isWindowsDriveLocalFilePath,
   parseLocalFileHref,
   type MarkdownAbsoluteLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
@@ -398,6 +399,24 @@ function buildLocalFileMarkdownLinkRepair(
   );
   if (payload === null) {
     return null;
+  }
+
+  if (isWindowsDriveLocalFilePath(payload.destination)) {
+    const windowsDestination = payload.destination.replaceAll("\\", "/");
+    if (
+      windowsDestination.includes("<") ||
+      windowsDestination.includes(">") ||
+      !parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: windowsDestination,
+      })
+    ) {
+      return null;
+    }
+    return {
+      endIndex: destinationEndIndex,
+      replacement: `${payload.leadingWhitespace}<${windowsDestination}>${payload.suffix}`,
+    };
   }
 
   const destination = unescapeMarkdownEscapes(payload.destination);

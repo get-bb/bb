@@ -120,4 +120,27 @@ describe("normalizeLocalFileMarkdownLinks", () => {
       ].join("\n"),
     );
   });
+
+  it("turns Windows drive destinations into forward-slash paths Markdown keeps intact", () => {
+    expect(
+      normalizeLocalFileMarkdownLinks(
+        "[config](C:\\src\\repo\\.config\\app.json) and [doc](C:/src/repo/README.md:12)",
+      ),
+    ).toBe(
+      "[config](<C:/src/repo/.config/app.json>) and [doc](<C:/src/repo/README.md:12>)",
+    );
+  });
+
+  it("wraps Windows drive destinations that contain spaces", () => {
+    expect(
+      normalizeLocalFileMarkdownLinks(
+        "[notes](C:\\Users\\me\\My Notes\\plan.md)",
+      ),
+    ).toBe("[notes](<C:/Users/me/My Notes/plan.md>)");
+  });
+
+  it("leaves a drive-like scheme that is not a file path alone", () => {
+    const content = "[x](C:not-a-path) and [mail](mailto:me@example.com)";
+    expect(normalizeLocalFileMarkdownLinks(content)).toBe(content);
+  });
 });
