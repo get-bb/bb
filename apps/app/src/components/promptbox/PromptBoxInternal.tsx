@@ -136,6 +136,7 @@ import {
   typeaheadSuggestionKey,
   type TypeaheadSuggestion,
 } from "./mentions/MentionMenu";
+import { useTypeaheadMenuMaxHeight } from "./useTypeaheadMenuMaxHeight";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import {
   blurPromptEditor,
@@ -2122,6 +2123,11 @@ export function PromptBoxInternal({
     activeTrigger !== null &&
     !isCommandTriggerLiteral &&
     !isBareNonDefaultMentionTrigger;
+
+  useTypeaheadMenuMaxHeight(
+    typeaheadMenuRef,
+    showTypeaheadMenu && mentionMenuPlacement === "top",
+  );
 
   const typeaheadMenuState: TypeaheadMenuState =
     activeTriggerKind === "command"

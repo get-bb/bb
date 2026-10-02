@@ -620,8 +620,8 @@ export function MentionMenu({
   }, [resultsLength, selectedIndex]);
 
   return (
-    <div className="@container/mention-menu overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
-      <div className="max-h-48 overflow-y-auto" onScroll={handleScroll}>
+    <div className="@container/mention-menu flex max-h-(--promptbox-typeahead-max-height) flex-col overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
+      <div className="max-h-48 min-h-0 overflow-y-auto" onScroll={handleScroll}>
         {innerState.kind === "hint" ? (
           <MenuStatusRow
             onDismiss={onDismiss}
