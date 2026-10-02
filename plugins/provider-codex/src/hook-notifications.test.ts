@@ -65,6 +65,44 @@ describe("Codex lifecycle notification diagnostics", () => {
     },
   );
 
+  it.each([
+    "/home/user/.codex/config.toml",
+    "C:\\Users\\user\\.codex\\config.toml",
+  ])(
+    "suppresses only the BB-enabled question feature warning for %s",
+    (configPath) => {
+      const translate = createHarness();
+      const warning = (features: string) =>
+        `Under-development features enabled: ${features}. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set ` +
+        "`suppress_unstable_features_warning = true`" +
+        ` in ${configPath}.`;
+
+      expect(
+        translate("warning", {
+          threadId: "thread-test",
+          message: warning("default_mode_request_user_input"),
+        }),
+      ).toEqual([]);
+
+      for (const features of [
+        "other_feature",
+        "default_mode_request_user_input, other_feature",
+      ]) {
+        expect(
+          translate("warning", {
+            threadId: "thread-test",
+            message: warning(features),
+          }),
+        ).toEqual([
+          expect.objectContaining({
+            type: "provider/warning",
+            summary: warning(features),
+          }),
+        ]);
+      }
+    },
+  );
+
   it.each(["failed", "blocked", "stopped"])(
     "preserves %s hook diagnostics",
     (status) => {

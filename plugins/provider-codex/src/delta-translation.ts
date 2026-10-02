@@ -1332,6 +1332,13 @@ export function translateCodexEventToDeltas(
         },
       ];
     case "warning":
+      if (
+        /^Under-development features enabled: default_mode_request_user_input\. Under-development features are incomplete and may behave unpredictably\. To suppress this warning, set `suppress_unstable_features_warning = true` in [^\r\n]+[\\/]config\.toml\.$/.test(
+          handledEvent.params.message,
+        )
+      ) {
+        return [];
+      }
       return [
         {
           kind: "provider.warning",
