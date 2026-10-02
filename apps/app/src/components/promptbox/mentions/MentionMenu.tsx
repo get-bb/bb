@@ -11,7 +11,7 @@ import {
   type ProviderCommandSection,
 } from "@bb/server-contract";
 import { directoryFromPath } from "@bb/thread-view";
-import { promptMentionResourceFromSuggestion } from "@/components/promptbox/editor/prompt-editor-serialization";
+import { promptMentionResourceFromSuggestion } from "@/components/promptbox/mentions/prompt-mention-resource";
 import { promptCommandIconName } from "@/components/promptbox/mentions/prompt-mention-display";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";

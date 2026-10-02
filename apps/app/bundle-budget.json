@@ -76,8 +76,9 @@
     "decides how slow bb feels on a phone. Same 10% ratchet; its forbiddenPackages",
     "are the diff engine, math, file tree and terminal code that only a user",
     "action needs.",
-    "The composer (tiptap/prosemirror) is visible on every thread page and is",
-    "allowed until it moves behind a first-focus handoff. Run",
+    "The composer (tiptap/prosemirror) is visible on every thread page and now",
+    "moves behind a first-focus handoff: it loads from",
+    "prompt-editor-engine.ts after the composer chrome commits. Run",
     "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
     "to print the static chain that pulled a package into the closure.",
     "",
@@ -94,7 +95,17 @@
     "and Markdown HTML from the workspace route. The route limits drop by",
     "1,075,985 raw and 272,230 Brotli bytes, preserving prior headroom.",
     "HTML bytes warm on idle without importing; actual thread visits still load",
-    "ThreadDetailView. PluginFrontend is also measured for split guards."
+    "ThreadDetailView. PluginFrontend is also measured for split guards.",
+    "",
+    "On 2026-10-02 the composer editor engine moved behind a first-focus",
+    "handoff. PromptBoxInternal no longer statically imports tiptap/prosemirror;",
+    "it starts a dynamic import of prompt-editor-engine.ts after the composer",
+    "chrome commits and renders a plain textarea that persists drafts until the",
+    "engine resolves. The SplitWorkspaceRoute closure dropped from",
+    "1,050.5 KB raw / 303.4 KB brotli to 685.3 KB raw / 208.7 KB brotli, a full",
+    "374,040 raw / 96,997 brotli bytes. Both route limits fell by that saving,",
+    "preserving the prior headroom. The boot payload stayed flat at",
+    "1,478.1 KB raw / 367.1 KB brotli."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -175,6 +186,11 @@
       "boot",
       "SplitWorkspaceRoute"
     ],
+    "src/components/promptbox/editor/prompt-editor-engine.ts": [
+      "boot",
+      "SplitWorkspaceRoute",
+      "PluginFrontend"
+    ],
     "src/components/thread/terminal/ThreadTerminalPanel.tsx": [
       "boot",
       "SplitWorkspaceRoute"
@@ -213,16 +229,18 @@
   },
   "onDemandPackages": {
     "@pierre/trees": "src/components/secondary-panel/ThreadStorageFileTree.tsx",
+    "@tiptap/core": "src/components/promptbox/editor/prompt-editor-engine.ts",
     "ansi-to-html": "src/components/thread/timeline/TerminalOutputBlock.tsx",
     "katex": "src/components/ui/markdown-katex.ts",
+    "prosemirror-view": "src/components/promptbox/editor/prompt-editor-engine.ts",
     "rehype-katex": "src/components/ui/markdown-katex.ts",
     "rehype-raw": "src/components/ui/markdown-html.tsx",
     "rehype-sanitize": "src/components/ui/markdown-html.tsx"
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 1087864,
-      "maxBrotliBytes": 317278,
+      "maxBytes": 713824,
+      "maxBrotliBytes": 220281,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
@@ -236,11 +254,16 @@
         "@shikijs/engine-oniguruma",
         "@shikijs/langs",
         "@shikijs/vscode-textmate",
+        "@tiptap/core",
+        "@tiptap/pm",
+        "@tiptap/react",
         "@tiptap/extension-code-block",
         "@tiptap/extension-horizontal-rule",
         "@tiptap/extension-link",
+        "@tiptap/extension-list",
         "@tiptap/extension-strike",
         "@tiptap/extension-underline",
+        "@tiptap/extensions",
         "@tiptap/starter-kit",
         "@xterm/xterm",
         "ansi-to-html",
@@ -248,6 +271,11 @@
         "linkifyjs",
         "mermaid",
         "oniguruma-to-es",
+        "prosemirror-commands",
+        "prosemirror-model",
+        "prosemirror-state",
+        "prosemirror-transform",
+        "prosemirror-view",
         "rehype-katex",
         "rehype-raw",
         "rehype-sanitize",

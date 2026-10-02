@@ -32,8 +32,10 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { loadPromptEditorEngine } from "./editor/load-prompt-editor-engine";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -49,6 +51,14 @@ function getPromptEditorElement(): HTMLElement {
   return editorElement;
 }
 
+async function waitForPromptEditor(): Promise<HTMLElement> {
+  return waitFor(() => getPromptEditorElement());
+}
+
+beforeAll(async () => {
+  await loadPromptEditorEngine();
+});
+
 beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: true,
@@ -60,7 +70,6 @@ beforeEach(() => {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }));
-  vi.useFakeTimers();
 });
 
 afterEach(() => {
@@ -122,10 +131,11 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
     }
 
     render(<Harness />);
-    await act(async () => {});
-    expect(screen.getByRole("button", { name: "review" })).toBeTruthy();
+    const editor = await waitForPromptEditor();
+    await screen.findByRole("button", { name: "review" });
+    vi.useFakeTimers();
 
-    fireEvent.keyDown(getPromptEditorElement(), {
+    fireEvent.keyDown(editor, {
       key: "Enter",
       code: "Enter",
       keyCode: 13,
@@ -145,7 +155,7 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("submits a Magic Keyboard Enter once, with no replayed second submit", () => {
+  it("submits a Magic Keyboard Enter once, with no replayed second submit", async () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();
     render(
@@ -167,7 +177,9 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
       />,
     );
 
-    fireEvent.keyDown(getPromptEditorElement(), {
+    const editor = await waitForPromptEditor();
+    vi.useFakeTimers();
+    fireEvent.keyDown(editor, {
       key: "Enter",
       code: "Enter",
       keyCode: 13,
@@ -182,7 +194,7 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("turns a software-keyboard Return into a newline through the iOS replay", () => {
+  it("turns a software-keyboard Return into a newline through the iOS replay", async () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();
     render(
@@ -204,7 +216,9 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
       />,
     );
 
-    fireEvent.keyDown(getPromptEditorElement(), {
+    const editor = await waitForPromptEditor();
+    vi.useFakeTimers();
+    fireEvent.keyDown(editor, {
       key: "Enter",
       code: "",
       keyCode: 13,

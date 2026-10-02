@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { loadPromptEditorEngine } from "./editor/load-prompt-editor-engine";
 import { defaultAppSettings, type AppShortcut } from "@bb/domain";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
@@ -106,7 +107,7 @@ function ShortcutHintState() {
   );
 }
 
-function renderComposer(extra: React.ReactNode = null) {
+async function renderComposer(extra: React.ReactNode = null) {
   render(
     <MemoryRouter>
       <AppCommandProvider>
@@ -131,10 +132,13 @@ function renderComposer(extra: React.ReactNode = null) {
       </AppCommandProvider>
     </MemoryRouter>,
   );
-  const editor = document.querySelector<HTMLElement>(
-    "[data-promptbox-editor-content] [contenteditable]",
-  );
-  if (editor === null) throw new Error("prompt editor did not render");
+  const editor = await waitFor(() => {
+    const element = document.querySelector<HTMLElement>(
+      "[data-promptbox-editor-content] [contenteditable]",
+    );
+    if (element === null) throw new Error("prompt editor did not render");
+    return element;
+  });
   editor.focus();
   return editor;
 }
@@ -151,6 +155,10 @@ function pressInEditor(
   editor.dispatchEvent(event);
   return event;
 }
+
+beforeAll(async () => {
+  await loadPromptEditorEngine();
+});
 
 afterEach(() => {
   cleanup();
@@ -172,9 +180,9 @@ describe("prompt editor app shortcuts", () => {
   it.each([
     ["ArrowUp", "thread.previous"],
     ["ArrowDown", "thread.next"],
-  ])("runs the configured Meta+Shift+%s app shortcut", (key, command) => {
+  ])("runs the configured Meta+Shift+%s app shortcut", async (key, command) => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-    const editor = renderComposer(<ThreadNavigationHandlers />);
+    const editor = await renderComposer(<ThreadNavigationHandlers />);
 
     const event = pressInEditor(editor, {
       key,
@@ -187,8 +195,8 @@ describe("prompt editor app shortcuts", () => {
     expect(document.activeElement).toBe(editor);
   });
 
-  it("runs the sidebar shortcut while the composer has focus", () => {
-    const editor = renderComposer();
+  it("runs the sidebar shortcut while the composer has focus", async () => {
+    const editor = await renderComposer();
 
     const event = pressInEditor(editor, { ctrlKey: true, key: "\\" });
 
@@ -196,7 +204,7 @@ describe("prompt editor app shortcuts", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it("runs a sidebar shortcut whose chord the editor keymap also claims", () => {
+  it("runs a sidebar shortcut whose chord the editor keymap also claims", async () => {
     testState.sidebarShortcut = {
       key: "b",
       mod: true,
@@ -205,7 +213,7 @@ describe("prompt editor app shortcuts", () => {
       alt: false,
       shift: true,
     };
-    const editor = renderComposer();
+    const editor = await renderComposer();
 
     pressInEditor(editor, {
       code: "KeyB",
@@ -217,9 +225,9 @@ describe("prompt editor app shortcuts", () => {
     expect(testState.calls).toEqual(["sidebar.toggle"]);
   });
 
-  it("offers a declined chord to the handlers only once", () => {
+  it("offers a declined chord to the handlers only once", async () => {
     testState.sidebarHandlerResult = false;
-    const editor = renderComposer();
+    const editor = await renderComposer();
 
     const event = pressInEditor(editor, { ctrlKey: true, key: "\\" });
 
@@ -227,10 +235,10 @@ describe("prompt editor app shortcuts", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it("keeps the keyboard hint until modifier release when the composer runs a shortcut", () => {
+  it("keeps the keyboard hint until modifier release when the composer runs a shortcut", async () => {
+    const editor = await renderComposer(<ShortcutHintState />);
     vi.useFakeTimers();
     try {
-      const editor = renderComposer(<ShortcutHintState />);
       window.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Control", ctrlKey: true }),
       );
@@ -252,9 +260,9 @@ describe("prompt editor app shortcuts", () => {
     }
   });
 
-  it("releases focus on Escape while a plugin locks the composer", () => {
+  it("releases focus on Escape while a plugin locks the composer", async () => {
     testState.composerInputLocked = true;
-    const editor = renderComposer();
+    const editor = await renderComposer();
     expect(editor.getAttribute("contenteditable")).toBe("false");
     editor.focus();
     expect(document.activeElement).toBe(editor);
@@ -264,8 +272,8 @@ describe("prompt editor app shortcuts", () => {
     expect(document.activeElement).not.toBe(editor);
   });
 
-  it("keeps typed text in the composer", () => {
-    const editor = renderComposer();
+  it("keeps typed text in the composer", async () => {
+    const editor = await renderComposer();
 
     const event = pressInEditor(editor, { code: "KeyB", key: "b" });
 

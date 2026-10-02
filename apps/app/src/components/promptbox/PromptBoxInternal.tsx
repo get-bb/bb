@@ -7,9 +7,6 @@ import type {
   PromptTextMention,
 } from "@bb/domain";
 import type { ComposerView } from "@get-bb/plugin-sdk";
-import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
-import { useEditor, type Editor } from "@tiptap/react";
 import {
   useCallback,
   useContext,
@@ -111,38 +108,31 @@ import {
 } from "./PromptBoxActionsMenu";
 import type { PromptMentionLinkResolver } from "./editor/prompt-mention-link";
 import {
-  refreshPromptDecorations,
-  type PromptDecorationSource,
-  type PromptDraftObserver,
-} from "./editor/prompt-decoration-extension";
-import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
-import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
-import {
   promptCommandResourceFromSuggestion,
-  promptEditorClipboardTextFromSlice,
-  promptEditorContentFromValue,
-  promptEditorCopiedSlice,
-  promptEditorInlineContentFromValue,
-  promptEditorValueFromDoc,
-  promptEditorValueFromSlice,
   promptMentionResourceFromSuggestion,
-  type PromptEditorValue,
-} from "./editor/prompt-editor-serialization";
+} from "./mentions/prompt-mention-resource";
+import { fallbackMentionRanges } from "./fallback-mention-ranges";
 import {
-  exitTrailingBlockquoteBreak,
-  insertParagraphBeforeBlockquote,
-  removeEmptyBlockquotes,
-} from "./editor/prompt-editor-blockquote";
-import { exitHeading } from "./editor/prompt-editor-heading";
-import { applyPromptListNewline } from "./editor/prompt-editor-list";
-import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
+  loadPromptEditorEngine,
+  peekPromptEditorEngine,
+} from "./editor/load-prompt-editor-engine";
+import type {
+  Editor,
+  ProseMirrorNode,
+  PromptDecorationSource,
+  PromptDraftObserver,
+  PromptEditorEngine,
+  PromptEditorValue,
+  Slice,
+  UseEditorOptions,
+} from "./editor/prompt-editor-engine";
+import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import {
   MentionMenu,
   typeaheadSuggestionKey,
   type TypeaheadSuggestion,
 } from "./mentions/MentionMenu";
 import { useTypeaheadMenuMaxHeight } from "./useTypeaheadMenuMaxHeight";
-import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import {
   blurPromptEditor,
   ComposerEditorSlot,
@@ -733,7 +723,10 @@ function trimTrailingPromptNewlines(
   };
 }
 
-function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
+function promptEditorValueFromRichHtml(
+  engine: PromptEditorEngine,
+  html: string,
+): ParsedRichClipboardValue {
   const document = new DOMParser().parseFromString(html, "text/html");
   let text = "";
   let hasMentions = false;
@@ -778,7 +771,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   };
 
   const appendClipboardMention = (element: Element): boolean => {
-    const payload = parsePromptMentionClipboardElement({ element });
+    const payload = engine.parsePromptMentionClipboardElement({ element });
     if (!payload) {
       return false;
     }
@@ -884,13 +877,14 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
 }
 
 function promptEditorValueFromClipboardPaste(
+  engine: PromptEditorEngine,
   clipboardData: DataTransfer | null,
   promptActions?: readonly PromptBoxAction[],
 ): PromptEditorValue | null {
   const html = clipboardData?.getData("text/html") ?? "";
   const hasHtml = html.trim().length > 0;
   if (hasHtml) {
-    const richValue = promptEditorValueFromRichHtml(html);
+    const richValue = promptEditorValueFromRichHtml(engine, html);
     if (richValue.hasMentions) {
       return withPromptActionCommandMentions(richValue.value, promptActions);
     }
@@ -905,7 +899,7 @@ function promptEditorValueFromClipboardPaste(
     return null;
   }
 
-  return promptEditorValueFromRichHtml(html).value;
+  return promptEditorValueFromRichHtml(engine, html).value;
 }
 
 function runAfterClipboardCut(callback: () => void): void {
@@ -1064,9 +1058,9 @@ export function suppressPromptEditorAnchorActivation(event: Event): boolean {
   return true;
 }
 
-function focusEditorAtEnd(editor: Editor): void {
+function focusEditorAtEnd(engine: PromptEditorEngine, editor: Editor): void {
   const transaction = editor.state.tr
-    .setSelection(TextSelection.atEnd(editor.state.doc))
+    .setSelection(engine.TextSelection.atEnd(editor.state.doc))
     .scrollIntoView();
   editor.view.dispatch(transaction);
   editor.view.focus();
@@ -1185,7 +1179,7 @@ export function PromptBoxInternal({
     projectId: attachmentProjectId,
   } = attachmentConfig;
   const isPointerCoarse = usePointerCoarse();
-  const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
+  const isIPadOSWebKitDevice = useMemo(() => isIPadOSWebKit(), []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
   const formRef = useRef<HTMLFormElement>(null);
   const typeaheadMenuRef = useRef<HTMLDivElement>(null);
@@ -1218,6 +1212,7 @@ export function PromptBoxInternal({
   const revealSelectionFrameRef = useRef<number | null>(null);
   const promptActionFocusFrameRef = useRef<number | null>(null);
   const pendingFocusEndRef = useRef(false);
+  const appliedInitialSelectionRef = useRef(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const valueRef = useRef(value);
   const mentionRangesRef = useRef<readonly PromptTextMention[]>(mentionRanges);
@@ -1640,231 +1635,306 @@ export function PromptBoxInternal({
   }, [syncTriggerState]);
 
   const [richTextEditing] = useRichTextEditingPreference();
+  const [editorEngine, setEditorEngine] = useState<PromptEditorEngine | null>(
+    () => peekPromptEditorEngine(),
+  );
+  const editorEngineRef = useRef<PromptEditorEngine | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const fallbackTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fallbackFocusedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    editorEngineRef.current = editorEngine;
+  }, [editorEngine]);
+
+  useEffect(() => {
+    if (editorEngine !== null) return;
+    let cancelled = false;
+    void loadPromptEditorEngine().then((engine) => {
+      if (!cancelled) setEditorEngine(engine);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editorEngine]);
+
   const editorExtensions = useMemo(
     () =>
-      promptEditorExtensions({
-        richTextEditing,
-        getPlaceholder: () => placeholderRef.current,
-        getDecorationSources: () => pluginDecorationSourcesRef.current,
-        getDraftObservers: () => pluginDraftObserversRef.current,
-      }),
-    [richTextEditing],
+      editorEngine === null
+        ? null
+        : editorEngine.promptEditorExtensions({
+            richTextEditing,
+            getPlaceholder: () => placeholderRef.current,
+            getDecorationSources: () => pluginDecorationSourcesRef.current,
+            getDraftObservers: () => pluginDraftObserversRef.current,
+          }),
+    [editorEngine, richTextEditing],
   );
 
   const initialEditorContent = useMemo(() => {
+    if (editorEngine === null) return null;
     const initialValue: PromptEditorValueKey = {
       text: value,
       mentions: mentionRanges,
     };
     return {
       value: initialValue,
-      content: promptEditorContentFromValue(initialValue, {
+      content: editorEngine.promptEditorContentFromValue(initialValue, {
         richTextMarkdown: richTextEditing,
       }),
     };
     // oxlint-disable-next-line react/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
-  }, [richTextEditing]);
+  }, [editorEngine, richTextEditing]);
 
-  const editor = useEditor(
-    {
-      extensions: editorExtensions,
-      content: initialEditorContent.content,
-      immediatelyRender: false,
-      editorProps: {
-        attributes: {
-          "aria-label": effectivePlaceholder,
-          "data-placeholder": effectivePlaceholder,
-          ...(onModifierSubmit
-            ? { "aria-keyshortcuts": modifierSubmitShortcutAria() }
-            : {}),
-          autocomplete: "off",
-          class: cn(
-            "min-h-full whitespace-pre-wrap break-words outline-none",
-            "placeholder:select-none placeholder:text-subtle-foreground",
-          ),
-          enterkeyhint: editorEnterKeyHint,
-          ...(id ? { id } : {}),
-          role: "textbox",
-        },
-        transformCopied: (slice, view) =>
-          promptEditorCopiedSlice(slice, view.state.selection),
-        clipboardTextSerializer: (slice, view) =>
-          promptEditorClipboardTextFromSlice(slice, view.state.schema),
-        handleDOMEvents: {
-          auxclick: (_view, event) => {
-            return suppressPromptEditorAnchorActivation(event);
-          },
-          focus: () => {
-            if (composerMenuRef.current?.kind === "plugin")
-              dismissComposerMenu();
-            onCommandEditorFocusRef.current?.();
-            return false;
-          },
-          blur: () => {
-            if (composerMenuRef.current?.kind === "suggestions")
-              dismissComposerMenu();
-            if (dismissedTriggerRef.current) {
-              dismissedTriggerRef.current = {
-                ...dismissedTriggerRef.current,
-                hasLeftRange: true,
-              };
-            }
-            return false;
-          },
-          cut: () => {
-            runAfterClipboardCut(() => {
+  const editorOptions: UseEditorOptions | null =
+    editorEngine === null ||
+    editorExtensions === null ||
+    initialEditorContent === null
+      ? null
+      : {
+          extensions: editorExtensions,
+          content: initialEditorContent.content,
+          immediatelyRender: false,
+          editorProps: {
+            attributes: {
+              "aria-label": effectivePlaceholder,
+              "data-placeholder": effectivePlaceholder,
+              ...(onModifierSubmit
+                ? { "aria-keyshortcuts": modifierSubmitShortcutAria() }
+                : {}),
+              autocomplete: "off",
+              class: cn(
+                "min-h-full whitespace-pre-wrap break-words outline-none",
+                "placeholder:select-none placeholder:text-subtle-foreground",
+              ),
+              enterkeyhint: editorEnterKeyHint,
+              ...(id ? { id } : {}),
+              role: "textbox",
+            },
+            transformCopied: (slice, view) =>
+              editorEngine.promptEditorCopiedSlice(slice, view.state.selection),
+            clipboardTextSerializer: (slice, view) =>
+              editorEngine.promptEditorClipboardTextFromSlice(
+                slice,
+                view.state.schema,
+              ),
+            handleDOMEvents: {
+              auxclick: (_view, event) => {
+                return suppressPromptEditorAnchorActivation(event);
+              },
+              focus: () => {
+                if (composerMenuRef.current?.kind === "plugin")
+                  dismissComposerMenu();
+                onCommandEditorFocusRef.current?.();
+                return false;
+              },
+              blur: () => {
+                if (composerMenuRef.current?.kind === "suggestions")
+                  dismissComposerMenu();
+                if (dismissedTriggerRef.current) {
+                  dismissedTriggerRef.current = {
+                    ...dismissedTriggerRef.current,
+                    hasLeftRange: true,
+                  };
+                }
+                return false;
+              },
+              cut: () => {
+                runAfterClipboardCut(() => {
+                  const currentEditor = editorRef.current;
+                  if (!currentEditor || currentEditor.isDestroyed) return;
+                  editorEngine.removeEmptyBlockquotes(currentEditor);
+                });
+                return false;
+              },
+              compositionend: (_view, event) => {
+                if (!_view.composing) return false;
+                compositionEndedAtRef.current = event.timeStamp;
+                return false;
+              },
+              keydown: (_view, event) => {
+                if (
+                  !_view.editable ||
+                  !isIPadOSWebKitDevice ||
+                  !isIPadHardwareEnterCandidate(event) ||
+                  _view.composing ||
+                  event.isComposing ||
+                  event.keyCode === 229
+                ) {
+                  return false;
+                }
+
+                if (
+                  Math.abs(event.timeStamp - compositionEndedAtRef.current) <
+                  SAFARI_POST_COMPOSITION_KEYDOWN_WINDOW_MS
+                ) {
+                  compositionEndedAtRef.current = Number.NEGATIVE_INFINITY;
+                  postCompositionKeyDownEvents.add(event);
+                  return false;
+                }
+
+                return handleEditorKeyDownRef.current(event, true);
+              },
+              click: (_view, event) => {
+                return suppressPromptEditorAnchorActivation(event);
+              },
+            },
+            handleClick: () => {
               const currentEditor = editorRef.current;
-              if (!currentEditor || currentEditor.isDestroyed) return;
-              removeEmptyBlockquotes(currentEditor);
-            });
-            return false;
-          },
-          compositionend: (_view, event) => {
-            if (!_view.composing) return false;
-            compositionEndedAtRef.current = event.timeStamp;
-            return false;
-          },
-          keydown: (_view, event) => {
-            if (
-              !_view.editable ||
-              !isIPadOSWebKitDevice ||
-              !isIPadHardwareEnterCandidate(event) ||
-              _view.composing ||
-              event.isComposing ||
-              event.keyCode === 229
-            ) {
+              if (!currentEditor) return false;
+              syncTriggerStateRef.current(currentEditor);
               return false;
-            }
-
-            if (
-              Math.abs(event.timeStamp - compositionEndedAtRef.current) <
-              SAFARI_POST_COMPOSITION_KEYDOWN_WINDOW_MS
-            ) {
-              compositionEndedAtRef.current = Number.NEGATIVE_INFINITY;
-              postCompositionKeyDownEvents.add(event);
-              return false;
-            }
-
-            return handleEditorKeyDownRef.current(event, true);
-          },
-          click: (_view, event) => {
-            return suppressPromptEditorAnchorActivation(event);
-          },
-        },
-        handleClick: () => {
-          const currentEditor = editorRef.current;
-          if (!currentEditor) return false;
-          syncTriggerStateRef.current(currentEditor);
-          return false;
-        },
-        handleKeyDown: (_view, event) => {
-          return handleEditorKeyDownRef.current(event);
-        },
-        handlePaste: (view, event, slice) => {
-          const attachFiles = onAttachFilesRef.current;
-          const clipboardItems = Array.from(event.clipboardData?.items ?? []);
-          const pastedFiles = clipboardItems
-            .filter((item) => item.kind === "file")
-            .map((item) => item.getAsFile())
-            .filter((file): file is File => file !== null);
-
-          if (attachFiles && pastedFiles.length > 0) {
-            event.preventDefault();
-            void attachFiles(pastedFiles);
-          }
-
-          const plainText = event.clipboardData?.getData("text/plain") ?? "";
-          const sliceHasBlockquote = promptEditorSliceHasBlockquote(slice);
-          if (sliceHasBlockquote || plainTextHasQuoteLine(plainText)) {
-            event.preventDefault();
-            const pastedValue = trimTrailingPromptNewlines(
-              sliceHasBlockquote
-                ? promptEditorValueFromSlice(slice, view.state.schema)
-                : promptEditorValueFromPlainText(plainText, promptActions),
-            );
-            if (pastedValue.text.length === 0) return true;
-
-            const currentEditor = editorRef.current;
-            const pastedContent =
-              promptEditorContentFromValue(pastedValue, {
-                richTextMarkdown: richTextEditing,
-              }).content ?? [];
-            currentEditor
-              ?.chain()
-              .focus()
-              .insertContent(pastedContent)
-              .setMeta("uiEvent", "paste")
-              .run();
-            if (currentEditor && !currentEditor.isDestroyed) {
-              const nextValue = trimTrailingPromptNewlines(
-                promptEditorValueFromDoc(currentEditor.state.doc),
+            },
+            handleKeyDown: (_view, event) => {
+              return handleEditorKeyDownRef.current(event);
+            },
+            handlePaste: (view, event, slice) => {
+              const attachFiles = onAttachFilesRef.current;
+              const clipboardItems = Array.from(
+                event.clipboardData?.items ?? [],
               );
-              lastSyncedEditorValueRef.current = nextValue;
-              onChangeRef.current(nextValue.text, nextValue.mentions);
+              const pastedFiles = clipboardItems
+                .filter((item) => item.kind === "file")
+                .map((item) => item.getAsFile())
+                .filter((file): file is File => file !== null);
+
+              if (attachFiles && pastedFiles.length > 0) {
+                event.preventDefault();
+                void attachFiles(pastedFiles);
+              }
+
+              const plainText =
+                event.clipboardData?.getData("text/plain") ?? "";
+              const sliceHasBlockquote = promptEditorSliceHasBlockquote(slice);
+              if (sliceHasBlockquote || plainTextHasQuoteLine(plainText)) {
+                event.preventDefault();
+                const pastedValue = trimTrailingPromptNewlines(
+                  sliceHasBlockquote
+                    ? editorEngine.promptEditorValueFromSlice(
+                        slice,
+                        view.state.schema,
+                      )
+                    : promptEditorValueFromPlainText(plainText, promptActions),
+                );
+                if (pastedValue.text.length === 0) return true;
+
+                const currentEditor = editorRef.current;
+                const pastedContent =
+                  editorEngine.promptEditorContentFromValue(pastedValue, {
+                    richTextMarkdown: richTextEditing,
+                  }).content ?? [];
+                currentEditor
+                  ?.chain()
+                  .focus()
+                  .insertContent(pastedContent)
+                  .setMeta("uiEvent", "paste")
+                  .run();
+                if (currentEditor && !currentEditor.isDestroyed) {
+                  const nextValue = trimTrailingPromptNewlines(
+                    editorEngine.promptEditorValueFromDoc(
+                      currentEditor.state.doc,
+                    ),
+                  );
+                  lastSyncedEditorValueRef.current = nextValue;
+                  onChangeRef.current(nextValue.text, nextValue.mentions);
+                }
+                return true;
+              }
+
+              const pastedValue = promptEditorValueFromClipboardPaste(
+                editorEngine,
+                event.clipboardData ?? null,
+                promptActions,
+              );
+              if (pastedValue === null) {
+                return attachFiles !== undefined && pastedFiles.length > 0;
+              }
+
+              event.preventDefault();
+              if (pastedValue.text.length === 0) return true;
+
+              editorRef.current
+                ?.chain()
+                .focus()
+                .insertContent(
+                  editorEngine.promptEditorInlineContentFromValue(pastedValue),
+                )
+                .setMeta("uiEvent", "paste")
+                .run();
+              return true;
+            },
+          },
+          onCreate({ editor: createdEditor }) {
+            editorRef.current = createdEditor;
+            lastSyncedEditorValueRef.current = initialEditorContent.value;
+          },
+          onSelectionUpdate({ editor: updatedEditor, transaction }) {
+            if (transaction.docChanged) return;
+            syncTriggerStateRef.current(updatedEditor);
+            scheduleRevealEditorSelection();
+          },
+          onUpdate({ editor: updatedEditor, transaction }) {
+            if (skipEditorChangeRef.current) return;
+            const dismissedTrigger = dismissedTriggerRef.current;
+            if (
+              dismissedTrigger !== null &&
+              transaction.docChanged &&
+              !isRestoringAppliedMentionRef.current
+            ) {
+              const mappedStart = transaction.mapping.mapResult(
+                dismissedTrigger.start,
+                1,
+              );
+              dismissedTriggerRef.current = mappedStart.deleted
+                ? null
+                : {
+                    ...dismissedTrigger,
+                    start: mappedStart.pos,
+                    end: transaction.mapping.map(dismissedTrigger.end, -1),
+                  };
             }
-            return true;
-          }
+            const nextValue = editorEngine.promptEditorValueFromDoc(
+              updatedEditor.state.doc,
+            );
+            lastSyncedEditorValueRef.current = nextValue;
+            onChangeRef.current(nextValue.text, nextValue.mentions);
+            syncTriggerStateRef.current(updatedEditor);
+            if (transaction.getMeta("uiEvent") !== undefined) {
+              scheduleRevealEditorSelection();
+            }
+          },
+        };
 
-          const pastedValue = promptEditorValueFromClipboardPaste(
-            event.clipboardData ?? null,
-            promptActions,
-          );
-          if (pastedValue === null) {
-            return attachFiles !== undefined && pastedFiles.length > 0;
-          }
+  const handleEditorChange = useCallback((nextEditor: Editor | null) => {
+    setEditor(nextEditor);
+  }, []);
 
-          event.preventDefault();
-          if (pastedValue.text.length === 0) return true;
+  useLayoutEffect(() => {
+    if (!editor || editorEngine === null) return;
+    if (appliedInitialSelectionRef.current) return;
+    appliedInitialSelectionRef.current = true;
+    const transaction = editor.state.tr.setSelection(
+      editorEngine.TextSelection.atEnd(editor.state.doc),
+    );
+    editor.view.dispatch(transaction);
+  }, [editor, editorEngine]);
 
-          editorRef.current
-            ?.chain()
-            .focus()
-            .insertContent(promptEditorInlineContentFromValue(pastedValue))
-            .setMeta("uiEvent", "paste")
-            .run();
-          return true;
-        },
-      },
-      onCreate({ editor: createdEditor }) {
-        editorRef.current = createdEditor;
-        lastSyncedEditorValueRef.current = initialEditorContent.value;
-      },
-      onSelectionUpdate({ editor: updatedEditor, transaction }) {
-        if (transaction.docChanged) return;
-        syncTriggerStateRef.current(updatedEditor);
-        scheduleRevealEditorSelection();
-      },
-      onUpdate({ editor: updatedEditor, transaction }) {
-        if (skipEditorChangeRef.current) return;
-        const dismissedTrigger = dismissedTriggerRef.current;
-        if (
-          dismissedTrigger !== null &&
-          transaction.docChanged &&
-          !isRestoringAppliedMentionRef.current
-        ) {
-          const mappedStart = transaction.mapping.mapResult(
-            dismissedTrigger.start,
-            1,
-          );
-          dismissedTriggerRef.current = mappedStart.deleted
-            ? null
-            : {
-                ...dismissedTrigger,
-                start: mappedStart.pos,
-                end: transaction.mapping.map(dismissedTrigger.end, -1),
-              };
-        }
-        const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
-        lastSyncedEditorValueRef.current = nextValue;
-        onChangeRef.current(nextValue.text, nextValue.mentions);
-        syncTriggerStateRef.current(updatedEditor);
-        if (transaction.getMeta("uiEvent") !== undefined) {
-          scheduleRevealEditorSelection();
-        }
-      },
-    },
-    [richTextEditing],
-  );
+  useLayoutEffect(() => {
+    if (!editor) return;
+    if (pendingFocusEndRef.current) return;
+    if (!fallbackFocusedRef.current) return;
+    fallbackFocusedRef.current = false;
+    editor.commands.focus("end");
+  }, [editor]);
+
+  useLayoutEffect(() => {
+    if (editor !== null || editorEngine !== null) return;
+    if (!autoFocus || isPointerCoarse) return;
+    const textarea = fallbackTextareaRef.current;
+    if (textarea === null) return;
+    if (document.activeElement?.closest("[data-sidebar-rename-editor]")) return;
+    textarea.focus();
+  }, [autoFocus, editor, editorEngine, isPointerCoarse]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -1891,7 +1961,7 @@ export function PromptBoxInternal({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    refreshPromptDecorations(editor);
+    editorEngineRef.current!.refreshPromptDecorations(editor);
   }, [composerScopeKey, editor, pluginRichTextContributions]);
 
   useLayoutEffect(() => {
@@ -1903,7 +1973,7 @@ export function PromptBoxInternal({
     }
     if (!editor) return;
     pendingFocusEndRef.current = false;
-    focusEditorAtEnd(editor);
+    focusEditorAtEnd(editorEngineRef.current!, editor);
     scheduleRevealEditorSelection();
   }, [editor, isPointerCoarse, scheduleRevealEditorSelection]);
 
@@ -1931,7 +2001,7 @@ export function PromptBoxInternal({
       if (editor.isDestroyed) return;
       if (document.activeElement?.closest("[data-sidebar-rename-editor]"))
         return;
-      focusEditorAtEnd(editor);
+      focusEditorAtEnd(editorEngineRef.current!, editor);
       scheduleRevealEditorSelection();
     };
 
@@ -1976,7 +2046,7 @@ export function PromptBoxInternal({
     try {
       skipEditorChangeRef.current = true;
       editor.commands.setContent(
-        promptEditorContentFromValue(nextValue, {
+        editorEngineRef.current!.promptEditorContentFromValue(nextValue, {
           richTextMarkdown: richTextEditing,
         }),
       );
@@ -2005,7 +2075,7 @@ export function PromptBoxInternal({
     }
     if (!editor) return;
     lastFocusEndKeyRef.current = focusEndKey;
-    focusEditorAtEnd(editor);
+    focusEditorAtEnd(editorEngineRef.current!, editor);
     scheduleRevealEditorSelection();
   }, [editor, focusEndKey, isPointerCoarse, scheduleRevealEditorSelection]);
 
@@ -2254,7 +2324,9 @@ export function PromptBoxInternal({
 
   const finishApply = useCallback(
     (appliedEditor: Editor) => {
-      const nextValue = promptEditorValueFromDoc(appliedEditor.state.doc);
+      const nextValue = editorEngineRef.current!.promptEditorValueFromDoc(
+        appliedEditor.state.doc,
+      );
       lastSyncedEditorValueRef.current = nextValue;
       onChangeRef.current(nextValue.text, nextValue.mentions);
 
@@ -2481,10 +2553,11 @@ export function PromptBoxInternal({
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed) {
       pendingFocusEndRef.current = true;
+      fallbackTextareaRef.current?.focus();
       return;
     }
     pendingFocusEndRef.current = false;
-    focusEditorAtEnd(currentEditor);
+    focusEditorAtEnd(editorEngineRef.current!, currentEditor);
     scheduleRevealEditorSelection();
   }, [isPointerCoarse, scheduleRevealEditorSelection]);
 
@@ -2699,10 +2772,12 @@ export function PromptBoxInternal({
       insertion
         .insertContent(
           block
-            ? promptEditorContentFromValue(value, {
+            ? editorEngineRef.current!.promptEditorContentFromValue(value, {
                 richTextMarkdown: richTextEditing,
               })
-            : promptEditorInlineContentFromValue(value),
+            : editorEngineRef.current!.promptEditorInlineContentFromValue(
+                value,
+              ),
         )
         .run();
       if (!isPointerCoarse) scheduleRevealEditorSelection();
@@ -2939,7 +3014,7 @@ export function PromptBoxInternal({
           return;
         }
 
-        focusEditorAtEnd(currentEditor);
+        focusEditorAtEnd(editorEngineRef.current!, currentEditor);
         syncTriggerState(currentEditor);
         scheduleRevealEditorSelection();
       });
@@ -2977,7 +3052,7 @@ export function PromptBoxInternal({
       if (!currentEditor || currentEditor.isDestroyed) return;
 
       event.preventDefault();
-      focusEditorAtEnd(currentEditor);
+      focusEditorAtEnd(editorEngineRef.current!, currentEditor);
       scheduleRevealEditorSelection();
     },
     [scheduleRevealEditorSelection],
@@ -3156,7 +3231,7 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
-        applyPromptListNewline(currentEditor)
+        editorEngineRef.current!.applyPromptListNewline(currentEditor)
       ) {
         event.preventDefault();
         return true;
@@ -3165,8 +3240,10 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
-        (insertParagraphBeforeBlockquote(currentEditor) ||
-          exitTrailingBlockquoteBreak(currentEditor))
+        (editorEngineRef.current!.insertParagraphBeforeBlockquote(
+          currentEditor,
+        ) ||
+          editorEngineRef.current!.exitTrailingBlockquoteBreak(currentEditor))
       ) {
         event.preventDefault();
         return true;
@@ -3178,7 +3255,11 @@ export function PromptBoxInternal({
         !event.altKey &&
         !event.ctrlKey &&
         (event.shiftKey || !canSubmitWithEnterKey);
-      if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
+      if (
+        isPromptNewlineKey &&
+        currentEditor &&
+        editorEngineRef.current!.exitHeading(currentEditor)
+      ) {
         event.preventDefault();
         return true;
       }
@@ -3186,7 +3267,7 @@ export function PromptBoxInternal({
       if (
         isPromptNewlineKey &&
         currentEditor &&
-        applyPromptParagraphNewline(currentEditor)
+        editorEngineRef.current!.applyPromptParagraphNewline(currentEditor)
       ) {
         event.preventDefault();
         return true;
@@ -3370,6 +3451,31 @@ export function PromptBoxInternal({
             ) : null}
             <ComposerEditorSlot
               editor={editor}
+              engine={editorEngine}
+              editorOptions={editorOptions}
+              editorDeps={[richTextEditing]}
+              onEditorChange={handleEditorChange}
+              fallbackTextareaRef={fallbackTextareaRef}
+              onFallbackFocusChange={(focused) => {
+                fallbackFocusedRef.current = focused;
+              }}
+              onFallbackKeyDown={(event) => {
+                handleEditorKeyDownRef.current(event);
+              }}
+              onFallbackChange={(nextValue) => {
+                onChange(
+                  nextValue,
+                  fallbackMentionRanges(
+                    valueRef.current,
+                    nextValue,
+                    mentionRangesRef.current,
+                  ),
+                );
+              }}
+              value={value}
+              placeholder={effectivePlaceholder}
+              enterKeyHint={editorEnterKeyHint}
+              id={id}
               scrollContainerRef={editorScrollContainerRef}
               inputLocked={composerInputLocked}
               isCompactLayout={showCompactLayout}
@@ -3385,6 +3491,7 @@ export function PromptBoxInternal({
               placement={mentionMenuPlacement}
               label={popupContribution?.popup.label ?? "Suggestions"}
               interactive={popupContribution !== null}
+              contentKey={popupContribution?.key ?? null}
               popupRef={typeaheadMenuRef}
               composerRef={formRef}
               onClose={dismissComposerMenu}

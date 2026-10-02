@@ -7,11 +7,13 @@ import type { PromptTextMention } from "@bb/domain";
 import { PromptMentionExtension } from "./prompt-mention-extension";
 import {
   promptCommandResourceFromSuggestion,
+  promptMentionResourceFromSuggestion,
+} from "../mentions/prompt-mention-resource";
+import {
   promptEditorClipboardTextFromSlice,
   promptEditorContentFromValue,
   promptEditorCopiedSlice,
   promptEditorInlineContentFromValue,
-  promptMentionResourceFromSuggestion,
   promptEditorValueFromDoc,
   type PromptEditorValue,
 } from "./prompt-editor-serialization";

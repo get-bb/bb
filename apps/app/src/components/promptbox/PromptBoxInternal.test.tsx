@@ -27,7 +27,8 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { loadPromptEditorEngine } from "./editor/load-prompt-editor-engine";
 import { MemoryRouter } from "react-router-dom";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import {
@@ -548,6 +549,10 @@ function mockIPadOSWebKit(): () => void {
   });
 }
 
+beforeAll(async () => {
+  await loadPromptEditorEngine();
+});
+
 afterEach(async () => {
   cleanup();
   await new Promise<void>((resolve) => setTimeout(resolve, 2));
@@ -565,7 +570,9 @@ describe("suppressPromptEditorAnchorActivation", () => {
         {...createPromptBoxProps({ value: "Retained draft" })}
       />,
     );
-    const element = getPromptEditorElement() as TiptapEditorHTMLElement;
+    const element = (await waitFor(() =>
+      getPromptEditorElement(),
+    )) as TiptapEditorHTMLElement;
     const editor = element.editor;
     if (!editor) throw new Error("Editor was not mounted");
     act(() => {
