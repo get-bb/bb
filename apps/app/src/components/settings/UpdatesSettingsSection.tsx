@@ -1266,7 +1266,7 @@ export function MachineUpdatesRows({
               <button
                 type="button"
                 aria-label={`View ${status.displayName} update log`}
-                className="shrink-0 cursor-pointer rounded-sm text-xs text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="shrink-0 cursor-pointer rounded-sm text-xs text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={() =>
                   openProviderCliInstallLog(failure.logDialogState)
                 }
