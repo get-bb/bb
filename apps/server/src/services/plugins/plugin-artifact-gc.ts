@@ -108,14 +108,17 @@ function planArtifactRemovals(args: {
       checkoutTenants?.some(
         (tenant) => tenant.id !== artifact.id && !plannedIds.has(tenant.id),
       ) ?? false;
+    const removedRoot =
+      checkoutRoot !== null && !checkoutHasAnotherTenant
+        ? checkoutRoot
+        : storageRoot;
+    if (
+      listInstalledPluginIdsAtOrUnderPath(args.db, removedRoot, sep).length > 0
+    ) {
+      continue;
+    }
     plannedIds.add(artifact.id);
-    removals.push({
-      artifact,
-      removedRoot:
-        checkoutRoot !== null && !checkoutHasAnotherTenant
-          ? checkoutRoot
-          : storageRoot,
-    });
+    removals.push({ artifact, removedRoot });
   }
   return removals;
 }

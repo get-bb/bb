@@ -15,7 +15,11 @@ import {
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
-import { prunePluginCache } from "../../../src/services/plugins/plugin-artifact-gc.js";
+import {
+  garbageCollectPluginArtifacts,
+  prunePluginCache,
+  removeUnusedPluginArtifacts,
+} from "../../../src/services/plugins/plugin-artifact-gc.js";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
@@ -232,6 +236,74 @@ describe("plugin cache pruning", () => {
     expect(warnings).toEqual([]);
     expect((await prune(false)).removed).toEqual([]);
   });
+
+  it.each(["prune", "update/remove", "gc"])(
+    "%s preserves installed path plugins inside recorded cache directories",
+    async (operation) => {
+      const protectedRoots: string[] = [];
+      for (const { letter, subdirectory } of [
+        { letter: "a", subdirectory: "" },
+        { letter: "b", subdirectory: "plugins/unused" },
+      ]) {
+        const commit = letter.repeat(40);
+        const checkout = join(gitRepoCache, commit);
+        const artifactRoot = join(checkout, subdirectory);
+        const rootDir = join(checkout, "plugins", "local");
+        await fill(artifactRoot);
+        await fill(rootDir);
+        gitArtifact(letter, commit, artifactRoot);
+        upsertInstalledPlugin(db, {
+          id: `local-${letter}`,
+          source: `path:${rootDir}`,
+          provenance: { kind: "direct" },
+          sourceIntent: { kind: "path", canonicalPath: rootDir },
+          exactResolution: { kind: "path" },
+          updateState: {
+            lastCheckAt: null,
+            availableCompatibleVersion: null,
+            newestIncompatibleVersion: null,
+            statusDetail: null,
+          },
+          activeArtifactId: null,
+          rootDir,
+          version: "1.0.0",
+          enabled: true,
+          enabledFollowsDefault: false,
+        });
+        protectedRoots.push(rootDir);
+      }
+      const unusedCommit = "c".repeat(40);
+      const unusedRoot = join(gitRepoCache, unusedCommit);
+      await fill(unusedRoot);
+      gitArtifact("unused", unusedCommit, unusedRoot);
+      const args = { db, dataDir, warn: () => {} };
+
+      if (operation === "prune") {
+        const preview = await prunePluginCache({ ...args, dryRun: true });
+        expect(preview.removed.map(({ path }) => path)).toEqual([unusedRoot]);
+        expect(await exists(unusedRoot)).toBe(true);
+        const result = await prunePluginCache({ ...args, dryRun: false });
+        expect(result).toEqual({ ...preview, dryRun: false });
+      } else if (operation === "update/remove") {
+        await removeUnusedPluginArtifacts({ ...args, pluginId: "pruned" });
+      } else {
+        await garbageCollectPluginArtifacts({
+          ...args,
+          now: Date.now() + 1,
+          retentionMs: 0,
+        });
+      }
+
+      for (const root of protectedRoots) {
+        expect(await exists(join(root, "payload"))).toBe(true);
+      }
+      expect(await exists(unusedRoot)).toBe(false);
+      expect(listPluginArtifacts(db, "pruned").map(({ id }) => id)).toEqual([
+        "a",
+        "b",
+      ]);
+    },
+  );
 
   it("counts a shared checkout once when its last two plugins are pruned", async () => {
     const commit = "f".repeat(40);
