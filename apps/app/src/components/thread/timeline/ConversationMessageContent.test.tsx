@@ -476,6 +476,9 @@ describe("ConversationMessageContent automation messages", () => {
     expect(
       screen.getByRole("link", { name: "Automation" }).getAttribute("href"),
     ).toBe("/plugins/automations/automations/proj_automation/auto_zto0dtbcxme");
+    expect(container.querySelector("time")?.getAttribute("dateTime")).toBe(
+      new Date(0).toISOString(),
+    );
     expect(screen.getByText("Weekday unread digest.")).toBeTruthy();
     expect(container.textContent).not.toContain("AUTOMATION_PROMPT_TAIL");
 

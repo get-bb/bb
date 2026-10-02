@@ -431,6 +431,7 @@ function UserConversationMessage({
         systemMessageSubject={systemMessageSubject}
         text={body.text}
         threadId={threadId}
+        timestamp={timestamp}
         turnRequest={turnRequest}
         workspaceRootPath={workspaceRootPath}
       />

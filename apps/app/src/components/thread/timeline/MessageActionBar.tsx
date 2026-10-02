@@ -271,6 +271,17 @@ function formatMessageDay(date: Date, now: Date): string {
   });
 }
 
+export function formatShortMessageTime(timestamp: number, now: Date): string {
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return date.toDateString() === now.toDateString()
+    ? time
+    : `${formatMessageDay(date, now)}, ${time}`;
+}
+
 function MessageTimestampFooter({ timestamp }: { timestamp: number }) {
   const date = new Date(timestamp);
   const time = date.toLocaleTimeString(undefined, {

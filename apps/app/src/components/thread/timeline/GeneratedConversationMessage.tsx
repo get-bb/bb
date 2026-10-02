@@ -11,7 +11,7 @@ import type {
   TimelineTitleLink,
   TimelineTitleSegment,
 } from "@bb/thread-view";
-import { type IconName } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
@@ -28,13 +28,17 @@ import {
 } from "./ConversationMessageMentions.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
+import {
+  TimelineTitleView,
+  type TimelineTitleActionResolver,
+} from "./TimelineTitleView.js";
 import type {
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
 } from "./types.js";
 import { turnRequestLabel } from "@bb/client-core";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
+import { formatShortMessageTime } from "./MessageActionBar.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
@@ -66,6 +70,7 @@ interface GeneratedConversationMessageProps {
   systemMessageSubject: SystemMessageSubject | null;
   text: string;
   threadId?: string;
+  timestamp: number;
   turnRequest: TimelineUserConversationRow["turnRequest"];
   workspaceRootPath?: string;
 }
@@ -422,6 +427,37 @@ function GeneratedAgentSourceTitle({
   );
 }
 
+interface GeneratedAutomationTitleProps {
+  onTitleAction?: TimelineTitleActionResolver;
+  timestamp: number;
+  title: TimelineTitle;
+}
+
+function GeneratedAutomationTitle({
+  onTitleAction,
+  timestamp,
+  title,
+}: GeneratedAutomationTitleProps) {
+  const sentAt = new Date(timestamp);
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center gap-2">
+      <TimelineTitleView title={title} onTitleAction={onTitleAction} />
+      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+        <Icon name="Clock" className="size-3" aria-hidden="true" />
+        <time
+          dateTime={sentAt.toISOString()}
+          title={sentAt.toLocaleString(undefined, {
+            dateStyle: "full",
+            timeStyle: "long",
+          })}
+        >
+          {formatShortMessageTime(timestamp, new Date())}
+        </time>
+      </span>
+    </span>
+  );
+}
+
 function systemMessageIsTitleOnly(
   sourceKind: GeneratedConversationSourceKind,
   systemMessageKind: SystemMessageKind,
@@ -465,6 +501,7 @@ export const GeneratedConversationMessage = memo(
     systemMessageSubject,
     text,
     threadId,
+    timestamp,
     turnRequest,
     workspaceRootPath,
   }: GeneratedConversationMessageProps) {
@@ -540,6 +577,12 @@ export const GeneratedConversationMessage = memo(
           sourceName={sourceName}
           sourceProjectId={sourceProjectId}
           sourceThreadId={sourceThreadId}
+          title={title}
+        />
+      ) : sourceKind === "automation" ? (
+        <GeneratedAutomationTitle
+          onTitleAction={onTitleAction}
+          timestamp={timestamp}
           title={title}
         />
       ) : undefined;
