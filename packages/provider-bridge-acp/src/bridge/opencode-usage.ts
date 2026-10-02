@@ -19,6 +19,27 @@ const accountSchema = z.object({
   token_expiry: z.number().nullable(),
   active_org_id: z.string().min(1).nullable(),
 });
+const storedOAuthSchema = z.object({
+  type: z.literal("oauth"),
+  methodID: z.literal("device"),
+  access: z.string().min(1),
+  expires: z.number().nonnegative(),
+  metadata: z.object({
+    server: z.url().default("https://opencode.ai/console"),
+    accountID: z.string().min(1),
+    email: z.email().nullable().catch(null),
+    orgID: z.string().min(1),
+  }),
+});
+
+function isOfficialConsole(url: string): boolean {
+  const issuer = new URL(url);
+  return (
+    issuer.origin === "https://opencode.ai" &&
+    ["/", "/console", "/console/"].includes(issuer.pathname)
+  );
+}
+
 const windowSchema = z.object({
   status: z.enum(["ok", "rate-limited"]),
   percent: z.number().nonnegative(),
@@ -68,17 +89,12 @@ function readAccount(database: DatabaseSync) {
     .get();
   if (!row) return null;
   const account = accountSchema.parse(row);
-  const issuer = new URL(account.url);
-  if (
-    issuer.origin !== "https://opencode.ai" ||
-    !["/", "/console", "/console/"].includes(issuer.pathname) ||
-    account.active_org_id === null
-  )
+  if (!isOfficialConsole(account.url) || account.active_org_id === null)
     return null;
   return account;
 }
 
-function readStoredApiKey(database: DatabaseSync): string | null {
+function readStoredCredential(database: DatabaseSync) {
   const table = database
     .prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'credential'",
@@ -92,8 +108,25 @@ function readStoredApiKey(database: DatabaseSync): string | null {
     const row = query.get(provider);
     if (!row) continue;
     const value = z.string().parse(row.value);
-    const credential = storedKeySchema.safeParse(JSON.parse(value));
-    if (credential.success) return credential.data.key;
+    const parsed: unknown = JSON.parse(value);
+    const credential = storedKeySchema.safeParse(parsed);
+    if (credential.success)
+      return { apiKey: credential.data.key, account: null };
+    const oauth = storedOAuthSchema.safeParse(parsed);
+    if (!oauth.success || !isOfficialConsole(oauth.data.metadata.server))
+      continue;
+    const { access, expires, metadata } = oauth.data;
+    return {
+      apiKey: access,
+      account: {
+        id: metadata.accountID,
+        email: metadata.email,
+        url: metadata.server,
+        access_token: access,
+        token_expiry: expires,
+        active_org_id: metadata.orgID,
+      },
+    };
   }
   return null;
 }
@@ -150,7 +183,13 @@ export async function readOpenCodeGoUsage(
       if (database) {
         try {
           account = readAccount(database);
-          apiKey = account?.access_token ?? readStoredApiKey(database);
+          if (account) {
+            apiKey = account.access_token;
+          } else {
+            const stored = readStoredCredential(database);
+            apiKey = stored?.apiKey ?? null;
+            account = stored?.account ?? null;
+          }
         } finally {
           database.close();
         }
