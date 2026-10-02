@@ -77,6 +77,7 @@ describe("app.commands.register", () => {
         openPanel: vi.fn(() => true),
       };
       const command = collected.commandPaletteActions[0]!;
+      if (command.target !== "app") throw new Error("expected an app command");
       expect(command.isAvailable?.(context)).toBe(true);
       command.run(context);
       expect(isAvailable).toHaveBeenCalledWith(context);
@@ -101,6 +102,50 @@ describe("app.commands.register", () => {
           };
           register(app, first, command);
           register(app, second, command);
+        },
+      }),
+    ).toThrow(/duplicate/i);
+  });
+
+  it("collects composer commands in the shared command namespace", () => {
+    const run = vi.fn();
+    const collected = collectPluginAppRegistrations({
+      __bbPluginApp: true,
+      setup(app) {
+        app.composer.experimental_registerCommand({
+          id: "search",
+          title: "Search prompts",
+          defaultShortcut: { key: "r", control: true },
+          run,
+        });
+      },
+    });
+    expect(collected.commandPaletteActions).toEqual([
+      {
+        target: "composer",
+        id: "search",
+        title: "Search prompts",
+        defaultShortcut: {
+          key: "r",
+          mod: false,
+          meta: false,
+          control: true,
+          alt: false,
+          shift: false,
+        },
+        run,
+      },
+    ]);
+    expect(() =>
+      collectPluginAppRegistrations({
+        __bbPluginApp: true,
+        setup(app) {
+          app.commands.register({ id: "search", title: "Search", run() {} });
+          app.composer.experimental_registerCommand({
+            id: "search",
+            title: "Search prompts",
+            run() {},
+          });
         },
       }),
     ).toThrow(/duplicate/i);
