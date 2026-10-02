@@ -174,7 +174,8 @@ function computeTimelineGroupingContext(
   );
   for (const row of requests) {
     const acceptance = accepted.get(row.requestId!);
-    const span = acceptance === undefined ? undefined : spans.get(acceptance.turnId);
+    const span =
+      acceptance === undefined ? undefined : spans.get(acceptance.turnId);
     if (span !== undefined) {
       span.sequenceStart = Math.min(span.sequenceStart, row.sequence);
     }
@@ -189,7 +190,7 @@ function computeTimelineGroupingContext(
   const spanEnd = (span: ExternalUserBoundaryTurnSpan | null): number =>
     span === null ? -Infinity : (span.completionSequence ?? Infinity);
   for (const row of requests) {
-    if (row.initiator !== "user" || row.hasInput !== 1) continue;
+    if (row.hasVisibleUserInput !== 1) continue;
     const acceptance = accepted.get(row.requestId!);
     const steered =
       acceptance !== undefined &&
@@ -217,7 +218,10 @@ function computeTimelineGroupingContext(
       longest !== null && longest.turnId === message.turnId
         ? secondLongest
         : longest;
-    if (candidate !== null && isExternalUserBoundaryForTurn(candidate, message)) {
+    if (
+      candidate !== null &&
+      isExternalUserBoundaryForTurn(candidate, message)
+    ) {
       boundary = message.sequence;
       break;
     }
