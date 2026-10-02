@@ -7,7 +7,7 @@ Hosted AI services, faster conversations, and new platforms in alpha.
 ### Highlights
 
 - **bb cloud AI:** hosted thread titles, commit messages, and voice transcription for signed-in accounts.
-- **More provider control:** enable or disable individual providers and choose service tiers supported by your model and account.
+- **More provider control:** enable or disable individual providers and choose service tiers, including **Codex Ultrafast mode** on supported models and accounts.
 - **Faster conversations:** smoother streaming, quicker thread switching, and less background work.
 - **Customize navigation:** choose thread-row actions and footer icons, with independent sidebar layouts per tab.
 - **New platforms (Alpha):** Android app and Windows desktop, with automatic desktop updates, native Windows agents, and terminals.
