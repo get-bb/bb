@@ -42,6 +42,10 @@ one page.
   stdin. Inside double quotes the shell runs `backticks` and `$(...)` before
   bb sees the text, which silently corrupts Markdown and can execute commands.
 - Timeouts take seconds or a duration with a unit (`90s`, `20m`, `4h`).
+- Examples here use POSIX shell syntax. On a Windows machine the agent shell
+  is usually PowerShell: read an environment variable as `$env:NAME`
+  (`"$env:BB_THREAD_ID"`), separate commands with `;` instead of `&&`, and
+  continue a line with a backtick instead of a backslash.
 
 A standalone CLI targets http://127.0.0.1:38886. Use BB_SERVER_URL and
 BB_HOST_DAEMON_PORT only for an intentional non-default target.
