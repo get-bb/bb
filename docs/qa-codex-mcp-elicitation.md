@@ -73,3 +73,24 @@ allow persistence. Typed forms and invalid/unsupported schemas were covered by
 automated tests, not this live run. Session-only persistence and Browser Use
 site consent were not exercised. The check establishes working OS permissions
 on this Mac; it does not validate other machines' permission configuration.
+
+## CI integration follow-up
+
+The failing GitHub job checked merge `f4ce2d65fd707f20e93a801121dda1e83a7b0801`,
+which combined this PR with newer main `ecc44c448e167c31743374a88b9e1ebb06456f0b`.
+Upstream #4710 had made Pi consult the host model catalog before selecting a
+model. The older recordings contain session traffic, not that preliminary
+catalog process. The replay child incorrectly consumed a session segment for
+the catalog and answered `get_available_models` with generic empty data.
+
+The Pi fork replay passed on the original base, but failed identically on clean
+current main and on the exact CI merge in Ubuntu 24.04 amd64 / Node 22.22.0.
+After the replay-player correction it passed on that same merge. The full
+59-test parity suite also passed locally on Node 22.22.0, along with 275
+bridge-protocol tests and 366 Codex provider tests.
+
+The replay correction and Plugin SDK 0.6.15 subsequently landed upstream in
+#4747. After rebasing, this PR uses that upstream implementation unchanged;
+the duplicate local replay helper and SDK bump were removed from this branch.
+No production Pi model-selection code, timeout, or allowlist is changed by
+this PR.
