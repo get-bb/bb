@@ -547,9 +547,6 @@ export function createDesktopBrowserViewManager(
     browserSession.setPermissionCheckHandler((_wc, permission) =>
       isAllowedBrowserPermission(permission),
     );
-    browserSession.on("will-download", (event) => {
-      event.preventDefault();
-    });
     hardenedSession = browserSession;
     return browserSession;
   }
