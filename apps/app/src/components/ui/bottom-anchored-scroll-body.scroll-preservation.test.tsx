@@ -252,6 +252,7 @@ afterEach(() => {
 
 describe("BottomAnchoredScrollBody scroll preservation", () => {
   it("detaches from new messages when the page header scrolls to the top", () => {
+    vi.useFakeTimers();
     const { scrollArea, getRow } = renderTimeline({
       threadId: "thread-a",
       rowIds: ["row-a", "row-b"],
@@ -263,9 +264,7 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     );
     Object.defineProperty(scrollArea, "scrollTo", {
       configurable: true,
-      value: vi.fn((options: ScrollToOptions) => {
-        scrollArea.scrollTop = options.top ?? scrollArea.scrollTop;
-      }),
+      value: vi.fn(),
     });
     mockScrollAreaRect(scrollArea);
     mockRowRect(getRow("row-a"), { top: 0, bottom: 100 });
@@ -277,6 +276,12 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     getLatestResizeObserver().trigger();
 
     scrollPageToTop(header);
+    scrollArea.scrollTop = 298;
+    fireEvent.scroll(scrollArea);
+    expect(readAnchor("thread-a")?.atBottom).toBe(false);
+
+    vi.advanceTimersByTime(300);
+    scrollArea.scrollTop = 0;
     fireEvent.scroll(scrollArea);
 
     expect(scrollArea.scrollTop).toBe(0);
