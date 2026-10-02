@@ -3191,11 +3191,33 @@ function listLatestRowsForContextWindowUsage(
     .limit(1)
     .get();
 
-  if (!latestContextRow || latestContextRow.id === latestRow.id) {
-    return [latestRow];
-  }
+  const latestWindowBoundary = db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.sequenceStart),
+        eq(events.type, args.eventType),
+        isNotNestedTurnUsageEvent,
+        sql`(
+          json_extract(${events.data}, '$.contextWindowUsage.snapshot') IS NOT NULL
+          OR json_extract(${events.data}, '$.contextWindowUsage.usedTokens') IS NULL
+          OR json_extract(${events.data}, '$.contextWindowUsage.estimated') = 0
+        )`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
 
-  return [latestContextRow, latestRow];
+  return [
+    ...new Map(
+      [latestWindowBoundary, latestContextRow, latestRow]
+        .filter((row): row is StoredEventRow => row !== undefined)
+        .map((row) => [row.id, row]),
+    ).values(),
+  ].sort((left, right) => left.sequence - right.sequence);
 }
 
 export function listContextWindowUsageRows(
