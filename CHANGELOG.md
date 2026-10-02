@@ -2,22 +2,23 @@
 
 ## 0.45.0
 
-Hosted AI services, faster conversations, and new platforms in alpha.
+Thread titles and voice transcription without a Codex login, faster conversations, and new platforms in alpha.
 
 ### Highlights
 
-- **bb cloud AI:** hosted thread titles, commit messages, and voice transcription for signed-in accounts.
+- **bb cloud AI:** automatic thread titles, commit messages, and voice transcription now work through your bb account, without needing to sign in to Codex.
 - **More provider control:** enable or disable individual providers and choose service tiers, including **Codex Ultrafast mode** on supported models and accounts.
 - **Faster conversations:** smoother streaming, quicker thread switching, and less background work.
 - **Customize navigation:** choose thread-row actions and footer icons, with independent sidebar layouts per tab.
-- **New platforms (Alpha):** Android app and Windows desktop, with automatic desktop updates, native Windows agents, and terminals.
+- **New platforms (Alpha):** Android app and Windows desktop.
 
 ### Improvements
 
 - **Agents:** instant thread forks named after their source, native Codex questions when enabled, Claude’s 1M Opus context for pooled sessions, and configurable Claude sandboxing.
 - **Composer:** remembered scheduled-send choices, 5/10-minute presets, and one-tap Send during dictation.
 - **Mobile and desktop:** scroll to the top from the mobile header, clearer question forms, mobile downloads in Settings, and desktop browser file downloads.
-- **Tasks and connections:** preserved task drafts, faster task lists, more reliable Connect reconnection, and better machine and sandbox recovery.
+- **Tasks:** keep task drafts when navigating and load task lists faster.
+- **BB Connect:** more reliable remote access and reconnection.
 
 ### Fixes
 
@@ -26,7 +27,7 @@ Hosted AI services, faster conversations, and new platforms in alpha.
 
 ### CLI and plugins
 
-- New `bb prompt-history list`, provider enable/disable commands, and `bb environment cleanup`, with matching SDK APIs.
+- Browse saved prompts with `bb prompt-history list`, enable or disable providers, and clean up unused environments with `bb environment cleanup`. These features are also available through the SDK.
 - Plugin additions include composer popup slots, a unified composer API, and model-specific service tiers.
 
 ### Thanks
