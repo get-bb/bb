@@ -17,7 +17,10 @@ import {
   resolveRelativeLocalFileHref,
 } from "@/components/ui/markdown-local-file-link.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { computeMutedPrefixLength } from "@bb/client-core";
+import {
+  automationDueBodyOffset,
+  computeMutedPrefixLength,
+} from "@bb/client-core";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {
   ThreadTimelineAddToChatHandler,
@@ -359,6 +362,8 @@ function UserConversationMessage({
       }),
     [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
   );
+  const automationBodyOffset =
+    initiator === "user" ? automationDueBodyOffset(text) : null;
   const generatedSource =
     initiator === "agent" && senderThreadId !== null
       ? {
@@ -380,9 +385,24 @@ function UserConversationMessage({
             sourceIsPluginSideChat: false,
             originKind: null,
           }
-        : null;
+        : automationBodyOffset !== null
+          ? {
+              sourceKind: "automation" as const,
+              sourceName: "Automation",
+              sourceProjectId: null,
+              sourceThreadId: null,
+              sourceIsPluginSideChat: false,
+              originKind: null,
+            }
+          : null;
   if (generatedSource !== null) {
-    const body = generatedConversationBodySlice({ initiator, text });
+    const body =
+      automationBodyOffset === null
+        ? generatedConversationBodySlice({ initiator, text })
+        : {
+            startOffset: automationBodyOffset,
+            text: text.slice(automationBodyOffset),
+          };
     const bodyMentions = shiftMentionsToTextRange({
       mentions,
       rangeStart: body.startOffset,

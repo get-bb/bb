@@ -34,6 +34,7 @@ export * from "./timeline/timeline-auto-expand.js";
 export * from "./timeline/timelineRowSignatures.js";
 export * from "./timeline/conversation-message-limits.js";
 export * from "./timeline/compute-muted-prefix-length.js";
+export * from "./timeline/automation-due-message.js";
 export * from "./timeline/conversation-turn-request-label.js";
 export * from "./timeline/optimistic-timeline-row.js";
 export * from "./timeline/timeline-merge.js";

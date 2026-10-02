@@ -63,7 +63,7 @@ interface GeneratedConversationMessageProps {
   workspaceRootPath?: string;
 }
 
-type GeneratedConversationSourceKind = "agent" | "system";
+type GeneratedConversationSourceKind = "agent" | "automation" | "system";
 
 interface GeneratedConversationBodyTextArgs {
   initiator: TimelineUserConversationRow["initiator"];
@@ -285,7 +285,9 @@ export function generatedConversationTitle({
             truncate: true,
           }),
         ]
-      : systemMessageTitleSegments(systemMessageKind, systemMessageSubject);
+      : sourceKind === "automation"
+        ? [verbSegment("Automation")]
+        : systemMessageTitleSegments(systemMessageKind, systemMessageSubject);
 
   return {
     action: sideChatAction,
@@ -304,6 +306,8 @@ function generatedConversationEmptyText(
   switch (sourceKind) {
     case "agent":
       return "Sent an agent message";
+    case "automation":
+      return "Ran an automation";
     case "system":
       return "Sent a BB system message";
   }
@@ -343,6 +347,8 @@ function generatedConversationIconName(
   switch (sourceKind) {
     case "agent":
       return "MessageSquare";
+    case "automation":
+      return "Repeat";
     case "system":
       return systemMessageIconName(systemMessageKind);
   }

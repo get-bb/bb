@@ -439,3 +439,45 @@ describe("ConversationMessageContent user thread mentions", () => {
     ).toBe("/projects/proj_target/threads/thr_cross_project");
   });
 });
+
+describe("ConversationMessageContent automation messages", () => {
+  it("renders an automation prompt as a compact expandable row without the marker", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={null}
+            initiator="user"
+            mentions={[]}
+            originKind={null}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text={
+              "[bb automation due:auto_zto0dtbcxme]\n\nWeekday unread digest.\n\nSearch Gmail for AUTOMATION_PROMPT_TAIL."
+            }
+            timestamp={0}
+            threadId="thr_automation"
+            turnRequest={{
+              isGrouped: false,
+              kind: "message",
+              status: "accepted",
+            }}
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(container.textContent).not.toContain("[bb automation due:");
+    expect(screen.getByText("Weekday unread digest.")).toBeTruthy();
+    expect(container.textContent).not.toContain("AUTOMATION_PROMPT_TAIL");
+
+    fireEvent.click(screen.getByRole("button", { name: /Automation/u }));
+
+    expect(container.textContent).toContain("AUTOMATION_PROMPT_TAIL");
+    expect(container.textContent).not.toContain("[bb automation due:");
+  });
+});
