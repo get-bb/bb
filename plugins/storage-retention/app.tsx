@@ -647,7 +647,6 @@ function StoragePage({
           </div>
         ) : (
           <>
-            {storageInfo}
             {suggestions.map((suggestion) => (
               <div
                 key={suggestion.cleanup.key}
