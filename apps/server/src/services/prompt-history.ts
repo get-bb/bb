@@ -95,8 +95,8 @@ function portablePromptHistoryInput(
   return input.map((chunk) => {
     if (chunk.type !== "localImage" && chunk.type !== "localFile") return chunk;
     if (!pathLooksRuntimeReadable(chunk.path))
-      return { ...chunk, experimental_sourceProjectId: projectId };
-    return hostId === null ? chunk : { ...chunk, experimental_hostId: hostId };
+      return { ...chunk, sourceProjectId: projectId };
+    return hostId === null ? chunk : { ...chunk, hostId: hostId };
   });
 }
 

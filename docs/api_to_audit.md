@@ -3655,32 +3655,6 @@ on text and attachments directly without a mention-format round trip. Persisted
 and editor mention formats remain unchanged, while the action layer reads one
 complete draft snapshot instead of separate content and attachment getters.
 
-## Portable prompt attachments
-
-`ComposerAttachment.experimental_sourceProjectId` and the matching local file
-and image prompt-input field identify the project owning an uploaded attachment.
-Uploads and prompt history populate it. Draft replacement, persistence, and input
-conversion preserve it; previews read from the source. Core validates the source
-and copies files to the destination before accepting a create, send, or queued
-message request, then removes the source field from persisted and dispatched
-input. Omission retains destination-relative behavior for existing clients.
-Runtime-readable paths cannot specify a source project. `sizeBytes` is optional
-on `ComposerAttachment`; absence means unknown, and legacy stored zero values are
-read as unknown.
-
-`experimental_hostId` does the same for absolute paths: prompt history reports
-the machine of the thread that sent them, drafts preserve it, and core rejects a
-create, send, or queued message whose target thread runs on another machine,
-then removes the field before persisting. An attachment carries at most one of
-the two fields; `ComposerAttachment` encodes this as a union, so draft snapshots
-are valid replacements. Omission keeps the existing behavior of binding the path
-to the target thread's machine.
-
-Stabilization requires cross-project history restoration coverage for files and
-images, draft persistence and project changes, queued-message editing,
-missing-source errors, cross-machine rejection, and verification that provider
-input contains only destination-local references.
-
 ## Thread creation placement
 
 `PluginSidebarThreadActions.openNewThread` accepts `experimental_placement`

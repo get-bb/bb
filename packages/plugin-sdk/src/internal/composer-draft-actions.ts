@@ -58,13 +58,13 @@ const attachmentsSchema = z.array(
   z.union([
     z.object({
       ...attachmentFields,
-      experimental_hostId: z.string().min(1),
-      experimental_sourceProjectId: z.undefined().optional(),
+      hostId: z.string().min(1),
+      sourceProjectId: z.undefined().optional(),
     }),
     z.object({
       ...attachmentFields,
-      experimental_sourceProjectId: z.string().min(1).optional(),
-      experimental_hostId: z.undefined().optional(),
+      sourceProjectId: z.string().min(1).optional(),
+      hostId: z.undefined().optional(),
     }),
   ]),
 );

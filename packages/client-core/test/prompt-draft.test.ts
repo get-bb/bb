@@ -50,7 +50,7 @@ describe("prompt draft helpers", () => {
       {
         type: "localImage" as const,
         path: "shot.png",
-        experimental_sourceProjectId: "proj_source",
+        sourceProjectId: "proj_source",
       },
       {
         type: "localFile" as const,
@@ -58,13 +58,13 @@ describe("prompt draft helpers", () => {
         name: "notes.txt",
         sizeBytes: 5,
         mimeType: "text/plain",
-        experimental_sourceProjectId: "proj_other",
+        sourceProjectId: "proj_other",
       },
       {
         type: "localFile" as const,
         path: "/tmp/report.txt",
         name: "report.txt",
-        experimental_hostId: "host_1",
+        hostId: "host_1",
       },
     ];
     const restored = parsePromptDraftStorage(

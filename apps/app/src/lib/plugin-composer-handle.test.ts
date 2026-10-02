@@ -432,7 +432,7 @@ describe.each(["core", "plugin"] as const)(
     const attachment = {
       type: "localFile",
       path: "attachments/spec.txt",
-      experimental_sourceProjectId: "proj_source",
+      sourceProjectId: "proj_source",
       name: "spec.txt",
       sizeBytes: 12,
     } as const;

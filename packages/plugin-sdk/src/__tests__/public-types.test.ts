@@ -418,12 +418,12 @@ it("gives composer attachments one owner and round-trips draft snapshots", () =>
   } as const;
   expectTypeOf({
     ...base,
-    experimental_hostId: "host_1",
-    experimental_sourceProjectId: "proj_1",
+    hostId: "host_1",
+    sourceProjectId: "proj_1",
   }).not.toMatchTypeOf<ComposerAttachment>();
   expectTypeOf({
     ...base,
-    experimental_hostId: "host_1",
+    hostId: "host_1",
   }).toMatchTypeOf<ComposerAttachment>();
   expectTypeOf<ComposerDraftSnapshot>().toMatchTypeOf<ComposerDraftReplacement>();
 });

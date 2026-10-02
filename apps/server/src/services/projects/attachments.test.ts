@@ -126,12 +126,12 @@ describe("project attachments", () => {
       {
         type: "localFile" as const,
         path: "present.txt",
-        experimental_sourceProjectId: "proj_source",
+        sourceProjectId: "proj_source",
       },
       {
         type: "localFile" as const,
         path: "missing.txt",
-        experimental_sourceProjectId: "proj_source",
+        sourceProjectId: "proj_source",
       },
     ];
 
@@ -150,7 +150,7 @@ describe("project attachments", () => {
     expect(input[0]).toEqual({
       type: "localFile",
       path: "present.txt",
-      experimental_sourceProjectId: "proj_source",
+      sourceProjectId: "proj_source",
     });
   });
 
@@ -225,7 +225,7 @@ describe("project attachments", () => {
           {
             type: "localFile",
             path: "/tmp/workspace/alpha.txt",
-            experimental_sourceProjectId: "proj_source",
+            sourceProjectId: "proj_source",
           },
         ],
       }),
@@ -249,7 +249,7 @@ describe("project attachments", () => {
           {
             type: "localFile",
             path: "/tmp/workspace/alpha.txt",
-            experimental_hostId: "host_a",
+            hostId: "host_a",
           },
         ],
         "host_a",
@@ -263,7 +263,7 @@ describe("project attachments", () => {
           {
             type: "localImage",
             path: "/tmp/workspace/shot.png",
-            experimental_hostId: "host_a",
+            hostId: "host_a",
           },
         ],
         "host_b",
@@ -275,7 +275,7 @@ describe("project attachments", () => {
           {
             type: "localFile",
             path: "notes-uploaded.txt",
-            experimental_hostId: "host_a",
+            hostId: "host_a",
           },
         ],
         "host_a",

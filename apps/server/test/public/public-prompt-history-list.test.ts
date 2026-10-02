@@ -145,7 +145,7 @@ describe("public prompt history list route", () => {
         {
           type: "localFile",
           path: "/tmp/report.txt",
-          experimental_hostId: "host-a",
+          hostId: "host-a",
         },
       ]);
       const queue = (threadId: string) =>

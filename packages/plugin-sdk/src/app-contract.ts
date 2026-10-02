@@ -2481,13 +2481,13 @@ export type ComposerAttachment = {
 } & (
   | {
       /** Project that currently owns this uploaded path; omit for destination-relative attachments. */
-      experimental_sourceProjectId?: string;
-      experimental_hostId?: never;
+      sourceProjectId?: string;
+      hostId?: never;
     }
   | {
       /** Machine whose absolute `path` this is; core rejects sending it to a thread on another machine. */
-      experimental_hostId: string;
-      experimental_sourceProjectId?: never;
+      hostId: string;
+      sourceProjectId?: never;
     }
 );
 

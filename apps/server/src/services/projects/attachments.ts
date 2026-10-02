@@ -203,14 +203,14 @@ export async function resolvePromptAttachmentReferences(
       continue;
     }
     if (pathLooksRuntimeReadable(input.path)) {
-      if (input.experimental_sourceProjectId !== undefined) {
+      if (input.sourceProjectId !== undefined) {
         throw new ApiError(
           400,
           "invalid_request",
           "A source project can only be specified for an uploaded attachment",
         );
       }
-      const { experimental_hostId: hostId, ...attachment } = input;
+      const { hostId: hostId, ...attachment } = input;
       if (
         hostId !== undefined &&
         args.hostId !== null &&
@@ -225,17 +225,15 @@ export async function resolvePromptAttachmentReferences(
       resolved.push(attachment);
       continue;
     }
-    if (input.experimental_hostId !== undefined) {
+    if (input.hostId !== undefined) {
       throw new ApiError(
         400,
         "invalid_request",
         "A machine can only be specified for an absolute file path",
       );
     }
-    const {
-      experimental_sourceProjectId: sourceProjectId = args.projectId,
-      ...attachment
-    } = input;
+    const { sourceProjectId: sourceProjectId = args.projectId, ...attachment } =
+      input;
     requirePublicProject(args.db, sourceProjectId);
     await ensureAttachmentReferenceExists(
       args.db,
@@ -313,7 +311,7 @@ export async function storeAttachment(
 
   return {
     type: isImage ? "localImage" : "localFile",
-    experimental_sourceProjectId: projectId,
+    sourceProjectId: projectId,
     path: storedName,
     name: file.name,
     mimeType: file.type || undefined,

@@ -7,31 +7,30 @@ import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { z } from "zod";
 
 const draftAttachmentFields = uploadedPromptAttachmentSchema
-  .omit({ experimental_sourceProjectId: true })
+  .omit({ sourceProjectId: true })
   .extend({ sizeBytes: z.number().nonnegative().optional() });
 
 const promptDraftAttachmentSchema = z.union([
   draftAttachmentFields.extend({
-    experimental_hostId: z.string().min(1),
-    experimental_sourceProjectId: z.undefined().optional(),
+    hostId: z.string().min(1),
+    sourceProjectId: z.undefined().optional(),
   }),
   draftAttachmentFields.extend({
-    experimental_sourceProjectId: z.string().min(1).optional(),
-    experimental_hostId: z.undefined().optional(),
+    sourceProjectId: z.string().min(1).optional(),
+    hostId: z.undefined().optional(),
   }),
 ]);
 
 export type PromptDraftAttachment = z.infer<typeof promptDraftAttachmentSchema>;
 
 function attachmentOwner(attachment: {
-  experimental_sourceProjectId?: string;
-  experimental_hostId?: string;
+  sourceProjectId?: string;
+  hostId?: string;
 }) {
-  if (attachment.experimental_hostId !== undefined)
-    return { experimental_hostId: attachment.experimental_hostId };
-  return attachment.experimental_sourceProjectId === undefined
+  if (attachment.hostId !== undefined) return { hostId: attachment.hostId };
+  return attachment.sourceProjectId === undefined
     ? {}
-    : { experimental_sourceProjectId: attachment.experimental_sourceProjectId };
+    : { sourceProjectId: attachment.sourceProjectId };
 }
 
 export interface PromptDraftState {
@@ -338,7 +337,7 @@ export function getProjectStoredPromptAttachmentPaths(
   return [
     ...new Set(
       attachments.flatMap((attachment) => {
-        if (attachment.experimental_sourceProjectId !== undefined) return [];
+        if (attachment.sourceProjectId !== undefined) return [];
         const path = attachment.path;
         const isRuntimeReadable =
           /^[\\/]/u.test(path) ||

@@ -102,7 +102,7 @@ describe("AttachmentPreview", () => {
           {
             type: "localImage",
             path: "restored-2-def.png",
-            experimental_sourceProjectId: "proj_source",
+            sourceProjectId: "proj_source",
             name: "restored.png",
             mimeType: "image/png",
             sizeBytes: 3,

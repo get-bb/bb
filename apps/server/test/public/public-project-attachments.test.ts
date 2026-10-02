@@ -59,7 +59,7 @@ describe("public project attachments", () => {
         );
         expect(uploaded).toMatchObject({
           type: fixture.type,
-          experimental_sourceProjectId: project.id,
+          sourceProjectId: project.id,
           name: fixture.filename,
           mimeType: fixture.mimeType,
           sizeBytes: fixture.bytes.byteLength,
