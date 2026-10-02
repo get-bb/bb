@@ -1013,16 +1013,14 @@ function InAppUpdateRow({
     return row(
       name,
       updateButton,
-      onShowResult === null ? (
-        <FailureIndicator reason="Last update failed" />
-      ) : (
-        <FailureIndicator
-          reason="Last update failed"
-          openLabel="View the failed bb update"
-          openTooltip="View details"
-          onOpen={() => onShowResult(failure)}
-        />
-      ),
+      <FailureIndicator
+        reason="Last update failed"
+        openLabel="View the failed bb update"
+        openTooltip="View details"
+        onOpen={
+          onShowResult === null ? undefined : () => onShowResult(failure)
+        }
+      />,
     );
   }
   if (status.blocked !== null) {
