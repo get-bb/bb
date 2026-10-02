@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { performance } from "node:perf_hooks";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { registerHostPathSqlFunctions } from "./data/host-path-sql.js";
 import * as schema from "./schema.js";
 
 export interface SlowDbQueryLogFields {
@@ -165,6 +166,7 @@ export function createConnection(
   sqlite.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KIB}`);
   sqlite.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
   sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+  registerHostPathSqlFunctions(sqlite);
   instrumentSqliteClient(sqlite, options);
 
   const db = drizzle({ client: sqlite, schema });
