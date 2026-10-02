@@ -12,7 +12,7 @@
     "name": "Storage & retention",
     "description": "Inspect machine storage and automatically archive or delete old threads.",
     "branding": {
-      "icon": "DatabaseRestore"
+      "icon": "./icons/database-restore.svg"
     },
     "server": "./src/server.ts",
     "app": "./app.tsx",

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   definePluginApp,
+  experimental_Icon as PluginIcon,
   useBbNavigate,
   useRealtime,
   useRpc,
   useSdk,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
+import { DatabaseRestoreIcon } from "./icons/database-restore.js";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
@@ -378,7 +380,7 @@ function StoragePage({
             )}
             {!report ? (
               <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
-                <Icon
+                <PluginIcon
                   name="DatabaseRestore"
                   className="size-8 text-muted-foreground"
                 />
@@ -581,7 +583,7 @@ function StoragePage({
                             ) : null}
                           </div>
                           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                            {bytes(thread.sizeBytes)} total
+                            {bytes(thread.sizeBytes)}
                           </span>
                           <Button
                             variant="ghost"
@@ -604,7 +606,7 @@ function StoragePage({
                               })
                             }
                           >
-                            Clear all files
+                            Clear files
                           </Button>
                         </div>
                         {cleanup?.key === thread.threadId &&
@@ -1163,6 +1165,10 @@ function StorageBreakdown({
 }
 
 export default definePluginApp((app) => {
+  app.experimental_icons.register({
+    name: "DatabaseRestore",
+    component: DatabaseRestoreIcon,
+  });
   app.slots.navPanel({
     id: PANEL,
     title: "Storage & retention",
