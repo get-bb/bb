@@ -33,6 +33,8 @@ import { registerUiPreferenceRoutes } from "./routes/ui-preferences.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerQueueRoutes } from "./routes/queue.js";
+import { createPluginInstallJobs } from "./services/plugins/plugin-install-jobs.js";
+import { registerPluginInstallJobRoutes } from "./routes/plugin-install-jobs.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import { registerPromptHistoryRoutes } from "./routes/prompt-history.js";
@@ -868,8 +870,20 @@ export function createApp(
   registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerUiPreferenceRoutes(publicApi, deps);
-  registerPluginCatalogRoutes(publicApi, pluginCatalogService);
-  registerPluginRoutes(publicApi, deps, pluginService, upgradeWebSocket);
+  const pluginInstallJobs = createPluginInstallJobs();
+  registerPluginInstallJobRoutes(publicApi, pluginInstallJobs);
+  registerPluginCatalogRoutes(
+    publicApi,
+    pluginCatalogService,
+    pluginInstallJobs,
+  );
+  registerPluginRoutes(
+    publicApi,
+    deps,
+    pluginService,
+    pluginInstallJobs,
+    upgradeWebSocket,
+  );
   registerSkillsRegistryRoutes(publicApi, deps);
   registerServerMoveRoutes(publicApi, deps, serverMove);
   app.route("/api/v1", publicApi);

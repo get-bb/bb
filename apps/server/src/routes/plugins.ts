@@ -24,6 +24,8 @@ import type {
   PluginMentionTrigger,
   PluginWebSocketRouteRecord,
 } from "../services/plugins/plugin-api.js";
+import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
+import { prefersRespondAsync } from "./plugin-install-jobs.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import { PLUGIN_RPC_CALLER_HEADER } from "../services/plugins/plugin-rpc-caller.js";
 import {
@@ -373,6 +375,7 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
+  installJobs: PluginInstallJobs,
   upgradeWebSocket?: UpgradeWebSocket,
 ): void {
   const appAssetCompressionCache = createAppAssetCompressionCache(
@@ -704,6 +707,12 @@ export function registerPluginRoutes(
         },
         422,
       );
+    }
+    if (prefersRespondAsync(context)) {
+      const job = installJobs.start(() =>
+        plugins.install(parsed.data.source, parsed.data.selection),
+      );
+      return context.json({ ok: true, job }, 202);
     }
     try {
       const plugin = await plugins.install(

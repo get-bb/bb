@@ -232,6 +232,21 @@ export const pluginInstallRequestSchema = z
   })
   .strict();
 
+export const pluginInstallJobSchema = z.discriminatedUnion("state", [
+  z.object({ id: z.string().min(1), state: z.literal("running") }),
+  z.object({
+    id: z.string().min(1),
+    state: z.literal("succeeded"),
+    plugin: installedPluginSchema,
+  }),
+  z.object({
+    id: z.string().min(1),
+    state: z.literal("failed"),
+    error: z.string(),
+  }),
+]);
+export type PluginInstallJob = z.infer<typeof pluginInstallJobSchema>;
+
 export const PLUGIN_MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 
 export const CURATED_PLUGIN_MARKETPLACE_NAME = "bb-community";
