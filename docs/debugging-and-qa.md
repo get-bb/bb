@@ -29,6 +29,22 @@ then restart its retained process with `bb thread stop <thread-id>` before sendi
 a new message. BB's recovery prevents reuse after a cancellation error; it does
 not repair the older adapter's failing turn.
 
+## Slow Database Operations
+
+The server logs `Slow DB query` when a prepared statement, `exec` batch, or
+complete transaction takes at least 100 ms. `durationMs` measures elapsed time;
+`cpuDurationMs` measures CPU time on the calling thread. A large gap indicates
+waiting or descheduling, not necessarily inefficient SQL. It does not by itself
+distinguish filesystem I/O, lock waits, and scheduler contention.
+
+`operation: "transaction"` includes the callback, commit, and rollback; its SQL
+label identifies the transaction mode rather than containing callback SQL.
+Statements inside it may also log, so do not add their durations to the
+transaction duration. Commit timing matters because SQLite's automatic WAL
+checkpoint can perform filesystem writes and synchronization on the server
+thread. `operation: "exec"` also covers maintenance batches. SQL string
+literals are redacted and parameter values are never logged.
+
 ## Native Draft Rollback
 
 Migration `0132_thread_drafts` now only adds the temporary `threads.draft`

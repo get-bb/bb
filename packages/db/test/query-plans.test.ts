@@ -22,6 +22,7 @@ import {
   appendDaemonEventsInTransaction,
   getFirstParentedTimelineBoundarySequence,
   hasTimelineGroupingContextRowsInRange,
+  hasStoredSpawnAgentToolCall,
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
   insertEvents,
@@ -242,6 +243,58 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("checks spawn-agent history without reading unrelated event payloads", () => {
+    const { db, thread } = setup();
+    try {
+      const captured = captureStatements(db, () => {
+        expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      });
+      expect(captured).toHaveLength(1);
+      expect(queryPlanDetails({ db, ...captured[0]! })).toContain(
+        "USING INDEX events_delegating_item_lookup_idx (thread_id=?)",
+      );
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', ?, 'item/started', ?, ?, 0)`)
+        .run(
+          "ordinary-tool",
+          thread.id,
+          1,
+          "toolCall",
+          JSON.stringify({ item: { tool: "exec" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', 3, 'item/completed', 'delegation', ?, 0)`)
+        .run(
+          "delegation",
+          thread.id,
+          JSON.stringify({ item: { tool: "spawnAgent" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', ?, 'item/completed', ?, ?, 0)`)
+        .run(
+          "spawn-tool",
+          thread.id,
+          2,
+          "toolCall",
+          JSON.stringify({ item: { tool: "spawnAgent" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(true);
+      expect(hasStoredSpawnAgentToolCall(db, "other-thread")).toBe(false);
+      db.$client.prepare("DELETE FROM events WHERE id = ?").run("spawn-tool");
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("resolves a provider session with two indexed lookups regardless of history length", () => {
     const { db, thread } = setup();
     try {

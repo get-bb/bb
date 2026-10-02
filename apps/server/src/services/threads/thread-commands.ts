@@ -1,5 +1,5 @@
-import { environments, events, threads } from "@bb/db";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { environments, hasStoredSpawnAgentToolCall, threads } from "@bb/db";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   PromptInput,
   PromptMode,
@@ -419,25 +419,6 @@ function threadHasLiveChildren(
   return row !== undefined;
 }
 
-function threadHasCodexSpawnAgentToolCall(
-  deps: Pick<AppDeps, "db">,
-  threadId: string,
-): boolean {
-  const row = deps.db
-    .select({ id: events.id })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, threadId),
-        eq(events.itemKind, "toolCall"),
-        sql`json_extract(${events.data}, '$.item.tool') = 'spawnAgent'`,
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
-}
-
 export function dispatchThreadRenameCommand(
   deps: CommandResultSideEffectsDeps,
   args: DispatchThreadRenameCommandArgs,
@@ -505,7 +486,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
 
   if (
     threadHasLiveChildren(deps, thread.id) ||
-    threadHasCodexSpawnAgentToolCall(deps, thread.id)
+    hasStoredSpawnAgentToolCall(deps.db, thread.id)
   ) {
     return false;
   }

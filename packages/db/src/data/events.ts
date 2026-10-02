@@ -2442,6 +2442,27 @@ export function listStoredTurnCompletedKeys(
   return listStoredTurnKeysOfType(db, args.keys, "turn/completed");
 }
 
+export function hasStoredSpawnAgentToolCall(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ found: sql<number>`1` })
+      .from(sql`${events} INDEXED BY events_delegating_item_lookup_idx`)
+      .where(
+        and(
+          eq(events.threadId, threadId),
+          sql`${events.itemKind} IN ('toolCall', 'delegation')`,
+          eq(events.itemKind, "toolCall"),
+          sql`json_extract(${events.data}, '$.item.tool') = 'spawnAgent'`,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 export function hasStoredTurnStarted(
   db: DbQueryConnection,
   args: HasStoredTurnStartedArgs,

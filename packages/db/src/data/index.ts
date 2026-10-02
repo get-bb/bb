@@ -293,6 +293,7 @@ export {
   findStoredEventRow,
   getActiveStoredTurnId,
   hasRootStoredTurnStarted,
+  hasStoredSpawnAgentToolCall,
   hasStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   wouldRemoveSharedProviderSessionClaim,
