@@ -164,6 +164,9 @@ function StoragePage({
     Record<string, { state: "clearing" } | { state: "failed"; message: string }>
   >({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
+    string | null
+  >(null);
   const [draft, setDraft] = useState<Policy | null>(null);
   const policy = draft ?? state?.policy ?? null;
   const [confirmation, setConfirmation] = useState<{
@@ -232,6 +235,7 @@ function StoragePage({
     (state.policy.archiveAfterDays !== null ||
       state.policy.deleteAfterDays !== null);
   const report = detail?.report;
+  const threadsExpanded = hostId !== null && expandedThreadsHostId === hostId;
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
@@ -762,7 +766,10 @@ function StoragePage({
                         No thread files found in the last scan.
                       </p>
                     )}
-                    {report.largestThreads.map((thread) => {
+                    {(threadsExpanded
+                      ? report.largestThreads
+                      : report.largestThreads.slice(0, 5)
+                    ).map((thread) => {
                       const clear = threadClears[thread.threadId];
                       return (
                         <div
@@ -831,6 +838,19 @@ function StoragePage({
                       );
                     })}
                   </div>
+                  {report.largestThreads.length > 5 && (
+                    <button
+                      className="ml-4 rounded-sm text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-expanded={threadsExpanded}
+                      onClick={() =>
+                        setExpandedThreadsHostId(
+                          threadsExpanded ? null : hostId,
+                        )
+                      }
+                    >
+                      {threadsExpanded ? "Show fewer" : "Show more"}
+                    </button>
+                  )}
                 </section>
                 {report.developerStorage && (
                   <DeveloperStorage storage={report.developerStorage} />
