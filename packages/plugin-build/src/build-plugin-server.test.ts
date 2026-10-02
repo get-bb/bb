@@ -158,7 +158,7 @@ import { readFileSync } from "fs";
 import { basename } from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "node:url";
-export default () => [typeof readFileSync, basename("/a/b"), typeof spawn, fileURLToPath("file:///tmp/test")];
+export default () => [typeof readFileSync, basename("/a/b"), typeof spawn, fileURLToPath(${JSON.stringify(pathToFileURL(resolve("/tmp/test")).href)})];
 `);
       const { jsPath } = await buildPluginServer(
         dir,
@@ -173,7 +173,7 @@ export default () => [typeof readFileSync, basename("/a/b"), typeof spawn, fileU
         "function",
         "b",
         "function",
-        "/tmp/test",
+        resolve("/tmp/test"),
       ]);
     });
 

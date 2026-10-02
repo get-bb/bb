@@ -256,9 +256,13 @@ it("applies hook NODE_ENV and PATH contributions after sanitizing inherited stat
   options.emitEnvironmentHookProgress = (message) => {
     output.push(message.entry.text);
   };
+  const contributedPath =
+    process.platform === "win32"
+      ? `C:\\review-toolchain;${process.env.PATH ?? ""}`
+      : "/review-toolchain:/usr/bin:/bin";
   const contributedEnv = Object.entries({
     NODE_ENV: "production",
-    PATH: "/review-toolchain:/usr/bin:/bin",
+    PATH: contributedPath,
   }).map(([name, value]) => ({
     name,
     value,
@@ -278,5 +282,11 @@ it("applies hook NODE_ENV and PATH contributions after sanitizing inherited stat
     options,
   );
   expect(output).toContain("NODE_ENV=production");
-  expect(output).toContain("PATH=/review-toolchain:/usr/bin:/bin");
+  if (process.platform === "win32") {
+    expect(output).toContainEqual(
+      expect.stringMatching(/^PATH=[^:]*:\/c\/review-toolchain:/u),
+    );
+  } else {
+    expect(output).toContain("PATH=/review-toolchain:/usr/bin:/bin");
+  }
 });

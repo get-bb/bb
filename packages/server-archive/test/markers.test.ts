@@ -96,9 +96,11 @@ describe("server move marker files", () => {
       ].sort(),
     );
     for (const fileName of await readdir(dataDir)) {
-      expect((await stat(path.join(dataDir, fileName))).mode & 0o777).toBe(
-        0o600,
-      );
+      if (process.platform !== "win32") {
+        expect((await stat(path.join(dataDir, fileName))).mode & 0o777).toBe(
+          0o600,
+        );
+      }
     }
   });
 
@@ -116,10 +118,12 @@ describe("server move marker files", () => {
     await writeServerConnectHoldFile(dataDir, hold);
 
     expect(await readServerConnectHoldFile(dataDir)).toEqual(hold);
-    expect(
-      (await stat(path.join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME))).mode &
-        0o777,
-    ).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(
+        (await stat(path.join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME))).mode &
+          0o777,
+      ).toBe(0o600);
+    }
 
     await writeFile(
       path.join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME),
