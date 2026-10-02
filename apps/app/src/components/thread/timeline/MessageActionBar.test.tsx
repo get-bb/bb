@@ -161,10 +161,10 @@ describe("MessageActionBar", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["Copy link to message", "Add to chat", "Fork into new thread"]);
+    ).toEqual(["Copy link", "Add to chat", "Fork into new thread"]);
     expect(menu.getAttribute("data-side")).toBe("bottom");
     fireEvent.click(
-      within(menu).getByRole("menuitem", { name: "Copy link to message" }),
+      within(menu).getByRole("menuitem", { name: "Copy link" }),
     );
     expect(onCopyLink).toHaveBeenCalledTimes(1);
   });
@@ -210,7 +210,7 @@ describe("MessageActionBar", () => {
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
     ).toEqual([
-      "Copy link to message",
+      "Copy link",
       "Summarize",
       "Translate",
       "Add to chat",
@@ -363,14 +363,14 @@ describe("MessageActionBar", () => {
     });
     const menuItems = await within(drawer).findAllByRole("menuitem");
     expect(menuItems.map((item) => item.textContent)).toEqual([
-      "Copy link to message",
+      "Copy link",
       "Copy message",
       "Edit message",
       "Add to chat",
       "Fork into new thread",
     ]);
     fireEvent.click(
-      within(drawer).getByRole("menuitem", { name: "Copy link to message" }),
+      within(drawer).getByRole("menuitem", { name: "Copy link" }),
     );
     expect(onCopyLink).toHaveBeenCalledTimes(1);
   });

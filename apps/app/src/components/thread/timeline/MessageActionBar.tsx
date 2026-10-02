@@ -439,7 +439,7 @@ export function MessageActionBar({
       ? [
           {
             icon: "Link" as const,
-            label: "Copy link to message",
+            label: "Copy link",
             onSelect: onCopyLink,
           },
         ]
