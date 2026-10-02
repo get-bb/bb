@@ -1,17 +1,18 @@
+import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
-import SentIcon from "@hugeicons/core-free-icons/SentIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { ClaudeIcon, OpenAiIcon } from "../landing/icons";
+import { ClaudeIcon, CursorIcon, OpenAiIcon } from "../landing/icons";
 
 export type BrandLogo = { kind: "bb" } | { kind: "image"; src: string };
 
@@ -102,7 +103,10 @@ export function AgentSplit() {
         </ol>
         <div className="cmp-composer">
           <span className="cmp-composer-head">
-            <OpenAiIcon className="cmp-composer-ic" />
+            <HugeiconsIcon
+              icon={BubbleChatAddIcon}
+              className="cmp-composer-ic"
+            />
             Handoff to new thread
             <HugeiconsIcon icon={Cancel01Icon} className="cmp-composer-x" />
           </span>
@@ -112,15 +116,18 @@ export function AgentSplit() {
           </span>
           <span className="composer-row">
             <span className="model">
-              <OpenAiIcon className="model-ic" />
-              Codex
+              <CursorIcon className="model-ic" />
+              Cursor
               <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
             </span>
             <span className="composer-actions" aria-hidden="true">
               <HugeiconsIcon icon={AttachmentIcon} className="composer-clip" />
               <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
               <span className="send-btn">
-                <HugeiconsIcon icon={SentIcon} className="send-ic" />
+                <HugeiconsIcon
+                  icon={ArrowMoveDownLeftIcon}
+                  className="send-ic"
+                />
               </span>
             </span>
           </span>
