@@ -32,8 +32,12 @@ server machine, and --cwd is valid only with --machine or --host.
 
 A terminal runs the machine's own shell: $SHELL (then zsh, bash, sh) on macOS
 and Linux; on Windows, PowerShell 7 when `pwsh` is on PATH, otherwise Windows
-PowerShell, otherwise cmd. Write --command in that shell's syntax. `send --enter`
-presses Enter (a carriage return), which every one of those shells accepts.
+PowerShell, otherwise cmd. Write --command in that shell's syntax. To run a
+program with arguments without knowing the shell, pass them after `--`
+(`bb terminal create --thread <id> -- pnpm test "my file.ts"`): the machine
+quotes each argument for its own shell. `send --enter` presses Enter (a carriage
+return), which every one of those shells accepts. The terminal's exit code is
+the command's own exit code on every shell.
 
 All other operations need only the terminal ID. They also accept the scope
 flags above and ignore them, so a command built for `list` or `create` still

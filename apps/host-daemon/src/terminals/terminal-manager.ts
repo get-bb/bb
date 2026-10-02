@@ -405,6 +405,8 @@ function terminalTitleForStart(
       return terminalShellTitle(shell);
     case "command":
       return terminalTitleFromCommand(message.start.command);
+    case "argv":
+      return terminalTitleFromCommand(message.start.argv.join(" "));
   }
 }
 

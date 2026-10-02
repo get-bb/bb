@@ -3,6 +3,7 @@ import {
   resolveWindowsTerminalShell,
   terminalShellArgs,
   terminalShellKind,
+  terminalStartCommandText,
   terminalShellTitle,
 } from "./terminal-shell.js";
 
@@ -30,11 +31,39 @@ describe("terminal shell policy", () => {
     expect(terminalShellArgs({ shell: POWERSHELL_7, start })).toEqual([
       "-NoLogo",
       "-Command",
-      "pnpm dev",
+      "pnpm dev\nif (-not $?) { if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; exit 1 }",
     ]);
     expect(
       terminalShellArgs({ shell: "C:\\Windows\\System32\\cmd.exe", start }),
     ).toEqual(["/d", "/s", "/c", "pnpm dev"]);
+  });
+
+  it("quotes an argument list for the shell that will parse it", () => {
+    const start = {
+      mode: "argv",
+      argv: ["C:\\Program Files\\tool.exe", "hello world", "it's", ""],
+    } as const;
+    expect(terminalStartCommandText("powershell", start)).toBe(
+      "& 'C:\\Program Files\\tool.exe' 'hello world' 'it''s' ''",
+    );
+    expect(terminalStartCommandText("cmd", start)).toBe(
+      '"C:\\Program Files\\tool.exe" "hello world" "it\'s" ""',
+    );
+    expect(terminalStartCommandText("posix", start)).toBe(
+      "'C:\\Program Files\\tool.exe' 'hello world' 'it'\"'\"'s' ''",
+    );
+    expect(
+      terminalStartCommandText("cmd", {
+        mode: "argv",
+        argv: ["git", "status", "--short"],
+      }),
+    ).toBe("git status --short");
+    expect(
+      terminalShellArgs({
+        shell: "/bin/zsh",
+        start: { mode: "argv", argv: ["echo", "a b"] },
+      }),
+    ).toEqual(["-lc", "echo 'a b'"]);
   });
 
   it("starts an interactive shell without a command", () => {

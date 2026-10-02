@@ -547,6 +547,12 @@ const hostDaemonTerminalOpenMessageSchema = z
             command: z.string().min(1),
           })
           .strict(),
+        z
+          .object({
+            mode: z.literal("argv"),
+            argv: z.array(z.string().max(10_000)).min(1).max(256),
+          })
+          .strict(),
       ])
       .default({ mode: "shell" }),
   })

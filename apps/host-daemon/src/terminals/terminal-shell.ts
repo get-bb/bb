@@ -4,7 +4,8 @@ export type TerminalShellKind = "posix" | "powershell" | "cmd";
 
 export type TerminalShellStart =
   | { mode: "shell" }
-  | { mode: "command"; command: string };
+  | { mode: "command"; command: string }
+  | { mode: "argv"; argv: readonly string[] };
 
 interface ResolveWindowsTerminalShellArgs {
   env: NodeJS.ProcessEnv;
@@ -36,6 +37,41 @@ export function terminalShellKind(shell: string): TerminalShellKind {
   return "posix";
 }
 
+const POWERSHELL_EXIT_CODE_SUFFIX =
+  "\nif (-not $?) { if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; exit 1 }";
+
+function quotePosixArgument(value: string): string {
+  if (value.length === 0) return "''";
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/u.test(value)) return value;
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function quotePowerShellArgument(value: string): string {
+  return `'${value.replace(/['\u2018\u2019\u201a\u201b]/gu, "$&$&")}'`;
+}
+
+function quoteCmdArgument(value: string): string {
+  if (/^[A-Za-z0-9_@+=:,.\\/-]+$/u.test(value)) return value;
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+export function terminalStartCommandText(
+  kind: TerminalShellKind,
+  start: Exclude<TerminalShellStart, { mode: "shell" }>,
+): string {
+  if (start.mode === "command") {
+    return start.command;
+  }
+  switch (kind) {
+    case "powershell":
+      return `& ${start.argv.map(quotePowerShellArgument).join(" ")}`;
+    case "cmd":
+      return start.argv.map(quoteCmdArgument).join(" ");
+    case "posix":
+      return start.argv.map(quotePosixArgument).join(" ");
+  }
+}
+
 export function terminalShellArgs(args: {
   shell: string;
   start: TerminalShellStart;
@@ -44,13 +80,18 @@ export function terminalShellArgs(args: {
   if (args.start.mode === "shell") {
     return kind === "powershell" ? ["-NoLogo"] : [];
   }
+  const commandText = terminalStartCommandText(kind, args.start);
   switch (kind) {
     case "powershell":
-      return ["-NoLogo", "-Command", args.start.command];
+      return [
+        "-NoLogo",
+        "-Command",
+        `${commandText}${POWERSHELL_EXIT_CODE_SUFFIX}`,
+      ];
     case "cmd":
-      return ["/d", "/s", "/c", args.start.command];
+      return ["/d", "/s", "/c", commandText];
     case "posix":
-      return ["-lc", args.start.command];
+      return ["-lc", commandText];
   }
 }
 

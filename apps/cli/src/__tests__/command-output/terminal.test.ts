@@ -125,6 +125,34 @@ describe("bb terminal command output", () => {
     },
   );
 
+  it("sends positional command arguments unquoted for the machine to quote", async () => {
+    const create = vi.fn(async () => makeTerminalSession());
+    stubServerApi({ "v1.terminals.$post": create });
+
+    await runCommand(
+      [
+        "terminal",
+        "create",
+        "--thread",
+        "thr-1",
+        "--",
+        "C:\\Program Files\\tool.exe",
+        "hello world",
+        "it's",
+      ],
+      register,
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        start: {
+          mode: "argv",
+          argv: ["C:\\Program Files\\tool.exe", "hello world", "it's"],
+        },
+      }),
+    });
+  });
+
   it("creates a machine terminal at host home with an explicit host ID", async () => {
     const hosts = vi.fn(async () => [makeHost()]);
     const create = vi.fn(async () =>
