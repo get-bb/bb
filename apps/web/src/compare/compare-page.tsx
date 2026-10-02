@@ -189,6 +189,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         <h2 id="cmp-table-title" className="sec-title">
           {comparison.tableTitle}
         </h2>
+        <p className="cmp-table-note">{comparison.tableNote}</p>
         <CompareTable comparison={comparison} />
       </section>
 

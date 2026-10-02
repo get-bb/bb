@@ -50,6 +50,7 @@ export type Comparison = {
   switchGuide: { label: string; href: string };
   highlights: CompareHighlight[];
   tableTitle: string;
+  tableNote: string;
   table: CompareGroup[];
   faqTitle: string;
   faq: CompareFaq[];
@@ -148,45 +149,45 @@ const BB_VS_SUPERSET: Comparison = {
     },
   ],
   tableTitle: "bb vs Superset, feature by feature",
+  tableNote: "Pro marks features that need Superset Pro, $20 per user / month.",
   table: [
-    {
-      title: "Price and plans",
-      rows: [
-        {
-          feature: "Price",
-          bb: cell(null, "Free, no paid tier"),
-          competitor: cell(
-            null,
-            "Free for 1 user. Pro $20 per user / month, $15 billed yearly",
-          ),
-        },
-        {
-          feature: "Team plans, SSO, SLA",
-          bb: cell("no"),
-          competitor: cell("yes", "Teams on Pro. SSO and SLA on Enterprise"),
-        },
-      ],
-    },
     {
       title: "Agents",
       rows: [
         {
-          feature: "Claude Code and Codex",
-          bb: cell("yes"),
-          competitor: cell("yes"),
+          feature: "Claude Code, Codex, and more",
+          bb: cell("yes", "Plus any ACP agent"),
+          competitor: cell("yes", "20+ CLI agents"),
         },
         {
-          feature: "Other agents",
-          bb: cell("yes", "Pi, Cursor, OpenCode, Grok, any ACP agent"),
-          competitor: cell(
-            "yes",
-            "20+ built in, including Pi, Cursor, and Grok",
-          ),
+          feature: "Agents hand off work to each other",
+          bb: cell("yes", "Each in its own thread"),
+          competitor: cell("yes", "Through its CLI and MCP"),
+        },
+      ],
+    },
+    {
+      title: "Phone, remote, and automations",
+      rows: [
+        {
+          feature: "Phone app",
+          bb: cell("yes", "Free. Browser or iOS beta"),
+          competitor: cell("yes", "iPhone, iOS 26+", true),
         },
         {
-          feature: "Agents start and manage other agents",
-          bb: cell("yes", "Each one a thread you can open and message"),
-          competitor: cell("yes", "Through a bundled skill, its CLI, and MCP"),
+          feature: "Automations",
+          bb: cell("yes", "Free"),
+          competitor: cell("yes", "", true),
+        },
+        {
+          feature: "Reach your machine remotely",
+          bb: cell("yes", "Free"),
+          competitor: cell("yes", "", true),
+        },
+        {
+          feature: "Run agents on other machines",
+          bb: cell("yes", "Free"),
+          competitor: cell("yes", "", true),
         },
       ],
     },
@@ -195,79 +196,68 @@ const BB_VS_SUPERSET: Comparison = {
       rows: [
         {
           feature: "Worktree per task",
-          bb: cell("yes", "One click, remembered per project"),
+          bb: cell("yes", "One click"),
           competitor: cell("yes", "Automatic"),
         },
         {
-          feature: "Diff review",
-          bb: cell("yes", "Send selected lines to an agent"),
-          competitor: cell("yes", "Send selected PR lines to an agent"),
-        },
-        {
-          feature: "File editor",
-          bb: cell("yes", "Built-in plugin, off by default"),
+          feature: "Diff review with comments",
+          bb: cell("yes"),
           competitor: cell("yes"),
         },
         {
           feature: "Terminal and browser",
-          bb: cell("yes", "Browser in the desktop app"),
+          bb: cell("yes"),
+          competitor: cell("yes"),
+        },
+        {
+          feature: "File editor",
+          bb: cell("yes", "As a plugin"),
           competitor: cell("yes"),
         },
         {
           feature: "Plugins",
-          bb: cell("yes", "Including ones your agents write"),
-          competitor: cell("partial", "Agent integrations and themes"),
-        },
-        {
-          feature: "Linear and Slack",
-          bb: cell("no"),
-          competitor: cell("yes", "", true),
+          bb: cell("yes", "Your agents can write them"),
+          competitor: cell("partial", "Themes and integrations"),
         },
       ],
     },
     {
-      title: "Phone and remote",
+      title: "Platform and license",
       rows: [
         {
-          feature: "Phone",
-          bb: cell("yes", "Any phone browser, plus an iOS beta"),
-          competitor: cell("yes", "iPhone app, iOS 26 or later", true),
+          feature: "Windows",
+          bb: cell("yes", "Through WSL2"),
+          competitor: cell("no"),
         },
-        {
-          feature: "Remote access to your machine",
-          bb: cell("yes"),
-          competitor: cell("yes", "", true),
-        },
-        {
-          feature: "Run agents on other machines",
-          bb: cell("yes"),
-          competitor: cell("yes", "Remote hosts", true),
-        },
-        {
-          feature: "Automations",
-          bb: cell("yes"),
-          competitor: cell("yes", "", true),
-        },
-      ],
-    },
-    {
-      title: "Platform",
-      rows: [
-        { feature: "macOS", bb: cell("yes"), competitor: cell("yes") },
         {
           feature: "Linux",
           bb: cell("partial", "Alpha"),
           competitor: cell("partial", "Experimental"),
         },
         {
-          feature: "Windows",
-          bb: cell("partial", "Through WSL2"),
-          competitor: cell("no", "Planned"),
-        },
-        {
           feature: "Open source",
           bb: cell("yes", "MIT"),
-          competitor: cell("partial", "Elastic License 2.0"),
+          competitor: cell("no", "Source available"),
+        },
+      ],
+    },
+    {
+      title: "Teams and price",
+      rows: [
+        {
+          feature: "Linear and Slack",
+          bb: cell("no"),
+          competitor: cell("yes", "", true),
+        },
+        {
+          feature: "Team plans, SSO, SLA",
+          bb: cell("no"),
+          competitor: cell("yes", "Pro and Enterprise"),
+        },
+        {
+          feature: "Price",
+          bb: cell(null, "Free"),
+          competitor: cell(null, "Free for 1 user, then $20 per user / month"),
         },
       ],
     },

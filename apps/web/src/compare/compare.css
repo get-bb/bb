@@ -411,6 +411,18 @@
   color: var(--subtle);
 }
 
+.cmp-section > .cmp-table-note {
+  margin: -24px auto 28px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--subtle);
+}
+
+.cmp-us .cmp-cell-note {
+  color: var(--add);
+  font-weight: 500;
+}
+
 .cmp-table {
   width: 100%;
   max-width: 820px;
