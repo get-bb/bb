@@ -672,24 +672,26 @@ describe("machine gate auth", () => {
     expect(captured).toHaveLength(0);
   });
 
-  it.each(["/install.sh", "/install/version", "/install/bb-app.tgz"])(
-    "forwards GET %s without session or machine auth",
-    async (path) => {
-      const { env, ctx, captured } = makeEnv(() => new Response("artifact"));
-      const response = await worker.fetch(
-        visitorRequest("sawyer.getbb.app", path, {
-          headers: { "x-bb-cloud-dev-host": "smuggled" },
-        }),
-        env as never,
-        ctx,
-      );
-      expect(response.status).toBe(200);
-      expect(await response.text()).toBe("artifact");
-      expect(captured).toHaveLength(1);
-      expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
-      expect(mockVerifyMachine).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    "/install.sh",
+    "/install.ps1",
+    "/install/version",
+    "/install/bb-app.tgz",
+  ])("forwards GET %s without session or machine auth", async (path) => {
+    const { env, ctx, captured } = makeEnv(() => new Response("artifact"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", path, {
+        headers: { "x-bb-cloud-dev-host": "smuggled" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("artifact");
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
+    expect(mockVerifyMachine).not.toHaveBeenCalled();
+  });
 });
 
 describe("gate replays through a tunnel object restart", () => {
