@@ -3414,6 +3414,7 @@ export function PromptBoxInternal({
               placement={mentionMenuPlacement}
               label={popupContribution?.popup.label ?? "Suggestions"}
               interactive={popupContribution !== null}
+              popupKey={popupContribution?.key ?? null}
               popupRef={typeaheadMenuRef}
               composerRef={formRef}
               onClose={dismissComposerMenu}

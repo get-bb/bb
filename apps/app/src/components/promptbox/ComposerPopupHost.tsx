@@ -8,6 +8,7 @@ interface ComposerPopupHostProps {
   placement: "top" | "bottom";
   label: string;
   interactive: boolean;
+  popupKey: string | null;
   popupRef: RefObject<HTMLDivElement | null>;
   composerRef: RefObject<HTMLFormElement | null>;
   onClose(restoreFocus: boolean): void;
@@ -58,6 +59,7 @@ function ComposerPopupContent({
   placement,
   label,
   interactive,
+  popupKey,
   popupRef,
   children,
 }: ComposerPopupHostProps & { drawer: boolean }) {
@@ -70,7 +72,7 @@ function ComposerPopupContent({
       firstInput?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [interactive, open, popupRef]);
+  }, [interactive, open, popupKey, popupRef]);
   return (
     <div
       ref={popupRef}
