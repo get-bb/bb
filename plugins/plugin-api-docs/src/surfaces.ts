@@ -263,6 +263,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Appear in the row that shows under messages on hover, or in the toolbar that appears when text in an agent's message is selected",
           "Receive the message, plus the selected text when the action was run from a selection",
+          "Build or read a message link from experimental_messageSeq, the sequence sdk.threads.message and bb thread log --message use",
+          "Slot actions appear in the main timeline; embedded ThreadChat shows only its consumer-supplied actions",
           "Show the action’s explicit icon wherever it appears, with plugin branding as the fallback for omitted or unknown names",
           "Open one of the plugin's own [side-panel tabs](thread-panel) with what it received",
           "Write into the composer of the message's thread through the same composer handle useComposer() returns",
@@ -270,6 +272,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginMessageActionRegistration",
           "PluginMessageActionContext",
+          "ThreadChatMessageReference",
         ],
         firstParty: ["Side chat"],
       },

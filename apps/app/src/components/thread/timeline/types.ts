@@ -41,14 +41,6 @@ export interface ThreadTimelineInlineMessageEditor {
   onHostElementChange: (element: HTMLDivElement | null) => void;
 }
 
-export interface ThreadTimelineSendToMainMessageTarget {
-  messageText: string;
-}
-
-export type ThreadTimelineSendToMainMessageHandler = (
-  target: ThreadTimelineSendToMainMessageTarget,
-) => void;
-
 export type ThreadTimelineAddToChatHandler = (
   text: string,
   attachments?: readonly PromptDraftAttachment[],

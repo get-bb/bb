@@ -1722,6 +1722,13 @@ export interface ThreadChatMessageReference {
   /** Visible text of the message. */
   text: string;
   sourceSeqEnd: number;
+  /**
+   * The event sequence that recorded this message: the `msg` value of a
+   * message link and the seq that `sdk.threads.message` and
+   * `bb thread log --message` read. For a steer this is its request sequence,
+   * which can differ from the acceptance sequence in `sourceSeqEnd`.
+   */
+  experimental_messageSeq: number;
 }
 
 /**
@@ -1766,10 +1773,11 @@ export interface PluginMessageActionContext {
 }
 
 /**
- * An action on chat messages: an icon button in the per-message action bar
- * (user and assistant messages) and an entry in the assistant-message
- * text-selection menu. Host-rendered chrome — the plugin supplies title,
- * icon, and `run` behavior only. Resolved icon names take precedence over
+ * An action on chat messages in the main thread timeline: an icon button in
+ * the per-message action bar (user and assistant messages) and an entry in
+ * the assistant-message text-selection menu. Embedded `ThreadChat` timelines
+ * do not show slot-registered actions. Host-rendered chrome — the plugin
+ * supplies title, icon, and `run` behavior only. Resolved icon names take precedence over
  * plugin branding; omitted or unknown names fall back to branding.
  */
 export interface PluginMessageActionRegistration {
@@ -2847,8 +2855,9 @@ export type ExperimentalComposerSubmitOptions = ComposerSubmitOptions;
 /**
  * A consumer-supplied action on the messages of one `ThreadChat` instance,
  * rendered in the embedded timeline's per-message action bar alongside the
- * native and slot-registered actions. Unlike the `messageAction` slot this is
- * scoped to the rendering component, not registered globally.
+ * native actions. Slot-registered `messageAction`s do not appear there. Unlike
+ * the `messageAction` slot this is scoped to the rendering component, not
+ * registered globally.
  */
 export interface ThreadChatMessageAction {
   /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */

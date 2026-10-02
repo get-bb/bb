@@ -88,7 +88,7 @@ export interface ThreadPromptGitSection {
 export interface ThreadPromptParentThreadSection {
   parentThreadTitle: string;
   href: string;
-  relationship: "parent" | "fork" | "side-chat";
+  relationship: "parent" | "fork";
 }
 
 interface ThreadPromptChildThreadItem {
@@ -291,11 +291,6 @@ const PARENT_SECTION_COPY: Record<
     bodyLead: "This thread was forked from ",
     ariaPrefix: "Forked from",
   },
-  "side-chat": {
-    verb: "Side chat of",
-    bodyLead: "This thread is a side chat of ",
-    ariaPrefix: "Side chat of",
-  },
 };
 
 const PARENT_SECTION_ICON: Record<
@@ -304,7 +299,6 @@ const PARENT_SECTION_ICON: Record<
 > = {
   parent: "UserRound",
   fork: "Fork",
-  "side-chat": "SideChat",
 };
 
 function useParentSectionAriaLabel(

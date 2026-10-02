@@ -79,7 +79,6 @@ describe("ConversationMessageContent user images", () => {
             attachments={null}
             initiator="user"
             mentions={[]}
-            originKind={null}
             senderThreadId={null}
             senderThreadTitle={null}
             senderIsPluginSideChat={false}
@@ -115,7 +114,6 @@ describe("ConversationMessageContent user HTML", () => {
             attachments={null}
             initiator="user"
             mentions={[]}
-            originKind={null}
             senderThreadId={null}
             senderThreadTitle={null}
             senderIsPluginSideChat={false}
@@ -217,7 +215,6 @@ describe("ConversationMessageContent long user messages", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}
@@ -250,7 +247,6 @@ describe("ConversationMessageContent long user messages", () => {
           <ConversationMessageContent
             role="user"
             attachments={null}
-            originKind={null}
             initiator="user"
             mentions={[]}
             senderThreadId={null}
@@ -364,7 +360,6 @@ describe("ConversationMessageContent user thread mentions", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}
@@ -411,7 +406,6 @@ describe("ConversationMessageContent user thread mentions", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}

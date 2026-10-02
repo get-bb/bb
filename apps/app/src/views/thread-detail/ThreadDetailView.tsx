@@ -258,7 +258,6 @@ import type {
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
-import { useSendSideChatMessageToMain } from "./useSendSideChatMessageToMain";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 import {
@@ -633,9 +632,6 @@ function ThreadDetailViewInternal(
     isRecoverableLoadingError: isTransientReadError(error),
   });
   const threadOriginKind = thread?.originKind ?? null;
-  const isSideChatThread =
-    threadOriginKind === "fork" &&
-    thread?.originPluginId === SIDE_CHAT_PLUGIN_ID;
   const threadSourceThreadId =
     thread?.sourceThreadId ??
     (thread && threadOriginKind ? thread.parentThreadId : null);
@@ -1194,16 +1190,6 @@ function ThreadDetailViewInternal(
     },
     [composerActions, dismissCompactKeyboard],
   );
-  const sendSideChatMessageToMain = useSendSideChatMessageToMain({
-    createQueuedMessage,
-    isSideChatThread,
-    threadId: thread?.id,
-    threadSourceThreadId,
-  });
-  const handleSendToMainMessage =
-    isSideChatThread && threadSourceThreadId !== null
-      ? sendSideChatMessageToMain
-      : undefined;
   const canUseGitUi = !executionUnavailable && gitDiffTabStatus === "eligible";
   const canCreateTerminal =
     !executionUnavailable &&
@@ -1939,11 +1925,7 @@ function ThreadDetailViewInternal(
           ? threadSourceThreadId
           : thread?.parentThreadId;
       if (!thread || !relatedThreadId) return null;
-      const relationship = isSideChatThread
-        ? "side-chat"
-        : threadOriginKind === "fork"
-          ? "fork"
-          : "parent";
+      const relationship = threadOriginKind === "fork" ? "fork" : "parent";
       const relatedThread =
         relationship === "parent" ? parentThread : sourceThread;
       const href = getThreadRoutePath({
@@ -1971,7 +1953,6 @@ function ThreadDetailViewInternal(
         relationship,
       };
     }, [
-      isSideChatThread,
       parentThread,
       sourceThread,
       thread,
@@ -2503,9 +2484,7 @@ function ThreadDetailViewInternal(
           }
         />
       )}
-      childPillLabel={
-        isSideChatThread ? "side chat" : parentThreadId ? "child" : null
-      }
+      childPillLabel={parentThreadId ? "child" : null}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
@@ -2972,7 +2951,6 @@ function ThreadDetailViewInternal(
               activeThinking,
               canSpawnChild: thread.canSpawnChild,
               contextBoundarySeq,
-              threadOriginKind,
               hasOlderTimelineRows,
               hostConnectionNotice,
               isLoadingOlderTimelineRows,
@@ -2984,7 +2962,6 @@ function ThreadDetailViewInternal(
                 : undefined,
               inlineMessageEditor,
               onMessageAddToChat: handleSelectionAddToChat,
-              onSendToMainMessage: handleSendToMainMessage,
               onSelectionAddToChat: handleSelectionAddToChat,
               onLoadOlderRows: loadOlderTimelineRows,
               onOpenLink: handleOpenTimelineLink,

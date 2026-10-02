@@ -441,25 +441,6 @@ describe("MessageActionBar", () => {
     expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
   });
 
-  it("does not gate Send to main thread on the fork disabled state", () => {
-    const onSendToMain = vi.fn();
-    render(
-      <MessageActionBar
-        timestamp={TIMESTAMP}
-        messageText="An answer."
-        alignment="start"
-        mobileActionDisplay="inline"
-        onSendToMain={onSendToMain}
-        disabled
-      />,
-    );
-
-    const button = screen.getByRole("button", { name: "Send to main thread" });
-    expect(button.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(button);
-    expect(onSendToMain).toHaveBeenCalledTimes(1);
-  });
-
   it("marks the action row while the menu is open", () => {
     render(
       <MessageActionBar
