@@ -56,13 +56,14 @@ beforeAll(async () => {
 afterAll(async () => {
   if (worker && worker.exitCode === null) {
     const closed = new Promise<void>((resolve) =>
-      worker.once("exit", () => resolve()),
+      worker.once("close", () => resolve()),
     );
     worker.kill("SIGTERM");
     await closed;
   }
   if (stateDirectory)
     await rm(stateDirectory, { recursive: true, force: true });
+  expect(output).not.toContain("Uncaught");
 });
 
 it("serves the shell, deep links, and its JavaScript and styles", async () => {
