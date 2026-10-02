@@ -675,6 +675,7 @@ async function applyLiveSessionSettings(
 ): Promise<void> {
   const current = threadSession.attachment.liveSettings;
   if (current.model !== next.model) {
+    threadSession.contextUsageCollector.invalidate();
     await threadSession.session.setModel(next.model);
     seedModelContextWindowHint(threadSession, threadId, next.model);
   }
@@ -1422,9 +1423,10 @@ function createOnSdkMessage(
     });
     if (
       message.type === "result" ||
-      (message.type === "system" && message.subtype === "compact_boundary")
+      (message.type === "system" &&
+        (message.subtype === "init" || message.subtype === "compact_boundary"))
     ) {
-      if (message.type === "system") {
+      if (message.type === "system" && message.subtype === "compact_boundary") {
         sendThreadDeltas(args.threadIdRef.current, [
           {
             kind: "contextWindow",
@@ -1443,7 +1445,11 @@ function createOnSdkMessage(
               sessionSerial: args.sessionSerial,
               threadId: args.threadIdRef.current,
             }) === threadSession && !threadSession.streamEnded,
-          publish: (snapshot) =>
+          publish: (snapshot) => {
+            threadSession.translator.setClaudeReportedContextWindow(
+              args.threadIdRef.current,
+              snapshot.contextWindowTokens,
+            );
             sendThreadDeltas(args.threadIdRef.current, [
               {
                 kind: "contextWindow",
@@ -1453,7 +1459,8 @@ function createOnSdkMessage(
                 snapshot,
                 attach: "currentOrLast",
               },
-            ]),
+            ]);
+          },
         });
       }
     }
