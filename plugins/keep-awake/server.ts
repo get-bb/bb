@@ -152,9 +152,9 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
   bb.cli.register(
     defineCli({
       name: "keep-awake",
-      summary: "Configure macOS idle-sleep prevention",
+      summary: "Configure idle-sleep prevention",
       description:
-        "Keep Awake holds an idle-sleep assertion on every selected macOS host while bb runs.",
+        "Keep Awake keeps every selected macOS or Windows host from idle-sleeping while bb runs.",
       commands: {
         status: cliCommand({
           summary: "Show whether Keep Awake is enabled and which hosts it uses",
@@ -270,7 +270,7 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
               if (!actual.supported) {
                 if (desired) {
                   bb.log.warn(
-                    `Keep Awake is enabled but host ${availableHost.id} is not macOS`,
+                    `Keep Awake is enabled but host ${availableHost.id} is not macOS or Windows`,
                   );
                 }
                 return "settled";
