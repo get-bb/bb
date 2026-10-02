@@ -150,9 +150,11 @@ The package also exposes the `bb` CLI for an already-running bb server:
 npx --package bb-app bb --help
 ```
 
-The CLI uses the same `BB_SERVER_URL` and bb config resolution as the SDK. When
-unset, it targets the default local packaged server at
-`http://127.0.0.1:38886`.
+The CLI uses `BB_SERVER_URL` when it is set, including the address bb gives
+agent threads. Otherwise it uses the `serverUrl` saved in `config.json` by
+`bb-app config` or machine enrollment, and sends that machine's private
+`serverHeaders` only to that address. Without either, it targets the default
+local packaged server at `http://127.0.0.1:38886`.
 
 ## Scripting with the SDK
 
@@ -172,8 +174,8 @@ await bb.threads.wait({ threadId: String(thread.id), status: "idle" });
 console.log(await bb.threads.output({ threadId: String(thread.id) }));
 ```
 
-`new BBSdk()` uses the same `BB_SERVER_URL` and bb config resolution as the
-CLI. Pass `new BBSdk({ baseUrl: "http://host:38886" })` for remote or test
+`new BBSdk()` uses `BB_SERVER_URL`, or the default local packaged server when it
+is unset; it does not read `config.json`. Pass `new BBSdk({ baseUrl: "http://host:38886" })` for remote or test
 targets (see the remote-access note below). Scripts launched by bb already receive `BB_SERVER_URL` and
 `BB_THREAD_ID` in their environment.
 
