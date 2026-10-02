@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.45.0
+
+bb comes to Windows, with a desktop installer, automatic updates, and support for running agents, terminals, and remote machines. This release also adds model-specific service tiers and makes long conversations faster.
+
+### Highlights
+
+- **Native Windows support.** Install the desktop app or run `npx bb-app` on Windows. Launch provider CLIs, open terminals, use Windows project paths and file links, and enroll a Windows machine with another bb server. The desktop app supports automatic updates.
+- **Model-specific service tiers.** Choose from the tiers your provider exposes for the selected model. Models with one additional tier show a switch; models with several show a picker. Availability depends on your provider and account.
+- **Codex choice questions.** Answer native Codex questions through bb’s question UI when enabled in Codex, including selected options and free-text answers.
+- **Faster conversations.** Improvements to timeline ordering, conversation outlines, reopening recent threads, and database activity reduce work during streaming and navigation.
+
+### Improvements
+
+- **Thread forks:** create a fork immediately, name it after its source thread, and open it ready for your next message.
+- **Scheduled sends:** remember your last choices and choose new 5- or 10-minute presets.
+- **Desktop browser:** download files from pages opened in bb.
+- **Mobile:** tap the conversation header to scroll to the top, with clearer message actions, better compact menus, and more consistent composer layouts. Submit taps stay on their intended control, and long question forms keep answers scrollable and Submit accessible.
+- **AI services:** Automatic routing prefers bb cloud when available and includes plugin-provided services.
+- **Updates:** failed update checks show a warning icon and a plain-language reason.
+- **Tasks:** saved comments return immediately while delivery to the agent continues.
+- **CLI:** page through stored prompts with `bb prompt-history list`. Automations and Tasks presets accept provider-defined service tiers and offer `--clear-service-tier` to reset them.
+
+### Fixes
+
+- **Claude Code permissions:** preserve full access after approving a plan, honor configured ask rules, and keep “Allow for session” limited to the command being approved.
+- **Providers:** refresh Pi’s model catalog and resolve selections against the machine’s catalog; fix OpenCode question routing and credential discovery; recover Hermes after a steering failure; improve Claude model discovery and context estimates.
+- **Connections:** reduce reconnect delays and fix platform cookie isolation and public installer responses through bb Connect. Protect against DNS rebinding while preserving remote access. Custom DNS names, including MagicDNS and reverse-proxy names, now require a matching `BB_APP_URL`; direct IP access and bb Connect continue to work.
+- **Navigation and plugins:** fix cross-project thread mentions and editor file links, keep mentions menus inside the visible pane, restore input focus when switching plugin popups, distinguish marketplace entries from conflicting local installs, and let untouched bundled plugins follow updated defaults.
+- Reduce the Android app size and defer push registration until notification opt-in.
+
+### New plugin APIs
+
+- Experimental paged prompt history through `sdk.experimental_promptHistory.list`, returning prompt locations and a continuation cursor.
+- Experimental shared composer popup slots and provider-defined, per-model service tier declarations.
+
+### Thanks
+
+Thank you to [@andrewkchan](https://github.com/andrewkchan), [@brsbl](https://github.com/brsbl), [@dandaka](https://github.com/dandaka), [@maheen-ejaz](https://github.com/maheen-ejaz), [@stefanroex](https://github.com/stefanroex), and [@ymichael](https://github.com/ymichael) for contributions to this release.
+
 ## 0.44.0
 
 Filter large diffs, recover archived threads more safely, and troubleshoot plugins with safe mode. These notes also cover 0.43.4, which shipped without notes.

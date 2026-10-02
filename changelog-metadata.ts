@@ -4,6 +4,10 @@ type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.45.0": {
+    date: "October 2, 2026",
+    headline: "Native Windows support, service tiers, and faster conversations",
+  },
   "0.44.0": {
     date: "September 25, 2026",
     headline: "Diff filtering, safer archiving, and plugin safe mode",
