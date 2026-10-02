@@ -45,6 +45,90 @@ afterEach(async () => {
 });
 
 describe("machine auth service", () => {
+  it("persists both usage timestamps in one write per concurrent verification", async () => {
+    const { db, machineAuth } = await createMachineAuthHarness();
+    const token = await machineAuth.issueDaemonHostKey({
+      hostId: "host_usage",
+    });
+    db.update(authApiKeys)
+      .set({ lastRequest: new Date(0), updatedAt: new Date(0) })
+      .run();
+    db.$client.exec(`
+      CREATE TABLE usage_writes (count INTEGER NOT NULL);
+      INSERT INTO usage_writes VALUES (0);
+      CREATE TRIGGER count_usage_writes AFTER UPDATE ON apikey
+      BEGIN UPDATE usage_writes SET count = count + 1; END;
+    `);
+    const startedAt = Math.floor(Date.now() / 1000) * 1000;
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () => machineAuth.verifyDaemonHostKey(token)),
+    );
+    expect(
+      results.every((result) => result?.metadata.hostId === "host_usage"),
+    ).toBe(true);
+    expect(db.$client.prepare("SELECT count FROM usage_writes").get()).toEqual({
+      count: 12,
+    });
+    const stored = db.select().from(authApiKeys).get();
+    expect(stored?.lastRequest?.getTime()).toBeGreaterThanOrEqual(startedAt);
+    expect(stored?.updatedAt.getTime()).toBeGreaterThanOrEqual(startedAt);
+    expect(stored?.remaining).toBeNull();
+    expect(stored?.requestCount).toBe(0);
+  });
+
+  it.each(["invalid", "revoked", "expired"] as const)(
+    "rejects %s credentials after a successful verification",
+    async (kind) => {
+      const { db, machineAuth } = await createMachineAuthHarness();
+      const token = await machineAuth.issueDaemonHostKey({
+        hostId: "host_rejected",
+      });
+      expect(await machineAuth.verifyDaemonHostKey(token)).not.toBeNull();
+      if (kind === "revoked") {
+        await machineAuth.revokeHostAuthKeys({ hostId: "host_rejected" });
+      } else if (kind === "expired") {
+        db.update(authApiKeys)
+          .set({ expiresAt: new Date(Date.now() - 1000) })
+          .run();
+      }
+      expect(
+        await machineAuth.verifyDaemonHostKey(
+          kind === "invalid" ? `${token}invalid` : token,
+        ),
+      ).toBeNull();
+    },
+  );
+
+  it.each(["quota", "rate-limit"] as const)(
+    "enforces %s under concurrent verification",
+    async (kind) => {
+      const { db, machineAuth } = await createMachineAuthHarness();
+      const token = await machineAuth.issueDaemonHostKey({
+        hostId: "host_limited",
+      });
+      db.update(authApiKeys)
+        .set(
+          kind === "quota"
+            ? { remaining: 1 }
+            : {
+                rateLimitEnabled: true,
+                rateLimitMax: 1,
+                rateLimitTimeWindow: 60_000,
+              },
+        )
+        .run();
+      const results = await Promise.all(
+        Array.from({ length: 12 }, () =>
+          machineAuth.verifyDaemonHostKey(token),
+        ),
+      );
+      expect(results.filter((result) => result !== null)).toHaveLength(1);
+      const stored = db.select().from(authApiKeys).get();
+      if (kind === "rate-limit") expect(stored?.requestCount).toBe(1);
+      else expect(stored?.remaining ?? 0).toBe(0);
+    },
+  );
+
   it("stores daemon host keys hashed at rest", async () => {
     const harness = await createMachineAuthHarness();
 

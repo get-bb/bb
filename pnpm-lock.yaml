@@ -9,6 +9,9 @@ overrides:
   '@expo/metro-config>lightningcss': 1.30.1
 
 patchedDependencies:
+  '@better-auth/api-key@1.6.23':
+    hash: fwm2vsuow4pmqz44y7y7iqixwu
+    path: patches/@better-auth__api-key@1.6.23.patch
   '@hugeicons/react-native@1.0.15':
     hash: jgndgzeuneyijh7hqrjlaypsmi
     path: patches/@hugeicons__react-native@1.0.15.patch
@@ -1119,7 +1122,7 @@ importers:
         version: link:../../packages/thread-view
       '@better-auth/api-key':
         specifier: ^1.6.23
-        version: 1.6.23(nemrelfxpnwyquzncqjsxkp3eq)
+        version: 1.6.23(patch_hash=fwm2vsuow4pmqz44y7y7iqixwu)(nemrelfxpnwyquzncqjsxkp3eq)
       '@better-auth/drizzle-adapter':
         specifier: ^1.6.23
         version: 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.5))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.2.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.29.3)(react@19.2.4))
@@ -18299,7 +18302,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@better-auth/api-key@1.6.23(nemrelfxpnwyquzncqjsxkp3eq)':
+  '@better-auth/api-key@1.6.23(patch_hash=fwm2vsuow4pmqz44y7y7iqixwu)(nemrelfxpnwyquzncqjsxkp3eq)':
     dependencies:
       '@better-auth/core': 1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.5))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.2.0)
       '@better-auth/utils': 0.4.2
