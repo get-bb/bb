@@ -96,7 +96,7 @@ const BB_VS_SUPERSET: Comparison = {
       ),
     },
     {
-      title: "Handoff work across agent providers",
+      title: "Hand off work between agents",
       wide: true,
       visual: <AgentSplit />,
       body: (
