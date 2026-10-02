@@ -48,6 +48,48 @@ function setup(status: Thread["status"] = "starting") {
 }
 
 describe("thread conversation outline performance", () => {
+  it("bounds previews while preserving whitespace normalization and Unicode", () => {
+    const { db, thread } = setup();
+    const cases = [
+      { text: " \t\r\n\u00a0\ufeff", preview: "" },
+      { text: "  Hello\t\nworld \u00a0!  ", preview: "Hello world !" },
+      { text: "x".repeat(199) + " 😀tail", preview: "x".repeat(199) },
+      { text: "x".repeat(199) + "😀tail", preview: "x".repeat(199) },
+      { text: "x".repeat(198) + "😀tail", preview: "x".repeat(198) + "😀" },
+      { text: "\n".repeat(1_000) + "Hello", preview: "Hello" },
+      {
+        text: " ".repeat(201) + "x".repeat(198) + "😀tail",
+        preview: "x".repeat(198) + "😀",
+      },
+      { text: "Hello" + " ".repeat(1_000) + "world", preview: "Hello world" },
+      { text: "word ".repeat(100_000), preview: "word ".repeat(40).trimEnd() },
+    ];
+    insertEvents(
+      db,
+      noopNotifier,
+      cases.map(({ text }, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ text }),
+      })),
+    );
+
+    const outline = buildThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
+      maxSeq: cases.length,
+    });
+
+    expect(outline.items.map((item) => item.preview)).toEqual(
+      cases.map(({ preview }) => preview),
+    );
+    db.$client.close();
+  });
+
   it("loads an exact materialized stable outline without event history", () => {
     const { db, queries, thread } = setup("idle");
     insertEvents(db, noopNotifier, [

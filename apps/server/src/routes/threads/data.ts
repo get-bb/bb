@@ -2,6 +2,7 @@ import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import {
   getAppSettings,
+  getDatabaseDataVersion,
   getThreadPluginMetadata,
   patchThreadPluginMetadata,
   getLatestCompletedThreadContextClearSequence,
@@ -378,6 +379,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     };
     const cacheKey = JSON.stringify([
       thread.id,
+      getDatabaseDataVersion(deps.db),
       buildThreadConversationOutlineProjectionKey(
         thread,
         outlineSequence,

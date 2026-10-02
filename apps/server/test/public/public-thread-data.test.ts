@@ -4,6 +4,7 @@ import {
   createQueuedThreadMessageId,
   createThreadSection,
   deleteQueuedThreadMessage,
+  deleteThreadEventSuffixInTransaction,
   environments,
   events,
   getEnvironment,
@@ -846,6 +847,34 @@ describe("public thread data routes", () => {
         "New visible response",
       ]);
       expect(countFullOutlineQueries()).toBe(2);
+      harness.db.transaction((tx) =>
+        deleteThreadEventSuffixInTransaction(tx, {
+          threadId: thread.id,
+          cutoffSequence: 3,
+          oldMaxSequence: 3,
+        }),
+      );
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "Replacement response" },
+      });
+      const rewrittenResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(rewrittenResponse.status).toBe(200);
+      const rewritten = threadConversationOutlineResponseSchema.parse(
+        await readJson(rewrittenResponse),
+      );
+      expect(rewritten.maxSeq).toBe(3);
+      expect(rewritten.items.map((item) => item.preview)).toEqual([
+        "Visible response",
+        "Replacement response",
+      ]);
+      expect(countFullOutlineQueries()).toBe(3);
     });
   });
 
