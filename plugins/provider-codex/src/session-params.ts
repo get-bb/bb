@@ -610,7 +610,6 @@ export function buildCodexConfig(
       args.options.reasoningLevel,
     );
   }
-  config["features.default_mode_request_user_input"] = false;
   if (args.options?.providerSubagentsEnabled === false) {
     config["features.multi_agent"] = false;
     config["features.multi_agent_v2.max_concurrent_threads_per_session"] = 1;
