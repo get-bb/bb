@@ -154,9 +154,10 @@ signing in to Go in OpenCode on that machine. Inspect the same five-hour,
 weekly, and monthly windows with bb settings usage --machine <id-or-name> --json
 or bb.sdk.system.usageLimits({ hostId, providerId: "acp-opencode" }).
 The collector uses OPENCODE_API_KEY, the active Console account in OpenCode's
-opencode.db, or OPENCODE_AUTH_CONTENT/auth.json under XDG_DATA_HOME (default
-~/.local/share), including custom launch env overrides. Console account storage
-is read only; OpenCode owns refreshing expired sessions.
+opencode.db, active v2 credential-table API keys (opencode-go before opencode),
+then OPENCODE_AUTH_CONTENT/auth.json under XDG_DATA_HOME (default
+~/.local/share), including custom launch env overrides. Database storage is read
+only; OpenCode owns refreshing expired sessions.
 Custom OpenCode wrappers need dialect: "opencode" and providerUsage: true.
 This reports the Go subscription, not usage for other OpenCode providers or
 Zen pay-as-you-go spending.
