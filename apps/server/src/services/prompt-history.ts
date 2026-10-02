@@ -69,8 +69,8 @@ interface RecordAcceptedPromptHistoryEntryArgs {
   thread: PromptHistoryRecordThread;
 }
 
-interface BuildPromptHistoryEntriesArgs<TRow> {
-  buildEntry: (row: TRow) => InternalPromptHistoryEntry;
+interface BuildPromptHistoryEntriesArgs<TRow, TEntry> {
+  buildEntry: (row: TRow) => TEntry;
   rows: readonly TRow[];
 }
 
@@ -127,11 +127,11 @@ function toPromptHistoryEntry(
   };
 }
 
-function buildPromptHistoryEntries<TRow>({
+function buildPromptHistoryEntries<TRow, TEntry>({
   buildEntry,
   rows,
-}: BuildPromptHistoryEntriesArgs<TRow>): InternalPromptHistoryEntry[] {
-  const entries: InternalPromptHistoryEntry[] = [];
+}: BuildPromptHistoryEntriesArgs<TRow, TEntry>): TEntry[] {
+  const entries: TEntry[] = [];
 
   for (const row of rows) {
     try {
@@ -251,20 +251,16 @@ export function listPromptHistory(
     limit: args.limit + 1,
   });
   const pageRows = rows.slice(0, args.limit);
-  const entries: PromptHistoryListEntry[] = [];
-  for (const row of pageRows) {
-    try {
-      entries.push({
-        id: row.id,
-        createdAt: row.createdAt,
-        input: parseStoredPromptHistoryInput(row),
-        projectId: row.projectId,
-        threadId: row.threadId,
-      });
-    } catch {
-      continue;
-    }
-  }
+  const entries = buildPromptHistoryEntries({
+    rows: pageRows,
+    buildEntry: (row): PromptHistoryListEntry => ({
+      id: row.id,
+      createdAt: row.createdAt,
+      input: parseStoredPromptHistoryInput(row),
+      projectId: row.projectId,
+      threadId: row.threadId,
+    }),
+  });
   const last = pageRows.at(-1);
   return {
     entries,

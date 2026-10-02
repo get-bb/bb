@@ -57,10 +57,10 @@ This index lists every command path that the core CLI registers, including alias
 
 `bb project show <id>` accepts `proj_personal` to inspect Personal.
 
-## history
+## prompt-history
 
-- `bb history`
-- `bb history list`
+- `bb prompt-history`
+- `bb prompt-history list`
 
 ## provider
 

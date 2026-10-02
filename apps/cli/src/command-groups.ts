@@ -47,9 +47,10 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program, deps) => m.registerProjectCommands(program, deps.getUrl),
   ),
   group(
-    "history",
-    () => import("./commands/history.js"),
-    (m) => (program, deps) => m.registerHistoryCommands(program, deps.getUrl),
+    "prompt-history",
+    () => import("./commands/prompt-history.js"),
+    (m) => (program, deps) =>
+      m.registerPromptHistoryCommands(program, deps.getUrl),
   ),
   group(
     "provider",

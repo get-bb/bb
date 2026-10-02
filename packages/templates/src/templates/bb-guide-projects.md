@@ -34,7 +34,7 @@ A project maps to a code repository. All threads belong to a project.
 
 Global prompt history:
 
-  bb history list [--cursor <cursor>] [--limit <number>]
+  bb prompt-history list [--cursor <cursor>] [--limit <number>]
 
   Lists accepted prompts across projects and threads newest first. Pass the
   returned cursor to continue from the next page.

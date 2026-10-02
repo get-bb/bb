@@ -19,6 +19,15 @@ export interface StoredPromptHistoryEntryRow {
   threadId: string;
 }
 
+const storedPromptHistoryEntryColumns = {
+  createdAt: promptHistoryEntries.createdAt,
+  id: promptHistoryEntries.id,
+  input: promptHistoryEntries.input,
+  projectId: promptHistoryEntries.projectId,
+  requestSequence: promptHistoryEntries.requestSequence,
+  threadId: promptHistoryEntries.threadId,
+};
+
 export interface CreatePromptHistoryEntryInput {
   createdAt?: number;
   input: PromptInput[];
@@ -32,13 +41,11 @@ export interface ListStoredPromptHistoryArgs {
   limit: number;
 }
 
-export interface ListStoredProjectPromptHistoryArgs
-  extends ListStoredPromptHistoryArgs {
+export interface ListStoredProjectPromptHistoryArgs extends ListStoredPromptHistoryArgs {
   projectId: string;
 }
 
-export interface ListStoredThreadPromptHistoryArgs
-  extends ListStoredPromptHistoryArgs {
+export interface ListStoredThreadPromptHistoryArgs extends ListStoredPromptHistoryArgs {
   threadId: string;
 }
 
@@ -83,14 +90,7 @@ export function createPromptHistoryEntry(
           input: JSON.stringify(input.input),
           createdAt,
         })
-        .returning({
-          createdAt: promptHistoryEntries.createdAt,
-          id: promptHistoryEntries.id,
-          input: promptHistoryEntries.input,
-          projectId: promptHistoryEntries.projectId,
-          requestSequence: promptHistoryEntries.requestSequence,
-          threadId: promptHistoryEntries.threadId,
-        })
+        .returning(storedPromptHistoryEntryColumns)
         .get();
     },
     { behavior: "immediate" },
@@ -102,14 +102,7 @@ export function listStoredProjectPromptHistoryRows(
   args: ListStoredProjectPromptHistoryArgs,
 ): StoredPromptHistoryEntryRow[] {
   return db
-    .select({
-      createdAt: promptHistoryEntries.createdAt,
-      id: promptHistoryEntries.id,
-      input: promptHistoryEntries.input,
-      projectId: promptHistoryEntries.projectId,
-      requestSequence: promptHistoryEntries.requestSequence,
-      threadId: promptHistoryEntries.threadId,
-    })
+    .select(storedPromptHistoryEntryColumns)
     .from(promptHistoryEntries)
     .innerJoin(threads, eq(threads.id, promptHistoryEntries.threadId))
     .where(
@@ -133,14 +126,7 @@ export function listStoredThreadPromptHistoryRows(
   args: ListStoredThreadPromptHistoryArgs,
 ): StoredPromptHistoryEntryRow[] {
   return db
-    .select({
-      createdAt: promptHistoryEntries.createdAt,
-      id: promptHistoryEntries.id,
-      input: promptHistoryEntries.input,
-      projectId: promptHistoryEntries.projectId,
-      requestSequence: promptHistoryEntries.requestSequence,
-      threadId: promptHistoryEntries.threadId,
-    })
+    .select(storedPromptHistoryEntryColumns)
     .from(promptHistoryEntries)
     .where(
       and(
@@ -163,14 +149,7 @@ export function listPromptHistoryPage(
 ): StoredPromptHistoryEntryRow[] {
   const before = args.before;
   return db
-    .select({
-      createdAt: promptHistoryEntries.createdAt,
-      id: promptHistoryEntries.id,
-      input: promptHistoryEntries.input,
-      projectId: promptHistoryEntries.projectId,
-      requestSequence: promptHistoryEntries.requestSequence,
-      threadId: promptHistoryEntries.threadId,
-    })
+    .select(storedPromptHistoryEntryColumns)
     .from(promptHistoryEntries)
     .where(
       before === null

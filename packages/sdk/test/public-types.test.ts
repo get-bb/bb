@@ -222,13 +222,13 @@ interface NodeSurface {
 
 type ExpectedBbSdkKey =
   | "experimental_desktopBrowsers"
+  | "experimental_promptHistory"
   | "experimental_server"
   | "environments"
   | "files"
   | "guide"
   | "hosts"
   | "plugins"
-  | "promptHistory"
   | "projects"
   | "providers"
   | "skills"
@@ -323,7 +323,7 @@ type ExpectedPluginCatalogKey = "install" | "installPlan" | "search" | "status";
 
 type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
 
-type ExpectedPromptHistoryKey = "list";
+type ExpectedExperimentalPromptHistoryKey = "list";
 
 type ExpectedProjectsKey =
   | "machineEnvironment"
@@ -573,8 +573,8 @@ describe("SDK public type entrypoints", () => {
       keyof RootBbSdk["projects"]["sources"]
     >().toEqualTypeOf<ExpectedProjectSourcesKey>();
     expectTypeOf<
-      keyof RootBbSdk["promptHistory"]
-    >().toEqualTypeOf<ExpectedPromptHistoryKey>();
+      keyof RootBbSdk["experimental_promptHistory"]
+    >().toEqualTypeOf<ExpectedExperimentalPromptHistoryKey>();
     expectTypeOf<
       keyof RootBbSdk["providers"]
     >().toEqualTypeOf<ExpectedProvidersKey>();

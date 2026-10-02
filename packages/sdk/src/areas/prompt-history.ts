@@ -4,19 +4,21 @@ import type {
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
-export type PromptHistoryListArgs = PromptHistoryListQuery & {
+export type ExperimentalPromptHistoryListArgs = PromptHistoryListQuery & {
   signal?: AbortSignal;
 };
 
-export type PromptHistoryListResult = PromptHistoryListResponse;
+export type ExperimentalPromptHistoryListResult = PromptHistoryListResponse;
 
-export interface PromptHistoryArea {
-  list(args?: PromptHistoryListArgs): Promise<PromptHistoryListResult>;
+export interface ExperimentalPromptHistoryArea {
+  list(
+    args?: ExperimentalPromptHistoryListArgs,
+  ): Promise<ExperimentalPromptHistoryListResult>;
 }
 
 export function createPromptHistoryArea({
   transport,
-}: CreateSdkAreaArgs): PromptHistoryArea {
+}: CreateSdkAreaArgs): ExperimentalPromptHistoryArea {
   return {
     async list(input = {}) {
       const { signal, ...query } = input;

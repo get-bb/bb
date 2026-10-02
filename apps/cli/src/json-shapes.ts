@@ -12,7 +12,7 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
     "the created thread: {id, status, title, projectId, environmentId, ...}",
   "thread wait": "{threadId, matched: true, target}",
   "thread search": "{active: {total, results}, archived: {total, results}}",
-  "history list":
+  "prompt-history list":
     "{entries: [{id, createdAt, input, projectId, threadId}], nextCursor: string | null}",
   "project list":
     "[{id, kind, name, gitRemoteUrl, sources: [{id, hostId, path, isDefault}]}]    (bare array)",

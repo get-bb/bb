@@ -130,7 +130,7 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.promptHistory.list({ cursor: "abc", limit: "25" }),
+      sdk.experimental_promptHistory.list({ cursor: "abc", limit: "25" }),
     ).resolves.toEqual(response);
     expect(queue.requests).toEqual([
       {

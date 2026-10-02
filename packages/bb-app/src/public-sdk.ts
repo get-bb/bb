@@ -62,13 +62,13 @@ export type ThreadWaitUnreachableErrorConstructor =
 export class BBSdk implements BbSdk {
   readonly environments: BbSdk["environments"];
   readonly experimental_desktopBrowsers: BbSdk["experimental_desktopBrowsers"];
+  readonly experimental_promptHistory: BbSdk["experimental_promptHistory"];
   readonly experimental_server: BbSdk["experimental_server"];
   readonly files: BbSdk["files"];
   readonly guide: BbSdk["guide"];
   readonly hosts: BbSdk["hosts"];
   readonly plugins: BbSdk["plugins"];
   readonly projects: BbSdk["projects"];
-  readonly promptHistory: BbSdk["promptHistory"];
   readonly providers: BbSdk["providers"];
   readonly skills: BbSdk["skills"];
   readonly status: BbSdk["status"];
@@ -83,13 +83,13 @@ export class BBSdk implements BbSdk {
     const sdk = createNodeBbSdk(options);
     this.environments = sdk.environments;
     this.experimental_desktopBrowsers = sdk.experimental_desktopBrowsers;
+    this.experimental_promptHistory = sdk.experimental_promptHistory;
     this.experimental_server = sdk.experimental_server;
     this.files = sdk.files;
     this.guide = sdk.guide;
     this.hosts = sdk.hosts;
     this.plugins = sdk.plugins;
     this.projects = sdk.projects;
-    this.promptHistory = sdk.promptHistory;
     this.providers = sdk.providers;
     this.skills = sdk.skills;
     this.status = sdk.status;

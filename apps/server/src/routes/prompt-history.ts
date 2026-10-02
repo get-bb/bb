@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import type { PromptHistoryPosition } from "@bb/db";
 import {
   PROMPT_HISTORY_PAGE_DEFAULT_LIMIT,
   PROMPT_HISTORY_PAGE_MAX_LIMIT,
@@ -29,16 +30,16 @@ export function registerPromptHistoryRoutes(app: Hono, deps: AppDeps): void {
       name: "limit",
       value: query.limit,
     });
-    const before =
-      query.cursor === undefined
-        ? null
-        : decodePromptHistoryCursor(query.cursor);
-    if (query.cursor !== undefined && before === null) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "Invalid prompt history cursor",
-      );
+    let before: PromptHistoryPosition | null = null;
+    if (query.cursor !== undefined) {
+      before = decodePromptHistoryCursor(query.cursor);
+      if (before === null) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          "Invalid prompt history cursor",
+        );
+      }
     }
     return context.json(listPromptHistory(deps, { before, limit }));
   });
