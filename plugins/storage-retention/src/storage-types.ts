@@ -39,6 +39,10 @@ export const hostStorageReportSchema = z.object({
   threadsWithStorageCount: z.number().int().nonnegative(),
   archivedThreadCount: z.number().int().nonnegative(),
   orphanCount: z.number().int().nonnegative(),
+  archivedFiles: z.object({
+    threadCount: z.number().int().nonnegative(),
+    bytes: byteCountSchema,
+  }),
   archivedLargeFiles: z.object({
     threadCount: z.number().int().nonnegative(),
     fileCount: z.number().int().nonnegative(),

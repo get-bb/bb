@@ -16,6 +16,7 @@ export default function plugin(bb: BbPluginApi) {
     clearLargeFiles: storage.clearLargeFiles,
     retryWorktreeCleanup: storage.retryWorktreeCleanup,
     clearThread: storage.clearThread,
+    clearArchivedFiles: storage.clearArchivedFiles,
     state: () => service.state(),
     preview: (policy) => service.preview(policy),
     configure: (policy) => service.configure(policy),

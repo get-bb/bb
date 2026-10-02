@@ -23,6 +23,7 @@ bb storage clear-large-files --yes
 bb storage clear-large-files --machine HOST_ID --yes
 bb storage retry-worktree-cleanup --machine HOST_ID
 bb storage clear-thread --thread THREAD_ID --yes
+bb storage clear-archived-files --machine HOST_ID --yes
 ```
 
 Without `--save`, retention thresholds only preview affected thread counts.
@@ -42,6 +43,7 @@ keeping smaller files and skipping pinned and running threads; reports show the 
 `archivedLargeFiles`. Without `--machine` it covers every online machine with a completed scan.
 Conversation history is never affected. The Storage page suggests it once archived threads hold 1 GB
 or more of large files.
+Clear-archived-files removes whole storage folders, including small files, from archived, stopped, unpinned threads found in the last scan on the selected machine. Conversations and uploaded attachments are kept.
 Clear-thread requires a stopped thread and an online machine. When the thread no longer has an environment, a completed scan must identify its storage on exactly one machine. Different threads can clear concurrently; duplicate clears for one thread are rejected. Scans and bulk cleanup remain exclusive per machine. Reports are cached
 snapshots; rescan to see external filesystem changes.
 
@@ -49,7 +51,7 @@ Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, deleteAfterDays})
 and `configure({archiveAfterDays, deleteAfterDays})`; use null for Never. Storage
 RPC methods are `hosts(null)`, `host({hostId})`, `scanHost({hostId})`,
 `removeOrphans({hostId})`, `retryWorktreeCleanup({hostId})`, and
-`clearThread({threadId})`. The plugin owns its host worker and scan database.
+`clearThread({threadId})` and `clearArchivedFiles({hostId})`. The plugin owns its host worker and scan database.
 
 Cross-plugin protection is deferred. Pin automation target threads to keep them.
 Disabling the plugin stops scheduled retention and removes its storage actions. Core's idle orphan sweep remains independent.

@@ -438,12 +438,16 @@ function StoragePage({
                   className="size-8 text-muted-foreground"
                 />
                 <h2 className="text-base font-medium">
-                  {scanning ? "Scanning this machine" : "See what’s taking up space"}
+                  {scanning
+                    ? "Scanning this machine"
+                    : "See what’s taking up space"}
                 </h2>
-                {scanning ? scanNotice : (
+                {scanning ? (
+                  scanNotice
+                ) : (
                   <p className="max-w-sm text-xs leading-snug text-subtle-foreground/75">
-                    Scan this machine to measure thread files and find storage you
-                    can clean up. Nothing is removed during a scan.
+                    Scan this machine to measure thread files and find storage
+                    you can clean up. Nothing is removed during a scan.
                   </p>
                 )}
               </div>
@@ -474,6 +478,54 @@ function StoragePage({
                 <section className="space-y-3">
                   <h2 className="text-sm font-semibold">Clean up</h2>
                   <div className="divide-y divide-border rounded-lg border border-border bg-card">
+                    <div className="space-y-3 px-4 py-3.5">
+                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm">
+                            All files in archived threads{" "}
+                            <span className="ml-2 whitespace-nowrap text-muted-foreground">
+                              {bytes(report.archivedFiles.bytes)}
+                            </span>
+                          </p>
+                          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                            Clear stored files of any size from{" "}
+                            {plural(
+                              report.archivedFiles.threadCount,
+                              "archived thread",
+                            )}
+                            . Pinned and running threads are skipped.
+                            Conversations and uploaded attachments are kept.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={
+                            locked ||
+                            report.archivedFiles.threadCount === 0 ||
+                            cleanup !== null
+                          }
+                          onClick={() =>
+                            setCleanup({
+                              key: "archived-files",
+                              title: "Clear all archived thread files?",
+                              action: "Clear archived files",
+                              detail: `Delete ${bytes(report.archivedFiles.bytes)} of stored files from ${plural(report.archivedFiles.threadCount, "archived thread")} on this machine. This includes small files. Conversations and uploaded attachments will be kept. Pinned and running threads are skipped. This can’t be undone.`,
+                              run: async () => {
+                                const result = await rpc.call(
+                                  "clearArchivedFiles",
+                                  { hostId: report.hostId },
+                                );
+                                return `Cleared ${bytes(result.clearedBytes)} from ${plural(result.clearedThreads, "archived thread")}.`;
+                              },
+                            })
+                          }
+                        >
+                          Clear archived files
+                        </Button>
+                      </div>
+                      {cleanup?.key === "archived-files" && cleanupConfirmation}
+                    </div>
                     <div className="space-y-3 px-4 py-3.5">
                       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                         <div className="min-w-0 flex-1">
@@ -1111,7 +1163,6 @@ function MachineRow({
         disabled={busy || scanning || machine?.status !== "connected"}
         onClick={onScan}
       >
-        <Icon name="RotateCcw" className={scanning ? "animate-spin" : ""} />
         {scanning ? "Scanning" : report ? "Rescan" : "Scan"}
       </Button>
       <Icon

@@ -177,6 +177,21 @@ export function registerCli(
               });
             }),
         }),
+        "clear-archived-files": cliCommand({
+          summary:
+            "Clear all stored files from archived, stopped, unpinned threads on a machine",
+          options: { machine: MACHINE, yes: YES },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to permanently clear archived thread files.",
+                );
+              return storage.clearArchivedFiles({
+                hostId: required(input.options.machine, "machine"),
+              });
+            }),
+        }),
       },
     }),
   );

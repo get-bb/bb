@@ -557,7 +557,9 @@ Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on
 Storage & retention is a default-disabled bundled plugin. Enable it
 with `bb plugin enable bb--storage-retention`.
 Its sidebar panel and `bb storage` commands own retention policies and machine
-cleanup. See the plugin’s storage-retention skill for commands and limitations.
+cleanup. Use `bb storage clear-archived-files --machine HOST_ID --yes` to clear
+all stored files from archived, stopped, unpinned threads on that machine.
+See the plugin’s storage-retention skill for commands and limitations.
 
 ### Opt-in server performance diagnostics
 

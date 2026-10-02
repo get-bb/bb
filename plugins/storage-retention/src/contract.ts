@@ -57,6 +57,13 @@ export const storageRpc = defineRpcContract({
     input: z.object({ threadId: z.string().min(1) }).strict(),
     output: z.object({ ok: z.literal(true) }),
   },
+  clearArchivedFiles: {
+    input: machineInput,
+    output: z.object({
+      clearedThreads: z.number().int().nonnegative(),
+      clearedBytes: z.number().int().nonnegative(),
+    }),
+  },
   state: { input: z.null(), output: stateSchema },
   preview: { input: policySchema, output: previewSchema },
   configure: { input: policySchema, output: stateSchema },

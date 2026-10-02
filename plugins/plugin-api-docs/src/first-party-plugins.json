@@ -127,7 +127,7 @@
   {
     "id": "bb--storage-retention",
     "name": "Storage & retention",
-    "icon": "DatabaseRestore"
+    "icon": null
   },
   {
     "id": "tasks",

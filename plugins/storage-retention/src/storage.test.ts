@@ -301,6 +301,7 @@ it("deletes only large files from archived threads on scanned online machines, k
     ["thr_old", "dump.db", large],
     ["thr_old", "report.md", 16384],
     ["thr_pinned", "dump.db", large],
+    ["thr_running", "dump.db", large],
   ] as const) {
     await fs.mkdir(path.join(root, name), { recursive: true });
     await fs.writeFile(path.join(root, name, file), Buffer.alloc(size, 1));
@@ -316,6 +317,7 @@ it("deletes only large files from archived threads on scanned online machines, k
       archivedAt: 1,
       pinnedAt: 1,
     }),
+    makeThreadResponse({ id: "thr_running", status: "active", archivedAt: 1 }),
   ];
   const host = createFakePluginHost({
     pluginId: "storage-retention",
@@ -359,6 +361,9 @@ it("deletes only large files from archived threads on scanned online machines, k
   });
   try {
     plugin(host.bb);
+    await expect(
+      host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" }),
+    ).rejects.toThrow("Scan the machine");
     await host.harness.callRpc("scanAll", null);
     await expect
       .poll(
@@ -385,8 +390,31 @@ it("deletes only large files from archived threads on scanned online machines, k
         await host.harness.callRpc("host", { hostId: "host_test" }),
       ).report,
     ).toMatchObject({
-      threadsWithStorageCount: 4,
-      archivedThreadCount: 3,
+      threadsWithStorageCount: 5,
+      archivedThreadCount: 4,
+      archivedLargeFiles: { threadCount: 0, fileCount: 0, bytes: 0 },
+    });
+    expect(
+      await host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" }),
+    ).toMatchObject({ clearedThreads: 2 });
+    await expect
+      .poll(async () => fs.stat(path.join(root, "thr_old")).catch(() => null))
+      .toBeNull();
+    await expect
+      .poll(async () => fs.stat(path.join(root, "thr_small")).catch(() => null))
+      .toBeNull();
+    for (const name of ["thr_live", "thr_pinned", "thr_running"]) {
+      expect((await fs.stat(path.join(root, name, "dump.db"))).size).toBe(
+        large,
+      );
+    }
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).report,
+    ).toMatchObject({
+      threadsWithStorageCount: 3,
+      archivedFiles: { threadCount: 0, bytes: 0 },
       archivedLargeFiles: { threadCount: 0, fileCount: 0, bytes: 0 },
     });
     await expect

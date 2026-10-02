@@ -10,6 +10,11 @@ Core supplies ordinary thread lifecycle actions, machine storage paths, and
 environment cleanup retry. The existing core idle orphan sweep is unchanged.
 Disabling the plugin stops retention; it does not stop core orphan maintenance.
 
+The machine page offers Clear archived files for whole storage folders, including
+small files, from archived, stopped, unpinned threads in the scan. Bulk clearing
+keeps conversations and uploaded attachments and requires confirmation. The
+matching CLI command is `bb storage clear-archived-files --machine HOST_ID --yes`.
+
 Cached reports are snapshots; rescan to see external filesystem changes. Plugin
 scans and bulk cleanup run exclusively per machine. Different stopped threads
 can clear concurrently, while duplicate clears for one thread are rejected.

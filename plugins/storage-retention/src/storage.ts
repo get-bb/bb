@@ -205,6 +205,11 @@ export function createStorage(bb: BbPluginApi) {
       threadsWithStorageCount: owned.length,
       archivedThreadCount: archived.length,
       orphanCount: orphans.length,
+      archivedFiles: {
+        threadCount: owned.filter((entry) => clearableArchived(entry.thread))
+          .length,
+        bytes: sum(owned.filter((entry) => clearableArchived(entry.thread))),
+      },
       archivedLargeFiles: {
         threadCount: clearable.length,
         fileCount: clearable.reduce((total, entry) => total + entry.count, 0),
@@ -380,6 +385,9 @@ export function createStorage(bb: BbPluginApi) {
       );
       const names = new Set(batch.map((entry) => entry.name));
       cached.entries = cached.entries.filter((entry) => !names.has(entry.name));
+      cached.largeFiles = cached.largeFiles.filter(
+        (entry) => !names.has(entry.name),
+      );
       store(hostId, cached);
       count += batch.length;
       bytes += batch.reduce((total, entry) => total + entry.sizeBytes, 0);
@@ -464,6 +472,33 @@ export function createStorage(bb: BbPluginApi) {
         }
       }
       return { fileCount, bytes };
+    } finally {
+      release();
+    }
+  }
+  async function clearArchivedFiles({ hostId }: { hostId: string }) {
+    await requireHost(hostId, true);
+    const release = acquire(hostId);
+    try {
+      const cached = read(hostId);
+      if (!cached)
+        throw new Error(
+          "Scan the machine before clearing archived thread files",
+        );
+      const [rootPath, threads] = await Promise.all([
+        storageRoot(hostId),
+        readThreads(bb, lifecycle.signal),
+      ]);
+      const eligible = new Set(
+        threads.filter(clearableArchived).map((thread) => thread.id),
+      );
+      const removed = await discard(
+        hostId,
+        rootPath,
+        cached,
+        cached.entries.filter((entry) => eligible.has(entry.name)),
+      );
+      return { clearedThreads: removed.count, clearedBytes: removed.bytes };
     } finally {
       release();
     }
@@ -569,6 +604,7 @@ export function createStorage(bb: BbPluginApi) {
     scanAll,
     removeOrphans,
     clearLargeFiles,
+    clearArchivedFiles,
     clearThread,
     retryWorktreeCleanup,
   };
