@@ -51,7 +51,7 @@ describe("createConnection", () => {
     try {
       const signal = new Int32Array(new SharedArrayBuffer(4));
       db.$client.function("wait_for_io", () => {
-        Atomics.wait(signal, 0, 0, 30);
+        Atomics.wait(signal, 0, 0, 100);
         return 7;
       });
       logger.clear();
@@ -59,9 +59,9 @@ describe("createConnection", () => {
         { value: 7 },
       );
       const { fields } = getOnlyInfoLog(logger);
-      expect(fields.durationMs).toBeGreaterThanOrEqual(25);
+      expect(fields.durationMs).toBeGreaterThanOrEqual(90);
       expect(fields.cpuDurationMs).toBeGreaterThanOrEqual(0);
-      expect(fields.durationMs - fields.cpuDurationMs).toBeGreaterThan(15);
+      expect(fields.durationMs - fields.cpuDurationMs).toBeGreaterThan(50);
     } finally {
       db.$client.close();
     }
