@@ -768,6 +768,9 @@ describe("PromptBoxInternal composer popups", () => {
     await waitForPromptFocus();
     await openPopupFromMenu();
     const saved = await screen.findByRole("dialog", { name: "Saved prompts" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(saved).getByRole("textbox")),
+    );
     fireEvent.click(
       within(saved).getByRole("button", { name: "Open recent files" }),
     );
