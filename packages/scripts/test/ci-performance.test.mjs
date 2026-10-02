@@ -17,7 +17,13 @@ import {
   listActionsCaches,
 } from "../../../scripts/lib/actions-cache.mjs";
 
-it("uses a real frozen install with isolated caches after a timed-out restore, while preserving successful restores", () => {
+it("uses a real frozen install with isolated caches after a timed-out restore, while preserving successful restores", ({
+  skip,
+}) => {
+  skip(
+    process.platform === "win32",
+    "install-dependencies.sh runs only on Linux and macOS CI runners",
+  );
   const root = mkdtempSync(join(tmpdir(), "bb-ci-cache-fallback-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(
