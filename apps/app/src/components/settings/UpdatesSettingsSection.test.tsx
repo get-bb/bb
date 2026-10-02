@@ -1402,9 +1402,9 @@ The canonical release summary.
 
     renderSection();
 
-    for (const alert of screen.getAllByRole("alert")) {
-      expect(alert.textContent).toBe("Connection lost during update");
-    }
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Connection lost during update",
+    );
     expect(screen.queryByText("Command exited with code 1")).toBeNull();
     expect(
       screen.getByRole("button", {

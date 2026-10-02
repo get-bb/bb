@@ -1246,19 +1246,29 @@ export function MachineUpdatesRows({
             latest={issue !== null ? status.latestVersion : null}
           />
         }
-        state={
+        titleAside={
           failure === null ? null : (
-            <span role="alert" className="hidden shrink-0 sm:inline">
-              <RowStateCaption state="failed">
+            <span className="flex min-w-0 items-center gap-1">
+              <span role="alert" className="min-w-0 text-xs text-destructive">
                 {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
-              </RowStateCaption>
-            </span>
-          )
-        }
-        description={
-          failure === null ? null : (
-            <span role="alert" className="text-destructive sm:hidden">
-              {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
+              </span>
+              <TooltipProvider delayDuration={250}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`View ${status.displayName} update log`}
+                      className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      onClick={() =>
+                        openProviderCliInstallLog(failure.logDialogState)
+                      }
+                    >
+                      <Icon aria-hidden name="Info" className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>View log</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </span>
           )
         }
@@ -1269,30 +1279,15 @@ export function MachineUpdatesRows({
           ) : queued ? (
             <RowStateControl live state="in-progress" />
           ) : failure !== null ? (
-            <span className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-label={`View ${status.displayName} update log`}
-                className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-xs text-foreground max-sm:size-7 max-sm:text-muted-foreground max-sm:rounded-md max-sm:hover:bg-state-hover max-sm:hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() =>
-                  openProviderCliInstallLog(failure.logDialogState)
-                }
-              >
-                <Icon aria-hidden name="FileText" className="size-4 sm:hidden" />
-                <span className="hidden underline underline-offset-4 sm:inline">
-                  View log
-                </span>
-              </button>
-              {actionable ? (
-                <RowStateControl
-                  state="failed"
-                  actionIcon={RETRY_ACTION_ICON as IconName}
-                  actionTooltip="Retry"
-                  actionLabel={`Retry ${status.displayName} on ${host.name}`}
-                  onClick={() => onStartInstall(host.id, issue)}
-                />
-              ) : null}
-            </span>
+            actionable ? (
+              <RowStateControl
+                state="failed"
+                actionIcon={RETRY_ACTION_ICON as IconName}
+                actionLabel={`Retry ${status.displayName} on ${host.name}`}
+                actionTooltip="Retry"
+                onClick={() => onStartInstall(host.id, issue)}
+              />
+            ) : null
           ) : state === null ? null : (
             <RowStateControl
               state={state}
