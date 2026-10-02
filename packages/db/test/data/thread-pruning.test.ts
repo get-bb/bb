@@ -83,6 +83,45 @@ function sequences(f: Fixture) {
 }
 
 describe("thread pruning", () => {
+  it("requires output presence only when pruning command output deltas", () => {
+    const f = setup();
+    try {
+      let sequence = 0;
+      const retained: number[] = [];
+      for (const [itemKind, type] of [
+        ["agentMessage", "item/agentMessage/delta"],
+        ["reasoning", "item/reasoning/textDelta"],
+        ["commandExecution", "item/commandExecution/outputDelta"],
+      ] as const) {
+        for (const [data, hasOutput] of [
+          ["malformed", false],
+          ["{}", false],
+          ['{"item":{"aggregatedOutput":null}}', true],
+          ['{"item":{"aggregatedOutput":42}}', true],
+          ['{"item":{"aggregatedOutput":"done"}}', true],
+        ] as const) {
+          const itemId = `item-${sequence}`;
+          seed(f, ++sequence, { type, itemId });
+          retained.push(sequence);
+          seed(f, ++sequence, { type, itemId });
+          if (itemKind === "commandExecution" && !hasOutput)
+            retained.push(sequence);
+          seed(f, ++sequence, {
+            type: "item/completed",
+            itemKind,
+            itemId,
+            data,
+          });
+          retained.push(sequence);
+        }
+      }
+      cycle(f, "resolved-items");
+      expect(sequences(f)).toEqual(retained);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("rotates scoped live policies durably and drains active usage without global idle cleanup", () => {
     let f = setup();
     try {
@@ -742,45 +781,6 @@ describe("thread pruning", () => {
       expect(sequences(f)).toEqual([
         1, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208,
       ]);
-    } finally {
-      f.db.$client.close();
-    }
-  });
-
-  it("requires output presence only when pruning command output deltas", () => {
-    const f = setup();
-    try {
-      let sequence = 0;
-      const retained: number[] = [];
-      for (const [itemKind, type] of [
-        ["agentMessage", "item/agentMessage/delta"],
-        ["reasoning", "item/reasoning/textDelta"],
-        ["commandExecution", "item/commandExecution/outputDelta"],
-      ] as const) {
-        for (const [data, hasOutput] of [
-          ["malformed", false],
-          ["{}", false],
-          ['{"item":{"aggregatedOutput":null}}', true],
-          ['{"item":{"aggregatedOutput":42}}', true],
-          ['{"item":{"aggregatedOutput":"done"}}', true],
-        ] as const) {
-          const itemId = `item-${sequence}`;
-          seed(f, ++sequence, { type, itemId });
-          retained.push(sequence);
-          seed(f, ++sequence, { type, itemId });
-          if (itemKind === "commandExecution" && !hasOutput)
-            retained.push(sequence);
-          seed(f, ++sequence, {
-            type: "item/completed",
-            itemKind,
-            itemId,
-            data,
-          });
-          retained.push(sequence);
-        }
-      }
-      cycle(f, "resolved-items");
-      expect(sequences(f)).toEqual(retained);
     } finally {
       f.db.$client.close();
     }
