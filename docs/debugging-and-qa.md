@@ -29,6 +29,25 @@ then restart its retained process with `bb thread stop <thread-id>` before sendi
 a new message. BB's recovery prevents reuse after a cancellation error; it does
 not repair the older adapter's failing turn.
 
+## Machine Authentication Cache
+
+Successful verification of an unlimited daemon host key is cached in server
+memory for 30 seconds, capped at the key's expiry. The cache holds at most
+1,024 entries and retains only token hashes. Hits neither read nor write the
+authentication database and do not extend the cache lifetime. The next request
+after expiry uses the existing verifier and updates usage timestamps, so
+`lastRequest` and `updatedAt` describe the last full verification rather than
+every request. A burst of concurrent cold requests can still perform separate
+verifications before the first result is cached.
+
+Revocation and reenrollment invalidate that host's cached keys and prevent
+already-running verifications from returning or caching invalidated credentials.
+Restarting the server discards the cache. Enrollment keys and keys with quotas,
+refills, or enabled rate limiting always use the existing verifier. Direct edits
+to authentication rows outside the machine-auth service are observed when the
+cache expires; QA that changes a warmed key's database fields must account for
+that window. Expiry known when caching is enforced on every hit.
+
 ## Slow Database Operations
 
 The server logs `Slow DB query` when a prepared statement, `exec` batch, or
