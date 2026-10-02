@@ -38,7 +38,7 @@ import {
 } from "./query-placeholders";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
-  FILE_PREVIEW_QUERY_POLICY,
+  EXPENSIVE_MANUAL_QUERY_POLICY,
   HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
@@ -279,7 +279,7 @@ export function useEnvironmentFilePreview(
       );
     },
     enabled,
-    ...FILE_PREVIEW_QUERY_POLICY,
+    ...EXPENSIVE_MANUAL_QUERY_POLICY,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }

@@ -4,10 +4,7 @@ import { buildHostFileContentUrl } from "@/lib/file-content-urls";
 import type { FilePreview } from "@bb/client-core";
 import type { QueryOptions } from "./query-helpers";
 import { hostFilePreviewQueryKey } from "./query-keys";
-import {
-  FILE_PREVIEW_QUERY_POLICY,
-  HEAVY_PAYLOAD_QUERY_POLICY,
-} from "./query-policies";
+import { HEAVY_PAYLOAD_QUERY_POLICY } from "./query-policies";
 
 interface HostMediaPreviewType {
   kind: "image" | "video";
@@ -76,7 +73,6 @@ export function useHostFilePreview(
     },
     enabled,
     staleTime: 30_000,
-    ...FILE_PREVIEW_QUERY_POLICY,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }

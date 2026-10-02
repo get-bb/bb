@@ -29,7 +29,7 @@ import {
   type QueryOptions,
 } from "./query-helpers";
 import {
-  FILE_PREVIEW_QUERY_POLICY,
+  EXPENSIVE_MANUAL_QUERY_POLICY,
   HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
@@ -272,7 +272,7 @@ export function useProjectFilePreview(
       );
     },
     enabled,
-    ...FILE_PREVIEW_QUERY_POLICY,
+    ...EXPENSIVE_MANUAL_QUERY_POLICY,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }

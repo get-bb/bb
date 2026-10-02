@@ -581,8 +581,8 @@ describe("useThreadHostFilePreview", () => {
 
     expect(query?.options).toEqual(
       expect.objectContaining({
-        refetchOnReconnect: expect.any(Function),
-        refetchOnWindowFocus: false,
+        refetchOnReconnect: true,
+        refetchOnWindowFocus: true,
       }),
     );
   });
