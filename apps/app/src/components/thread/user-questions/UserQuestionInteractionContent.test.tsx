@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { PendingInteractionUserQuestionQuestion } from "@bb/domain";
-import { invalidateThreadPendingInteractionResolutionQueries } from "@/hooks/cache-owners/mutation-cache-effects";
+import { threadPendingInteractionsQueryKey } from "@/hooks/queries/query-keys";
 import { UserQuestionAnswerForm } from "./UserQuestionInteractionContent";
 
 const mocks = vi.hoisted(() => ({
@@ -28,10 +28,6 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
 }));
 
-vi.mock("@/hooks/cache-owners/mutation-cache-effects", () => ({
-  invalidateThreadPendingInteractionResolutionQueries: vi.fn(),
-}));
-
 const questions: PendingInteractionUserQuestionQuestion[] = [
   {
     id: "q1",
@@ -49,6 +45,8 @@ const questions: PendingInteractionUserQuestionQuestion[] = [
 describe("UserQuestionAnswerForm", () => {
   it("offers a recoverable refresh action for a stale submission", () => {
     const queryClient = new QueryClient();
+    const pendingKey = threadPendingInteractionsQueryKey("thr_stale");
+    queryClient.setQueryData(pendingKey, []);
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -67,11 +65,7 @@ describe("UserQuestionAnswerForm", () => {
     );
 
     expect(mocks.reset).toHaveBeenCalledTimes(1);
-    expect(
-      invalidateThreadPendingInteractionResolutionQueries,
-    ).toHaveBeenCalledWith({
-      queryClient,
-      threadId: "thr_stale",
-    });
+    expect(queryClient.getQueryState(pendingKey)?.isInvalidated).toBe(true);
+    queryClient.clear();
   });
 });

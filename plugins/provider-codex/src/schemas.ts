@@ -332,9 +332,11 @@ const codexToolRequestUserInputQuestionSchema = z.object({
   id: z.string(),
   header: z.string(),
   question: z.string(),
-  isOther: z.boolean(),
-  isSecret: z.boolean(),
-  options: z.array(codexToolRequestUserInputOptionSchema).nullable(),
+  isSecret: z.boolean().default(false),
+  options: z
+    .array(codexToolRequestUserInputOptionSchema)
+    .nullable()
+    .default(null),
 });
 
 export const codexToolRequestUserInputParamsSchema = z.object({
@@ -342,8 +344,6 @@ export const codexToolRequestUserInputParamsSchema = z.object({
   turnId: z.string(),
   itemId: z.string(),
   questions: z.array(codexToolRequestUserInputQuestionSchema),
-  isBlocking: z.boolean(),
-  autoResolutionMs: z.number().int().nonnegative().nullable(),
 });
 
 const codexThreadItemEnvelopeSchema = z

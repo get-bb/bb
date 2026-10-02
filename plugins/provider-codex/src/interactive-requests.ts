@@ -2,6 +2,7 @@ import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
   isApprovalInteractionOutcome,
+  userQuestionInteractionOutcomeSchema,
   type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
@@ -100,12 +101,11 @@ function buildCodexUserQuestionPayload(params: {
     id: string;
     header: string;
     question: string;
-    isOther: boolean;
     isSecret: boolean;
     options: Array<{ label: string; description: string }> | null;
   }>;
 }): UserQuestionPendingInteractionPayload {
-  return {
+  const payload = userQuestionInteractionOutcomeSchema.shape.payload.safeParse({
     kind: "user_question",
     questions: params.questions.map((question) => ({
       id: question.id,
@@ -117,9 +117,13 @@ function buildCodexUserQuestionPayload(params: {
         label: option.label,
         description: option.description,
       })),
-      allowFreeText: question.isOther || question.options === null,
+      allowFreeText: true,
     })),
-  };
+  });
+  if (!payload.success) {
+    throw new ProviderRequestDecodeErrorValue(payload.error.message);
+  }
+  return payload.data;
 }
 
 function buildCodexUserQuestionResponse(args: UserQuestionInteractionOutcome): {
