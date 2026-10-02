@@ -673,31 +673,6 @@
   font-weight: 500;
 }
 
-.cmp-tool {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--subtle);
-}
-
-.cmp-tool .cmp-tool-cmd {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0;
-  background: none;
-  color: var(--ink-strong);
-}
-
-.cmp-tool-dur {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 11.5px;
-}
-
 .cmp-message {
   display: flex;
   flex-direction: column;

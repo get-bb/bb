@@ -35,24 +35,6 @@ function ThreadPill({ title }: { title: string }) {
   );
 }
 
-function ToolRow({
-  command,
-  duration,
-  delay,
-}: {
-  command: string;
-  duration: string;
-  delay: string;
-}) {
-  return (
-    <li className="cmp-tool" style={{ animationDelay: delay }}>
-      <span className="cmp-tool-verb">Ran</span>
-      <code className="cmp-tool-cmd">{command}</code>
-      <span className="cmp-tool-dur">{duration}</span>
-    </li>
-  );
-}
-
 function PaneHead({
   icon,
   title,
@@ -93,11 +75,6 @@ export function AgentSplit() {
             Added a token bucket in <code>upload.ts</code>. Starting a Codex
             review.
           </li>
-          <ToolRow
-            command="bb thread spawn --parent-self --provider codex"
-            duration="2s"
-            delay="1.4s"
-          />
           <li className="cmp-message" style={{ animationDelay: "3.6s" }}>
             <span className="cmp-message-head">
               <HugeiconsIcon icon={Message01Icon} className="cmp-message-ic" />
@@ -143,12 +120,10 @@ export function AgentSplit() {
           <li className="cmp-agent" style={{ animationDelay: "2.2s" }}>
             Reading <code>upload.ts</code> and its tests.
           </li>
-          <ToolRow command="pnpm test" duration="14s" delay="2.6s" />
-          <ToolRow
-            command='bb thread tell thr_7k2… "Found 2 issues…"'
-            duration="1s"
-            delay="3.2s"
-          />
+          <li className="cmp-agent" style={{ animationDelay: "3s" }}>
+            Found 2 issues. Sent them to{" "}
+            <ThreadPill title="Add rate limiting to uploads" />.
+          </li>
         </ol>
       </section>
     </div>
