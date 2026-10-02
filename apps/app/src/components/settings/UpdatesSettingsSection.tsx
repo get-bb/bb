@@ -1248,10 +1248,17 @@ export function MachineUpdatesRows({
         }
         state={
           failure === null ? null : (
-            <span role="alert" className="shrink-0">
+            <span role="alert" className="hidden shrink-0 sm:inline">
               <RowStateCaption state="failed">
                 {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
               </RowStateCaption>
+            </span>
+          )
+        }
+        description={
+          failure === null ? null : (
+            <span role="alert" className="text-destructive sm:hidden">
+              {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
             </span>
           )
         }
@@ -1266,12 +1273,15 @@ export function MachineUpdatesRows({
               <button
                 type="button"
                 aria-label={`View ${status.displayName} update log`}
-                className="shrink-0 cursor-pointer rounded-sm text-xs text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm text-xs text-foreground max-sm:size-7 max-sm:text-muted-foreground max-sm:rounded-md max-sm:hover:bg-state-hover max-sm:hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={() =>
                   openProviderCliInstallLog(failure.logDialogState)
                 }
               >
-                View log
+                <Icon aria-hidden name="FileText" className="size-4 sm:hidden" />
+                <span className="hidden underline underline-offset-4 sm:inline">
+                  View log
+                </span>
               </button>
               {actionable ? (
                 <RowStateControl
