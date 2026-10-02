@@ -1,10 +1,9 @@
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import type { PendingInteractionUserQuestionQuestion } from "@bb/domain";
 import { QuestionForm } from "@bb/shared-ui/question-form";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
 import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { useStickyFooterAvailableHeight } from "./useStickyFooterAvailableHeight.js";
 
 interface UserQuestionAnswerFormProps {
   interactionId: string;
@@ -28,8 +27,6 @@ export function UserQuestionAnswerForm({
       })),
     [questions],
   );
-  const rootRef = useRef<HTMLDivElement>(null);
-  const availableHeight = useStickyFooterAvailableHeight(rootRef);
   const resolvePendingInteraction =
     useResolveThreadPendingInteraction(threadId);
   const stopThread = useStopThread();
@@ -42,13 +39,7 @@ export function UserQuestionAnswerForm({
       })
     : null;
   return (
-    <div
-      ref={rootRef}
-      className="flex min-h-0 flex-col"
-      style={
-        availableHeight === null ? undefined : { maxHeight: availableHeight }
-      }
-    >
+    <div>
       <QuestionForm
         key={interactionId}
         questions={normalizedQuestions}

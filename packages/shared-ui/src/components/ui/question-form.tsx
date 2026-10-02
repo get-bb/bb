@@ -431,7 +431,7 @@ export function QuestionForm({
         event.preventDefault();
         handleAdvance();
       }}
-      className="flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col text-xs text-muted-foreground"
+      className="flex min-h-0 flex-col text-xs text-muted-foreground"
     >
       {totalQuestions > 1 ? (
         <QuestionTabs
@@ -441,7 +441,7 @@ export function QuestionForm({
           questions={questions}
         />
       ) : null}
-      <div className="min-h-0 touch-pan-y overflow-y-auto overscroll-contain">
+      <div>
         <QuestionInputBlock
           disabled={disabled}
           question={currentQuestion}

@@ -446,15 +446,31 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       const plugin = screen.getByTestId("plugin-interaction-shell");
       const footer = container.querySelector("[data-scroll-footer]");
       if (!footer) throw new Error("Missing footer");
-      Object.defineProperty(footer, "offsetHeight", { value: 1000 });
+      Object.defineProperty(footer, "offsetHeight", {
+        configurable: true,
+        value: 1000,
+      });
       for (const shell of [native, plugin]) {
-        Object.defineProperty(shell, "offsetHeight", { value: 400 });
+        Object.defineProperty(shell, "offsetHeight", {
+          configurable: true,
+          value: 400,
+        });
       }
       act(() => {
         for (const observer of observers) observer();
       });
       expect(native.style.maxHeight).toBe("200px");
       expect(plugin.style.maxHeight).toBe("200px");
+      const toggle = plugin.querySelector('button[aria-expanded="true"]');
+      if (!toggle) throw new Error("Missing disclosure");
+      fireEvent.click(toggle);
+      Object.defineProperty(plugin, "offsetHeight", { value: 100 });
+      Object.defineProperty(footer, "offsetHeight", { value: 700 });
+      act(() => {
+        for (const observer of observers) observer();
+      });
+      expect(plugin.style.maxHeight).toBe("");
+      expect(native.style.maxHeight).toBe("300px");
     } finally {
       vi.unstubAllGlobals();
     }
