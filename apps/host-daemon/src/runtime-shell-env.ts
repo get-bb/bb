@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
-import { basename, delimiter, resolve } from "node:path";
+import { basename, delimiter, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { assignIfDefined } from "@bb/config/objects";
@@ -53,6 +53,12 @@ const SHELL_ENV_COMMAND = [
   `printf '%s\\n' ${SHELL_ENV_END_MARKER}`,
 ].join("; ");
 const USER_SHELL_ENV_TIMEOUT_MS = 3_000;
+const WINDOWS_MACHINE_ENVIRONMENT_KEY =
+  "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+const WINDOWS_USER_ENVIRONMENT_KEY = "HKCU\\Environment";
+const WINDOWS_REGISTRY_PATH_PATTERN =
+  /^\s+Path\s+REG_(?:EXPAND_)?SZ\s+(.*)$/imu;
+const WINDOWS_ENVIRONMENT_REFERENCE_PATTERN = /%([^%;\\/]+)%/gu;
 const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
 function getDefaultCliExecutablePath(): string {
@@ -319,15 +325,105 @@ function parsePathFromUserShellEnv(stdout: string): string | null {
   return null;
 }
 
+function windowsEnvironmentValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+): string | undefined {
+  const key = Object.keys(env).find(
+    (candidate) => candidate.toUpperCase() === name.toUpperCase(),
+  );
+  return key === undefined ? undefined : env[key];
+}
+
+function splitWindowsPath(
+  value: string | undefined,
+  env: NodeJS.ProcessEnv,
+): string[] {
+  return (value ?? "")
+    .split(";")
+    .map((entry) =>
+      entry
+        .trim()
+        .replace(
+          WINDOWS_ENVIRONMENT_REFERENCE_PATTERN,
+          (reference, name: string) =>
+            windowsEnvironmentValue(env, name) ?? reference,
+        ),
+    )
+    .filter((entry) => entry.length > 0);
+}
+
+async function readWindowsRegistryPath(
+  options: ResolveUserShellPathOptions,
+  env: NodeJS.ProcessEnv,
+  key: string,
+): Promise<string | null> {
+  const spawnUserShellEnv =
+    options.spawnUserShellEnv ?? defaultSpawnUserShellEnv;
+  const result = await spawnUserShellEnv({
+    command: win32.join(
+      windowsEnvironmentValue(env, "SystemRoot") ?? "C:\\Windows",
+      "System32",
+      "reg.exe",
+    ),
+    args: ["query", key, "/v", "Path"],
+    env,
+    timeoutMs: options.timeoutMs ?? USER_SHELL_ENV_TIMEOUT_MS,
+  });
+  if (
+    result.error !== undefined ||
+    result.signal !== null ||
+    result.status !== 0
+  ) {
+    return null;
+  }
+  return WINDOWS_REGISTRY_PATH_PATTERN.exec(result.stdout)?.[1]?.trim() ?? null;
+}
+
+async function resolveWindowsRegistryPath(
+  options: ResolveUserShellPathOptions,
+  env: NodeJS.ProcessEnv,
+): Promise<string | null> {
+  const machinePath = await readWindowsRegistryPath(
+    options,
+    env,
+    WINDOWS_MACHINE_ENVIRONMENT_KEY,
+  );
+  if (machinePath === null) {
+    return null;
+  }
+  const userPath = await readWindowsRegistryPath(
+    options,
+    env,
+    WINDOWS_USER_ENVIRONMENT_KEY,
+  );
+  const seen = new Set<string>();
+  const entries: string[] = [];
+  for (const entry of [
+    ...splitWindowsPath(machinePath, env),
+    ...splitWindowsPath(userPath ?? "", env),
+    ...splitWindowsPath(windowsEnvironmentValue(env, "PATH"), env),
+  ]) {
+    const key = entry.replace(/[\\/]+$/u, "").toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    entries.push(entry);
+  }
+  return entries.length === 0 ? null : entries.join(";");
+}
+
 async function resolveUserShellPathWithPrevious(
   options: ResolveUserShellPathOptions,
   previousPath: string | null,
 ): Promise<string | null> {
   const env = options.env ?? process.env;
-  const shell = resolveUserShellCommand(
-    env,
-    options.platform ?? process.platform,
-  );
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32") {
+    return (await resolveWindowsRegistryPath(options, env)) ?? previousPath;
+  }
+  const shell = resolveUserShellCommand(env, platform);
   if (!shell) {
     return null;
   }
