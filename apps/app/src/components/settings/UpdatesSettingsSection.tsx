@@ -225,8 +225,8 @@ const PROVIDER_CLI_FAILURE_DESCRIPTIONS: Record<
   ProviderCliInstallFailure["kind"],
   string
 > = {
-  command: "Update failed.",
-  interrupted: "Connection lost before the update finished.",
+  command: "Update failed",
+  interrupted: "Connection lost during update",
 };
 
 function UpdatesRow({
@@ -298,7 +298,7 @@ function RowName({
 
 function stateTextClass(state: UpdateState): string {
   return UPDATE_STATE_PRESENTATION[state].tone === "error"
-    ? "font-semibold text-destructive"
+    ? "text-destructive"
     : "font-semibold text-subtle-foreground";
 }
 
@@ -825,7 +825,8 @@ export function BbAppUpdateRows({
         name,
         <RowStateControl
           state="failed"
-          buttonLabel="Retry"
+          actionIcon={RETRY_ACTION_ICON as IconName}
+          actionTooltip="Retry"
           actionLabel="Retry the download"
           onClick={() => onRetryDesktop?.()}
         />,
@@ -953,7 +954,11 @@ function InAppUpdateRow({
     available === null || status.blocked !== null || onApply === null ? null : (
       <RowStateControl
         state={failure === null ? "update-available" : "failed"}
-        buttonLabel={failure === null ? "Update" : "Retry"}
+        buttonLabel={failure === null ? "Update" : undefined}
+        actionIcon={
+          failure === null ? undefined : (RETRY_ACTION_ICON as IconName)
+        }
+        actionTooltip={failure === null ? undefined : "Retry"}
         actionLabel="Download the update and restart bb"
         loading={applyPending}
         onClick={onApply}
@@ -1099,7 +1104,8 @@ export function BbDaemonUpdateRow({
         ) : updateStalled ? (
           <RowStateControl
             state="failed"
-            buttonLabel="Retry"
+            actionIcon={RETRY_ACTION_ICON as IconName}
+            actionTooltip="Retry"
             actionLabel={`Retry on ${host.name} now`}
             loading={retryUpdatePending}
             onClick={() => onRetryDaemonUpdate(host.id)}
@@ -1147,7 +1153,8 @@ export function ProviderCliCheckRow({
       actions={
         <RowStateControl
           state="failed"
-          buttonLabel="Retry"
+          actionIcon={RETRY_ACTION_ICON as IconName}
+          actionTooltip="Retry"
           actionLabel={`Check ${host.name}'s CLIs again`}
           loading={machine.statusFetching}
           onClick={() => onRecheckClis(host.id)}
@@ -1239,22 +1246,12 @@ export function MachineUpdatesRows({
             latest={issue !== null ? status.latestVersion : null}
           />
         }
-        description={
+        state={
           failure === null ? null : (
-            <span className="flex min-w-0 items-baseline gap-1.5">
-              <span role="alert" className="truncate text-destructive">
+            <span role="alert" className="shrink-0">
+              <RowStateCaption state="failed">
                 {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
-              </span>
-              <button
-                type="button"
-                aria-label={`View ${status.displayName} update log`}
-                className="shrink-0 cursor-pointer rounded-sm text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() =>
-                  openProviderCliInstallLog(failure.logDialogState)
-                }
-              >
-                View log
-              </button>
+              </RowStateCaption>
             </span>
           )
         }
@@ -1265,14 +1262,27 @@ export function MachineUpdatesRows({
           ) : queued ? (
             <RowStateControl live state="in-progress" />
           ) : failure !== null ? (
-            actionable ? (
-              <RowStateControl
-                state="failed"
-                buttonLabel="Retry"
-                actionLabel={`Retry ${status.displayName} on ${host.name}`}
-                onClick={() => onStartInstall(host.id, issue)}
-              />
-            ) : null
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label={`View ${status.displayName} update log`}
+                className="shrink-0 cursor-pointer rounded-sm text-xs text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={() =>
+                  openProviderCliInstallLog(failure.logDialogState)
+                }
+              >
+                View log
+              </button>
+              {actionable ? (
+                <RowStateControl
+                  state="failed"
+                  actionIcon={RETRY_ACTION_ICON as IconName}
+                  actionTooltip="Retry"
+                  actionLabel={`Retry ${status.displayName} on ${host.name}`}
+                  onClick={() => onStartInstall(host.id, issue)}
+                />
+              ) : null}
+            </span>
           ) : state === null ? null : (
             <RowStateControl
               state={state}

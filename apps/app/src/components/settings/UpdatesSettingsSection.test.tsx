@@ -902,7 +902,7 @@ The canonical release summary.
     expect(screen.queryByText(/^Up to date/)).toBeNull();
     const stalledMessage = screen.getByText("Update didn't finish");
     expect(stalledMessage.tagName).toBe("SPAN");
-    expect(stalledMessage.className).toContain("font-semibold");
+    expect(stalledMessage.className).not.toContain("font-semibold");
     expect(stalledMessage.className).toContain("text-destructive");
     expect(stalledMessage.className).not.toContain("rounded");
     expect(stalledMessage.className).not.toContain("font-mono");
@@ -1403,7 +1403,7 @@ The canonical release summary.
     renderSection();
 
     expect(screen.getByRole("alert").textContent).toBe(
-      "Connection lost before the update finished.",
+      "Connection lost during update",
     );
     expect(screen.queryByText("Command exited with code 1")).toBeNull();
     expect(

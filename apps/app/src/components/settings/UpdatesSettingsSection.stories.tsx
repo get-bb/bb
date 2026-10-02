@@ -665,7 +665,7 @@ export function UpdateStates() {
 
         <State
           name="Update failed"
-          note="The red line states the failure in plain words; the log keeps the raw output and Retry is the recovery."
+          note="The red caption states the failure in plain words; View log keeps the raw output and Retry is the recovery."
         >
           <MachineUpdatesSection
             machine={providerFailed}
