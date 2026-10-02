@@ -312,6 +312,11 @@ function StoragePage({
       </div>
     </div>
   );
+  const scanNotice = scanning && (
+    <p role="status" className="text-xs leading-snug text-subtle-foreground/75">
+      Scanning in the background. Large directories may take a few minutes.
+    </p>
+  );
   const storageInfo = (
     <aside
       aria-label="What is thread storage?"
@@ -421,15 +426,6 @@ function StoragePage({
                 </p>
               </div>
             )}
-            {scanning && (
-              <p
-                role="status"
-                className="text-xs leading-snug text-subtle-foreground/75"
-              >
-                Scanning in the background. Large directories may take a few
-                minutes.
-              </p>
-            )}
             {detail?.scan.state === "failed" && (
               <p role="alert" className="text-sm text-destructive">
                 Scan failed: {detail.scan.message}
@@ -442,12 +438,14 @@ function StoragePage({
                   className="size-8 text-muted-foreground"
                 />
                 <h2 className="text-base font-medium">
-                  See what’s taking up space
+                  {scanning ? "Scanning this machine" : "See what’s taking up space"}
                 </h2>
-                <p className="max-w-sm text-xs leading-snug text-subtle-foreground/75">
-                  Scan this machine to measure thread files and find storage you
-                  can clean up. Nothing is removed during a scan.
-                </p>
+                {scanning ? scanNotice : (
+                  <p className="max-w-sm text-xs leading-snug text-subtle-foreground/75">
+                    Scan this machine to measure thread files and find storage you
+                    can clean up. Nothing is removed during a scan.
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -470,6 +468,7 @@ function StoragePage({
                       </p>
                     )}
                     <p>Scanned {new Date(report.scannedAt).toLocaleString()}</p>
+                    {scanNotice}
                   </div>
                 </section>
                 <section className="space-y-3">
