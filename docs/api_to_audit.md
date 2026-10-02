@@ -1,5 +1,32 @@
 # APIs To Audit
 
+## Composer popups
+
+`ComposerCustomization.experimental_popup` registers one component and accessible
+label under the customization's id, honoring its composer scopes.
+`PluginComposerApi.experimental_openPopup(id)` opens that plugin's popup in
+that mounted composer. It returns false for missing, suppressed or out-of-scope
+registrations. Registration ids remain unique within a plugin; there is no
+second popup-id namespace.
+
+Core mentions, commands and plugin popups share one composer-menu state,
+Escape/dismissal lifecycle, `ComposerPopupHost`, and above/below placement.
+Opening a plugin popup dismisses the built-in suggestions. Inside its component,
+`useComposer()` targets the opening composer. Its `experimental_closePopup()`
+closes the calling plugin's popup and restores the retained editor selection,
+returning false if that plugin has no open popup. Desktop dismissal handles
+Escape and outside clicks; returning to the editor also closes the popup.
+Compact interactive popups use the shared persistent responsive drawer;
+editor-driven suggestions remain inline so typing continues in the editor. The
+component owns search, results and keyboard navigation. No automatic menu row
+is added; existing actions and plus-menu rows can call
+`experimental_openPopup`.
+
+Before stabilization, verify multiple composers, selection retention, plugin
+reload and crash recovery, scope suppression, and compact Safari
+keyboard/drawer behavior. Audit whether the single-popup-per-customization
+shape remains sufficient for other plugins.
+
 ## `settingsSection.experimental_page`
 
 `experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile.

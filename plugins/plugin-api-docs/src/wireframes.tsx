@@ -1650,7 +1650,26 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift", mobile ? "min-h-48 gap-7" : "h-36")}>
+      <div
+        className={cn(
+          "relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift",
+          mobile ? "min-h-48 gap-7" : "h-36",
+        )}
+      >
+        {actions.outlined ? (
+          <div
+            aria-hidden
+            data-guide-transient-for="composer-actions"
+            className="pointer-events-none absolute bottom-full left-2 right-2 z-20 mb-2 rounded-md border border-border bg-popover p-2 shadow-md"
+          >
+            <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
+              Search saved prompts
+            </span>
+            <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
+              Review this change
+            </span>
+          </div>
+        ) : null}
         {plus.outlined ? (
           <div
             aria-hidden

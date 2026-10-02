@@ -152,7 +152,7 @@ composer.insert("Please summarize this.", { at: "end", block: true });
 
 Composer customizations:
 
-- Register with `app.composer.customize({ id, scopes?, actions?, plusMenu?,
+- Register with `app.composer.customize({ id, scopes?, actions?, experimental_popup?, plusMenu?,
 sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   queued-message, and new-thread composers.
 - `actions` and `banners` are plugin React components. `useComposer()` inside
@@ -263,3 +263,13 @@ variables — use host token classes (`bg-card`, `text-foreground`,
 define custom `@theme` colors and never hand-set `oklch(...)`/gray
 literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes.
+
+Composer popups register `{ label, component }` through `experimental_popup`.
+Open by customization id with `composer.experimental_openPopup(id)`. The host
+shares mention-menu placement and dismissal, and uses a persistent responsive
+drawer for compact interactive popups. Inside the component, `useComposer()`
+is bound to the opening composer; its `experimental_closePopup()` closes only
+that plugin's popup and restores editor focus. Components own their search
+input and result navigation. Opening returns false when the target or scoped
+registration is unavailable; closing returns false if that plugin has no open
+popup.

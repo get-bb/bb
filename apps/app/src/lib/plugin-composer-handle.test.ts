@@ -40,6 +40,9 @@ function publishEditor(
   insertAtCursor: ComposerEditorBridge["insertAtCursor"] = () => true,
 ): ComposerEditorBridge {
   const bridge: ComposerEditorBridge = {
+    openPopup: () => false,
+    closePopup: () => false,
+    isPopupOpen: () => false,
     host: {
       scope: { kind: "thread", threadId: "thr_1" },
       textEffectKey: KEY,

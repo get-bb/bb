@@ -34,6 +34,32 @@
     ]
   },
   "surfaceFixtures": {
+    "composer-actions": {
+      "groupId": "composer",
+      "fidelity": "flow",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor", "triggered"],
+      "labels": {
+        "anchor": [],
+        "triggered": ["Search saved prompts", "Review this change"]
+      },
+      "fixtureClassAnchors": ["bottom-full", "bg-popover"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/promptbox/ComposerPopupHost.tsx",
+          "anchors": [
+            "data-promptbox-typeahead-menu",
+            "bottom-full mb-2",
+            "top-full mt-2",
+            "ResponsiveDrawerShell"
+          ]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginComposerPopup.tsx",
+          "anchors": ["slotKind=\"composerPopup\"", "<popup.component />"]
+        }
+      ]
+    },
     "command-palette-actions": {
       "groupId": "command-palette",
       "fidelity": "flow",

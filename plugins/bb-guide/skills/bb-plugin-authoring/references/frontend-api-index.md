@@ -220,6 +220,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginRealtimeConnectionState`
 - `PluginComposerScope`
 - `ComposerCustomization`
+- `ExperimentalComposerPopupRegistration`
 - `ComposerPlusMenuItem`
 - `ComposerSendMenuItem`
 - `ComposerSubmitOptions`

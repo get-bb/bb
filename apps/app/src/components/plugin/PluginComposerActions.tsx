@@ -1,3 +1,4 @@
+import { getComposerEditorBridge } from "@/lib/composer-editor-registry";
 import { memo, useMemo, useState, type ReactNode } from "react";
 import type {
   ComposerPlusMenuItem,
@@ -309,7 +310,10 @@ function PluginComposerPlusMenuEntryContent({
       aria-description={item.description}
       onSelect={() => {
         onSelected?.({
-          restoreComposerFocus: () => composer.focus(),
+          restoreComposerFocus: () => {
+            if (!getComposerEditorBridge(composer.key)?.isPopupOpen())
+              composer.focus();
+          },
           selectedElement: document.activeElement,
         });
         void run();

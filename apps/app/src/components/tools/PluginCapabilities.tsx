@@ -314,6 +314,16 @@ function pluginAppSurfaceItems(
             "Adds an action beside the thread composer.",
           ),
         ),
+        ...(slot.experimental_popup
+          ? [
+              namedSurface(
+                `composer:${slot.id}:popup`,
+                slot.id,
+                slot.experimental_popup.label,
+                "Opens plugin content beside the composer, sharing the mention menu's placement.",
+              ),
+            ]
+          : []),
         ...(slot.banners ?? []).map((banner) =>
           namedSurface(
             `composer:${slot.id}:banner`,

@@ -2351,6 +2351,16 @@ export interface ComposerCustomization {
   /** Host-rendered rows in the menu next to the composer's send button. */
   sendMenu?: readonly ComposerSendMenuItem[];
   richText?: ComposerRichTextSpec;
+  /** Host-managed popup sharing the mention menu's above/below placement, with a responsive drawer on compact screens. Open by this customization's id. */
+  experimental_popup?: ExperimentalComposerPopupRegistration;
+}
+
+/** Content for one composer's popup. The host owns placement, dismissal and focus restoration; the component owns its content and keyboard navigation. */
+export interface ExperimentalComposerPopupRegistration {
+  /** Accessible name of the popup and compact drawer. */
+  label: string;
+  /** Inside this component, useComposer() is bound to the composer that opened it. */
+  component: ComponentType;
 }
 
 /** Host-rendered menu row in the composer's `+` menu. */
@@ -2558,6 +2568,10 @@ export interface PluginComposerMention {
  * text methods log a warning and do nothing.
  */
 export interface PluginComposerApi {
+  /** Open this plugin's registered composer popup by customization id in this mounted composer. Returns false for an unavailable, suppressed or out-of-scope popup. */
+  experimental_openPopup(customizationId: string): boolean;
+  /** Close this plugin's open popup in this composer and restore editor focus. Returns false if this plugin has no open popup. */
+  experimental_closePopup(): boolean;
   scope: PluginComposerScope;
   /**
    * Stable identity for this composer's draft: the same across remounts and
