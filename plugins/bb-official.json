@@ -172,5 +172,9 @@
   "environment-modal-sandbox": {
     "category": "environments",
     "screenshots": []
+  },
+  "prompt-library": {
+    "category": "memory-and-context",
+    "screenshots": []
   }
 }

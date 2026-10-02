@@ -1990,3 +1990,13 @@ experiment takes effect live on that server. Without startup permission it
 cannot start collection. Turning it off restores normal logging thresholds,
 stops the sampler and flushes the in-flight profile; existing files remain.
 The launch flag only grants permission and still requires a restart to change.
+
+## Prompt Library
+
+The bundled Prompt Library plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--prompt-library`. Its
+**Search prompts** command defaults to Ctrl+R and can be rebound in Keyboard
+Settings. Search scope is remembered in browser local storage separately for
+new-thread and follow-up composers. Starred text and mentions persist in the
+plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
+for CLI and SDK commands.

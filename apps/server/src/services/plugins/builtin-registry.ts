@@ -175,6 +175,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "prompt-library",
+    pluginId: "bb--prompt-library",
+    defaultEnabled: false,
+  },
+  {
     name: "scheduled-send",
     pluginId: "scheduled-send",
     defaultEnabled: true,
