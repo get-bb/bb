@@ -1211,7 +1211,7 @@ function MachineRow({
   ];
   return (
     <div
-      className="group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/40 sm:flex"
+      className="group flex w-full cursor-pointer flex-col items-stretch gap-3 px-4 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
       onClick={(event) => {
         if (
           event.target instanceof Element &&
@@ -1221,7 +1221,7 @@ function MachineRow({
         onOpen();
       }}
     >
-      <span className="col-span-3 min-w-0 flex-1 space-y-1">
+      <span className="min-w-0 flex-1 space-y-1">
         <span className="flex min-w-0 items-center gap-1.5">
           <Icon
             name="Laptop"
@@ -1244,32 +1244,34 @@ function MachineRow({
           ))}
         </span>
       </span>
-      {report && (
-        <span className="shrink-0 text-left sm:text-right">
-          <span className="block text-sm font-normal tabular-nums">
-            {bytes(threadStorageBytes(report))}
-          </span>
-          {report.disk && (
-            <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
-              {bytes(report.disk.freeBytes)} free
+      <span className="flex items-center gap-3">
+        {report && (
+          <span className="mr-auto shrink-0 text-left sm:mr-0 sm:text-right">
+            <span className="block text-sm font-normal tabular-nums">
+              {bytes(threadStorageBytes(report))}
             </span>
-          )}
-        </span>
-      )}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="col-start-2 shrink-0"
-        aria-label={`Scan ${machine?.name ?? host.hostId}`}
-        disabled={busy || scanning || machine?.status !== "connected"}
-        onClick={onScan}
-      >
-        {scanning ? "Scanning" : report ? "Rescan" : "Scan"}
-      </Button>
-      <Icon
-        name="ChevronRight"
-        className="col-start-3 size-4 shrink-0 text-muted-foreground"
-      />
+            {report.disk && (
+              <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
+                {bytes(report.disk.freeBytes)} free
+              </span>
+            )}
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0"
+          aria-label={`Scan ${machine?.name ?? host.hostId}`}
+          disabled={busy || scanning || machine?.status !== "connected"}
+          onClick={onScan}
+        >
+          {scanning ? "Scanning" : report ? "Rescan" : "Scan"}
+        </Button>
+        <Icon
+          name="ChevronRight"
+          className="size-4 shrink-0 text-muted-foreground"
+        />
+      </span>
     </div>
   );
 }
