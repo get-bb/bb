@@ -283,6 +283,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Receive the submitted answer, or a cancellation and its reason",
           "Leave a row in the thread timeline: the plugin names its header and describes what a submission shows, so the transcript keeps exactly what the plugin chooses",
           "Show bb's answer shortcuts next to each option and act when the person presses one, with experimental_useQuestionFormHost",
+          "Dictate editable free-text answers with the host hook's optional experimental_VoiceInput component; report busy state to pause form navigation and submission",
         ],
         apiSymbols: [
           "PluginUi",

@@ -1991,8 +1991,18 @@ User Question and pi plugins reached the same host context through a private
 `@bb/shared-ui` module the build shimmed, which a copy of either plugin could
 not import.
 
+The optional `experimental_VoiceInput` component provides host-owned microphone
+capture and transcription for free-text answers. It accepts `disabled`,
+`onTranscript`, and `onBusyChange`; hosts without voice support omit it.
+Forms append transcripts to their editable answers and block navigation and
+submission while busy. Unmounting discards late transcripts. It uses the same
+microphone preference, transcription service, and error recovery as the composer.
+
 **Audit before stabilizing.**
 
+0. **Voice lifecycle.** Verify cancellation, microphone permissions, mobile
+   capture, and late transcription isolation across question and form changes;
+   confirm component injection suits third-party forms.
 1. **Props or hook.** The host already renders the pending-interaction slot;
    decide whether the shortcuts belong in `PluginPendingInteractionProps`
    instead of a hook any component can call.

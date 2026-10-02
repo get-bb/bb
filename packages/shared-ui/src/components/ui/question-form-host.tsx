@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, type ComponentType } from "react";
 
 export interface QuestionShortcut {
   label: string;
@@ -6,6 +6,11 @@ export interface QuestionShortcut {
 }
 
 export interface QuestionFormHost {
+  experimental_VoiceInput?: ComponentType<{
+    disabled: boolean;
+    onTranscript: (text: string) => void;
+    onBusyChange: (busy: boolean) => void;
+  }>;
   shortcuts: ReadonlyMap<string, QuestionShortcut>;
   registerChoiceHandler: (handler: (index: number) => boolean) => () => void;
 }
