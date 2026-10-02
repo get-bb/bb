@@ -62,7 +62,7 @@ const BB_VS_SUPERSET: Comparison = {
   description:
     "bb is a free, open-source Superset alternative. Run Claude Code and Codex in parallel, let agents hand off work, and approve from your phone. No Pro plan.",
   competitor: { name: "Superset", logo: SUPERSET_LOGO },
-  headline: "The Superset alternative with no Pro plan",
+  headline: "The free, open-source Superset alternative",
   sub: "Run Claude Code, Codex, and other agents in parallel, let them hand work to each other, and approve it all from your phone. bb is free and MIT-licensed, with nothing behind a paywall.",
   switchGuide: {
     label: "Switching from Superset? Read the guide",
