@@ -21,7 +21,7 @@ import {
 import {
   appendDaemonEventsInTransaction,
   getFirstParentedTimelineBoundarySequence,
-  hasTimelineGroupingContextRowsInRange,
+  getTimelineGroupingContextChangesInRange,
   hasStoredSpawnAgentToolCall,
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
@@ -686,7 +686,7 @@ describe("slow query index plans", () => {
     {
       name: "probes appended grouping-context rows",
       run: (db: DbConnection, threadId: string) =>
-        hasTimelineGroupingContextRowsInRange(db, {
+        getTimelineGroupingContextChangesInRange(db, {
           afterSequence: 10,
           threadId,
           throughSequence: 30,

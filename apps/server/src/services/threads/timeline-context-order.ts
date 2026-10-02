@@ -8,7 +8,7 @@ import {
   getDatabaseDataVersion,
   getFirstParentedTimelineBoundarySequence,
   getThreadEventRewriteGeneration,
-  hasTimelineGroupingContextRowsInRange,
+  getTimelineGroupingContextChangesInRange,
   listTimelineOrderingContext,
   type DbConnection,
 } from "@bb/db";
@@ -24,7 +24,14 @@ interface TimelineGroupingContextArgs {
   threadId: string;
 }
 
+interface TimelineOrderingContext {
+  acceptedTurnIds: ReadonlyMap<string, string>;
+  boundarySequence: number | null;
+  boundaryScanThroughSequence: number;
+}
+
 interface TimelineGroupingContextEntry {
+  orderingContext: TimelineOrderingContext;
   context: TimelineGroupingContext;
   dataVersion: number;
   generation: number;
@@ -69,31 +76,22 @@ function findReusableEntry(
   db: DbConnection,
   args: TimelineGroupingContextArgs,
   entries: readonly TimelineGroupingContextEntry[],
-): TimelineGroupingContextEntry | undefined {
+):
+  | { entry: TimelineGroupingContextEntry; parentedChanged: boolean }
+  | undefined {
   const exact = entries.find((entry) => entry.maxSeq === args.maxSeq);
-  if (exact !== undefined) return exact;
-  const below = nearestEntry(entries, args.maxSeq, "below");
-  if (
-    below !== undefined &&
-    !hasTimelineGroupingContextRowsInRange(db, {
-      afterSequence: below.maxSeq,
+  if (exact !== undefined) return { entry: exact, parentedChanged: false };
+  for (const side of ["below", "above"] as const) {
+    const entry = nearestEntry(entries, args.maxSeq, side);
+    if (entry === undefined) continue;
+    const changes = getTimelineGroupingContextChangesInRange(db, {
+      afterSequence: Math.min(entry.maxSeq, args.maxSeq),
       threadId: args.threadId,
-      throughSequence: args.maxSeq,
-    })
-  ) {
-    below.maxSeq = args.maxSeq;
-    return below;
-  }
-  const above = nearestEntry(entries, args.maxSeq, "above");
-  if (
-    above !== undefined &&
-    !hasTimelineGroupingContextRowsInRange(db, {
-      afterSequence: args.maxSeq,
-      threadId: args.threadId,
-      throughSequence: above.maxSeq,
-    })
-  ) {
-    return above;
+      throughSequence: Math.max(entry.maxSeq, args.maxSeq),
+    });
+    if (changes.ordering) continue;
+    if (!changes.parented && side === "below") entry.maxSeq = args.maxSeq;
+    return { entry, parentedChanged: changes.parented };
   }
   return undefined;
 }
@@ -116,16 +114,26 @@ export function getTimelineGroupingContext(
   );
   cache.delete(key);
   const reusable = findReusableEntry(db, args, entries);
-  if (reusable !== undefined) {
+  if (reusable !== undefined && !reusable.parentedChanged) {
     cache.set(key, [
-      reusable,
-      ...entries.filter((entry) => entry !== reusable),
+      reusable.entry,
+      ...entries.filter((entry) => entry !== reusable.entry),
     ]);
-    return reusable.context;
+    return reusable.entry.context;
   }
-  const context = computeTimelineGroupingContext(db, args);
+  const orderingContext =
+    reusable?.entry.orderingContext ?? computeTimelineOrderingContext(db, args);
+  const parentedBoundary = getFirstParentedTimelineBoundarySequence(db, args);
+  const context: TimelineGroupingContext = {
+    acceptedTurnIds: orderingContext.acceptedTurnIds,
+    orderingBoundarySequence:
+      parentedBoundary !== null &&
+      parentedBoundary <= orderingContext.boundaryScanThroughSequence
+        ? parentedBoundary
+        : (orderingContext.boundarySequence ?? parentedBoundary),
+  };
   cache.set(key, [
-    { context, dataVersion, generation, maxSeq: args.maxSeq },
+    { context, orderingContext, dataVersion, generation, maxSeq: args.maxSeq },
     ...entries.slice(0, GROUPING_CONTEXT_ENTRIES_PER_KEY - 1),
   ]);
   if (cache.size > GROUPING_CONTEXT_KEY_LIMIT) {
@@ -134,10 +142,10 @@ export function getTimelineGroupingContext(
   return context;
 }
 
-function computeTimelineGroupingContext(
+function computeTimelineOrderingContext(
   db: DbConnection,
   args: TimelineGroupingContextArgs,
-): TimelineGroupingContext {
+): TimelineOrderingContext {
   const context = listTimelineOrderingContext(db, args);
   const spans = new Map<string, ExternalUserBoundaryTurnSpan>();
   const accepted = new Map<string, { sequence: number; turnId: string }>();
@@ -180,7 +188,8 @@ function computeTimelineGroupingContext(
       span.sequenceStart = Math.min(span.sequenceStart, row.sequence);
     }
   }
-  let boundary = getFirstParentedTimelineBoundarySequence(db, args) ?? Infinity;
+  let boundary: number | null = null;
+  let boundaryScanThroughSequence = -Infinity;
   const orderedSpans = [...spans.values()].sort(
     (left, right) => left.sequenceStart - right.sequenceStart,
   );
@@ -200,7 +209,10 @@ function computeTimelineGroupingContext(
       sequence: steered ? acceptance.sequence : row.sequence,
       turnId: acceptance?.turnId ?? row.expectedTurnId,
     };
-    if (message.sequence >= boundary) break;
+    boundaryScanThroughSequence = Math.max(
+      boundaryScanThroughSequence,
+      message.sequence,
+    );
     while (
       nextSpan < orderedSpans.length &&
       orderedSpans[nextSpan]!.sequenceStart < message.sequence
@@ -227,7 +239,8 @@ function computeTimelineGroupingContext(
     }
   }
   return {
-    orderingBoundarySequence: Number.isFinite(boundary) ? boundary : null,
+    boundarySequence: boundary,
+    boundaryScanThroughSequence,
     acceptedTurnIds: new Map(
       [...accepted].map(([requestId, entry]) => [requestId, entry.turnId]),
     ),
