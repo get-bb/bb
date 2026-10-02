@@ -1599,7 +1599,7 @@ describe("useComposer().experimental_setSelection", () => {
       captured!.experimental_setSelection({ permissionMode: "yolo" as never }),
     ).rejects.toThrow(/permission mode/);
     await expect(
-      captured!.experimental_setSelection({ serviceTier: "turbo" as never }),
+      captured!.experimental_setSelection({ serviceTier: "" }),
     ).rejects.toThrow(/service tier/);
     await expect(
       captured!.experimental_setSelection({

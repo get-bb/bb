@@ -344,6 +344,7 @@ export type {
   JsonObject,
   JsonValue,
   ModelReasoningEffort,
+  ModelServiceTier,
   PendingInteractionApprovalDecision,
   PendingInteractionApprovalSubject,
   PendingInteractionCommandAction,

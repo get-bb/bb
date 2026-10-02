@@ -136,9 +136,10 @@ entries stay in the config file.
 
 Settings → Providers includes `allowFastServiceTier`, which defaults to true.
 Set it to false with `bb settings general allowFastServiceTier false` to hide
-Fast mode and run new turns at the default service tier. This also applies to
-explicit fast requests, saved project defaults, automations, and messages queued
-before the setting changed. Turn it back on to choose fast again; project
+the service tier control and run new turns at the default service tier. This
+also applies to explicit requests for any other tier (fast, Codex ultrafast),
+saved project defaults, automations, and messages queued before the setting
+changed. Turn it back on to choose a faster tier again; project
 defaults saved while it was off retain the default tier.
 
 Settings → General includes `managedBranchPrefix`, which defaults to

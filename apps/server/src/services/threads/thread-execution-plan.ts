@@ -1,12 +1,15 @@
 import { getAppSettings, getProjectExecutionDefaults, getThread } from "@bb/db";
-import type {
-  CallerExecutionInputSource,
-  PermissionMode,
-  ProjectExecutionDefaults,
-  ReasoningLevel,
-  ResolvedThreadExecutionOptions,
-  ServiceTier,
-  ThreadExecutionSource,
+import {
+  DEFAULT_SERVICE_TIER,
+  providerServiceTierOptions,
+  reconcileServiceTier,
+  type CallerExecutionInputSource,
+  type PermissionMode,
+  type ProjectExecutionDefaults,
+  type ReasoningLevel,
+  type ResolvedThreadExecutionOptions,
+  type ServiceTier,
+  type ThreadExecutionSource,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -18,7 +21,6 @@ import {
 } from "../hosts/permission-ceiling.js";
 import {
   DEFAULT_REASONING_LEVEL,
-  DEFAULT_SERVICE_TIER,
   resolveThreadExecutionPermissionMode,
 } from "./thread-default-policy.js";
 import { getLastExecutionOptions } from "./thread-events.js";
@@ -233,6 +235,40 @@ function validateProviderReasoningLevel(
   );
 }
 
+function resolveProviderServiceTier(
+  registry: ProviderRegistryService,
+  args: {
+    providerId: string;
+    requested: ExecutionPlanFieldInput<ServiceTier> | undefined;
+    inherited: ServiceTier | undefined;
+  },
+): ServiceTier {
+  const provider = registry.get(args.providerId);
+  const candidate = args.requested?.value ?? args.inherited;
+  if (candidate === undefined || candidate === DEFAULT_SERVICE_TIER) {
+    return DEFAULT_SERVICE_TIER;
+  }
+  if (provider === null) {
+    return candidate;
+  }
+  const supported = providerServiceTierOptions(provider.info);
+  const reconciled = reconcileServiceTier(candidate, supported);
+  if (reconciled === candidate || args.requested?.source !== "explicit") {
+    return reconciled;
+  }
+
+  throw new ProviderCapabilityValidationError(
+    400,
+    "invalid_request",
+    supported.length === 0
+      ? `Provider ${args.providerId} does not support service tiers.`
+      : `Provider ${args.providerId} does not support the ${candidate} service tier. Supported service tiers: ${[
+          DEFAULT_SERVICE_TIER,
+          ...supported.map((tier) => tier.id),
+        ].join(", ")}.`,
+  );
+}
+
 function resolveRequiredField<TValue>(
   candidates: readonly (TValue | undefined)[],
 ): TValue | null {
@@ -328,14 +364,11 @@ export async function resolveExistingThreadExecutionPlan(
   );
 
   const serviceTier = getAppSettings(deps.db).allowFastServiceTier
-    ? resolveFieldWithDefault<ServiceTier>(
-        [
-          args.input.serviceTier?.value,
-          lastExecution?.serviceTier,
-          projectExecution?.serviceTier,
-        ],
-        DEFAULT_SERVICE_TIER,
-      )
+    ? resolveProviderServiceTier(deps.providerRegistry, {
+        providerId: thread.providerId,
+        requested: args.input.serviceTier,
+        inherited: lastExecution?.serviceTier ?? projectExecution?.serviceTier,
+      })
     : DEFAULT_SERVICE_TIER;
 
   const resolvedExecution = {

@@ -348,13 +348,14 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
-The "Allow fast service tier" switch in Settings → Providers defaults to on.
+The "Allow faster service tiers" switch in Settings → Providers defaults to on.
 Turn it off with `bb settings general allowFastServiceTier false` or
 `bb.sdk.system.updateGeneralSettings`. While off, new turns use the default
-service tier, including explicit fast requests, automations, and previously
-queued messages. The app hides Fast mode. Turn the setting on to choose fast
-again; completed turns and project defaults saved while it was off retain the
-default tier.
+service tier, including explicit requests for another tier (`fast`, Codex
+`ultrafast`, or any other tier a provider lists), automations, and previously
+queued messages. The app hides the service tier control. Turn the setting on to
+choose a faster tier again; completed turns and project defaults saved while it
+was off retain the default tier.
 
 The "New branch prefix" field in Settings → General sets the text bb
 puts in front of every branch name it creates for a managed worktree or a new

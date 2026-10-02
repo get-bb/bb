@@ -141,7 +141,9 @@ so they carry over between navigation plugins.
   `bb settings general allowFastServiceTier <true|false|on|off>` or use the
   switch in Settings → Providers.
 - When disabled, new turns use the default tier even if a request, project
-  default, automation, or queued message selected fast. The app hides Fast mode.
+  default, automation, or queued message selected another tier (`fast`, Codex
+  `ultrafast`, or any other tier a provider lists). The app hides the service
+  tier control.
   Turn it on to choose fast again; project defaults saved while it was off
   retain the default tier.
 

@@ -893,7 +893,7 @@ export function NewThreadComposer({
     selectedProviderId,
     serviceTier,
     serviceTierSupportByProvider,
-    serviceTierFastLabel,
+    serviceTierOptions,
     setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
     setPermissionMode,
     setProviderModelReasoning,
@@ -2073,7 +2073,7 @@ export function NewThreadComposer({
               onChange: handleServiceTierChange,
               supported: supportsServiceTier,
               supportByProvider: serviceTierSupportByProvider,
-              fastLabel: serviceTierFastLabel,
+              options: serviceTierOptions,
             },
             reasoning: {
               value: reasoningLevel,
@@ -2151,7 +2151,7 @@ export function NewThreadComposer({
       inputsControlProviderIds,
       providerHostId,
       textEffects,
-      serviceTierFastLabel,
+      serviceTierOptions,
     ],
   );
 

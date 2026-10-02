@@ -67,14 +67,6 @@ function isPermissionMode(value: string): value is PermissionMode {
   return value === "accept-edits" || value === "auto" || value === "full";
 }
 
-function isServiceTier(value: string): value is ServiceTier {
-  return value === "fast" || value === "default";
-}
-
-function isStoredServiceTier(value: string): value is StoredServiceTier {
-  return value === "" || isServiceTier(value);
-}
-
 function isStoredReasoningLevel(value: string): value is StoredReasoningLevel {
   return value === "" || isReasoningLevel(value);
 }
@@ -129,8 +121,7 @@ const serviceTierAtom = atomWithStorage<StoredServiceTier>(
   "",
   createTabScopedStorage<StoredServiceTier>(
     {
-      parse: (value, initialValue) =>
-        value !== null && isStoredServiceTier(value) ? value : initialValue,
+      parse: (value, initialValue) => value ?? initialValue,
       serialize: (value) => value,
     },
     { persistInitialValue: true },

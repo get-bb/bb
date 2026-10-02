@@ -21,7 +21,7 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "provider list":
     "[{id, displayName, available, capabilities, reasoningLevels, serviceTiers}]    (bare array)",
   "provider models":
-    "[{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, isDefault}]    (bare array)",
+    "[{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, supportedServiceTiers?, isDefault}]    (bare array)",
   "environment list":
     "[{id, name, projectId, hostId, path, branchName, status, lifecycle}]    (bare array)",
   "environment show":

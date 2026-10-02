@@ -23,7 +23,6 @@ import type {
   PermissionMode,
   ReasoningLevel,
   ResolvedCreateAutomationInput,
-  ServiceTier,
   UpdateAutomationInput,
 } from "./rpc-types.js";
 import {
@@ -41,7 +40,6 @@ import {
   automationScriptInterpreterSchema,
   permissionModeSchema,
   reasoningLevelSchema,
-  serviceTierSchema,
 } from "./rpc-types.js";
 import { interpreterForPath } from "./script-files.js";
 
@@ -132,9 +130,10 @@ const AGENT_OPTIONS = {
     description: "Reasoning level; new automations default to medium",
   },
   "service-tier": {
-    type: "enum",
-    values: [...serviceTierSchema.options, "none"],
-    description: "Service tier; none leaves the automation without one",
+    type: "string",
+    placeholder: "tier",
+    description:
+      "Service tier id the provider lists for the model, such as default or fast; none leaves the automation without one",
   },
   "permission-mode": {
     type: "enum",
@@ -222,7 +221,7 @@ interface AgentOptionValues {
   provider: string | undefined;
   model: string | undefined;
   reasoning: ReasoningLevel | undefined;
-  "service-tier": ServiceTier | "none" | undefined;
+  "service-tier": string | undefined;
   "permission-mode": PermissionMode | undefined;
   "target-thread": string | undefined;
   environment: string | undefined;

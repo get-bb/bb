@@ -243,6 +243,7 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `JsonRpcMessage`
 - `JsonValue`
 - `ModelReasoningEffort`
+- `ModelServiceTier`
 - `NpmGlobalPackageProbe`
 - `PendingInteractionApprovalDecision`
 - `PendingInteractionApprovalSubject`

@@ -641,8 +641,9 @@ describe("resolveCodexInstructionOverrides", () => {
 });
 
 describe("toCodexServiceTier", () => {
-  it("forwards only the fast tier", () => {
+  it("forwards every tier except default as given", () => {
     expect(toCodexServiceTier("fast")).toBe("fast");
+    expect(toCodexServiceTier("ultrafast")).toBe("ultrafast");
     expect(toCodexServiceTier("default")).toBeNull();
     expect(toCodexServiceTier(undefined)).toBeUndefined();
   });

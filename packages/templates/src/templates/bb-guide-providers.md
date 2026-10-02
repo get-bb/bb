@@ -35,6 +35,15 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
                                           List models for a provider
 
 Use these before spawning threads if you are unsure which provider or model to use.
+
+Service tiers are provider-defined ids. `bb provider list --json` reports each
+provider's `serviceTiers` ({id, label, description?}); `default` always means
+the provider's standard tier. A model may narrow that list: `bb provider
+models` shows a Service tiers column, and `--json` reports
+`supportedServiceTiers` per model (absent when the provider does not report
+tiers per model, in which case the model accepts every tier the provider
+lists). Pass a tier id to `--service-tier`; a tier the provider does not list
+is rejected.
 `--host` is an alias for `--machine`. Machine and environment selectors are
 mutually exclusive because an environment already selects its machine. When no
 selector is supplied, both commands intentionally inspect the server machine.

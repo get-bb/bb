@@ -236,6 +236,12 @@ const MIGRATIONS = [
     );
     CREATE INDEX idx_task_key_aliases_task ON task_key_aliases(task_id);
   `,
+  `
+    ALTER TABLE presets ADD COLUMN service_tier_open TEXT;
+    UPDATE presets SET service_tier_open = service_tier;
+    ALTER TABLE presets DROP COLUMN service_tier;
+    ALTER TABLE presets RENAME COLUMN service_tier_open TO service_tier;
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

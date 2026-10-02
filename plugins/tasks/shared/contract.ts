@@ -53,7 +53,7 @@ export const presetReasoningLevelSchema = z.enum([
   "ultra",
 ]);
 export type PresetReasoningLevel = z.infer<typeof presetReasoningLevelSchema>;
-export const presetServiceTierSchema = z.enum(["default", "fast"]);
+export const presetServiceTierSchema = nonBlankStringSchema;
 export type PresetServiceTier = z.infer<typeof presetServiceTierSchema>;
 export const PRESET_PERMISSION_MODES = [
   "accept-edits",

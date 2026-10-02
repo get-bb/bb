@@ -143,6 +143,7 @@ describe("parseModelsResponse", () => {
           { reasoningEffort: "medium", description: "Medium" },
         ],
         defaultReasoningEffort: "medium",
+        supportedServiceTiers: [{ id: "fast" }],
         isDefault: true,
       },
     ]);
@@ -185,5 +186,61 @@ describe("parseModelsResponse", () => {
         data: [{ missing: "id" }, null, 3],
       }),
     ).toThrow("Codex model/list returned no supported models.");
+  });
+
+  describe("service tiers", () => {
+    function tiersFor(model: Record<string, unknown>) {
+      return parseModelsResponse({
+        data: [{ id: "gpt-6-astra", model: "gpt-6-astra", ...model }],
+      })[0]?.supportedServiceTiers;
+    }
+
+    it("reports the tiers Codex lists, naming its priority tier fast", () => {
+      expect(
+        tiersFor({
+          additionalSpeedTiers: ["fast"],
+          serviceTiers: [
+            {
+              id: "priority",
+              name: "Fast",
+              description: "1.5x speed, increased usage",
+            },
+            { id: "ultrafast", name: "Ultrafast", description: "" },
+          ],
+        }),
+      ).toEqual([
+        {
+          id: "fast",
+          label: "Fast",
+          description: "1.5x speed, increased usage",
+        },
+        { id: "ultrafast", label: "Ultrafast" },
+      ]);
+    });
+
+    it("reports no tiers for a model Codex lists none for", () => {
+      expect(tiersFor({ serviceTiers: [] })).toEqual([]);
+    });
+
+    it("falls back to the legacy speed tiers, then to fast alone", () => {
+      expect(tiersFor({ additionalSpeedTiers: ["fast"] })).toEqual([
+        { id: "fast" },
+      ]);
+      expect(tiersFor({ additionalSpeedTiers: [] })).toEqual([]);
+      expect(tiersFor({})).toEqual([{ id: "fast" }]);
+    });
+
+    it("skips malformed and repeated tier entries", () => {
+      expect(
+        tiersFor({
+          serviceTiers: [
+            { name: "No id" },
+            null,
+            { id: "priority" },
+            { id: "fast", name: "Duplicate of priority" },
+          ],
+        }),
+      ).toEqual([{ id: "fast" }]);
+    });
   });
 });

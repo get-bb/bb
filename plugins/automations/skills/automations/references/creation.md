@@ -14,7 +14,7 @@ Agent mode flags:
 --provider <id>                Provider ID
 --model <model>                Model ID
 --reasoning <level>            none, low, medium, high, xhigh, ultracode, max, or ultra
---service-tier <tier>          default or fast (update also accepts none to clear)
+--service-tier <tier>          Tier id the provider lists for the model, e.g. default or fast (update also accepts none to clear)
 --permission-mode <mode>       accept-edits, auto, or full
 --target-thread <id>           Reuse/re-prompt an existing thread
 --environment <id-or-path>     Existing environment ID or unmanaged workspace path

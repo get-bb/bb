@@ -71,7 +71,8 @@ bb.providers.register({
     { id: "low", label: "Low" },
     { id: "high", label: "High" },
   ],
-  serviceTiers: undefined,       // optional; open list, model/list is precise
+  serviceTiers: undefined,       // optional; open list of { id, label, description? },
+                                 // "default" is the standard tier; model/list is precise
   composerActions: ["plan"],     // "plan" | "goal"
   completedTurnDisplay: "flat",  // "collapse" (default) | "flat"; the user's per-provider setting wins
   extensionKinds: {},            // "<name>": { item?: Schema, state?: Schema }
@@ -86,6 +87,14 @@ bb.providers.register({
 })
 // => { dispose(): void }
 ```
+
+Each `model/list` entry may carry `supportedServiceTiers: [{ id, label?,
+description? }]`, the tiers that model accepts besides `default`. bb offers
+only the ids the declaration also lists, preferring the entry's label and
+description; an empty array hides the tier picker for that model, and an entry
+without the field accepts every declared tier. The server rejects an explicit
+tier the declaration does not list and passes the chosen id to the bridge as
+`serviceTier`.
 
 bb keeps each machine's last successful `model/list` answer per
 `models.scope` across daemon reconnects and server restarts, serves it

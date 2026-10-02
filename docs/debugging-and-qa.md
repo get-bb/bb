@@ -569,6 +569,11 @@ behavior. Keep temporary review stories and fixtures out of the final diff.
 
 ## Pull Request Status And Daemon Compatibility
 
+Host-daemon protocol 226 opens the service tier: `serviceTier` in execution
+options is any non-empty tier id instead of `fast` or `default`, and
+`model/list` entries may carry `supportedServiceTiers`. A daemon on 225 rejects
+tier ids other than `fast` and `default`.
+
 Host-daemon protocol 224 removes wire members that neither side used: the
 `host.file_metadata` command, the `disallowedTools` runtime-context field, the
 `cwd` and `requirement` fields on provider installation and usage commands, the

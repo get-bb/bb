@@ -99,8 +99,12 @@ export function PluginProviderModelPicker({
     },
     [controller, emit],
   );
-  const handleFastModeChange = useCallback(
-    (enabled: boolean) => {
+  const handleServiceTierChange = useCallback(
+    (
+      serviceTier: NonNullable<
+        ExperimentalProviderModelPickerValue["serviceTier"]
+      >,
+    ) => {
       if (
         !controller.modelCatalogIsVerified ||
         !controller.supportsServiceTier
@@ -111,7 +115,7 @@ export function PluginProviderModelPicker({
         providerId: controller.selectedProviderId,
         model: controller.selectedModel,
         reasoningLevel: controller.reasoningLevel,
-        serviceTier: enabled ? "fast" : "default",
+        serviceTier,
       });
     },
     [controller, emit],
@@ -157,9 +161,9 @@ export function PluginProviderModelPicker({
       reasoningValue={controller.reasoningLevel}
       reasoningOptions={controller.reasoningOptions}
       onReasoningChange={handleReasoningChange}
-      fastModeEnabled={controller.serviceTier === "fast"}
-      onFastModeChange={handleFastModeChange}
-      showFastModeToggle={controller.supportsServiceTier}
+      serviceTierValue={controller.serviceTier}
+      serviceTierOptions={controller.serviceTierOptions}
+      onServiceTierChange={handleServiceTierChange}
       serviceTierSupportByProvider={controller.serviceTierSupportByProvider}
       commandShortcutsEnabled={false}
       align={align}

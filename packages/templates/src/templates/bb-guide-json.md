@@ -86,7 +86,7 @@ Fields beyond those shown exist; these are the ones scripts use.
     [{id, displayName, available, capabilities, reasoningLevels, serviceTiers}]    (bare array)
 
   bb provider models [providerId] --json
-    [{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, isDefault}]    (bare array)
+    [{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, supportedServiceTiers?, isDefault}]    (bare array)
 
   bb environment list --json
     [{id, name, projectId, hostId, path, branchName, status, lifecycle}]    (bare array)
