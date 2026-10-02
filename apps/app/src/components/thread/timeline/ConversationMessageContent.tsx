@@ -415,11 +415,7 @@ function UserConversationMessage({
         automationLink={
           automationDue === null || projectId === undefined
             ? null
-            : {
-                kind: "automation",
-                projectId,
-                automationId: automationDue.automationId,
-              }
+            : { projectId, automationId: automationDue.automationId }
         }
         mentions={bodyMentions}
         onOpenLink={onOpenLink}

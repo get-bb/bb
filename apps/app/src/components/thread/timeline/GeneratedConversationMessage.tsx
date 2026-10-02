@@ -1,4 +1,12 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
+import { generatePath } from "react-router-dom";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
 import type {
   PromptTextMention,
@@ -6,13 +14,11 @@ import type {
   SystemMessageSubject,
   ThreadOriginKind,
 } from "@bb/domain";
-import type {
-  TimelineTitle,
-  TimelineTitleLink,
-  TimelineTitleSegment,
-} from "@bb/thread-view";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
+import { type IconName } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
+import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
+import { AUTOMATION_DETAIL_ROUTE_PATH } from "@/lib/route-paths";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -28,10 +34,7 @@ import {
 } from "./ConversationMessageMentions.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import {
-  TimelineTitleView,
-  type TimelineTitleActionResolver,
-} from "./TimelineTitleView.js";
+import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -49,11 +52,14 @@ import {
   GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
 } from "@bb/client-core";
 
-type AutomationTitleLink = Extract<TimelineTitleLink, { kind: "automation" }>;
+interface AutomationLink {
+  automationId: string;
+  projectId: string;
+}
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
-  automationLink: AutomationTitleLink | null;
+  automationLink: AutomationLink | null;
   originKind: ThreadOriginKind | null;
   mentions: readonly PromptTextMention[];
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -103,7 +109,6 @@ interface TimelineTitleSegmentArgs {
 }
 
 interface GeneratedConversationTitleArgs {
-  automationLink: AutomationTitleLink | null;
   originKind: ThreadOriginKind | null;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
@@ -259,7 +264,6 @@ function systemMessageTitleSegments(
 }
 
 export function generatedConversationTitle({
-  automationLink,
   originKind,
   sourceKind,
   sourceName,
@@ -300,15 +304,7 @@ export function generatedConversationTitle({
           }),
         ]
       : sourceKind === "automation"
-        ? [
-            timelineTitleSegment({
-              em: false,
-              link: automationLink,
-              shimmer: false,
-              text: "Automation",
-              truncate: false,
-            }),
-          ]
+        ? [verbSegment("Automation")]
         : systemMessageTitleSegments(systemMessageKind, systemMessageSubject);
 
   return {
@@ -428,32 +424,57 @@ function GeneratedAgentSourceTitle({
 }
 
 interface GeneratedAutomationTitleProps {
-  onTitleAction?: TimelineTitleActionResolver;
+  automationLink: AutomationLink | null;
+  requestLabel: string | null;
   timestamp: number;
-  title: TimelineTitle;
+}
+
+function stopRowToggle(event: MouseEvent<HTMLAnchorElement>): void {
+  event.stopPropagation();
+}
+
+function stopRowToggleKey(event: KeyboardEvent<HTMLAnchorElement>): void {
+  if (event.key === "Enter" || event.key === " ") {
+    event.stopPropagation();
+  }
 }
 
 function GeneratedAutomationTitle({
-  onTitleAction,
+  automationLink,
+  requestLabel,
   timestamp,
-  title,
 }: GeneratedAutomationTitleProps) {
   const sentAt = new Date(timestamp);
   return (
-    <span className="inline-flex min-w-0 max-w-full items-center gap-2">
-      <TimelineTitleView title={title} onTitleAction={onTitleAction} />
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        <Icon name="Clock" className="size-3" aria-hidden="true" />
-        <time
-          dateTime={sentAt.toISOString()}
-          title={sentAt.toLocaleString(undefined, {
-            dateStyle: "full",
-            timeStyle: "long",
-          })}
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1 whitespace-nowrap text-sm leading-5">
+      {automationLink === null ? (
+        <span className="shrink-0">Automation</span>
+      ) : (
+        <RouteAnchor
+          href={generatePath(AUTOMATION_DETAIL_ROUTE_PATH, automationLink)}
+          className="shrink-0 underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+          onClick={stopRowToggle}
+          onKeyDown={stopRowToggleKey}
         >
-          {formatShortMessageTime(timestamp, new Date())}
-        </time>
+          Automation
+        </RouteAnchor>
+      )}
+      <span aria-hidden="true" className="shrink-0 text-subtle-foreground">
+        ·
       </span>
+      <time
+        className="shrink-0 text-subtle-foreground"
+        dateTime={sentAt.toISOString()}
+        title={sentAt.toLocaleString(undefined, {
+          dateStyle: "full",
+          timeStyle: "long",
+        })}
+      >
+        {formatShortMessageTime(timestamp, new Date())}
+      </time>
+      {requestLabel === null ? null : (
+        <span className="shrink-0">{requestLabel}</span>
+      )}
     </span>
   );
 }
@@ -532,10 +553,9 @@ export const GeneratedConversationMessage = memo(
         }),
       [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
     );
-    const sourceTitle = useMemo(
+    const title = useMemo(
       () =>
         generatedConversationTitle({
-          automationLink,
           originKind,
           sourceKind,
           sourceName,
@@ -545,7 +565,6 @@ export const GeneratedConversationMessage = memo(
           systemMessageSubject,
         }),
       [
-        automationLink,
         originKind,
         sourceKind,
         sourceName,
@@ -554,20 +573,6 @@ export const GeneratedConversationMessage = memo(
         systemMessageKind,
         systemMessageSubject,
       ],
-    );
-    const title = useMemo(
-      () =>
-        titleRequestLabel === null
-          ? sourceTitle
-          : {
-              ...sourceTitle,
-              plain: `${sourceTitle.plain} ${titleRequestLabel}`,
-              segments: [
-                ...sourceTitle.segments,
-                verbSegment(titleRequestLabel),
-              ],
-            },
-      [sourceTitle, titleRequestLabel],
     );
     const sourceTitleContent =
       sourceKind === "agent" ? (
@@ -581,9 +586,9 @@ export const GeneratedConversationMessage = memo(
         />
       ) : sourceKind === "automation" ? (
         <GeneratedAutomationTitle
-          onTitleAction={onTitleAction}
+          automationLink={automationLink}
+          requestLabel={titleRequestLabel}
           timestamp={timestamp}
-          title={title}
         />
       ) : undefined;
     const leadingIcon = generatedConversationIconName(

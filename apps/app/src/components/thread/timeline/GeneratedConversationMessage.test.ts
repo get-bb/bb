@@ -19,7 +19,6 @@ function systemTitle({
   systemMessageSubject,
 }: SystemTitleArgs) {
   return generatedConversationTitle({
-    automationLink: null,
     originKind: null,
     sourceKind: "system",
     sourceName: "BB",
@@ -146,7 +145,6 @@ describe("generatedConversationTitle — system source", () => {
 describe("generatedConversationTitle — agent source", () => {
   it("links the sender thread name (reference pattern, unchanged)", () => {
     const title = generatedConversationTitle({
-      automationLink: null,
       originKind: null,
       sourceKind: "agent",
       sourceName: "Worker 2",

@@ -1,5 +1,4 @@
 import { Fragment, useRef, useState } from "react";
-import { generatePath } from "react-router-dom";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
   assertNever,
@@ -8,7 +7,6 @@ import {
   type TimelineTitle,
   type TimelineTitleAction,
   type TimelineTitleDecoration,
-  type TimelineTitleLink,
   type TimelineTitleSegment,
   type TimelineTitleSegmentAccent,
   type TimelineTitleTone,
@@ -17,7 +15,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
-import { AUTOMATION_DETAIL_ROUTE_PATH } from "@/lib/route-paths";
 import { LiveDurationText } from "./LiveDurationText.js";
 import {
   ThreadTitleMentions,
@@ -28,21 +25,6 @@ import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
-
-function timelineTitleLinkHref(
-  link: TimelineTitleLink,
-  threadRoutePath: ReturnType<typeof useThreadRoutePath>,
-): string {
-  switch (link.kind) {
-    case "thread":
-      return threadRoutePath(link.threadId, undefined);
-    case "automation":
-      return generatePath(AUTOMATION_DETAIL_ROUTE_PATH, {
-        projectId: link.projectId,
-        automationId: link.automationId,
-      });
-  }
-}
 
 export type TimelineTitleActionResolver = (
   action: TimelineTitleAction,
@@ -357,7 +339,7 @@ export function TimelineTitleView({
     >
       {title.segments.map((segment, index) => {
         const linkHref = segment.link
-          ? timelineTitleLinkHref(segment.link, threadRoutePath)
+          ? threadRoutePath(segment.link.threadId, undefined)
           : null;
         return (
           <Fragment key={`segment-${index}`}>
