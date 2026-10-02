@@ -416,7 +416,7 @@ export function MessageActionBar({
       ? 0
       : layout.inlineCount;
   const menuActions = [
-    ...inlineCandidates.slice(inlineCount),
+    ...inlineCandidates.slice(isCompactViewport ? 0 : inlineCount),
     ...trailingMenuActions,
   ];
 

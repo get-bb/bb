@@ -256,10 +256,11 @@ describe("MessageActionBar", () => {
     expect(metadata?.textContent).not.toMatch(/model|reasoning/i);
   });
 
-  it("uses the shared bottom drawer for the latest touch message", async () => {
+  it("lists every action in the latest touch message drawer even when actions fit inline", async () => {
     mockMobileCoarsePointer();
     const resizeObserver = installControlledResizeObserver();
     const onFork = vi.fn();
+    const onPluginSelect = vi.fn();
     render(
       <main data-testid="app-root">
         <MessageActionBar
@@ -270,22 +271,49 @@ describe("MessageActionBar", () => {
           onEdit={vi.fn()}
           onAddToChat={vi.fn()}
           onFork={onFork}
+          pluginActions={[
+            {
+              key: "demo/summarize/1",
+              pluginId: null,
+              icon: "Zap",
+              label: "Summarize",
+              onSelect: onPluginSelect,
+            },
+          ]}
         />
       </main>,
     );
-    resizeObserver.reportWidth(60);
+    resizeObserver.reportWidth(200);
 
     expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Summarize" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
 
     const drawer = await screen.findByRole("dialog", {
       name: "Message actions",
     });
     const menuItems = await within(drawer).findAllByRole("menuitem");
+    expect(menuItems.map((item) => item.textContent)).toEqual([
+      "Copy message",
+      "Edit message",
+      "Summarize",
+      "Add to chat",
+      "Fork into new thread",
+    ]);
+    resizeObserver.reportWidth(60);
+    expect(screen.queryByRole("button", { name: "Summarize" })).toBeNull();
     expect(
-      menuItems.map((item) => item.textContent),
-    ).toEqual(["Edit message", "Add to chat", "Fork into new thread"]);
+      within(drawer)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "Copy message",
+      "Edit message",
+      "Summarize",
+      "Add to chat",
+      "Fork into new thread",
+    ]);
     expect(document.body.querySelector('[data-side="top"]')).toBeNull();
     expect(screen.getByTestId("app-root").hasAttribute("inert")).toBe(false);
     expect(screen.getByTestId("app-root").hasAttribute("aria-hidden")).toBe(
@@ -295,6 +323,11 @@ describe("MessageActionBar", () => {
       within(drawer).getByRole("menuitem", { name: "Fork into new thread" }),
     );
     expect(onFork).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    fireEvent.click(
+      await within(drawer).findByRole("menuitem", { name: "Summarize" }),
+    );
+    expect(onPluginSelect).toHaveBeenCalledTimes(1);
   });
 
   it("shows only the menu trigger on older touch messages", async () => {
@@ -319,9 +352,7 @@ describe("MessageActionBar", () => {
       name: "Message actions",
     });
     const menuItems = await within(drawer).findAllByRole("menuitem");
-    expect(
-      menuItems.map((item) => item.textContent),
-    ).toEqual([
+    expect(menuItems.map((item) => item.textContent)).toEqual([
       "Copy message",
       "Edit message",
       "Add to chat",
