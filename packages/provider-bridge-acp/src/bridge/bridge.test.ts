@@ -1218,6 +1218,29 @@ describe("acp bridge", () => {
     ).toBe(true);
   });
 
+  it.each([
+    { dialectId: "opencode", client: "acp", question: "false" },
+    { dialectId: "acp", client: "cli", question: "true" },
+  ])(
+    "sets native question availability only for $dialectId sessions",
+    async ({ dialectId, client, question }) => {
+      const { providerThreadId } = await startThread({
+        dialectId,
+        envVars: {
+          OPENCODE_CLIENT: "cli",
+          OPENCODE_ENABLE_QUESTION_TOOL: "true",
+        },
+      });
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "echo-question-env", mentions: [] }],
+      });
+      await waitForTurnCompleted();
+      expect(agentMessageTexts()).toContain(
+        JSON.stringify({ client, question }),
+      );
+    },
+  );
+
   it("launches ACP agents with a configured reasoning CLI flag", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
 

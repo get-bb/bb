@@ -534,6 +534,15 @@ async function handlePrompt(message) {
   } else if (text.includes("slow")) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
+  } else if (text.includes("echo-question-env")) {
+    notifyUpdate(
+      messageChunk(
+        JSON.stringify({
+          client: process.env.OPENCODE_CLIENT,
+          question: process.env.OPENCODE_ENABLE_QUESTION_TOOL,
+        }),
+      ),
+    );
   } else if (text.includes("echo-argv")) {
     // Lets bridge tests assert the launch args (e.g. the --model pin).
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));

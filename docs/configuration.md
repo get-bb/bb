@@ -670,6 +670,12 @@ setting changes, with no restart and no `config refresh`.
 A configured agent's command is local code execution and only works with a
 co-located daemon.
 
+BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
+`OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
+values. Native questions have no ACP interaction handler in BB; agents use the
+ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
+custom agents with `dialect: "opencode"` and does not change OpenCode config files.
+
 ## OpenCode Go Usage
 
 OpenCode Go subscription usage uses the credentials configured on the selected

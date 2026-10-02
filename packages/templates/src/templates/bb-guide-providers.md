@@ -140,6 +140,12 @@ Enabled provider plugins also contribute skills to the selected provider's `/`
 command menu. `bb skill list` shows native skills for Claude Code, Codex, and
 Cursor.
 
+BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
+`OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
+values. Native questions have no ACP interaction handler in BB; agents use the
+ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
+custom agents with `dialect: "opencode"` and does not change OpenCode config files.
+
 ACP providers discover models from the agent itself. For acp-opencode, the
 list mirrors the OpenCode catalog, so a custom model from the OpenCode config
 appears automatically. Discover and select one with:

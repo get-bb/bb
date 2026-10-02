@@ -1711,6 +1711,9 @@ async function startAgentSession(
   const childEnv = {
     ...withoutBridgeRuntimeEnv(process.env),
     ...params.envVars,
+    ...(dialect.id === "opencode"
+      ? { OPENCODE_CLIENT: "acp", OPENCODE_ENABLE_QUESTION_TOOL: "false" }
+      : {}),
   };
   const connection = createAcpAgentConnection({
     command: params.agent.command,

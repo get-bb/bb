@@ -25,6 +25,12 @@ models selectable through BB's model field. Grok Build advertises models and
 `thought_level` options over ACP, so the picker follows the connected agent
 (including `xhigh` on grok-4.6).
 
+BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
+`OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
+values. Native questions have no ACP interaction handler in BB; agents use the
+ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
+custom agents with `dialect: "opencode"` and does not change OpenCode config files.
+
 OpenCode ACP supports the core `bb thread compact` command; Cursor ACP does not
 expose compatible compaction. Check the actual agent's capabilities before
 attempting provider-specific recovery.
