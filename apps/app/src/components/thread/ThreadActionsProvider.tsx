@@ -397,7 +397,7 @@ export function ThreadActionsProvider({
           if (error instanceof ArchiveThreadConfirmationRequired) {
             openArchiveDialog({
               thread,
-              childThreadCount: error.childThreadCount,
+              archiveThreads: error.archiveThreads,
             });
             return;
           }

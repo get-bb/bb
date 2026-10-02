@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
 import type {
   ThreadArchiveAllResponse,
+  ThreadChildSummaryResponse,
   ThreadResponse,
   UpdateThreadRequest,
 } from "@bb/server-contract";
@@ -60,7 +61,9 @@ interface ArchiveThreadAndChildrenMutationRequest {
 }
 
 export class ArchiveThreadConfirmationRequired extends Error {
-  constructor(readonly childThreadCount: number) {
+  constructor(
+    readonly archiveThreads: ThreadChildSummaryResponse["archiveThreads"],
+  ) {
     super("Archiving child threads requires confirmation");
   }
 }
@@ -269,10 +272,8 @@ export function useArchiveThreadAndChildren() {
     }: ArchiveThreadAndChildrenMutationRequest): Promise<ThreadArchiveAllResponse> => {
       if (!childThreadsConfirmed) {
         const summary = await sdk.threads.childSummary({ threadId: id });
-        if (summary.unarchivedDescendantCount > 0) {
-          throw new ArchiveThreadConfirmationRequired(
-            summary.unarchivedDescendantCount,
-          );
+        if (summary.archiveThreads.some((thread) => thread.id !== id)) {
+          throw new ArchiveThreadConfirmationRequired(summary.archiveThreads);
         }
       }
       return sdk.threads.archiveAll({ threadId: id });

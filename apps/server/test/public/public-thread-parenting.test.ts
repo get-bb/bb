@@ -338,7 +338,7 @@ describe("public thread parenting routes", () => {
       const summary = threadChildSummaryResponseSchema.parse(
         await readJson(response),
       );
-      expect(summary).toEqual({
+      expect(summary).toMatchObject({
         nonDeletedChildCount: 3,
         unarchivedDescendantCount: 1,
       });
@@ -367,7 +367,7 @@ describe("public thread parenting routes", () => {
       );
       expect(
         threadChildSummaryResponseSchema.parse(await readJson(response)),
-      ).toEqual({
+      ).toMatchObject({
         nonDeletedChildCount: 1,
         unarchivedDescendantCount: 1,
       });
@@ -585,6 +585,18 @@ describe("public thread parenting routes", () => {
           await readJson(response),
         );
         expect(archivedThreadIds).toHaveLength(archivedIntermediary ? 5 : 6);
+        expect(summary.archiveThreads.map((thread) => thread.id)).toEqual(
+          archivedThreadIds,
+        );
+        expect(
+          summary.archiveThreads.find((thread) => thread.id === hiddenFork.id),
+        ).toMatchObject({
+          visibility: "hidden",
+          status: hiddenFork.status,
+          createdAt: hiddenFork.createdAt,
+          projectId: hiddenFork.projectId,
+          title: hiddenFork.title,
+        });
         expect([...archivedThreadIds].sort()).toEqual(
           archived
             .filter(

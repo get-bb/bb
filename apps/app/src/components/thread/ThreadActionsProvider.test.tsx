@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
+import type { ThreadChildSummaryResponse } from "@bb/server-contract";
 import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -43,6 +44,26 @@ vi.mock("react-router-dom", async (importOriginal) => {
 
 vi.mock("@/components/ui/app-route-anchor", () => ({
   useRouteNavigate: () => mocks.navigate,
+  RouteAnchor: ({
+    href,
+    children,
+    onClick,
+  }: {
+    href: string;
+    children: ReactNode;
+    onClick: () => void;
+  }) => (
+    <a
+      href={href}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick();
+        mocks.navigate(href);
+      }}
+    >
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("jotai", async (importOriginal) => {
@@ -168,6 +189,10 @@ beforeEach(() => {
   vi.mocked(sdk.threads.childSummary).mockResolvedValue({
     nonDeletedChildCount: 1,
     unarchivedDescendantCount: 1,
+    archiveThreads: [
+      makeThread(),
+      makeThread({ id: "thr_child", title: "Child thread" }),
+    ],
   });
   vi.mocked(sdk.threads.unarchive).mockResolvedValue({ ok: true });
   mocks.closePanesForThreads.mockReturnValue({
@@ -182,6 +207,17 @@ afterEach(() => {
 });
 
 describe("ThreadActionsProvider archive confirmation", () => {
+  it("opens a listed dependent without archiving anything", async () => {
+    renderProvider(<ArchiveButton thread={makeThread()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Child thread" }));
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      `/projects/${makeThread().projectId}/threads/thr_child`,
+    );
+    expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
   it("archives parent and children immediately when confirmation is disabled", async () => {
     mocks.confirmThreadArchive = false;
     renderProvider(<ArchiveButton thread={makeThread()} />);
@@ -218,10 +254,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
   it.each(["archive", "confirmation", "error", "archive-error"] as const)(
     "optimistically removes the sidebar row during the child check and handles %s",
     async (outcome) => {
-      let resolveSummary!: (summary: {
-        nonDeletedChildCount: number;
-        unarchivedDescendantCount: number;
-      }) => void;
+      let resolveSummary!: (summary: ThreadChildSummaryResponse) => void;
       let rejectSummary!: (error: Error) => void;
       vi.mocked(sdk.threads.childSummary).mockImplementationOnce(
         () =>
@@ -260,6 +293,10 @@ describe("ThreadActionsProvider archive confirmation", () => {
         resolveSummary({
           nonDeletedChildCount: outcome === "confirmation" ? 1 : 0,
           unarchivedDescendantCount: outcome === "confirmation" ? 1 : 0,
+          archiveThreads:
+            outcome === "confirmation"
+              ? [makeThread(), makeThread({ id: "thr_child" })]
+              : [makeThread()],
         });
       }
       if (outcome === "archive") {
@@ -293,10 +330,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
   );
 
   it("does not restore another archived row when a delayed child check requires confirmation", async () => {
-    let resolveSummary!: (summary: {
-      nonDeletedChildCount: number;
-      unarchivedDescendantCount: number;
-    }) => void;
+    let resolveSummary!: (summary: ThreadChildSummaryResponse) => void;
     vi.mocked(sdk.threads.childSummary)
       .mockImplementationOnce(
         () =>
@@ -307,6 +341,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
       .mockResolvedValueOnce({
         nonDeletedChildCount: 0,
         unarchivedDescendantCount: 0,
+        archiveThreads: [makeThread({ id: "thr_second" })],
       });
     const first = makeThreadListEntry(makeThread());
     const second = makeThreadListEntry(makeThread({ id: "thr_second" }));
@@ -347,7 +382,11 @@ describe("ThreadActionsProvider archive confirmation", () => {
         threadId: second.id,
       }),
     );
-    resolveSummary({ nonDeletedChildCount: 1, unarchivedDescendantCount: 1 });
+    resolveSummary({
+      nonDeletedChildCount: 1,
+      unarchivedDescendantCount: 1,
+      archiveThreads: [makeThread(), makeThread({ id: "thr_child" })],
+    });
     await screen.findByRole("button", { name: "Cancel" });
     expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
       first,
@@ -360,6 +399,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
     vi.mocked(sdk.threads.childSummary).mockResolvedValue({
       nonDeletedChildCount: 1,
       unarchivedDescendantCount: 0,
+      archiveThreads: [makeThread()],
     });
     vi.mocked(sdk.threads.archiveAll).mockResolvedValue({
       archivedThreadIds: ["thr_parent"],
@@ -383,6 +423,12 @@ describe("ThreadActionsProvider archive confirmation", () => {
     vi.mocked(sdk.threads.childSummary).mockResolvedValue({
       nonDeletedChildCount: 6,
       unarchivedDescendantCount: 4,
+      archiveThreads: [
+        makeThread(),
+        ...Array.from({ length: 4 }, (_, i) =>
+          makeThread({ id: `thr_child_${i}` }),
+        ),
+      ],
     });
     renderProvider(<ArchiveButton thread={makeThread()} />);
 
@@ -390,7 +436,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
 
     expect(
       await screen.findByText(
-        /4 child threads will be archived with this thread\./,
+        /4 related threads will be archived with this thread\./,
       ),
     ).not.toBeNull();
     expect(sdk.threads.archiveAll).not.toHaveBeenCalled();

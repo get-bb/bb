@@ -198,17 +198,31 @@ function archiveThreadTrees(
   return archivedThreadIds;
 }
 
-export function countUnarchivedThreadDescendants(
-  db: AppDeps["db"],
-  thread: Thread,
-): number {
-  return listArchiveCandidates(db, [thread]).filter(
-    (candidate) =>
-      candidate.id !== thread.id &&
-      candidate.visibility === "visible" &&
-      candidate.deletedAt === null &&
-      candidate.archivedAt === null,
-  ).length;
+export function listThreadArchivePreview(db: AppDeps["db"], thread: Thread) {
+  return listArchiveCandidates(db, [thread])
+    .filter(
+      (candidate) =>
+        candidate.deletedAt === null && candidate.archivedAt === null,
+    )
+    .map(
+      ({
+        id,
+        projectId,
+        title,
+        titleFallback,
+        status,
+        createdAt,
+        visibility,
+      }) => ({
+        id,
+        projectId,
+        title,
+        titleFallback,
+        status,
+        createdAt,
+        visibility,
+      }),
+    );
 }
 
 function listArchiveCandidates(db: AppDeps["db"], roots: Thread[]) {
@@ -220,6 +234,10 @@ function listArchiveCandidates(db: AppDeps["db"], roots: Thread[]) {
     | "archivedAt"
     | "deletedAt"
     | "visibility"
+    | "projectId"
+    | "title"
+    | "titleFallback"
+    | "createdAt"
   >;
   const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [...roots]
     .reverse()

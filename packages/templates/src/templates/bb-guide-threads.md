@@ -472,3 +472,8 @@ Lifecycle ownership:
   recursively deletes them after runtime/storage cleanup. Failed cleanup retries
   durably. Unarchive the owner before explicitly restoring a dependent. Stop does
   not cascade. Sidebar parents and ordinary forks retain their existing policies.
+
+`bb thread archive-preview <id> --json` lists the exact unarchived threads in the
+UI archive cascade, including hidden and lifecycle-owned threads. Each row has
+a title, status, creation date, and thread id. It does not archive anything.
+The SDK exposes the same list as `threads.childSummary().archiveThreads`.

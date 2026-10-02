@@ -268,6 +268,34 @@ export function registerActionsCommands(
     );
 
   parent
+    .command("archive-preview [id]")
+    .description(
+      "List the threads included when archiving this thread and its children",
+    )
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (id: string | undefined, opts: ThreadArchiveCommandOptions) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          const { archiveThreads } = await sdk.threads.childSummary({
+            threadId,
+          });
+          if (opts.json) {
+            outputJson(opts, { archiveThreads });
+            return;
+          }
+          for (const thread of archiveThreads) {
+            console.log(
+              `${thread.title ?? thread.titleFallback ?? thread.id} | ${thread.status} | Created ${new Date(thread.createdAt).toISOString()} | @thread:${thread.id}`,
+            );
+          }
+        },
+      ),
+    );
+
+  parent
     .command("archive [id]")
     .description("Archive a thread")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
