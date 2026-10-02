@@ -242,7 +242,12 @@ describe("codex app-server connection", () => {
       await expect(exited.promise).resolves.toEqual({
         code: 7,
         signal: null,
-        stderrTail: "fixture stderr",
+        stderrTail:
+          process.platform === "win32"
+            ? expect.stringMatching(
+                /^fixture stderr(\nstdin failed \(EPIPE\): write EPIPE)?$/u,
+              )
+            : "fixture stderr",
         spawnFailed: false,
       });
     } finally {

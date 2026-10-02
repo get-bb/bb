@@ -234,10 +234,11 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
   `Package Smoke (macos-latest, Node 22.x)`. The Node.js 24 and 26 compatibility
   smoke jobs do not run on pull requests and should not be configured as
   required PR checks.
-- Native Windows CI runs two jobs on every pull request, described in
-  [windows-ci.md](windows-ci.md): the host package tests, and an app smoke that
+- Native Windows CI runs on every pull request, described in
+  [windows-ci.md](windows-ci.md): the host package tests with lint and
+  typecheck, the remaining test suites in seven shards, and an app smoke that
   boots `bb-app`, runs the `bb-app` tarball smoke, packages the desktop app, and
-  smoke tests the packaged app. The full test suite does not run on Windows.
+  smoke tests the packaged app.
 - `apps/mobile` typecheck, lint, and unit tests run inside the Ubuntu
   `Checks` and the `Tests (packages-*)` jobs like every other workspace package. The
   iOS simulator Maestro flows run in `Mobile E2E`

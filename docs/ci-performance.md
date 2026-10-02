@@ -4,6 +4,8 @@ The main CI workflow keeps build/typecheck/lint, two server test shards, three a
 shards, integration tests, three package test groups, plugin tests, three fork
 check shards, and package
 smokes independent. Node 24/26 compatibility smokes run on main and manual runs.
+Windows runs the nine host packages, an app smoke, and seven test shards that
+cover the remaining suites; see [windows-ci.md](windows-ci.md).
 
 ## Fork checks
 
@@ -42,10 +44,11 @@ the CI workflow's outer step budgets.
 pnpm can restore the most recent store for the same OS and architecture when a
 lockfile changes. The frozen install still resolves the exact lockfile contents
 and verifies store integrity. Turbo caches are pruned after restoration and
-before successful CI jobs save them. Windows restores the pnpm store for both
-jobs and Turbo build outputs for app smoke, capped at 256 MB to bound transfer
-and storage costs. Windows installs retain `--ignore-scripts`; foundation tests
-still run with `--force`. macOS smoke jobs still omit Turbo caching.
+before successful CI jobs save them. Windows restores the pnpm store for every
+job, and Turbo outputs for app smoke and the Windows test shards, capped at
+256 MB per job to bound transfer and storage costs. Windows installs retain
+`--ignore-scripts`; foundation tests still run with `--force`. macOS smoke jobs
+still omit Turbo caching.
 
 PR runs cancel superseded work. Main concurrency groups include the commit SHA,
 so different main commits can run concurrently and each successful job saves its

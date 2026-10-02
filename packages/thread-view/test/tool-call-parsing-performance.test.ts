@@ -16,7 +16,7 @@ it("bounds intent parsing work after a script's disqualifying write", () => {
     const samples: number[] = [];
     for (let sample = 0; sample < 5; sample += 1) {
       const started = threadCpuUsage();
-      for (let repeat = 0; repeat < 3; repeat += 1) {
+      for (let repeat = 0; repeat < 32; repeat += 1) {
         parseShellCommandIntents(command);
       }
       const cpu = threadCpuUsage(started);

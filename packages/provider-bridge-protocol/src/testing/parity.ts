@@ -1,11 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -659,7 +654,7 @@ export async function replayRecording(
     }),
   ]);
   for (const directory of [stateDir, workspaceDir]) {
-    rmSync(directory, {
+    await rm(directory, {
       force: true,
       maxRetries: REPLAY_CLEANUP_RETRIES,
       recursive: true,

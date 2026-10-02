@@ -11,6 +11,9 @@ The job runs complete test suites and typechecks for nine packages:
 - `@bb/agent-runtime`, `@bb/provider-bridge-protocol`, and `@bb/provider-bridge-acp`
 - `@bb/host-daemon-contract`, `@bb/config`, and `@bb/db`
 
+Every other test suite runs in the `Windows tests` jobs described under
+[Full test suite](#full-test-suite).
+
 Turbo runs with `--force`, so a cached result from another OS cannot stand in for
 Windows execution, and `--concurrency=2` limits contention between process-heavy
 suites. Packages use shared Vitest workers with isolation for tests that mutate
@@ -129,6 +132,63 @@ The Windows packages use the ordinary Turbo test prerequisites. Shared Vitest
 inputs include `vitest*.ts`, covering both the worker configuration and temporary
 directory setup; there are no Windows-specific package task overrides.
 
+## Full test suite
+
+The `Windows tests (<shard>, Node 22.x)` jobs run the test suite of every
+package outside the nine above, on the same runner image and on every pull
+request and main push. A failure fails the job. The seven shards cover each
+suite exactly once:
+
+- `server-1` and `server-2`: `@bb/server`, split by file into two Vitest shards.
+- `app-1` and `app-2`: `@bb/app`, split the same way.
+- `plugins`: every `bb-plugin-*` package. This shard installs Bun, which the Pi
+  plugin's runtime regression requires in CI.
+- `packages-host`: host daemon, CLI, provider parity, and integration tests,
+  one suite at a time.
+- `packages-other`: every remaining package. Its negative filters exclude the
+  groups above and the nine host packages, so a new package lands here
+  without a workflow change.
+
+The jobs install every workspace package with `--ignore-scripts`; Turbo runs the
+generators and native-module preparation the suites depend on. They restore
+and save Turbo outputs, capped at 256 MB per shard. The cache key includes the
+runner OS, so a restored result was produced on Windows; a suite whose inputs
+are unchanged is not run again. Without the cache every server and package
+shard would rebuild the Plugin SDK's bundled types, which takes two to three
+minutes on these runners against about thirteen seconds on a Linux
+workstation.
+
+The test step differs from the Linux one in three ways:
+
+- It runs under `cmd`. A Git Bash step puts Git's MSYS tools first on PATH, and
+  suites that run `tar` then get GNU tar, which reads `C:\...` as a remote host.
+- `TEMP` and `TMP` point at the runner's temp directory. The runner's default
+  is an 8.3 short path inside the user profile
+  (`C:\Users\RUNNER~1\AppData\Local\Temp`). Suites outside the nine host
+  packages compare temp paths against their long names, and the plugin install
+  tests clone Git repositories into paths that pass 260 characters under it.
+- `packages-host` runs one Turbo task at a time, and `plugins` and
+  `packages-other` run two; the server and app shards each run a single suite.
+  Suites that start many processes slow one another down sharply on a
+  four-vCPU Windows runner. With two at a time, the `packages-host` suites
+  failed 6 of 13 measured runs on five-second test timeouts and an integration
+  test server that never finished closing. Each suite passes alone.
+
+Run one shard locally from `cmd` or PowerShell after a full install:
+
+```powershell
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm.cmd exec turbo run test --filter=@bb/server --continue --output-logs=new-only -- --shard=1/2
+```
+
+The example names `pnpm.cmd` because PowerShell's `pnpm.ps1` shim drops the
+`--` separator, and Turbo then rejects `--shard`.
+
+Each shard uploads `.turbo/runs/*.json` as a
+`test-timings-windows-<shard>-<attempt>` artifact. With nothing restored from
+the Turbo cache, shards finished in four to seven minutes; setup (checkout,
+cache restore, install) is one and a half to two and a half minutes of that.
+
 ## App boot smoke
 
 The `Windows app smoke (Node 22.x)` job builds `bb-app` from the checkout and
@@ -176,10 +236,19 @@ platform-specific.
 
 A Windows machine enrolled in another server runs its daemon from the user's
 `Run` registry key, not a Windows service, so it stops when the user signs out.
-No CI job covers that installer; it is verified by hand. The full test suite does not run on Windows: most remaining
-failures are tests that assume `/` paths, POSIX file modes, or a Bourne shell.
+No CI job covers that installer; it is verified by hand.
 
-Add packages to the install and Turbo filters as their real Windows tests pass.
+The full test suite runs on Windows, with gaps. Tests that only apply to POSIX
+hosts skip themselves there. Lint and typecheck run on Windows only for the
+nine host packages. The suites outside those packages are not yet verified
+under an 8.3 short `TEMP` path or with paths longer than 260 characters; the
+job avoids both rather than proving them. One product gap is known behind
+that: the plugin server build skips its "import escapes the plugin directory"
+check when the plugin directory is given as an 8.3 short path. The
+integration test server's failure to finish closing beside another
+process-heavy suite is unexplained; running `packages-host` one suite at a
+time avoids it.
+
 Keep the Linux suite running to protect existing behavior. Windows Server CI must
 eventually be supplemented with Windows 11 verification for installation,
 interactive terminals, updates, and actual provider sessions.
