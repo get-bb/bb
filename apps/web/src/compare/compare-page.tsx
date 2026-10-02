@@ -4,6 +4,7 @@ import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { isValidElement, type ReactNode } from "react";
 
 import { useInitAnalytics } from "../landing/analytics";
 import {
@@ -28,6 +29,37 @@ const TEAM_COMPANIES = [
   ["Mapbox", mapboxLogo],
 ] as const;
 
+function plainText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(plainText).join("");
+  }
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return plainText(node.props.children);
+  }
+  return "";
+}
+
+function faqJsonLd(comparison: Comparison): string {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: comparison.faq.flatMap((group) =>
+      group.items.map((item) => ({
+        "@type": "Question",
+        name: item.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: plainText(item.answer).replace(/\s+/g, " ").trim(),
+        },
+      })),
+    ),
+  };
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
 export function compareHead(comparison: Comparison) {
   return {
     meta: pageMeta(
@@ -36,6 +68,7 @@ export function compareHead(comparison: Comparison) {
       `/compare/${comparison.slug}`,
     ),
     links: siteHeadLinks(compareCss),
+    scripts: [{ type: "application/ld+json", children: faqJsonLd(comparison) }],
   };
 }
 
@@ -197,7 +230,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       )}
 
       <section className="cmp-team" data-reveal>
-        <h2>Built by a team with experience from</h2>
+        <h2>Built by a team from</h2>
         <ul className="company-proof-logos cmp-team-logos">
           {TEAM_COMPANIES.map(([name, logo]) => (
             <li key={name} className="company-proof-company">
