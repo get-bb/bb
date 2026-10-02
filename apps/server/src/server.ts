@@ -105,6 +105,7 @@ import { requestMatchesEntityTag } from "./services/hosts/daemon-file-response.j
 import {
   allowedAppOrigins,
   browserRequestProblem,
+  requestHostProblem,
 } from "./browser-request-guard.js";
 import {
   callPluginHostRpc,
@@ -482,6 +483,13 @@ export function createApp(
   };
   const pendingServerMove = serverMoveOptions.pending;
 
+  app.use("*", async (context, next) => {
+    const problem = requestHostProblem(context, deps);
+    if (problem !== null) {
+      throw new ApiError(problem.status, "forbidden_host", problem.error);
+    }
+    return next();
+  });
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
     return runWithTelemetryAppSurface(resolveRequestAppSurface(context), next);

@@ -133,8 +133,15 @@ pnpm exec turbo run dev --filter=@bb/desktop
 The desktop shell connects to this checkout's running dev app. Stop each command
 with Ctrl-C in its terminal.
 
-To use the dev app from another machine over Tailscale, run `pnpm dev`, note the
-printed app port, and publish the loopback Vite listener:
+To use the dev app from another machine over Tailscale, start it with the
+Tailscale browser origin configured:
+
+```bash
+BB_APP_URL=https://<machine>.<tailnet>.ts.net pnpm dev
+```
+
+Note the printed app port, then publish the loopback Vite listener in another
+terminal:
 
 ```bash
 tailscale serve --bg --https=443 http://127.0.0.1:<app-port>

@@ -1193,6 +1193,12 @@ importers:
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@bb/tunnel-client':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-client
+      '@bb/tunnel-contract':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-contract
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13

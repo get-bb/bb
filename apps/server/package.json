@@ -56,6 +56,8 @@
     "@bb/scripts": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
+    "@bb/tunnel-client": "workspace:*",
+    "@bb/tunnel-contract": "workspace:*",
     "@types/better-sqlite3": "^7.6.12",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^22.0.0",

@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import {
   buildLocalAppOrigins,
   type BuildLocalAppOriginsArgs,
@@ -35,7 +36,11 @@ export function allowedAppOrigins(deps: BrowserRequestGuardDeps): Set<string> {
   if (deps.config.devAppPort !== undefined) {
     args.devAppPort = deps.config.devAppPort;
   }
-  return new Set(buildLocalAppOrigins(args));
+  return new Set(
+    buildLocalAppOrigins(args).filter(
+      (origin) => origin.startsWith("http://") || origin.startsWith("https://"),
+    ),
+  );
 }
 
 function knownAppPorts(deps: BrowserRequestGuardDeps): Set<number> {
@@ -61,9 +66,13 @@ export function effectivePort(url: URL): number | null {
 }
 
 function parseRequestHost(host: string, protocol: string): URL | null {
+  if (!/^(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::[0-9]+)?$/iu.test(host)) {
+    return null;
+  }
   try {
     const url = new URL(`${protocol}//${host}`);
-    return url.username.length === 0 &&
+    return effectivePort(url) !== 0 &&
+      url.username.length === 0 &&
       url.password.length === 0 &&
       url.pathname === "/" &&
       url.search.length === 0 &&
@@ -73,6 +82,36 @@ function parseRequestHost(host: string, protocol: string): URL | null {
   } catch {
     return null;
   }
+}
+
+function isTrustedHostname(
+  hostname: string,
+  deps: BrowserRequestGuardDeps,
+): boolean {
+  const address = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
+  return (
+    hostname === "localhost" ||
+    isIP(address) !== 0 ||
+    [...allowedAppOrigins(deps)].some(
+      (origin) => new URL(origin).hostname === hostname,
+    )
+  );
+}
+
+export function requestHostProblem(
+  context: BrowserRequestContext,
+  deps: BrowserRequestGuardDeps,
+): BrowserRequestProblem | null {
+  const host = context.req.header("host") ?? new URL(context.req.url).host;
+  const target = parseRequestHost(host, "http:");
+  if (target !== null && isTrustedHostname(target.hostname, deps)) {
+    return null;
+  }
+  return {
+    status: 403,
+    error:
+      "Host must be localhost, an IP address, or the hostname configured in BB_APP_URL",
+  };
 }
 
 function requestTargets(context: BrowserRequestContext): URL[] {
@@ -119,7 +158,9 @@ function isTrustedOrigin(
     return true;
   }
 
-  const targets = requestTargets(context);
+  const targets = requestTargets(context).filter((target) =>
+    isTrustedHostname(target.hostname, deps),
+  );
   if (targets.some((target) => target.origin === originUrl.origin)) {
     return true;
   }

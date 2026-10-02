@@ -198,7 +198,7 @@ export const BB_APP_SURFACE_ENV = defineEnvVar<AppSurface>({
 
 export const BB_APP_URL_ENV = defineEnvVar<string>({
   description:
-    "Human-facing app/server base URL used for generated links and allowed browser origins. Does not control which host or port the server binds to.",
+    "Human-facing app/server base URL used for generated links, allowed browser origins, and the allowed DNS hostname for incoming requests. Does not control which host or port the server binds to.",
   name: "BB_APP_URL",
   parse: parseOptionalUrlEnvValue,
 });

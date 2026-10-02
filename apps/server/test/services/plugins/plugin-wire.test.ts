@@ -229,7 +229,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(appOrigin.status).toBe(200);
   });
 
-  it("local auth rejects foreign origins but tolerates host-bound LAN/Tailscale serving", async () => {
+  it("local auth rejects foreign origins but accepts LAN and configured proxy serving", async () => {
     const foreignOrigin = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
       { headers: { origin: EVIL_ORIGIN } },
@@ -253,8 +253,8 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(sameOriginLan.status).toBe(200);
 
     const sameOriginReverseProxy = await harness.app.request(
-      "https://bb.lan.test/api/v1/plugins/wire/http/hello",
-      { headers: { origin: "https://bb.lan.test" } },
+      "https://bb.example.test/api/v1/plugins/wire/http/hello",
+      { headers: { origin: "https://bb.example.test" } },
     );
     expect(sameOriginReverseProxy.status).toBe(200);
 
