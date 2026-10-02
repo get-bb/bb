@@ -182,58 +182,61 @@ describe("prompt library server", () => {
     });
   });
 
-  it("preserves extra fields on cross-project history attachments through RPC", async () => {
-    const foreign = entry("foreign", 1, "@project:proj_b review", {
-      projectId: "proj_b",
-    });
-    const attachment = {
-      type: "localFile" as const,
-      path: ".bb/attachments/private.txt",
-      name: "private.txt",
-      sizeBytes: 42,
-      futureOwnership: { project: "proj_b", token: "portable" },
-    };
-    foreign.input = [
-      {
-        type: "text",
-        text: "@project:proj_b review",
-        mentions: [
+  it.each(["localFile", "localImage"] as const)(
+    "preserves extra fields on cross-project history attachments through RPC (%s)",
+    async (type) => {
+      const foreign = entry("foreign", 1, "@project:proj_b review", {
+        projectId: "proj_b",
+      });
+      const attachment = {
+        type,
+        path: ".bb/attachments/private.txt",
+        name: "private.txt",
+        sizeBytes: 42,
+        futureOwnership: { project: "proj_b", token: "portable" },
+      };
+      foreign.input = [
+        {
+          type: "text",
+          text: "@project:proj_b review",
+          mentions: [
+            {
+              start: 0,
+              end: 15,
+              resource: { kind: "project", projectId: "proj_b", label: "Beta" },
+            },
+          ],
+        },
+        attachment,
+      ];
+      const { call } = await setup([foreign]);
+      const result = await call("search", {
+        ...GLOBAL,
+        projectId: "proj_a",
+        query: "",
+      });
+      expect(result).toMatchObject({
+        recent: [
           {
-            start: 0,
-            end: 15,
-            resource: { kind: "project", projectId: "proj_b", label: "Beta" },
+            projectId: "proj_b",
+            prompt: {
+              text: "@project:proj_b review",
+              mentions: [
+                {
+                  from: 0,
+                  to: 15,
+                  kind: "project",
+                  projectId: "proj_b",
+                  label: "Beta",
+                },
+              ],
+              attachments: [attachment],
+            },
           },
         ],
-      },
-      attachment,
-    ];
-    const { call } = await setup([foreign]);
-    const result = await call("search", {
-      ...GLOBAL,
-      projectId: "proj_a",
-      query: "",
-    });
-    expect(result).toMatchObject({
-      recent: [
-        {
-          projectId: "proj_b",
-          prompt: {
-            text: "@project:proj_b review",
-            mentions: [
-              {
-                from: 0,
-                to: 15,
-                kind: "project",
-                projectId: "proj_b",
-                label: "Beta",
-              },
-            ],
-            attachments: [attachment],
-          },
-        },
-      ],
-    });
-  });
+      });
+    },
+  );
 
   it("rejects malformed mentions before saving a starred prompt", async () => {
     const { call } = await setup([]);

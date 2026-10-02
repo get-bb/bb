@@ -58,9 +58,9 @@ export function promptFromHistory(
       offset += chunk.text.length;
     } else if (chunk.type === "localImage") {
       attachments.push({
-        ...chunk,
         name: fileName(chunk.path),
         sizeBytes: 0,
+        ...chunk,
       });
     } else if (chunk.type === "localFile") {
       attachments.push({
