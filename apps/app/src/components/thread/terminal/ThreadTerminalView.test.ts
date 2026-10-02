@@ -26,6 +26,10 @@ import {
   createTerminalOsc8LinkHandler,
   requestTerminalLinkOpen,
 } from "./terminal-links";
+import {
+  handleMacTerminalEditingKey,
+  type TerminalEditingKeyEvent,
+} from "./terminal-mac-editing-keys";
 
 describe("terminal hyperlinks", () => {
   it("preserves OSC-8 provenance through hover and primary activation", () => {
@@ -533,5 +537,87 @@ describe("loadTerminalWebglRenderer", () => {
 
     expect(loadTerminalWebglRenderer(terminal, () => addon)).toBe(false);
     expect(addon.dispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("handleMacTerminalEditingKey", () => {
+  function pressKey(
+    overrides: Partial<TerminalEditingKeyEvent> & { key: string },
+  ) {
+    const event: TerminalEditingKeyEvent = {
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      preventDefault: vi.fn<() => void>(),
+      shiftKey: false,
+      type: "keydown",
+      ...overrides,
+    };
+    const sendInput = vi.fn<(sequence: string) => void>();
+    const passedToXterm = handleMacTerminalEditingKey(event, sendInput);
+    return { event, passedToXterm, sendInput };
+  }
+
+  it.each([
+    ["ArrowLeft", "\x01"],
+    ["ArrowRight", "\x05"],
+    ["Backspace", "\x15"],
+    ["Delete", "\x0b"],
+  ])(
+    "sends the line-editing control character for Command+%s",
+    (key, sequence) => {
+      const { event, passedToXterm, sendInput } = pressKey({
+        key,
+        metaKey: true,
+      });
+
+      expect(sendInput.mock.calls).toEqual([[sequence]]);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(passedToXterm).toBe(false);
+    },
+  );
+
+  it.each([
+    ["ArrowLeft", "\x1bb"],
+    ["ArrowRight", "\x1bf"],
+    ["Delete", "\x1bd"],
+  ])(
+    "sends the word-editing escape sequence for Option+%s",
+    (key, sequence) => {
+      const { passedToXterm, sendInput } = pressKey({ key, altKey: true });
+
+      expect(sendInput.mock.calls).toEqual([[sequence]]);
+      expect(passedToXterm).toBe(false);
+    },
+  );
+
+  it("swallows the keyup of a handled shortcut without sending it twice", () => {
+    const { event, passedToXterm, sendInput } = pressKey({
+      key: "ArrowLeft",
+      metaKey: true,
+      type: "keyup",
+    });
+
+    expect(sendInput).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(passedToXterm).toBe(false);
+  });
+
+  it.each([
+    ["an unmodified arrow", { key: "ArrowLeft" }],
+    ["Option+Backspace", { key: "Backspace", altKey: true }],
+    ["Command+K", { key: "k", metaKey: true }],
+    ["Command+Shift+Left", { key: "ArrowLeft", metaKey: true, shiftKey: true }],
+    ["Command+Option+Left", { key: "ArrowLeft", metaKey: true, altKey: true }],
+    [
+      "Control+Command+Backspace",
+      { key: "Backspace", metaKey: true, ctrlKey: true },
+    ],
+  ])("leaves %s to xterm", (_name, overrides) => {
+    const { event, passedToXterm, sendInput } = pressKey(overrides);
+
+    expect(sendInput).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(passedToXterm).toBe(true);
   });
 });

@@ -21,7 +21,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
-import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import { isMacKeyboardPlatform, TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import type {
   TerminalServerMessage,
   TerminalSession,
@@ -33,6 +33,7 @@ import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { browserPlatform } from "@/lib/app-keybindings";
 import {
   anchorPointFromMouseEvent,
   selectionAnchorFromPointerRelease,
@@ -49,6 +50,7 @@ import {
   requestTerminalLinkOpen,
   type TerminalLinkTarget,
 } from "./terminal-links";
+import { handleMacTerminalEditingKey } from "./terminal-mac-editing-keys";
 
 export const TERMINAL_FONT_FAMILY =
   '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
@@ -1080,6 +1082,13 @@ export function ThreadTerminalView({
           sessionStatus: sessionStatusRef.current,
         });
       });
+      if (isMacKeyboardPlatform(browserPlatform())) {
+        activeTerminal.attachCustomKeyEventHandler((event) =>
+          handleMacTerminalEditingKey(event, (sequence) => {
+            activeTerminal.input(sequence);
+          }),
+        );
+      }
       activeTerminal.onTitleChange((title) => {
         if (replayWriteState.suppressedWriteCount > 0) {
           return;
