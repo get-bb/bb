@@ -900,12 +900,10 @@ The canonical release summary.
       screen.getByText("bb daemon").closest("[data-resource-row]")?.className,
     ).not.toContain("bg-surface-destructive");
     expect(screen.queryByText(/^Up to date/)).toBeNull();
-    const stalledMessage = screen.getByText("Update didn't finish");
-    expect(stalledMessage.tagName).toBe("SPAN");
-    expect(stalledMessage.className).not.toContain("font-semibold");
-    expect(stalledMessage.className).toContain("text-destructive");
-    expect(stalledMessage.className).not.toContain("rounded");
-    expect(stalledMessage.className).not.toContain("font-mono");
+    expect(screen.getByRole("alert").textContent).toBe("Update didn't finish");
+    expect(
+      screen.getByRole("img", { name: "Update didn't finish" }).className,
+    ).toContain("text-destructive");
     expect(
       screen.getAllByRole("button", { name: /^Failed · Retry on/ }),
     ).toHaveLength(1);
@@ -1260,26 +1258,12 @@ The canonical release summary.
 
     renderSection();
 
-    const failedStatus = screen.getByText("Couldn't check for updates");
-    expect(failedStatus.tagName).toBe("SPAN");
-    for (const className of [
-      "shrink-0",
-      "text-xs",
-      "text-destructive",
-    ]) {
-      expect(failedStatus.className).toContain(className);
-    }
-    for (const className of [
-      "font-semibold",
-      "rounded",
-      "border",
-      "px-",
-      "py-",
-      "bg-",
-      "font-mono",
-    ]) {
-      expect(failedStatus.className).not.toContain(className);
-    }
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Couldn't check for updates",
+    );
+    expect(
+      screen.getByRole("img", { name: "Couldn't check for updates" }).className,
+    ).toContain("text-destructive");
     const retry = screen.getByRole("button", {
       name: /Check workstation's CLIs again/,
     });
@@ -1787,7 +1771,9 @@ The canonical release summary.
 
     renderSection();
 
-    expect(await screen.findByText("Last update failed")).toBeDefined();
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Last update failed",
+    );
     expect(
       screen.getByRole("button", { name: "View the failed bb update" }),
     ).toBeDefined();

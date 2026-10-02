@@ -316,6 +316,63 @@ function RowStateCaption({
   );
 }
 
+function FailureIndicator({
+  reason,
+  openLabel,
+  openTooltip,
+  onOpen,
+}: {
+  reason: string;
+  openLabel?: string;
+  openTooltip?: string;
+  onOpen?: () => void;
+}) {
+  const iconClassName =
+    "flex size-6 shrink-0 items-center justify-center rounded-sm text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  const icon = <Icon aria-hidden name="AlertTriangle" className="size-3.5" />;
+  return (
+    <span
+      data-row-action
+      className="-my-1 flex shrink-0 items-center self-center"
+    >
+      <span role="alert" className="sr-only">
+        {reason}
+      </span>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {onOpen === undefined ? (
+              <span
+                role="img"
+                aria-label={reason}
+                tabIndex={0}
+                className={iconClassName}
+              >
+                {icon}
+              </span>
+            ) : (
+              <button
+                type="button"
+                aria-label={openLabel}
+                className={cn(
+                  iconClassName,
+                  "cursor-pointer hover:bg-state-hover",
+                )}
+                onClick={onOpen}
+              >
+                {icon}
+              </button>
+            )}
+          </TooltipTrigger>
+          <TooltipContent>
+            {onOpen === undefined ? reason : openTooltip}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </span>
+  );
+}
+
 function RowStateControl({
   state,
   actionIcon,
@@ -830,7 +887,7 @@ export function BbAppUpdateRows({
           actionLabel="Retry the download"
           onClick={() => onRetryDesktop?.()}
         />,
-        <RowStateCaption state="failed">Download failed</RowStateCaption>,
+        <FailureIndicator reason="Download failed" />,
       );
     }
     if (desktopInfo.updateAvailable) {
@@ -964,24 +1021,20 @@ function InAppUpdateRow({
         onClick={onApply}
       />
     );
-  const detailsButton =
-    failure === null || onShowResult === null ? null : (
-      <UpdateActionButton
-        label="View the failed bb update"
-        tooltipLabel="View details"
-        icon="File"
-        onClick={() => onShowResult(failure)}
-      />
-    );
-
   if (failure !== null) {
     return row(
       name,
-      <span className="flex items-center gap-1">
-        {detailsButton}
-        {updateButton ?? <RowStateControl state="failed" />}
-      </span>,
-      <RowStateCaption state="failed">Last update failed</RowStateCaption>,
+      updateButton ?? <RowStateControl state="failed" />,
+      onShowResult === null ? (
+        <FailureIndicator reason="Last update failed" />
+      ) : (
+        <FailureIndicator
+          reason="Last update failed"
+          openLabel="View the failed bb update"
+          openTooltip="View details"
+          onOpen={() => onShowResult(failure)}
+        />
+      ),
     );
   }
   if (status.blocked !== null) {
@@ -1076,9 +1129,7 @@ export function BbDaemonUpdateRow({
   const machineIsAhead = hostNeedsUpdate(host) && !hostCanRetryUpdate(host);
   const offline = host.status !== "connected";
 
-  const daemonCaption = updateStalled ? (
-    <RowStateCaption state="failed">Update didn&apos;t finish</RowStateCaption>
-  ) : machineIsAhead ? (
+  const daemonCaption = machineIsAhead ? (
     <RowStateCaption state="offline">
       Update this app to reconnect
     </RowStateCaption>
@@ -1096,6 +1147,11 @@ export function BbDaemonUpdateRow({
         </span>
       }
       title="bb daemon"
+      titleAside={
+        updateStalled ? (
+          <FailureIndicator reason="Update didn't finish" />
+        ) : null
+      }
       state={daemonCaption}
       trailingMeta={null}
       actions={
@@ -1144,11 +1200,7 @@ export function ProviderCliCheckRow({
         />
       }
       title="Provider CLIs"
-      state={
-        <RowStateCaption state="failed">
-          Couldn&apos;t check for updates
-        </RowStateCaption>
-      }
+      titleAside={<FailureIndicator reason="Couldn't check for updates" />}
       trailingMeta={null}
       actions={
         <RowStateControl
@@ -1248,32 +1300,12 @@ export function MachineUpdatesRows({
         }
         titleAside={
           failure === null ? null : (
-            <span className="flex shrink-0 items-center">
-              <span role="alert" className="sr-only">
-                {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
-              </span>
-              <TooltipProvider delayDuration={250}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={`View ${status.displayName} update log`}
-                      className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-destructive hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() =>
-                        openProviderCliInstallLog(failure.logDialogState)
-                      }
-                    >
-                      <Icon
-                        aria-hidden
-                        name="AlertTriangle"
-                        className="size-3.5"
-                      />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>View log</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </span>
+            <FailureIndicator
+              reason={PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
+              openLabel={`View ${status.displayName} update log`}
+              openTooltip="View log"
+              onOpen={() => openProviderCliInstallLog(failure.logDialogState)}
+            />
           )
         }
         trailingMeta={null}
