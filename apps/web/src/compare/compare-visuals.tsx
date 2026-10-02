@@ -34,8 +34,16 @@ export function HandoffThread() {
         <code className="cmp-ho-branch">bb/rate-limit-uploads</code>
       </div>
       <ol className="cmp-ho-feed">
+        <li className="cmp-ho-step" style={{ animationDelay: "0.6s" }}>
+          <span className="cmp-ho-step-num">1</span>
+          You ask once
+        </li>
         <li className="cmp-ho-user" style={{ animationDelay: "0.6s" }}>
           Add rate limiting to uploads, then have Codex review it.
+        </li>
+        <li className="cmp-ho-step" style={{ animationDelay: "1.1s" }}>
+          <span className="cmp-ho-step-num">2</span>
+          Claude Code writes the code
         </li>
         <li className="cmp-ho-say" style={{ animationDelay: "1.1s" }}>
           <ClaudeIcon className="cmp-ho-ic" />
@@ -43,6 +51,10 @@ export function HandoffThread() {
             Added a token bucket in <code>upload.ts</code>. Starting a Codex
             review.
           </span>
+        </li>
+        <li className="cmp-ho-step" style={{ animationDelay: "1.8s" }}>
+          <span className="cmp-ho-step-num">3</span>
+          Claude starts Codex to review it
         </li>
         <li className="cmp-ho-child" style={{ animationDelay: "1.8s" }}>
           <OpenAiIcon className="cmp-ho-ic" />
@@ -64,6 +76,10 @@ export function HandoffThread() {
             <li>Limiter keys on socket IP, not X-Forwarded-For</li>
             <li>429 responses have no Retry-After header</li>
           </ul>
+        </li>
+        <li className="cmp-ho-step" style={{ animationDelay: "4.1s" }}>
+          <span className="cmp-ho-step-num">4</span>
+          Claude fixes what Codex found
         </li>
         <li className="cmp-ho-say" style={{ animationDelay: "4.1s" }}>
           <ClaudeIcon className="cmp-ho-ic" />
