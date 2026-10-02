@@ -1,8 +1,13 @@
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
+import UserIcon from "@hugeicons/core-free-icons/UserIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
+import type { ReactNode } from "react";
 
 import { ClaudeIcon, OpenAiIcon } from "../landing/icons";
 
@@ -21,74 +26,131 @@ export function BrandMark({
   return <img src={logo.src} alt="" className={className} />;
 }
 
-export function HandoffThread() {
+function ThreadPill({ title }: { title: string }) {
+  return (
+    <span className="cmp-pill">
+      <HugeiconsIcon icon={UserIcon} className="cmp-pill-ic" />
+      {title}
+    </span>
+  );
+}
+
+function ToolRow({
+  command,
+  duration,
+  delay,
+}: {
+  command: string;
+  duration: string;
+  delay: string;
+}) {
+  return (
+    <li className="cmp-tool" style={{ animationDelay: delay }}>
+      <span className="cmp-tool-verb">Ran</span>
+      <code className="cmp-tool-cmd">{command}</code>
+      <span className="cmp-tool-dur">{duration}</span>
+    </li>
+  );
+}
+
+function PaneHead({
+  icon,
+  title,
+  child,
+}: {
+  icon: ReactNode;
+  title: string;
+  child: boolean;
+}) {
+  return (
+    <div className="cmp-pane-head">
+      {icon}
+      <span className="cmp-pane-title">{title}</span>
+      {child ? <span className="cmp-pane-tag">child</span> : null}
+    </div>
+  );
+}
+
+export function AgentSplit() {
   return (
     <div
-      className="cmp-handoff"
+      className="cmp-split"
       role="img"
-      aria-label="A bb thread where Claude Code starts a Codex review thread, waits for its findings, and fixes them"
+      aria-label="Two bb threads side by side: Claude Code starts a Codex thread to review its work, Codex sends its findings back, and Claude fixes them"
     >
-      <div className="cmp-ho-bar">
-        <span aria-hidden="true" className="bb-mark cmp-ho-mark" />
-        <span className="cmp-ho-title">Add rate limiting to uploads</span>
-        <code className="cmp-ho-branch">bb/rate-limit-uploads</code>
-      </div>
-      <ol className="cmp-ho-feed">
-        <li className="cmp-ho-step" style={{ animationDelay: "0.6s" }}>
-          <span className="cmp-ho-step-num">1</span>
-          You ask once
-        </li>
-        <li className="cmp-ho-user" style={{ animationDelay: "0.6s" }}>
-          Add rate limiting to uploads, then have Codex review it.
-        </li>
-        <li className="cmp-ho-step" style={{ animationDelay: "1.1s" }}>
-          <span className="cmp-ho-step-num">2</span>
-          Claude Code writes the code
-        </li>
-        <li className="cmp-ho-say" style={{ animationDelay: "1.1s" }}>
-          <ClaudeIcon className="cmp-ho-ic" />
-          <span>
+      <section className="cmp-pane cmp-pane-focused">
+        <PaneHead
+          icon={<ClaudeIcon className="cmp-pane-ic" />}
+          title="Add rate limiting to uploads"
+          child={false}
+        />
+        <ol className="cmp-feed">
+          <li className="cmp-user" style={{ animationDelay: "0.5s" }}>
+            Add rate limiting to uploads. When you’re done, start a bb Codex
+            thread to review it, then fix what it finds.
+          </li>
+          <li className="cmp-agent" style={{ animationDelay: "1s" }}>
             Added a token bucket in <code>upload.ts</code>. Starting a Codex
             review.
-          </span>
-        </li>
-        <li className="cmp-ho-step" style={{ animationDelay: "1.8s" }}>
-          <span className="cmp-ho-step-num">3</span>
-          Claude starts Codex to review it
-        </li>
-        <li className="cmp-ho-child" style={{ animationDelay: "1.8s" }}>
-          <OpenAiIcon className="cmp-ho-ic" />
-          <span className="cmp-ho-child-body">
-            <span className="cmp-ho-child-name">Codex</span>
-            <span className="cmp-ho-child-task">Review the rate limiter</span>
-          </span>
-          <span className="cmp-ho-stat" aria-hidden="true">
-            <span className="cmp-ho-run">
-              <span className="cmp-ho-dot" />
-              running
+          </li>
+          <ToolRow
+            command="bb thread spawn --parent-self --provider codex"
+            duration="2s"
+            delay="1.4s"
+          />
+          <li className="cmp-message" style={{ animationDelay: "3.6s" }}>
+            <span className="cmp-message-head">
+              <HugeiconsIcon icon={Message01Icon} className="cmp-message-ic" />
+              <span className="cmp-message-label">Message from</span>
+              <ThreadPill title="Review the rate limiter" />
             </span>
-            <span className="cmp-ho-done">
-              <HugeiconsIcon icon={Tick02Icon} className="cmp-ho-check" />2
-              findings
+            <span className="cmp-message-body">
+              Found 2 issues: the limiter keys on the socket IP, not
+              X-Forwarded-For, and 429s have no Retry-After header.
             </span>
-          </span>
-          <ul className="cmp-ho-findings">
-            <li>Limiter keys on socket IP, not X-Forwarded-For</li>
-            <li>429 responses have no Retry-After header</li>
-          </ul>
-        </li>
-        <li className="cmp-ho-step" style={{ animationDelay: "4.1s" }}>
-          <span className="cmp-ho-step-num">4</span>
-          Claude fixes what Codex found
-        </li>
-        <li className="cmp-ho-say" style={{ animationDelay: "4.1s" }}>
-          <ClaudeIcon className="cmp-ho-ic" />
-          <span>
+          </li>
+          <li className="cmp-agent" style={{ animationDelay: "4.4s" }}>
             Fixed both. <code>pnpm test</code>{" "}
-            <span className="cmp-ho-ok">passes</span>.
+            <span className="cmp-ok">passes</span>.
+          </li>
+        </ol>
+        <div className="cmp-composer">
+          <span className="cmp-composer-head">
+            <HugeiconsIcon
+              icon={BubbleChatAddIcon}
+              className="cmp-composer-ic"
+            />
+            Handoff to new thread
+            <HugeiconsIcon icon={Cancel01Icon} className="cmp-composer-x" />
           </span>
-        </li>
-      </ol>
+          <span className="cmp-composer-input">
+            Write release notes for{" "}
+            <ThreadPill title="Add rate limiting to uploads" />
+          </span>
+        </div>
+      </section>
+      <section className="cmp-pane cmp-pane-child">
+        <PaneHead
+          icon={<OpenAiIcon className="cmp-pane-ic" />}
+          title="Review the rate limiter"
+          child
+        />
+        <ol className="cmp-feed">
+          <li className="cmp-user" style={{ animationDelay: "1.8s" }}>
+            Review the rate limiter on this branch, read-only. Report anything
+            serious.
+          </li>
+          <li className="cmp-agent" style={{ animationDelay: "2.2s" }}>
+            Reading <code>upload.ts</code> and its tests.
+          </li>
+          <ToolRow command="pnpm test" duration="14s" delay="2.6s" />
+          <ToolRow
+            command='bb thread tell thr_7k2… "Found 2 issues…"'
+            duration="1s"
+            delay="3.2s"
+          />
+        </ol>
+      </section>
     </div>
   );
 }
