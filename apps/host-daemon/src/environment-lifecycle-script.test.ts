@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertScriptProcessTreeStopped,
@@ -44,7 +44,10 @@ describe("core environment scripts", () => {
       const result = await run({
         workspacePath,
         timeoutMs: 1000,
-        env: { PATH: "/usr/bin:/bin" },
+        env:
+          process.platform === "win32"
+            ? process.env
+            : { PATH: "/usr/bin:/bin" },
         onProgress: (entry) => output.push(entry.text),
       });
       expect(result).toEqual({ ran: true });
@@ -59,7 +62,7 @@ describe("core environment scripts", () => {
   it("runs in the environment directory and streams stdout and stderr", async () => {
     const workspacePath = await workspace(
       "setup",
-      "pwd > marker\nprintf 'first\\rsecond\\n'\necho stderr >&2\n",
+      "{ pwd -W 2>/dev/null || pwd; } > marker\nprintf 'first\\rsecond\\n'\necho stderr >&2\n",
     );
     const output: string[] = [];
     await runSetupScript({
@@ -67,9 +70,11 @@ describe("core environment scripts", () => {
       timeoutMs: 5000,
       onProgress: (entry) => output.push(entry.text),
     });
-    expect((await readFile(join(workspacePath, "marker"), "utf8")).trim()).toBe(
-      await realpath(workspacePath),
-    );
+    expect(
+      (await readFile(join(workspacePath, "marker"), "utf8"))
+        .trim()
+        .replaceAll("/", sep),
+    ).toBe(await realpath(workspacePath));
     expect(output).toContain("second");
     expect(output).toContain("stderr");
     expect(output).toContain("Running .bb-env-setup.sh");
@@ -145,6 +150,52 @@ describe("core environment scripts", () => {
       }),
     ).rejects.toThrow("cancelled");
   });
+
+  it.runIf(process.platform === "win32")(
+    "stops the programs Git Bash started when a Windows hook is cancelled",
+    async () => {
+      const workspacePath = await workspace(
+        "setup",
+        [
+          "sleep 120 &",
+          "sleeper=$!",
+          'node -e "setTimeout(() => {}, 120000)" &',
+          "native=$!",
+          "sleep 1",
+          'read -r sleeper_winpid <"/proc/$sleeper/winpid"',
+          'read -r native_winpid <"/proc/$native/winpid"',
+          'echo "pids $sleeper_winpid $native_winpid"',
+          "wait",
+          "",
+        ].join("\n"),
+      );
+      const controller = new AbortController();
+      let pids: number[] = [];
+      await expect(
+        runSetupScript({
+          workspacePath,
+          timeoutMs: 15_000,
+          signal: controller.signal,
+          onProgress: (entry) => {
+            if (!entry.text.startsWith("pids ")) return;
+            pids = entry.text.split(" ").slice(1).map(Number);
+            controller.abort();
+          },
+        }),
+      ).rejects.toThrow("cancelled");
+      expect(pids).toHaveLength(2);
+      const alive = pids.filter((pid) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(alive).toEqual([]);
+    },
+    20_000,
+  );
 
   it("accepts a stopped script only when its whole process tree is confirmed gone", async () => {
     await expect(

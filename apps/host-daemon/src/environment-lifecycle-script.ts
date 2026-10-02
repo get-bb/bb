@@ -10,10 +10,13 @@ import {
   isProcessGroupAlive,
   killProcessGroup,
   spawnPortableOutputProcess,
-  stopProcessGroupLeaderFirst,
   supportsProcessGroups,
   type ProcessStopResult,
 } from "@bb/process-utils";
+import {
+  findGitBashProcessGroup,
+  stopGitBashProcessGroup,
+} from "./git-bash-process-group.js";
 import fs from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
@@ -108,6 +111,7 @@ export async function assertScriptProcessTreeStopped(
 }
 
 const GIT_SHELL_LOOKUP_TIMEOUT_MS = 10_000;
+const WINDOWS_OUTPUT_CLOSE_GRACE_MS = 2_000;
 
 export async function resolveWindowsBashPath(
   env: NodeJS.ProcessEnv,
@@ -197,19 +201,26 @@ async function runLifecycleScript(
     startedAt,
   });
 
+  const scriptEnv =
+    command.pathPrefix.length === 0
+      ? env
+      : {
+          ...env,
+          PATH: [...command.pathPrefix, env.PATH ?? ""].join(path.delimiter),
+        };
   const child = spawnPortableOutputProcess({
     command: command.command,
     args: command.args,
     cwd: args.workspacePath,
     detached: supportsProcessGroups(),
-    env:
-      command.pathPrefix.length === 0
-        ? env
-        : {
-            ...env,
-            PATH: [...command.pathPrefix, env.PATH ?? ""].join(path.delimiter),
-          },
+    env: scriptEnv,
   });
+  const gitBash =
+    windowsBashPath === null
+      ? null
+      : { bashPath: windowsBashPath, child, env: scriptEnv };
+  const gitBashProcessGroup =
+    gitBash === null ? null : findGitBashProcessGroup(gitBash);
 
   const outputLineReader = createTerminalOutputLineReader();
   let outputIndex = 0;
@@ -233,17 +244,26 @@ async function runLifecycleScript(
   });
 
   let windowsTreeStop: Promise<ProcessStopResult> | undefined;
+  let reportOutputLeftOpen: (() => void) | undefined;
+  const outputLeftOpen = new Promise<null>((resolve) => {
+    reportOutputLeftOpen = () => resolve(null);
+  });
   const killScriptProcesses = (): void => {
-    if (process.platform === "win32") {
-      windowsTreeStop ??= stopProcessGroupLeaderFirst({
-        child,
-        timeoutMs: 0,
-        killGraceMs: 0,
-      });
-      windowsTreeStop.catch(() => undefined);
+    if (gitBash === null || gitBashProcessGroup === null) {
+      killProcessGroup({ child, signal: "SIGKILL" });
       return;
     }
-    killProcessGroup({ child, signal: "SIGKILL" });
+    if (windowsTreeStop !== undefined) {
+      return;
+    }
+    windowsTreeStop = stopGitBashProcessGroup({
+      ...gitBash,
+      processGroup: gitBashProcessGroup,
+    });
+    windowsTreeStop
+      .catch(() => undefined)
+      .then(() => delay(WINDOWS_OUTPUT_CLOSE_GRACE_MS))
+      .then(reportOutputLeftOpen, reportOutputLeftOpen);
   };
   const timeout = setTimeout(() => {
     timedOut = true;
@@ -264,13 +284,19 @@ async function runLifecycleScript(
   }
 
   try {
-    const result = await new Promise<{
+    const closed = new Promise<{
       exitCode: number | null;
       signal: NodeJS.Signals | null;
     }>((resolve, reject) => {
       child.on("error", reject);
       child.on("close", (exitCode, signal) => resolve({ exitCode, signal }));
     });
+    const result = await Promise.race([closed, outputLeftOpen]);
+    if (result === null) {
+      child.stdout.destroy();
+      child.stderr.destroy();
+      throw new LifecycleScriptTerminationUnverifiedError(args.scriptName);
+    }
 
     if (abortRequested || timedOut) {
       while (isProcessGroupAlive(child)) await delay(25);
