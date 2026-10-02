@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
 
 import supersetIcon from "../assets/competitors/superset.png";
-import { SpawnSidebar } from "../landing/landing-visuals";
-import { PhoneApproval, TeamCost, type BrandLogo } from "./compare-visuals";
+import {
+  AgentSplit,
+  PhoneApproval,
+  TeamCost,
+  type BrandLogo,
+} from "./compare-visuals";
 
 export type Mark = "yes" | "partial" | "no";
 
@@ -27,6 +31,7 @@ export type CompareHighlight = {
   title: string;
   body: ReactNode;
   visual: ReactNode;
+  wide: boolean;
 };
 
 export type CompareFaq = {
@@ -71,12 +76,12 @@ const BB_VS_SUPERSET: Comparison = {
   highlights: [
     {
       title: "Nothing behind a paywall",
+      wide: false,
       visual: (
         <TeamCost
           plan="Superset Pro"
           logo={SUPERSET_LOGO}
           yearlyPerSeatMonthly={15}
-          included={["Phone access", "Automations", "Remote access", "Plugins"]}
         />
       ),
       body: (
@@ -92,7 +97,8 @@ const BB_VS_SUPERSET: Comparison = {
     },
     {
       title: "Agents that hand off to each other",
-      visual: <SpawnSidebar />,
+      wide: true,
+      visual: <AgentSplit />,
       body: (
         <>
           <p>
@@ -101,14 +107,15 @@ const BB_VS_SUPERSET: Comparison = {
             never paste a diff between terminals.
           </p>
           <p>
-            Every agent it starts gets its own thread in your sidebar. Open it,
-            see its instructions, and step in anytime.
+            Every agent it starts gets its own thread. Open it side by side, see
+            its instructions, and step in anytime.
           </p>
         </>
       ),
     },
     {
       title: "Approve from your phone, free",
+      wide: false,
       visual: <PhoneApproval />,
       body: (
         <>

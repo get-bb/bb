@@ -14,7 +14,7 @@ import {
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import type { CompareCell, Comparison, Mark } from "./comparisons";
-import { BrandMark, AgentSplit, type BrandLogo } from "./compare-visuals";
+import { BrandMark, type BrandLogo } from "./compare-visuals";
 import compareCss from "./compare.css?url";
 
 export function compareHead(comparison: Comparison) {
@@ -159,18 +159,31 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
           {comparison.switchGuide.label}
           <HugeiconsIcon icon={ArrowRight01Icon} className="cmp-switch-arrow" />
         </a>
-        <AgentSplit />
       </header>
 
-      {comparison.highlights.map((highlight) => (
-        <Band
-          key={highlight.title}
-          title={highlight.title}
-          visual={highlight.visual}
-        >
-          {highlight.body}
-        </Band>
-      ))}
+      {comparison.highlights.map((highlight) =>
+        highlight.wide ? (
+          <section
+            key={highlight.title}
+            className="band cmp-wide-band"
+            data-reveal
+          >
+            <div className="cmp-wide-copy">
+              <h2>{highlight.title}</h2>
+              {highlight.body}
+            </div>
+            {highlight.visual}
+          </section>
+        ) : (
+          <Band
+            key={highlight.title}
+            title={highlight.title}
+            visual={highlight.visual}
+          >
+            {highlight.body}
+          </Band>
+        ),
+      )}
 
       <section className="cmp-section" data-reveal>
         <h2 id="cmp-table-title" className="sec-title">

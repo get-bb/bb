@@ -7,7 +7,6 @@ import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
-import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -203,12 +202,10 @@ export function TeamCost({
   plan,
   logo,
   yearlyPerSeatMonthly,
-  included,
 }: {
   plan: string;
   logo: BrandLogo;
   yearlyPerSeatMonthly: number;
-  included: string[];
 }) {
   const [seats, setSeats] = useState(5);
   const total = seats * yearlyPerSeatMonthly * 12;
@@ -265,14 +262,6 @@ export function TeamCost({
           <span className="cmp-cost-fill cmp-cost-fill-bb" />
         </span>
       </div>
-      <ul className="cmp-cost-incl" aria-label="Included in bb">
-        {included.map((item) => (
-          <li key={item}>
-            <HugeiconsIcon icon={Tick02Icon} className="cmp-cost-check" />
-            {item}
-          </li>
-        ))}
-      </ul>
       <p className="cmp-cost-foot">
         {plan} at ${yearlyPerSeatMonthly}/user/mo billed yearly. Your Claude or
         Codex plan is separate either way.

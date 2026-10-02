@@ -567,12 +567,33 @@
   white-space: nowrap;
 }
 
+.cmp-wide-copy {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.cmp-wide-band h2 {
+  font-size: clamp(24px, 3.2vw, 34px);
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  color: var(--heading);
+}
+
+.cmp-wide-copy p {
+  margin-top: 16px;
+  color: var(--dim);
+  text-wrap: pretty;
+}
+
 .cmp-split {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
   max-width: 920px;
-  margin: 52px auto 0;
+  margin: 40px auto 0;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--bg);
@@ -795,8 +816,16 @@
 
 @media (max-width: 720px) {
   .cmp-split {
-    margin-top: 40px;
+    margin-top: 28px;
     border-radius: 14px;
+  }
+
+  .cmp-wide-copy {
+    text-align: left;
+  }
+
+  .cmp-page .cmp-wide-band h2 {
+    font-size: 26px;
   }
 
   .cmp-feed {
@@ -936,32 +965,6 @@
 .cmp-cost-fill-bb {
   inline-size: 8px;
   background: var(--ok);
-}
-
-.cmp-cost-incl {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-soft);
-  list-style: none;
-}
-
-.cmp-cost-incl li {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 9px 3px 7px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--ok) 10%, var(--bg));
-  font-size: 12px;
-  color: var(--ink-strong);
-}
-
-.cmp-cost-check {
-  width: 12px;
-  height: 12px;
-  color: var(--ok);
 }
 
 .cmp-cost-foot {
