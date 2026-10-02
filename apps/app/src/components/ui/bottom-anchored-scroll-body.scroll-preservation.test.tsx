@@ -8,6 +8,7 @@ import {
   useBottomAnchoredScroll,
 } from "@/components/ui/bottom-anchored-scroll-body";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
+import { scrollPageToTop } from "@/lib/page-scroll-to-top";
 
 interface ScrollMetrics {
   scrollHeight: number;
@@ -250,6 +251,49 @@ afterEach(() => {
 });
 
 describe("BottomAnchoredScrollBody scroll preservation", () => {
+  it("detaches from new messages when the page header scrolls to the top", () => {
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+    });
+    const header = document.createElement("header");
+    scrollArea.parentElement?.prepend(header);
+    vi.spyOn(scrollArea, "getClientRects").mockReturnValue(
+      Object.assign([new DOMRect(0, 0, 100, 100)], { item: () => null }),
+    );
+    Object.defineProperty(scrollArea, "scrollTo", {
+      configurable: true,
+      value: vi.fn((options: ScrollToOptions) => {
+        scrollArea.scrollTop = options.top ?? scrollArea.scrollTop;
+      }),
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-a"), { top: 0, bottom: 100 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+
+    scrollPageToTop(header);
+    fireEvent.scroll(scrollArea);
+
+    expect(scrollArea.scrollTop).toBe(0);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-a",
+      offsetWithinRow: 0,
+      atBottom: false,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+    getLatestResizeObserver().trigger();
+    expect(scrollArea.scrollTop).toBe(0);
+  });
+
   it("shows the thread scrollbar only while scroll events are active", () => {
     vi.useFakeTimers();
     const { scrollArea } = renderTimeline({
