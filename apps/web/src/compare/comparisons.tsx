@@ -106,8 +106,8 @@ const BB_VS_SUPERSET: Comparison = {
             Your agents message each other, and you watch them side by side.
           </p>
           <p>
-            Works with Claude Code, Codex, Cursor, Pi, OpenCode, and any ACP
-            agent, including Devin. Need another? Build a plugin for it.
+            Works with any agent: Claude Code, Codex, Cursor, Pi, OpenCode,
+            Devin. Need another? Add it with a plugin.
           </p>
         </>
       ),
