@@ -1295,8 +1295,16 @@ export function createClaudeDeltaTranslator(
   function setClaudeReportedContextWindow(
     threadId: string,
     size: number,
-  ): void {
-    stateFor({ threadId }).selectedModelContextWindow = size;
+  ): ThreadDelta {
+    const state = stateFor({ threadId });
+    state.selectedModelContextWindow = size;
+    return {
+      kind: "contextWindow",
+      used: state.latestRequestContextTokens ?? null,
+      size,
+      estimated: true,
+      attach: "currentOrLast",
+    };
   }
 
   return {

@@ -706,9 +706,14 @@ describe("bridge", () => {
     }
   });
 
-  it.each([200_000, 1_000_000])(
-    "uses the reported %i capacity from initialization through assistant messages and compaction",
-    async (capacity) => {
+  it.each([
+    [200_000, false],
+    [1_000_000, false],
+    [200_000, true],
+    [1_000_000, true],
+  ])(
+    "uses the reported %i capacity from initialization through assistant messages and compaction (delayed: %s)",
+    async (capacity, delayed) => {
       const bridge = createBridgeJsonRpcTestHarness(handleLine);
       const queries: ControlledClaudeQuery[] = [];
       queryMock.mockImplementation(() => {
@@ -722,6 +727,10 @@ describe("bridge", () => {
         });
         queries.push(query);
         return query;
+      });
+      let resolveReport!: (report: unknown) => void;
+      const pending = new Promise<unknown>((resolve) => {
+        resolveReport = resolve;
       });
       const threadId = "thread-context-snapshot";
       try {
@@ -750,6 +759,7 @@ describe("bridge", () => {
         );
         await readNextPrompt(getLatestQueryCall());
         await bridge.waitForResponse(2);
+        if (delayed) queries[0].getContextUsage.mockReturnValueOnce(pending);
         queries[0].emit({
           type: "system",
           subtype: "init",
@@ -767,11 +777,55 @@ describe("bridge", () => {
           uuid: "00000000-0000-4000-8000-000000000001",
           session_id: threadId,
         });
+        if (delayed) {
+          await vi.waitFor(() =>
+            expect(queries[0].getContextUsage).toHaveBeenCalledTimes(1),
+          );
+          queries[0].emit(
+            createAssistantToolUseMessage({
+              parentToolUseId: null,
+              toolInput: { command: "pwd" },
+              toolName: "Bash",
+              toolUseId: "before-capacity",
+            }),
+          );
+          await vi.waitFor(() => {
+            const events = assembleCapturedThreadEvents(
+              bridge.messages,
+              "claude-code",
+            );
+            expect(
+              events
+                .filter(
+                  (event) => event.type === "thread/contextWindowUsage/updated",
+                )
+                .at(-1)?.contextWindowUsage.usedTokens,
+            ).toBe(0);
+          });
+          resolveReport({
+            categories: [{ name: "Provider category", tokens: 450 }],
+            totalTokens: 450,
+            rawMaxTokens: capacity,
+            model: "claude-opus-5-5",
+            isAutoCompactEnabled: false,
+          });
+        }
         await vi.waitFor(() => {
           const events = assembleCapturedThreadEvents(
             bridge.messages,
             "claude-code",
           );
+          if (delayed) {
+            const usage = events
+              .filter(
+                (event) => event.type === "thread/contextWindowUsage/updated",
+              )
+              .at(-1)?.contextWindowUsage;
+            expect(usage?.modelContextWindow).toBe(capacity);
+            expect(usage?.usedTokens).not.toBe(450);
+            expect(usage?.snapshot).toBeUndefined();
+            return;
+          }
           const snapshots = events.filter(
             (event) =>
               event.type === "thread/contextWindowUsage/updated" &&

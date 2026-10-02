@@ -675,7 +675,7 @@ async function applyLiveSessionSettings(
 ): Promise<void> {
   const current = threadSession.attachment.liveSettings;
   if (current.model !== next.model) {
-    threadSession.contextUsageCollector.invalidate();
+    threadSession.contextUsageCollector.invalidateCapacity();
     await threadSession.session.setModel(next.model);
     seedModelContextWindowHint(threadSession, threadId, next.model);
   }
@@ -1445,20 +1445,23 @@ function createOnSdkMessage(
               sessionSerial: args.sessionSerial,
               threadId: args.threadIdRef.current,
             }) === threadSession && !threadSession.streamEnded,
-          publish: (snapshot) => {
-            threadSession.translator.setClaudeReportedContextWindow(
-              args.threadIdRef.current,
-              snapshot.contextWindowTokens,
-            );
+          publish: (snapshot, snapshotCurrent) => {
+            const capacity =
+              threadSession.translator.setClaudeReportedContextWindow(
+                args.threadIdRef.current,
+                snapshot.contextWindowTokens,
+              );
             sendThreadDeltas(args.threadIdRef.current, [
-              {
-                kind: "contextWindow",
-                used: snapshot.usedTokens,
-                size: snapshot.contextWindowTokens,
-                estimated: snapshot.estimated,
-                snapshot,
-                attach: "currentOrLast",
-              },
+              snapshotCurrent
+                ? {
+                    kind: "contextWindow",
+                    used: snapshot.usedTokens,
+                    size: snapshot.contextWindowTokens,
+                    estimated: snapshot.estimated,
+                    snapshot,
+                    attach: "currentOrLast",
+                  }
+                : capacity,
             ]);
           },
         });
