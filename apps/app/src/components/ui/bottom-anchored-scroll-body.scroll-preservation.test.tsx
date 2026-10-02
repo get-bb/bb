@@ -278,11 +278,12 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     scrollPageToTop(header);
     scrollArea.scrollTop = 298;
     fireEvent.scroll(scrollArea);
+    vi.advanceTimersByTime(300);
     expect(readAnchor("thread-a")?.atBottom).toBe(false);
 
-    vi.advanceTimersByTime(300);
     scrollArea.scrollTop = 0;
     fireEvent.scroll(scrollArea);
+    vi.advanceTimersByTime(300);
 
     expect(scrollArea.scrollTop).toBe(0);
     expect(readAnchor("thread-a")).toEqual({
