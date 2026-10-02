@@ -145,6 +145,9 @@ function StoragePage({
   const primaryHostId = data?.primaryHostId ?? null;
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
   const [actionError, setError] = useState<string | null>(null);
+  const [actionScope, setActionScope] = useState<"storage" | "retention">(
+    "storage",
+  );
   const error = actionError ?? loadError;
   const [actionBusy, setBusy] = useState(false);
   const busy =
@@ -170,7 +173,9 @@ function StoragePage({
   async function perform<T>(
     work: () => Promise<T>,
     success?: (result: T) => string,
+    scope: "storage" | "retention" = "storage",
   ) {
+    setActionScope(scope);
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -186,9 +191,13 @@ function StoragePage({
   }
   async function preview(policy: Policy) {
     setConfirmation(null);
-    await perform(async () => {
-      setConfirmation({ policy, preview: await rpc.call("preview", policy) });
-    });
+    await perform(
+      async () => {
+        setConfirmation({ policy, preview: await rpc.call("preview", policy) });
+      },
+      undefined,
+      "retention",
+    );
   }
   async function clearThread(threadId: string) {
     if (threadClears[threadId]?.state === "clearing") return;
@@ -447,24 +456,25 @@ function StoragePage({
             </div>
           </header>
         )}
-        {error && !(cleanup && actionError) && (
-          <div
-            role="alert"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-          >
-            <p>{error}</p>
-            {loadError && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void refresh()}
-              >
-                Try again
-              </Button>
-            )}
-          </div>
-        )}
-        {notice && (
+        {error &&
+          !(actionError && (cleanup || actionScope === "retention")) && (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            >
+              <p>{error}</p>
+              {loadError && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refresh()}
+                >
+                  Try again
+                </Button>
+              )}
+            </div>
+          )}
+        {notice && actionScope === "storage" && (
           <p role="status" className="flex items-center gap-2 text-sm">
             <Icon name="Check" className="size-4" />
             {notice}
@@ -912,6 +922,20 @@ function StoragePage({
                   ones you want to keep.
                 </p>
               </div>
+              {actionError && actionScope === "retention" && !confirmation && (
+                <p role="alert" className="text-xs text-destructive">
+                  {actionError}
+                </p>
+              )}
+              {notice && actionScope === "retention" && (
+                <p
+                  role="status"
+                  className="flex items-center gap-2 text-xs text-muted-foreground"
+                >
+                  <Icon name="Check" className="size-3.5" />
+                  {notice}
+                </p>
+              )}
               {policy && (
                 <div className="divide-y divide-border rounded-lg border border-border bg-card">
                   <RetentionField
@@ -1006,6 +1030,11 @@ function StoragePage({
                     remove worktrees and uncommitted changes. Deleting
                     permanently removes history and files.
                   </p>
+                  {actionError && actionScope === "retention" && (
+                    <p role="alert" className="text-xs text-destructive">
+                      {actionError}
+                    </p>
+                  )}
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"
@@ -1026,6 +1055,7 @@ function StoragePage({
                             setConfirmation(null);
                           },
                           () => "Retention policy saved.",
+                          "retention",
                         )
                       }
                     >
