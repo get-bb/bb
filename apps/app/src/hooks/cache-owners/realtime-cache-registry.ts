@@ -931,7 +931,12 @@ function dirtyThreadStorageQueriesForThread({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   if (!threadId) {
-    return dirtyAllThreadStorageQueries();
+    return [
+      allThreadStorageFilesQueryKeyPrefix(),
+      allThreadStorageLocationsQueryKeyPrefix(),
+      allThreadStoragePathsQueryKeyPrefix(),
+      allThreadStorageFilePreviewQueryKeyPrefix(),
+    ];
   }
   return [
     threadStorageFilesForThreadQueryKeyPrefix(threadId),
@@ -1122,12 +1127,18 @@ function dirtyThreadStorageQueriesForEnvironment({
   return queryKeys;
 }
 
-function dirtyAllThreadStorageQueries(): QueryKey[] {
+function dirtyAllThreadStorageQueries({
+  queryClient,
+}: HostRealtimeDirtyContext): QueryKey[] {
   return [
     allThreadStorageFilesQueryKeyPrefix(),
     allThreadStorageLocationsQueryKeyPrefix(),
     allThreadStoragePathsQueryKeyPrefix(),
-    allThreadStorageFilePreviewQueryKeyPrefix(),
+    ...queryClient
+      .getQueryCache()
+      .findAll({ queryKey: allThreadStorageFilePreviewQueryKeyPrefix() })
+      .filter((query) => query.state.data === undefined)
+      .map((query) => query.queryKey),
   ];
 }
 

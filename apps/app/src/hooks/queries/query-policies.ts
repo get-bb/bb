@@ -1,3 +1,5 @@
+import type { Query } from "@tanstack/react-query";
+
 const SERVER_SESSION_STALE_TIME_MS = 60 * 60_000;
 const FOCUS_OWNED_LIVE_STALE_TIME_MS = 30_000;
 const TYPEAHEAD_STALE_TIME_MS = 15_000;
@@ -53,4 +55,9 @@ export const HEAVY_PAYLOAD_GC_TIME_MS = 60_000;
 
 export const HEAVY_PAYLOAD_QUERY_POLICY = {
   gcTime: HEAVY_PAYLOAD_GC_TIME_MS,
+} as const;
+
+export const FILE_PREVIEW_QUERY_POLICY = {
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: <T>(query: Query<T>) => query.state.data === undefined,
 } as const;

@@ -15,7 +15,6 @@ export function useSystemMachineProviders(): {
     ...SERVER_SESSION_QUERY_POLICY,
   });
   return {
-    providers:
-      result.data ?? (result.isError ? NO_MACHINE_PROVIDERS : undefined),
+    providers: result.isError ? NO_MACHINE_PROVIDERS : result.data,
   };
 }

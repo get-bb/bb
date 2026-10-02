@@ -225,7 +225,7 @@ export function RemotePathBrowser({
     !isPlaceholderData;
 
   let body: ReactNode;
-  if (isError && data === undefined) {
+  if (isError) {
     body = (
       <EmptyState
         icon="AlertCircle"

@@ -43,11 +43,7 @@ function useTaskEmbed(taskKey: string): {
       },
       () => {
         if (seq !== seqRef.current) return;
-        setState((current) =>
-          current.kind === "found" || current.kind === "not_found"
-            ? current
-            : { kind: "error" },
-        );
+        setState({ kind: "error" });
       },
     );
   }, [rpc, taskKey]);
@@ -55,9 +51,6 @@ function useTaskEmbed(taskKey: string): {
   useEffect(() => {
     setState({ kind: "loading" });
     refresh();
-    return () => {
-      seqRef.current += 1;
-    };
   }, [refresh]);
 
   const onEvent = useCallback(

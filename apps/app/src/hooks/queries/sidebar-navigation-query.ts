@@ -43,10 +43,7 @@ export function useSidebarNavigation(options?: QueryOptions) {
     },
     enabled,
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
-    initialData: () => readCachedSidebarBootstrap() ?? undefined,
-    initialDataUpdatedAt: 0,
-    refetchOnMount: (query) =>
-      query.state.dataUpdatedAt === 0 ? "always" : false,
+    placeholderData: () => readCachedSidebarBootstrap() ?? undefined,
   });
 }
 

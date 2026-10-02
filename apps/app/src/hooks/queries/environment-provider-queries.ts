@@ -56,8 +56,8 @@ function environmentProvidersQueryOptions(
       writeCachedEnvironmentProviderList(cacheKey, providers);
       return providers;
     },
-    initialData: () => readCachedEnvironmentProviderList(cacheKey) ?? undefined,
-    initialDataUpdatedAt: 0,
+    placeholderData: () =>
+      readCachedEnvironmentProviderList(cacheKey) ?? undefined,
     ...SERVER_SESSION_QUERY_POLICY,
   };
 }
@@ -69,7 +69,6 @@ export function useSystemEnvironmentProviders(
 } {
   const result = useQuery(environmentProvidersQueryOptions(query));
   return {
-    providers:
-      result.data ?? (result.isError ? NO_ENVIRONMENT_PROVIDERS : undefined),
+    providers: result.isError ? NO_ENVIRONMENT_PROVIDERS : result.data,
   };
 }

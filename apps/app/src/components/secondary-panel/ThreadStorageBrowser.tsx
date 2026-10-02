@@ -55,7 +55,7 @@ export function ThreadStorageBrowser({
     />
   );
   let body: ReactNode;
-  if (filesError && !controller.hasLoadedFiles) {
+  if (filesError) {
     const lifecycleErrorDescription = describeLifecycleError({
       error: filesError,
       operation: "load_thread_storage",

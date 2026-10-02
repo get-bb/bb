@@ -3,7 +3,7 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
-let app: Awaited<ReturnType<typeof loadPluginApp>>;
+const app = await loadPluginApp(() => import("./app"));
 
 const source = {
   kind: "thread-storage" as const,
@@ -12,8 +12,7 @@ const source = {
   projectId: null,
 };
 
-beforeEach(async () => {
-  app = await loadPluginApp(() => import("./app"));
+beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
   vi.stubGlobal("URL", {
     ...URL,

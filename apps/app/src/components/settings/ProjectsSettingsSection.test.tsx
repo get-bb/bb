@@ -12,10 +12,6 @@ import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
-import {
-  SIDEBAR_BOOTSTRAP_CACHE_KEY,
-  resetSidebarBootstrapCacheForTest,
-} from "@/lib/sidebar-bootstrap-cache";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
@@ -399,8 +395,6 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("surfaces a failed project load instead of staying on the loader", async () => {
-    resetSidebarBootstrapCacheForTest();
-    window.localStorage.removeItem(SIDEBAR_BOOTSTRAP_CACHE_KEY);
     stubSidebarBootstrapFetch([], 500);
 
     renderSection();

@@ -292,10 +292,7 @@ export function ProjectDetailSettingsView() {
     [localSourcePicker, pickerHostId, project],
   );
 
-  if (
-    (sidebarNavigationQuery.isError && projects === undefined) ||
-    (hostsQuery.isError && hostsQuery.data === undefined)
-  ) {
+  if (sidebarNavigationQuery.isError || hostsQuery.isError) {
     return (
       <LoadingShell>
         <p className="text-sm text-destructive" role="alert">
@@ -469,7 +466,7 @@ export function ProjectDetailSettingsView() {
           title="Thread defaults"
           description={DEFAULTS_DESCRIPTION}
         >
-          {defaultsQuery.isError && defaultsQuery.data === undefined ? (
+          {defaultsQuery.isError ? (
             <p className="text-sm text-destructive" role="alert">
               Couldn't load thread defaults.
             </p>

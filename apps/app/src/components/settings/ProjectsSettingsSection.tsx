@@ -288,7 +288,7 @@ export function ProjectsSettingsSection() {
           </Button>
         }
       >
-        {sidebarNavigationQuery.isError && projects === undefined ? (
+        {sidebarNavigationQuery.isError ? (
           <p className="text-sm text-destructive" role="alert">
             Couldn't load projects.
           </p>
