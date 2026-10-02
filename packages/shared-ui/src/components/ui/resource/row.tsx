@@ -224,6 +224,29 @@ export function ResourceRow({
 }) {
   const hasLeading =
     leading !== undefined && leading !== null && leading !== false;
+  const openButton = (
+    <button
+      type="button"
+      aria-label={openLabel}
+      onClick={onOpen}
+      className={cn(
+        "block min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        !titleAside && "w-full",
+      )}
+    >
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          {title}
+        </span>
+        {titleMeta ? (
+          <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
+            {titleMeta}
+          </span>
+        ) : null}
+        {state}
+      </span>
+    </button>
+  );
   return (
     <div
       data-resource-row
@@ -246,37 +269,14 @@ export function ResourceRow({
         </span>
       ) : null}
       <span className="min-w-0">
-        <span
-          className={cn(
-            "min-w-0",
-            titleAside
-              ? "flex flex-wrap items-center gap-x-2 gap-y-0.5"
-              : "block",
-          )}
-        >
-          <button
-            type="button"
-            aria-label={openLabel}
-            onClick={onOpen}
-            className={cn(
-              "min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              titleAside ? "block" : "block w-full",
-            )}
-          >
-            <span className="flex min-w-0 items-baseline gap-2">
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                {title}
-              </span>
-              {titleMeta ? (
-                <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
-                  {titleMeta}
-                </span>
-              ) : null}
-              {state}
-            </span>
-          </button>
-          {titleAside}
-        </span>
+        {titleAside ? (
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            {openButton}
+            {titleAside}
+          </span>
+        ) : (
+          openButton
+        )}
         {description ? (
           <span className="mt-0.5 block truncate text-xs leading-snug text-muted-foreground">
             {description}

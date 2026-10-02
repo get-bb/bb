@@ -299,7 +299,7 @@ function RowName({
 
 function stateTextClass(state: UpdateState): string {
   return UPDATE_STATE_PRESENTATION[state].tone === "error"
-    ? "text-destructive"
+    ? "font-semibold text-destructive"
     : "font-semibold text-subtle-foreground";
 }
 
@@ -397,8 +397,6 @@ function RowStateControl({
 }) {
   const presentation = UPDATE_STATE_PRESENTATION[state];
   const icon = actionIcon ?? (presentation.icon as IconName | null);
-  const buttonIcon =
-    state === "failed" ? (RETRY_ACTION_ICON as IconName) : null;
   const spin = loading || presentation.inFlight === true;
   const srLabel = presentation.label;
   const explainOnHover = presentation.inFlight !== true;
@@ -418,10 +416,8 @@ function RowStateControl({
         >
           {loading ? (
             <Icon aria-hidden name="Loading" className="size-3 animate-spin" />
-          ) : buttonLeading !== undefined ? (
+          ) : (
             buttonLeading
-          ) : buttonIcon === null ? null : (
-            <Icon aria-hidden name={buttonIcon} className="size-3" />
           )}
           {buttonLabel}
         </Button>
