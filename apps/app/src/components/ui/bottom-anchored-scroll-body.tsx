@@ -236,6 +236,7 @@ export function BottomAnchoredScrollBody({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
+  const scrollToTopInProgressRef = useRef(false);
   const userScrollIntentUntilRef = useRef(0);
   const userScrollInputPendingRef = useRef(false);
   const pointerScrollIntentRef = useRef(false);
@@ -295,6 +296,7 @@ export function BottomAnchoredScrollBody({
   }, []);
 
   const cancelQueuedRestore = useCallback(() => {
+    scrollToTopInProgressRef.current = false;
     if (restoreFrameRef.current === null) return;
     window.cancelAnimationFrame(restoreFrameRef.current);
     restoreFrameRef.current = null;
@@ -355,6 +357,7 @@ export function BottomAnchoredScrollBody({
 
   const scrollToBottom = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
+    scrollToTopInProgressRef.current = false;
     cancelPendingScrollRestore();
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
@@ -480,7 +483,7 @@ export function BottomAnchoredScrollBody({
       const recentUserIntent = hasRecentUserScrollIntent();
       const anchorAtom =
         threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
-      if (atBottomByGeometry) {
+      if (atBottomByGeometry && !scrollToTopInProgressRef.current) {
         userDetachedFromBottomRef.current = false;
         store.set(anchorAtom, {
           rowId: "",
@@ -570,6 +573,7 @@ export function BottomAnchoredScrollBody({
   );
 
   const markUserScrollIntent = useCallback(() => {
+    scrollToTopInProgressRef.current = false;
     userScrollInputPendingRef.current = true;
     userScrollIntentUntilRef.current =
       window.performance.now() + USER_SCROLL_INTENT_MS;
@@ -588,6 +592,7 @@ export function BottomAnchoredScrollBody({
       cancelQueuedRestore();
       pendingScrollRestoreRef.current = null;
       pendingPrependAnchorRef.current = null;
+      scrollToTopInProgressRef.current = scrollArea.scrollTop > 0;
       scrollArea.scrollTo({
         top: 0,
         behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -604,6 +609,7 @@ export function BottomAnchoredScrollBody({
   const markWheelScrollIntent = useCallback(
     (event: WheelEvent) => {
       const scrollArea = scrollAreaRef.current;
+      scrollToTopInProgressRef.current = false;
       if (event.deltaY > 0 && scrollArea) {
         const nearBottom =
           isScrolledNearBottom(
@@ -634,6 +640,7 @@ export function BottomAnchoredScrollBody({
   }, [markUserScrollIntent]);
 
   const startPointerScrollIntent = useCallback(() => {
+    scrollToTopInProgressRef.current = false;
     pointerScrollIntentRef.current = true;
   }, []);
 
@@ -668,6 +675,11 @@ export function BottomAnchoredScrollBody({
     const hasDirectUserScrollInput =
       userScrollInputPendingRef.current || pointerScrollIntentRef.current;
     userScrollInputPendingRef.current = false;
+
+    if (scrollToTopInProgressRef.current) {
+      if (scrollArea.scrollTop <= 0) scrollToTopInProgressRef.current = false;
+      return;
+    }
 
     if (
       pendingPrependAnchorRef.current !== null &&
