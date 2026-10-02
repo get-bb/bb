@@ -222,3 +222,35 @@ The bb user and project roots keep higher precedence than matching shared roots.
 
 OpenCode ACP declares support for the built-in /compact command. Cursor ACP does
 not expose compatible manual compaction through ACP.
+
+Codex MCP elicitation
+
+Codex MCP form requests appear as a pending interaction owned by the Codex
+provider, separately from automatic tool approval review. Review the MCP server,
+message, displayed parameters and risk warning, then choose Accept (or an offered
+permission duration), Decline, or Cancel. BB sends that decision to Codex;
+automatic review never supplies an answer. Codex owns any permission persistence.
+
+Supported forms contain an object with string fields (including string enums
+and length bounds), booleans, and numbers/integers with minimum/maximum bounds.
+Required fields and submitted types are validated again in the bridge. Empty
+forms support confirmation requests such as Computer Use app access. Unknown
+fields and constraints, nested/array schemas, URL mode, and OpenAI-specific modes
+are rejected explicitly with a JSON-RPC invalid-params error. Unsupported requests
+do not create an acceptance action. Forms collect ordinary data, not secrets.
+
+Use `bb thread interactions list <thread-id>` and `show` to inspect a request.
+The existing CLI `respond` and SDK `threads.interactions.respond` accept these
+values for a `provider-codex/mcp-elicitation` interaction:
+
+  {"action":"accept","content":{"city":"Paris","count":2}}
+  {"action":"accept","content":{},"persist":"session"}
+  {"action":"decline"}
+  {"action":"cancel"}
+
+Include `persist` only when offered, with either `session` or `always` as shown
+in the request. Supply only requested fields in `content`. An invalid submitted
+answer fails the provider request; it never becomes an acceptance. Use the form
+UI for validation before submitting. Cancelling the turn or losing the provider
+connection cannot grant access. A request without a Codex turn ID is correlated
+by the runtime to the active BB turn; a request without an active turn is rejected.

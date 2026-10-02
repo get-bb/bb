@@ -378,7 +378,8 @@ function takeScriptedTurnIndex() {
 async function runScriptFileTurn(threadId) {
   const turn = scriptedTurns[takeScriptedTurnIndex()] ?? [];
   for (const entry of turn) {
-    const params = withThreadId(entry.params ?? {}, threadId);
+    const params =
+      entry.rawParams ?? withThreadId(entry.params ?? {}, threadId);
     if (entry.kind === "request") {
       await requestFromClient(entry.method, params);
       continue;

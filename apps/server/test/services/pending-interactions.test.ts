@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   events as eventTable,
   listPendingInteractionsByThread,
+  setPendingInteractionResolving,
   pendingInteractions as pendingInteractionTable,
 } from "@bb/db";
-import type { PendingInteractionCreate } from "@bb/domain";
+import { turnScope, type PendingInteractionCreate } from "@bb/domain";
+import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
 import { handleHostSessionOpened } from "../../src/internal/session-owner-side-effects.js";
 import { toPendingInteraction } from "../../src/services/interactions/pending-interaction-serialization.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
@@ -94,6 +96,76 @@ function requestPluginInteraction(
 }
 
 describe("pending interaction lifecycle", () => {
+  it.each([false, true])(
+    "settles only an unanswered request when its turn finishes (answer in flight: %s)",
+    async (resolving) => {
+      await withTestHarness(async (harness) => {
+        const thread = seedPluginInteractionThread(harness.deps, "turn-ended");
+        harness.deps.pendingInteractions.setPluginDirectory({
+          isLoaded: (id) => id === "provider-codex",
+        });
+        const created = registerPendingInteraction(
+          harness.deps,
+          harness.deps.pendingInteractions,
+          {
+            threadId: thread.id,
+            turnId: "turn-waiting",
+            providerId: "codex",
+            providerThreadId: "provider-waiting",
+            providerRequestId: "request-waiting",
+            payload: {
+              kind: "provider-codex/mcp-elicitation",
+              title: "MCP request",
+              data: {},
+            },
+          },
+        );
+        if (created.outcome === "rejected") throw new Error(created.reason);
+        if (resolving)
+          setPendingInteractionResolving(harness.deps.db, {
+            id: created.interaction.id,
+            resolution: JSON.stringify({
+              kind: "request_answer",
+              value: { action: "accept", content: {} },
+            }),
+          });
+        applyTurnCompletedEvent(harness.deps, {
+          type: "turn/completed",
+          providerThreadId: "provider-waiting",
+          threadId: thread.id,
+          scope: turnScope("other-turn"),
+          status: "failed",
+        });
+        expect(
+          harness.deps.pendingInteractions.listPendingThreadInteractions(
+            thread.id,
+          ),
+        ).toHaveLength(1);
+        applyTurnCompletedEvent(harness.deps, {
+          type: "turn/completed",
+          providerThreadId: "provider-waiting",
+          threadId: thread.id,
+          scope: turnScope("turn-waiting"),
+          status: "failed",
+        });
+        expect(
+          harness.deps.pendingInteractions.listPendingThreadInteractions(
+            thread.id,
+          ),
+        ).toHaveLength(resolving ? 1 : 0);
+        expect(
+          listPendingInteractionsByThread(harness.deps.db, {
+            threadId: thread.id,
+          })[0],
+        ).toMatchObject(
+          resolving
+            ? { status: "resolving" }
+            : { status: "interrupted", resolution: null },
+        );
+      });
+    },
+  );
+
   it("announces each committed plugin prompt once without read duplicates", async () => {
     await withTestHarness(async (harness) => {
       const thread = seedPluginInteractionThread(harness.deps, "pending-event");

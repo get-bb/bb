@@ -31,7 +31,10 @@ function lifecycleEventForTurnCompletion(
 }
 
 export function applyTurnCompletedEvent(
-  deps: Pick<AppDeps, "db" | "hub" | "logger" | "providerRegistry">,
+  deps: Pick<
+    AppDeps,
+    "db" | "hub" | "logger" | "providerRegistry" | "pendingInteractions"
+  >,
   payload: Extract<ThreadEvent, { type: "turn/completed" }>,
 ): ApplyTurnCompletedEventResult {
   const thread = getThread(deps.db, payload.threadId);
@@ -43,6 +46,21 @@ export function applyTurnCompletedEvent(
     type: payload.type,
     scope: payload.scope,
   });
+  for (const interaction of deps.pendingInteractions.listPendingThreadInteractions(
+    payload.threadId,
+  )) {
+    if (interaction.turnId !== turnId || interaction.status !== "pending")
+      continue;
+    deps.db.transaction((tx) => {
+      deps.pendingInteractions.interruptPendingInteractionInTransaction(
+        { db: tx, hub: deps.hub },
+        {
+          interactionId: interaction.id,
+          reason: `Provider turn ${payload.status} while awaiting user interaction`,
+        },
+      );
+    });
+  }
   const isRootTurnCompletion = hasRootStoredTurnStarted(deps.db, {
     threadId: payload.threadId,
     turnId,

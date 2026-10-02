@@ -59,6 +59,39 @@ function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
 }
 
 describe("InteractiveRequestRegistry", () => {
+  it("interrupts only the finished turn even during registration", async () => {
+    const registration =
+      createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+    const registry = createRegistry({
+      registerRequest: () => registration.promise,
+    });
+    const request = createCommandApprovalRequest();
+    const first = registry.registerAndWait(request);
+    const secondRequest = {
+      ...request,
+      turnId: "next-turn",
+      providerRequestId: "next-request",
+    };
+    const second = registry.registerAndWait(secondRequest);
+    registry.interruptTurn({
+      threadId: request.threadId,
+      turnId: request.turnId,
+      reason: "Turn ended",
+    });
+    registration.resolve({
+      outcome: "created",
+      interactionId: "pint_registry",
+      status: "pending",
+    });
+    await expect(first).rejects.toThrow("Turn ended");
+    registry.resolve({
+      ...secondRequest,
+      interactionId: "pint_registry",
+      resolution: createCommandApprovalResolution(),
+    });
+    await expect(second).resolves.toEqual(createCommandApprovalResolution());
+  });
+
   it("deduplicates registration retries for the same live provider request", async () => {
     const request = createCommandApprovalRequest();
     const registration =

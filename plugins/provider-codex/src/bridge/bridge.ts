@@ -1,10 +1,10 @@
 #!/usr/bin/env node
+import { CODEX_MCP_ELICITATION_KIND } from "../mcp-elicitation.js";
 
 import { createHash } from "node:crypto";
 import {
   isStandaloneBuiltinCompactCommand,
-  approvalInteractionOutcomeSchema,
-  userQuestionInteractionOutcomeSchema,
+  providerInteractionOutcomeSchema,
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
@@ -253,12 +253,23 @@ let runtimeRequestIdCounter = 0;
 function sendRuntimeRequest(
   method: string,
   params: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
   const responsePromise = new Promise<unknown>(
     (resolveResponse, rejectResponse) => {
+      const abort = () => {
+        pendingRuntimeRequests.delete(requestId);
+        rejectResponse(new Error("Codex interaction interrupted"));
+      };
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
+      signal?.addEventListener("abort", abort, { once: true });
       pendingRuntimeRequests.set(requestId, (response) => {
+        signal?.removeEventListener("abort", abort);
         if ("error" in response) {
           rejectResponse(
             new Error(response.error.message ?? "Runtime request failed"),
@@ -269,7 +280,7 @@ function sendRuntimeRequest(
       });
     },
   );
-  send({ jsonrpc: "2.0", id: requestId, method, params });
+  if (!signal?.aborted) send({ jsonrpc: "2.0", id: requestId, method, params });
   return responsePromise;
 }
 
@@ -474,6 +485,7 @@ interface CodexBridgeSession {
   quotaRecoveryAttempted: boolean;
   quotaRecoveryAllowed: boolean;
   rebuildBeforeNextTurnReason: string | null;
+  interactionAbort: AbortController;
   closing: boolean;
   previousChildExit: Promise<void> | null;
   releasePromise: Promise<void> | null;
@@ -508,13 +520,15 @@ function releaseSession(session: CodexBridgeSession): Promise<void> {
   if (session.releasePromise !== null) {
     return session.releasePromise;
   }
+  session.interactionAbort.abort();
   session.closing = true;
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
   const previousChildExit = session.previousChildExit;
   session.previousChildExit = null;
-  const currentChildExit = session.connection?.kill() ?? Promise.resolve();
+  const connection = session.connection;
+  const currentChildExit = Promise.resolve().then(() => connection?.kill());
   session.connection = null;
   const releasePromise =
     previousChildExit === null
@@ -859,27 +873,44 @@ function handleChildRequest(
     return;
   }
   const request = decoded;
+  if (
+    request.payload.kind === CODEX_MCP_ELICITATION_KIND &&
+    request.providerThreadId !== session.codexThreadId
+  ) {
+    responder.error(
+      BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+      "MCP elicitation belongs to another Codex thread",
+    );
+    return;
+  }
 
-  void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-    providerThreadId: session.codexThreadId ?? request.providerThreadId,
-    threadId: session.bbThreadId,
-    turnId: request.turnId,
-    payload: request.payload,
-    providerNativeIds: true,
-  })
-    .then((result) => {
-      const outcome =
-        request.payload.kind === "user_question"
-          ? userQuestionInteractionOutcomeSchema.parse({
-              payload: request.payload,
-              resolution: result,
-            })
-          : approvalInteractionOutcomeSchema.parse({
-              payload: request.payload,
-              resolution: result,
-            });
-      responder.result(buildCodexInteractiveResponse(outcome));
-    })
+  void sendRuntimeRequest(
+    BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+    {
+      providerThreadId: session.codexThreadId ?? request.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: request.turnId,
+      payload: request.payload,
+      providerNativeIds: true,
+    },
+    session.interactionAbort.signal,
+  )
+    .then(
+      (result) => {
+        const outcome = providerInteractionOutcomeSchema.parse({
+          payload: request.payload,
+          resolution: result,
+        });
+        responder.result(buildCodexInteractiveResponse(outcome));
+      },
+      (error: unknown) => {
+        if (request.payload.kind === CODEX_MCP_ELICITATION_KIND) {
+          responder.result({ action: "cancel", content: null, _meta: null });
+          return;
+        }
+        throw error;
+      },
+    )
     .catch((error: unknown) => {
       responder.error(
         BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
@@ -918,6 +949,7 @@ function handleChildExit(
   if (!session) {
     return;
   }
+  session.interactionAbort.abort();
   session.connection = null;
 
   const openTurnIds = [...session.openCodexTurnIds];
@@ -1108,6 +1140,7 @@ async function constructThreadSession(
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
+    interactionAbort: new AbortController(),
     turnRateLimits: null,
     quotaRecoveryAttempted: false,
     quotaRecoveryAllowed: !(
@@ -1287,6 +1320,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
     pendingPreIdentityDeltas: [],
+    interactionAbort: new AbortController(),
     turnRateLimits: null,
     quotaRecoveryAttempted: false,
     quotaRecoveryAllowed: session.quotaRecoveryAllowed,
@@ -1954,6 +1988,9 @@ async function handleThreadStop(
     return;
   }
 
+  const pendingInteractions = session.interactionAbort;
+  session.interactionAbort = new AbortController();
+  pendingInteractions.abort();
   const interruptFailure = await interruptCodexTurn(
     session,
     session.codexThreadId,
@@ -2356,6 +2393,7 @@ export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
 function killAllChildren(): void {
   for (const session of sessionsByBbThreadId.values()) {
+    session.interactionAbort.abort();
     session.closing = true;
     session.connection?.kill();
     session.connection = null;
