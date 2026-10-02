@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -47,7 +47,7 @@ const chunks: BundleStatsChunkInput[] = [
   chunk("assets/route-only.js", {
     moduleIds: [
       "/repo/node_modules/.pnpm/@pierre+diffs@1/node_modules/@pierre/diffs/dist/index.js",
-      resolve(import.meta.dirname, "lib/x.ts"),
+      resolve(import.meta.dirname, "lib/x.ts").split(sep).join("/"),
     ],
   }),
   chunk("assets/only-behind-dynamic-import.js", {

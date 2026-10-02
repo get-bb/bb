@@ -6,7 +6,10 @@ import {
   findUnusedEnrollmentCredential,
   type EnrollmentBootstrap,
 } from "./enrollments.js";
-import { manualEnrollmentCommand } from "./manual-enrollment-command.js";
+import {
+  manualEnrollmentCommand,
+  manualEnrollmentPowerShellCommand,
+} from "./manual-enrollment-command.js";
 import { serverAccess } from "./server-access.js";
 
 type Dependencies = Pick<AppDeps, "db" | "hub" | "logger" | "machineAuth">;
@@ -35,13 +38,15 @@ export async function prepareReconnect(
     hostId,
     enrollSource: "reconnect",
   });
+  const bootstrap = {
+    hostId,
+    serverUrl,
+    credential: credential.key,
+    expiresAt: credential.expiresAt,
+  };
   return {
-    command: manualEnrollmentCommand({
-      hostId,
-      serverUrl,
-      credential: credential.key,
-      expiresAt: credential.expiresAt,
-    }),
+    command: manualEnrollmentCommand(bootstrap),
+    windowsCommand: manualEnrollmentPowerShellCommand(bootstrap),
     expiresAt: credential.expiresAt,
     hostId,
   };

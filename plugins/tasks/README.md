@@ -52,6 +52,10 @@ authored the latest reply, resuming that thread when it is idle. Turn it off to
 keep the comment in Tasks only. If no agent has replied, the disabled control
 says so explicitly. Agents and scripts can use the same behavior with
 `bb tasks comment PROD-1 --body "New context" --notify`.
+The app and Tasks RPC return the saved comment before notification delivery,
+with `notifiedCount` initially 0. Comment change events publish immediately and
+again when delivery finishes. The CLI waits for delivery, so `--notify --json`
+includes the final `notifiedCount`. Failed delivery leaves that count at 0.
 When run from a thread, the CLI preserves that agent thread and any explicit
 `--author`; notification still targets the prior latest responder rather than
 the newly recorded agent comment itself.

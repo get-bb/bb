@@ -7,6 +7,40 @@ import { keepAwakeHostContract } from "./contract.js";
 
 const CAFFEINATE_COMMAND = "/usr/bin/caffeinate";
 const RESTART_DELAY_MS = 1_000;
+const MAX_RESTART_DELAY_MS = 60_000;
+const SETTLED_CHILD_MS = 10_000;
+const WINDOWS_AWAKE_STATE = 0x80000001;
+
+interface KeepAwakeCommand {
+  command: string;
+  args: string[];
+}
+
+export function keepAwakeCommand(
+  platform: NodeJS.Platform,
+  pid: number,
+): KeepAwakeCommand | null {
+  if (platform === "darwin") {
+    return { command: CAFFEINATE_COMMAND, args: ["-i", "-w", String(pid)] };
+  }
+  if (platform === "win32") {
+    return {
+      command: "powershell.exe",
+      args: [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        [
+          "$ErrorActionPreference = 'Stop'",
+          "$power = Add-Type -Name KeepAwake -Namespace Bb -PassThru -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern uint SetThreadExecutionState(uint flags);'",
+          `if ($power::SetThreadExecutionState(${WINDOWS_AWAKE_STATE}) -eq 0) { exit 1 }`,
+          `Wait-Process -Id ${pid}`,
+        ].join("; "),
+      ],
+    };
+  }
+  return null;
+}
 
 interface KeepAwakeChild {
   kill(signal: NodeJS.Signals): boolean;
@@ -16,6 +50,7 @@ interface KeepAwakeChild {
 interface KeepAwakeHostDependencies {
   readonly pid: number;
   readonly platform: NodeJS.Platform;
+  now?(): number;
   spawn(
     command: string,
     args: readonly string[],
@@ -28,7 +63,10 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
   let lifecycleSignal: AbortSignal | null = null;
   let desiredEnabled = false;
   let restartTimer: ReturnType<typeof setTimeout> | null = null;
+  let restartDelayMs = RESTART_DELAY_MS;
   let workerLease: ExperimentalHostWorkerLease | null = null;
+  const command = keepAwakeCommand(deps.platform, deps.pid);
+  const now = deps.now ?? Date.now;
 
   function clearRestart(): void {
     if (restartTimer === null) return;
@@ -56,10 +94,12 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     ) {
       return;
     }
+    const delayMs = restartDelayMs;
+    restartDelayMs = Math.min(restartDelayMs * 2, MAX_RESTART_DELAY_MS);
     restartTimer = setTimeout(() => {
       restartTimer = null;
       start();
-    }, RESTART_DELAY_MS);
+    }, delayMs);
   }
 
   function start(): void {
@@ -67,24 +107,26 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
       child !== null ||
       restartTimer !== null ||
       !desiredEnabled ||
-      deps.platform !== "darwin" ||
+      command === null ||
       lifecycleSignal?.aborted === true
     ) {
       return;
     }
     let next: KeepAwakeChild;
     try {
-      next = deps.spawn(CAFFEINATE_COMMAND, ["-i", "-w", String(deps.pid)], {
-        stdio: "ignore",
-      });
+      next = deps.spawn(command.command, command.args, { stdio: "ignore" });
     } catch {
       scheduleRestart();
       return;
     }
     child = next;
+    const startedAt = now();
     const clear = (): void => {
       if (child !== next) return;
       child = null;
+      if (now() - startedAt >= SETTLED_CHILD_MS) {
+        restartDelayMs = RESTART_DELAY_MS;
+      }
       scheduleRestart();
     };
     next.once("error", clear);
@@ -105,7 +147,7 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
   }
 
   function status(): { enabled: boolean; supported: boolean } {
-    return { enabled: child !== null, supported: deps.platform === "darwin" };
+    return { enabled: child !== null, supported: command !== null };
   }
 
   return experimental_defineHostEntry({
@@ -113,8 +155,9 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     handlers: {
       setEnabled(input, context) {
         bindLifecycle(context.lifecycle.signal);
-        desiredEnabled = deps.platform === "darwin" && input.enabled;
+        desiredEnabled = command !== null && input.enabled;
         if (!desiredEnabled) {
+          restartDelayMs = RESTART_DELAY_MS;
           clearRestart();
           stop();
           releaseWorkerLease();

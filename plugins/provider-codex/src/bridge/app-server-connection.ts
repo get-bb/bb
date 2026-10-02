@@ -11,7 +11,11 @@ const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSE_AFTER_EXIT_GRACE_MS = 1_000;
 const TERMINATE_ESCALATION_MS = 1_000;
 const KILL_ESCALATION_MS = 4_000;
-const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+const CLOSED_STDIN_ERROR_CODES = new Set([
+  "EPIPE",
+  "EOF",
+  "ERR_STREAM_DESTROYED",
+]);
 
 export interface CodexAppServerRequestResponder {
   result(value: unknown): void;

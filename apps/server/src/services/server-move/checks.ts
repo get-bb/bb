@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import semver from "semver";
 import { formatServerDataSize } from "@bb/domain";
 import { APP_SURFACE_DESKTOP, type AppSurface } from "@bb/config/app-surface";
@@ -141,7 +141,7 @@ function isUnderDirectory(path: string, directory: string): boolean {
   const resolvedDirectory = resolve(directory);
   return (
     resolvedPath === resolvedDirectory ||
-    resolvedPath.startsWith(`${resolvedDirectory}/`)
+    resolvedPath.startsWith(`${resolvedDirectory}${sep}`)
   );
 }
 

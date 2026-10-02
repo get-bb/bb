@@ -7,10 +7,16 @@ import {
 } from "@/lib/plugin-logos";
 import { buildPluginPaletteActions } from "./palette-plugin-actions";
 
+type AppCommandSlot = Extract<
+  PluginCommandPaletteActionSlot,
+  { target: "app" }
+>;
+
 function slot(
-  overrides: Partial<PluginCommandPaletteActionSlot> & { id: string },
-): PluginCommandPaletteActionSlot {
+  overrides: Partial<AppCommandSlot> & { id: string },
+): AppCommandSlot {
   return {
+    target: "app",
     defaultShortcut: null,
     pluginId: "linear",
     generation: 1,
@@ -21,7 +27,7 @@ function slot(
 }
 
 function build(
-  slots: PluginCommandPaletteActionSlot[],
+  slots: AppCommandSlot[],
   openThreadPanel: PluginThreadPanelOpenHandler | null = null,
 ) {
   return buildPluginPaletteActions({

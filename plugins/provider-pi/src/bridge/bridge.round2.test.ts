@@ -303,6 +303,11 @@ it("a steer still queued when the run ends is reported dropped through the deliv
 }, 90_000);
 
 it("recovers from one transient model mismatch by respawning", async () => {
+  const catalog = await harness.request((nextId += 1), "model/list", {
+    cwd: harness.workspaceDir,
+  });
+  expect(catalog.error).toBeUndefined();
+  const catalogPids = new Set(harness.readProcessLog().spawned);
   vi.stubEnv(
     "FAKE_PI_SPAWN_COUNTER_FILE",
     join(harness.workspaceDir, "spawns"),
@@ -315,18 +320,20 @@ it("recovers from one transient model mismatch by respawning", async () => {
   expect(response.result).toMatchObject({
     providerThreadId: expect.stringMatching(/^pi_/u),
   });
-  const log = harness.readProcessLog();
-  expect(log.spawned).toHaveLength(2);
+  const spawned = harness
+    .readProcessLog()
+    .spawned.filter((pid) => !catalogPids.has(pid));
+  expect(spawned).toHaveLength(2);
   const deadline = Date.now() + 10_000;
   while (
     Date.now() < deadline &&
-    !log.spawned
+    !spawned
       .slice(0, 1)
       .every((pid) => harness.readProcessLog().exited.includes(pid))
   ) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  expect(harness.readProcessLog().exited).toContain(log.spawned[0]);
+  expect(harness.readProcessLog().exited).toContain(spawned[0]);
   expect(harness.messages.some((m) => m.method === "error")).toBe(false);
   expect(harness.messages.some((m) => m.method === "session/ended")).toBe(
     false,

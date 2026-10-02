@@ -313,7 +313,7 @@ export async function writeSystemdUnit(args: {
       "[Service]",
       `ExecStart=${args.execStart}`,
       'Environment="BB_APP_NPM_PREFIX=/opt/npm"',
-      `Environment="BB_DATA_DIR=${args.dataDir}"`,
+      `Environment="BB_DATA_DIR=${args.dataDir.replaceAll("\\", "\\\\")}"`,
       "Restart=always",
       "",
     ].join("\n"),

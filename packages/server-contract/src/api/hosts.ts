@@ -65,6 +65,7 @@ export type CreateMachineRequest = z.infer<typeof createMachineRequestSchema>;
 export const hostEnrollmentCommandResponseSchema = z
   .object({
     command: z.string().min(1),
+    windowsCommand: z.string().min(1),
     expiresAt: z.number().int().positive(),
   })
   .nullable();
@@ -75,6 +76,7 @@ export type HostEnrollmentCommandResponse = z.infer<
 export const hostReconnectResponseSchema = z
   .object({
     command: z.string().min(1),
+    windowsCommand: z.string().min(1),
     expiresAt: z.number().int().positive(),
     hostId: z.string().min(1),
   })

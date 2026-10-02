@@ -64,9 +64,13 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it.each([75, 1, 0, "signal"])(
+it.for([75, 1, 0, "signal"])(
   "handles daemon exit %s before readiness through the launcher",
-  async (firstExit) => {
+  async (firstExit, { skip }) => {
+    skip(
+      process.platform === "win32" && firstExit === "signal",
+      "Windows cannot deliver a catchable SIGTERM to the launcher",
+    );
     const restarts = firstExit === 75 || firstExit === 1;
     const dataDir = await mkdtemp(join(root, "data-"));
     const listener = createServer();

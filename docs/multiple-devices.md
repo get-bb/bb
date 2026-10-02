@@ -170,7 +170,9 @@ them when it starts, when it becomes active, and every five minutes.
 
 Open Settings → Machines and choose Add a machine. Run the generated one-line
 installer on the computer that should
-execute work. It installs and enrolls a host daemon; when bb connect is paired,
+execute work. Choose Windows in the dialog for a PowerShell command; a Windows
+machine needs Node.js 22.19 or newer and Git for Windows, and its daemon starts
+when you sign in to Windows. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
 through the account gate. Without bb connect, open the server through a
 Tailscale Serve URL before generating the installer; the loopback listener is

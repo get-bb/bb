@@ -5,12 +5,12 @@ import {
   readFile,
   realpath,
   readdir,
-  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { renameIntoPlace } from "./rename-into-place.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
 import { zodResolutionPlugin } from "./zod-resolution.js";
@@ -585,9 +585,9 @@ export async function buildPluginHost(
         2,
       ) + "\n",
     );
-    await rename(stagedJsPath, jsPath);
-    await rename(join(stageDir, "host.js.map"), mapPath);
-    await rename(stagedMetaPath, metaPath);
+    await renameIntoPlace(stagedJsPath, jsPath);
+    await renameIntoPlace(join(stageDir, "host.js.map"), mapPath);
+    await renameIntoPlace(stagedMetaPath, metaPath);
     return { jsPath, mapPath, metaPath, artifactDigest };
   } finally {
     await rm(stageDir, { recursive: true, force: true });

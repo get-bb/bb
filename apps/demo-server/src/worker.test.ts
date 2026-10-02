@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,13 +56,23 @@ beforeAll(async () => {
 afterAll(async () => {
   if (worker && worker.exitCode === null) {
     const closed = new Promise<void>((resolve) =>
-      worker.once("exit", () => resolve()),
+      worker.once("close", () => resolve()),
     );
-    worker.kill("SIGTERM");
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/pid", String(worker.pid), "/t", "/f"]);
+    } else {
+      worker.kill("SIGTERM");
+    }
     await closed;
   }
   if (stateDirectory)
-    await rm(stateDirectory, { recursive: true, force: true });
+    await rm(stateDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 100,
+    });
+  expect(output).not.toContain("Uncaught");
 });
 
 it("serves the shell, deep links, and its JavaScript and styles", async () => {

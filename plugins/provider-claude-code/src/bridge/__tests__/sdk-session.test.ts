@@ -216,7 +216,7 @@ describe("SdkSession", () => {
   });
 
   it("only enables dangerous permission skipping for bypass mode", () => {
-    mockProcessUid(1000);
+    if (process.platform !== "win32") mockProcessUid(1000);
     const onMessage = vi.fn();
     const onDone = vi.fn();
     const session = new SdkSession(
@@ -240,7 +240,10 @@ describe("SdkSession", () => {
     );
   });
 
-  it("does not send root-forbidden bypass flags when running as root", () => {
+  it("does not send root-forbidden bypass flags when running as root", ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", "Windows has no root uid");
     mockProcessUid(0);
     const onMessage = vi.fn();
     const onDone = vi.fn();

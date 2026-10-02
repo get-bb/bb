@@ -376,9 +376,9 @@ function BrowseShelf({
                 pathname: getPluginsRoutePath(),
                 search: shelfParams.toString(),
               }}
-              aria-label={`See all ${shelf.label}`}
+              aria-label={`View all ${shelf.label}`}
             >
-              See all
+              View all
             </Link>
           </ResourceShelfAction>
         ) : undefined

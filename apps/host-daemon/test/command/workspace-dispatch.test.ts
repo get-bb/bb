@@ -388,7 +388,7 @@ describe("workspace command dispatch", () => {
     );
 
     const paths = result.files.map((file) => file.path).sort();
-    expect(paths).toEqual(["notes.md", path.join("notes", "todo.md")]);
+    expect(paths).toEqual(["notes.md", "notes/todo.md"]);
     expect(result.truncated).toBe(false);
   });
 
@@ -426,11 +426,7 @@ describe("workspace command dispatch", () => {
     ).toEqual([
       { kind: "directory", path: "notes", name: "notes" },
       { kind: "directory", path: "notes/daily", name: "daily" },
-      {
-        kind: "file",
-        path: path.join("notes", "daily", "todo.md"),
-        name: "todo.md",
-      },
+      { kind: "file", path: "notes/daily/todo.md", name: "todo.md" },
     ]);
     expect(result.truncated).toBe(false);
   });

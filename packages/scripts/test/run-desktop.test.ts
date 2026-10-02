@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveDevInstanceConfig } from "@bb/config/runtime";
 import {
@@ -43,10 +43,12 @@ describe("desktop packaging task", () => {
 
   it("runs the packaged app from the desktop package directory", () => {
     const command = createDesktopRunCommand();
-    expect(command.cwd.endsWith("/apps/desktop")).toBe(true);
-    expect(command.args[0]?.endsWith("/scripts/run-packaged-app.mjs")).toBe(
-      true,
-    );
+    expect(command.cwd.endsWith(`${sep}${join("apps", "desktop")}`)).toBe(true);
+    expect(
+      command.args[0]?.endsWith(
+        `${sep}${join("scripts", "run-packaged-app.mjs")}`,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -87,7 +89,7 @@ describe("desktop launch environment", () => {
       mode: "worktree",
     });
 
-    expect(env.BB_DESKTOP_USER_DATA_DIR).toBe(userDataDir);
+    expect(env.BB_DESKTOP_USER_DATA_DIR).toBe(resolve(userDataDir));
     expect(
       resolveDesktopUserDataDir(
         { BB_DESKTOP_USER_DATA_DIR: "relative-profile" },

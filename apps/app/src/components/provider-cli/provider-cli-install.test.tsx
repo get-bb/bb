@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ProviderCliInstallEvent } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BbHttpError } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -334,6 +335,7 @@ describe("useProviderCliInstallRunner", () => {
     );
     expect(result.current.failuresByJobKey.get("host_1:codex")).toMatchObject({
       issueFingerprint: issue.fingerprint,
+      kind: "command",
       logDialogState: {
         message: "Command exited with code 1",
         log: "$ codex update\npermission denied\n",
@@ -344,6 +346,47 @@ describe("useProviderCliInstallRunner", () => {
       result.current.startInstall({ hostId: "host_1", issue });
     });
     expect(result.current.failuresByJobKey.has("host_1:codex")).toBe(false);
+  });
+
+  it("summarizes a dropped connection but keeps a server rejection's reason", async () => {
+    const { result } = renderRunner();
+    const codex = issueForProvider("codex");
+    const claude = issueForProvider("claude-code");
+
+    act(() => {
+      result.current.startInstall({ hostId: "host_1", issue: codex });
+      result.current.startInstall({ hostId: "host_1", issue: claude });
+    });
+
+    await act(async () => {
+      installAt(0).reject(new TypeError("Failed to fetch"));
+    });
+    await waitFor(() => expect(pendingInstalls).toHaveLength(2));
+    await act(async () => {
+      installAt(1).reject(
+        new BbHttpError({
+          status: 409,
+          code: "provider_bridge_unavailable",
+          message: "Provider bridge unavailable",
+          body: null,
+        }),
+      );
+    });
+
+    expect(result.current.failuresByJobKey.get("host_1:codex")).toMatchObject({
+      kind: "interrupted",
+      logDialogState: { message: "Connection lost during update" },
+    });
+    expect(
+      result.current.failuresByJobKey.get("host_1:claude-code"),
+    ).toMatchObject({
+      kind: "command",
+      logDialogState: { message: "Provider bridge unavailable" },
+    });
+    expect(appToastMock.error).toHaveBeenCalledWith(
+      "Claude Code update failed",
+      expect.objectContaining({ description: "Provider bridge unavailable" }),
+    );
   });
 
   it("bounds retained failures by entry count and log bytes", async () => {

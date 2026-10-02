@@ -1,10 +1,17 @@
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
-import { enrolledInstallerScript } from "./services/machines/manual-enrollment-command.js";
+import {
+  enrolledInstallerScript,
+  enrolledWindowsInstallerScript,
+  windowsInstallerFailureScript,
+} from "./services/machines/manual-enrollment-command.js";
 import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
 import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { withManualMachineProvider } from "./services/machines/manual-provider.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
-import { INSTALL_MACHINE_SCRIPT_PATH } from "./install-machine-asset.js";
+import {
+  INSTALL_MACHINE_SCRIPT_PATH,
+  INSTALL_MACHINE_WINDOWS_SCRIPT_PATH,
+} from "./install-machine-asset.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -572,6 +579,53 @@ export function createApp(
           "content-type": "text/x-shellscript; charset=utf-8",
         },
       },
+    );
+  });
+  app.get("/install.ps1", async (context) => {
+    const headers = {
+      "cache-control": "no-store",
+      "content-type": "text/plain; charset=utf-8",
+    };
+    const credential = context.req.header("X-BB-Enrollment");
+    if (credential === undefined) {
+      return new Response(
+        windowsInstallerFailureScript(
+          "This installer needs an enrollment command. Generate one in bb under Settings, Machines.",
+        ),
+        { headers },
+      );
+    }
+    let bootstrap =
+      await getMachineEnrollmentService(deps).pendingBootstrapForCredential(
+        credential,
+      );
+    if (bootstrap === null) {
+      try {
+        bootstrap = await reconnectBootstrapForCredential(deps, credential);
+      } catch (error) {
+        deps.logger.warn({ error }, "Could not refresh machine access");
+        return new Response(
+          windowsInstallerFailureScript(
+            "Could not refresh machine access. Run the command again, or generate a new one in bb.",
+          ),
+          { headers },
+        );
+      }
+    }
+    if (bootstrap === null) {
+      return new Response(
+        windowsInstallerFailureScript(
+          "This enrollment command has already been used, replaced, or expired. Generate a new command in bb.",
+        ),
+        { headers },
+      );
+    }
+    return new Response(
+      enrolledWindowsInstallerScript(
+        await readFile(INSTALL_MACHINE_WINDOWS_SCRIPT_PATH, "utf8"),
+        bootstrap,
+      ),
+      { headers },
     );
   });
   app.get("/install/version", async (context) => {

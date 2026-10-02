@@ -14,6 +14,7 @@ import {
 } from "../src/server-moved.js";
 
 const tempDirs: string[] = [];
+const posixDescribe = process.platform === "win32" ? describe.skip : describe;
 
 const MOVE: DesktopServerMove = {
   moveId: "move-1",
@@ -89,7 +90,7 @@ function createHarness(args: {
   };
 }
 
-describe("runMachineInstaller", () => {
+posixDescribe("runMachineInstaller", () => {
   it("adopts the data directory and appends the installer output to its log", async () => {
     const dir = await createTempDir();
     const logPath = join(dir, "logs", "install-machine-service.log");

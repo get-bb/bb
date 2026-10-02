@@ -78,6 +78,7 @@ interface ConversationMessageContentBaseProps {
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
+  timestamp: number;
   workspaceRootPath?: string;
 }
 
@@ -164,6 +165,7 @@ interface UserConversationMessageProps {
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
+  timestamp: number;
   threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
   workspaceRootPath?: string;
@@ -186,6 +188,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   mobileActionDisplay: "inline" | "overflow";
   streaming: boolean;
   text: string;
+  timestamp: number;
   workspaceRootPath?: string;
 }
 
@@ -341,6 +344,7 @@ function UserConversationMessage({
   systemMessageKind,
   systemMessageSubject,
   text,
+  timestamp,
   threadId,
   turnRequest,
   workspaceRootPath,
@@ -441,6 +445,7 @@ function UserConversationMessage({
             />
           </div>
           <MessageActionBar
+            timestamp={timestamp}
             messageText={messageText}
             alignment="end"
             mobileActionDisplay={mobileActionDisplay}
@@ -474,6 +479,7 @@ function AssistantConversationMessage({
   mobileActionDisplay,
   streaming,
   text,
+  timestamp,
   threadId,
   turnId,
   workspaceRootPath,
@@ -596,6 +602,7 @@ function AssistantConversationMessage({
       />
       {showActions ? (
         <MessageActionBar
+          timestamp={timestamp}
           messageText={text}
           alignment="start"
           mobileActionDisplay={mobileActionDisplay}
@@ -661,6 +668,7 @@ export function ConversationMessageContent(
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
+        timestamp={props.timestamp}
         threadId={props.threadId}
         turnRequest={props.turnRequest}
         workspaceRootPath={props.workspaceRootPath}
@@ -687,6 +695,7 @@ export function ConversationMessageContent(
       mobileActionDisplay={props.mobileActionDisplay}
       streaming={props.streaming}
       text={text}
+      timestamp={props.timestamp}
       threadId={props.threadId}
       turnId={props.turnId}
       workspaceRootPath={props.workspaceRootPath}

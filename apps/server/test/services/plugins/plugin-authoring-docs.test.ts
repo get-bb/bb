@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
@@ -561,8 +561,8 @@ describe("bb-plugin-authoring skill", () => {
       onError,
       shouldCreateNewSourceFile,
     ) =>
-      file === filename
-        ? ts.createSourceFile(filename, source!, languageVersion)
+      resolve(file) === filename
+        ? ts.createSourceFile(file, source!, languageVersion)
         : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
     const program = ts.createProgram([filename], options, host);
     expect(

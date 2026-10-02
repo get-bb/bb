@@ -266,7 +266,16 @@ hardcoded colors break custom palettes.
 
 Composer popups register `[{ id, label, component }]` through `experimental_popups`.
 Popup ids must be unique across the plugin's composer customizations.
-Open by popup id with `composer.experimental_openPopup(id)`. The host
+Open by popup id with `composer.experimental_openPopup(id)`, from a
+`plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
+`app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
+A composer command is listed and rebindable like any plugin command and shares
+the `app.commands` ID namespace, but `run` receives `{ composer }` for the
+composer that handles it, through the same path as bb's own "Focus composer"
+command: the composer holding the caret, or with the caret outside every
+composer, the focused pane's primary composer. Its shortcut is inactive while
+a terminal, browser tab or modal has focus, and the palette lists it only when
+some composer would run it. The host
 shares mention-menu placement and dismissal, and uses a persistent responsive
 drawer for compact interactive popups. Inside the component, `useComposer()`
 is bound to the opening composer; its `experimental_closePopup()` closes only

@@ -1,8 +1,13 @@
+import { sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   parseWorktreeListPorcelain,
   selectAdoptableWorktrees,
 } from "./worktree-list.js";
+
+function nativePath(path: string): string {
+  return path.split("/").join(sep);
+}
 
 function record(fields: string[]): string {
   return `${fields.join("\0")}\0\0`;
@@ -23,7 +28,7 @@ describe("parseWorktreeListPorcelain", () => {
 
     expect(parseWorktreeListPorcelain(stdout)).toEqual([
       {
-        path: "/repo",
+        path: nativePath("/repo"),
         branch: "main",
         isMain: true,
         isBare: false,
@@ -31,7 +36,7 @@ describe("parseWorktreeListPorcelain", () => {
         prunable: false,
       },
       {
-        path: "/repo/../feature",
+        path: nativePath("/repo/../feature"),
         branch: null,
         isMain: false,
         isBare: false,
@@ -39,7 +44,7 @@ describe("parseWorktreeListPorcelain", () => {
         prunable: false,
       },
       {
-        path: "/elsewhere/wt",
+        path: nativePath("/elsewhere/wt"),
         branch: "fix/spaces are fine",
         isMain: false,
         isBare: false,
@@ -47,7 +52,7 @@ describe("parseWorktreeListPorcelain", () => {
         prunable: false,
       },
       {
-        path: "/bare",
+        path: nativePath("/bare"),
         branch: null,
         isMain: false,
         isBare: true,
@@ -83,7 +88,7 @@ describe("parseWorktreeListPorcelain", () => {
       "branch refs/heads/main",
     ]);
     expect(parseWorktreeListPorcelain(stdout)[0]?.path).toBe(
-      "/Users/a/My Code/repo wt",
+      nativePath("/Users/a/My Code/repo wt"),
     );
   });
 });
@@ -107,7 +112,7 @@ describe("selectAdoptableWorktrees", () => {
 
     expect(
       selectAdoptableWorktrees({ entries, managedRoot }).map((e) => e.path),
-    ).toEqual(["/code/repo-feature"]);
+    ).toEqual([nativePath("/code/repo-feature")]);
   });
 
   it("does not treat a sibling of the managed root as managed", () => {
@@ -123,6 +128,6 @@ describe("selectAdoptableWorktrees", () => {
 
     expect(
       selectAdoptableWorktrees({ entries, managedRoot }).map((e) => e.path),
-    ).toEqual([`${managedRoot}-backup/thr_abc/repo`]);
+    ).toEqual([nativePath(`${managedRoot}-backup/thr_abc/repo`)]);
   });
 });

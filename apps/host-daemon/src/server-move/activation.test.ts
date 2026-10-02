@@ -225,7 +225,7 @@ describe("server_move.activate sequencing", () => {
     expect(atDaemonReload).toEqual([
       {
         unit: expect.stringContaining(
-          `ExecStart="/usr/bin/node" "/opt/npm/bin/bb-app" "start" "--data-dir" "${fixture.dataDir}" "--server-port" "${command.serverPort}" "--host-daemon-port" "38887"`,
+          `ExecStart="/usr/bin/node" "/opt/npm/bin/bb-app" "start" "--data-dir" "${fixture.dataDir.replaceAll("\\", "\\\\")}" "--server-port" "${command.serverPort}" "--host-daemon-port" "38887"`,
         ),
         importExists: false,
         stateExists: true,

@@ -106,6 +106,19 @@ const MODELS = [
     reasoning: false,
     contextWindow: 32_000,
   },
+  ...[
+    ["fake-gateway", "vendor/slash-model"],
+    ["fake-gateway", "fake-provider/fake-model"],
+    ["fake-gateway", "vendor/shared-model"],
+    ["other-gateway", "vendor/shared-model"],
+  ].map(([provider, id]) => ({
+    id,
+    name: id,
+    provider,
+    input: ["text"],
+    reasoning: false,
+    contextWindow: 64_000,
+  })),
 ];
 
 let model = MODELS[0];
@@ -127,9 +140,15 @@ if (process.env.FAKE_PI_SPAWN_COUNTER_FILE) {
 const ignoreRequestedModel =
   process.env.FAKE_PI_MISMATCH_FIRST_SPAWN === "1" && spawnIndex === 1;
 if (requestedModel !== undefined && !ignoreRequestedModel) {
-  const [provider, id] = requestedModel.split("/");
+  const requestedProvider = flag("--provider");
+  const candidates = MODELS.filter(
+    (entry) => !requestedProvider || entry.provider === requestedProvider,
+  );
   model =
-    MODELS.find((entry) => entry.provider === provider && entry.id === id) ??
+    candidates.find(
+      (entry) => `${entry.provider}/${entry.id}` === requestedModel,
+    ) ??
+    candidates.find((entry) => entry.id === requestedModel) ??
     MODELS[0];
 }
 let thinkingLevel = flag("--thinking") ?? "medium";

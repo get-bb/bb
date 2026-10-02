@@ -96,7 +96,8 @@ downloads; an import that follows a pending download waits for its bytes, avoidi
 duplicate transfers. Asset responses must be cacheable for subsequent
 imports to reuse them. BB serves hashed assets with immutable caching. Development
 HTML has no manifest, so dev servers retain demand loading. This is currently
-used only for Markdown's sanitized HTML pipeline; other preload policies still
+used for Markdown's sanitized HTML pipeline on workspace routes and queued
+messages when a thread view mounts, including split panes; other preload policies still
 import and execute their modules.
 
 Downloading and mounting are separate. Keep the existing persistent responsive

@@ -75,7 +75,9 @@ exit 0
   };
 }
 
-describe("ci-run-flows", () => {
+const posixDescribe = process.platform === "win32" ? describe.skip : describe;
+
+posixDescribe("ci-run-flows", () => {
   it("clears native confirmation state before continuing after a failed flow", () => {
     const fixture = runFixture({ cleanupFails: false });
     try {

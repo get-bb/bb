@@ -39,7 +39,7 @@ describe("promoteRuntimeEntries", () => {
     await promoteRuntimeEntries({
       distDir,
       stagingDir,
-      relativeOutputs: ["provider-bridge.js", "internal/host.js"],
+      relativeOutputs: ["provider-bridge.js", path.join("internal", "host.js")],
     });
     observed.push(
       await readFile(path.join(distDir, "provider-bridge.js"), "utf8"),

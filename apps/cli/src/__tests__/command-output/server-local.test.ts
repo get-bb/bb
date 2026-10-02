@@ -1006,7 +1006,9 @@ describe("bb server unlock", () => {
       customModels: [{ providerId: "codex", model: "gpt-5.4" }],
       customAcpAgents: [{ id: "not a valid agent" }],
     });
-    expect((await stat(configPath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(configPath)).mode & 0o777).toBe(0o600);
+    }
     expect(await readdir(dataDir)).toEqual(["config.json"]);
     expect(JSON.parse(collectLogPayloads(vi.mocked(console.log))[0]!)).toEqual({
       dataDir,

@@ -98,6 +98,8 @@ function useIsolatedStandaloneTmpDir(): string {
   const tempDir = mkdtempSync(path.join(tmpdir(), "standalone-cleanup-test-"));
   spawnMockState.tempDirs.push(tempDir);
   vi.stubEnv("TMPDIR", tempDir);
+  vi.stubEnv("TEMP", tempDir);
+  vi.stubEnv("TMP", tempDir);
   return tempDir;
 }
 
