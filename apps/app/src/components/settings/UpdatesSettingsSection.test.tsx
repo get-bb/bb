@@ -1265,12 +1265,12 @@ The canonical release summary.
     for (const className of [
       "shrink-0",
       "text-xs",
-      "font-semibold",
       "text-destructive",
     ]) {
       expect(failedStatus.className).toContain(className);
     }
     for (const className of [
+      "font-semibold",
       "rounded",
       "border",
       "px-",
