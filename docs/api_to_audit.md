@@ -3609,3 +3609,15 @@ across restart. Add `"environment"` or `"machine"` only together with a consumer
 Stabilize after validating first-install discovery, shared-plugin enablement,
 dynamic provider removal, plugin upgrades, and duplicate-ID ownership behavior
 with third-party providers.
+
+## `ThreadChatMessageReference.experimental_messageSeq`
+
+The message reference handed to `messageAction` runs, `ThreadChat` consumer
+message actions, and prose selections carries the event sequence that recorded
+the message. It is the `msg` value of a message link and the seq accepted by
+`sdk.threads.message` and `bb thread log --message`, so a plugin can build or
+resolve a message link without guessing. It equals `sourceSeqEnd` except for a
+steer, which is recorded by its request and shown at its acceptance.
+Stabilize once message links have shipped and the seq has stayed stable across
+edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
+should remain alongside it.

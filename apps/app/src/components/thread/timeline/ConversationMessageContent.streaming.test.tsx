@@ -20,6 +20,7 @@ function renderAssistantMessage(text: string, streaming: boolean) {
     <MemoryRouter>
       <RouteNavigationProvider>
         <ConversationMessageContent
+          metadata={{ timestamp: 0 }}
           role="assistant"
           attachments={null}
           id="msg_stream"
@@ -41,6 +42,7 @@ function renderAssistantMessage(text: string, streaming: boolean) {
         <MemoryRouter>
           <RouteNavigationProvider>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="assistant"
               attachments={null}
               id="msg_stream"

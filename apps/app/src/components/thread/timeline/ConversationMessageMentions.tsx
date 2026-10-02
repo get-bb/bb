@@ -6,6 +6,8 @@ import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
+import { getMessageLinkPath } from "@bb/client-core";
+import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_MENTION_PILL_CLASS,
@@ -89,6 +91,64 @@ function mentionPillClassName(interactive: boolean): string {
     PROMPT_MENTION_PILL_CLASS,
     "bg-surface-raised/50 font-normal no-underline hover:no-underline",
     interactive ? "cursor-pointer hover:bg-state-hover" : "cursor-default",
+  );
+}
+
+export function resolveThreadMentionLinkHref({
+  messageSeq,
+  resolveLinkHref,
+  resource,
+  threadId,
+}: {
+  messageSeq: number | null;
+  resolveLinkHref: TimelineTitleLinkResolver | undefined;
+  resource: PromptMentionResource;
+  threadId: string;
+}): string | undefined {
+  const projectId = resource.kind === "thread" ? resource.projectId : undefined;
+  if (projectId !== undefined) {
+    return messageSeq === null
+      ? getThreadRoutePath({ projectId, threadId })
+      : getMessageLinkPath({ projectId, threadId, seq: messageSeq });
+  }
+  return resolveLinkHref?.({ threadId, messageSeq }) ?? undefined;
+}
+
+interface MessageMentionPillProps {
+  resource: PromptMentionResource;
+  linkHref: string | undefined;
+}
+
+export function MessageMentionPill({
+  resource,
+  linkHref,
+}: MessageMentionPillProps) {
+  const title = `${promptMentionTooltipLabel(resource)} · message`;
+  const labelNode = (
+    <>
+      <PromptMentionIcon
+        resource={resource}
+        className="size-3.5 shrink-0 self-center text-muted-foreground"
+      />
+      <span className="truncate">{resource.label}</span>
+      <span className="shrink-0 text-muted-foreground">· message</span>
+    </>
+  );
+  if (linkHref === undefined) {
+    return (
+      <span className={mentionPillClassName(false)} title={title}>
+        {labelNode}
+      </span>
+    );
+  }
+  return (
+    <RouteAnchor
+      className={mentionPillClassName(true)}
+      href={linkHref}
+      title={title}
+    >
+      {labelNode}
+    </RouteAnchor>
   );
 }
 

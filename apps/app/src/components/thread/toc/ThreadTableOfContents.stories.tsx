@@ -31,6 +31,7 @@ function conversationRow({
     turnId: `turn_${Math.floor(index / 2)}`,
     sourceSeqStart: index + 1,
     sourceSeqEnd: index + 1,
+    messageSeq: index + 1,
     startedAt: now + index * 1_000,
     createdAt: now + index * 1_000,
     kind: "conversation" as const,
@@ -56,6 +57,7 @@ function conversationRow({
   return {
     ...base,
     role: "assistant",
+    executionMetadata: null,
     turnRequest: null,
   };
 }

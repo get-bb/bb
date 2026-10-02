@@ -487,6 +487,7 @@ function convertMessage(
           ...buildTimelineRowBase(message, options.rowIdPrefix),
           kind: "conversation",
           role: "user",
+          messageSeq: message.messageSeq,
           text: message.text,
           mentions: message.mentions,
           attachments: toConversationAttachments(message.attachments),
@@ -503,6 +504,8 @@ function convertMessage(
           ...buildTimelineRowBase(message, options.rowIdPrefix),
           kind: "conversation",
           role: "assistant",
+          messageSeq: message.sourceSeqEnd,
+          executionMetadata: null,
           text: message.text,
           attachments: null,
           turnRequest: null,
@@ -840,6 +843,7 @@ function convertSteerMessage(
     ...buildTimelineRowBase(message, rowIdPrefix),
     kind: "conversation",
     role: "user",
+    messageSeq: message.messageSeq,
     text: message.text,
     mentions: message.mentions,
     attachments: toConversationAttachments(message.attachments),
@@ -1142,6 +1146,55 @@ function buildTimelineRows(
   );
 }
 
+type TimelineAssistantExecutionMetadata = NonNullable<
+  Extract<
+    TimelineRow,
+    { kind: "conversation"; role: "assistant" }
+  >["executionMetadata"]
+>;
+
+function addAssistantExecutionMetadata(
+  rows: readonly TimelineRow[],
+  args: {
+    acceptedClientRequestContext: AcceptedClientRequestContext;
+    events: readonly ThreadEventWithMeta[];
+    providerId: string;
+  },
+): void {
+  const acceptedById = buildAcceptedClientRequestById({
+    context: args.acceptedClientRequestContext,
+    events: args.events,
+  });
+  const executionByTurnId = new Map<
+    string,
+    TimelineAssistantExecutionMetadata
+  >();
+  for (const { event } of getOrderedThreadEvents(args.events)) {
+    if (event.type !== "client/turn/requested") continue;
+    const accepted = acceptedById.get(event.requestId);
+    if (!accepted || executionByTurnId.has(accepted.turnId)) continue;
+    executionByTurnId.set(accepted.turnId, {
+      providerId: args.providerId,
+      model: event.execution.model,
+      reasoningLevel: event.execution.reasoningLevel,
+    });
+  }
+  const visit = (items: readonly TimelineRow[]): void => {
+    for (const row of items) {
+      if (row.kind === "conversation") {
+        if (row.role === "assistant" && row.turnId !== null) {
+          const execution = executionByTurnId.get(row.turnId);
+          if (execution) row.executionMetadata = execution;
+        }
+        continue;
+      }
+      if ("children" in row && row.children) visit(row.children);
+      if ("childRows" in row) visit(row.childRows);
+    }
+  };
+  visit(rows);
+}
+
 export function buildThreadTimelineFromEvents(
   args: BuildThreadTimelineFromEventsArgs,
 ): ThreadTimelineFromEventsResult {
@@ -1171,6 +1224,13 @@ export function buildThreadTimelineFromEvents(
       args.options,
     ),
   ];
+  if (args.options.providerId !== undefined) {
+    addAssistantExecutionMetadata(rows, {
+      acceptedClientRequestContext: args.acceptedClientRequestContext,
+      events: args.events,
+      providerId: args.options.providerId,
+    });
+  }
 
   return {
     activePromptMode: !args.options.isLatestPage

@@ -12,11 +12,13 @@ const ASSISTANT_ROW = {
   turnId: "turn_test",
   sourceSeqStart: 1,
   sourceSeqEnd: 1,
+  messageSeq: 1,
   startedAt: 1,
   createdAt: 1,
   role: "assistant",
   text: "Done",
   attachments: null,
+  executionMetadata: null,
   turnRequest: null,
 } satisfies TimelineRow;
 
@@ -27,6 +29,7 @@ const USER_ROW = {
   turnId: "turn_test",
   sourceSeqStart: 2,
   sourceSeqEnd: 2,
+  messageSeq: 2,
   startedAt: 2,
   createdAt: 2,
   role: "user",

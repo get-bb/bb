@@ -32,6 +32,7 @@ function userRow(args: {
     turnId: `${TURN_PREFIX}${args.seq}`,
     sourceSeqStart: args.seq,
     sourceSeqEnd: args.seq,
+    messageSeq: args.seq,
     startedAt: args.createdAt,
     createdAt: args.createdAt,
     kind: "conversation",
@@ -58,12 +59,14 @@ function assistantRow(args: {
     turnId: `${TURN_PREFIX}${args.seq - 1}`,
     sourceSeqStart: args.seq,
     sourceSeqEnd: args.seq,
+    messageSeq: args.seq,
     startedAt: args.createdAt,
     createdAt: args.createdAt,
     kind: "conversation",
     role: "assistant",
     text: args.text,
     attachments: null,
+    executionMetadata: null,
     turnRequest: null,
   };
 }

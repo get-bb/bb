@@ -557,6 +557,7 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <MessageDirectiveRegistryProvider registry={registry}>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="assistant"
               attachments={null}
               id="msg_a"
@@ -597,6 +598,7 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <MessageDirectiveRegistryProvider registry={registry}>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="assistant"
               attachments={null}
               id="msg_a"
@@ -637,6 +639,7 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <MessageDirectiveRegistryProvider registry={registry}>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="assistant"
               attachments={null}
               id="msg_a"
@@ -675,6 +678,7 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <MessageDirectiveRegistryProvider registry={registry}>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="assistant"
               attachments={null}
               id="msg_a"
@@ -705,6 +709,7 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <MessageDirectiveRegistryProvider registry={registry}>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="user"
               attachments={null}
               originKind={null}

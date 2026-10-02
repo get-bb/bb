@@ -41,6 +41,7 @@ describe("ConversationMessageContent assistant images", () => {
       <MemoryRouter>
         <RouteNavigationProvider>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="assistant"
             attachments={null}
             id="msg_image"
@@ -74,6 +75,7 @@ describe("ConversationMessageContent user images", () => {
       <MemoryRouter>
         <RouteNavigationProvider>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="user"
             attachments={null}
             initiator="user"
@@ -109,6 +111,7 @@ describe("ConversationMessageContent user HTML", () => {
       <MemoryRouter>
         <RouteNavigationProvider>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="user"
             attachments={null}
             initiator="user"
@@ -168,6 +171,7 @@ describe("ConversationMessageContent assistant thread mentions", () => {
               registry={messageDirectiveRegistry}
             >
               <ConversationMessageContent
+                metadata={{ timestamp: 0 }}
                 role="assistant"
                 attachments={null}
                 id="msg_spawned"
@@ -211,6 +215,7 @@ describe("ConversationMessageContent long user messages", () => {
             threadById={new Map([[mentionedThread.id, mentionedThread]])}
           >
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="user"
               attachments={null}
               originKind={null}
@@ -243,6 +248,7 @@ describe("ConversationMessageContent long user messages", () => {
       <MemoryRouter>
         <RouteNavigationProvider>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="user"
             attachments={null}
             originKind={null}
@@ -356,6 +362,7 @@ describe("ConversationMessageContent user thread mentions", () => {
             threadById={new Map([[mentionedThread.id, mentionedThread]])}
           >
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="user"
               attachments={null}
               originKind={null}
@@ -402,15 +409,14 @@ describe("ConversationMessageContent user thread mentions", () => {
             threadById={new Map([[mentionedThread.id, mentionedThread]])}
           >
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="user"
               attachments={null}
               originKind={null}
               initiator="user"
               mentions={[]}
-              resolveSegmentLinkHref={(link) =>
-                link.kind === "thread"
-                  ? `/projects/proj_current/threads/${link.threadId}`
-                  : null
+              resolveSegmentLinkHref={(target) =>
+                `/projects/proj_current/threads/${target.threadId}`
               }
               senderThreadId={null}
               senderThreadTitle={null}

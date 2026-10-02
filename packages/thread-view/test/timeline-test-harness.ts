@@ -47,6 +47,7 @@ export interface RenderTimelineFixtureArgs {
   projectionOptions: Omit<BuildEventProjectionOptions, "threadName"> & {
     threadName?: string;
   };
+  providerId?: string;
   verbose?: boolean;
 }
 
@@ -1493,6 +1494,7 @@ export function renderTimelineFixture(
     options: {
       ...commonProjectionOptions,
       includeNestedRows,
+      ...(args.providerId === undefined ? {} : { providerId: args.providerId }),
     },
   });
   const rows = timeline.rows;

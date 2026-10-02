@@ -188,6 +188,7 @@ export function Overview() {
       <StoryRow label="short" hint="bullets + inline code spans">
         <TimelineStage>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="assistant"
             id="row_story_short"
             threadId="thr_story"
@@ -206,6 +207,7 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="assistant"
             id="row_story_long"
             threadId="thr_story"
@@ -270,6 +272,7 @@ export function ActionOverflow() {
         <TimelineStage>
           <div className="[&_button]:opacity-100">
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="assistant"
               id="row_story_overflow_wide"
               threadId="thr_story"
@@ -292,6 +295,7 @@ export function ActionOverflow() {
       >
         <div className="w-[160px] [&_button]:opacity-100">
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="assistant"
             id="row_story_overflow_narrow"
             threadId="thr_story"

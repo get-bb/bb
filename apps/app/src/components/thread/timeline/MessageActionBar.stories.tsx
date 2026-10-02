@@ -23,6 +23,7 @@ export function Overview() {
         <StoryRow label="main timeline" hint="Copy + Fork">
           <HoverRevealStage>
             <MessageActionBar
+              metadata={{ timestamp: 0 }}
               messageText="An agent message you can fork or reply to."
               alignment="end"
               mobileActionDisplay="inline"
@@ -33,6 +34,7 @@ export function Overview() {
         <StoryRow label="user message" hint="Copy + Add to chat">
           <HoverRevealStage>
             <MessageActionBar
+              metadata={{ timestamp: 0 }}
               messageText="A user message you can quote into the composer."
               alignment="end"
               mobileActionDisplay="overflow"
@@ -43,6 +45,7 @@ export function Overview() {
         <StoryRow label="disabled" hint="thread not forkable → greyed">
           <HoverRevealStage>
             <MessageActionBar
+              metadata={{ timestamp: 0 }}
               messageText="Fork/Reply greyed when the thread can't fork."
               alignment="end"
               mobileActionDisplay="inline"
@@ -57,6 +60,7 @@ export function Overview() {
         >
           <HoverRevealStage>
             <MessageActionBar
+              metadata={{ timestamp: 0 }}
               messageText="A side-chat reply you can hand back to the main thread."
               alignment="start"
               mobileActionDisplay="inline"

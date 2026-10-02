@@ -1,6 +1,6 @@
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
-import type { TimelineTitleLink } from "@bb/thread-view";
+import type { ThreadLinkTarget } from "@/components/thread/timeline/TimelineTitleView";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
 import {
@@ -31,10 +31,8 @@ function TimelineStage({
   );
 }
 
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
+function resolveThreadLink(target: ThreadLinkTarget): string | null {
+  return `/projects/proj_demo/threads/${target.threadId}`;
 }
 
 const resolveMentionLink = () => () => {};
@@ -68,6 +66,7 @@ function UserMessage({
   return (
     <TimelineStage revealMessageActions={revealMessageActions}>
       <ConversationMessageContent
+        metadata={{ timestamp: 0 }}
         role="user"
         initiator="user"
         originKind={null}

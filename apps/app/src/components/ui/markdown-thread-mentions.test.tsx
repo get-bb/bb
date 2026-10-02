@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type { ThreadResponse } from "@bb/server-contract";
-import type { TimelineTitleLink } from "@bb/thread-view";
+import type { ThreadLinkTarget } from "@/components/thread/timeline/TimelineTitleView";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import {
   ThreadTitleMentionResourcesProvider,
@@ -61,16 +61,8 @@ function markdownTree(node: ReactNode) {
   );
 }
 
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
-}
-
-function resolveUpdatedThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}?updated=1`
-    : null;
+function resolveThreadLink(target: ThreadLinkTarget): string | null {
+  return `/projects/proj_demo/threads/${target.threadId}`;
 }
 
 function threadResponse(
@@ -692,7 +684,7 @@ describe("MarkdownPreview thread mentions", () => {
           threadMentions={{
             mentions: [UPDATED_THREAD_MENTION],
             preserveSoftBreaks: true,
-            resolveLinkHref: resolveUpdatedThreadLink,
+            resolveLinkHref: resolveThreadLink,
           }}
         />,
       ),
@@ -702,7 +694,7 @@ describe("MarkdownPreview thread mentions", () => {
     const pill = screen.getByText("Updated child").closest("a");
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_child?updated=1",
+      "/projects/proj_demo/threads/thr_child",
     );
   });
 
@@ -754,6 +746,87 @@ describe("MarkdownPreview thread mentions", () => {
       expect(paragraph?.textContent).toBe(content);
       expect(paragraph?.querySelector("a")).toBeNull();
       expect(screen.queryByText("Rebuild comments")).toBeNull();
+    },
+  );
+
+  it.each([
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+  ])(
+    "links a thread mention through the mentioned thread's own project %s",
+    (_label, messageDirectives) => {
+      renderMarkdown(
+        <MarkdownPreview
+          content="See @thread:thr_child for the report."
+          threadMentions={{
+            mentions: [],
+            preserveSoftBreaks: true,
+            resolveLinkHref: resolveThreadLink,
+          }}
+          messageDirectives={messageDirectives}
+        />,
+        [threadResponse({ projectId: "proj_target" })],
+      );
+
+      expect(
+        screen
+          .getByRole("link", { name: "Rebuild comments" })
+          .getAttribute("href"),
+      ).toBe("/projects/proj_target/threads/thr_child");
+    },
+  );
+
+  it.each([
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+  ])(
+    "links a message mention to that message in its thread %s",
+    (_label, messageDirectives) => {
+      renderMarkdown(
+        <MarkdownPreview
+          content="See @thread:thr_child?msg=42, then reply."
+          threadMentions={{
+            mentions: [],
+            preserveSoftBreaks: true,
+            resolveLinkHref: resolveThreadLink,
+          }}
+          messageDirectives={messageDirectives}
+        />,
+        [threadResponse({ projectId: "proj_target" })],
+      );
+
+      const pill = screen.getByRole("link", { name: /Rebuild comments/ });
+      expect(pill.textContent).toBe("Rebuild comments· message");
+      expect(pill.getAttribute("href")).toBe(
+        "/projects/proj_target/threads/thr_child?msg=42",
+      );
+      expect(screen.queryByText(/msg=42/)).toBeNull();
+    },
+  );
+
+  it.each([
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+  ])(
+    "asks the timeline resolver for a message link when the project is unknown %s",
+    (_label, messageDirectives) => {
+      renderMarkdown(
+        <MarkdownPreview
+          content="See @thread:thr_unknown?msg=7 please."
+          threadMentions={{
+            mentions: [],
+            preserveSoftBreaks: true,
+            resolveLinkHref: (target) =>
+              `/resolved/${target.threadId}/${target.messageSeq}`,
+          }}
+          messageDirectives={messageDirectives}
+        />,
+        [],
+      );
+
+      expect(
+        screen.getByRole("link", { name: /message/ }).getAttribute("href"),
+      ).toBe("/resolved/thr_unknown/7");
     },
   );
 

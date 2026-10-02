@@ -10,7 +10,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention, ThreadListEntry } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
+import type { ThreadLinkTarget } from "@/components/thread/timeline/TimelineTitleView";
 import { ConversationMessageContent } from "./ConversationMessageContent";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -20,10 +20,8 @@ import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-help
 import { GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP } from "@bb/client-core";
 import { generatedConversationCollapsedPreview } from "./GeneratedConversationMessage";
 
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
+function resolveThreadLink(target: ThreadLinkTarget): string | null {
+  return `/projects/proj_demo/threads/${target.threadId}`;
 }
 
 const MARKDOWN_BODY = [
@@ -57,6 +55,7 @@ function renderChildCompleted(text = MARKDOWN_BODY) {
     <MemoryRouter>
       <RouteNavigationProvider>
         <ConversationMessageContent
+          metadata={{ timestamp: 0 }}
           role="user"
           initiator="system"
           originKind={null}
@@ -173,6 +172,7 @@ function renderAgentMessage(
           threadById={new Map([[rawMentionTarget.id, rawMentionTarget]])}
         >
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="user"
             initiator="agent"
             originKind={null}

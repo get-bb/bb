@@ -383,8 +383,8 @@ function GeneratedAgentSourceTitle({
             threadId: sourceThreadId,
           })
         : (resolveSegmentLinkHref?.({
-            kind: "thread",
             threadId: sourceThreadId,
+            messageSeq: null,
           }) ?? null)
       : null;
   const leadIn = title.segments[0]?.text ?? "Message from";

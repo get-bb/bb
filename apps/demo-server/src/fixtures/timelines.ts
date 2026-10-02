@@ -37,10 +37,17 @@ export function conversationRow(args: {
     ...baseRow(threadId, turnId, seq, at),
     id: `${threadId}:conversation:${seq}`,
     kind: "conversation" as const,
+    messageSeq: seq,
     text,
   };
   if (role === "assistant") {
-    return { ...common, role, attachments: null, turnRequest: null };
+    return {
+      ...common,
+      role,
+      attachments: null,
+      executionMetadata: null,
+      turnRequest: null,
+    };
   }
   return {
     ...common,

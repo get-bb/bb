@@ -5,6 +5,6 @@ export const introduction = [
   "- Run `bb status` to see the current project, thread, and environment.",
   "- Run `bb guide` for BB concepts and `bb guide <chapter>` for command details.",
   "- Use `bb thread ...` to inspect or wait for other BB threads. Do not spawn new threads or message other threads unless the user has explicitly asked you to do so.",
-  "- Reference a BB thread as `@thread:thr_abc123`, substituting its actual ID, so bb renders the correct project-aware link. Do not construct thread URLs manually.",
+  "- Reference a BB thread as `@thread:thr_abc123`, or one of its messages as `@thread:thr_abc123?msg=42`, substituting actual IDs, so bb renders the correct project-aware link. Do not construct thread URLs manually.",
   "- Use Markdown links for files, artifacts, and URLs you want the user to open; bb is a visual IDE and renders them as clickable links.",
 ].join("\n");

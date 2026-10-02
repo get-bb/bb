@@ -202,6 +202,41 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
+const MESSAGE_LINK_SEARCH_PARAM = "msg";
+
+export interface MessageLinkPathArgs extends ThreadRoutePathArgs {
+  seq: number;
+}
+
+export interface MessageLinkTarget {
+  threadId: string;
+  seq: number;
+}
+
+const THREAD_ROUTE_PATHNAME_PATTERN =
+  /^\/(?:projects\/[^/]+\/)?threads\/([^/]+)\/?$/;
+const MESSAGE_LINK_SEQ_PATTERN = /^(0|[1-9]\d*)$/;
+
+export function getMessageLinkPath(args: MessageLinkPathArgs): string {
+  return `${getThreadRoutePath(args)}?${MESSAGE_LINK_SEARCH_PARAM}=${args.seq}`;
+}
+
+export function parseMessageLink(href: string): MessageLinkTarget | null {
+  let url: URL;
+  try {
+    url = new URL(href, "http://message-link.invalid");
+  } catch {
+    return null;
+  }
+  const threadId = THREAD_ROUTE_PATHNAME_PATTERN.exec(url.pathname)?.[1];
+  const seq = url.searchParams.get(MESSAGE_LINK_SEARCH_PARAM);
+  return threadId === undefined ||
+    seq === null ||
+    !MESSAGE_LINK_SEQ_PATTERN.test(seq)
+    ? null
+    : { threadId: decodeURIComponent(threadId), seq: Number(seq) };
+}
+
 export const ROUTE_PATTERNS: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,

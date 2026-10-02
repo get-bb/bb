@@ -133,6 +133,7 @@ function buildOptimisticUserRow(id: string): TimelineRow {
     turnId: `${id}-turn`,
     sourceSeqStart: 1,
     sourceSeqEnd: 1,
+    messageSeq: 1,
     startedAt: 0,
     createdAt: 0,
     kind: "conversation",
@@ -240,6 +241,7 @@ function conversationRowFromStep(
     turnId: `streaming-rows-turn-${index}`,
     sourceSeqStart: index + 1,
     sourceSeqEnd: index + 1,
+    messageSeq: index + 1,
     startedAt: index,
     createdAt: index,
     kind: "conversation" as const,
@@ -261,6 +263,7 @@ function conversationRowFromStep(
   return {
     ...base,
     role: "assistant",
+    executionMetadata: null,
     turnRequest: null,
   };
 }
@@ -363,6 +366,7 @@ function AssistantContentStreaming({
     turnId,
     sourceSeqStart: 1,
     sourceSeqEnd: 1,
+    messageSeq: 1,
     startedAt: 0,
     createdAt: 0,
     kind: "conversation",
@@ -383,12 +387,14 @@ function AssistantContentStreaming({
     turnId,
     sourceSeqStart: 2,
     sourceSeqEnd: 2 + step,
+    messageSeq: 2 + step,
     startedAt: 1,
     createdAt: 1,
     kind: "conversation",
     role: "assistant",
     text: assistantText,
     attachments: null,
+    executionMetadata: null,
     turnRequest: null,
   };
   const rows: TimelineRow[] = [userRow];

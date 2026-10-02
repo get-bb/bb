@@ -55,6 +55,7 @@ function assistant(
         >
           <MessageDirectiveRegistryProvider registry={registry}>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="assistant"
               attachments={null}
               id="msg_stream"

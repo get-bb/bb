@@ -5,10 +5,8 @@
   "messageActionBar": [
     "copy",
     "edit",
-    "add-to-chat",
-    "send-to-main-thread",
-    "fork",
-    "plugin-actions"
+    "plugin-actions",
+    "more"
   ],
   "mobileLayout": {
     "sources": [

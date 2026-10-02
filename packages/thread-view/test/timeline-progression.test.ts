@@ -39,9 +39,14 @@ function baseRow(id: string): TimelineRowBase {
   };
 }
 
+function conversationBase(id: string) {
+  const base = baseRow(id);
+  return { ...base, messageSeq: base.sourceSeqEnd };
+}
+
 function userRow(text: string): TimelineConversationRow {
   return {
-    ...baseRow(`user-${text.slice(0, 8)}`),
+    ...conversationBase(`user-${text.slice(0, 8)}`),
     kind: "conversation",
     role: "user",
     text,
@@ -57,11 +62,12 @@ function userRow(text: string): TimelineConversationRow {
 
 function assistantRow(text: string): TimelineConversationRow {
   return {
-    ...baseRow(`assistant-${text.slice(0, 8)}`),
+    ...conversationBase(`assistant-${text.slice(0, 8)}`),
     kind: "conversation",
     role: "assistant",
     text,
     attachments: null,
+    executionMetadata: null,
     turnRequest: null,
   };
 }
@@ -304,7 +310,7 @@ describe("findTimelineFrontierRow", () => {
       readRow("AGENTS.md"),
       readRow("docs/CODE_REVIEW.md"),
       {
-        ...baseRow("steer-1"),
+        ...conversationBase("steer-1"),
         kind: "conversation",
         role: "user",
         text: "Keep this in mind",

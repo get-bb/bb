@@ -42,6 +42,7 @@ function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
     turnId: "turn-1",
     sourceSeqStart: args.sequence,
     sourceSeqEnd: args.endSequence ?? args.sequence,
+    messageSeq: args.endSequence ?? args.sequence,
     startedAt: args.sequence,
     createdAt: args.sequence,
     kind: "conversation",

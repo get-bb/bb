@@ -3,7 +3,7 @@ import type {
   SystemMessageKind,
   SystemMessageSubject,
 } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
+import type { ThreadLinkTarget } from "@/components/thread/timeline/TimelineTitleView";
 import type { TimelineRow } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
@@ -19,13 +19,8 @@ function TimelineStage({ children }: { children: ReactNode }) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  switch (link.kind) {
-    case "thread":
-      return `/projects/proj_demo/threads/${link.threadId}`;
-    default:
-      return null;
-  }
+function resolveThreadLink(target: ThreadLinkTarget): string | null {
+  return `/projects/proj_demo/threads/${target.threadId}`;
 }
 
 const acceptedMessage = {
@@ -154,6 +149,7 @@ export function Overview() {
         <StoryRow key={row.systemMessageKind} label={row.label} hint={row.hint}>
           <TimelineStage>
             <ConversationMessageContent
+              metadata={{ timestamp: 0 }}
               role="user"
               initiator="system"
               originKind={null}
@@ -178,6 +174,7 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="user"
             initiator="agent"
             originKind={null}
@@ -201,6 +198,7 @@ export function Overview() {
       >
         <TimelineStage>
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="user"
             initiator="system"
             originKind={null}
@@ -231,6 +229,7 @@ export function ClippedAgentMessage() {
       >
         <div className="w-full max-w-[560px]">
           <ConversationMessageContent
+            metadata={{ timestamp: 0 }}
             role="user"
             initiator="agent"
             originKind={null}

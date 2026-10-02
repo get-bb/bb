@@ -213,6 +213,8 @@ Inspecting:
                                            user-message turns for minimal/verbose (newest first, default 20, max 100)
     --after-seq <seq>                      Paginate after sequence number (json only)
     --all                                  Print the whole thread, paging through every entry
+    --message <seq>                        Print one message
+    --context <count>                      With --message, also print this many messages around it (max 20)
 
   Human formats end with a notice when older history was omitted; --json warns
   on stderr when more events exist beyond the printed page. Human-format --all
@@ -232,6 +234,9 @@ Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
   BB renders the correct project-aware link; do not construct thread URLs manually.
+  Reference one message as @thread:thr_abc123?msg=42, taking the number from
+  sourceSeq in `bb thread search --json`. Read it, or a copied message link
+  (…/threads/thr_abc123?msg=42), with `bb thread log thr_abc123 --message 42`.
 
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file

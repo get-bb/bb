@@ -233,6 +233,8 @@ import type {
   ThreadChildSummaryResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
+  ThreadMessageQuery,
+  ThreadMessageResponse,
   ThreadSectionMutationResponse,
   ThreadSectionResponse,
   ThreadGetQuery,
@@ -366,6 +368,7 @@ import {
   systemAppUpdateQuerySchema,
   threadEventWaitQuerySchema,
   threadEventsQuerySchema,
+  threadMessageQuerySchema,
   threadGetQuerySchema,
   threadCountQuerySchema,
   threadListQuerySchema,
@@ -405,6 +408,7 @@ import {
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
+type PathThreadMessage = { param: { id: string; seq: string } };
 type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
 };
@@ -1668,6 +1672,20 @@ export const publicApiRoutes = {
         threadEventsQuerySchema,
       ),
       response: jsonResponse<ThreadEventRow[]>(),
+    }),
+    /**
+     * One conversation message by its message seq (the `?msg=` value of a
+     * message link), with up to `before`/`after` neighbouring messages. Reads
+     * the same conversation rows as the timeline, from the latest context
+     * clear on. 404 `message_not_found` when no visible message has that seq.
+     */
+    message: defineRoute({
+      path: "/threads/:id/messages/:seq",
+      method: "get",
+      request: optionalQueryRequest<PathThreadMessage, ThreadMessageQuery>(
+        threadMessageQuerySchema,
+      ),
+      response: jsonResponse<ThreadMessageResponse>(),
     }),
     eventWait: defineRoute({
       path: "/threads/:id/events/wait",

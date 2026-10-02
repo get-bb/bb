@@ -1501,6 +1501,7 @@ describe("loadPluginApp", () => {
         role: "assistant",
         text: "An answer.",
         sourceSeqEnd: 12,
+        experimental_messageSeq: 12,
       },
       selectedText: "answer",
       openPanel,
@@ -1543,6 +1544,7 @@ describe("loadPluginApp", () => {
         role: "assistant",
         text: "test message text",
         sourceSeqEnd: 1,
+        experimental_messageSeq: 1,
       },
     ]);
   });

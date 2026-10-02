@@ -7,7 +7,6 @@ import {
   type TimelineTitle,
   type TimelineTitleAction,
   type TimelineTitleDecoration,
-  type TimelineTitleLink,
   type TimelineTitleSegment,
   type TimelineTitleSegmentAccent,
   type TimelineTitleTone,
@@ -30,8 +29,13 @@ export type TimelineTitleActionResolver = (
   action: TimelineTitleAction,
 ) => (() => void) | null;
 
+export interface ThreadLinkTarget {
+  threadId: string;
+  messageSeq: number | null;
+}
+
 export type TimelineTitleLinkResolver = (
-  link: TimelineTitleLink,
+  target: ThreadLinkTarget,
 ) => string | null;
 
 interface TimelineTitleViewProps {
@@ -345,7 +349,10 @@ export function TimelineTitleView({
       {title.segments.map((segment, index) => {
         const linkHref =
           segment.link && resolveSegmentLinkHref
-            ? resolveSegmentLinkHref(segment.link)
+            ? resolveSegmentLinkHref({
+                threadId: segment.link.threadId,
+                messageSeq: null,
+              })
             : null;
         return (
           <Fragment key={`segment-${index}`}>

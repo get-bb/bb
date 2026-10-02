@@ -7,6 +7,7 @@ import {
   pendingInteractionUserAnswerSchema,
   pendingInteractionUserQuestionQuestionSchema,
   promptTextMentionSchema,
+  reasoningLevelSchema,
   systemMessageKindSchema,
   systemMessageSubjectSchema,
   threadEventItemPresentationSchema,
@@ -108,6 +109,7 @@ export type TimelineConversationTurnRequest = z.infer<
 
 const timelineConversationRowBaseSchema = timelineRowBaseSchema.extend({
   kind: z.literal("conversation"),
+  messageSeq: z.number().int(),
   text: z.string(),
   attachments: timelineConversationAttachmentsSchema.nullable(),
 });
@@ -129,6 +131,13 @@ export type TimelineUserConversationRow = z.infer<
 export const timelineAssistantConversationRowSchema =
   timelineConversationRowBaseSchema.extend({
     role: z.literal("assistant"),
+    executionMetadata: z
+      .object({
+        providerId: z.string().min(1),
+        model: z.string().min(1),
+        reasoningLevel: reasoningLevelSchema,
+      })
+      .nullable(),
     turnRequest: z.null(),
   });
 

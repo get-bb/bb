@@ -98,6 +98,7 @@ export interface EventProjectionTurnRequest {
 
 export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   kind: "user";
+  messageSeq: number;
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
   systemMessageKind: SystemMessageKind;

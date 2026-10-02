@@ -1,6 +1,7 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
+  AvailableModel,
   PermissionMode,
   ProviderInfo,
   ProviderModelCatalogScope,
@@ -155,6 +156,27 @@ export function findCachedProviderInfo(
   });
   for (const [, data] of entries) {
     const match = data?.providers.find((info) => info.id === providerId);
+    if (match !== undefined) {
+      return match;
+    }
+  }
+  return null;
+}
+
+export function findCachedProviderModel(
+  queryClient: QueryClient,
+  args: { providerId: string; model: string },
+): AvailableModel | null {
+  const entries = queryClient.getQueriesData<SystemExecutionOptionsResponse>({
+    queryKey: [SYSTEM_EXECUTION_OPTIONS_QUERY_KEY],
+  });
+  for (const [queryKey, data] of entries) {
+    if (queryKey[3] !== args.providerId || data === undefined) {
+      continue;
+    }
+    const match = [...data.models, ...data.selectedOnlyModels].find(
+      (candidate) => candidate.model === args.model,
+    );
     if (match !== undefined) {
       return match;
     }

@@ -683,6 +683,7 @@ function buildOptimisticUserMessageRow({
     role: "user",
     threadId,
     turnId: null,
+    messageSeq: 0,
     sourceSeqStart: 0,
     sourceSeqEnd: 0,
     startedAt: createdAt,

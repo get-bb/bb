@@ -239,6 +239,7 @@ describe("docs anatomy manifest", () => {
     render(
       <TooltipProvider delayDuration={0}>
         <MessageActionBar
+          metadata={{ timestamp: 0 }}
           messageText="hello"
           alignment="start"
           mobileActionDisplay="inline"
@@ -262,10 +263,8 @@ describe("docs anatomy manifest", () => {
     const actionLabels: Record<string, string> = {
       copy: "Copy message",
       edit: "Edit message",
-      "add-to-chat": "Add to chat",
-      "send-to-main-thread": "Send to main thread",
-      fork: "Fork into new thread",
       "plugin-actions": "Anatomy message action",
+      more: "Message actions",
     };
     expect(Object.keys(actionLabels).sort()).toEqual(
       [...manifest.messageActionBar].sort(),

@@ -33,6 +33,8 @@ import type {
   ThreadConversationOutlineResponse,
   TimelineConversationAttachments,
   ThreadConversationOutlineAttachmentSummary,
+  ThreadMessageResponse,
+  TimelineConversationRow,
   TimelineRow,
   TimelineOutputPreview,
   ThreadTimelineResponse,
@@ -1580,12 +1582,29 @@ function toConversationOutlineAttachmentSummary(
   return { imageCount, fileCount };
 }
 
-export function buildThreadConversationOutline(
+interface BuildThreadConversationRowsOptions extends BuildThreadConversationOutlineOptions {
+  includeNestedRows: boolean;
+}
+
+function collectConversationRows(
+  rows: readonly TimelineRow[],
+  conversationRows: TimelineConversationRow[],
+): void {
+  for (const row of rows) {
+    if (row.kind === "conversation") {
+      conversationRows.push(row);
+    } else if (row.kind === "turn" && row.children !== null) {
+      collectConversationRows(row.children, conversationRows);
+    }
+  }
+}
+
+function buildThreadConversationRows(
   db: DbConnection,
   thread: Thread,
-  options: BuildThreadConversationOutlineOptions,
-): ThreadConversationOutlineResponse {
-  return runEventLoopWorkSync(`conversation-outline ${thread.id}`, () => {
+  options: BuildThreadConversationRowsOptions,
+): TimelineConversationRow[] {
+  return runEventLoopWorkSync(`conversation-rows ${thread.id}`, () => {
     const contextBoundarySeq = getLatestCompletedThreadContextClearSequence(
       db,
       {
@@ -1619,7 +1638,7 @@ export function buildThreadConversationOutline(
       events: decodedEvents,
       options: {
         completedTurnDisplay: options.completedTurnDisplay,
-        includeNestedRows: false,
+        includeNestedRows: options.includeNestedRows,
         includeDiagnosticOperations: false,
         isLatestPage: true,
         providerDisplayName: options.providerDisplayName,
@@ -1629,22 +1648,63 @@ export function buildThreadConversationOutline(
         workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
       },
     });
-    const items: ThreadConversationOutlineItem[] = [];
-    for (const row of timeline.rows) {
-      if (row.kind !== "conversation") {
-        continue;
-      }
-      items.push({
-        id: row.id,
-        role: row.role,
-        preview: toConversationOutlinePreview(row.text),
-        attachmentSummary: toConversationOutlineAttachmentSummary(
-          row.attachments,
-        ),
-      });
-    }
-    return { items, maxSeq: options.maxSeq };
+    const conversationRows: TimelineConversationRow[] = [];
+    collectConversationRows(timeline.rows, conversationRows);
+    return conversationRows;
   });
+}
+
+export function buildThreadConversationOutline(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadConversationOutlineOptions,
+): ThreadConversationOutlineResponse {
+  const rows = buildThreadConversationRows(db, thread, {
+    ...options,
+    includeNestedRows: false,
+  });
+  return {
+    items: rows.map((row) => ({
+      id: row.id,
+      role: row.role,
+      preview: toConversationOutlinePreview(row.text),
+      attachmentSummary: toConversationOutlineAttachmentSummary(
+        row.attachments,
+      ),
+    })),
+    maxSeq: options.maxSeq,
+  };
+}
+
+interface GetThreadMessageOptions extends BuildThreadConversationOutlineOptions {
+  seq: number;
+  before: number;
+  after: number;
+}
+
+export function getThreadMessage(
+  db: DbConnection,
+  thread: Thread,
+  options: GetThreadMessageOptions,
+): ThreadMessageResponse {
+  const rows = buildThreadConversationRows(db, thread, {
+    ...options,
+    includeNestedRows: true,
+  });
+  const index = rows.findIndex((row) => row.messageSeq === options.seq);
+  const message = rows[index];
+  if (message === undefined) {
+    throw new ApiError(
+      404,
+      "message_not_found",
+      `Thread ${thread.id} has no message ${options.seq}; an edit may have removed it or a context clear hidden it`,
+    );
+  }
+  return {
+    message,
+    before: rows.slice(Math.max(0, index - options.before), index),
+    after: rows.slice(index + 1, index + 1 + options.after),
+  };
 }
 
 export function buildThreadConversationOutlineProjectionKey(

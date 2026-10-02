@@ -19,6 +19,7 @@ function userRow(args: {
     turnId: "turn-1",
     sourceSeqStart: args.seq,
     sourceSeqEnd: args.seq,
+    messageSeq: args.seq,
     startedAt: args.seq,
     createdAt: args.seq,
     text: args.text,
@@ -54,10 +55,12 @@ function assistantRow(
     turnId: "turn-1",
     sourceSeqStart: seq,
     sourceSeqEnd: seq,
+    messageSeq: seq,
     startedAt: seq,
     createdAt: seq,
     text: `assistant ${seq}`,
     attachments: null,
+    executionMetadata: null,
     turnRequest: null,
   };
 }

@@ -1722,6 +1722,14 @@ export interface ThreadChatMessageReference {
   /** Visible text of the message. */
   text: string;
   sourceSeqEnd: number;
+  /**
+   * The event sequence that recorded this message: the `msg` value of a
+   * message link (`/threads/<id>?msg=<seq>`) and the seq that
+   * `sdk.threads.message` and `bb thread log --message` read. Equals
+   * `sourceSeqEnd` except for a steer, which is recorded by its request but
+   * shown where the running turn accepted it.
+   */
+  experimental_messageSeq: number;
 }
 
 /**
