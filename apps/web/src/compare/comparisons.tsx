@@ -306,17 +306,6 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
-          question: "When is Superset the better choice?",
-          answer: (
-            <p>
-              If you review one agent’s patch at a time and want a diff, file
-              editor, terminals, browser, and port management in one window, or
-              you need paid team seats and a Slack integration, Superset is a
-              great fit.
-            </p>
-          ),
-        },
-        {
           question: "Can I use bb and Superset together?",
           answer: (
             <p>
@@ -473,8 +462,8 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can I control what agents are allowed to do?",
           answer: (
             <p>
-              Yes. Each thread has a permission mode, from asking before
-              commands to full access. When an agent needs approval, you allow
+              Yes. Pick a permission mode for each thread: Accept Edits, Approve
+              for me, or Full Access. When an agent needs your approval, allow
               or deny it from your desktop or your phone.
             </p>
           ),
@@ -489,9 +478,9 @@ const BB_VS_SUPERSET: Comparison = {
           answer: (
             <p>
               Each thread can run in its own worktree, so agents never step on
-              each other’s changes. Pick Worktree when you start a thread; bb
-              remembers the choice per project and cleans up worktrees when you
-              archive their threads.
+              each other’s changes. Pick Worktree when you start a thread, and
+              bb remembers your choice. Once you archive a worktree’s threads,
+              bb cleans it up.
             </p>
           ),
         },
@@ -620,9 +609,9 @@ const BB_VS_SUPERSET: Comparison = {
           question: "How do I get started with bb?",
           answer: (
             <p>
-              Download the Mac app or run <code>npx bb-app@latest</code>, add a
+              Download the app or run <code>npx bb-app@latest</code>, add a
               repo, and start a thread. bb uses the Claude Code and Codex logins
-              you already have, so your first agent runs in about a minute.
+              you already have, so there’s nothing to configure first.
             </p>
           ),
         },
@@ -646,9 +635,9 @@ const BB_VS_SUPERSET: Comparison = {
           answer: (
             <p>
               Not yet. Superset runs on macOS, with an experimental Linux build.
-              bb runs on Windows through WSL2 and on Linux as an alpha with{" "}
-              <code>npx bb-app@latest</code>. The desktop app is for Apple
-              Silicon Macs, and Intel Macs use <code>npx</code> too.
+              bb has apps for Apple Silicon Macs and Linux (alpha), and runs on
+              Windows through WSL2 and on Intel Macs with{" "}
+              <code>npx bb-app@latest</code>.
             </p>
           ),
         },
