@@ -391,15 +391,19 @@ describe("ThreadPendingInteractionBanner presentation detail images", () => {
 
 describe("ThreadPendingInteractionBanner collapsed strip", () => {
   it("fits native and plugin interaction shells in the remaining footer space", () => {
-    const observers: Array<() => void> = [];
+    const observers = new Set<() => void>();
     vi.stubGlobal(
       "ResizeObserver",
       class {
+        callback: () => void;
         constructor(callback: () => void) {
-          observers.push(callback);
+          this.callback = callback;
+          observers.add(callback);
         }
         observe() {}
-        disconnect() {}
+        disconnect() {
+          observers.delete(this.callback);
+        }
       },
     );
     try {
