@@ -33,6 +33,7 @@ export * from "./plugin-marketplace-entry.js";
 export * from "./plugin-id.js";
 export * from "./plugin-manifest.js";
 export * from "./plugin-sdk-version.js";
+export * from "./host-path.js";
 export * from "./project-path.js";
 export * from "./project.js";
 export * from "./prompt-attachment-limits.js";

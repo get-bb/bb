@@ -138,6 +138,8 @@ export function buildWorkspaceWriteSandbox(
   };
 }
 
+const CLAUDE_WINDOWS_EXECUTABLE_NAME = "claude.exe";
+
 function isExecutableFile(candidatePath: string): boolean {
   try {
     accessSync(candidatePath, constants.X_OK);
@@ -171,6 +173,12 @@ function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
   if (process.getuid?.() === 0) {
     return [];
   }
+  if (process.platform === "win32") {
+    const userProfile = env.USERPROFILE?.trim();
+    return userProfile
+      ? [join(userProfile, ".local", "bin", CLAUDE_WINDOWS_EXECUTABLE_NAME)]
+      : [];
+  }
   const candidatePaths: string[] = [];
   const home = env.HOME?.trim();
   if (home) {
@@ -200,8 +208,9 @@ export function resolveClaudeCodeExecutable(
   }
 
   const executableOnPath = resolveExecutableOnPath({
-    executableName: "claude",
-    pathEnv: args.env.PATH,
+    executableName:
+      process.platform === "win32" ? CLAUDE_WINDOWS_EXECUTABLE_NAME : "claude",
+    pathEnv: args.env.PATH ?? args.env.Path,
   });
   if (executableOnPath) {
     return executableOnPath;

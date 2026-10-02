@@ -36,6 +36,7 @@ import {
   resolveBbAppStartContext,
   resolveBbAppCommand,
   resolveServerListenerUrl,
+  resolveBundledCliLaunch,
   resolveWorktreeRuntimePolicy,
   runBbApp,
   shouldRunSourceAppUpdateShim,
@@ -1912,6 +1913,36 @@ describe("bb-app launcher", () => {
     );
   });
 
+  it("runs the extensionless bundled CLI through Node on Windows", () => {
+    expect(
+      resolveBundledCliLaunch({
+        args: ["status"],
+        cliPath: "C:\\bb\\host-daemon\\dist\\bb",
+        nodePath: "C:\\node\\node.exe",
+        platform: "win32",
+      }),
+    ).toEqual({
+      command: "C:\\node\\node.exe",
+      args: ["C:\\bb\\host-daemon\\dist\\bb", "status"],
+    });
+    expect(
+      resolveBundledCliLaunch({
+        args: ["status"],
+        cliPath: "C:\\tools\\bb.exe",
+        nodePath: "C:\\node\\node.exe",
+        platform: "win32",
+      }),
+    ).toEqual({ command: "C:\\tools\\bb.exe", args: ["status"] });
+    expect(
+      resolveBundledCliLaunch({
+        args: ["status"],
+        cliPath: "/opt/bb/host-daemon/dist/bb",
+        nodePath: "/usr/bin/node",
+        platform: "linux",
+      }),
+    ).toEqual({ command: "/opt/bb/host-daemon/dist/bb", args: ["status"] });
+  });
+
   it("limits npm package metadata to documented runtimes", () => {
     const metadata = readPackageMetadata();
 
@@ -1920,6 +1951,7 @@ describe("bb-app launcher", () => {
       "host-daemon/dist/bb-plugin-host-worker.mjs",
     );
     expect(metadata.files).toContain("host-daemon/dist/bb");
+    expect(metadata.files).toContain("host-daemon/dist/bb.cmd");
     expect(metadata.files).toContain("host-daemon/dist/bb-chunks");
     expect(metadata.os).toEqual(["darwin", "linux"]);
   });

@@ -77,7 +77,13 @@ interface ThreadSpawnCommandOptions {
 }
 
 export function looksLikePath(value: string): boolean {
-  return value.includes("/") || value.startsWith(".") || value.startsWith("~");
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:/u.test(value) ||
+    value.startsWith(".") ||
+    value.startsWith("~")
+  );
 }
 
 export function requireHostId(hostId: string | null): string {

@@ -269,6 +269,12 @@
       "outputs": ["release/**"],
       "passThroughEnv": ["*"]
     },
+    "@bb/desktop#desktop:build:win": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
     "@bb/desktop#smoke:packaged": {
       "cache": false,
       "outputs": [],
@@ -286,6 +292,12 @@
       "passThroughEnv": ["*"]
     },
     "@bb/desktop#package:linux": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#package:win": {
       "dependsOn": ["bb-app#build", "@bb/desktop#build"],
       "cache": false,
       "outputs": ["release/**"],
@@ -737,6 +749,11 @@
     },
     "smoke:tarball": {
       "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "smoke:boot": {
+      "dependsOn": ["build", "//#ensure-native-modules"],
       "cache": false,
       "outputs": []
     },

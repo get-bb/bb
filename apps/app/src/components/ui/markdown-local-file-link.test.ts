@@ -444,3 +444,95 @@ describe("resolveRelativeLocalFileHref", () => {
     ).toBeNull();
   });
 });
+
+describe("Windows drive paths", () => {
+  const trusted = { kind: "trusted-host" } as const;
+
+  it("parses drive paths and file URLs with optional line numbers", () => {
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: trusted,
+        href: "C:/src/repo/src/app.ts:12",
+      }),
+    ).toEqual({
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
+      openTargetId: null,
+      path: "C:/src/repo/src/app.ts",
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: trusted,
+        href: "C:\\src\\repo\\src\\app.ts",
+      }),
+    ).toEqual({
+      lineRange: null,
+      openTargetId: null,
+      path: "C:\\src\\repo\\src\\app.ts",
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: trusted,
+        href: "file:///C:/src/repo/My%20Notes/plan.md#L3",
+      }),
+    ).toEqual({
+      lineRange: { startLineNumber: 3, endLineNumber: 3 },
+      openTargetId: null,
+      path: "C:/src/repo/My Notes/plan.md",
+    });
+  });
+
+  it("rejects drive roots, directories, and drive-relative text", () => {
+    for (const href of ["C:\\", "C:/src/repo/", "C:notes.md", "C:"]) {
+      expect(parseLocalFileHref({ absoluteLinks: trusted, href })).toBeNull();
+    }
+  });
+
+  it("contains drive paths in a workspace root without regard to case", () => {
+    const contained = {
+      kind: "contained",
+      rootPath: "C:\\src\\repo",
+    } as const;
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: contained,
+        href: "c:/SRC/repo/src/app.ts",
+      })?.path,
+    ).toBe("C:\\SRC\\repo\\src\\app.ts");
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: contained,
+        href: "C:/src/other/app.ts",
+      }),
+    ).toBeNull();
+  });
+
+  it("renders a drive path as a file URL the browser accepts", () => {
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          lineRange: { startLineNumber: 5, endLineNumber: 9 },
+          openTargetId: null,
+          path: "C:\\src\\repo\\My Notes\\plan.md",
+        },
+        undefined,
+      ),
+    ).toBe("file:///C:/src/repo/My%20Notes/plan.md#L5-L9");
+  });
+
+  it("resolves a relative link under a Windows workspace root", () => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "C:\\src\\repo\\docs",
+        href: "../src/app.ts:7",
+        rootPath: "C:\\src\\repo",
+      }),
+    ).toBe("C:\\src\\repo\\src\\app.ts:7");
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "C:\\src\\repo",
+        href: "../outside.ts",
+        rootPath: "C:\\src\\repo",
+      }),
+    ).toBeNull();
+  });
+});

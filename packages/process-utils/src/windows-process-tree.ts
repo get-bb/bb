@@ -6,7 +6,10 @@ function hasExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
 
-function terminateTree(pid: number): Promise<boolean> {
+export function terminateWindowsProcessTrees(
+  pids: readonly number[],
+): Promise<boolean> {
+  if (pids.length === 0) return Promise.resolve(true);
   return new Promise((resolve) => {
     let timer: NodeJS.Timeout | undefined;
     let killer: ChildProcess | undefined;
@@ -24,7 +27,7 @@ function terminateTree(pid: number): Promise<boolean> {
           "System32",
           "taskkill.exe",
         ),
-        ["/pid", String(pid), "/T", "/F"],
+        [...pids.flatMap((pid) => ["/pid", String(pid)]), "/T", "/F"],
         { windowsHide: true },
         (error) => finish(error === null),
       );
@@ -61,7 +64,7 @@ export async function stopWindowsProcessTree(
   if (child.pid === undefined || hasExited(child)) {
     return { treeTermination: "unverified" };
   }
-  const terminated = await terminateTree(child.pid);
+  const terminated = await terminateWindowsProcessTrees([child.pid]);
   if (!hasExited(child)) child.kill("SIGKILL");
   await waitForRootExit(child);
   return { treeTermination: terminated ? "confirmed" : "unverified" };

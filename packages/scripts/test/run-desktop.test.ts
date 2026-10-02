@@ -32,8 +32,9 @@ describe("desktop packaging task", () => {
   it("selects the platform packaging task and refuses unsupported platforms", () => {
     expect(resolveDesktopPackageTask("darwin")).toBe("package");
     expect(resolveDesktopPackageTask("linux")).toBe("package:linux");
-    expect(() => resolveDesktopPackageTask("win32")).toThrow(
-      /supported on macOS and Linux/u,
+    expect(resolveDesktopPackageTask("win32")).toBe("package:win");
+    expect(() => resolveDesktopPackageTask("freebsd")).toThrow(
+      /supported on macOS, Linux, and Windows/u,
     );
     expect(createDesktopPackageCommand("darwin").args).toEqual(
       expect.arrayContaining(["run", "package", "--filter=@bb/desktop"]),

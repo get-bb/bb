@@ -675,6 +675,7 @@ async function applyLiveSessionSettings(
 ): Promise<void> {
   const current = threadSession.attachment.liveSettings;
   if (current.model !== next.model) {
+    threadSession.contextUsageCollector.invalidateCapacity();
     await threadSession.session.setModel(next.model);
     seedModelContextWindowHint(threadSession, threadId, next.model);
   }
@@ -1422,9 +1423,10 @@ function createOnSdkMessage(
     });
     if (
       message.type === "result" ||
-      (message.type === "system" && message.subtype === "compact_boundary")
+      (message.type === "system" &&
+        (message.subtype === "init" || message.subtype === "compact_boundary"))
     ) {
-      if (message.type === "system") {
+      if (message.type === "system" && message.subtype === "compact_boundary") {
         sendThreadDeltas(args.threadIdRef.current, [
           {
             kind: "contextWindow",
@@ -1443,17 +1445,25 @@ function createOnSdkMessage(
               sessionSerial: args.sessionSerial,
               threadId: args.threadIdRef.current,
             }) === threadSession && !threadSession.streamEnded,
-          publish: (snapshot) =>
+          publish: (snapshot, snapshotCurrent) => {
+            const capacity =
+              threadSession.translator.setClaudeReportedContextWindow(
+                args.threadIdRef.current,
+                snapshot.contextWindowTokens,
+              );
             sendThreadDeltas(args.threadIdRef.current, [
-              {
-                kind: "contextWindow",
-                used: snapshot.usedTokens,
-                size: snapshot.contextWindowTokens,
-                estimated: snapshot.estimated,
-                snapshot,
-                attach: "currentOrLast",
-              },
-            ]),
+              snapshotCurrent
+                ? {
+                    kind: "contextWindow",
+                    used: snapshot.usedTokens,
+                    size: snapshot.contextWindowTokens,
+                    estimated: snapshot.estimated,
+                    snapshot,
+                    attach: "currentOrLast",
+                  }
+                : capacity,
+            ]);
+          },
         });
       }
     }

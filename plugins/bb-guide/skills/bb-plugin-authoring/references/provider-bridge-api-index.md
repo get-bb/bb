@@ -88,6 +88,9 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `experimental_formatCommand`
 - `experimental_installationVerification`
 - `experimental_isProviderBridgeRecording`
+- `experimental_killPortableProcess` — end a child from
+  `experimental_spawnPortableProcess`; terminates the whole process tree on
+  Windows
 - `experimental_npmCommand`
 - `experimental_npmGlobalInstallCommand`
 - `experimental_npmGlobalInstallSource`
@@ -102,6 +105,8 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `experimental_recordProviderChildIo`
 - `experimental_resolveExecutablePath`
 - `experimental_searchPresentation`
+- `experimental_spawnPortableProcess` — launch the provider CLI by name; resolves
+  PATH/PATHEXT and npm `.cmd` shims on Windows
 - `experimental_toolPresentation`
 - `experimental_versionFrom`
 - `experimental_webFetchPresentation`

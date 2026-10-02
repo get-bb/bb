@@ -108,6 +108,30 @@ describe("resolveThreadLocalFileLink", () => {
     });
   });
 
+  it("opens a Windows path inside the workspace in any spelling", () => {
+    expect(
+      resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
+        hostFileLinksAvailable: true,
+        link: {
+          lineRange: null,
+          openTargetId: null,
+          path: "c:/src/Repo/packages/app/file.ts",
+        },
+        threadStorageRootPath: null,
+        workspaceRootPath: "C:\\src\\repo",
+      }),
+    ).toEqual({
+      kind: "open-workspace-path",
+      request: {
+        lineRange: null,
+        path: "C:\\src\\Repo\\packages\\app\\file.ts",
+        relativePath: "packages/app/file.ts",
+        workspaceRootPath: "C:\\src\\repo",
+      },
+    });
+  });
+
   it("rejects relative file links", () => {
     expect(
       resolveThreadLocalFileLink({

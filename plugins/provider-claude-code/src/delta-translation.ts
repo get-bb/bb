@@ -1292,12 +1292,28 @@ export function createClaudeDeltaTranslator(
       resolveClaudeModelContextWindowHint(model);
   }
 
+  function setClaudeReportedContextWindow(
+    threadId: string,
+    size: number,
+  ): ThreadDelta {
+    const state = stateFor({ threadId });
+    state.selectedModelContextWindow = size;
+    return {
+      kind: "contextWindow",
+      used: state.latestRequestContextTokens ?? null,
+      size,
+      estimated: true,
+      attach: "currentOrLast",
+    };
+  }
+
   return {
     acceptInput,
     buildSessionSettlementDeltas,
     configureInjectedTools,
     hasOpenTurn,
     setClaudeModelContextWindowHint,
+    setClaudeReportedContextWindow,
     translate,
   };
 }

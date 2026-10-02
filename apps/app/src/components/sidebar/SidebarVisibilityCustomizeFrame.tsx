@@ -1,7 +1,5 @@
 import type { ReactNode, RefObject } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
-import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -32,26 +30,22 @@ export function SidebarVisibilityCustomizeFrame({
         data-testid={testId}
       >
         <div className="flex shrink-0 items-center gap-1">
+          <div
+            className={cn("min-w-0 flex-1 px-2", CHROME_SECTION_LABEL_CLASS)}
+          >
+            {title}
+          </div>
           <Button
             ref={doneButtonRef}
             type="button"
             variant="ghost"
-            size="icon"
-            aria-label="Back to sidebar"
+            size="sm"
             autoFocus={autoFocusDone}
-            className={cn(
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "shrink-0 text-muted-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
-            )}
+            className="h-7 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2 max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-sm"
             onClick={onDone}
           >
-            <Icon name="ChevronLeft" aria-hidden="true" />
+            Done
           </Button>
-          <div
-            className={cn("min-w-0 flex-1 px-1", CHROME_SECTION_LABEL_CLASS)}
-          >
-            {title}
-          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto pt-1">{children}</div>
       </div>

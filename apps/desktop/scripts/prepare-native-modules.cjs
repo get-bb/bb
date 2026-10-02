@@ -1,5 +1,5 @@
 const { execFileSync, spawn } = require("node:child_process");
-const { chmod, readFile, readdir, writeFile } = require("node:fs/promises");
+const { chmod, cp, readFile, readdir, writeFile } = require("node:fs/promises");
 const { createRequire } = require("node:module");
 const path = require("node:path");
 
@@ -8,9 +8,11 @@ const desktopPackageRoot = path.resolve(__dirname, "..");
 const NODE_MODULES_DIRECTORY = "node_modules";
 const NODE_PTY_PACKAGE_NAME = "node-pty";
 const BETTER_SQLITE3_PACKAGE_NAME = "better-sqlite3";
+const PARCEL_WATCHER_PACKAGE_NAME = "@parcel/watcher";
 const PACKAGED_NATIVE_PACKAGE_NAMES = [
   NODE_PTY_PACKAGE_NAME,
   BETTER_SQLITE3_PACKAGE_NAME,
+  PARCEL_WATCHER_PACKAGE_NAME,
 ];
 
 const NODE_PTY_PREBUILD_PLATFORMS = ["darwin-arm64", "darwin-x64"];
@@ -220,6 +222,64 @@ async function prepareBetterSqlite3PackageDirectory(packageDirectory, options) {
   if (canVerify) verify();
 }
 
+function parcelWatcherPlatformPackageName({ arch, platform }) {
+  return platform === "linux"
+    ? undefined
+    : `${PARCEL_WATCHER_PACKAGE_NAME}-${platform}-${arch}`;
+}
+
+function resolveWorkspaceParcelWatcherDirectory(packageName, fromDirectory) {
+  return path.dirname(
+    createRequire(path.join(fromDirectory, "package.json")).resolve(
+      packageName,
+    ),
+  );
+}
+
+async function prepareParcelWatcherPackageDirectory(packageDirectory, options) {
+  const platformPackageName = parcelWatcherPlatformPackageName(options);
+  if (platformPackageName === undefined) {
+    return;
+  }
+  const packagedPlatformDirectory = path.join(
+    path.dirname(packageDirectory),
+    path.basename(platformPackageName),
+  );
+  if (!(await isDirectory(packagedPlatformDirectory))) {
+    const workspaceWatcherDirectory = resolveWorkspaceParcelWatcherDirectory(
+      PARCEL_WATCHER_PACKAGE_NAME,
+      path.join(desktopPackageRoot, NODE_MODULES_DIRECTORY, "bb-app"),
+    );
+    await cp(
+      resolveWorkspaceParcelWatcherDirectory(
+        platformPackageName,
+        workspaceWatcherDirectory,
+      ),
+      packagedPlatformDirectory,
+      { dereference: true, recursive: true },
+    );
+  }
+  if (
+    options.platform !== process.platform ||
+    options.arch !== process.arch ||
+    options.electronVersion !== resolveElectronVersion()
+  ) {
+    return;
+  }
+  const electron = createRequire(path.join(desktopPackageRoot, "package.json"))(
+    "electron",
+  );
+  execFileSync(
+    electron,
+    ["-e", "require(process.argv[1]);", packagedPlatformDirectory],
+    {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      stdio: "pipe",
+      timeout: 30_000,
+    },
+  );
+}
+
 async function preparePackagedNativeModules(appOutDir, options = {}) {
   if (!(await isDirectory(appOutDir))) {
     throw new Error(`Packaged app output does not exist: ${appOutDir}`);
@@ -254,6 +314,24 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
   await Promise.all(
     betterSqlite3Directories.map((packageDirectory) =>
       prepareBetterSqlite3PackageDirectory(packageDirectory, {
+        arch: options.arch,
+        electronVersion: options.electronVersion,
+        platform: options.platform,
+      }),
+    ),
+  );
+
+  const parcelWatcherDirectories = packageDirectories.get(
+    PARCEL_WATCHER_PACKAGE_NAME,
+  );
+  if (parcelWatcherDirectories.length === 0) {
+    throw new Error(
+      `Unable to find ${PARCEL_WATCHER_PACKAGE_NAME} under ${appOutDir}`,
+    );
+  }
+  await Promise.all(
+    parcelWatcherDirectories.map((packageDirectory) =>
+      prepareParcelWatcherPackageDirectory(packageDirectory, {
         arch: options.arch,
         electronVersion: options.electronVersion,
         platform: options.platform,
@@ -307,7 +385,12 @@ async function afterPack(context) {
           "MacOS",
           productName,
         )
-      : path.join(context.appOutDir, context.packager.executableName);
+      : path.join(
+          context.appOutDir,
+          platform === "win32"
+            ? `${productName}.exe`
+            : context.packager.executableName,
+        );
   await smokePackagedNpm(appBinary);
 }
 

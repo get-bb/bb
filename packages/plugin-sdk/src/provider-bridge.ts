@@ -258,6 +258,21 @@ export type {
  */
 export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 
+/**
+ * Spawns a provider CLI by name the way the daemon does: on Windows it resolves
+ * PATH and PATHEXT, runs npm `.cmd` shims, and opens no console window. Use it
+ * in place of `node:child_process` `spawn` for a provider executable.
+ */
+export { spawnPortableProcess as experimental_spawnPortableProcess } from "@bb/process-utils";
+
+/**
+ * Ends a child started with `experimental_spawnPortableProcess`. On Windows it
+ * terminates the child's whole process tree, because an npm `.cmd` shim makes
+ * the child a `cmd.exe` wrapper and Windows delivers no signals; elsewhere it
+ * sends `signal` to the child. Use it in place of `child.kill(signal)`.
+ */
+export { killPortableProcess as experimental_killPortableProcess } from "@bb/process-utils";
+
 // ---------------------------------------------------------------------------
 // 4. The domain vocabulary the protocol's payloads reference
 // ---------------------------------------------------------------------------

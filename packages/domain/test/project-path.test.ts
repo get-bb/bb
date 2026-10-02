@@ -4,10 +4,9 @@ import {
   getProjectPathValidationMessage,
   INVALID_PROJECT_PATH_MESSAGE,
   isAbsoluteProjectPath,
-  isNativeWindowsProjectPath,
   normalizeProjectPathInput,
   PROJECT_PATH_ROOT_MESSAGE,
-  UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE,
+  UNSUPPORTED_WINDOWS_NETWORK_PROJECT_PATH_MESSAGE,
 } from "../src/project-path.js";
 
 describe("project-path", () => {
@@ -21,43 +20,47 @@ describe("project-path", () => {
     expect(deriveProjectNameFromPath("/mnt/c/Users/michael/bb/")).toBe("bb");
   });
 
-  it("does not derive a project name from unsupported native Windows paths", () => {
-    expect(deriveProjectNameFromPath(windowsProjectPath)).toBe("");
-    expect(deriveProjectNameFromPath("C:/Users/michael/bb/")).toBe("");
-    expect(deriveProjectNameFromPath(uncProjectPath)).toBe("");
+  it("derives a project name from Windows drive paths", () => {
+    expect(deriveProjectNameFromPath(windowsProjectPath)).toBe("bb");
+    expect(deriveProjectNameFromPath("C:/Users/michael/bb/")).toBe("bb");
   });
 
-  it("does not derive a project name from filesystem roots", () => {
+  it("does not derive a project name from network paths or filesystem roots", () => {
+    expect(deriveProjectNameFromPath(uncProjectPath)).toBe("");
     expect(deriveProjectNameFromPath("/")).toBe("");
     expect(deriveProjectNameFromPath(windowsRootPath)).toBe("");
+    expect(deriveProjectNameFromPath("C:")).toBe("");
   });
 
   it("recognizes supported absolute paths", () => {
     expect(isAbsoluteProjectPath("/srv/repos/bb")).toBe(true);
     expect(isAbsoluteProjectPath("/mnt/c/Users/michael/bb")).toBe(true);
-    expect(isAbsoluteProjectPath(windowsProjectPath)).toBe(false);
+    expect(isAbsoluteProjectPath(windowsProjectPath)).toBe(true);
+    expect(isAbsoluteProjectPath("c:/Users/michael/bb")).toBe(true);
     expect(isAbsoluteProjectPath(uncProjectPath)).toBe(false);
     expect(isAbsoluteProjectPath("C:Users\\michael\\bb")).toBe(false);
     expect(isAbsoluteProjectPath("relative/path")).toBe(false);
   });
 
-  it("recognizes unsupported native Windows paths", () => {
-    expect(isNativeWindowsProjectPath(windowsProjectPath)).toBe(true);
-    expect(isNativeWindowsProjectPath("C:/Users/michael/bb")).toBe(true);
-    expect(isNativeWindowsProjectPath(uncProjectPath)).toBe(true);
-    expect(isNativeWindowsProjectPath(windowsRootPath)).toBe(true);
-    expect(isNativeWindowsProjectPath("/mnt/c/Users/michael/bb")).toBe(false);
-  });
-
-  it("normalizes trailing separators without collapsing Linux roots", () => {
+  it("normalizes trailing separators without collapsing roots", () => {
     expect(normalizeProjectPathInput("/srv/repos/bb/")).toBe("/srv/repos/bb");
     expect(normalizeProjectPathInput("/mnt/c/Users/michael/bb/")).toBe(
       "/mnt/c/Users/michael/bb",
     );
     expect(normalizeProjectPathInput("/")).toBe("/");
-    expect(normalizeProjectPathInput(`${windowsProjectPath}\\`)).toBe(
+    expect(normalizeProjectPathInput(windowsRootPath)).toBe(windowsRootPath);
+  });
+
+  it("stores one spelling for a Windows drive path", () => {
+    for (const spelling of [
+      windowsProjectPath,
       `${windowsProjectPath}\\`,
-    );
+      "c:\\Users\\michael\\bb",
+      "C:/Users/michael/bb/",
+      "C:\\Users\\\\michael\\.\\bb",
+    ]) {
+      expect(normalizeProjectPathInput(spelling)).toBe(windowsProjectPath);
+    }
   });
 
   it("returns clear validation messages for unsupported path formats", () => {
@@ -65,17 +68,21 @@ describe("project-path", () => {
     expect(
       getProjectPathValidationMessage("/mnt/c/Users/michael/bb"),
     ).toBeNull();
+    expect(getProjectPathValidationMessage(windowsProjectPath)).toBeNull();
     expect(getProjectPathValidationMessage("/")).toBe(
+      PROJECT_PATH_ROOT_MESSAGE,
+    );
+    expect(getProjectPathValidationMessage(windowsRootPath)).toBe(
       PROJECT_PATH_ROOT_MESSAGE,
     );
     expect(getProjectPathValidationMessage("relative/path")).toBe(
       INVALID_PROJECT_PATH_MESSAGE,
     );
-    expect(getProjectPathValidationMessage(windowsProjectPath)).toBe(
-      UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE,
+    expect(getProjectPathValidationMessage("C:Users\\michael\\bb")).toBe(
+      INVALID_PROJECT_PATH_MESSAGE,
     );
     expect(getProjectPathValidationMessage(uncProjectPath)).toBe(
-      UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE,
+      UNSUPPORTED_WINDOWS_NETWORK_PROJECT_PATH_MESSAGE,
     );
   });
 });

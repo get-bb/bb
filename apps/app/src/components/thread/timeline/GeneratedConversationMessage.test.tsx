@@ -10,7 +10,6 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention, ThreadListEntry } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import { ConversationMessageContent } from "./ConversationMessageContent";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -19,12 +18,6 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-helpers/domain-fixtures";
 import { GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP } from "@bb/client-core";
 import { generatedConversationCollapsedPreview } from "./GeneratedConversationMessage";
-
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
-}
 
 const MARKDOWN_BODY = [
   "# Final report",
@@ -62,7 +55,6 @@ function renderChildCompleted(text = MARKDOWN_BODY) {
           originKind={null}
           senderThreadId={null}
           senderThreadTitle={null}
-          resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="child-completed"
           systemMessageSubject={{
             kind: "thread",
@@ -180,7 +172,6 @@ function renderAgentMessage(
             senderThreadTitle={senderThreadTitle}
             senderIsPluginSideChat={senderIsPluginSideChat}
             onTitleAction={onTitleAction}
-            resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             attachments={null}
@@ -292,9 +283,7 @@ describe("GeneratedConversationMessage markdown body", () => {
     expect(sourcePill?.querySelector('[data-icon="UserRound"]')).not.toBeNull();
     expect(sourcePill?.querySelector('[data-icon="MessageSquare"]')).toBeNull();
     expect(sourcePill?.tagName).toBe("A");
-    expect(sourcePill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_agent",
-    );
+    expect(sourcePill?.getAttribute("href")).toBe("/threads/thr_agent");
   });
 
   it("renders agent Markdown and its offset-based path mention", () => {

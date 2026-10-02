@@ -82,6 +82,12 @@ describe("looksLikePath", () => {
     expect(looksLikePath("worktree")).toBe(false);
     expect(looksLikePath("docker")).toBe(false);
   });
+
+  it("recognizes Windows drive paths in either separator style", () => {
+    expect(looksLikePath("C:\\src\\repo")).toBe(true);
+    expect(looksLikePath("c:/src/repo")).toBe(true);
+    expect(looksLikePath("src\\repo")).toBe(true);
+  });
 });
 
 describe("requireHostId", () => {

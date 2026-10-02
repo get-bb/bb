@@ -1,7 +1,6 @@
 import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { ThreadTimelinePluginMessageAction } from "@/components/thread/timeline/types";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import { renderTemplate } from "@bb/templates";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
@@ -38,13 +37,6 @@ function TimelineStage({
 }
 
 const resolveImageSrc = (path: string) => path;
-
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  switch (link.kind) {
-    case "thread":
-      return `/projects/proj_demo/threads/${link.threadId}`;
-  }
-}
 
 const acceptedMessage = {
   isGrouped: false,
@@ -768,7 +760,6 @@ export function Overview() {
             role="user"
             originKind={null}
             initiator="agent"
-            resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_ux3h8sxg65"
             senderThreadTitle="Render Rich Thread Names"
             senderIsPluginSideChat={false}
@@ -791,7 +782,6 @@ export function Overview() {
             role="user"
             originKind={null}
             initiator="agent"
-            resolveSegmentLinkHref={resolveThreadLink}
             onTitleAction={() => () => undefined}
             senderThreadId="thr_side_chat"
             senderThreadTitle="new thread"
@@ -815,7 +805,6 @@ export function Overview() {
             role="user"
             originKind={null}
             initiator="agent"
-            resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_h4u3fgr6be"
             senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
             senderIsPluginSideChat={false}
@@ -1052,7 +1041,6 @@ export function ParentChildSystemMessages() {
               senderThreadTitle={null}
               originKind={null}
               senderIsPluginSideChat={false}
-              resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={fixture.message.text}

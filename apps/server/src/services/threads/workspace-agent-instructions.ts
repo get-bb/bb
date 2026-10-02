@@ -1,3 +1,4 @@
+import { joinHostPathSegments } from "../lib/host-path.js";
 import fs from "node:fs";
 import { Buffer } from "node:buffer";
 import path from "node:path";
@@ -10,10 +11,7 @@ import { isFsErrorWithCode } from "../lib/fs-errors.js";
 
 export const DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH = "AGENTS.md";
 
-export const WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH = path.join(
-  ".bb",
-  "AGENTS.md",
-);
+export const WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH = ".bb/AGENTS.md";
 
 function readAgentInstructionsFile(
   logger: ServerLogger,
@@ -54,7 +52,7 @@ export async function readWorkspaceAgentInstructions(
   deps: LoggedWorkSessionDeps,
   args: { hostId: string; workspacePath: string },
 ): Promise<string | null> {
-  const filePath = path.join(
+  const filePath = joinHostPathSegments(
     args.workspacePath,
     WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   );

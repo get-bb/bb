@@ -54,7 +54,7 @@ it("keeps Done, Escape and compact Back usable through a held import, failure an
     download.reject(new Error("module initialization failed"));
   });
   expect(await screen.findByRole("alert")).toBeDefined();
-  const back = screen.getByRole("button", { name: "Back to sidebar" });
+  const back = screen.getByRole("button", { name: "Done" });
   expect(document.activeElement).toBe(back);
   fireEvent.click(back);
   expect(onDone).toHaveBeenCalledTimes(3);

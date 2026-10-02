@@ -1,6 +1,6 @@
 # @bb/desktop
 
-macOS and Linux Electron shell for bb. The desktop app loads the existing bb
+macOS, Linux, and Windows Electron shell for bb. The desktop app loads the existing bb
 web UI and uses the packaged `bb-app` launcher for server and host-daemon
 lifecycle.
 
@@ -140,6 +140,33 @@ before and after to reject bundle mutations. Fixtures are removed afterward.
 The bb-app tarball smoke covers a different packaging pipeline and cannot
 detect Electron artifact omissions. A source build or `npm --version` alone
 does not verify a desktop plugin dependency install.
+
+### Windows (NSIS, x64)
+
+Windows packaging needs a Windows x64 host; `afterPack` refuses to cross-build
+because it verifies the packaged native modules by loading them. From the repo
+root, install with `pnpm install --frozen-lockfile --ignore-scripts`, then build
+an unpacked app, an installer, or smoke test the current packaged output with:
+
+```powershell
+pnpm exec turbo run package:win --filter=@bb/desktop
+pnpm exec turbo run desktop:build:win --filter=@bb/desktop
+pnpm exec turbo run smoke:packaged --filter=@bb/desktop
+```
+
+`desktop:build:win` writes `release/bb-<version>-x64.exe`, a one-click per-user
+NSIS installer that installs to `%LOCALAPPDATA%\Programs\bb` (`bb-nightly` on
+the nightly channel) without elevation, plus `latest.yml` for electron-updater.
+The installer is unsigned, so Windows SmartScreen warns before running it.
+
+`afterPack` copies `@parcel/watcher-win32-x64` into the package when
+electron-builder leaves it out and loads it with the packaged Electron; without
+it the file watcher cannot start.
+
+Windows builds neither check for nor install updates: no Windows version feed is
+published yet. The feed file name (`desktop-version-windows.json`) and updater
+metadata names (`latest.yml`, `nightly.yml`) are reserved so a later release
+change can turn both on.
 
 ### Linux (AppImage, x64)
 
