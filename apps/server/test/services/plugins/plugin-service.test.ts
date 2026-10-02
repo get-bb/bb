@@ -627,6 +627,7 @@ describe("plugin service", () => {
         rootDir,
         version: "0.1.0",
         enabled: true,
+        enabledFollowsDefault: false,
       });
     };
     install("aaa-slow", slowRoot);
@@ -724,6 +725,7 @@ describe("plugin service", () => {
       rootDir,
       version: "0.2.1",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const after = makeService("0.39.0");
@@ -772,6 +774,7 @@ describe("plugin service", () => {
       rootDir,
       version: "0.1.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const upgraded = createPluginService({
@@ -1007,6 +1010,7 @@ describe("plugin service", () => {
       rootDir: "/managed/installed-tool",
       version: "1.0.0",
       enabled: false,
+      enabledFollowsDefault: false,
     });
 
     expect(

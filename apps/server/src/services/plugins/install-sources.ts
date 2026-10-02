@@ -57,6 +57,9 @@ export function isCommitSha(ref: string): boolean {
   return COMMIT_SHA_PATTERN.test(ref);
 }
 
+const WINDOWS_DRIVE_PATH_PATTERN = /^([A-Za-z]):[\\/]+/u;
+const WINDOWS_LOCAL_CACHE_DIGEST_LENGTH = 12;
+
 function assertSafeSegments(value: string, label: string): void {
   const segments = value.split("/");
   if (
@@ -170,7 +173,12 @@ function parseGitSource(spec: string): ParsedPluginSource {
   } catch {
     throw new Error(`invalid git url "${urlish}"`);
   }
-  if (decodedUrlish.split("/").some((segment) => segment === "..")) {
+  const isWindowsPath = WINDOWS_DRIVE_PATH_PATTERN.test(urlish);
+  if (
+    decodedUrlish
+      .split(isWindowsPath ? /[\\/]/u : "/")
+      .some((segment) => segment === "..")
+  ) {
     throw new Error(`invalid git repository path "${urlish}"`);
   }
   if (/^https?:\/\//.test(urlish)) {
@@ -182,6 +190,20 @@ function parseGitSource(spec: string): ParsedPluginSource {
     url = urlish;
     host = "local";
     repoPath = urlish.replace(/^\/+/, "").replace(/\.git$/, "");
+  } else if (isWindowsPath) {
+    url = urlish;
+    host = "local";
+    const normalized = urlish
+      .replace(WINDOWS_DRIVE_PATH_PATTERN, "$1/")
+      .replaceAll("\\", "/")
+      .replace(/\/+$/u, "")
+      .replace(/\.git$/, "");
+    const name = normalized.slice(normalized.lastIndexOf("/") + 1);
+    const digest = createHash("sha256")
+      .update(normalized.toLowerCase())
+      .digest("hex")
+      .slice(0, WINDOWS_LOCAL_CACHE_DIGEST_LENGTH);
+    repoPath = name.length === 0 ? "" : `${name}-${digest}`;
   } else if (/^[a-z0-9]/i.test(urlish)) {
     url = `https://${urlish}`;
     const parsed = new URL(url);

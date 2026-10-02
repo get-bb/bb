@@ -626,14 +626,11 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
 const MESSAGE_ACTION_RENDERERS: Record<string, () => ReactNode> = {
   copy: () => <MiniIcon icon="Copy" className="size-3.5" />,
   edit: () => <MiniIcon icon="Edit" className="size-3.5" />,
-  "add-to-chat": () => (
-    <MiniIcon icon="MessageSquarePlus" className="size-3.5" />
-  ),
   "send-to-main-thread": () => (
     <MiniIcon icon="ArrowTurnBackward" className="size-3.5" />
   ),
-  fork: () => <MiniIcon icon="Fork" className="size-3.5" />,
   "plugin-actions": () => <PluginGlyph className="size-3.5" />,
+  "message-menu": () => <MiniIcon icon="MoreHorizontal" className="size-3.5" />,
 };
 
 export const ANATOMY_RENDERER_KEYS = {
@@ -1210,7 +1207,7 @@ function AppShellWireframeBody({
               <div className="flex h-7 items-start">
                 <Mark
                   id="message-actions"
-                  label="Plugin message actions, after the host actions"
+                  label="Plugin message actions fit inline before overflowing into the menu"
                   className="inline-flex items-center px-2 py-1.5"
                 >
                   <span
@@ -1650,7 +1647,26 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className={cn("relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift", mobile ? "min-h-48 gap-7" : "h-36")}>
+      <div
+        className={cn(
+          "relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift",
+          mobile ? "min-h-48 gap-7" : "h-36",
+        )}
+      >
+        {actions.outlined ? (
+          <div
+            aria-hidden
+            data-guide-transient-for="composer-actions"
+            className="pointer-events-none absolute bottom-full left-2 right-2 z-20 mb-2 rounded-md border border-border bg-popover p-2 shadow-md"
+          >
+            <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
+              Search saved prompts
+            </span>
+            <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
+              Review this change
+            </span>
+          </div>
+        ) : null}
         {plus.outlined ? (
           <div
             aria-hidden

@@ -1759,6 +1759,87 @@ it("retries cancelled cleanup through environment teardown without dropping its 
   });
 });
 
+it("skips environments blocked on a foreign plugin owner until that plugin provides them again", async () => {
+  await withTestHarness(async (harness) => {
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    const fixture = setup(harness, {
+      policy: { retireGraceMs: 60_000 },
+      remove,
+    });
+    const blockedIds = Array.from(
+      { length: 200 },
+      (_, index) =>
+        seedEnvironment(harness.deps, {
+          hostId: fixture.host.id,
+          projectId: fixture.context.project.id,
+          path: `/tmp/blocked-${index}`,
+          environmentProviderId: fixture.record.provider.id,
+          environmentProviderPluginId: "previous-owner",
+        }).id,
+    );
+    await sweepProviderLifecycles(harness.deps);
+    const blockedRows = () =>
+      blockedIds.map((id) => getEnvironment(harness.db, id));
+    const blockedBefore = blockedRows();
+    expect(
+      blockedBefore.every(
+        (row) => row?.teardownStatus === "failed" && row.retireAt === null,
+      ),
+    ).toBe(true);
+
+    const retryable = seedEnvironment(harness.deps, {
+      hostId: fixture.host.id,
+      projectId: fixture.context.project.id,
+      path: "/tmp/retryable",
+      status: "error",
+      environmentProviderId: fixture.record.provider.id,
+      environmentProviderPluginId: fixture.record.pluginId,
+    });
+    harness.db
+      .update(environments)
+      .set({
+        teardownStatus: "failed",
+        teardownMessage: "temporarily unavailable",
+        teardownAttempt: 1,
+        retireAt: Date.now() - 1,
+      })
+      .where(eq(environments.id, retryable.id))
+      .run();
+    const lookups = vi.fn();
+    const bridge = (record: typeof fixture.record) => ({
+      listEnvironmentProviders: () => [record],
+      getEnvironmentProvider: (id: string) => {
+        lookups(id);
+        return id === record.provider.id ? record : undefined;
+      },
+      invokeProvider: async <T>(
+        _id: string,
+        _label: string,
+        run: () => Promise<T>,
+      ) => ({ ok: true as const, value: await run() }),
+      decisionTimeoutMs: 10_000,
+    });
+    setPluginEnvironmentProviderBridge(bridge(fixture.record));
+
+    await sweepProviderLifecycles(harness.deps);
+
+    expect(remove).toHaveBeenCalledOnce();
+    expect(getEnvironment(harness.db, retryable.id)?.teardownStatus).toBe(
+      "removed",
+    );
+    expect(lookups.mock.calls.length).toBeLessThan(10);
+    expect(blockedRows()).toEqual(blockedBefore);
+
+    setPluginEnvironmentProviderBridge(
+      bridge({ ...fixture.record, pluginId: "previous-owner" }),
+    );
+    await sweepProviderLifecycles(harness.deps);
+
+    expect(blockedRows().every((row) => row?.retireAt !== null)).toBe(true);
+    expect(remove).toHaveBeenCalledOnce();
+  });
+});
+
 it("prepares a previously removed path without inheriting completed teardown", async () => {
   await withTestHarness(async (harness) => {
     const remove = vi.fn(async () => ({ status: "removed" as const }));

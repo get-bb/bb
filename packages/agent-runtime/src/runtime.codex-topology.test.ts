@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,7 +53,12 @@ describe("codex process topology", () => {
 
   afterEach(async () => {
     await Promise.all(runtimes.splice(0).map((runtime) => runtime.shutdown()));
-    rmSync(workspaceDir, { recursive: true, force: true });
+    await rm(workspaceDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   });
 
   function createCodexTopologyRuntime(

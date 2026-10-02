@@ -953,6 +953,20 @@
       "when": 1790794077074,
       "tag": "0135_rename_provider_usage_plugin_id",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "6",
+      "when": 1790889888606,
+      "tag": "0136_plugin_enabled_follows_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "6",
+      "when": 1790900209592,
+      "tag": "0137_stiff_prism",
+      "breakpoints": true
     }
   ]
 }

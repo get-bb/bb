@@ -49,6 +49,7 @@ describe("ConversationMessageContent assistant images", () => {
             showActions={false}
             mobileActionDisplay="overflow"
             streaming={false}
+            timestamp={0}
             text={
               '![Generated diagram](/workspace/output/diagram.png)\n\n<video src="/workspace/output/clip.mp4" title="Clip" controls></video>'
             }
@@ -85,6 +86,7 @@ describe("ConversationMessageContent user images", () => {
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="![diagram](output/diagram.png)"
+            timestamp={0}
             threadId="thr_image"
             turnRequest={{
               isGrouped: false,
@@ -122,6 +124,7 @@ describe("ConversationMessageContent user HTML", () => {
             text={
               "<details><summary>x</summary>hidden</details>\n\ninline <b>bold</b> here"
             }
+            timestamp={0}
             threadId="thr_html"
             turnRequest={{
               isGrouped: false,
@@ -177,6 +180,7 @@ describe("ConversationMessageContent assistant thread mentions", () => {
                 mobileActionDisplay="overflow"
                 streaming={false}
                 text="Spawned and parented: @thread:thr_xpxxt2ipz8"
+                timestamp={0}
               />
             </MessageDirectiveRegistryProvider>
           </ThreadTitleMentionResourcesProvider>
@@ -222,6 +226,7 @@ describe("ConversationMessageContent long user messages", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={text}
+              timestamp={0}
               turnRequest={{
                 isGrouped: false,
                 kind: "message",
@@ -254,6 +259,7 @@ describe("ConversationMessageContent long user messages", () => {
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={text}
+            timestamp={0}
             turnRequest={{
               isGrouped: false,
               kind: "message",
@@ -367,6 +373,7 @@ describe("ConversationMessageContent user thread mentions", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text="Continue in thr_dcwivn5n8w when this is ready."
+              timestamp={0}
               turnRequest={{
                 isGrouped: false,
                 kind: "message",
@@ -407,17 +414,13 @@ describe("ConversationMessageContent user thread mentions", () => {
               originKind={null}
               initiator="user"
               mentions={[]}
-              resolveSegmentLinkHref={(link) =>
-                link.kind === "thread"
-                  ? `/projects/proj_current/threads/${link.threadId}`
-                  : null
-              }
               senderThreadId={null}
               senderThreadTitle={null}
               senderIsPluginSideChat={false}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text="See @thread:thr_cross_project for the result."
+              timestamp={0}
               turnRequest={{
                 isGrouped: false,
                 kind: "message",

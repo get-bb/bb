@@ -29,10 +29,15 @@ export {
 } from "./thread-sections.js";
 export {
   createPromptHistoryEntry,
+  listPromptHistoryPage,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
 } from "./prompt-history.js";
-export type { StoredPromptHistoryEntryRow } from "./prompt-history.js";
+export type {
+  ListPromptHistoryPageArgs,
+  PromptHistoryPosition,
+  StoredPromptHistoryEntryRow,
+} from "./prompt-history.js";
 
 export {
   getProjectExecutionDefaults,
@@ -288,6 +293,7 @@ export {
   findStoredEventRow,
   getActiveStoredTurnId,
   hasRootStoredTurnStarted,
+  hasStoredSpawnAgentToolCall,
   hasStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   wouldRemoveSharedProviderSessionClaim,
@@ -307,7 +313,7 @@ export {
   listStoredConversationOutlineEventRows,
   listTimelineWindowHintsDescending,
   getFirstParentedTimelineBoundarySequence,
-  hasTimelineGroupingContextRowsInRange,
+  getTimelineGroupingContextChangesInRange,
   listStoredEventRowsInSequenceRange,
   listTimelineOrderingContext,
   listTimelineInterruptionRows,

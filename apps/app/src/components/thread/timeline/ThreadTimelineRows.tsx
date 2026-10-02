@@ -82,7 +82,6 @@ import {
   ExpandableTimelineTitle,
   TimelineTitleView,
   type TimelineTitleActionResolver,
-  type TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
 import { WorkRowBody } from "./TimelineRowDetails.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
@@ -118,7 +117,6 @@ import {
   useArmTopLevelTimelineRowContainment,
 } from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import { type ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import {
@@ -206,7 +204,6 @@ interface TimelineRendererStaticContextValue {
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
   resolveMentionLink: PromptMentionLinkResolver | undefined;
-  resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined;
   resolveUserAttachmentImageSrc: UserAttachmentImageSrcResolver | undefined;
   threadId: string | undefined;
   workspaceRootPath: string | undefined;
@@ -879,7 +876,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
     onTitleAction,
     projectId,
     resolveMentionLink,
-    resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
     threadId,
     workspaceRootPath,
@@ -968,7 +964,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
         resolveMentionLink={resolveMentionLink}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
         role="user"
-        resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
         senderThreadId={row.senderThreadId}
         senderThreadProjectId={senderThreadMetadata?.projectId}
@@ -980,6 +975,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
         systemMessageSubject={row.systemMessageSubject}
         pluginActions={rowPluginActions}
         text={row.text}
+        timestamp={row.startedAt}
         threadId={row.threadId}
         turnRequest={row.turnRequest}
         workspaceRootPath={workspaceRootPath}
@@ -1025,6 +1021,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
       mobileActionDisplay={mobileActionDisplay}
       streaming={streaming}
       text={row.text}
+      timestamp={row.startedAt}
       threadId={row.threadId}
       turnId={row.turnId}
       workspaceRootPath={workspaceRootPath}
@@ -1180,6 +1177,7 @@ function TimelineExpandableBody({
                   mobileActionDisplay="overflow"
                   streaming={delegationActive}
                   text={row.output}
+                  timestamp={row.startedAt}
                   threadId={row.threadId}
                   turnId={row.turnId}
                   workspaceRootPath={workspaceRootPath}
@@ -1443,8 +1441,7 @@ function TimelineRowView({
   spacing,
 }: TimelineRowViewProps) {
   const horizontalPadding = timelineRowHorizontalPadding(spacing);
-  const { onTitleAction, resolveSegmentLinkHref } =
-    useTimelineRendererStaticContext();
+  const { onTitleAction } = useTimelineRendererStaticContext();
   const titleState = useTimelineRowTitleRenderState({
     activeLatestBundleId,
     compactActivityIntents,
@@ -1487,7 +1484,6 @@ function TimelineRowView({
               <TimelineTitleView
                 title={entry.title}
                 onTitleAction={onTitleAction}
-                resolveSegmentLinkHref={resolveSegmentLinkHref}
               />
             </span>
           </TimelineStaticRowHeader>
@@ -1516,11 +1512,7 @@ function TimelineRowView({
             iconUrl={staticLeadingIconUrl}
             style={staticLeadingIconStyle}
           />
-          <TitleView
-            title={titleState.title}
-            onTitleAction={onTitleAction}
-            resolveSegmentLinkHref={resolveSegmentLinkHref}
-          />
+          <TitleView title={titleState.title} onTitleAction={onTitleAction} />
         </span>
       </TimelineStaticRowHeader>
     );
@@ -1553,8 +1545,7 @@ function TimelineExpandableRowView({
   horizontalPadding,
   row,
 }: TimelineExpandableRowViewProps) {
-  const { onTitleAction, resolveSegmentLinkHref } =
-    useTimelineRendererStaticContext();
+  const { onTitleAction } = useTimelineRendererStaticContext();
   const {
     initialAutoExpandedRowIds,
     liveAutoExpandedRowIds,
@@ -1613,7 +1604,6 @@ function TimelineExpandableRowView({
       forceExpanded={searchExpandedRowIds.has(row.id)}
       terminalAutoExpanded={terminalAutoExpandedRowIds.has(row.id)}
       onTitleAction={onTitleAction}
-      resolveSegmentLinkHref={resolveSegmentLinkHref}
       renderBody={renderBody}
     />
   );
@@ -1996,13 +1986,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => buildMessageDirectiveRegistry(messageDirectiveSlots),
     [messageDirectiveSlots],
   );
-  const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
-    return (link) => {
-      return projectId !== undefined
-        ? getThreadRoutePath({ projectId, threadId: link.threadId })
-        : null;
-    };
-  }, [projectId]);
   const onSelectionAddToChat = props.onSelectionAddToChat;
   const timelineThreadId = props.threadId;
   const hasPluginSelectionActions =
@@ -2105,7 +2088,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
       resolveMentionLink: props.resolveMentionLink,
-      resolveSegmentLinkHref,
       resolveUserAttachmentImageSrc: props.resolveUserAttachmentImageSrc,
       threadId: props.threadId,
       workspaceRootPath: props.workspaceRootPath,
@@ -2132,7 +2114,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       projectId,
       props.resolveImageViewSrc,
       props.resolveMentionLink,
-      resolveSegmentLinkHref,
       props.resolveUserAttachmentImageSrc,
       props.threadId,
       props.workspaceRootPath,

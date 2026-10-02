@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type { ThreadResponse } from "@bb/server-contract";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import {
   ThreadTitleMentionResourcesProvider,
@@ -59,18 +58,6 @@ function markdownTree(node: ReactNode) {
       <RouteNavigationProvider>{node}</RouteNavigationProvider>
     </MemoryRouter>
   );
-}
-
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
-}
-
-function resolveUpdatedThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}?updated=1`
-    : null;
 }
 
 function threadResponse(
@@ -419,7 +406,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [
@@ -453,7 +439,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [],
@@ -638,7 +623,7 @@ describe("MarkdownPreview thread mentions", () => {
     expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(1);
   });
 
-  it("resolves and links a thread absent from sidebar resources through the authoritative thread query", () => {
+  it("links a queried thread mention through its own project", () => {
     const queriedThread = threadResponse({
       id: "thr_archived",
       projectId: "proj_archive",
@@ -671,7 +656,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [THREAD_MENTION],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
     );
@@ -692,7 +676,6 @@ describe("MarkdownPreview thread mentions", () => {
           threadMentions={{
             mentions: [UPDATED_THREAD_MENTION],
             preserveSoftBreaks: true,
-            resolveLinkHref: resolveUpdatedThreadLink,
           }}
         />,
       ),
@@ -702,7 +685,7 @@ describe("MarkdownPreview thread mentions", () => {
     const pill = screen.getByText("Updated child").closest("a");
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_child?updated=1",
+      "/projects/proj_demo/threads/thr_child",
     );
   });
 
@@ -713,7 +696,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [
@@ -744,7 +726,6 @@ describe("MarkdownPreview thread mentions", () => {
           threadMentions={{
             mentions: [THREAD_MENTION],
             preserveSoftBreaks: true,
-            resolveLinkHref: resolveThreadLink,
           }}
           messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
         />,
@@ -769,7 +750,6 @@ describe("MarkdownPreview thread mentions", () => {
           threadMentions={{
             mentions: [THREAD_MENTION],
             preserveSoftBreaks: true,
-            resolveLinkHref: resolveThreadLink,
           }}
           messageDirectives={messageDirectives}
         />,
@@ -789,7 +769,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [
@@ -945,7 +924,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [THREAD_MENTION],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
         messageDirectives={messageDirectives}
       />,
@@ -1027,7 +1005,6 @@ describe("MarkdownPreview thread mentions", () => {
             threadMentions={{
               mentions: [THREAD_MENTION],
               preserveSoftBreaks: true,
-              resolveLinkHref: resolveThreadLink,
             }}
             messageDirectives={messageDirectives}
           />,

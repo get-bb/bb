@@ -1,3 +1,4 @@
+import { join, resolve } from "node:path";
 import { modalAllocations } from "./allocations.js";
 import { sweepModalAllocations } from "./allocation-sweep.js";
 import type { BbPluginApi, JsonValue } from "@get-bb/plugin-sdk";
@@ -992,7 +993,8 @@ it("reads CLI Dockerfiles on the invoking thread's host and leaves a saved overr
     sizeBytes: dockerfile.length,
   }));
   test.harness.sdk.stub("files.read", read);
-  const context = { threadId: "thr_remote", cwd: "/project" };
+  const projectDir = resolve("/project");
+  const context = { threadId: "thr_remote", cwd: projectDir };
   expect(
     await test.harness.behavior.runCli(
       ["image", "set", "--file", "Dockerfile", "--json"],
@@ -1002,7 +1004,7 @@ it("reads CLI Dockerfiles on the invoking thread's host and leaves a saved overr
   expect(read).toHaveBeenCalledWith(
     expect.objectContaining({
       hostId: "host_remote",
-      path: "/project/Dockerfile",
+      path: join(projectDir, "Dockerfile"),
     }),
   );
   read.mockResolvedValue({

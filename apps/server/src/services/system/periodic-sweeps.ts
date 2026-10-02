@@ -436,7 +436,7 @@ async function runCompletedEventOutputMigrationSweep(
     }
   } finally {
     for (const threadId of changedThreadIds) {
-      deps.hub.notifyThread(threadId, ["history-rewritten"]);
+      deps.hub.notifyThread(threadId, ["history-compacted"]);
     }
   }
 }
@@ -470,7 +470,7 @@ async function runRetainedEventOutputExpirySweep(
     }
   } finally {
     for (const threadId of changedThreadIds) {
-      deps.hub.notifyThread(threadId, ["history-rewritten"]);
+      deps.hub.notifyThread(threadId, ["history-compacted"]);
     }
   }
 }

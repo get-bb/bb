@@ -15,7 +15,6 @@ import {
 } from "@bb/sdk";
 import type { BbSdk } from "@bb/sdk/node";
 import { parseDurationMs } from "../../duration.js";
-import { joinValues } from "../helpers.js";
 
 export const THREAD_WAIT_EXIT_CODE_TIMEOUT = 2;
 export const THREAD_WAIT_EXIT_CODE_INVALID_REQUEST = 3;
@@ -23,7 +22,8 @@ export const THREAD_WAIT_EXIT_CODE_UNREACHABLE = 4;
 export const DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS =
   DEFAULT_THREAD_WAIT_TIMEOUT_MS / 1000;
 
-const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
+export const SERVICE_TIER_HELP =
+  "Service tier id the provider lists for the model, such as default or fast (see `bb provider models`)";
 export const PERMISSION_MODE_HELP =
   "Permission mode: accept-edits, auto, or full";
 export const PLAN_HELP =
@@ -175,7 +175,7 @@ export function parseServiceTier(
     return parsed.data;
   }
   throw new Error(
-    `Invalid service tier '${value}'. Expected ${joinValues(SERVICE_TIERS)}.`,
+    `Invalid service tier '${value}'. Expected a tier id the provider lists, such as default or fast.`,
   );
 }
 

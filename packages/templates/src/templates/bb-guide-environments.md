@@ -30,7 +30,9 @@ Making your repo work with bb:
   present and will not run.
 
   BB runs the hook as `env bash .bb-env-setup.sh` with cwd set to the new
-  workspace. POSIX shell setup scripts are not supported on Windows. The hook
+  workspace. On Windows it runs the script with the bash that Git for Windows
+  installs, so the same script works there; without Git for Windows the hook
+  fails with a message naming it. The hook
   inherits the host daemon's sanitized environment: NODE_ENV and every BB_*
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.

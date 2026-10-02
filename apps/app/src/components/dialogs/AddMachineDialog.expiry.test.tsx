@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MachineLaunchCommand } from "./AddMachineDialog";
 
@@ -17,10 +23,32 @@ describe("MachineLaunchCommand", () => {
     vi.useRealTimers();
   });
 
+  it("shows the PowerShell command when Windows is chosen", () => {
+    render(
+      <MachineLaunchCommand
+        command={COMMAND}
+        windowsCommand="irm windows-command | iex"
+        expiresAt={15 * 60_000}
+        onRegenerate={() => {}}
+      />,
+    );
+    expect(screen.getByText(COMMAND)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "macOS or Linux" }).ariaPressed,
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Windows" }));
+
+    expect(screen.getByText("irm windows-command | iex")).toBeTruthy();
+    expect(screen.queryByText(COMMAND)).toBeNull();
+    expect(screen.getByText("Run in PowerShell")).toBeTruthy();
+  });
+
   it("counts the remaining time down while the command is still valid", () => {
     render(
       <MachineLaunchCommand
         command={COMMAND}
+        windowsCommand="irm windows-command | iex"
         expiresAt={15 * 60_000}
         onRegenerate={() => {}}
       />,
@@ -40,6 +68,7 @@ describe("MachineLaunchCommand", () => {
     render(
       <MachineLaunchCommand
         command={COMMAND}
+        windowsCommand="irm windows-command | iex"
         expiresAt={5_000}
         onRegenerate={onRegenerate}
       />,
@@ -60,6 +89,7 @@ describe("MachineLaunchCommand", () => {
     render(
       <MachineLaunchCommand
         command={COMMAND}
+        windowsCommand="irm windows-command | iex"
         expiresAt={15 * 60_000}
         unavailable
         onRegenerate={() => {}}

@@ -12,13 +12,17 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import type { ReasoningLevel } from "@bb/domain";
+import {
+  resolveServiceTierOptions,
+  type ProviderOptionDescriptor,
+  type ReasoningLevel,
+  type ServiceTier,
+} from "@bb/domain";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
 } from "./model-brand-prefix";
-import { fastServiceTierLabel } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
@@ -63,6 +67,10 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
+  APP_COMPOSER_SELECTOR,
+  resolveComposerCommandScope,
+} from "@/lib/composer-command-ownership";
+import {
   ownsModelPickerCycleChord,
   resolveModelPickerToggle,
   type ModelPickerScope,
@@ -78,6 +86,7 @@ interface ResolvedProviderPreview {
   model: string;
   reasoningLevel: ReasoningLevel;
   supportsServiceTier: boolean;
+  serviceTierOptions: readonly ProviderOptionDescriptor[];
 }
 
 export interface ModelReasoningPickerHandoffSelection {
@@ -96,6 +105,7 @@ export interface ModelReasoningPickerHandoff {
 
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 const EMPTY_MODEL_OPTIONS: readonly ModelPickerOption[] = [];
+const EMPTY_SERVICE_TIER_OPTIONS: readonly ProviderOptionDescriptor[] = [];
 const preserveModelLabel = (displayName: string): string => displayName;
 const MODEL_CYCLE_COMMANDS = [
   "modelPicker.cycleModel",
@@ -174,13 +184,12 @@ interface ModelReasoningPickerProps {
   reasoningValue: ReasoningLevel;
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   onReasoningChange: (value: ReasoningLevel) => void;
-  fastModeEnabled: boolean;
-  onFastModeChange: (enabled: boolean) => void;
-  showFastModeToggle: boolean;
+  serviceTierValue: ServiceTier | undefined;
+  serviceTierOptions: readonly ProviderOptionDescriptor[];
+  onServiceTierChange: (value: ServiceTier) => void;
   commandShortcutsEnabled?: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
   className?: string;
-  fastModeLabel?: string;
   muted?: boolean;
   modal?: boolean;
   align?: "start" | "center" | "end";
@@ -207,13 +216,12 @@ export function ModelReasoningPicker({
   reasoningValue,
   reasoningOptions,
   onReasoningChange,
-  fastModeEnabled,
-  onFastModeChange,
-  showFastModeToggle,
+  serviceTierValue,
+  serviceTierOptions,
+  onServiceTierChange,
   commandShortcutsEnabled = true,
   serviceTierSupportByProvider,
   className,
-  fastModeLabel,
   muted,
   modal = true,
   align = "start",
@@ -395,30 +403,6 @@ export function ModelReasoningPicker({
   const previewModelOptions = previewSelection?.modelOptions ?? modelOptions;
   const previewMoreModelOptions =
     previewSelection?.moreModelOptions ?? moreModelOptions;
-  useEffect(() => {
-    if (
-      !previewCatalogIsVerified ||
-      !previewProviderId ||
-      !previewSelection?.selectedModel
-    ) {
-      return;
-    }
-    const provider = previewQuery.data?.providers.find(
-      (candidate) => candidate.id === previewProviderId,
-    );
-    onProviderPreviewResolved?.({
-      providerId: previewProviderId,
-      model: previewSelection.selectedModel,
-      reasoningLevel: previewSelection.reasoningLevel,
-      supportsServiceTier: provider?.capabilities.supportsServiceTier ?? false,
-    });
-  }, [
-    onProviderPreviewResolved,
-    previewCatalogIsVerified,
-    previewProviderId,
-    previewQuery.data?.providers,
-    previewSelection,
-  ]);
   const activeReasoningOptions = isPreviewing
     ? (previewSelection?.reasoningOptions ?? [])
     : reasoningOptions;
@@ -505,17 +489,59 @@ export function ModelReasoningPicker({
   const highlightedIndex =
     activeIndex >= 0 && activeIndex < navRows.length ? activeIndex : -1;
 
-  const effectiveShowFastModeToggle =
-    !handoffMode &&
-    hasActiveModelOptions &&
-    (serviceTierSupportByProvider
-      ? (serviceTierSupportByProvider[activeProviderId] ?? false)
-      : showFastModeToggle);
-  const effectiveFastModeLabel = isPreviewing
-    ? fastServiceTierLabel(previewProvider)
-    : (fastModeLabel ?? "Fast");
-  const showSelectedFastMode =
-    hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
+  const previewActiveModel = previewSelection?.activeModel;
+  const previewServiceTierOptions = useMemo(
+    () =>
+      previewProviderId !== null &&
+      (serviceTierSupportByProvider?.[previewProviderId] ?? false)
+        ? resolveServiceTierOptions({
+            provider: previewProvider,
+            model: previewActiveModel,
+          })
+        : EMPTY_SERVICE_TIER_OPTIONS,
+    [
+      previewActiveModel,
+      previewProvider,
+      previewProviderId,
+      serviceTierSupportByProvider,
+    ],
+  );
+  useEffect(() => {
+    if (
+      !previewCatalogIsVerified ||
+      !previewProviderId ||
+      !previewSelection?.selectedModel
+    ) {
+      return;
+    }
+    const provider = previewQuery.data?.providers.find(
+      (candidate) => candidate.id === previewProviderId,
+    );
+    onProviderPreviewResolved?.({
+      providerId: previewProviderId,
+      model: previewSelection.selectedModel,
+      reasoningLevel: previewSelection.reasoningLevel,
+      supportsServiceTier: provider?.capabilities.supportsServiceTier ?? false,
+      serviceTierOptions: previewServiceTierOptions,
+    });
+  }, [
+    onProviderPreviewResolved,
+    previewCatalogIsVerified,
+    previewProviderId,
+    previewQuery.data?.providers,
+    previewSelection,
+    previewServiceTierOptions,
+  ]);
+  const activeServiceTierOptions =
+    handoffMode || !hasActiveModelOptions
+      ? EMPTY_SERVICE_TIER_OPTIONS
+      : isPreviewing
+        ? previewServiceTierOptions
+        : serviceTierOptions;
+  const selectedServiceTierOption =
+    hasSelectedModel && modelOptions.length > 0
+      ? serviceTierOptions.find((option) => option.id === serviceTierValue)
+      : undefined;
   const showReasoningSection =
     !isShowingModelError &&
     activeReasoningOptions.length > 0 &&
@@ -661,31 +687,19 @@ export function ModelReasoningPicker({
   const isSplitPane = paneContext?.isSplitPane ?? false;
   const resolveCommandScope = useCallback(
     (target: EventTarget | null): ModelPickerScope => {
-      const pickerComposer =
-        triggerRef.current?.closest("[data-app-composer]") ?? null;
-      const caretComposer =
-        target instanceof HTMLElement
-          ? target.closest("[data-app-composer]")
-          : null;
-      const pickerPane =
-        triggerRef.current?.closest("[data-split-pane-id]") ?? null;
-      const caretPane = caretComposer?.closest("[data-split-pane-id]") ?? null;
-      return {
-        disabled: disabled ?? false,
+      const scope = resolveComposerCommandScope({
+        composer: triggerRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
+        target,
         isFocusedPane,
+      });
+      return {
+        ...scope,
+        disabled: disabled ?? false,
         isSplitPane,
-        isPrimaryComposer:
-          pickerComposer?.getAttribute("data-app-composer-role") !==
-          "secondary",
-        caretInThisComposer:
-          caretComposer !== null && caretComposer === pickerComposer,
-        caretInOtherComposerOfPane:
-          caretComposer !== null &&
-          caretComposer !== pickerComposer &&
-          pickerPane !== null &&
-          caretPane === pickerPane,
         editableOutsideComposer:
-          caretComposer === null && isEditableKeyboardTarget(target),
+          !scope.caretInThisComposer &&
+          !scope.caretInOtherComposer &&
+          isEditableKeyboardTarget(target),
       };
     },
     [disabled, isFocusedPane, isSplitPane],
@@ -885,7 +899,9 @@ export function ModelReasoningPicker({
   const triggerTitle = [
     `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
-    showSelectedFastMode ? " (Fast mode)" : "",
+    selectedServiceTierOption
+      ? ` (${selectedServiceTierOption.label} mode)`
+      : "",
   ].join("");
   const trigger = (
     <Button
@@ -936,7 +952,7 @@ export function ModelReasoningPicker({
               className="h-3 w-8 shrink-0 rounded-sm"
             />
           </>
-        ) : showSelectedFastMode ? (
+        ) : selectedServiceTierOption ? (
           <Icon
             name="Zap"
             className="size-3.5 shrink-0 fill-current text-subtle-foreground"
@@ -1114,10 +1130,9 @@ export function ModelReasoningPicker({
           reasoningValue={activeReasoningValue}
           reasoningOptions={activeReasoningOptions}
           onReasoningSelect={handleReasoningSelect}
-          showFastModeToggle={effectiveShowFastModeToggle}
-          fastModeLabel={effectiveFastModeLabel}
-          fastModeEnabled={fastModeEnabled}
-          onFastModeChange={onFastModeChange}
+          serviceTierOptions={activeServiceTierOptions}
+          serviceTierValue={serviceTierValue}
+          onServiceTierChange={onServiceTierChange}
           onStartHandoff={
             handoff !== undefined && !handoffMode && providerOptions.length > 0
               ? startHandoffMode

@@ -8,6 +8,8 @@ const MORNING_HOUR = 9;
 export const MAX_SCHEDULE_AHEAD_MS = 365 * DAY_MS;
 
 export type SchedulePresetId =
+  | "in-5-minutes"
+  | "in-10-minutes"
   | "in-30-minutes"
   | "in-1-hour"
   | "in-2-hours"
@@ -24,6 +26,8 @@ export interface SchedulePreset {
 
 export function isSchedulePresetId(value: string): value is SchedulePresetId {
   switch (value) {
+    case "in-5-minutes":
+    case "in-10-minutes":
     case "in-30-minutes":
     case "in-1-hour":
     case "in-2-hours":
@@ -37,6 +41,8 @@ export function isSchedulePresetId(value: string): value is SchedulePresetId {
 
 export function listSchedulePresets(now: number): SchedulePreset[] {
   const candidates: SchedulePreset[] = [
+    { id: "in-5-minutes", label: "In 5 minutes", at: now + 5 * MINUTE_MS },
+    { id: "in-10-minutes", label: "In 10 minutes", at: now + 10 * MINUTE_MS },
     {
       id: "in-30-minutes",
       label: "In 30 minutes",

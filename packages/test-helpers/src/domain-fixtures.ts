@@ -108,11 +108,20 @@ export function makeProviderInfo(
       permissionModes: ["accept-edits", "auto", "full"],
     },
   };
+  const capabilities = { ...provider.capabilities, ...overrides.capabilities };
   return {
     ...provider,
+    ...(capabilities.supportsServiceTier
+      ? {
+          serviceTiers: [
+            { id: "default", label: "Default" },
+            { id: "fast", label: "Fast" },
+          ],
+        }
+      : {}),
     ...overrides,
     maintenance: { ...provider.maintenance, ...overrides.maintenance },
-    capabilities: { ...provider.capabilities, ...overrides.capabilities },
+    capabilities,
   };
 }
 

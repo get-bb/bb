@@ -33,7 +33,8 @@ import {
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
-import { MachineLabel } from "@/components/machines/MachineLabel";
+import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
+import { MachineIcon } from "@/components/machines/MachineLabel";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -46,6 +47,7 @@ import {
   DetailCard,
   DetailRow,
   DetailRowIconLabel,
+  DETAIL_ROW_ICON_CLASS,
 } from "@/components/ui/detail-card.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
@@ -278,67 +280,97 @@ export function EnvironmentRow({
   const showCreateThreadButton =
     environment.hostLifecycle === "active" &&
     isReusableEnvironment(environment);
+  const machineIdentity =
+    infoDisplay.machineName !== null ? environmentDisplayHost.identity : null;
   return (
-    <DetailRow
-      label={
-        providerLookup.status === "loaded" &&
-        providerLookup.provider !== null ? (
-          <span className="flex items-center gap-1.5">
-            <EnvironmentProviderIcon
-              provider={providerLookup.provider}
-              className="size-3.5 shrink-0 text-muted-foreground"
-            />
-            <span className="min-w-0 truncate">Environment</span>
+    <>
+      <DetailRow
+        label={
+          providerLookup.status === "loaded" &&
+          providerLookup.provider !== null ? (
+            <span className="flex items-center gap-1.5">
+              <EnvironmentProviderIcon
+                provider={providerLookup.provider}
+                className={DETAIL_ROW_ICON_CLASS}
+              />
+              <span className="min-w-0 truncate">Environment</span>
+            </span>
+          ) : (
+            <DetailRowIconLabel icon={infoDisplay.icon}>
+              Environment
+            </DetailRowIconLabel>
+          )
+        }
+        valueClassName="min-w-0"
+      >
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 truncate" title={infoDisplay.label}>
+            {infoDisplay.label}
           </span>
-        ) : (
-          <DetailRowIconLabel icon={infoDisplay.icon}>
-            Environment
-          </DetailRowIconLabel>
-        )
-      }
-      valueClassName="min-w-0"
-    >
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 truncate" title={infoDisplay.label}>
-          {infoDisplay.label}
+          {showCreateThreadButton ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="New thread in this environment"
+                  onClick={createThreadInEnvironment}
+                  className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                >
+                  <Icon name="MessageSquarePlus" className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>New thread in this environment</TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
-        {infoDisplay.machineName !== null && environmentDisplayHost.identity ? (
+      </DetailRow>
+      {machineIdentity ? (
+        <DetailRow
+          label={
+            <span className="flex items-center gap-1.5">
+              <MachineIcon
+                host={displayHost}
+                machineProvider={machineProvider}
+                className={DETAIL_ROW_ICON_CLASS}
+              />
+              <span className="min-w-0 truncate">Machine</span>
+            </span>
+          }
+          valueClassName="min-w-0"
+        >
           <span
-            className="inline-flex min-w-0 shrink-0 items-center gap-1.5 text-muted-foreground"
-            title={`On ${environmentDisplayHost.identity.name} (${
+            className="flex min-w-0 items-center gap-1"
+            title={`${machineIdentity.name} (${
               environment.hostLifecycle !== "active"
                 ? "unavailable"
-                : environmentDisplayHost.identity.connected
+                : machineIdentity.connected
                   ? "connected"
                   : "offline"
             })`}
           >
-            <span>·</span>
-            <MachineLabel
-              host={displayHost}
-              machineProvider={machineProvider}
-            />
-            {environmentDisplayHost.identity.connected ||
+            <span className="min-w-0 truncate">{displayHost.name}</span>
+            {machineIdentity.connected ||
             environment.hostLifecycle !== "active" ? null : (
-              <span>(offline)</span>
+              <span className="shrink-0 text-muted-foreground">(offline)</span>
             )}
           </span>
-        ) : null}
-        {showCreateThreadButton ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="New thread in this environment"
-                onClick={createThreadInEnvironment}
-                className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-              >
-                <Icon name="MessageSquarePlus" className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>New thread in this environment</TooltipContent>
-          </Tooltip>
-        ) : null}
+        </DetailRow>
+      ) : null}
+    </>
+  );
+}
+
+export function ProjectRow({ projectId }: { projectId: string }) {
+  const projectName = useProjectDisplayName(projectId);
+  if (!projectName) return null;
+
+  return (
+    <DetailRow
+      label={<DetailRowIconLabel icon="Folder">Project</DetailRowIconLabel>}
+      valueClassName="min-w-0"
+    >
+      <span className="block min-w-0 truncate" title={projectName}>
+        {projectName}
       </span>
     </DetailRow>
   );
@@ -382,7 +414,9 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
 
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="Folder">Directory</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="FolderOpen">Directory</DetailRowIconLabel>
+      }
       valueClassName="min-w-0"
     >
       <CopyableInlineLabel
@@ -972,7 +1006,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   return (
     <DetailCard
       appearance="flat"
-      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3 max-md:gap-0 max-md:py-1 max-md:[--detail-label-width:7.5rem] max-md:[&>div]:min-h-10 max-md:[&>div:not(.items-center)]:pt-2.5"
       onScroll={handleScroll}
     >
       {children}
@@ -1033,6 +1067,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onRetryParentThreads={onRetryParentThreads}
       />
       <ForksRow thread={thread} projectId={projectId} />
+      <ProjectRow projectId={projectId} />
       <EnvironmentRow
         thread={thread}
         environment={environment}

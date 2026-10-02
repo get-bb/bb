@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   classifyAcpToolCall,
@@ -43,7 +44,7 @@ describe("resolveAcpFileChangeWriteScope", () => {
         "/tmp/qa-1719/notes.md",
         "/tmp/qa-1719/",
       ]),
-    ).toBe("/tmp/qa-1719");
+    ).toBe(path.normalize("/tmp/qa-1719"));
   });
 
   it("normalizes .. segments so a path outside the candidate does not pass a raw prefix test", () => {
@@ -52,7 +53,7 @@ describe("resolveAcpFileChangeWriteScope", () => {
     ).toBeNull();
     expect(
       resolveAcpFileChangeWriteScope(["/repo/src/../notes.md", "/repo"]),
-    ).toBe("/repo");
+    ).toBe(path.normalize("/repo"));
   });
 
   it("returns null for paths in different directories and for a lookalike prefix", () => {
@@ -67,7 +68,16 @@ describe("resolveAcpFileChangeWriteScope", () => {
   it("ignores blank paths and never yields an empty scope", () => {
     expect(resolveAcpFileChangeWriteScope(["", "  "])).toBeNull();
     expect(resolveAcpFileChangeWriteScope(["", "/tmp/qa-1719/notes.md"])).toBe(
-      "/tmp/qa-1719/notes.md",
+      path.normalize("/tmp/qa-1719/notes.md"),
     );
   });
+});
+
+it.runIf(process.platform === "win32").each([
+  [["C:\\work\\file.txt", "c:\\WORK"], "c:\\WORK"],
+  [["C:\\work\\file.txt", "C:\\"], "C:\\"],
+  [["C:\\work", "D:\\work"], null],
+  [["C:\\work", "C:\\work-other\\file.txt"], null],
+])("resolves native Windows write scopes for %j", (paths, expected) => {
+  expect(resolveAcpFileChangeWriteScope(paths)).toBe(expected);
 });

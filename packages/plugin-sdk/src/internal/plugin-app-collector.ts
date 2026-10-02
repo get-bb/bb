@@ -16,6 +16,7 @@ import type {
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginCommandRegistration,
+  ExperimentalComposerCommandRegistration,
   PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -329,12 +330,17 @@ const commandShortcutSchema = z
     "Use Command, Control, or Alt with a key, or a function key",
   );
 
-export interface CollectedPluginCommandRegistration extends Omit<
-  PluginCommandRegistration,
-  "defaultShortcut"
-> {
-  defaultShortcut: z.infer<typeof commandShortcutSchema> | null;
-}
+type CollectedCommandShortcut = z.infer<typeof commandShortcutSchema> | null;
+
+export type CollectedPluginCommandRegistration =
+  | (Omit<PluginCommandRegistration, "defaultShortcut"> & {
+      target: "app";
+      defaultShortcut: CollectedCommandShortcut;
+    })
+  | (Omit<ExperimentalComposerCommandRegistration, "defaultShortcut"> & {
+      target: "composer";
+      defaultShortcut: CollectedCommandShortcut;
+    });
 
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
@@ -500,6 +506,7 @@ export function collectPluginAppRegistrations(
     threadPanelAction: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
+    composerPopup: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
     sidebarNavigation: new Set<string>(),
@@ -520,13 +527,30 @@ export function collectPluginAppRegistrations(
     contentScript: new Set<string>(),
   };
 
-  function registerCommand(registration: PluginCommandRegistration): void {
-    const kind = "commands.register";
+  function collectCommand(
+    kind: string,
+    registration:
+      | PluginCommandRegistration
+      | ExperimentalComposerCommandRegistration,
+  ) {
     const id = requireSlotId(kind, registration?.id);
     requireUniqueId(kind, seenIds.command, id);
     if (typeof registration.run !== "function") {
       throw new Error(`${kind}: "run" must be a function`);
     }
+    return {
+      id,
+      defaultShortcut:
+        registration.defaultShortcut === undefined
+          ? null
+          : commandShortcutSchema.parse(registration.defaultShortcut),
+      title: requireNonEmptyString(kind, "title", registration.title),
+    };
+  }
+
+  function registerCommand(registration: PluginCommandRegistration): void {
+    const kind = "commands.register";
+    const command = collectCommand(kind, registration);
     if (
       registration.isAvailable !== undefined &&
       typeof registration.isAvailable !== "function"
@@ -534,15 +558,21 @@ export function collectPluginAppRegistrations(
       throw new Error(`${kind}: "isAvailable" must be a function`);
     }
     collected.commandPaletteActions.push({
-      id,
-      defaultShortcut:
-        registration.defaultShortcut === undefined
-          ? null
-          : commandShortcutSchema.parse(registration.defaultShortcut),
-      title: requireNonEmptyString(kind, "title", registration.title),
+      target: "app",
+      ...command,
       ...(registration.isAvailable !== undefined
         ? { isAvailable: registration.isAvailable }
         : {}),
+      run: registration.run,
+    });
+  }
+
+  function registerComposerCommand(
+    registration: ExperimentalComposerCommandRegistration,
+  ): void {
+    collected.commandPaletteActions.push({
+      target: "composer",
+      ...collectCommand("composer.experimental_registerCommand", registration),
       run: registration.run,
     });
   }
@@ -938,11 +968,13 @@ export function collectPluginAppRegistrations(
           registration,
           seenIds.composerCustomization,
           onComposerCustomizationRejected,
+          seenIds.composerPopup,
         );
         if (customization !== null) {
           collected.composerCustomizations.push(customization);
         }
       },
+      experimental_registerCommand: registerComposerCommand,
     },
     experimental_icons: {
       register(registration) {

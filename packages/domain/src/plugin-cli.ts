@@ -9,6 +9,7 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "marketplace",
   "plugin",
   "project",
+  "prompt-history",
   "provider",
   "server",
   "settings",

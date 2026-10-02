@@ -42,6 +42,7 @@ const EFFORT_TOKENS: ReadonlyArray<readonly [string, ReasoningLevel]> = [
 ];
 
 const FAST_TAIL = "-fast";
+const FAST_SERVICE_TIER = "fast";
 const THINKING_TOKEN = "thinking";
 
 export interface AgentModelCatalog {
@@ -430,6 +431,11 @@ export function buildAgentModelCatalog(
         description: nameByLevel.get(level) ?? "",
       })),
       defaultReasoningEffort: defaultEntry.level,
+      supportedServiceTiers: [...byLevel.values()].some(
+        (tier) => tier.fast !== undefined,
+      )
+        ? [{ id: FAST_SERVICE_TIER }]
+        : [],
       isDefault: models.length === 0,
     });
     variantsByFamilyId.set(defaultVariant.id, byLevel);

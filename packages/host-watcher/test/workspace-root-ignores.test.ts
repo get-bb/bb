@@ -68,7 +68,7 @@ async function buildUmbrellaRoot(args: {
     );
     nestedDirCount += packagesPerNestedRepo * 2;
   }
-  return { root, nestedDirCount };
+  return { root: await fs.realpath(root), nestedDirCount };
 }
 
 function countInotifyWatches(): number {
@@ -193,15 +193,17 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
       const visibleFile = path.join(realRoot, "apps", "child-0", "visible.txt");
       const events: WorkspaceStatusChangeEvent[] = [];
       let ready!: () => void;
-      const readyPromise = new Promise<void>((resolve) => {
+      let failed!: (error: unknown) => void;
+      const readyPromise = new Promise<void>((resolve, reject) => {
         ready = resolve;
+        failed = reject;
       });
       const stop = watchWorkspaceStatus(root, {
         onChange: (event) => {
           events.push(event);
         },
         onReady: () => ready(),
-        onWatchError: () => undefined,
+        onWatchError: failed,
       });
       try {
         await readyPromise;
@@ -215,9 +217,9 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         await fs.writeFile(visibleFile, "visible\n");
         await vi.waitFor(
           () => {
-            expect(
-              events.some((event) => event.changedPaths.includes(visibleFile)),
-            ).toBe(true);
+            expect(events.flatMap((event) => event.changedPaths)).toContain(
+              visibleFile,
+            );
           },
           { timeout: EVENT_TIMEOUT_MS, interval: 100 },
         );

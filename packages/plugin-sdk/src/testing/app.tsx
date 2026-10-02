@@ -786,7 +786,7 @@ function TestProviderModelPicker({
           onChange={(event) =>
             setDraft((current) => {
               const serviceTier = event.target.value;
-              if (serviceTier !== "fast" && serviceTier !== "default") {
+              if (serviceTier === "") {
                 const next = { ...current };
                 delete next.serviceTier;
                 return next;

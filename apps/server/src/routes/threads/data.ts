@@ -2,6 +2,7 @@ import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import {
   getAppSettings,
+  getDatabaseDataVersion,
   getThreadPluginMetadata,
   patchThreadPluginMetadata,
   getLatestCompletedThreadContextClearSequence,
@@ -179,15 +180,28 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const routes = publicApiRoutes.threads;
   const timelineCache = createThreadTimelineCache();
   const timelineLatestRowsCache = createTimelineLatestRowsCache();
+  const timelineDeltaFloorByThreadId = new Map<string, number>();
   deps.hub.onChangedMessage((message) => {
-    if (
-      message.entity === "thread" &&
-      message.changes.includes("history-rewritten")
-    ) {
-      clearTimelineOrderingContextCache(deps.db);
-      timelineCache.invalidateThread(message.id);
-      timelineLatestRowsCache.invalidateThread(message.id);
+    if (message.entity !== "thread") {
+      return;
     }
+    if (message.changes.includes("thread-deleted")) {
+      timelineDeltaFloorByThreadId.delete(message.id);
+      return;
+    }
+    const rewritten = message.changes.includes("history-rewritten");
+    if (!rewritten && !message.changes.includes("history-compacted")) {
+      return;
+    }
+    if (rewritten) {
+      clearTimelineOrderingContextCache(deps.db);
+    }
+    timelineCache.invalidateThread(message.id);
+    timelineLatestRowsCache.invalidateThread(message.id);
+    timelineDeltaFloorByThreadId.set(
+      message.id,
+      getLatestThreadSequence(deps.db, { threadId: message.id }),
+    );
   });
   const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({
     logger: deps.logger,
@@ -322,8 +336,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       "afterSequence",
     );
     const paramsKey = buildThreadTimelineParamsKey(keyArgs);
+    const deltaFloor = timelineDeltaFloorByThreadId.get(thread.id);
     const previous =
-      afterSequence === undefined
+      afterSequence === undefined ||
+      (deltaFloor !== undefined && afterSequence <= deltaFloor)
         ? undefined
         : timelineLatestRowsCache.get(thread.id, paramsKey, afterSequence);
     const delta =
@@ -363,6 +379,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     };
     const cacheKey = JSON.stringify([
       thread.id,
+      getDatabaseDataVersion(deps.db),
       buildThreadConversationOutlineProjectionKey(
         thread,
         outlineSequence,

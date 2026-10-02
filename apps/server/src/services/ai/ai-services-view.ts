@@ -13,7 +13,7 @@ import {
   aiServiceSupportsTask,
   aiServiceTasks,
 } from "./ai-service-registry.js";
-import { automaticAiServiceRank, runTextAiTask } from "./ai-tasks.js";
+import { orderedAiServices, runTextAiTask } from "./ai-tasks.js";
 import {
   buildCommitMessagePrompt,
   sanitizeGeneratedCommitMessage,
@@ -51,27 +51,20 @@ const SAMPLE_COMMIT = {
 export async function buildAiServicesView(
   deps: AiServicesViewDeps,
 ): Promise<SystemAiServicesResponse> {
-  const services = deps.aiServices.list();
+  const services = orderedAiServices(deps);
   const statuses = await Promise.all(
     services.map((service) => deps.aiServices.status(aiServiceKey(service))),
   );
   return {
     selections: getAiServiceSelections(deps.db),
-    services: services
-      .map((service, index) => ({
-        id: service.id,
-        displayName: service.displayName,
-        pluginId: service.pluginId,
-        tasks: aiServiceTasks(service),
-        automaticRank: automaticAiServiceRank(service),
-        status: statuses[index] ?? { ready: false, message: "Unknown" },
-      }))
-      .sort(
-        (a, b) =>
-          (a.automaticRank ?? Number.MAX_SAFE_INTEGER) -
-            (b.automaticRank ?? Number.MAX_SAFE_INTEGER) ||
-          a.displayName.localeCompare(b.displayName),
-      ),
+    services: services.map((service, index) => ({
+      id: service.id,
+      displayName: service.displayName,
+      pluginId: service.pluginId,
+      tasks: aiServiceTasks(service),
+      automaticRank: index,
+      status: statuses[index] ?? { ready: false, message: "Unknown" },
+    })),
   };
 }
 

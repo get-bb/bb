@@ -220,7 +220,6 @@ describe("useSectionThreadDnd pin mutations", () => {
       ],
       undefined,
       SECTIONS,
-      new Set(),
       true,
     );
     const lookup = collectSectionThreadDndLookup(
@@ -509,7 +508,6 @@ describe("worktree group drop collisions", () => {
       ],
       undefined,
       SECTIONS,
-      new Set(),
       true,
     );
     const lookup = collectSectionThreadDndLookup(

@@ -42,6 +42,8 @@ import {
   threads,
 } from "@bb/db";
 import {
+  canonicalizeHostPath,
+  isAbsoluteHostPath,
   jsonValueSchema,
   type Environment,
   type EnvironmentMachineSelection,
@@ -299,6 +301,9 @@ function runTrackedOperation(args: {
 }
 
 const REMOVE_RETRY_MS = 60_000;
+const PROVIDER_OWNER_MISMATCH_MESSAGE =
+  "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.";
+const PROVIDER_LIFECYCLE_SWEEP_YIELD_INTERVAL = 25;
 
 const RETIRED_CREATE_CONTEXT_FIELDS = { rebuild: false, previous: null };
 
@@ -370,11 +375,11 @@ async function runCreate(
         const path = z
           .string()
           .min(1)
-          .startsWith("/")
+          .refine(isAbsoluteHostPath)
           .refine((path) => !path.includes("\0"))
           .parse(value);
         if (signal.aborted) return false;
-        const normalizedPath = path.replace(/\/+$/u, "") || "/";
+        const normalizedPath = canonicalizeHostPath(path);
         if (
           findBlockingEnvironmentPathClaim(deps, {
             hostId: context.host.id,
@@ -416,7 +421,7 @@ async function runCreate(
       let adoptedExistingEnvironment = false;
       let existingProviderOwnsLifecycle = false;
       try {
-        const producedPath = result.path.replace(/\/+$/u, "") || "/";
+        const producedPath = canonicalizeHostPath(result.path);
         await ensureHostSessionReadyForWork(deps, {
           hostId: context.host.id,
         });
@@ -826,12 +831,10 @@ async function sweepProviderEnvironmentInSlot(
     return;
   }
   if (record.pluginId !== row.environmentProviderPluginId) {
-    const teardownMessage =
-      "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.";
-    if (row.teardownMessage !== teardownMessage)
+    if (row.teardownMessage !== PROVIDER_OWNER_MISMATCH_MESSAGE)
       writeEnvironment(deps, environmentId, {
         teardownStatus: "failed",
-        teardownMessage,
+        teardownMessage: PROVIDER_OWNER_MISMATCH_MESSAGE,
       });
     return;
   }
@@ -903,12 +906,20 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   return true;
 }
 
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
   const pending: Promise<void>[] = [];
   for (const record of listEnvironmentProviders()) {
     for (const row of listProviderLifecycleEnvironments(
       deps.db,
       record.provider.id,
+      {
+        pluginId: record.pluginId,
+        teardownMessage: PROVIDER_OWNER_MISMATCH_MESSAGE,
+      },
     )) {
       pending.push(
         sweepProviderEnvironment(deps, row.id).catch((error) => {
@@ -918,7 +929,10 @@ export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
           );
         }),
       );
+      if (pending.length % PROVIDER_LIFECYCLE_SWEEP_YIELD_INTERVAL === 0)
+        await yieldToEventLoop();
     }
+    await yieldToEventLoop();
   }
   await Promise.all(pending);
   releaseFinishedEnvironmentPreparationOwners(deps.db);

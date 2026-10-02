@@ -164,8 +164,10 @@ describe("injected skill source discovery", () => {
     expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
     await rename(renamedReference, secondReference);
 
-    await chmod(secondReference, 0o755);
-    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    if (process.platform !== "win32") {
+      await chmod(secondReference, 0o755);
+      expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    }
   });
 
   it("hashes Unicode paths in locale-independent code-point order", () => {

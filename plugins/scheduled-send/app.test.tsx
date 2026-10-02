@@ -57,11 +57,13 @@ function dateInputValue(date: Date): string {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   resetSendLaterState();
 });
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   resetSendLaterState();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -157,6 +159,89 @@ describe("scheduling", () => {
 
     await waitFor(() => expect(slot.inspection.composer.text).toBe(""));
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
+  });
+
+  it.each([5, 10])(
+    "schedules the %i-minute preset from confirmation",
+    async (minutes) => {
+      const slot = openPicker();
+      await chooseScheduleOption(slot, `In ${minutes} minutes`);
+      const confirmationTime = Date.now() + HOUR_MS;
+      vi.spyOn(Date, "now").mockReturnValue(confirmationTime);
+      fireEvent.click(slot.getByRole("button", { name: "Schedule send" }));
+      await waitFor(() =>
+        expect(slot.inspection.composer.submits).toHaveLength(1),
+      );
+      expect(slot.inspection.composer.submits[0]!.sendAt).toBe(
+        confirmationTime + minutes * 60 * 1000,
+      );
+    },
+  );
+
+  it("remembers a preset after scheduling and switching composers", async () => {
+    const slot = openPicker();
+    await chooseScheduleOption(slot, "In 10 minutes");
+    fireEvent.click(slot.getByRole("button", { name: "Schedule send" }));
+    await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
+    slot.unmount();
+    const next = openPicker({
+      scope: { kind: "new-thread", projectId: "prj_1" },
+    });
+    expect(
+      next.getByRole("combobox", { name: "When to send" }).textContent,
+    ).toContain("In 10 minutes");
+  });
+
+  it("remembers a custom time until it expires", async () => {
+    const slot = openPicker();
+    const target = new Date(Date.now() + 2 * HOUR_MS);
+    target.setSeconds(0, 0);
+    await chooseScheduleOption(slot, "Custom date and time");
+    fireEvent.change(slot.getByLabelText("Date"), {
+      target: { value: dateInputValue(target) },
+    });
+    const time = `${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")}`;
+    fireEvent.change(slot.getByLabelText("Time"), { target: { value: time } });
+    fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
+    slot.unmount();
+    const next = openPicker();
+    expect(
+      next.getByRole("combobox", { name: "When to send" }).textContent,
+    ).toContain("Custom date and time");
+    expect(next.getByLabelText("Date")).toHaveProperty(
+      "value",
+      dateInputValue(target),
+    );
+    expect(next.getByLabelText("Time")).toHaveProperty("value", time);
+    fireEvent.click(next.getByRole("button", { name: "Schedule send" }));
+    await waitFor(() =>
+      expect(next.inspection.composer.submits).toHaveLength(1),
+    );
+    expect(next.inspection.composer.submits[0]!.sendAt).toBe(target.getTime());
+    next.unmount();
+    vi.spyOn(Date, "now").mockReturnValue(target.getTime());
+    const expired = openPicker();
+    expect(
+      expired.getByRole("combobox", { name: "When to send" }).textContent,
+    ).toContain("In 1 hour");
+    expect(expired.queryByLabelText("Date")).toBeNull();
+  });
+
+  it("resets this evening once it is unavailable", async () => {
+    const now = new Date();
+    now.setHours(12, 0, 0, 0);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now.getTime());
+    const slot = openPicker();
+    await chooseScheduleOption(slot, "This evening");
+    fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
+    now.setHours(18);
+    clock.mockReturnValue(now.getTime());
+    act(() => {
+      openSendLater(fakeComposer({ isEmpty: false, key: slot.composer.key }));
+    });
+    expect(
+      slot.getByRole("combobox", { name: "When to send" }).textContent,
+    ).toContain("In 1 hour");
   });
 
   it("schedules a new-thread draft through the same composer pipeline", async () => {

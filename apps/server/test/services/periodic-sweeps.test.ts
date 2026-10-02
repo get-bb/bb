@@ -182,7 +182,7 @@ describe("runPeriodicSweeps", () => {
       ).toEqual(previews);
       expect(
         changes.filter((threadChanges) =>
-          threadChanges.includes("history-rewritten"),
+          threadChanges.includes("history-compacted"),
         ),
       ).toHaveLength(1);
     });
@@ -261,7 +261,7 @@ describe("runPeriodicSweeps", () => {
       expect(observedCounts).toContain(1);
       expect(
         changes.filter((threadChanges) =>
-          threadChanges.includes("history-rewritten"),
+          threadChanges.includes("history-compacted"),
         ),
       ).toHaveLength(1);
     });
@@ -336,7 +336,7 @@ describe("runPeriodicSweeps", () => {
       );
       expect(
         changes.filter((threadChanges) =>
-          threadChanges.includes("history-rewritten"),
+          threadChanges.includes("history-compacted"),
         ),
       ).toHaveLength(1);
     });

@@ -9,5 +9,6 @@ export function resolveHostPlatform(
     const isWsl = env.WSL_DISTRO_NAME != null || env.WSL_INTEROP != null;
     return isWsl ? "wsl" : "linux";
   }
+  if (nodePlatform === "win32") return "win32";
   return "unknown";
 }

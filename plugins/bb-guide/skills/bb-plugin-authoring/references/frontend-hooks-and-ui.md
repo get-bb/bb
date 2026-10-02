@@ -152,7 +152,7 @@ composer.insert("Please summarize this.", { at: "end", block: true });
 
 Composer customizations:
 
-- Register with `app.composer.customize({ id, scopes?, actions?, plusMenu?,
+- Register with `app.composer.customize({ id, scopes?, actions?, experimental_popups?, plusMenu?,
 sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   queued-message, and new-thread composers.
 - `actions` and `banners` are plugin React components. `useComposer()` inside
@@ -263,3 +263,23 @@ variables — use host token classes (`bg-card`, `text-foreground`,
 define custom `@theme` colors and never hand-set `oklch(...)`/gray
 literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes.
+
+Composer popups register `[{ id, label, component }]` through `experimental_popups`.
+Popup ids must be unique across the plugin's composer customizations.
+Open by popup id with `composer.experimental_openPopup(id)`, from a
+`plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
+`app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
+A composer command is listed and rebindable like any plugin command and shares
+the `app.commands` ID namespace, but `run` receives `{ composer }` for the
+composer that handles it, through the same path as bb's own "Focus composer"
+command: the composer holding the caret, or with the caret outside every
+composer, the focused pane's primary composer. Its shortcut is inactive while
+a terminal, browser tab or modal has focus, and the palette lists it only when
+some composer would run it. The host
+shares mention-menu placement and dismissal, and uses a persistent responsive
+drawer for compact interactive popups. Inside the component, `useComposer()`
+is bound to the opening composer; its `experimental_closePopup()` closes only
+that plugin's popup and restores editor focus. Components own their search
+input and result navigation. Opening returns false when the target or scoped
+registration is unavailable; closing returns false if that plugin has no open
+popup.

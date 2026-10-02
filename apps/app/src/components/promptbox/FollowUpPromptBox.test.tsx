@@ -79,122 +79,138 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   }),
 }));
 
-vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
-  DEFAULT_COMPOSER_SCOPE: { kind: "new-thread", projectId: null },
-  PromptBoxInternal: ({
-    footerStart,
-    modeHeader,
-    compact,
-    onSubmit,
-    onEscape,
-    blurOnPointerSubmit,
-    promptBoxRef,
-    submission,
-    suppressPluginComposerCustomizations,
-    onCollapse,
-    heightAnimationKey,
-    minHeight,
-    voice,
-  }: {
-    footerStart?: ReactNode;
-    modeHeader?: ReactNode;
-    compact?: {
-      isCompact: boolean;
-      placeholder?: string;
-    };
-    onSubmit: () => void;
-    onEscape?: () => void;
-    blurOnPointerSubmit?: boolean;
-    promptBoxRef?: {
-      current: {
-        captureHeightForLayoutChange: () => void;
-        focusEnd: () => void;
-      } | null;
-    };
-    submission?: {
-      onModifierSubmit?: () => void;
-      swapSubmitActions?: boolean;
-      showModifierSubmitAction?: boolean;
-      title?: string;
-    };
-    suppressPluginComposerCustomizations?: boolean;
-    onCollapse?: () => void;
-    heightAnimationKey?: string | number;
-    minHeight?: number;
-    voice?: { state: "idle" | "recording" | "transcribing" | "error" };
-  }) => (
-    <div
-      data-testid="prompt-box"
-      data-compact={compact?.isCompact}
-      data-height-animation-key={heightAnimationKey}
-      data-min-height={minHeight}
-      data-voice-state={voice?.state}
-      data-plugin-customizations-suppressed={
-        suppressPluginComposerCustomizations ? "true" : "false"
-      }
-    >
-      {modeHeader}
-      {footerStart}
-      <input
-        aria-label="Follow-up prompt"
-        ref={(node) => {
-          if (!promptBoxRef) return;
-          promptBoxRef.current = node
-            ? {
-                captureHeightForLayoutChange: () => {},
-                focusEnd: () => {
-                  node.focus();
-                  node.setSelectionRange(node.value.length, node.value.length);
-                },
+vi.mock("@/components/promptbox/PromptBoxInternal", async () => {
+  const { ComposerCommand, ComposerCommandOwnerProvider } =
+    await import("@/components/promptbox/composer-commands");
+  return {
+    DEFAULT_COMPOSER_SCOPE: { kind: "new-thread", projectId: null },
+    PromptBoxInternal: ({
+      footerStart,
+      modeHeader,
+      compact,
+      onSubmit,
+      onEscape,
+      blurOnPointerSubmit,
+      promptBoxRef,
+      submission,
+      suppressPluginComposerCustomizations,
+      onCollapse,
+      heightAnimationKey,
+      minHeight,
+      voice,
+      onFocusCommand,
+    }: {
+      footerStart?: ReactNode;
+      modeHeader?: ReactNode;
+      compact?: {
+        isCompact: boolean;
+        placeholder?: string;
+      };
+      onSubmit: () => void;
+      onEscape?: () => void;
+      blurOnPointerSubmit?: boolean;
+      promptBoxRef?: {
+        current: {
+          captureHeightForLayoutChange: () => void;
+          focusEnd: () => void;
+        } | null;
+      };
+      submission?: {
+        onModifierSubmit?: () => void;
+        swapSubmitActions?: boolean;
+        showModifierSubmitAction?: boolean;
+        title?: string;
+      };
+      suppressPluginComposerCustomizations?: boolean;
+      onCollapse?: () => void;
+      heightAnimationKey?: string | number;
+      minHeight?: number;
+      voice?: { state: "idle" | "recording" | "transcribing" | "error" };
+      onFocusCommand?: () => void;
+    }) => (
+      <>
+        <ComposerCommandOwnerProvider value={() => true}>
+          {onFocusCommand ? (
+            <ComposerCommand command="composer.focus" run={onFocusCommand} />
+          ) : null}
+        </ComposerCommandOwnerProvider>
+        <div
+          data-testid="prompt-box"
+          data-compact={compact?.isCompact}
+          data-height-animation-key={heightAnimationKey}
+          data-min-height={minHeight}
+          data-voice-state={voice?.state}
+          data-plugin-customizations-suppressed={
+            suppressPluginComposerCustomizations ? "true" : "false"
+          }
+        >
+          {modeHeader}
+          {footerStart}
+          <input
+            aria-label="Follow-up prompt"
+            ref={(node) => {
+              if (!promptBoxRef) return;
+              promptBoxRef.current = node
+                ? {
+                    captureHeightForLayoutChange: () => {},
+                    focusEnd: () => {
+                      node.focus();
+                      node.setSelectionRange(
+                        node.value.length,
+                        node.value.length,
+                      );
+                    },
+                  }
+                : null;
+            }}
+          />
+          {compact?.isCompact ? <span>{compact.placeholder}</span> : null}
+          <button
+            type="button"
+            onClick={(event) => {
+              if (submission?.swapSubmitActions) {
+                submission.onModifierSubmit?.();
+              } else {
+                onSubmit();
               }
-            : null;
-        }}
-      />
-      {compact?.isCompact ? <span>{compact.placeholder}</span> : null}
-      <button
-        type="button"
-        onClick={(event) => {
-          if (submission?.swapSubmitActions) {
-            submission.onModifierSubmit?.();
-          } else {
-            onSubmit();
-          }
-          if (
-            blurOnPointerSubmit &&
-            event.detail > 0 &&
-            document.activeElement instanceof HTMLElement
-          ) {
-            document.activeElement.blur();
-          }
-        }}
-      >
-        Submit
-      </button>
-      <button
-        type="button"
-        title={submission?.title}
-        data-show-modifier-action={submission?.showModifierSubmitAction}
-        onClick={
-          submission?.swapSubmitActions
-            ? onSubmit
-            : submission?.onModifierSubmit
-        }
-      >
-        Modifier submit
-      </button>
-      {onCollapse ? (
-        <button type="button" onClick={onCollapse}>
-          Collapse prompt box
-        </button>
-      ) : null}
-      {onEscape ? (
-        <button type="button" onClick={onEscape}>
-          Escape
-        </button>
-      ) : null}
-    </div>
-  ),
-}));
+              if (
+                blurOnPointerSubmit &&
+                event.detail > 0 &&
+                document.activeElement instanceof HTMLElement
+              ) {
+                document.activeElement.blur();
+              }
+            }}
+          >
+            Submit
+          </button>
+          <button
+            type="button"
+            title={submission?.title}
+            data-show-modifier-action={submission?.showModifierSubmitAction}
+            onClick={
+              submission?.swapSubmitActions
+                ? onSubmit
+                : submission?.onModifierSubmit
+            }
+          >
+            Modifier submit
+          </button>
+          {onCollapse ? (
+            <button type="button" onClick={onCollapse}>
+              Collapse prompt box
+            </button>
+          ) : null}
+          {onEscape ? (
+            <button type="button" onClick={onEscape}>
+              Escape
+            </button>
+          ) : null}
+        </div>
+      </>
+    ),
+  };
+});
 
 vi.mock("@/components/promptbox/usePromptVoice", () => ({
   usePromptVoice: () => ({
@@ -220,7 +236,11 @@ vi.mock("@/components/pickers/PermissionModePicker", () => ({
     showChevronWhenDisabled?: boolean;
   }) => {
     mocks.permissionModePicker(props);
-    return null;
+    return props.disabled ? (
+      <button type="button" disabled>
+        Permission mode
+      </button>
+    ) : null;
   },
 }));
 
@@ -1092,7 +1112,7 @@ describe("FollowUpPromptBox", () => {
     expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
       "false",
     );
-    expect(screen.getByText("Local environment")).toBeTruthy();
+    expect(screen.queryByText("Local environment")).toBeNull();
 
     fireEvent.blur(input, { relatedTarget: submit });
     fireEvent.focus(submit);
@@ -1369,17 +1389,13 @@ describe("FollowUpPromptBox", () => {
   it("stays expanded after pressing a non-focusable composer control", () => {
     mocks.isCompactViewport = true;
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
-    props.environmentSummary = (
-      <button type="button" disabled>
-        Read only mode
-      </button>
-    );
+    props.permissionReadOnly = true;
     render(<FollowUpPromptBox {...props} />);
     const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
     act(() => input.focus());
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Read only mode" }),
+      screen.getByRole("button", { name: "Permission mode" }),
     );
 
     expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(

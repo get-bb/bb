@@ -18,10 +18,7 @@ import {
 } from "@/components/ui/markdown-local-file-link.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { computeMutedPrefixLength } from "@bb/client-core";
-import type {
-  TimelineTitleActionResolver,
-  TimelineTitleLinkResolver,
-} from "./TimelineTitleView.js";
+import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {
   ThreadTimelineAddToChatHandler,
   ThreadTimelineLinkHandler,
@@ -81,6 +78,7 @@ interface ConversationMessageContentBaseProps {
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
+  timestamp: number;
   workspaceRootPath?: string;
 }
 
@@ -93,7 +91,6 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onEdit?: () => void;
   resolveMentionLink?: PromptMentionLinkResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
@@ -160,7 +157,6 @@ interface UserConversationMessageProps {
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadProjectId: string | null;
@@ -169,6 +165,7 @@ interface UserConversationMessageProps {
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
+  timestamp: number;
   threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
   workspaceRootPath?: string;
@@ -191,6 +188,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   mobileActionDisplay: "inline" | "overflow";
   streaming: boolean;
   text: string;
+  timestamp: number;
   workspaceRootPath?: string;
 }
 
@@ -198,7 +196,6 @@ interface CollapsibleMessageTextProps {
   linkRouting?: MarkdownLinkRouting;
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   text: string;
   mutePrefixLength?: number;
 }
@@ -207,7 +204,6 @@ function CollapsibleMessageText({
   linkRouting,
   mentions,
   resolveMentionLink,
-  resolveSegmentLinkHref,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -239,10 +235,9 @@ function CollapsibleMessageText({
   const promptMentions = useMemo<MarkdownPromptMentions>(
     () => ({
       mentions: body.mentions,
-      resolveLinkHref: resolveSegmentLinkHref,
       resolveMentionLink,
     }),
-    [body.mentions, resolveSegmentLinkHref, resolveMentionLink],
+    [body.mentions, resolveMentionLink],
   );
   const rawThreadMentions = useMemo<MarkdownThreadMentions>(
     () => ({
@@ -341,7 +336,6 @@ function UserConversationMessage({
   pluginActions = [],
   projectId,
   resolveMentionLink,
-  resolveSegmentLinkHref,
   onTitleAction,
   senderThreadId,
   senderThreadProjectId,
@@ -350,6 +344,7 @@ function UserConversationMessage({
   systemMessageKind,
   systemMessageSubject,
   text,
+  timestamp,
   threadId,
   turnRequest,
   workspaceRootPath,
@@ -402,7 +397,6 @@ function UserConversationMessage({
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
-        resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
@@ -435,7 +429,6 @@ function UserConversationMessage({
               <CollapsibleMessageText
                 mentions={mentions}
                 resolveMentionLink={resolveMentionLink}
-                resolveSegmentLinkHref={resolveSegmentLinkHref}
                 linkRouting={linkRouting}
                 text={text}
                 mutePrefixLength={mutePrefixLength || undefined}
@@ -452,6 +445,7 @@ function UserConversationMessage({
             />
           </div>
           <MessageActionBar
+            timestamp={timestamp}
             messageText={messageText}
             alignment="end"
             mobileActionDisplay={mobileActionDisplay}
@@ -485,6 +479,7 @@ function AssistantConversationMessage({
   mobileActionDisplay,
   streaming,
   text,
+  timestamp,
   threadId,
   turnId,
   workspaceRootPath,
@@ -607,6 +602,7 @@ function AssistantConversationMessage({
       />
       {showActions ? (
         <MessageActionBar
+          timestamp={timestamp}
           messageText={text}
           alignment="start"
           mobileActionDisplay={mobileActionDisplay}
@@ -664,7 +660,6 @@ export function ConversationMessageContent(
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
-        resolveSegmentLinkHref={props.resolveSegmentLinkHref}
         onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
         senderThreadProjectId={props.senderThreadProjectId ?? null}
@@ -673,6 +668,7 @@ export function ConversationMessageContent(
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
+        timestamp={props.timestamp}
         threadId={props.threadId}
         turnRequest={props.turnRequest}
         workspaceRootPath={props.workspaceRootPath}
@@ -699,6 +695,7 @@ export function ConversationMessageContent(
       mobileActionDisplay={props.mobileActionDisplay}
       streaming={props.streaming}
       text={text}
+      timestamp={props.timestamp}
       threadId={props.threadId}
       turnId={props.turnId}
       workspaceRootPath={props.workspaceRootPath}

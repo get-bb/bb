@@ -46,6 +46,7 @@ import {
 } from "./markdown-katex-loader.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
 import { RouteAnchor } from "./app-route-anchor.js";
 import {
   getMarkdownCodeLanguage,
@@ -64,6 +65,7 @@ import {
 } from "./markdown-local-file-link.js";
 import {
   MarkdownLocalFileContextMenuContext,
+  MarkdownLocalFileOpenTargetsContext,
   type MarkdownLinkRouting,
   type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
@@ -100,7 +102,6 @@ import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquot
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
 import {
   rewriteLocalhostLinkHref,
@@ -134,7 +135,6 @@ type MarkdownImagePolicy = "alt-text" | "render";
 export interface MarkdownThreadMentions {
   mentions: readonly PromptTextMention[];
   preserveSoftBreaks: boolean;
-  resolveLinkHref?: TimelineTitleLinkResolver;
 }
 
 interface MarkdownAnchorProps
@@ -161,7 +161,6 @@ interface BuildMarkdownComponentsArgs {
 
 interface ResolvedPromptMentions {
   mentions: readonly IndexedPromptMention[];
-  resolveLinkHref?: TimelineTitleLinkResolver;
   resolveMentionLink?: PromptMentionLinkResolver;
 }
 
@@ -389,8 +388,7 @@ function areMarkdownThreadMentionsEqual({
   if (previous === undefined || next === undefined) return false;
   return (
     previous.mentions === next.mentions &&
-    previous.preserveSoftBreaks === next.preserveSoftBreaks &&
-    previous.resolveLinkHref === next.resolveLinkHref
+    previous.preserveSoftBreaks === next.preserveSoftBreaks
   );
 }
 
@@ -402,7 +400,6 @@ function areMarkdownPromptMentionsEqual({
   if (previous === undefined || next === undefined) return false;
   return (
     previous.mentions === next.mentions &&
-    previous.resolveLinkHref === next.resolveLinkHref &&
     previous.resolveMentionLink === next.resolveMentionLink
   );
 }
@@ -576,14 +573,18 @@ const markdownLinkGraphemes = new Intl.Segmenter(undefined, {
   granularity: "grapheme",
 });
 
-function appendMarkdownLinkIcon(children: ReactNode): ReactNode {
-  const icon = (
-    <Icon
-      name="ExternalLink"
-      aria-hidden
-      className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
-    />
-  );
+const MARKDOWN_LOCAL_FILE_LINK_ICON = (
+  <Icon
+    name="ExternalLink"
+    aria-hidden
+    className="ml-1 inline size-3 align-[-0.125em] text-subtle-foreground"
+  />
+);
+
+function appendMarkdownLinkIcon(
+  children: ReactNode,
+  icon: ReactNode,
+): ReactNode {
   let appended = false;
   const append = (node: ReactNode): ReactNode => {
     if (typeof node === "string" || typeof node === "number") {
@@ -649,10 +650,18 @@ function MarkdownAnchor({
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
   const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
+  const openTargets = useContext(MarkdownLocalFileOpenTargetsContext);
+  if (!anchorHref) {
+    return <span>{children}</span>;
+  }
   const contextMenuItems =
     localFileLink !== null && getContextMenuItems !== null
       ? getContextMenuItems(localFileLink)
       : null;
+  const openTarget =
+    localFileLink === null || localFileLink.openTargetId === null
+      ? undefined
+      : openTargets.find((target) => target.id === localFileLink.openTargetId);
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
@@ -678,6 +687,10 @@ function MarkdownAnchor({
   const anchor = (
     <RouteAnchor
       {...anchorProps}
+      title={
+        anchorProps.title ??
+        (openTarget === undefined ? undefined : `Open in ${openTarget.label}`)
+      }
       href={anchorHref}
       className={cn(
         "break-words [overflow-wrap:anywhere] underline underline-offset-2",
@@ -686,7 +699,19 @@ function MarkdownAnchor({
       rel="noopener noreferrer"
       onClick={handleAnchorClick}
     >
-      {localFileLink ? appendMarkdownLinkIcon(children) : children}
+      {localFileLink
+        ? appendMarkdownLinkIcon(
+            children,
+            openTarget === undefined ? (
+              MARKDOWN_LOCAL_FILE_LINK_ICON
+            ) : (
+              <WorkspaceOpenTargetIcon
+                target={openTarget}
+                className="ml-1 inline-block size-3.5 align-[-0.2em]"
+              />
+            ),
+          )
+        : children}
     </RouteAnchor>
   );
   if (contextMenuItems === null || contextMenuItems.length === 0) {
@@ -1382,14 +1407,12 @@ function buildMarkdownComponents({
   if (threadMentions !== undefined) {
     components["bb-thread-mention"] = buildThreadMentionComponent({
       mentions: threadMentions.mentions,
-      resolveSegmentLinkHref: threadMentions.resolveLinkHref,
     });
   }
 
   if (promptMentions !== undefined) {
     components["bb-prompt-mention"] = buildPromptMentionComponent({
       mentions: promptMentions.mentions,
-      resolveLinkHref: promptMentions.resolveLinkHref,
       resolveMentionLink: promptMentions.resolveMentionLink,
     });
   }
@@ -1713,7 +1736,6 @@ function MarkdownPreviewComponent({
       promptMentions && promptMentionSubstitution
         ? {
             mentions: promptMentionSubstitution.mentions,
-            resolveLinkHref: promptMentions.resolveLinkHref,
             resolveMentionLink: promptMentions.resolveMentionLink,
           }
         : undefined,

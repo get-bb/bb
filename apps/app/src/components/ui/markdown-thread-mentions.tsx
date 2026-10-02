@@ -7,7 +7,6 @@ import {
   RAW_THREAD_ID_PATTERN_SOURCE,
   type PromptTextMention,
 } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import {
   PromptMentionPill,
   resolveThreadMentionResource,
@@ -21,7 +20,6 @@ import {
   useSidebarThreadMentionResource,
   useThreadMentionResource,
 } from "@/components/thread/ThreadTitleMentions.js";
-import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { replaceTextMatches } from "./markdown-text-matches.js";
 
 const THREAD_MENTION_PATTERN = new RegExp(
@@ -342,7 +340,6 @@ export function remarkThreadMentions() {
 
 interface BuildThreadMentionComponentArgs {
   mentions: readonly PromptTextMention[];
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
 }
 
 interface ThreadMentionElementProps {
@@ -359,20 +356,8 @@ declare module "react" {
   }
 }
 
-function resolveThreadMentionHref(
-  threadId: string,
-  resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined,
-): string | undefined {
-  if (!resolveSegmentLinkHref) {
-    return undefined;
-  }
-  const link: TimelineTitleLink = { kind: "thread", threadId };
-  return resolveSegmentLinkHref(link) ?? undefined;
-}
-
 export function buildThreadMentionComponent({
   mentions,
-  resolveSegmentLinkHref,
 }: BuildThreadMentionComponentArgs): ComponentType<ThreadMentionElementProps> {
   function RawThreadMentionPillWithQuery({
     inlineCode,
@@ -402,7 +387,6 @@ export function buildThreadMentionComponent({
       <PromptMentionPill
         resource={resource}
         serializedText={`@thread:${threadId}`}
-        linkHref={resolveThreadMentionHref(threadId, resolveSegmentLinkHref)}
       />
     );
   }
@@ -435,7 +419,6 @@ export function buildThreadMentionComponent({
       <PromptMentionPill
         resource={resource}
         serializedText={`@thread:${threadId}`}
-        linkHref={resolveThreadMentionHref(threadId, resolveSegmentLinkHref)}
       />
     );
   }

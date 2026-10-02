@@ -1595,11 +1595,15 @@ describe("RuntimeManager", () => {
       environmentId: "env-forgotten",
       workspacePath: directory,
     });
-    const child = spawn("sleep", ["300"], {
-      cwd: directory,
-      detached: true,
-      stdio: "ignore",
-    });
+    const child = spawn(
+      process.execPath,
+      ["-e", "setTimeout(() => {}, 300_000)"],
+      {
+        cwd: directory,
+        detached: true,
+        stdio: "ignore",
+      },
+    );
     child.unref();
 
     try {
@@ -1611,7 +1615,12 @@ describe("RuntimeManager", () => {
           process.kill(child.pid, "SIGKILL");
         } catch {}
       }
-      await fs.rm(directory, { recursive: true, force: true });
+      await fs.rm(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 20,
+        retryDelay: 100,
+      });
     }
   });
 

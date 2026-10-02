@@ -21,7 +21,8 @@ import {
 import {
   appendDaemonEventsInTransaction,
   getFirstParentedTimelineBoundarySequence,
-  hasTimelineGroupingContextRowsInRange,
+  getTimelineGroupingContextChangesInRange,
+  hasStoredSpawnAgentToolCall,
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
   insertEvents,
@@ -242,6 +243,58 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("checks spawn-agent history without reading unrelated event payloads", () => {
+    const { db, thread } = setup();
+    try {
+      const captured = captureStatements(db, () => {
+        expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      });
+      expect(captured).toHaveLength(1);
+      expect(queryPlanDetails({ db, ...captured[0]! })).toContain(
+        "USING INDEX events_delegating_item_lookup_idx (thread_id=?)",
+      );
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', ?, 'item/started', ?, ?, 0)`)
+        .run(
+          "ordinary-tool",
+          thread.id,
+          1,
+          "toolCall",
+          JSON.stringify({ item: { tool: "exec" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', 3, 'item/completed', 'delegation', ?, 0)`)
+        .run(
+          "delegation",
+          thread.id,
+          JSON.stringify({ item: { tool: "spawnAgent" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', ?, 'item/completed', ?, ?, 0)`)
+        .run(
+          "spawn-tool",
+          thread.id,
+          2,
+          "toolCall",
+          JSON.stringify({ item: { tool: "spawnAgent" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(true);
+      expect(hasStoredSpawnAgentToolCall(db, "other-thread")).toBe(false);
+      db.$client.prepare("DELETE FROM events WHERE id = ?").run("spawn-tool");
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("resolves a provider session with two indexed lookups regardless of history length", () => {
     const { db, thread } = setup();
     try {
@@ -616,6 +669,13 @@ describe("slow query index plans", () => {
       /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
     );
     expect(details).toMatch(
+      /SEARCH events USING COVERING INDEX events_parent_tool_call_thread_parent_sequence_idx \(thread_id=\? AND parent_tool_call_id>\?\)/u,
+    );
+    expect(details.indexOf("SCAN nested_history")).toBeGreaterThanOrEqual(0);
+    expect(details.indexOf("SCAN nested_history")).toBeLessThan(
+      details.indexOf("INDEX events_delegating_item_lookup_idx"),
+    );
+    expect(details).toMatch(
       /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
     );
 
@@ -626,7 +686,7 @@ describe("slow query index plans", () => {
     {
       name: "probes appended grouping-context rows",
       run: (db: DbConnection, threadId: string) =>
-        hasTimelineGroupingContextRowsInRange(db, {
+        getTimelineGroupingContextChangesInRange(db, {
           afterSequence: 10,
           threadId,
           throughSequence: 30,
@@ -871,7 +931,12 @@ describe("slow query index plans", () => {
   it("skips removed environments in the provider lifecycle sweep", () => {
     const { db } = setup();
     const captured = captureStatements(db, () => {
-      expect(listProviderLifecycleEnvironments(db, "git-worktree")).toEqual([]);
+      expect(
+        listProviderLifecycleEnvironments(db, "git-worktree", {
+          pluginId: "environment-git-worktree",
+          teardownMessage: "blocked",
+        }),
+      ).toEqual([]);
     });
     expect(captured).toHaveLength(1);
     const details = queryPlanDetails({
@@ -947,6 +1012,53 @@ describe("slow query index plans", () => {
 
     db.$client.close();
   });
+
+  it.each([
+    ["agentMessage", "item/agentMessage/delta"],
+    ["reasoning", "item/reasoning/textDelta"],
+  ] as const)(
+    "does not parse %s completion payloads for retention support",
+    (itemKind, deltaType) => {
+      const { db, thread } = setup();
+      try {
+        insertEvents(
+          db,
+          noopNotifier,
+          [1, 2, 3].map((sequence) => ({
+            data: "{}",
+            itemId: "item",
+            itemKind: sequence === 3 ? itemKind : null,
+            parentToolCallId: null,
+            scope: turnScope("support-turn"),
+            sequence,
+            threadId: thread.id,
+            type: sequence === 3 ? "item/completed" : deltaType,
+          })),
+        );
+        const statements = captureStatements(db, () => {
+          expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
+        });
+        const supportQueries = statements.filter((statement) =>
+          statement.sql.includes(
+            "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+          ),
+        );
+        expect(supportQueries.length).toBeGreaterThan(0);
+        for (const statement of supportQueries) {
+          const instructions = db.$client
+            .prepare<SqliteParameter[], { p4: string | null }>(
+              `EXPLAIN ${statement.sql}`,
+            )
+            .all(...statement.params);
+          expect(instructions.some((row) => row.p4?.startsWith("json_"))).toBe(
+            false,
+          );
+        }
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
 
   it("uses the active-thread maintenance index for emitted idle checks", () => {
     const { db, logger } = setup();
@@ -1385,9 +1497,11 @@ describe("slow query index plans", () => {
     if (!discovery) throw new Error("Missing typed delta candidate discovery");
     const discoveryPlan = queryPlanDetails({ db, ...discovery });
     expect(
-      discoveryPlan.match(/USING INDEX events_thread_type_sequence_idx/gu),
+      discoveryPlan.match(
+        /USING COVERING INDEX events_thread_type_sequence_idx/gu,
+      ),
     ).toHaveLength(4);
-    expect(discoveryPlan).toContain("USING INDEX sqlite_autoindex_events_1");
+    expect(discoveryPlan).toContain("USING INTEGER PRIMARY KEY (rowid=?)");
     expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
     const supportQueries = statements.filter((statement) =>
       statement.sql.includes(
@@ -1412,6 +1526,47 @@ describe("slow query index plans", () => {
     expect(pruneQuery.fields.sql).not.toContain("json_extract");
 
     db.$client.close();
+  });
+
+  it("discovers token usage keepers without reading payloads or computing unused byte totals", () => {
+    const { db, thread } = setup();
+    try {
+      insertEvents(
+        db,
+        noopNotifier,
+        [1, 2].map((sequence) => ({
+          data: JSON.stringify({ tokenUsage: { modelContextWindow: 200000 } }),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          scope: turnScope("usage-turn"),
+          sequence,
+          threadId: thread.id,
+          type: "thread/tokenUsage/updated" as const,
+        })),
+      );
+      advanceThreadPruning(db, "usage");
+      advanceThreadPruning(db, "usage");
+      const statements = captureStatements(db, () => {
+        const result = advanceThreadPruning(db, "usage");
+        expect(result.scanned).toBe(2);
+        expect(result.removed).toBe(0);
+        expect(result.removedBytes).toBe(0);
+        expect(result.cursor.latestRootSequence).toBe(2);
+      });
+      for (const statement of statements) {
+        const instructions = db.$client
+          .prepare<SqliteParameter[], { p4: string | null }>(
+            `EXPLAIN ${statement.sql}`,
+          )
+          .all(...statement.params);
+        expect(
+          instructions.filter((row) => /^(json_|sum\()/u.test(row.p4 ?? "")),
+        ).toEqual([]);
+      }
+    } finally {
+      db.$client.close();
+    }
   });
 
   it("pins the latest-thread-state lookup to the partial index with no temp sort", () => {

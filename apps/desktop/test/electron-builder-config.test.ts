@@ -448,8 +448,10 @@ describe("electron-builder signing config", () => {
       await expect(readFile(unixTerminalPath, "utf8")).resolves.toContain(
         "helperPath.replace(/app\\.asar(?!\\.unpacked)/g, 'app.asar.unpacked')",
       );
-      expect((await stat(helperPath)).mode & 0o777).toBe(0o755);
-      expect((await stat(rebuiltHelperPath)).mode & 0o777).toBe(0o755);
+      if (process.platform !== "win32") {
+        expect((await stat(helperPath)).mode & 0o777).toBe(0o755);
+        expect((await stat(rebuiltHelperPath)).mode & 0o777).toBe(0o755);
+      }
     } finally {
       await rm(appOutDir, { force: true, recursive: true });
     }
@@ -473,6 +475,7 @@ describe("electron-builder signing config", () => {
         resolve(nodeModules, "better-sqlite3"),
         { recursive: true },
       );
+      await mkdir(resolve(nodeModules, "@parcel/watcher"), { recursive: true });
       const result = await runNativePrepScript(appOutDir, [
         "--electron-version=44.3.0",
       ]);

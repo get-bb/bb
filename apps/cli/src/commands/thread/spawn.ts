@@ -35,6 +35,7 @@ import {
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   parseServiceTier,
+  SERVICE_TIER_HELP,
 } from "./helpers.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 
@@ -77,7 +78,13 @@ interface ThreadSpawnCommandOptions {
 }
 
 export function looksLikePath(value: string): boolean {
-  return value.includes("/") || value.startsWith(".") || value.startsWith("~");
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:/u.test(value) ||
+    value.startsWith(".") ||
+    value.startsWith("~")
+  );
 }
 
 export function requireHostId(hostId: string | null): string {
@@ -364,7 +371,7 @@ export function registerSpawnCommand(
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--title <title>", "Thread title")
-    .option("--service-tier <tier>", "Service tier: fast or default")
+    .option("--service-tier <tier>", SERVICE_TIER_HELP)
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--plan", PLAN_HELP)
     .option(

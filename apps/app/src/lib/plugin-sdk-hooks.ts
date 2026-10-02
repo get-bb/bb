@@ -38,9 +38,8 @@ import {
 import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
 import {
   composerScopeIdentity,
-  PluginComposerViewContext,
+  useOptionalPluginComposerView,
   usePluginComposerHost,
-  usePluginComposerHostDraft,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import {
@@ -62,10 +61,12 @@ import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import { createKeyedListeners } from "@/lib/keyed-listeners";
 import {
-  usePromptDraftStorage,
+  usePromptDraftController,
+  usePromptDraftSnapshot,
+  type PromptDraftController,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
-import { isPromptDraftEmpty } from "@bb/client-core";
+import { emptyPromptDraftState, isPromptDraftEmpty } from "@bb/client-core";
 import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
@@ -564,8 +565,34 @@ export function useComposerInputLock(storageKey: string | null): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+type ComposerDraftSource = Pick<
+  PromptDraftController,
+  "getCurrent" | "subscribe"
+>;
+
+const EMPTY_COMPOSER_DRAFT = emptyPromptDraftState();
+const NO_COMPOSER_DRAFT_SOURCE: ComposerDraftSource = {
+  getCurrent: () => EMPTY_COMPOSER_DRAFT,
+  subscribe: () => () => {},
+};
+
+function useComposerDraftSource(
+  composerHost: PluginComposerHost | null,
+  routeDraft: PromptDraftController,
+): ComposerDraftSource {
+  const hostGetCurrent = composerHost?.getCurrent;
+  const hostSubscribe = composerHost?.subscribeDraft;
+  return useMemo(
+    () =>
+      hostGetCurrent !== undefined && hostSubscribe !== undefined
+        ? { getCurrent: hostGetCurrent, subscribe: hostSubscribe }
+        : routeDraft,
+    [hostGetCurrent, hostSubscribe, routeDraft],
+  );
+}
+
 export function useComposerView(): ComposerView {
-  const providedView = useContext(PluginComposerViewContext);
+  const providedView = useOptionalPluginComposerView();
   const composerHost = usePluginComposerHost();
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
@@ -575,9 +602,11 @@ export function useComposerView(): ComposerView {
         : { kind: "new-thread" },
     [projectId, threadId],
   );
-  const routeDraft = usePromptDraftStorage(routeScope);
-  const hostDraft = usePluginComposerHostDraft(composerHost);
-  const draft = hostDraft ?? routeDraft;
+  const routeDraft = usePromptDraftController(routeScope);
+  const draftSource = useComposerDraftSource(composerHost, routeDraft);
+  const draft = usePromptDraftSnapshot(
+    providedView === undefined ? draftSource : NO_COMPOSER_DRAFT_SOURCE,
+  );
   const fallback = useMemo<ComposerView>(
     () => ({
       scope:
@@ -602,12 +631,8 @@ export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
   const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
-  usePluginComposerHostDraft(composerHost);
-  useSyncExternalStore(
-    composerHost?.subscribeSelection ?? subscribeToNoComposerSelection,
-    composerHost?.getSelection ?? getNoComposerSelection,
-    composerHost?.getSelection ?? getNoComposerSelection,
-  );
+  const tracksDraft = useRef(false);
+  const tracksSelection = useRef(false);
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
     () =>
@@ -616,7 +641,23 @@ export function useComposer(): PluginComposerApi {
         : { kind: "new-thread" },
     [projectId, threadId],
   );
-  const routeDraft = usePromptDraftStorage(routeScope);
+  const routeDraft = usePromptDraftController(routeScope);
+  const draftSource = useComposerDraftSource(composerHost, routeDraft);
+  const draftSnapshot = useCallback(
+    () => (tracksDraft.current ? draftSource.getCurrent() : null),
+    [draftSource],
+  );
+  useSyncExternalStore(draftSource.subscribe, draftSnapshot, draftSnapshot);
+  const selectionSnapshot = useCallback(
+    () =>
+      tracksSelection.current ? (composerHost?.getSelection?.() ?? null) : null,
+    [composerHost],
+  );
+  useSyncExternalStore(
+    composerHost?.subscribeSelection ?? subscribeToNoComposerSelection,
+    selectionSnapshot,
+    getNoComposerSelection,
+  );
   const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
   useComposerEditorBridge(textEffectKey);
 
@@ -756,7 +797,26 @@ export function useComposer(): PluginComposerApi {
     setBinding(currentBinding);
   }
   currentBinding.update(controller);
-  return currentBinding.handle;
+  return useMemo(
+    () =>
+      new Proxy(currentBinding.handle, {
+        get(target, property, receiver) {
+          if (
+            property === "text" ||
+            property === "draft" ||
+            property === "isEmpty" ||
+            property === "attachmentCount"
+          ) {
+            tracksDraft.current = true;
+          }
+          if (property === "selection") {
+            tracksSelection.current = true;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    [currentBinding],
+  );
 }
 
 function createComposerDraftsStore(hosts: readonly PluginComposerHost[]) {

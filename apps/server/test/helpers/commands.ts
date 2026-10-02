@@ -116,13 +116,15 @@ export interface TestHostRpcSocket {
 }
 
 function isRuntimeWorkspaceFileCommand(command: HostDaemonRpcCommand): boolean {
-  if (command.type === "host.list_files") {
-    return command.path.endsWith(path.join(".bb", "skills"));
+  if (command.type !== "host.list_files" && command.type !== "host.read_file") {
+    return false;
   }
-  if (command.type !== "host.read_file") return false;
+  const hostPath = command.path.replaceAll("\\", "/");
+  if (command.type === "host.list_files") {
+    return hostPath.endsWith(".bb/skills");
+  }
   return (
-    command.path.endsWith(path.join(".bb", "AGENTS.md")) ||
-    command.path.includes(`${path.sep}.bb${path.sep}skills${path.sep}`)
+    hostPath.endsWith(".bb/AGENTS.md") || hostPath.includes("/.bb/skills/")
   );
 }
 

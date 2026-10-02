@@ -30,7 +30,9 @@ bb replaces that leaf with this plugin's React component, which:
    and file path to validate the target and surface clean inline errors.
 3. Shows loading / error states. Every preview includes a header action that
    opens the source file in bb's sidebar viewer, from the workspace or the
-   thread's storage directory. The header also collapses or expands the
+   thread's storage directory. For HTML previews that action is a link to the
+   rendered page: Cmd-click, Ctrl-click, or middle-click opens it in a browser
+   tab (the default browser in desktop bb). The header also collapses or expands the
    preview and remembers that preference on the current client.
 4. Points HTML files at bb's existing path-shaped worktree or thread storage
    route inside a sandboxed iframe. Relative sibling assets work, scripts are

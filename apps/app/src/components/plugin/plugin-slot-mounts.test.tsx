@@ -19,6 +19,7 @@ import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
+  ComposerView,
   ExperimentalComposerSelection,
   PluginComposerApi,
   PluginFileOpenerProps,
@@ -73,7 +74,10 @@ import {
 } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getComposerTextEffects } from "@/lib/composer-text-effects";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import {
+  getPromptDraftAccessor,
+  usePromptDraftStorage,
+} from "@/hooks/usePromptDraftStorage";
 import {
   PluginPanelTabContent,
   usePluginNewThreadPanelActions,
@@ -364,6 +368,131 @@ describe("useComposer", () => {
     const view = useComposerView();
     return <ComposerActionsSlot view={view} />;
   }
+
+  it("does not re-render a plugin that never reads the text while the draft changes", () => {
+    const quietRenders = vi.fn<(composer: PluginComposerApi) => void>();
+    const readingRenders = vi.fn();
+    function QuietProbe() {
+      const composer = useComposer();
+      quietRenders(composer);
+      return (
+        <button
+          type="button"
+          onClick={() => composer.updateText((t) => `${t}!`)}
+        >
+          quiet-update
+        </button>
+      );
+    }
+    function ReadingProbe() {
+      const composer = useComposer();
+      readingRenders();
+      return <div data-testid="reading-text">{composer.text}</div>;
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [
+          {
+            id: "probe",
+            actions: [
+              { id: "quiet", component: QuietProbe },
+              { id: "reading", component: ReadingProbe },
+            ],
+          },
+        ],
+      }),
+    );
+    const staticView: ComposerView = {
+      scope: { kind: "thread", threadId: "thr_quiet" },
+      layout: "expanded",
+      draft: { text: "", isEmpty: true, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_quiet"]}>
+        <ComposerActionsSlot view={staticView} />
+      </MemoryRouter>,
+    );
+    const draft = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: PERSONAL_PROJECT_ID,
+      threadId: "thr_quiet",
+    });
+    const quietRendersBefore = quietRenders.mock.calls.length;
+    const readingRendersBefore = readingRenders.mock.calls.length;
+
+    for (const text of ["a", "ab", "abc", "abcd", "abcde"]) {
+      act(() => draft.setDraft({ text, mentions: [], attachments: [] }));
+    }
+
+    expect(quietRenders).toHaveBeenCalledTimes(quietRendersBefore);
+    expect(readingRenders).toHaveBeenCalledTimes(readingRendersBefore + 5);
+    expect(screen.getByTestId("reading-text").textContent).toBe("abcde");
+    expect(quietRenders.mock.lastCall?.[0].text).toBe("abcde");
+
+    fireEvent.click(screen.getByText("quiet-update"));
+    expect(draft.getCurrent().text).toBe("abcde!");
+    expect(screen.getByTestId("reading-text").textContent).toBe("abcde!");
+  });
+
+  it("keeps following the draft once a plugin starts reading it after mount", () => {
+    function LateReader() {
+      const composer = useComposer();
+      const [reading, setReading] = useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setReading(true)}>
+            start-reading
+          </button>
+          <div data-testid="late-text">
+            {reading ? composer.text : "not reading"}
+          </div>
+          <div data-testid="late-empty">
+            {reading ? String(composer.isEmpty) : "not reading"}
+          </div>
+        </div>
+      );
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [
+          { id: "probe", actions: [{ id: "late", component: LateReader }] },
+        ],
+      }),
+    );
+    const staticView: ComposerView = {
+      scope: { kind: "thread", threadId: "thr_late" },
+      layout: "expanded",
+      draft: { text: "", isEmpty: true, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_late"]}>
+        <ComposerActionsSlot view={staticView} />
+      </MemoryRouter>,
+    );
+    const draft = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: PERSONAL_PROJECT_ID,
+      threadId: "thr_late",
+    });
+
+    act(() => draft.setDraft({ text: "a", mentions: [], attachments: [] }));
+    expect(screen.getByTestId("late-text").textContent).toBe("not reading");
+
+    fireEvent.click(screen.getByText("start-reading"));
+    expect(screen.getByTestId("late-text").textContent).toBe("a");
+
+    act(() => draft.setDraft({ text: "ab", mentions: [], attachments: [] }));
+    expect(screen.getByTestId("late-text").textContent).toBe("ab");
+    expect(screen.getByTestId("late-empty").textContent).toBe("false");
+
+    act(() => draft.setDraft({ text: "", mentions: [], attachments: [] }));
+    expect(screen.getByTestId("late-text").textContent).toBe("");
+    expect(screen.getByTestId("late-empty").textContent).toBe("true");
+  });
 
   it("writes quotes into the thread draft and fires the focus bus", () => {
     registerComposerProbe("t");
@@ -1176,6 +1305,9 @@ describe("useComposer", () => {
     }
 
     const readyEditor: ComposerEditorBridge = {
+      openPopup: () => false,
+      closePopup: () => false,
+      isPopupOpen: () => false,
       host: {
         scope: { kind: "thread", threadId: "thr_submit" },
         textEffectKey: "thread:thr_submit",
@@ -1334,6 +1466,9 @@ describe("useComposer().experimental_setSelection", () => {
       },
     };
     const editor: ComposerEditorBridge = {
+      openPopup: () => false,
+      closePopup: () => false,
+      isPopupOpen: () => false,
       host,
       pluginCustomizable: true,
       state: {
@@ -1368,6 +1503,57 @@ describe("useComposer().experimental_setSelection", () => {
     expect(reads.at(-1)?.listedSelection).toEqual(selection);
     view.unmount();
     clearComposerEditorBridge("thread:thr_selection", editor);
+  });
+
+  it("re-renders a plugin that reads only its own composer's selection", async () => {
+    const listeners = new Set<() => void>();
+    let selection: ExperimentalComposerSelection = {
+      providerId: "codex",
+      model: "gpt-5",
+    };
+    function OwnSelectionProbe() {
+      const composer = useComposer();
+      return (
+        <div data-testid="own-selection">
+          {composer.selection?.model ?? "none"}
+        </div>
+      );
+    }
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [
+          {
+            id: "selection",
+            actions: [{ id: "own", component: OwnSelectionProbe }],
+          },
+        ],
+      }),
+    );
+    const host = {
+      scope: { kind: "thread", threadId: "thr_own_selection" },
+      textEffectKey: "thread:thr_own_selection",
+      getSelection: () => selection,
+      subscribeSelection: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    } as const;
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_own_selection"]}>
+        <Harness host={host} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("own-selection").textContent).toBe("gpt-5");
+
+    await act(async () => {
+      selection = { providerId: "claude-code", model: "claude-opus-5" };
+      for (const listener of listeners) listener();
+    });
+
+    expect(screen.getByTestId("own-selection").textContent).toBe(
+      "claude-opus-5",
+    );
   });
 
   it("routes to the composer host, validates the selection, and refuses where there are no pickers", async () => {
@@ -1419,7 +1605,7 @@ describe("useComposer().experimental_setSelection", () => {
       captured!.experimental_setSelection({ permissionMode: "yolo" as never }),
     ).rejects.toThrow(/permission mode/);
     await expect(
-      captured!.experimental_setSelection({ serviceTier: "turbo" as never }),
+      captured!.experimental_setSelection({ serviceTier: "" }),
     ).rejects.toThrow(/service tier/);
     await expect(
       captured!.experimental_setSelection({

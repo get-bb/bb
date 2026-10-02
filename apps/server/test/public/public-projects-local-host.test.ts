@@ -72,6 +72,95 @@ describe("public project local host routes", () => {
     });
   });
 
+  it("keeps one project for every spelling of a Windows folder", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-windows-project",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+
+      const create = (path: string) =>
+        harness.app.request("/api/v1/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Windows Project",
+            source: { type: "local_path", hostId: offlinePrimary.id, path },
+          }),
+        });
+
+      const projects = [];
+      for (const path of [
+        "C:\\src\\repo",
+        "c:/src/Repo/",
+        "C:\\SRC\\repo\\.",
+      ]) {
+        const response = await create(path);
+        expect(response.status).toBe(201);
+        projects.push(projectResponseSchema.parse(await readJson(response)));
+      }
+
+      expect(new Set(projects.map((project) => project.id)).size).toBe(1);
+      expect(projects[0]?.sources[0]?.path).toBe("C:\\src\\repo");
+      expect(listPublicProjects(harness.db)).toHaveLength(1);
+    });
+  });
+
+  it("refuses a Windows folder on a machine that reported a POSIX platform", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-posix-project",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+
+      const response = await harness.app.request("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Wrong Platform",
+          source: {
+            type: "local_path",
+            hostId: host.id,
+            path: "C:\\src\\repo",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        message: expect.stringContaining("This machine uses POSIX paths"),
+      });
+      expect(listPublicProjects(harness.db)).toEqual([]);
+    });
+  });
+
+  it("refuses a POSIX folder on a machine that reported Windows", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-windows-platform",
+        platform: "win32",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+
+      const create = (path: string) =>
+        harness.app.request("/api/v1/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Windows Machine",
+            source: { type: "local_path", hostId: host.id, path },
+          }),
+        });
+
+      const refused = await create("/home/me/repo");
+      expect(refused.status).toBe(400);
+      await expect(readJson(refused)).resolves.toMatchObject({
+        message: expect.stringContaining("This machine uses Windows paths"),
+      });
+      expect(listPublicProjects(harness.db)).toEqual([]);
+    });
+  });
+
   it("returns the existing project when its local folder is added again", async () => {
     await withTestHarness(async (harness) => {
       const offlinePrimary = seedHost(harness.deps, {

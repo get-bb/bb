@@ -47,6 +47,7 @@ function pathPlugin(
     rootDir,
     version: "1.0.0",
     enabled: true,
+    enabledFollowsDefault: false,
   };
 }
 

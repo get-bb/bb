@@ -205,6 +205,7 @@ export function countUnarchivedThreadDescendants(
   return listArchiveCandidates(db, [thread]).filter(
     (candidate) =>
       candidate.id !== thread.id &&
+      candidate.visibility === "visible" &&
       candidate.deletedAt === null &&
       candidate.archivedAt === null,
   ).length;
@@ -213,7 +214,12 @@ export function countUnarchivedThreadDescendants(
 function listArchiveCandidates(db: AppDeps["db"], roots: Thread[]) {
   type ArchiveCandidate = Pick<
     Thread,
-    "id" | "environmentId" | "status" | "archivedAt" | "deletedAt"
+    | "id"
+    | "environmentId"
+    | "status"
+    | "archivedAt"
+    | "deletedAt"
+    | "visibility"
   >;
   const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [...roots]
     .reverse()

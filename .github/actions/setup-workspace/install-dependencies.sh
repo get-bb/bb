@@ -15,7 +15,7 @@ fi
 started=$SECONDS
 pnpm install --frozen-lockfile --prefer-offline \
   --fetch-timeout=30000 --fetch-retries=2 \
-  --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=5000
+  --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=5000 "$@"
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   echo "Dependency installation: $((SECONDS - started))s; cache restore: ${CACHE_RESTORE_OUTCOME:-unbounded shared setup}." >> "$GITHUB_STEP_SUMMARY"
 fi

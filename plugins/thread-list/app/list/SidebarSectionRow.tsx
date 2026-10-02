@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import type { CollapsedChildActivity } from "../model/thread-activity.js";
+import { NO_THREAD_IDS, useThreadsHaveDraft } from "./sidebarDraftPresence.js";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
@@ -98,12 +99,15 @@ function SidebarSectionRowComponent({
   const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
   const hasMenuActions = Boolean(onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
+  const hiddenThreadsHaveDraft = useThreadsHaveDraft(
+    isCollapsed ? activity.threadIds : NO_THREAD_IDS,
+  );
   const showRollupIndicator =
     isCollapsed &&
     (collapsedSplitIndicator.miniMap !== null ||
       activity.pending ||
       activity.working ||
-      activity.hasUnsubmittedDraft ||
+      hiddenThreadsHaveDraft ||
       activity.unread ||
       activity.unreadError ||
       pluginStatus !== null);

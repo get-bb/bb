@@ -29,7 +29,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindingOverrides: [],
   experiments: {
     changelogPreview: false,
-    legacyJitiPluginLoader: false,
     serverMove: false,
   },
   appearance: defaultAppTheme,

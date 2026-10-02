@@ -228,7 +228,9 @@ describe("writeServerArchive and extractServerArchive", () => {
     expect(archiveBytes.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
     expect(written.sizeBytes).toBe(archiveBytes.length);
     expect(written.sha256).toBe(sha256(archiveBytes));
-    expect((await stat(outPath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(outPath)).mode & 0o777).toBe(0o600);
+    }
     expect(await readdir(path.dirname(outPath))).toEqual(["server.tar.gz"]);
     expect(written.manifest.entries).toEqual(
       tree.files.map((file) => {
@@ -254,7 +256,9 @@ describe("writeServerArchive and extractServerArchive", () => {
       "files",
       ...(tree.files[3]?.archivePath ?? "").split("/"),
     );
-    expect((await stat(toolPath)).mode & 0o100).toBe(0o100);
+    if (process.platform !== "win32") {
+      expect((await stat(toolPath)).mode & 0o100).toBe(0o100);
+    }
   });
 
   it("refuses symbolic link sources and unsafe or conflicting archive paths", async () => {

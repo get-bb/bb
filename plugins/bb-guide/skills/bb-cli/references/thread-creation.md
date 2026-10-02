@@ -12,7 +12,9 @@
   default model on the target machine.
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
-  `--reasoning-level`, `--service-tier`, and `--permission-mode`.
+  `--reasoning-level`, `--service-tier`, and `--permission-mode`. A service
+  tier is a provider-defined id (`default`, `fast`, Codex `ultrafast`);
+  `bb provider models <provider-id>` lists the tiers each model accepts.
 - List plugin-provisioned environment choices with `bb environment providers`. Add `--project <id>` and optionally `--machine <id>` to omit providers whose declared requirements are unmet. Without a machine, the project listing includes providers structurally eligible on any persistent machine. Git inspection and plugin availability run only for the selected provider and machine during thread creation. `--json` includes each provider's `description` and `icon`, its `requires` facts and its `inputs` JSON Schema or null.
   Pass the selected ID to `--environment-provider`. Add
   `--environment-inputs <json>` only when the provider's schema does not accept
@@ -280,7 +282,8 @@ self-updating machine service there after the move; until that succeeds, and
 after a move from `bb-app`, the machine stays connected only while the app runs.
 `bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` stops
 bb there and runs `install-machine.sh --adopt --data-dir <dir>` to install the
-persistent, self-updating service with the same machine ID. It needs Node.js
+persistent, self-updating service with the same machine ID. It runs on macOS
+and Linux only and refuses on Windows. It needs Node.js
 22.19 or newer on the PATH, and `bb server unlock` refuses while the service
 exists. `bb server unlock` removes the lock so
 the old copy can start again; everything since the move is lost there, and the

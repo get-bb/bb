@@ -41,6 +41,98 @@ function getOnlyInfoLog(logger: CapturingSlowQueryLogger): LoggedInfo {
 }
 
 describe("createConnection", () => {
+  it("distinguishes time waiting inside SQLite from CPU work", () => {
+    const logger = new CapturingSlowQueryLogger();
+    const db = createConnection(":memory:", {
+      slowQueryLogger: logger,
+      slowQueryThresholdMs: 0,
+    });
+    migrate(db);
+    try {
+      const signal = new Int32Array(new SharedArrayBuffer(4));
+      db.$client.function("wait_for_io", () => {
+        Atomics.wait(signal, 0, 0, 100);
+        return 7;
+      });
+      logger.clear();
+      expect(db.$client.prepare("SELECT wait_for_io() AS value").get()).toEqual(
+        { value: 7 },
+      );
+      const { fields } = getOnlyInfoLog(logger);
+      expect(fields.durationMs).toBeGreaterThanOrEqual(90);
+      expect(fields.cpuDurationMs).toBeGreaterThanOrEqual(0);
+      expect(fields.durationMs - fields.cpuDurationMs).toBeGreaterThan(50);
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it.each(["default", "deferred", "immediate", "exclusive"] as const)(
+    "times complete %s transactions and exec while preserving rollback and receivers",
+    (mode) => {
+      const logger = new CapturingSlowQueryLogger();
+      const db = createConnection(":memory:", {
+        slowQueryLogger: logger,
+        slowQueryThresholdMs: 0,
+      });
+      migrate(db);
+      try {
+        db.$client.exec("CREATE TABLE diagnostic_values (value TEXT)");
+        logger.clear();
+        expect(
+          db.$client.exec(
+            "INSERT INTO diagnostic_values VALUES ('private-value')",
+          ),
+        ).toBe(db.$client);
+        expect(getOnlyInfoLog(logger).fields).toMatchObject({
+          operation: "exec",
+          sql: "INSERT INTO diagnostic_values VALUES ('?')",
+        });
+        const nested = db.$client.transaction(() => {
+          db.$client.exec(
+            "INSERT INTO diagnostic_values VALUES ('rolled-back')",
+          );
+          throw new Error("rollback nested transaction");
+        });
+        const transaction = db.$client.transaction(function (
+          this: { prefix: string },
+          value: string,
+        ) {
+          db.$client
+            .prepare("INSERT INTO diagnostic_values VALUES (?)")
+            .run(value);
+          expect(() => nested()).toThrow("rollback nested transaction");
+          return this.prefix + value;
+        });
+        logger.clear();
+        expect(transaction[mode].call({ prefix: "result:" }, "committed")).toBe(
+          "result:committed",
+        );
+        const transactions = logger.infoLogs.filter(
+          (log) => log.fields.operation === "transaction",
+        );
+        expect(transactions.map((log) => log.fields.sql)).toEqual([
+          "TRANSACTION DEFAULT",
+          `TRANSACTION ${mode.toUpperCase()}`,
+        ]);
+        expect(transactions[1]?.fields).toMatchObject({
+          bindingArgumentCount: 1,
+          cpuDurationMs: expect.any(Number),
+          durationMs: expect.any(Number),
+        });
+        expect(
+          db.$client
+            .prepare("SELECT value FROM diagnostic_values ORDER BY value")
+            .all(),
+        ).toEqual([{ value: "committed" }, { value: "private-value" }]);
+        expect(transaction.default).toBe(transaction);
+        expect(Reflect.get(transaction[mode], "database")).toBe(db.$client);
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
+
   it("logs slow prepared statement executions without parameter values", () => {
     const logger = new CapturingSlowQueryLogger();
     const db = createConnection(":memory:", {

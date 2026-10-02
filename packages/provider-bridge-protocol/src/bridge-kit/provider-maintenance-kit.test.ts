@@ -4,32 +4,40 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   compareVersions,
+  downloadedInstallerCommand,
   formatCommand,
   installationVerification,
   npmGlobalInstallSource,
   readCliVersion,
+  selectResolvedExecutable,
   versionFrom,
 } from "./provider-maintenance-kit.js";
 
 describe("provider maintenance kit", () => {
-  it.skipIf(process.platform === "win32")(
-    "reads the version of a CLI that keeps reading stdin until EOF",
-    async () => {
-      const dir = await mkdtemp(path.join(tmpdir(), "bb-cli-version-"));
-      try {
-        const executable = path.join(dir, "stdio-server-cli");
-        await writeFile(
-          executable,
-          '#!/bin/sh\ncat >/dev/null\necho "tool 1.2.3"\n',
-        );
-        await chmod(executable, 0o755);
-        expect(await readCliVersion(executable)).toBe("1.2.3");
-      } finally {
-        await rm(dir, { recursive: true, force: true });
-      }
-    },
-    15_000,
-  );
+  it("reads a CLI version through a native launcher after closing stdin", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "bb cli version é-"));
+    try {
+      const script = path.join(dir, "version.cjs");
+      await writeFile(
+        script,
+        'require("node:fs").readFileSync(0); console.log("tool 1.2.3");',
+      );
+      const executable = path.join(
+        dir,
+        process.platform === "win32" ? "version.cmd" : "version",
+      );
+      await writeFile(
+        executable,
+        process.platform === "win32"
+          ? `@echo off\r\n"${process.execPath}" "%~dp0version.cjs" %*\r\n`
+          : `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${script.replaceAll("'", "'\\''")}' "$@"\n`,
+        { mode: 0o755 },
+      );
+      expect(await readCliVersion(executable)).toBe("1.2.3");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
 
   it("compares the numeric core of CLI versions, prerelease below release", () => {
     expect(compareVersions("0.135.9", "0.136.0")).toBeLessThan(0);
@@ -186,5 +194,77 @@ describe("provider maintenance kit", () => {
         "install",
       ),
     ).toEqual({ kind: "installed" });
+  });
+
+  it("picks the launcher Windows can run when npm also installs an extensionless shim", () => {
+    const npmBin = "C:\\Users\\me\\AppData\\Roaming\\npm";
+    expect(
+      selectResolvedExecutable({
+        candidates: [`${npmBin}\\codex`, `${npmBin}\\codex.cmd`, ""],
+        platform: "win32",
+        pathExt: ".COM;.EXE;.BAT;.CMD",
+      }),
+    ).toBe(`${npmBin}\\codex.cmd`);
+    expect(
+      selectResolvedExecutable({
+        candidates: [`${npmBin}\\codex`, `${npmBin}\\codex.CMD`],
+        platform: "win32",
+        pathExt: undefined,
+      }),
+    ).toBe(`${npmBin}\\codex.CMD`);
+    expect(
+      selectResolvedExecutable({
+        candidates: [`${npmBin}\\codex`, `${npmBin}\\codex.cmd`],
+        platform: "win32",
+        pathExt: ".EXE",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps the first lookup result on macOS and Linux", () => {
+    expect(
+      selectResolvedExecutable({
+        candidates: ["/usr/local/bin/codex", "/opt/bin/codex.cmd"],
+        platform: "linux",
+        pathExt: undefined,
+      }),
+    ).toBe("/usr/local/bin/codex");
+    expect(
+      selectResolvedExecutable({
+        candidates: ["", "  "],
+        platform: "darwin",
+        pathExt: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  it("runs a PowerShell installer on Windows only when one is published", () => {
+    expect(
+      downloadedInstallerCommand("https://example.test/install.sh", {
+        platform: "win32",
+        powershellUrl: "https://example.test/install.ps1",
+      }),
+    ).toEqual({
+      command: "powershell.exe",
+      args: [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "irm https://example.test/install.ps1 | iex",
+      ],
+      displayCommand: "irm https://example.test/install.ps1 | iex",
+    });
+    expect(
+      downloadedInstallerCommand("https://example.test/install.sh", {
+        platform: "linux",
+        powershellUrl: "https://example.test/install.ps1",
+      }).command,
+    ).toBe("sh");
+    expect(
+      downloadedInstallerCommand("https://example.test/install.sh", {
+        platform: "win32",
+      }).command,
+    ).toBe("sh");
   });
 });

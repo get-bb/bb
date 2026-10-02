@@ -86,6 +86,7 @@ import {
   getThreadPromptHistoryInvalidationQueryKeys,
   getThreadQueueContentInvalidationQueryKeys,
   getThreadTimelineInvalidationQueryKeys,
+  getThreadCompactedHistoryInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
 
@@ -366,6 +367,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyProjectPromptHistoryQueries,
       getThreadPendingInteractionInvalidationQueryKeys,
     ],
+  },
+  "history-compacted": {
+    flush: "debounced",
+    dirty: [getThreadCompactedHistoryInvalidationQueryKeys],
   },
   "interactions-changed": {
     flush: "debounced",

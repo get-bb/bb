@@ -10,8 +10,13 @@ it("keeps bundled stages out of discovery without hiding real plugin packages", 
   const root = await mkdtemp(join(tmpdir(), "bb-bundled-workspace-"));
   const graph = () =>
     spawnSync(
-      join(repositoryRoot, "node_modules/.bin/turbo"),
-      ["run", "build", "--dry=json"],
+      process.execPath,
+      [
+        join(repositoryRoot, "node_modules/turbo/bin/turbo"),
+        "run",
+        "build",
+        "--dry=json",
+      ],
       { cwd: root, encoding: "utf8", timeout: 15_000 },
     );
   const writePackage = async (directory: string, name: string) => {

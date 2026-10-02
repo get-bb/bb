@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CURSOR_ACP_DIALECT } from "./dialect.js";
 import {
@@ -252,7 +253,7 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
       subject: {
         kind: "file_change",
         itemId: "write-tool-1",
-        writeScope: "/tmp/qa-1719/notes.md",
+        writeScope: path.normalize("/tmp/qa-1719/notes.md"),
         sessionGrant: null,
       },
     });
@@ -339,7 +340,10 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
     });
 
     expect(payload).toMatchObject({
-      subject: { kind: "file_change", writeScope: "/tmp/qa-1719/notes.md" },
+      subject: {
+        kind: "file_change",
+        writeScope: path.normalize("/tmp/qa-1719/notes.md"),
+      },
     });
   });
 });
@@ -429,7 +433,7 @@ describe("permission reason", () => {
       kind: "approval",
       subject: {
         kind: "file_change",
-        writeScope: "/workspace/app/notes/todo.md",
+        writeScope: path.resolve("/workspace/app/notes/todo.md"),
       },
     });
   });

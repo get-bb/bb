@@ -7,6 +7,7 @@ import {
   getThread,
   type EnvironmentRow,
 } from "@bb/db";
+import { canonicalizeHostPath } from "@bb/domain";
 import { eq } from "drizzle-orm";
 import type { WorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -81,7 +82,7 @@ export function assertEnvironmentPathAvailable(
   args: { hostId: string; path: string | null; threadId: string | null },
 ): void {
   if (args.path === null) return;
-  const path = args.path.replace(/\/+$/u, "") || "/";
+  const path = canonicalizeHostPath(args.path);
   const owner =
     args.threadId === null
       ? null

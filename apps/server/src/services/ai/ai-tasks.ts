@@ -8,7 +8,6 @@ import type {
 } from "@bb/domain";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import { AUTOMATIC_AI_SERVICE_PLUGIN_IDS } from "../plugins/builtin-registry.js";
 import { cleanGeneratedLine } from "./ai-reply.js";
 import {
   aiServiceKey,
@@ -67,27 +66,30 @@ class AiTaskTimeoutError extends Error {
   }
 }
 
+function compareIds(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export function orderedAiServices(
+  deps: Pick<AiTaskDeps, "aiServices">,
+): AiServiceRegistration[] {
+  return deps.aiServices
+    .list()
+    .sort(
+      (a, b) =>
+        Number(b.pluginId === "bb-ai") - Number(a.pluginId === "bb-ai") ||
+        compareIds(a.pluginId, b.pluginId) ||
+        compareIds(a.id, b.id),
+    );
+}
+
 export function automaticAiServices(
   deps: Pick<AiTaskDeps, "aiServices">,
   task: AiTask,
 ): AiServiceRegistration[] {
-  const services = deps.aiServices.list();
-  return AUTOMATIC_AI_SERVICE_PLUGIN_IDS.flatMap((pluginId) =>
-    services.filter(
-      (service) =>
-        service.builtin &&
-        service.pluginId === pluginId &&
-        aiServiceSupportsTask(service, task),
-    ),
+  return orderedAiServices(deps).filter((service) =>
+    aiServiceSupportsTask(service, task),
   );
-}
-
-export function automaticAiServiceRank(
-  service: AiServiceRegistration,
-): number | null {
-  if (!service.builtin) return null;
-  const rank = AUTOMATIC_AI_SERVICE_PLUGIN_IDS.indexOf(service.pluginId);
-  return rank === -1 ? null : rank;
 }
 
 export function selectedAiService(

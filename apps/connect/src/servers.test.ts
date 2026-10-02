@@ -131,6 +131,67 @@ describe("listAccountServers", () => {
     expect(listed.find((s) => s.handle === "other")).toBeUndefined();
   });
 
+  it("takes live from each paired server's tunnel object when a lookup is given, and the timestamp when it is unknown", async () => {
+    seedUser("acct-a");
+    const liveAt = new Date(now.getTime() - 30_000);
+    const staleAt = new Date(now.getTime() - SERVER_OFFLINE_AFTER_MS - 1_000);
+    seedServer({
+      id: "s1",
+      userId: "acct-a",
+      name: "connected",
+      subdomain: "connected",
+      lastSeenAt: staleAt,
+    });
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "dropped",
+      subdomain: "dropped",
+      lastSeenAt: liveAt,
+    });
+    seedServer({
+      id: "s3",
+      userId: "acct-a",
+      name: "unknown",
+      subdomain: "unknown",
+      lastSeenAt: liveAt,
+    });
+    seedServer({
+      id: "s4",
+      userId: "acct-a",
+      name: "revoked",
+      subdomain: "revoked-box",
+      revokedAt: new Date(now.getTime() - 5_000),
+      lastSeenAt: liveAt,
+    });
+    const asked: string[] = [];
+    const answers: Record<string, boolean | null> = {
+      connected: true,
+      dropped: false,
+      unknown: null,
+    };
+
+    const listed = await listAccountServers(
+      db,
+      "acct-a",
+      now.getTime(),
+      async (routingKey) => {
+        asked.push(routingKey);
+        return answers[routingKey] ?? null;
+      },
+    );
+
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        { handle: "connected", name: "connected", live: true },
+        { handle: "dropped", name: "dropped", live: false },
+        { handle: "unknown", name: "unknown", live: true },
+        { handle: "revoked-box", name: "revoked", live: false },
+      ]),
+    );
+    expect(asked.sort()).toEqual(["connected", "dropped", "unknown"]);
+  });
+
   it("falls back name to handle and treats unpaired/revoked as not live", async () => {
     seedUser("acct-a");
     seedServer({

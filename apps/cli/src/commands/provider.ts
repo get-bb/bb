@@ -202,15 +202,35 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
     console.log(`Models for ${providerId}:`);
   }
 
+  const listsServiceTiers = models.some(
+    (model) => model.supportedServiceTiers !== undefined,
+  );
   const rows = models.map((model) => [
     model.model,
     model.displayName ?? model.model,
     model.isDefault ? "*" : "",
+    ...(listsServiceTiers
+      ? [
+          model.supportedServiceTiers === undefined
+            ? ""
+            : model.supportedServiceTiers.length === 0
+              ? "-"
+              : model.supportedServiceTiers.map((tier) => tier.id).join(", "),
+        ]
+      : []),
   ]);
   printBorderlessTable(
     {
-      head: ["Model", "Name", "Default"],
-      colWidths: columnWidths(rows, [5, 4, 7]),
+      head: [
+        "Model",
+        "Name",
+        "Default",
+        ...(listsServiceTiers ? ["Service tiers"] : []),
+      ],
+      colWidths: columnWidths(
+        rows,
+        listsServiceTiers ? [5, 4, 7, 13] : [5, 4, 7],
+      ),
       trimTrailingWhitespace: true,
     },
     rows,

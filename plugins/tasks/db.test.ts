@@ -62,7 +62,7 @@ describe("tasks storage", () => {
             "SELECT COUNT(*) AS count FROM schema_version",
           )
           .get()?.count,
-      ).toBe(7);
+      ).toBe(8);
     } finally {
       await harness.dispose();
     }
@@ -104,6 +104,38 @@ describe("tasks storage", () => {
         machineId: null,
         serviceTier: null,
       });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("keeps a preset's fast tier and accepts other provider tiers after opening the tier column", async () => {
+    const { db, harness } = setup();
+    try {
+      db.exec(`
+        DELETE FROM schema_version WHERE version = 8;
+        ALTER TABLE presets DROP COLUMN service_tier;
+        ALTER TABLE presets ADD COLUMN service_tier TEXT
+          CHECK (service_tier IN ('default', 'fast'));
+        INSERT INTO presets (
+          id, name, provider_id, model_id, reasoning_level, service_tier,
+          permission_mode, instructions, builtin, created_at
+        ) VALUES (
+          '01J00000000000000000000003', 'Legacy fast', 'codex', 'gpt-5',
+          'high', 'fast', 'auto', '', 0, '2026-07-15T00:00:00.000Z'
+        );
+      `);
+
+      const store = createTasksStore(db);
+
+      expect(store.getPreset("01J00000000000000000000003")).toMatchObject({
+        serviceTier: "fast",
+      });
+      expect(
+        store.updatePreset("01J00000000000000000000003", {
+          serviceTier: "ultrafast",
+        }),
+      ).toMatchObject({ serviceTier: "ultrafast" });
     } finally {
       await harness.dispose();
     }

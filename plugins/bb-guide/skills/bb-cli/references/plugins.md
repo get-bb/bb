@@ -129,7 +129,10 @@
     repository subdirectory for a nested plugin, the semver range with its tag
     prefix and resolved tag for a Git range install, engine ranges, install
     time, integrity/registry details, and recent activation history.
-  - `bb plugin enable|disable <id>`, `bb plugin reload [id]` (exits 1 when a
+  - `bb plugin enable|disable <id>` — a plugin included with bb that you have
+    never enabled or disabled follows bb's default, so a later release can turn
+    it on; once you enable or disable it, that choice survives every release.
+  - `bb plugin reload [id]` (exits 1 when a
     reloaded plugin does not come up on its current sources: the previous
     instance was kept, or it is degraded because a service ignored its abort),
     `bb plugin remove <id>` (deletes the plugin's settings, secrets, and

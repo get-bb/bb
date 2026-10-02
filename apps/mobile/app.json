@@ -69,6 +69,7 @@
     },
     "plugins": [
       "./plugins/with-selection-accent",
+      "./plugins/with-push-consent",
       "expo-router",
       "expo-secure-store",
       "expo-image",

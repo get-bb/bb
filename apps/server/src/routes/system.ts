@@ -333,7 +333,7 @@ export function registerSystemRoutes(
   });
 
   put(routes.experiments, (context, payload) => {
-    setExperiments(deps.db, { ...getExperiments(deps.db), ...payload });
+    setExperiments(deps.db, payload);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(getExperiments(deps.db));
   });

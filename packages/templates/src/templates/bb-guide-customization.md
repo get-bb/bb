@@ -136,9 +136,10 @@ entries stay in the config file.
 
 Settings → Providers includes `allowFastServiceTier`, which defaults to true.
 Set it to false with `bb settings general allowFastServiceTier false` to hide
-Fast mode and run new turns at the default service tier. This also applies to
-explicit fast requests, saved project defaults, automations, and messages queued
-before the setting changed. Turn it back on to choose fast again; project
+the service tier control and run new turns at the default service tier. This
+also applies to explicit requests for any other tier (fast, Codex ultrafast),
+saved project defaults, automations, and messages queued before the setting
+changed. Turn it back on to choose a faster tier again; project
 defaults saved while it was off retain the default tier.
 
 Settings → General includes `managedBranchPrefix`, which defaults to
@@ -161,8 +162,9 @@ branches bb creates after the change.
 
 `bb settings ai-services` shows which AI service writes thread titles (and so
 branch names), commit messages, and voice transcripts, plus every service a
-plugin registers and whether it is ready. `set` picks `automatic` (the services
-bb ships, in order: Codex, then bb cloud), `off`, or one service id; a picked
+plugin registers and whether it is ready. `set` picks `automatic` (bb cloud first,
+then all other compatible services by plugin id and service id in
+lexicographic order, including third-party plugins), `off`, or one service id; a picked
 service is never swapped for another. A service is identified by its plugin
 and its id, so two plugins may use the same id; pass `--plugin <plugin-id>`
 when they do. `test` runs a sample title or commit message through the current
@@ -183,10 +185,6 @@ the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The default-off `legacyJitiPluginLoader` experiment restores the previous JITI
-loader the next time a plugin loads. Toggling it does not disturb running
-plugin instances. Enable it with
-`bb settings experiment legacyJitiPluginLoader true`.
 Message editing is available for eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns. Opening the editor is

@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   ThreadChatMessageAction,
   ThreadChatProps,
@@ -22,6 +23,7 @@ import { useThreadTimelineNavigation } from "@/components/thread/timeline/Thread
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
+import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -89,6 +91,9 @@ function PluginThreadChatBody({
 }: PluginThreadChatBodyProps) {
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
+  const projectName = useProjectDisplayName(
+    thread?.projectId === PERSONAL_PROJECT_ID ? undefined : thread?.projectId,
+  );
   const threadProviderInfo = useSystemProviderInfo(
     thread?.environmentId
       ? {
@@ -208,6 +213,7 @@ function PluginThreadChatBody({
     });
     return (
       <ThreadEnvironmentSummary
+        projectName={projectName}
         environmentLabel={chrome.environmentLabel}
         environmentCompactLabel={chrome.environmentCompactLabel}
         environmentHost={chrome.environmentHost}
@@ -234,6 +240,7 @@ function PluginThreadChatBody({
     hasMultipleMachines,
     isLocalDaemonHost,
     machineProviders,
+    projectName,
   ]);
 
   const isThreadMissing =

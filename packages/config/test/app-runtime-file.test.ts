@@ -8,7 +8,6 @@ import {
   readBbAppRuntimeFile,
 } from "../src/app-runtime-file.js";
 import {
-  parseElapsedSeconds,
   stopVerifiedProcess,
   type VerifiedProcessOps,
 } from "../src/verified-process-stop.js";
@@ -108,18 +107,6 @@ describe("clearOwnBbAppRuntimeFile", () => {
   });
 });
 
-describe("parseElapsedSeconds", () => {
-  it("reads every ps etime shape", () => {
-    expect(parseElapsedSeconds("00:05")).toBe(5);
-    expect(parseElapsedSeconds("30:00")).toBe(1_800);
-    expect(parseElapsedSeconds("2:03:04")).toBe(7_384);
-    expect(parseElapsedSeconds("13-16:51:17")).toBe(1_183_877);
-    expect(parseElapsedSeconds("  01:00 ")).toBe(60);
-    expect(parseElapsedSeconds("nonsense")).toBeNull();
-    expect(parseElapsedSeconds("")).toBeNull();
-  });
-});
-
 describe("stopVerifiedProcess", () => {
   function createOps(
     overrides: Partial<VerifiedProcessOps> = {},
@@ -127,8 +114,10 @@ describe("stopVerifiedProcess", () => {
     return {
       isRunning: () => true,
       kill: () => undefined,
-      readCommand: async () => "node /opt/bb/bb-app.js start",
-      readElapsedSeconds: async () => 60,
+      readIdentity: async () => ({
+        command: "node /opt/bb/bb-app.js start",
+        startedAt: Date.now() - 60_000,
+      }),
       waitForExit: async () => true,
       ...overrides,
     };
@@ -154,7 +143,12 @@ describe("stopVerifiedProcess", () => {
     const result = await stopVerifiedProcess({
       killTimeoutMs: 10,
       pid: 4_242,
-      processOps: createOps({ readElapsedSeconds: async () => 172_800 }),
+      processOps: createOps({
+        readIdentity: async () => ({
+          command: "node /opt/bb/bb-app.js start",
+          startedAt: Date.now() - 172_800_000,
+        }),
+      }),
       signal: "SIGTERM",
       startedAt,
       timeoutMs: 10,
@@ -168,7 +162,12 @@ describe("stopVerifiedProcess", () => {
     const result = await stopVerifiedProcess({
       killTimeoutMs: 10,
       pid: 4_242,
-      processOps: createOps({ readElapsedSeconds: async () => null }),
+      processOps: createOps({
+        readIdentity: async () => ({
+          command: "node /opt/bb/bb-app.js start",
+          startedAt: null,
+        }),
+      }),
       signal: "SIGTERM",
       startedAt,
       timeoutMs: 10,

@@ -430,9 +430,13 @@ describe("buildProjectThreadGroups", () => {
 
     expect(findNode(rootItems, "parent")?.stats).toEqual({
       childActivity: {
+        threadIds: expect.arrayContaining([
+          "quiet-child",
+          "busy-grandchild",
+          "pending-grandchild",
+        ]),
         pending: true,
         working: true,
-        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
@@ -446,9 +450,12 @@ describe("buildProjectThreadGroups", () => {
     });
     expect(findNode(rootItems, "quiet-child")?.stats).toEqual({
       childActivity: {
+        threadIds: expect.arrayContaining([
+          "busy-grandchild",
+          "pending-grandchild",
+        ]),
         pending: true,
         working: true,
-        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
@@ -536,7 +543,6 @@ describe("worktree grouping preference", () => {
         threads,
         compareStandardThreads,
         [...sections, { id: "sec_later", name: "Later" }],
-        new Set(),
         groupEnvironmentThreads,
       );
       expect(summarizeItems(items)).toEqual([
@@ -581,7 +587,6 @@ describe("worktree grouping preference", () => {
       threads,
       compareStandardThreads,
       sections,
-      new Set(),
       true,
     );
     expect(summarizeItems(items)).toEqual([
@@ -612,7 +617,6 @@ describe("worktree grouping preference", () => {
     const items = buildProjectThreadGroups(
       worktreeSiblings,
       compareStandardThreads,
-      new Set(),
       false,
     );
 

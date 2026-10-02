@@ -1,7 +1,7 @@
 import { createCipheriv, createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -1072,7 +1072,9 @@ describe("browser cookie readers", () => {
       expect(
         (await service.listSources()).find((source) => source.id === "zen"),
       ).toMatchObject({
-        profiles: [{ directory: profile, name: "Work", cookieCount: 0 }],
+        profiles: [
+          { directory: normalize(profile), name: "Work", cookieCount: 0 },
+        ],
       });
     },
   );
@@ -1150,8 +1152,8 @@ describe("browser cookie readers", () => {
       "/home/u/.mozilla/firefox",
     );
     expect(profiles).toEqual([
-      { directory: "Profiles/abc.default", name: "default" },
-      { directory: "/custom/profile", name: "absolute" },
+      { directory: normalize("Profiles/abc.default"), name: "default" },
+      { directory: normalize("/custom/profile"), name: "absolute" },
     ]);
   });
 
@@ -1175,7 +1177,9 @@ describe("browser cookie readers", () => {
     expect(sources.find((source) => source.id === "firefox")).toEqual({
       id: "firefox",
       name: "Firefox",
-      profiles: [{ directory: "Profiles/p1", name: "main", cookieCount: 2 }],
+      profiles: [
+        { directory: normalize("Profiles/p1"), name: "main", cookieCount: 2 },
+      ],
     });
     expect(sources.find((source) => source.id === "safari")?.unavailable).toBe(
       "unsupportedPlatform",
@@ -1201,7 +1205,7 @@ describe("browser cookie readers", () => {
       ),
     ).resolves.toEqual({ ok: false, reason: "notInstalled" });
     const outcome = await service.importCookies(
-      { sourceId: "firefox", sourceProfileDirectory: "Profiles/p1" },
+      { sourceId: "firefox", sourceProfileDirectory: normalize("Profiles/p1") },
       session,
     );
     expect(outcome).toEqual({

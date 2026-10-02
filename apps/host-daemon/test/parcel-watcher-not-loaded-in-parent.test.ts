@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
 import { afterAll, describe, expect, it } from "vitest";
@@ -91,7 +91,7 @@ describe("daemon bundle keeps @parcel/watcher out of the parent process", () => 
         preload,
         "--input-type=module",
         "--eval",
-        `await import(${JSON.stringify(outfile)}); console.log("[imported]");`,
+        `await import(${JSON.stringify(pathToFileURL(outfile).href)}); console.log("[imported]");`,
       ],
       { cwd: workspaceRoot, env: { ...process.env, NODE_PATH: "" } },
     );
@@ -100,7 +100,7 @@ describe("daemon bundle keeps @parcel/watcher out of the parent process", () => 
       .split("\n")
       .filter((line) => line.startsWith("[dlopen] "));
     expect(
-      loadedAddons.filter((line) => /@parcel[/+]watcher/u.test(line)),
+      loadedAddons.filter((line) => /@parcel[/+\\]watcher/u.test(line)),
       `@parcel/watcher addon loaded on import:\n${loadedAddons.join("\n")}`,
     ).toEqual([]);
   });

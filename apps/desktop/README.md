@@ -1,6 +1,6 @@
 # @bb/desktop
 
-macOS and Linux Electron shell for bb. The desktop app loads the existing bb
+macOS, Linux, and Windows Electron shell for bb. The desktop app loads the existing bb
 web UI and uses the packaged `bb-app` launcher for server and host-daemon
 lifecycle.
 
@@ -76,6 +76,10 @@ incompatible updates.
 
 ## Validation
 
+The built-in browser allows file downloads using Electron's native save dialog.
+Files are saved on the machine running the desktop app, including downloads
+initiated in desktop browser automation tabs.
+
 ```bash
 pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app
 pnpm exec turbo run build --filter=@bb/desktop
@@ -140,6 +144,37 @@ before and after to reject bundle mutations. Fixtures are removed afterward.
 The bb-app tarball smoke covers a different packaging pipeline and cannot
 detect Electron artifact omissions. A source build or `npm --version` alone
 does not verify a desktop plugin dependency install.
+
+### Windows (NSIS, x64)
+
+Windows packaging needs a Windows x64 host; `afterPack` refuses to cross-build
+because it verifies the packaged native modules by loading them. From the repo
+root, install with `pnpm install --frozen-lockfile --ignore-scripts`, then build
+an unpacked app, an installer, or smoke test the current packaged output with:
+
+```powershell
+pnpm exec turbo run package:win --filter=@bb/desktop
+pnpm exec turbo run desktop:build:win --filter=@bb/desktop
+pnpm exec turbo run smoke:packaged --filter=@bb/desktop
+```
+
+`desktop:build:win` writes `release/bb-<version>-x64.exe`, a one-click per-user
+NSIS installer that installs to `%LOCALAPPDATA%\Programs\bb` (`bb-nightly` on
+the nightly channel) without elevation, plus `latest.yml` for electron-updater.
+Without a signing certificate the installer is unsigned, so Windows SmartScreen
+warns before running it. electron-builder signs it when `WIN_CSC_LINK` (a
+base64 `.pfx`) and `WIN_CSC_KEY_PASSWORD` are set; the release workflows pass
+them from the `WINDOWS_CERTIFICATE_PFX` and `WINDOWS_CERTIFICATE_PASSWORD`
+secrets.
+
+`afterPack` copies `@parcel/watcher-win32-x64` into the package when
+electron-builder leaves it out and loads it with the packaged Electron; without
+it the file watcher cannot start.
+
+Windows builds check `desktop-version-windows.json` for new versions and
+install them with electron-updater from `latest.yml` (`nightly.yml` on the
+nightly channel). The update downloads in the background and the installer runs
+silently when the app quits or when the user chooses Relaunch.
 
 ### Linux (AppImage, x64)
 
@@ -230,20 +265,22 @@ release; use `scripts/bump-version.mjs` so both files move together.
 The desktop release tag uses the locked version: `desktop-v<version>` for
 immutable releases and `desktop-latest` for the moving pointer.
 
-`build-desktop.yml` builds macOS and Linux in parallel jobs, then publishes
-both from one job. The moving release resets all of its assets on each publish,
-so a single publisher is what keeps one platform from deleting the other's
-binaries. Each platform has its own update feed file inside the same release
+`build-desktop.yml` builds macOS, Linux, and Windows in parallel jobs, then
+publishes all three from one job. The moving release resets all of its assets
+on each publish, so a single publisher is what keeps one platform from deleting
+another's binaries. Each platform has its own update feed file inside the same release
 tag:
 
-| Platform | Artifacts              | electron-updater metadata | Version feed                 |
-| -------- | ---------------------- | ------------------------- | ---------------------------- |
-| macOS    | `.dmg`, `.zip` (arm64) | `latest-mac.yml`          | `desktop-version.json`       |
-| Linux    | `.AppImage` (x64)      | `latest-linux.yml`        | `desktop-version-linux.json` |
+| Platform | Artifacts              | electron-updater metadata | Version feed                   |
+| -------- | ---------------------- | ------------------------- | ------------------------------ |
+| macOS    | `.dmg`, `.zip` (arm64) | `latest-mac.yml`          | `desktop-version.json`         |
+| Linux    | `.AppImage` (x64)      | `latest-linux.yml`        | `desktop-version-linux.json`   |
+| Windows  | `.exe` installer (x64) | `latest.yml`              | `desktop-version-windows.json` |
 
 macOS keeps the unsuffixed feed name because released macOS builds already
-request it. Linux artifacts are unsigned; only the macOS binaries wait on the
-Apple signing secrets.
+request it. Linux artifacts are unsigned, and the Windows installer is unsigned
+unless the Windows certificate secrets are configured; only the macOS binaries
+wait on the Apple signing secrets.
 
 ## Nightly channel
 
@@ -268,9 +305,12 @@ The nightly desktop is a separate installation:
 - bundle identifier: `dev.bb.desktop.nightly`
 - Linux binary name: `bb-nightly`, so it never shadows stable `bb` on PATH
 - app/update release: `desktop-nightly`
-- update metadata: `nightly-mac.yml` and `nightly-linux.yml`
-- version feeds: `desktop-version.json` (macOS) and
-  `desktop-version-linux.json` (Linux)
+- Windows install directory: `%LOCALAPPDATA%\Programs\bb-nightly`
+- update metadata: `nightly-mac.yml`, `nightly-linux.yml`, and `nightly.yml`
+  (Windows)
+- version feeds: `desktop-version.json` (macOS),
+  `desktop-version-linux.json` (Linux), and `desktop-version-windows.json`
+  (Windows)
 - icon: `assets/icon-nightly.icns` and `assets/icon-nightly.png`
 
 Download it from

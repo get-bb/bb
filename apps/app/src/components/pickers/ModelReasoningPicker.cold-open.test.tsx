@@ -50,9 +50,9 @@ it("keeps search typing and keyboard selection across the first menu download", 
       reasoningValue="medium"
       reasoningOptions={[{ value: "medium", label: "Medium" }]}
       onReasoningChange={() => {}}
-      fastModeEnabled={false}
-      onFastModeChange={() => {}}
-      showFastModeToggle={false}
+      serviceTierValue={undefined}
+      serviceTierOptions={[]}
+      onServiceTierChange={() => {}}
       modal={false}
     />,
     { wrapper },

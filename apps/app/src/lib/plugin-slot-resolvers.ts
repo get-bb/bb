@@ -345,3 +345,21 @@ export function resolveFileOpenerReplacement(args: {
         buildFileOpenerRef(candidate) === preference),
   );
 }
+
+export function resolveComposerPopups(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+) {
+  return customizations.flatMap((customization) =>
+    composerCustomizationApplies(customization, scopeKind)
+      ? (customization.experimental_popups ?? []).map((popup) => ({
+          ...resolvedComposerContribution(customization, popup.id),
+          popup,
+        }))
+      : [],
+  );
+}
+
+export type ResolvedComposerPopup = ReturnType<
+  typeof resolveComposerPopups
+>[number];

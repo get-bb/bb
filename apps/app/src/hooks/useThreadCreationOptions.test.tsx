@@ -624,6 +624,62 @@ describe("useThreadCreationOptions", () => {
     expect(result.current.serviceTier).toBe("default");
   });
 
+  it("offers each model's own tiers and keeps the chosen tier for the models that have it", async () => {
+    const base = executionOptionsResponse();
+    const [tiered, untiered] = base.models;
+    if (tiered === undefined || untiered === undefined) {
+      throw new Error("execution-options fixture needs two models");
+    }
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...base,
+      providers: base.providers.map((provider) => ({
+        ...provider,
+        serviceTiers: [
+          { id: "default", label: "Default" },
+          { id: "fast", label: "Fast" },
+          { id: "ultrafast", label: "Ultrafast" },
+        ],
+      })),
+      models: [
+        {
+          ...tiered,
+          supportedServiceTiers: [
+            { id: "fast", description: "1.5x speed" },
+            { id: "ultrafast" },
+          ],
+        },
+        { ...untiered, supportedServiceTiers: [] },
+      ],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: tiered.model,
+          initialServiceTier: "ultrafast",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(result.current.serviceTierOptions).toEqual([
+        { id: "fast", label: "Fast", description: "1.5x speed" },
+        { id: "ultrafast", label: "Ultrafast" },
+      ]),
+    );
+    expect(result.current.serviceTier).toBe("ultrafast");
+
+    act(() => result.current.setSelectedModel(untiered.model));
+    await waitFor(() => expect(result.current.serviceTierOptions).toEqual([]));
+    expect(result.current.supportsServiceTier).toBe(true);
+    expect(result.current.serviceTier).toBe("default");
+
+    act(() => result.current.setSelectedModel(tiered.model));
+    await waitFor(() => expect(result.current.serviceTier).toBe("ultrafast"));
+  });
+
   it("hides fast mode and resolves a saved fast choice to default while disallowed", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     queryClient.setQueryData(systemConfigQueryKey(), {

@@ -22,7 +22,10 @@ import {
   readPaletteRecents,
   recordPaletteRecent,
 } from "@/lib/command-palette/palette-recents";
-import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
+import {
+  buildPluginComposerCommandActions,
+  buildPluginPaletteActions,
+} from "@/lib/command-palette/palette-plugin-actions";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
@@ -77,8 +80,29 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     [pluginSlots.commandPaletteActions],
   );
   const pluginShortcuts = useAppCommandShortcuts(pluginCommandIds);
-  useIndexedAppCommandHandlers(pluginCommandIds, (index) => {
-    const slot = pluginSlots.commandPaletteActions[index];
+  const appPluginCommands = useMemo(
+    () =>
+      pluginSlots.commandPaletteActions.filter(
+        (command) => command.target === "app",
+      ),
+    [pluginSlots.commandPaletteActions],
+  );
+  const composerPluginCommands = useMemo(
+    () =>
+      pluginSlots.commandPaletteActions.filter(
+        (command) => command.target === "composer",
+      ),
+    [pluginSlots.commandPaletteActions],
+  );
+  const appPluginCommandIds = useMemo(
+    () =>
+      appPluginCommands.map((command) =>
+        pluginCommandId(command.pluginId, command.id),
+      ),
+    [appPluginCommands],
+  );
+  useIndexedAppCommandHandlers(appPluginCommandIds, (index) => {
+    const slot = appPluginCommands[index];
     if (!slot) return false;
     const action = buildPluginPaletteActions({
       slots: [slot],
@@ -101,25 +125,34 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         dispatch: runner.dispatch,
         shortcuts,
       }),
-      ...buildPluginPaletteActions({
-        slots: pluginSlots.commandPaletteActions,
-        threadId,
-        projectId,
-        openThreadPanel: getActiveThreadPanelOpener(),
-      }).map((action) => ({
+      ...[
+        ...buildPluginPaletteActions({
+          slots: appPluginCommands,
+          threadId,
+          projectId,
+          openThreadPanel: getActiveThreadPanelOpener(),
+        }),
+        ...buildPluginComposerCommandActions({
+          slots: composerPluginCommands,
+          target,
+          isCommandAvailable: runner.isCommandAvailable,
+          dispatch: runner.dispatch,
+        }),
+      ].map((action) => ({
         ...action,
         shortcut:
           pluginShortcuts.get(pluginCommandIdSchema.parse(action.id)) ?? null,
       })),
     ],
     [
+      appPluginCommands,
+      composerPluginCommands,
       projectId,
       pluginShortcuts,
       runner.dispatch,
       runner.isCommandAvailable,
       shortcuts,
       threadId,
-      pluginSlots.commandPaletteActions,
     ],
   );
 

@@ -2442,6 +2442,27 @@ export function listStoredTurnCompletedKeys(
   return listStoredTurnKeysOfType(db, args.keys, "turn/completed");
 }
 
+export function hasStoredSpawnAgentToolCall(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ found: sql<number>`1` })
+      .from(sql`${events} INDEXED BY events_delegating_item_lookup_idx`)
+      .where(
+        and(
+          eq(events.threadId, threadId),
+          sql`${events.itemKind} IN ('toolCall', 'delegation')`,
+          eq(events.itemKind, "toolCall"),
+          sql`json_extract(${events.data}, '$.item.tool') = 'spawnAgent'`,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 export function hasStoredTurnStarted(
   db: DbQueryConnection,
   args: HasStoredTurnStartedArgs,
@@ -2831,13 +2852,15 @@ export function listTimelineOrderingContext(
       clientRequestId: sql<
         string | null
       >`json_extract(${events.data}, '$.clientRequestId')`,
-      initiator: sql<
-        string | null
-      >`json_extract(${events.data}, '$.initiator')`,
       expectedTurnId: sql<
         string | null
       >`json_extract(${events.data}, '$.target.expectedTurnId')`,
-      hasInput: sql<number>`CASE WHEN ${events.type} = 'client/turn/requested' AND ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END`,
+      hasVisibleUserInput: sql<number>`CASE
+        WHEN ${events.type} = 'client/turn/requested'
+          AND json_extract(${events.data}, '$.initiator') = 'user'
+        THEN CASE WHEN ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END
+        ELSE 0
+      END`,
     })
     .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
     .where(
@@ -2852,27 +2875,25 @@ export function listTimelineOrderingContext(
     .all();
 }
 
-export function hasTimelineGroupingContextRowsInRange(
+export function getTimelineGroupingContextChangesInRange(
   db: DbConnection,
   args: { afterSequence: number; threadId: string; throughSequence: number },
-): boolean {
+): { ordering: boolean; parented: boolean } {
   const row = db
-    .select({ sequence: sql<number>`${events.sequence}` })
+    .select({
+      ordering: sql<number>`COALESCE(MAX(CASE WHEN ${inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES])} THEN 1 ELSE 0 END), 0)`,
+      parented: sql<number>`COALESCE(MAX(CASE WHEN ${events.parentToolCallId} is not null THEN 1 ELSE 0 END), 0)`,
+    })
     .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
     .where(
       and(
         eq(events.threadId, args.threadId),
         gt(events.sequence, args.afterSequence),
         lte(events.sequence, args.throughSequence),
-        or(
-          inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES]),
-          isNotNull(events.parentToolCallId),
-        ),
       ),
     )
-    .limit(1)
     .get();
-  return row !== undefined;
+  return { ordering: row?.ordering === 1, parented: row?.parented === 1 };
 }
 
 export function listStoredEventRowsInSequenceRange(
@@ -2905,9 +2926,14 @@ export function getFirstParentedTimelineBoundarySequence(
   args: { threadId: string; sequenceStart: number; maxSeq: number },
 ): number | null {
   const result = db.get<{ sequence: number | null }>(sql`
-    WITH parents AS MATERIALIZED (
+    WITH nested_history AS MATERIALIZED (
+      SELECT 1
+      FROM events INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+      WHERE thread_id = ${args.threadId} AND parent_tool_call_id IS NOT NULL
+      LIMIT 1
+    ), parents AS MATERIALIZED (
       SELECT item_id, turn_id, min(sequence) AS start
-      FROM events INDEXED BY events_delegating_item_lookup_idx
+      FROM nested_history CROSS JOIN events INDEXED BY events_delegating_item_lookup_idx
       WHERE thread_id = ${args.threadId}
         AND item_kind IN ('toolCall', 'delegation')
         AND parent_tool_call_id IS NULL
@@ -3145,6 +3171,31 @@ export function listStoredTimelineWindowEventRows(
     .all();
 }
 
+function getLatestContextWindowBoundary(
+  db: DbQueryConnection,
+  args: { threadId: string; sequenceStart: number },
+): StoredEventRow | undefined {
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.sequenceStart),
+        eq(events.type, "thread/contextWindowUsage/updated"),
+        isNotNestedTurnUsageEvent,
+        sql`(
+          json_extract(${events.data}, '$.contextWindowUsage.snapshot') IS NOT NULL
+          OR json_extract(${events.data}, '$.contextWindowUsage.usedTokens') IS NULL
+          OR json_extract(${events.data}, '$.contextWindowUsage.estimated') = 0
+        )`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+}
+
 function listLatestRowsForContextWindowUsage(
   db: DbConnection,
   args: {
@@ -3191,11 +3242,15 @@ function listLatestRowsForContextWindowUsage(
     .limit(1)
     .get();
 
-  if (!latestContextRow || latestContextRow.id === latestRow.id) {
-    return [latestRow];
-  }
+  const latestWindowBoundary = getLatestContextWindowBoundary(db, args);
 
-  return [latestContextRow, latestRow];
+  return [
+    ...new Map(
+      [latestWindowBoundary, latestContextRow, latestRow]
+        .filter((row): row is StoredEventRow => row !== undefined)
+        .map((row) => [row.id, row]),
+    ).values(),
+  ].sort((left, right) => left.sequence - right.sequence);
 }
 
 export function listContextWindowUsageRows(
@@ -3879,6 +3934,13 @@ function pruneUsageSnapshots(
   },
 ): number {
   const keepers = args.usageKeepers;
+  const boundarySequence =
+    args.eventType === "thread/contextWindowUsage/updated"
+      ? (getLatestContextWindowBoundary(db, {
+          threadId: args.threadId,
+          sequenceStart: 0,
+        })?.sequence ?? 0)
+      : 0;
   const sequences = [
     ...new Set([keepers.latestRootSequence, keepers.latestContextSequence]),
   ].filter((sequence) => sequence > 0);
@@ -3894,7 +3956,7 @@ function pruneUsageSnapshots(
     WHERE id IN (${pruningCandidates(args)}) AND thread_id = ${args.threadId}
       AND type = ${args.eventType}
       AND ${isBeforeLatestThreadEvent(args.threadId)}
-      AND sequence NOT IN (${keepers.latestRootSequence}, ${keepers.latestContextSequence})`)
+      AND sequence NOT IN (${keepers.latestRootSequence}, ${keepers.latestContextSequence}, ${boundarySequence})`)
     .changes;
 }
 

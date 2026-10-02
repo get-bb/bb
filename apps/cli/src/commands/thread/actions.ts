@@ -32,6 +32,7 @@ import {
 import {
   parsePermissionMode,
   parseServiceTier,
+  SERVICE_TIER_HELP,
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   buildPromptInputs,
@@ -488,7 +489,7 @@ export function registerActionsCommands(
     )
     .option("--json", "Print machine-readable JSON output")
     .option("--model <model>", "Model ID for this message")
-    .option("--service-tier <tier>", "Service tier: fast or default")
+    .option("--service-tier <tier>", SERVICE_TIER_HELP)
     .option(
       "--reasoning-level <level>",
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",

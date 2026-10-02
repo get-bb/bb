@@ -110,6 +110,7 @@ async function openImportedDataDir() {
     rootDir: `${SOURCE_DATA_DIR}/plugins/npm/tasks`,
     version: "1.0.0",
     enabled: true,
+    enabledFollowsDefault: false,
   });
   const registrationDir = join(dataDir, "plugins", "snapshots", "tasks", "1");
   await mkdir(registrationDir, { recursive: true });
@@ -144,7 +145,13 @@ function rootDirOf(db: DbConnection, pluginId: string): string | undefined {
 }
 
 describe("imported server boot", () => {
-  it("applies fixups once to a real migrated database and keeps a move pending", async () => {
+  it("applies fixups once to a real migrated database and keeps a move pending", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "server moves only target macOS and Linux",
+    );
     const { dataDir, db, registrationPath } = await openImportedDataDir();
     try {
       await writeServerImportFile(dataDir, moveMarker());
@@ -288,7 +295,13 @@ describe("imported server boot", () => {
     }
   });
 
-  it("finishes a manual import at boot and removes the marker, even with the serverMove experiment off", async () => {
+  it("finishes a manual import at boot and removes the marker, even with the serverMove experiment off", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "server moves only target macOS and Linux",
+    );
     const { dataDir, db } = await openImportedDataDir();
     try {
       await writeFile(join(dataDir, "host-id"), "host-new\n");
@@ -317,7 +330,13 @@ describe("imported server boot", () => {
     }
   });
 
-  it("keeps a manual import pending until this machine enrolls, then swaps roles at a later boot", async () => {
+  it("keeps a manual import pending until this machine enrolls, then swaps roles at a later boot", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "server moves only target macOS and Linux",
+    );
     const { dataDir, db } = await openImportedDataDir();
     try {
       await writeServerImportFile(dataDir, manualMarker());

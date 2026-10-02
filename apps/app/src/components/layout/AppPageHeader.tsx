@@ -1,4 +1,5 @@
-import { useState, type ReactNode, type Ref } from "react";
+import { useRef, useState, type ReactNode, type Ref } from "react";
+import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
 import {
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { scrollPageToTop } from "@/lib/page-scroll-to-top";
 
 export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 
@@ -48,6 +50,11 @@ export function AppPageHeader({
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
   const isCompactViewport = useIsCompactViewport();
+  const localHeaderRef = useRef<HTMLElement>(null);
+  const composedHeaderRef = useComposedRefs(headerRef, localHeaderRef);
+  const handleScrollToTop = () => {
+    if (localHeaderRef.current) scrollPageToTop(localHeaderRef.current);
+  };
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
@@ -59,7 +66,23 @@ export function AppPageHeader({
     ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing);
   return (
     <header
-      ref={headerRef}
+      ref={composedHeaderRef}
+      onClick={
+        isCompactViewport
+          ? (event) => {
+              if (
+                event.defaultPrevented ||
+                !(event.target instanceof Element) ||
+                event.target.closest(
+                  'button, a, input, textarea, select, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])',
+                )
+              ) {
+                return;
+              }
+              handleScrollToTop();
+            }
+          : undefined
+      }
       className={cn(
         CHROME_ROW_HEIGHT_CLASS,
         HEADER_SEAM_CLASS,
@@ -69,11 +92,20 @@ export function AppPageHeader({
         className,
       )}
     >
+      {isCompactViewport ? (
+        <button
+          type="button"
+          aria-label="Scroll to top"
+          className="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          onClick={handleScrollToTop}
+        />
+      ) : null}
       <div
         data-testid="app-page-header-content-row"
         className={cn(
           CHROME_ROW_CLASS,
           "relative z-10 gap-1 md:gap-2",
+          isCompactViewport && "pointer-events-none",
           usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           "transition-[padding] duration-200 ease-linear",
           shouldReserveSidebarTrigger &&
@@ -84,7 +116,7 @@ export function AppPageHeader({
       >
         {center ? (
           <div className="flex min-w-0 flex-1 items-center">
-            <div className="flex min-w-0 max-w-full items-center gap-2">
+            <div className="pointer-events-auto flex min-w-0 max-w-full items-center gap-2">
               {center}
             </div>
           </div>
@@ -94,7 +126,7 @@ export function AppPageHeader({
         {actions ? (
           <div
             className={cn(
-              "flex shrink-0 items-center gap-1",
+              "pointer-events-auto flex shrink-0 items-center gap-1",
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
             )}
           >

@@ -41,6 +41,9 @@ const published: Array<[string, ComposerEditorBridge]> = [];
 
 function mountEditor(host: TestHost, pluginCustomizable = true) {
   const bridge: ComposerEditorBridge = {
+    openPopup: () => false,
+    closePopup: () => false,
+    isPopupOpen: () => false,
     host,
     pluginCustomizable,
     state: {
