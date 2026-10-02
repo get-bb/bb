@@ -46,6 +46,10 @@ export const storageRpc = defineRpcContract({
     input: machineInput,
     output: hostStorageRetryWorktreeCleanupResponseSchema,
   },
+  startClearLargeFiles: {
+    input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
+    output: z.null(),
+  },
   clearLargeFiles: {
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
     output: z.object({

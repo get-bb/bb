@@ -11,6 +11,7 @@ import type {
   HostStorageReport,
   HostStorageResponse,
   HostStorageScanStatus,
+  LargeFileCleanupStatus,
 } from "./storage-types.js";
 
 type Thread = Awaited<ReturnType<typeof readThreads>>[number];
@@ -63,6 +64,7 @@ export function createStorage(bb: BbPluginApi) {
     { threads: Set<string>; release: () => void }
   >();
   const scans = new Map<string, HostStorageScanStatus>();
+  const largeFileCleanups = new Map<string, LargeFileCleanupStatus>();
   const jobs = new Set<Promise<void>>();
   bb.onDispose(async () => {
     lifecycle.abort();
@@ -240,6 +242,7 @@ export function createStorage(bb: BbPluginApi) {
     return {
       report: cached ? await report(hostId, cached) : null,
       scan: scans.get(hostId) ?? { state: "idle" },
+      largeFileCleanup: largeFileCleanups.get(hostId) ?? { state: "idle" },
     };
   }
   async function hosts() {
@@ -421,10 +424,9 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
-  async function clearLargeFilesOn(hostId: string) {
-    await requireHost(hostId, true);
-    const release = acquire(hostId);
+  async function clearLargeFilesOn(hostId: string, release = acquire(hostId)) {
     try {
+      await requireHost(hostId, true);
       const cached = read(hostId);
       if (!cached)
         throw new Error("Scan the machine before clearing large files");
@@ -503,17 +505,59 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
-  async function clearLargeFiles({ hostId }: { hostId: string | null }) {
+  async function largeFileTargets(hostId: string | null) {
     lifecycle.signal.throwIfAborted();
-    const targets =
-      hostId === null
-        ? (await bb.sdk.hosts.list({ type: "persistent" }))
-            .filter(
-              (machine) =>
-                machine.status === "connected" && read(machine.id) !== null,
-            )
-            .map((machine) => machine.id)
-        : [hostId];
+    return hostId === null
+      ? (await bb.sdk.hosts.list({ type: "persistent" }))
+          .filter(
+            (machine) =>
+              machine.status === "connected" && read(machine.id) !== null,
+          )
+          .map((machine) => machine.id)
+      : [hostId];
+  }
+  async function startClearLargeFiles({ hostId }: { hostId: string | null }) {
+    const targets = await largeFileTargets(hostId);
+    for (const target of targets) {
+      await requireHost(target, true);
+      if (!read(target))
+        throw new Error("Scan the machine before clearing large files");
+    }
+    if (targets.some((target) => busy.has(target)))
+      throw new Error("Storage maintenance is already running on this machine");
+    for (const target of targets) {
+      const release = acquire(target);
+      largeFileCleanups.set(target, {
+        state: "running",
+        startedAt: Date.now(),
+      });
+      const job = (async () => {
+        try {
+          const result = await clearLargeFilesOn(target, release);
+          largeFileCleanups.set(target, {
+            state: "completed",
+            clearedFiles: result.fileCount,
+            clearedBytes: result.bytes,
+          });
+        } catch (error) {
+          if (!lifecycle.signal.aborted) {
+            largeFileCleanups.set(target, {
+              state: "failed",
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        } finally {
+          changed();
+        }
+      })();
+      jobs.add(job);
+      void job.finally(() => jobs.delete(job));
+    }
+    changed();
+    return null;
+  }
+  async function clearLargeFiles({ hostId }: { hostId: string | null }) {
+    const targets = await largeFileTargets(hostId);
     let clearedFiles = 0;
     let clearedBytes = 0;
     for (const target of targets) {
@@ -604,6 +648,7 @@ export function createStorage(bb: BbPluginApi) {
     scanAll,
     removeOrphans,
     clearLargeFiles,
+    startClearLargeFiles,
     clearArchivedFiles,
     clearThread,
     retryWorktreeCleanup,

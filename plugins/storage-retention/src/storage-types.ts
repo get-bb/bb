@@ -66,9 +66,24 @@ export const hostStorageScanStatusSchema = z.discriminatedUnion("state", [
 ]);
 export type HostStorageScanStatus = z.infer<typeof hostStorageScanStatusSchema>;
 
+export const largeFileCleanupStatusSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("idle") }),
+  z.object({ state: z.literal("running"), startedAt: z.number() }),
+  z.object({
+    state: z.literal("completed"),
+    clearedFiles: byteCountSchema,
+    clearedBytes: byteCountSchema,
+  }),
+  z.object({ state: z.literal("failed"), message: z.string() }),
+]);
+export type LargeFileCleanupStatus = z.infer<
+  typeof largeFileCleanupStatusSchema
+>;
+
 export const hostStorageResponseSchema = z.object({
   report: hostStorageReportSchema.nullable(),
   scan: hostStorageScanStatusSchema,
+  largeFileCleanup: largeFileCleanupStatusSchema,
 });
 export type HostStorageResponse = z.infer<typeof hostStorageResponseSchema>;
 
@@ -78,6 +93,7 @@ export const hostStorageListResponseSchema = z.object({
       hostId: z.string(),
       report: hostStorageReportSchema.nullable(),
       scan: hostStorageScanStatusSchema,
+      largeFileCleanup: largeFileCleanupStatusSchema,
     }),
   ),
 });

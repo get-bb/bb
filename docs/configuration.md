@@ -462,7 +462,10 @@ bounded idle orphan sweep remains independent of the plugin.
 `bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
 `bb storage clear-large-files [--machine HOST_ID] --yes` deletes files of 10 MB
 or more from archived threads' storage, keeping smaller files and skipping
-pinned and running threads;
+pinned and running threads. The page starts this cleanup in the background,
+reports its running/completed/failed status, and survives navigation or reconnects.
+`bb storage usage` also exposes that status as `largeFileCleanup`. The CLI waits
+for deletion to finish;
 `bb storage clear-archived-files --machine HOST_ID --yes` removes archived threads’
 whole storage folders, including small files, skipping pinned and running threads;
 `bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;

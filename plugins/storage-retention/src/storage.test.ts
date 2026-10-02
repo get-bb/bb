@@ -227,7 +227,11 @@ it.each([false, true])(
       plugin(host.bb);
       expect(
         await host.harness.callRpc("host", { hostId: "host_test" }),
-      ).toEqual({ report: null, scan: { state: "idle" } });
+      ).toEqual({
+        report: null,
+        scan: { state: "idle" },
+        largeFileCleanup: { state: "idle" },
+      });
       await expect(
         host.harness.callRpc("clearThread", { threadId: "thr_live" }),
       ).rejects.toThrow("Stop the thread");
@@ -306,6 +310,10 @@ it("deletes only large files from archived threads on scanned online machines, k
     await fs.mkdir(path.join(root, name), { recursive: true });
     await fs.writeFile(path.join(root, name, file), Buffer.alloc(size, 1));
   }
+  let pendingCleanup: {
+    resolve: () => void;
+    reject: (error: Error) => void;
+  } | null = null;
   const worker = experimental_createHostEntryHarness(hostEntry);
   const threads = [
     makeThreadResponse({ id: "thr_live", status: "idle" }),
@@ -333,11 +341,15 @@ it("deletes only large files from archived threads on scanned online machines, k
           "capacity",
           hostStorageContract.capacity.input.parse(call.input),
         );
-      if (call.method === "discardLargeFiles")
+      if (call.method === "discardLargeFiles") {
+        await new Promise<void>((resolve, reject) => {
+          pendingCleanup = { resolve, reject };
+        });
         return worker.experimental_call(
           "discardLargeFiles",
           hostStorageContract.discardLargeFiles.input.parse(call.input),
         );
+      }
       if (call.method === "discard")
         return worker.experimental_call(
           "discard",
@@ -373,10 +385,45 @@ it("deletes only large files from archived threads on scanned online machines, k
           ).report?.archivedLargeFiles,
       )
       .toEqual({ threadCount: 1, fileCount: 1, bytes: large });
-    const cleared = await host.harness.callRpc("clearLargeFiles", {
-      hostId: null,
-    });
-    expect(cleared).toEqual({ clearedFiles: 1, clearedBytes: large });
+    await expect(
+      host.harness.callRpc("startClearLargeFiles", { hostId: null }),
+    ).resolves.toBeNull();
+    await expect.poll(() => pendingCleanup).not.toBeNull();
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).largeFileCleanup.state,
+    ).toBe("running");
+    await expect(
+      host.harness.callRpc("startClearLargeFiles", { hostId: "host_test" }),
+    ).rejects.toThrow("already running");
+    await expect(
+      host.harness.callRpc("scanHost", { hostId: "host_test" }),
+    ).rejects.toThrow("already running");
+    pendingCleanup!.reject(new Error("host disconnected"));
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).largeFileCleanup,
+      )
+      .toEqual({ state: "failed", message: "host disconnected" });
+    pendingCleanup = null;
+    await host.harness.callRpc("startClearLargeFiles", { hostId: "host_test" });
+    await expect.poll(() => pendingCleanup).not.toBeNull();
+    pendingCleanup!.resolve();
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).largeFileCleanup,
+      )
+      .toEqual({ state: "completed", clearedFiles: 1, clearedBytes: large });
+    expect(
+      await host.harness.callRpc("clearLargeFiles", { hostId: null }),
+    ).toEqual({ clearedFiles: 0, clearedBytes: 0 });
     expect(await fs.readdir(path.join(root, "thr_old"))).toEqual(["report.md"]);
     expect(await fs.readdir(path.join(root, "thr_pinned"))).toEqual([
       "dump.db",

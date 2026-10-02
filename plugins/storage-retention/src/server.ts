@@ -14,6 +14,7 @@ export default function plugin(bb: BbPluginApi) {
     scanAll: () => storage.scanAll(),
     removeOrphans: storage.removeOrphans,
     clearLargeFiles: storage.clearLargeFiles,
+    startClearLargeFiles: storage.startClearLargeFiles,
     retryWorktreeCleanup: storage.retryWorktreeCleanup,
     clearThread: storage.clearThread,
     clearArchivedFiles: storage.clearArchivedFiles,

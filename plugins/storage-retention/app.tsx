@@ -146,7 +146,10 @@ function StoragePage({
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
   const [actionError, setError] = useState<string | null>(null);
   const error = actionError ?? loadError;
-  const [busy, setBusy] = useState(false);
+  const [actionBusy, setBusy] = useState(false);
+  const busy =
+    actionBusy ||
+    hosts.some((host) => host.largeFileCleanup.state === "running");
   const [threadClears, setThreadClears] = useState<
     Record<string, { state: "clearing" } | { state: "failed"; message: string }>
   >({});
@@ -232,8 +235,8 @@ function StoragePage({
       title: `Delete ${totals.fileCount.toLocaleString()} large ${totals.fileCount === 1 ? "file" : "files"} (${bytes(totals.bytes)})?`,
       detail: `Delete files of ${bytes(LARGE_FILE_MIN_BYTES)} or more from ${plural(totals.threadCount, "archived thread")}. Smaller files and conversation history will be kept. Pinned threads are skipped. This can’t be undone.`,
       run: async () => {
-        const cleared = await rpc.call("clearLargeFiles", { hostId: target });
-        return `Deleted ${plural(cleared.clearedFiles, "large file")} (${bytes(cleared.clearedBytes)}).`;
+        await rpc.call("startClearLargeFiles", { hostId: target });
+        return "";
       },
     };
   }
@@ -399,6 +402,34 @@ function StoragePage({
             {error}
           </div>
         )}
+        {hosts
+          .filter((host) => hostId === null || host.hostId === hostId)
+          .map((host) => {
+            const cleanup = host.largeFileCleanup;
+            if (cleanup.state === "idle") return null;
+            return (
+              <p
+                key={host.hostId}
+                role={cleanup.state === "failed" ? "alert" : "status"}
+                className={cn(
+                  "flex items-center gap-2 text-sm",
+                  cleanup.state === "failed"
+                    ? "text-destructive"
+                    : "text-muted-foreground",
+                )}
+              >
+                {cleanup.state === "running" && (
+                  <Icon name="Loader2" className="size-4 animate-spin" />
+                )}
+                {machines[host.hostId]?.name ?? host.hostId}:{" "}
+                {cleanup.state === "running"
+                  ? "Deleting large files in the background… You can leave this page."
+                  : cleanup.state === "failed"
+                    ? `Large-file cleanup failed: ${cleanup.message}`
+                    : `Deleted ${plural(cleanup.clearedFiles, "large file")} (${bytes(cleanup.clearedBytes)}).`}
+              </p>
+            );
+          })}
         {notice && (
           <p role="status" className="flex items-center gap-2 text-sm">
             <Icon name="Check" className="size-4" />

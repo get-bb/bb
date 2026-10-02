@@ -41,6 +41,11 @@ storage the plugin identifies as orphaned from current SDK thread rows. Clear-la
 individual files of 10 MB or more from the thread storage of archived threads found in the last scan,
 keeping smaller files and skipping pinned and running threads; reports show the matching totals as
 `archivedLargeFiles`. Without `--machine` it covers every online machine with a completed scan.
+The page uses `startClearLargeFiles({hostId})` to start background cleanup and
+returns immediately; pass null for all scanned online machines. Read
+`largeFileCleanup` in usage/host reports for running, completed (file and byte
+totals), or failed status. The synchronous CLI command and `clearLargeFiles` RPC
+still wait for completion. Duplicate bulk jobs and overlapping scans are rejected.
 Conversation history is never affected. The Storage page suggests it once archived threads hold 1 GB
 or more of large files.
 Clear-archived-files removes whole storage folders, including small files, from archived, stopped, unpinned threads found in the last scan on the selected machine. Conversations and uploaded attachments are kept.

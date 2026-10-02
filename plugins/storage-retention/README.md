@@ -15,6 +15,14 @@ small files, from archived, stopped, unpinned threads in the scan. Bulk clearing
 keeps conversations and uploaded attachments and requires confirmation. The
 matching CLI command is `bb storage clear-archived-files --machine HOST_ID --yes`.
 
+Large-file cleanup from the page starts a background job so slow folder walks
+can finish after the remote HTTP request returns. Each machine reports running,
+completed, or failed status, including after navigation or reconnection. The
+`startClearLargeFiles({hostId})` RPC starts the job; pass null for all scanned
+online machines. `bb storage usage` exposes `largeFileCleanup` status. The
+`clearLargeFiles` RPC and `bb storage clear-large-files` continue to wait for
+completion and return deleted file/byte totals.
+
 Cached reports are snapshots; rescan to see external filesystem changes. Plugin
 scans and bulk cleanup run exclusively per machine. Different stopped threads
 can clear concurrently, while duplicate clears for one thread are rejected.
