@@ -15,7 +15,18 @@ import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import type { CompareCell, Comparison, Mark } from "./comparisons";
 import { BrandMark, type BrandLogo } from "./compare-visuals";
+import figmaLogo from "../assets/company-logos/figma.svg";
+import mapboxLogo from "../assets/company-logos/mapbox.svg";
+import metaLogo from "../assets/company-logos/meta.svg";
+import quoraLogo from "../assets/company-logos/quora.svg";
 import compareCss from "./compare.css?url";
+
+const TEAM_COMPANIES = [
+  ["Figma", figmaLogo],
+  ["Meta", metaLogo],
+  ["Quora", quoraLogo],
+  ["Mapbox", mapboxLogo],
+] as const;
 
 export function compareHead(comparison: Comparison) {
   return {
@@ -184,6 +195,18 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
           </Band>
         ),
       )}
+
+      <section className="cmp-team" data-reveal>
+        <h2>Built by a team with experience from</h2>
+        <ul className="company-proof-logos cmp-team-logos">
+          {TEAM_COMPANIES.map(([name, logo]) => (
+            <li key={name} className="company-proof-company">
+              <img src={logo} alt="" width={20} height={20} />
+              {name}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="cmp-section" data-reveal>
         <h2 id="cmp-table-title" className="sec-title">

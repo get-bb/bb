@@ -250,7 +250,12 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Teams and price",
       rows: [
         {
-          feature: "Linear and Slack",
+          feature: "Linear",
+          bb: cell("yes", "Plugin, free"),
+          competitor: cell("yes", "", true),
+        },
+        {
+          feature: "Slack",
           bb: cell("no"),
           competitor: cell("yes", "", true),
         },
@@ -306,8 +311,8 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               If you review one agent’s patch at a time and want a diff, file
               editor, terminals, browser, and port management in one window, or
-              you need paid team seats and Linear or Slack integrations,
-              Superset is a great fit.
+              you need paid team seats and a Slack integration, Superset is a
+              great fit.
             </p>
           ),
         },

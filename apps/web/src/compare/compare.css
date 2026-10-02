@@ -59,6 +59,27 @@
   height: 16px;
 }
 
+.cmp-team {
+  border-top: 1px solid var(--border-soft);
+  padding: 56px 0;
+  text-align: center;
+}
+
+.cmp-team h2 {
+  color: var(--subtle);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.cmp-team .cmp-team-logos {
+  flex-wrap: wrap;
+  justify-content: center;
+  width: auto;
+  margin-top: 20px;
+  padding: 0;
+  gap: 18px 40px;
+}
+
 .cmp-section {
   border-top: 1px solid var(--border-soft);
   padding: 80px 0;
