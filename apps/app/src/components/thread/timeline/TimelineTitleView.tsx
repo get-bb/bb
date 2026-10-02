@@ -298,7 +298,7 @@ function renderDecoration(
       return (
         <span
           key={index}
-          className="inline-flex shrink-0 items-center"
+          className="inline-flex shrink-0 items-center self-center align-middle"
           title={decoration.hint}
         >
           <Icon
