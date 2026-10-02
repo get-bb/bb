@@ -7,6 +7,8 @@ on:
     paths:
       - "apps/web/**"
       - "packages/connect-db/**"
+      - "packages/shared-ui/src/**"
+      - "plugins/plugin-api-docs/src/**"
       - "changelog-parser.ts"
   workflow_dispatch:
 

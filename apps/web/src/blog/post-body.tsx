@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ChangelogInline } from "../landing/changelog-inline";
+import { LazyPluginGuide } from "../plugin-guide/lazy-plugin-guide";
 import { getImageSize } from "./image-sizes";
 import { LightboxImage } from "./lightbox";
 import type { Post, PostBlock } from "./parse-post";
@@ -60,7 +61,29 @@ function Block({ block }: { block: PostBlock }): ReactNode {
       );
     case "tweet":
       return <TweetEmbed href={block.href} id={block.id} />;
+    case "component":
+      return <PluginGuideEmbed slide={block.slide} />;
   }
+}
+
+function PluginGuideEmbed({ slide }: { slide?: string }) {
+  return (
+    <figure className="post-figure post-embed">
+      <LazyPluginGuide initialSlideId={slide} />
+      <figcaption>
+        <a
+          className="release-link"
+          href={
+            slide
+              ? `/plugin-guide?slide=${encodeURIComponent(slide)}`
+              : "/plugin-guide"
+          }
+        >
+          Open the full Guide
+        </a>
+      </figcaption>
+    </figure>
+  );
 }
 
 function XMark() {

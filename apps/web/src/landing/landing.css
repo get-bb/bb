@@ -92,10 +92,22 @@
   --spark: oklch(0.75 0.16 50); /* --warning-text (dark) */
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer landing-reset {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  code,
+  .mono {
+    font-family: var(--font-mono);
+  }
 }
 
 /* The hero's faint full-bleed wash (::before/::after) extends past the wrap on
@@ -117,16 +129,6 @@ body {
   font-size: 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-code,
-.mono {
-  font-family: var(--font-mono);
 }
 
 .wrap {

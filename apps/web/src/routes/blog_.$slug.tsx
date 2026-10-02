@@ -10,6 +10,7 @@ import { SubscribeSection } from "../landing/cta";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import blogCss from "../blog/blog.css?url";
+import pluginGuideCss from "../plugin-guide/plugin-guide.css?url";
 
 export const Route = createFileRoute("/blog_/$slug")({
   loader: ({ params }) => {
@@ -28,7 +29,9 @@ export const Route = createFileRoute("/blog_/$slug")({
     const title = `${post.title} — bb`;
     return {
       meta: pageMeta(title, description, `/blog/${post.slug}`),
-      links: siteHeadLinks(blogCss),
+      links: post.blocks.some((block) => block.kind === "component")
+        ? siteHeadLinks(blogCss, pluginGuideCss)
+        : siteHeadLinks(blogCss),
     };
   },
   component: BlogPostRoute,
