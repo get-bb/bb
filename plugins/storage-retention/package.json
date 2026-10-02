@@ -9,7 +9,7 @@
     "bbPluginSdk": ">=0.6.5"
   },
   "bb": {
-    "name": "Storage & retention",
+    "name": "Storage & retention [Experimental]",
     "description": "Inspect machine storage and automatically archive or delete old threads.",
     "branding": {
       "icon": "./icons/database-restore.svg"
