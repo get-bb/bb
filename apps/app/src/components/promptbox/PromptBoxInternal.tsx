@@ -267,6 +267,25 @@ export interface PromptBoxSubmissionConfig {
   showModifierSubmitAction?: boolean;
 }
 
+function suppressTouchCompatibilityClick(ownerDocument: Document) {
+  const clear = () => {
+    window.clearTimeout(timeout);
+    ownerDocument.removeEventListener("click", handleClick, true);
+    ownerDocument.removeEventListener("pointerdown", clear, true);
+    ownerDocument.removeEventListener("keydown", clear, true);
+  };
+  const handleClick = (event: MouseEvent) => {
+    if (event.detail === 0) return;
+    clear();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  const timeout = window.setTimeout(clear, 1000);
+  ownerDocument.addEventListener("click", handleClick, true);
+  ownerDocument.addEventListener("pointerdown", clear, true);
+  ownerDocument.addEventListener("keydown", clear, true);
+}
+
 interface PromptSubmitButtonProps {
   canSubmit: boolean;
   className: string;
@@ -346,6 +365,7 @@ function PromptSubmitButton({
         ) {
           return;
         }
+        suppressTouchCompatibilityClick(event.currentTarget.ownerDocument);
         onTouchSubmit();
       }}
       onMouseDown={(event) => event.preventDefault()}
@@ -2808,29 +2828,9 @@ export function PromptBoxInternal({
     showCompactLayout &&
     canStartVoiceInput &&
     (!showVoiceAsPrimaryAction || showStop);
-  const stopGestureButtonRef = useRef<HTMLButtonElement | null>(null);
-  const handleStopPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return;
-      stopGestureButtonRef.current = event.currentTarget;
-    },
-    [],
-  );
-  const handleStopClick = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const gestureButton = stopGestureButtonRef.current;
-      stopGestureButtonRef.current = null;
-      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
-      onStop?.();
-    },
-    [onStop],
-  );
-  const voiceGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return;
-      voiceGestureButtonRef.current = event.currentTarget;
-      if (!isPointerCoarse) return;
+      if (!isPointerCoarse || event.button !== 0) return;
 
       event.preventDefault();
     },
@@ -2845,15 +2845,6 @@ export function PromptBoxInternal({
     }
     void voice?.start();
   }, [isPointerCoarse, voice]);
-  const handleVoiceClick = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const gestureButton = voiceGestureButtonRef.current;
-      voiceGestureButtonRef.current = null;
-      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
-      startVoiceInput();
-    },
-    [startVoiceInput],
-  );
   const cancelVoiceInput = useCallback(() => {
     if (voiceActionRevealFrameRef.current !== null) {
       window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
@@ -3565,7 +3556,7 @@ export function PromptBoxInternal({
                           }
                           disabled={!canStartVoiceInput}
                           onPointerDown={handleVoicePointerDown}
-                          onClick={handleVoiceClick}
+                          onClick={startVoiceInput}
                           className={
                             showCompactLayout
                               ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3588,8 +3579,7 @@ export function PromptBoxInternal({
                         size="icon"
                         variant="secondary"
                         aria-label="Stop run"
-                        onPointerDown={handleStopPointerDown}
-                        onClick={handleStopClick}
+                        onClick={onStop}
                         className={
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3609,7 +3599,7 @@ export function PromptBoxInternal({
                         variant="default"
                         aria-label="Start voice input"
                         onPointerDown={handleVoicePointerDown}
-                        onClick={handleVoiceClick}
+                        onClick={startVoiceInput}
                         className={cn(
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
