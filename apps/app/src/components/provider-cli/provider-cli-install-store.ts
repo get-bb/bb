@@ -6,9 +6,11 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import type { ProviderCliActionableIssue } from "@/components/provider-cli/provider-cli-install";
+import { BbRequestTimeoutError } from "@bb/sdk/browser";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { invalidateSystemExecutionOptions } from "@/hooks/cache-owners/system-cache-effects";
+import { asHttpError, getHttpErrorMessage } from "@/lib/http-error";
 import { sdk } from "@/lib/sdk";
 
 type ProviderCliInstallCompletedEvent = Extract<
@@ -135,6 +137,28 @@ function exitDescription(event: ProviderCliInstallCompletedEvent): string {
     return `Command exited with code ${event.exitCode}`;
   }
   return `Command exited after signal ${event.signal ?? "unknown"}`;
+}
+
+const CONNECTION_LOST_HTTP_STATUSES: ReadonlySet<number> = new Set([
+  502, 503, 504,
+]);
+
+function describeInstallRequestFailure(error: unknown): {
+  kind: ProviderCliInstallFailureKind;
+  message: string;
+} {
+  const httpError = asHttpError(error);
+  const connectionLost =
+    httpError === null
+      ? error instanceof TypeError || error instanceof BbRequestTimeoutError
+      : CONNECTION_LOST_HTTP_STATUSES.has(httpError.status);
+  if (connectionLost) {
+    return { kind: "interrupted", message: "Connection lost during update" };
+  }
+  const message =
+    (httpError === null ? null : getHttpErrorMessage(httpError)) ??
+    (error instanceof Error ? error.message : String(error));
+  return { kind: "command", message };
 }
 
 function getProviderCliTitle(args: {
@@ -286,9 +310,8 @@ function runInstall(job: ProviderCliInstallJob): void {
       showProviderCliInstallFailureToast({
         jobKey,
         issue,
-        kind: "interrupted",
+        ...describeInstallRequestFailure(error),
         log: installLogChunks.join(""),
-        message: "Connection lost during update",
         toastId: failureToastId,
       });
     })

@@ -180,6 +180,7 @@ export function UpdateActionButton({
         tooltipLabel={tooltipLabel}
         icon={icon}
         loading={loading}
+        disabled={loading}
         className={cn(
           "size-7",
           variant === "default" &&

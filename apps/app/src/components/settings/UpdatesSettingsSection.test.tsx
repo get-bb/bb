@@ -40,7 +40,10 @@ import {
   type UpdateInventory,
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
-import { UpdatesSettingsSection } from "./UpdatesSettingsSection";
+import {
+  UpdateActionButton,
+  UpdatesSettingsSection,
+} from "./UpdatesSettingsSection";
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
@@ -1241,6 +1244,24 @@ The canonical release summary.
     expect(screen.queryByText("1 up to date")).toBeNull();
     expect(screen.getByRole("heading", { name: "workstation" })).toBeDefined();
     expect(screen.queryByText("Checking provider CLIs…")).toBeNull();
+  });
+
+  it("ignores repeat Retry clicks while the retry is running", () => {
+    const onClick = vi.fn();
+    render(
+      <TooltipProvider>
+        <UpdateActionButton
+          label="Retry on homelab now"
+          icon="RotateCcw"
+          loading
+          onClick={onClick}
+        />
+      </TooltipProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry on homelab now" }));
+
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   it("keeps error red on the reason and off the recovery", () => {
