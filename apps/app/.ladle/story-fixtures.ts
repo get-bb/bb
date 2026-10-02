@@ -412,6 +412,7 @@ export function makeExecutionControlsProps(
       onChange: noop,
       supported: true,
       supportByProvider: STORY_SERVICE_TIER_SUPPORT,
+      options: [{ id: "fast", label: "Fast" }],
     },
     reasoning: {
       value: "medium",

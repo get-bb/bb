@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { installSessionCookie, sessionCookieSpec } from "./cookie-store";
+import { sessionCookieSpec } from "./cookie-store";
 
 const session = {
   cookie: {
@@ -19,7 +19,7 @@ describe("sessionCookieSpec", () => {
       path: "/",
       secure: true,
       httpOnly: true,
-      expires: "2026-08-18T11:00:00.000Z",
+      expires: "2026-08-18T11:00:00.000+00:00",
     });
     expect(
       sessionCookieSpec(
@@ -65,22 +65,5 @@ describe("sessionCookieSpec", () => {
         ),
       ).toMatchObject({ domain });
     }
-  });
-
-  it("installs into the shared jar and the WebKit store", async () => {
-    const calls: { url: string; secure: boolean; useWebKit: boolean }[] = [];
-    await installSessionCookie(
-      {
-        set: async (url, cookie, useWebKit) => {
-          calls.push({ url, secure: cookie.secure, useWebKit });
-        },
-      },
-      "https://bee.getbb.app",
-      session,
-    );
-    expect(calls).toEqual([
-      { url: "https://bee.getbb.app", secure: true, useWebKit: false },
-      { url: "https://bee.getbb.app", secure: true, useWebKit: true },
-    ]);
   });
 });

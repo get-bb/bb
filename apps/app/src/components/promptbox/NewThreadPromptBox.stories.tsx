@@ -12,11 +12,7 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
-} from "@/components/promptbox/PromptBoxActionsMenu";
-import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
+import { ProviderCliBanner } from "@/components/promptbox/banner/ProviderCliBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
@@ -45,10 +41,13 @@ const baseExecution = makeExecutionControlsProps();
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
+  detail:
+    "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.",
 } satisfies SystemExecutionOptionsModelLoadError;
 const codexMissingCliModelLoadError = {
   providerId: "codex",
   code: "missing_executable",
+  detail: null,
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const baseEnvironment: NewThreadEnvironmentConfig = {
@@ -108,8 +107,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 function useControlledValue(initial: string) {
@@ -283,13 +280,14 @@ function UnsupportedCodexCliRow() {
         modeConfig={{
           ...baseModeConfig,
           banner: (
-            <ProviderCliVersionBanner
+            <ProviderCliBanner
               displayName="Codex"
+              installed
               currentVersion="0.135.0"
               minimumSupportedVersion="0.136.0"
-              canUpdate
-              updating={false}
-              onUpdate={noop}
+              canRunAction
+              actionRunning={false}
+              onAction={noop}
             />
           ),
         }}
@@ -315,10 +313,24 @@ function MissingCodexCliRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
+        autoFocus={false}
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={baseModeConfig}
+        modeConfig={{
+          ...baseModeConfig,
+          banner: (
+            <ProviderCliBanner
+              displayName="Codex"
+              installed={false}
+              currentVersion={null}
+              minimumSupportedVersion={null}
+              canRunAction
+              actionRunning={false}
+              onAction={noop}
+            />
+          ),
+        }}
         project={baseProject}
         execution={{
           ...baseExecution,
@@ -479,8 +491,8 @@ function ClaudeProviderRow() {
           ...baseExecution,
           provider: { ...baseExecution.provider, selectedId: "claude-code" },
           model: {
-            active: { model: "claude-sonnet-5" },
-            selected: "claude-sonnet-5",
+            active: { model: "claude-opus-4-8[1m]" },
+            selected: "claude-opus-4-8[1m]",
             options: [
               { value: "claude-fable-5", label: "Claude Fable 5" },
               { value: "claude-opus-4-8[1m]", label: "Claude Opus 4.8 (1M)" },
@@ -491,7 +503,7 @@ function ClaudeProviderRow() {
             loadFailed: false,
             onChange: noop,
           },
-          serviceTier: { ...baseExecution.serviceTier!, supported: false },
+          serviceTier: { ...baseExecution.serviceTier!, supported: true },
         }}
       />
     </PromptStage>
@@ -636,7 +648,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="missing Codex CLI"
-          hint="provider-specific install help; picker menu keeps provider tabs"
+          hint="thread creation blocked; banner exposes Install action, picker keeps provider tabs"
         >
           <MissingCodexCliRow />
         </StoryRow>
@@ -658,7 +670,10 @@ export function Overview() {
         >
           <CustomModelAfterLoadErrorRow />
         </StoryRow>
-        <StoryRow label="claude-code provider" hint="no fast mode toggle">
+        <StoryRow
+          label="claude-code provider"
+          hint="Fast mode on supported Opus models"
+        >
           <ClaudeProviderRow />
         </StoryRow>
         <StoryRow label="full access" hint='permission tone="warning"'>

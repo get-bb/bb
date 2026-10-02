@@ -2,10 +2,15 @@
 
 import {
   buildBridgeInjectionScript,
+  buildBridgeEventScript,
   parsePageToShellMessage,
   type NativeShellHandshake,
 } from "@bb/mobile-bridge";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render } from "@testing-library/react";
+import { createElement } from "react";
+import { MemoryRouter } from "react-router-dom";
+import { NativeShellReporter } from "./NativeShellReporter";
 import {
   getNativeShell,
   isInsideNativeShell,
@@ -55,6 +60,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   Reflect.deleteProperty(window as unknown as Record<string, unknown>, "bb");
   Reflect.deleteProperty(
     window as unknown as Record<string, unknown>,
@@ -116,4 +122,33 @@ describe("shellOpenExternal", () => {
   it("declines in a plain browser so the caller can use window.open", () => {
     expect(shellOpenExternal("https://example.com/docs")).toBe(false);
   });
+});
+
+it("applies native bottom insets to portaled UI and updates them when the safe area changes", () => {
+  installShell({
+    platform: "android",
+    safeArea: { top: 24, right: 0, bottom: 24, left: 0 },
+  });
+  const { unmount } = render(
+    createElement(MemoryRouter, null, createElement(NativeShellReporter)),
+  );
+  expect(
+    document.documentElement.style.getPropertyValue("--bb-safe-area-bottom"),
+  ).toBe("24px");
+  act(() => {
+    new Function(
+      "window",
+      buildBridgeEventScript({
+        type: "safe-area",
+        safeArea: { top: 0, right: 24, bottom: 0, left: 0 },
+      }),
+    )(window);
+  });
+  expect(
+    document.documentElement.style.getPropertyValue("--bb-safe-area-bottom"),
+  ).toBe("0px");
+  unmount();
+  expect(
+    document.documentElement.style.getPropertyValue("--bb-safe-area-bottom"),
+  ).toBe("");
 });

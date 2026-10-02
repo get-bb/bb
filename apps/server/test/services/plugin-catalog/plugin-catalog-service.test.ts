@@ -4,11 +4,13 @@ import { join } from "node:path";
 import {
   createConnection,
   getPluginMarketplace,
+  listPluginMarketplaceIcons,
   markInstalledPluginRemoved,
   migrate,
   upsertPluginMarketplace,
   upsertInstalledPlugin,
   type DbConnection,
+  type PluginSourceIntent,
 } from "@bb/db";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
@@ -178,6 +180,7 @@ describe("plugin catalog service", () => {
       rootDir: `/bundled/${args.name}`,
       version: "0.0.1",
       enabled: true,
+      enabledFollowsDefault: false,
     });
   }
 
@@ -291,13 +294,6 @@ describe("plugin catalog service", () => {
       "installation stopped by test",
     );
     expect(installedNames).toEqual(["docs"]);
-  });
-
-  it("rejects unknown catalog entries", async () => {
-    const catalog = service();
-    await expect(
-      catalog.install({ entryId: "does-not-exist" }),
-    ).rejects.toThrow('unknown plugin catalog entry "does-not-exist"');
   });
 
   it("drops entries whose bundled manifest is unreadable", async () => {
@@ -1218,33 +1214,123 @@ describe("plugin catalog service", () => {
         rootDir: "/managed/thread-hover-cards",
         version: "0.1.0",
         enabled: true,
+        enabledFollowsDefault: false,
       });
       expect((await catalog.search("thread-hover-cards"))[0]?.installed).toBe(
         true,
       );
     });
+
+    it.each([
+      {
+        name: "a local checkout",
+        source: "path:/Users/me/git/thread-hover-cards",
+        sourceIntent: {
+          kind: "path",
+          canonicalPath: "/Users/me/git/thread-hover-cards",
+        },
+        installed: false,
+      },
+      {
+        name: "a different git repository",
+        source: "git:https://github.com/someone-else/hover-cards.git@main",
+        sourceIntent: {
+          kind: "git",
+          url: "https://github.com/someone-else/hover-cards.git",
+          subdirectory: null,
+          selector: { kind: "ref", ref: "main", refKind: "branch" },
+        },
+        installed: false,
+      },
+      {
+        name: "the entry's git repository",
+        source: "git:https://github.com/brsbl/bb-plugins@main",
+        sourceIntent: {
+          kind: "git",
+          url: "https://github.com/brsbl/bb-plugins",
+          subdirectory: null,
+          selector: { kind: "ref", ref: "main", refKind: "branch" },
+        },
+        installed: true,
+      },
+    ] satisfies {
+      name: string;
+      source: string;
+      sourceIntent: PluginSourceIntent;
+      installed: boolean;
+    }[])(
+      "reports a direct install from $name with the same id as installed: $installed",
+      async ({ source, sourceIntent, installed }) => {
+        const catalog = service();
+        upsertInstalledPlugin(db, {
+          id: "thread-hover-cards",
+          source,
+          provenance: { kind: "direct" },
+          sourceIntent,
+          exactResolution:
+            sourceIntent.kind === "git"
+              ? { kind: "git", commit: "0".repeat(40) }
+              : { kind: "path" },
+          updateState: {
+            lastCheckAt: null,
+            availableCompatibleVersion: null,
+            newestIncompatibleVersion: null,
+            statusDetail: null,
+          },
+          activeArtifactId: null,
+          rootDir: "/Users/me/git/thread-hover-cards",
+          version: "0.1.0",
+          enabled: true,
+          enabledFollowsDefault: false,
+        });
+        expect((await catalog.search("thread-hover-cards"))[0]).toMatchObject({
+          installed,
+          conflictingInstallSource: installed ? null : source,
+        });
+      },
+    );
   });
 
   describe("catalog limits and trust", () => {
-    it("refuses a manifest that lists more than the entry limit", async () => {
-      const oversize = manifest(
-        Array.from({ length: 257 }, (_unused, index) =>
-          remoteEntry({ id: `widgets-${index}` }),
+    it("refreshes and searches a catalog with more than 1024 entries", async () => {
+      const largeManifest = manifest(
+        Array.from({ length: 1025 }, (_unused, index) =>
+          remoteEntry({ id: `widgets-${index}`, icon: "Zap" }),
         ),
       );
       const catalog = service({
-        fetch: async () => jsonResponse(oversize),
+        fetch: async () => jsonResponse(largeManifest),
       });
 
-      await expect(refreshCuratedMarketplace(catalog, 1_000)).rejects.toThrow(
-        /at most 256 plugins/u,
-      );
-      expect(getPluginMarketplace(db, "bb-community")?.lastError).toMatch(
-        /at most 256 plugins/u,
-      );
+      await refreshCuratedMarketplace(catalog, 1_000);
+      expect(getPluginMarketplace(db, "bb-community")?.lastError).toBeNull();
+      expect(await catalog.search("widgets")).toHaveLength(1025);
+      expect(await catalog.search("widgets-1024")).toEqual([
+        expect.objectContaining({ entryId: "widgets-1024" }),
+      ]);
     });
 
-    it("refuses a catalog whose icons pass the total byte budget", async () => {
+    it("refreshes a remote manifest larger than 1 MiB", async () => {
+      const largeManifest = manifest(
+        Array.from({ length: 600 }, (_unused, index) =>
+          remoteEntry({
+            id: `widgets-${index}`,
+            icon: "Zap",
+            description: "x".repeat(2_000),
+          }),
+        ),
+      );
+      expect(JSON.stringify(largeManifest).length).toBeGreaterThan(1_048_576);
+      const catalog = service({
+        fetch: async () => jsonResponse(largeManifest),
+      });
+
+      await refreshCuratedMarketplace(catalog, 1_000);
+      expect(getPluginMarketplace(db, "bb-community")?.lastError).toBeNull();
+      expect(await catalog.search("widgets")).toHaveLength(600);
+    });
+
+    it("stores catalog icons totaling more than 8 MiB", async () => {
       const bigSvg = Buffer.from(
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><title>${"a".repeat(200 * 1024)}</title><path d="M0 0h16v16H0z"/></svg>`,
       );
@@ -1264,9 +1350,12 @@ describe("plugin catalog service", () => {
               }),
       });
 
-      await expect(refreshCuratedMarketplace(catalog, 1_000)).rejects.toThrow(
-        /exceed the 8388608 byte total limit/u,
-      );
+      await refreshCuratedMarketplace(catalog, 1_000);
+      const icons = listPluginMarketplaceIcons(db, "bb-community");
+      expect(icons).toHaveLength(64);
+      expect(
+        icons.reduce((total, icon) => total + icon.bytes.byteLength, 0),
+      ).toBeGreaterThan(8 * 1024 * 1024);
     });
 
     it("fetches entry icons concurrently", async () => {

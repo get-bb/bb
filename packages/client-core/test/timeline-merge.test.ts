@@ -351,26 +351,6 @@ describe("timeline page row merging", () => {
     expect(merge.rows[1]).toBe(oldTail);
   });
 
-  it("replaces changed overlapping row references after a latest refetch", () => {
-    const olderUser = userRow({ id: "older-user", sequence: 1 });
-    const oldTail = userRow({ id: "live-tail", sequence: 20 });
-    const updatedTail = {
-      ...oldTail,
-      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
-      text: "updated tail",
-    };
-
-    const merge = mergeLatestTimelineRows({
-      latestWindowStartSequence: 20,
-      loadedRows: [olderUser, oldTail],
-      latestRows: [updatedTail],
-    });
-
-    expect(merge.rows).toHaveLength(2);
-    expect(merge.rows[0]).toBe(olderUser);
-    expect(merge.rows[1]).toBe(updatedTail);
-  });
-
   it("replaces a pending message row when the server accepts it", () => {
     const pendingMessage = userRow({
       id: "submitted-message",
@@ -857,6 +837,66 @@ describe("snapshot content pagination", () => {
     expect(next.rows.map((row) => row.id)).toEqual(["latest-user"]);
     expect(next.olderCursor).toEqual(latestCursor);
     expect(next.historySnapshot).toBe("snapshot-2");
+  });
+
+  it("keeps omitted-row updates through streaming and repeat refreshes", () => {
+    const olderUser = userRow({ id: "older-user", sequence: 1 });
+    const earlyChild = commandRow({ id: "early-command", sequence: 3 });
+    const liveChild = commandRow({ id: "live-command", sequence: 4 });
+    const summary = turnSummaryRow({
+      id: "summary",
+      sequence: 2,
+      endSequence: 4,
+      children: [earlyChild, liveChild],
+    });
+    const latestUser = userRow({ id: "latest-user", sequence: 10 });
+    const walkCursor = timelineCursor({ id: "walk-cursor", sequence: 1 });
+    const current = {
+      ...makeLoadedTimelineState(
+        [olderUser, summary, latestUser],
+        walkCursor,
+        11,
+      ),
+      historySnapshot: "snapshot-1",
+    };
+    const updatedChild = { ...liveChild, sourceSeqEnd: 12, output: "progress" };
+    const newChild = commandRow({ id: "new-command", sequence: 12 });
+    const latestTimeline = makeTimelineResponse(
+      [latestUser],
+      timelineCursor({ id: "latest-cursor", sequence: 10 }),
+      12,
+    );
+    latestTimeline.timelinePage.historySnapshot = "snapshot-2";
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = 1;
+    latestTimeline.timelinePage.olderRowUpdates = [
+      { ...summary, sourceSeqEnd: 12, children: [updatedChild, newChild] },
+      commandRow({ id: "unloaded", sequence: 5, endSequence: 12 }),
+    ];
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+
+    const expectedRows = [
+      olderUser,
+      {
+        ...summary,
+        sourceSeqEnd: 12,
+        children: [earlyChild, updatedChild, newChild],
+      },
+      latestUser,
+    ];
+    expect(next.rows).toEqual(expectedRows);
+    const refreshed = mergeLoadedTimelineWithLatest({
+      current: next,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+    expect(refreshed.rows).toEqual(expectedRows);
+    expect(next.olderCursor).toEqual(walkCursor);
+    expect(next.latestWindowEndSequence).toBe(12);
   });
 
   it("keeps loaded order when an older page repeats the loaded conversation group", () => {

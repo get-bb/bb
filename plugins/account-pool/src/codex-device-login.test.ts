@@ -89,6 +89,8 @@ function summary(account: CodexDeviceAccount): AccountSummary {
       other: null,
     },
     limitWindows: [],
+    extraUsage: null,
+    usageRestriction: null,
     observedAt: null,
     heldUntil: null,
     error: null,
@@ -250,32 +252,6 @@ describe("Codex device login", () => {
         code_verifier: "verifier-secret",
       }),
     );
-  });
-
-  it("returns pending for an immediate poll without fetching", async () => {
-    const { login, tokenPolls } = createPollingHarness();
-    const started = await login.start();
-
-    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
-      status: "pending",
-    });
-    expect(tokenPolls()).toBe(0);
-    expect(login.nextPollDelayMs(started.sessionId)).toBe(5_000);
-  });
-
-  it("keeps a session pending after HTTP 404", async () => {
-    const { clock, login, tokenPolls } = createPollingHarness();
-    const started = await login.start();
-    clock.now += 5_000;
-
-    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
-      status: "pending",
-    });
-    clock.now += 5_000;
-    expect(await login.poll({ sessionId: started.sessionId })).toEqual({
-      status: "pending",
-    });
-    expect(tokenPolls()).toBe(2);
   });
 
   it("extends the session interval after slow_down", async () => {

@@ -3,9 +3,13 @@ import {
   reasoningLevelSchema,
   type AvailableModel,
   type ModelReasoningEffort,
+  type ModelServiceTier,
   type ReasoningLevel,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+
+const CODEX_FAST_SERVICE_TIER = "priority";
+const BB_FAST_SERVICE_TIER = "fast";
 
 const DEFAULT_REASONING_EFFORTS: readonly ModelReasoningEffort[] =
   reasoningEffortsForLevels(["low", "medium", "high", "xhigh"]);
@@ -17,9 +21,7 @@ const codexModelIdentitySchema = z
   })
   .passthrough();
 
-export function mapCodexReasoningLevelToBb(
-  value: unknown,
-): ReasoningLevel | null {
+function mapCodexReasoningLevelToBb(value: unknown): ReasoningLevel | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -86,6 +88,56 @@ function parseSupportedReasoningEfforts(raw: unknown): ModelReasoningEffort[] {
   return efforts.length > 0 ? efforts : cloneDefaultReasoningEfforts();
 }
 
+function mapCodexServiceTierToBb(id: string): string {
+  return id === CODEX_FAST_SERVICE_TIER ? BB_FAST_SERVICE_TIER : id;
+}
+
+function parseServiceTierOption(raw: unknown): ModelServiceTier | null {
+  if (typeof raw === "string") {
+    return raw.length > 0 ? { id: mapCodexServiceTierToBb(raw) } : null;
+  }
+  if (raw == null || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  if (typeof record.id !== "string" || record.id.length === 0) {
+    return null;
+  }
+  return {
+    id: mapCodexServiceTierToBb(record.id),
+    ...(typeof record.name === "string" && record.name.length > 0
+      ? { label: record.name }
+      : {}),
+    ...(typeof record.description === "string" && record.description.length > 0
+      ? { description: record.description }
+      : {}),
+  };
+}
+
+function parseSupportedServiceTiers(
+  raw: z.infer<typeof codexModelIdentitySchema>,
+): ModelServiceTier[] {
+  const listed = Array.isArray(raw.serviceTiers)
+    ? raw.serviceTiers
+    : Array.isArray(raw.additionalSpeedTiers)
+      ? raw.additionalSpeedTiers
+      : null;
+  if (listed === null) {
+    return [{ id: BB_FAST_SERVICE_TIER }];
+  }
+  const tiers: ModelServiceTier[] = [];
+  const seen = new Set<string>();
+  for (const item of listed) {
+    const tier = parseServiceTierOption(item);
+    if (!tier || seen.has(tier.id)) {
+      continue;
+    }
+    seen.add(tier.id);
+    tiers.push(tier);
+  }
+  return tiers;
+}
+
 function toAvailableModel(
   raw: z.infer<typeof codexModelIdentitySchema>,
 ): AvailableModel {
@@ -107,6 +159,7 @@ function toAvailableModel(
     description: typeof raw.description === "string" ? raw.description : "",
     supportedReasoningEfforts: efforts,
     defaultReasoningEffort,
+    supportedServiceTiers: parseSupportedServiceTiers(raw),
     isDefault: raw.isDefault === true,
   };
 }

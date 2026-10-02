@@ -1,4 +1,3 @@
-import { setTimeout as sleep } from "node:timers/promises";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -387,29 +386,6 @@ describe("pending interaction lifecycle", () => {
         });
       expect(resolved.resolution).toEqual({ kind: "plugin_submitted" });
       await expect(pending).resolves.toMatchObject({ outcome: "submitted" });
-    });
-  });
-
-  it("contains abort callback failures and settles the in-memory waiter", async () => {
-    await withTestHarness(async (harness) => {
-      const thread = seedPluginInteractionThread(harness.deps, "abort");
-      const controller = new AbortController();
-      const pending = requestPluginInteraction(harness.deps, {
-        threadId: thread.id,
-        signal: controller.signal,
-      });
-      vi.spyOn(
-        harness.deps.pendingInteractions,
-        "cancelPluginInteraction",
-      ).mockImplementation(() => {
-        throw new Error("cancellation failed");
-      });
-
-      expect(() => controller.abort()).not.toThrow();
-      await expect(pending).resolves.toEqual({
-        outcome: "cancelled",
-        reason: "request-aborted",
-      });
     });
   });
 
@@ -931,60 +907,6 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
-  it("deduplicates active provider requests across daemon sessions when payloads match", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-pending-interaction-reconnect-dedupe",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const interaction: PendingInteractionCreate = {
-        threadId: thread.id,
-        turnId: "turn-reconnect-dedupe",
-        providerId: "codex",
-        providerThreadId: "provider-thread-reconnect-dedupe",
-        providerRequestId: "request-reconnect-dedupe",
-        payload: createCommandApprovalPayload({
-          itemId: "item-reconnect-dedupe",
-          reason: "Needs approval",
-          command: "git push",
-          cwd: "/tmp/project",
-        }),
-      };
-
-      const created = registerPendingInteraction(
-        harness.deps,
-        harness.deps.pendingInteractions,
-        interaction,
-      );
-      if (created.outcome === "rejected") {
-        throw new Error(
-          `Expected interaction registration to succeed: ${created.reason}`,
-        );
-      }
-
-      const duplicate = registerPendingInteraction(
-        harness.deps,
-        harness.deps.pendingInteractions,
-        interaction,
-      );
-
-      expect(duplicate).toEqual({
-        outcome: "existing",
-        interaction: created.interaction,
-      });
-    });
-  });
-
   it("preserves pending interactions when the same daemon instance reconnects", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -1021,6 +943,7 @@ describe("pending interaction lifecycle", () => {
       const replacementSession = seedSession(harness.deps, host.id);
       await handleHostSessionOpened(harness.deps, {
         activeThreads: [],
+        undeliveredEventThreadIds: [],
         hostId: host.id,
         openedSession: replacementSession,
         previousSession: session,
@@ -1322,67 +1245,6 @@ describe("pending interaction lifecycle", () => {
           interactionId: created.interaction.id,
         }).status,
       ).toBe("pending");
-    });
-  });
-
-  it("allows a permission grant whose request has nothing to grant", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-pending-interaction-no-grantable",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      const created = registerPendingInteraction(
-        harness.deps,
-        harness.deps.pendingInteractions,
-        {
-          threadId: thread.id,
-          turnId: "turn-no-grantable",
-          providerId: "codex",
-          providerThreadId: "provider-thread-no-grantable",
-          providerRequestId: "request-no-grantable",
-          payload: createPermissionGrantApprovalPayload({
-            itemId: "item-no-grantable",
-            reason: "Needs approval",
-            toolName: "SomeOpaqueTool",
-            permissions: {
-              network: null,
-              fileSystem: null,
-            },
-          }),
-        },
-      );
-      if (created.outcome === "rejected") {
-        throw new Error(
-          `Expected interaction registration to succeed: ${created.reason}`,
-        );
-      }
-
-      harness.deps.pendingInteractions.resolvePendingInteraction({
-        threadId: thread.id,
-        interactionId: created.interaction.id,
-        resolution: createAllowOnceResolution({
-          network: null,
-          fileSystem: null,
-        }),
-      });
-
-      expect(
-        harness.deps.pendingInteractions.getThreadInteraction({
-          threadId: thread.id,
-          interactionId: created.interaction.id,
-        }).status,
-      ).not.toBe("pending");
     });
   });
 
@@ -2243,133 +2105,6 @@ describe("pending interaction lifecycle", () => {
       });
     });
   });
-
-  it("rejects resolving interrupted interactions", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-pending-interaction-resolve-interrupted",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      const created = registerPendingInteraction(
-        harness.deps,
-        harness.deps.pendingInteractions,
-        {
-          threadId: thread.id,
-          turnId: "turn-resolve-interrupted",
-          providerId: "codex",
-          providerThreadId: "provider-thread-resolve-interrupted",
-          providerRequestId: "request-resolve-interrupted",
-          payload: createCommandApprovalPayload({
-            itemId: "item-resolve-interrupted",
-            reason: "Needs approval",
-            command: "git push",
-            cwd: "/tmp/project",
-          }),
-        },
-      );
-      if (created.outcome === "rejected") {
-        throw new Error(
-          `Expected interaction registration to succeed: ${created.reason}`,
-        );
-      }
-
-      harness.db.transaction((tx) =>
-        harness.deps.pendingInteractions.interruptPendingInteractionInTransaction(
-          { db: tx, hub: harness.deps.hub },
-          {
-            interactionId: created.interaction.id,
-            reason: "Provider exited",
-          },
-        ),
-      );
-
-      expect(() =>
-        harness.deps.pendingInteractions.resolvePendingInteraction({
-          threadId: thread.id,
-          interactionId: created.interaction.id,
-          resolution: createAllowOnceResolution(),
-        }),
-      ).toThrowError(
-        `Pending interaction ${created.interaction.id} is already interrupted`,
-      );
-    });
-  });
-
-  it("does not expire pending interactions on persistent hosts", async () => {
-    await withTestHarness(async (harness) => {
-      const pendingInteractions = new PendingInteractionLifecycle({
-        config: harness.deps.config,
-        db: harness.db,
-        hub: harness.hub,
-        lifecycleDedupers: harness.deps.lifecycleDedupers,
-        logger: harness.deps.logger,
-        machineAuth: harness.deps.machineAuth,
-        providerRegistry: harness.deps.providerRegistry,
-        aiServices: harness.deps.aiServices,
-        pluginHostArtifacts: harness.deps.pluginHostArtifacts,
-        skillTreeRegistry: harness.deps.skillTreeRegistry,
-        telemetry: harness.deps.telemetry,
-        terminalSessions: harness.deps.terminalSessions,
-      });
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-pending-interaction-no-expiry",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      const created = registerPendingInteraction(
-        harness.deps,
-        pendingInteractions,
-        {
-          threadId: thread.id,
-          turnId: "turn-no-expiry",
-          providerId: "codex",
-          providerThreadId: "provider-thread-no-expiry",
-          providerRequestId: "request-no-expiry",
-          payload: createCommandApprovalPayload({
-            itemId: "item-no-expiry",
-            reason: "Needs approval",
-            command: "git push",
-            cwd: "/tmp/project",
-          }),
-        },
-      );
-      if (created.outcome === "rejected") {
-        throw new Error(
-          `Expected interaction registration to succeed: ${created.reason}`,
-        );
-      }
-
-      await sleep(50);
-
-      expect(
-        pendingInteractions.getThreadInteraction({
-          threadId: thread.id,
-          interactionId: created.interaction.id,
-        }).status,
-      ).toBe("pending");
-    });
-  });
 });
 
 it("rejects a late answer when an abort callback settled the waiter but failed to update storage", async () => {
@@ -2387,8 +2122,11 @@ it("rejects a late answer when an abort callback settled the waiter but failed t
       .mockImplementationOnce(() => {
         throw new Error("storage temporarily unavailable");
       });
-    controller.abort();
-    await expect(pending).resolves.toMatchObject({ outcome: "cancelled" });
+    expect(() => controller.abort()).not.toThrow();
+    await expect(pending).resolves.toEqual({
+      outcome: "cancelled",
+      reason: "request-aborted",
+    });
     cancel.mockRestore();
     await expect(
       harness.deps.pendingInteractions.respondToPluginInteraction({

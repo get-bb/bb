@@ -49,6 +49,7 @@ describe("general settings", () => {
         body: JSON.stringify({
           ...defaultAppSettings,
           showKeyboardHints: false,
+          allowFastServiceTier: false,
           steerActiveThreadOnEnter: true,
           providerOrder: ["pi", "codex"],
           defaultProviderId: "pi",
@@ -65,6 +66,7 @@ describe("general settings", () => {
       ).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -73,6 +75,7 @@ describe("general settings", () => {
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -86,6 +89,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showUnhandledProviderEvents: false,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -178,5 +182,35 @@ it("preserves telemetry opt-out when older clients update other settings", async
     );
     expect(config.generalSettings.telemetryEnabled).toBe(false);
     expect(config.generalSettings.showKeyboardHints).toBe(false);
+  });
+});
+
+it("persists archive confirmation opt-out and preserves it for older clients", async () => {
+  await withTestHarness(async (harness) => {
+    const put = (settings: object) =>
+      harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+    expect(
+      (await put({ ...defaultAppSettings, confirmThreadArchive: false }))
+        .status,
+    ).toBe(200);
+    expect(getAppSettings(harness.db).confirmThreadArchive).toBe(false);
+    const { confirmThreadArchive, ...legacy } = defaultAppSettings;
+    expect(confirmThreadArchive).toBe(true);
+    expect((await put({ ...legacy, showKeyboardHints: false })).status).toBe(
+      200,
+    );
+    const config = systemConfigResponseSchema.parse(
+      await readJson(await harness.app.request("/api/v1/system/config")),
+    );
+    expect(config.generalSettings.confirmThreadArchive).toBe(false);
+    expect(config.generalSettings.showKeyboardHints).toBe(false);
+    expect(
+      (await put({ ...defaultAppSettings, confirmThreadArchive: true })).status,
+    ).toBe(200);
+    expect(getAppSettings(harness.db).confirmThreadArchive).toBe(true);
   });
 });

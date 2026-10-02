@@ -82,6 +82,10 @@ export function useForkThreadFromMessage({
           state: {
             focusPrompt: true,
             reuseEnvironmentId: source.environmentId,
+            placement: {
+              sectionId: source.sectionId,
+              pinned: source.pinnedAt !== null,
+            },
             [FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY]: seed,
           },
         });

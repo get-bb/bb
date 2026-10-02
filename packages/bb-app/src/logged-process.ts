@@ -6,6 +6,7 @@ interface SpawnLoggedProcessArgs {
   args: string[];
   command: string;
   env: NodeJS.ProcessEnv;
+  ipc?: boolean;
   logDir: string;
   logName: "server" | "host-daemon";
 }
@@ -21,7 +22,7 @@ export function spawnLoggedProcess(args: SpawnLoggedProcessArgs): ChildProcess {
     return spawn(args.command, args.args, {
       cwd: process.cwd(),
       env: args.env,
-      stdio: ["ignore", fd, fd],
+      stdio: args.ipc === true ? ["ignore", fd, fd, "ipc"] : ["ignore", fd, fd],
     });
   } finally {
     closeSync(fd);

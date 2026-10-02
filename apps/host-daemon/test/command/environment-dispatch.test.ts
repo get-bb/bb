@@ -519,17 +519,20 @@ it("cancels setup with contributions even when another attach is waiting", async
     await expect
       .poll(async () => fs.readFile(`${sourcePath}/started`, "utf8"))
       .toBe("configured");
-    await dispatchCommand(
-      {
-        type: "environment.attach.cancel",
-        environmentId: command.environmentId,
-      },
-      options,
-    );
-    expect(await settled).toEqual([
-      expect.objectContaining({ status: "rejected" }),
-      expect.objectContaining({ status: "rejected" }),
-    ]);
+    await expect(
+      dispatchCommand(
+        {
+          type: "environment.attach.cancel",
+          environmentId: command.environmentId,
+        },
+        options,
+      ),
+    ).resolves.toEqual({ aborted: true });
+    const rejection = {
+      status: "rejected",
+      reason: expect.objectContaining({ code: "provision_cancelled" }),
+    };
+    expect(await settled).toEqual([rejection, rejection]);
     await expect(fs.stat(`${sourcePath}/after-cancel`)).rejects.toThrow();
     expect(harness.provisions).toHaveLength(0);
   } finally {

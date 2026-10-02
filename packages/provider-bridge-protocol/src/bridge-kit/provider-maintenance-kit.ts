@@ -1,3 +1,4 @@
+import { execPortableFile } from "@bb/process-utils";
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import { access } from "node:fs/promises";
@@ -18,6 +19,30 @@ const execFileAsync = promisify(execFile);
 const CLI_PROBE_TIMEOUT_MS = 5_000;
 const INSTALLATION_CHECK_TIMEOUT_MS = 15_000;
 
+const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
+
+export function selectResolvedExecutable(args: {
+  candidates: readonly string[];
+  platform: NodeJS.Platform;
+  pathExt: string | undefined;
+}): string | null {
+  const candidates = args.candidates
+    .map((candidate) => candidate.trim())
+    .filter((candidate) => candidate.length > 0);
+  if (args.platform !== "win32") {
+    return candidates[0] ?? null;
+  }
+  const extensions = (args.pathExt ?? DEFAULT_WINDOWS_PATHEXT)
+    .split(";")
+    .map((extension) => extension.trim().toLowerCase())
+    .filter((extension) => extension.length > 0);
+  return (
+    candidates.find((candidate) =>
+      extensions.includes(path.win32.extname(candidate).toLowerCase()),
+    ) ?? null
+  );
+}
+
 export async function resolveExecutablePath(
   command: string,
 ): Promise<string | null> {
@@ -34,12 +59,11 @@ export async function resolveExecutablePath(
     const { stdout } = await execFileAsync(lookup, [command], {
       timeout: CLI_PROBE_TIMEOUT_MS,
     });
-    return (
-      stdout
-        .split(/\r?\n/u)
-        .find((line) => line.trim())
-        ?.trim() ?? null
-    );
+    return selectResolvedExecutable({
+      candidates: stdout.split(/\r?\n/u),
+      platform: process.platform,
+      pathExt: process.env.PATHEXT,
+    });
   } catch {
     return null;
   }
@@ -50,7 +74,10 @@ export async function commandOutput(
   args: readonly string[],
 ): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync(command, [...args], {
+    const { stdout, stderr } = await execPortableFile(command, [...args], {
+      cwd: process.cwd(),
+      env: process.env,
+      maxBuffer: 1024 * 1024,
       timeout: INSTALLATION_CHECK_TIMEOUT_MS,
     });
     return `${stdout}\n${stderr}`.trim();
@@ -68,11 +95,12 @@ export function versionFrom(value: string | null): string | null {
 
 export async function readCliVersion(command: string): Promise<string | null> {
   try {
-    const probe = execFileAsync(command, ["--version"], {
+    const { stdout, stderr } = await execPortableFile(command, ["--version"], {
+      cwd: process.cwd(),
+      env: process.env,
+      maxBuffer: 1024 * 1024,
       timeout: CLI_PROBE_TIMEOUT_MS,
     });
-    probe.child.stdin?.end();
-    const { stdout, stderr } = await probe;
     return versionFrom(`${stdout}\n${stderr}`);
   } catch {
     return null;
@@ -209,7 +237,25 @@ export function installationVerification(
 
 export function downloadedInstallerCommand(
   url: string,
+  options: { platform?: NodeJS.Platform; powershellUrl?: string } = {},
 ): ProviderInstallationCommand {
+  if (
+    (options.platform ?? process.platform) === "win32" &&
+    options.powershellUrl !== undefined
+  ) {
+    const powershellScript = `irm ${options.powershellUrl} | iex`;
+    return {
+      command: "powershell.exe",
+      args: [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        powershellScript,
+      ],
+      displayCommand: powershellScript,
+    };
+  }
   const script = [
     'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-installation.XXXXXX")',
     "trap 'rm -f \"$tmp\"' EXIT",

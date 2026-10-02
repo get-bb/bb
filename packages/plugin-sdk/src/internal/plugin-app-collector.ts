@@ -26,6 +26,7 @@ import type {
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
+  ExperimentalSidebarHeaderRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
@@ -347,6 +348,7 @@ export interface CollectedPluginAppRegistrations {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
+  experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -472,6 +474,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterActions: [],
     experimentalSidebarFooterItems: [],
     experimentalSidebarNavigations: [],
+    experimentalSidebarHeaders: [],
     threadLists: [],
     threadHeaderActions: [],
     browserToolbarActions: [],
@@ -497,9 +500,11 @@ export function collectPluginAppRegistrations(
     threadPanelAction: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
+    composerPopup: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
     sidebarNavigation: new Set<string>(),
+    sidebarHeader: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
@@ -566,7 +571,12 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
+        const page = registration.experimental_page;
+        if (page !== undefined && page !== "mobile") {
+          throw new Error(`${kind}: experimental_page must be "mobile"`);
+        }
         collected.settingsSections.push({
+          ...(page !== undefined ? { experimental_page: page } : {}),
           id,
           ...(title !== undefined ? { title } : {}),
           ...(description !== undefined ? { description } : {}),
@@ -741,6 +751,15 @@ export function collectPluginAppRegistrations(
           collectTitledComponent(
             "slots.experimental_sidebarNavigation",
             seenIds.sidebarNavigation,
+            registration,
+          ),
+        );
+      },
+      experimental_sidebarHeader(registration) {
+        collected.experimentalSidebarHeaders.push(
+          collectTitledComponent(
+            "slots.experimental_sidebarHeader",
+            seenIds.sidebarHeader,
             registration,
           ),
         );
@@ -920,6 +939,7 @@ export function collectPluginAppRegistrations(
           registration,
           seenIds.composerCustomization,
           onComposerCustomizationRejected,
+          seenIds.composerPopup,
         );
         if (customization !== null) {
           collected.composerCustomizations.push(customization);

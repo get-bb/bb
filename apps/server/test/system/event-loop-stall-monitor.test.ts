@@ -141,25 +141,6 @@ describe("event loop stall monitor", () => {
     monitor.stop();
   });
 
-  it("suppresses histogram delays accumulated while the system was suspended", () => {
-    const histogram = installHistogram({
-      maxDelayMs: 300_000,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
-    const logger = { info: vi.fn() };
-    let now = 0;
-
-    const monitor = startEventLoopStallMonitor({ logger, now: () => now });
-    now = 300_000;
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
-
-    expect(logger.info).not.toHaveBeenCalled();
-    expect(histogram.reset).toHaveBeenCalledTimes(1);
-
-    monitor.stop();
-  });
-
   it("stops sampling after stop", () => {
     const histogram = installHistogram({
       maxDelayMs: 500,

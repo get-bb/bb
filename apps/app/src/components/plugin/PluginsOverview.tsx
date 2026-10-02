@@ -44,6 +44,7 @@ import {
 } from "./management/plugin-browse-discovery";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { pluginDetailLocation } from "@/components/plugin/plugin-detail-key";
 import {
   getPluginDetailRoutePath,
   getRootComposeRoutePath,
@@ -164,14 +165,10 @@ export function PluginsOverview({
     return filtered
       .map((entry) => entry.plugin)
       .sort((left, right) => {
-        const enabledResult = Number(!left.enabled) - Number(!right.enabled);
-        if (enabledResult !== 0) return enabledResult;
-        if (left.enabled) {
-          const publisherResult =
-            Number(left.publisherLabel === null) -
-            Number(right.publisherLabel === null);
-          if (publisherResult !== 0) return publisherResult;
-        }
+        const publisherResult =
+          Number(left.publisherLabel === null) -
+          Number(right.publisherLabel === null);
+        if (publisherResult !== 0) return publisherResult;
         return (
           (left.name ?? left.id).localeCompare(right.name ?? right.id) ||
           left.id.localeCompare(right.id)
@@ -217,12 +214,11 @@ export function PluginsOverview({
 
   const openPlugin =
     onOpenPlugin ??
-    ((pluginId: string) =>
+    ((detailKey: string) =>
       navigate(
-        getPluginDetailRoutePath({
-          pluginId,
-          view: activeMode === "installed" ? "installed" : undefined,
-        }),
+        activeMode === "installed"
+          ? getPluginDetailRoutePath({ pluginId: detailKey, view: "installed" })
+          : pluginDetailLocation(detailKey, ""),
       ));
   let content: ReactNode;
   if (activeMode === "browse") {
@@ -300,6 +296,7 @@ export function PluginsOverview({
                 onOpenPlugin={openPlugin}
               />
               <ResourceInfiniteScrollSentinel
+                itemCount={installedList.items.length}
                 hasMore={installedList.hasMore}
                 onLoadMore={installedList.loadMore}
               />
@@ -329,14 +326,6 @@ export function PluginsOverview({
         initial={addDialog.initial}
         onOpenChange={(open) =>
           setAddDialog((current) => ({ ...current, open }))
-        }
-        onInstalled={(plugin) =>
-          navigate(
-            getPluginDetailRoutePath({
-              pluginId: plugin.id,
-              view: "installed",
-            }),
-          )
         }
       />
     </>

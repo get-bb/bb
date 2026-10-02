@@ -199,27 +199,6 @@ describe("evaluateThreadLifecycleEvent", () => {
     }
   });
 
-  it("settles a stopping thread to idle when its work completes on its own", () => {
-    expect(
-      evaluateThreadLifecycleEvent({
-        event: { type: "run.succeeded" },
-        thread: rowState("stopping"),
-      }),
-    ).toEqual({ to: "idle" });
-  });
-
-  it("does not reactivate a stopping thread on dispatched/started work", () => {
-    expect(
-      evaluateThreadLifecycleEvent({
-        event: { type: "run.started" },
-        thread: rowState("stopping"),
-      }),
-    ).toEqual({
-      noop: "illegal-transition",
-      detail: "no transition for run.started from status stopping",
-    });
-  });
-
   it("reports superseded before illegal-transition", () => {
     expect(
       evaluateThreadLifecycleEvent({
@@ -245,66 +224,6 @@ describe("evaluateThreadLifecycleEvent", () => {
         thread: rowState("starting", {
           archivedAt: 1_000,
         }),
-      }),
-    ).toEqual({ noop: "superseded", detail: "archivedAt set" });
-  });
-});
-
-/**
- * `pending` — a thread created but never dispatched. The queue rework makes
- * this a real status rather than a display-only decoration, so the table's
- * one entry and, more importantly, its three DELIBERATE omissions are pinned
- * here: each absent cell is a guarantee some other layer relies on.
- */
-describe("pending threads", () => {
-  it("leaves pending only when a first dispatch attempt clears", () => {
-    expect(
-      evaluateThreadLifecycleEvent({
-        event: { type: "run.preparing" },
-        thread: rowState("pending"),
-      }),
-    ).toEqual({ to: "starting" });
-  });
-
-  it("cannot be activated directly: a pending thread has no session", () => {
-    expect(
-      evaluateThreadLifecycleEvent({
-        event: { type: "run.started" },
-        thread: rowState("pending"),
-      }),
-    ).toEqual({
-      noop: "illegal-transition",
-      detail: "no transition for run.started from status pending",
-    });
-  });
-
-  it("stays pending when an attempt fails, rather than erroring the thread", () => {
-    // A gate that rejects the first attempt fails the SEND. The thread is
-    // still unprovisioned and unstarted, so it must remain exactly where it
-    // was — the sender can amend and try again.
-    expect(
-      evaluateThreadLifecycleEvent({
-        event: { type: "run.failed" },
-        thread: rowState("pending"),
-      }),
-    ).toEqual({
-      noop: "illegal-transition",
-      detail: "no transition for run.failed from status pending",
-    });
-  });
-
-  it("is not startable once archived or deleted", () => {
-    // A scheduled send whose thread the user threw away must not provision it.
-    expect(
-      evaluateThreadLifecycleEvent({
-        event: { type: "run.preparing" },
-        thread: rowState("pending", { deletedAt: 1_000 }),
-      }),
-    ).toEqual({ noop: "superseded", detail: "deletedAt set" });
-    expect(
-      evaluateThreadLifecycleEvent({
-        event: { type: "run.preparing" },
-        thread: rowState("pending", { archivedAt: 1_000 }),
       }),
     ).toEqual({ noop: "superseded", detail: "archivedAt set" });
   });

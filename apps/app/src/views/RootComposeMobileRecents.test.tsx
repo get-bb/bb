@@ -79,7 +79,6 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     },
     runtime: {
       displayStatus: "active",
-      hostReconnectGraceExpiresAt: null,
     },
     ...overrides,
   });
@@ -100,7 +99,6 @@ function makeIdleThread(
     status: "idle",
     runtime: {
       displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
     },
     activity: IDLE_ACTIVITY,
     ...overrides,
@@ -213,32 +211,6 @@ describe("getMobileRecentThreads", () => {
 
     expect(rows.map((row) => [row.thread.id, row.depth])).toEqual([
       ["thr_orphan", 0],
-    ]);
-  });
-
-  it("does not group worktree threads into environment rows", () => {
-    const rows = getMobileRecentThreads({
-      collapsedThreadIds: NONE,
-      draftThreadIds: NONE,
-      threads: [
-        makeThread({
-          id: "thr_wt_a",
-          environmentId: "env_1",
-          environmentProviderId: "git-worktree",
-          latestAttentionAt: 2,
-        }),
-        makeThread({
-          id: "thr_wt_b",
-          environmentId: "env_1",
-          environmentProviderId: "git-worktree",
-          latestAttentionAt: 1,
-        }),
-      ],
-    });
-
-    expect(rows.map((row) => [row.thread.id, row.depth])).toEqual([
-      ["thr_wt_a", 0],
-      ["thr_wt_b", 0],
     ]);
   });
 });
@@ -662,7 +634,6 @@ describe("mobile recent thread rows", () => {
               latestAttentionAt: 5,
               runtime: {
                 displayStatus: "idle",
-                hostReconnectGraceExpiresAt: null,
               },
               activity: {
                 activeWorkflowCount: 0,
@@ -702,33 +673,6 @@ describe("RootComposeMobileRecents", () => {
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
-  });
-
-  it("shows runtime activity before concurrent workflow activity", () => {
-    render(
-      <TestProviders>
-        <RootComposeMobileRecents
-          highlightedThreadId={null}
-          projectNamesById={new Map()}
-          providersById={new Map()}
-          showCreatingRow={false}
-          threads={[
-            makeThread({
-              activity: {
-                activeWorkflowCount: 1,
-                activeBackgroundAgentCount: 1,
-                activeBackgroundCommandCount: 1,
-                activePlanModeCount: 0,
-                activeGoalCount: 0,
-              },
-            }),
-          ]}
-        />
-      </TestProviders>,
-    );
-
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
   });
 
   it("keeps the mobile working draft state ahead of runtime activity", () => {
@@ -781,7 +725,6 @@ describe("RootComposeMobileRecents", () => {
               },
               runtime: {
                 displayStatus: "idle",
-                hostReconnectGraceExpiresAt: null,
               },
             }),
           ]}

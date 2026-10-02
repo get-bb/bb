@@ -37,6 +37,7 @@ export const PROVIDER_MODEL_CATALOG_MEMORY_ENTRY_LIMIT = 256;
 const FRESH_MS = 10 * 60_000;
 const VALIDATION_MIN_AGE_MS = 60_000;
 const FAILURE_TTL_MS = 30_000;
+const FAILURE_DETAIL_MAX_LENGTH = 300;
 const PREWARM_MIN_AGE_MS = 4 * 60 * 60_000;
 const WORKSPACE_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
@@ -55,7 +56,11 @@ type ProviderModelCatalogReadResult =
       models: AvailableModel[];
       selectedOnlyModels: AvailableModel[];
     }
-  | { kind: "error"; code: ProviderModelCatalogFailureCode };
+  | {
+      kind: "error";
+      code: ProviderModelCatalogFailureCode;
+      detail: string | null;
+    };
 
 export interface ProviderModelCatalogStore {
   read(
@@ -88,6 +93,7 @@ interface CatalogGood {
 interface CatalogFailure {
   fingerprint: string;
   code: ProviderModelCatalogFailureCode;
+  detail: string | null;
   failedAt: number;
 }
 
@@ -103,6 +109,7 @@ interface CatalogEntry {
   key: ProviderModelCatalogRowKey;
   good: CatalogGood | null;
   failure: CatalogFailure | null;
+  unavailableDetail: string | null;
   refresh: CatalogRefresh | null;
 }
 
@@ -133,6 +140,21 @@ export function toProviderModelCatalogFailureCode(
     default:
       return "failed";
   }
+}
+
+export function toProviderModelCatalogFailureDetail(
+  error: unknown,
+): string | null {
+  if (!(error instanceof ApiError)) {
+    return null;
+  }
+  const collapsed = error.body.message.replace(/\s+/g, " ").trim();
+  if (collapsed.length === 0) {
+    return null;
+  }
+  return collapsed.length > FAILURE_DETAIL_MAX_LENGTH
+    ? `${collapsed.slice(0, FAILURE_DETAIL_MAX_LENGTH - 1).trimEnd()}\u2026`
+    : collapsed;
 }
 
 function catalogFingerprint(
@@ -177,7 +199,9 @@ function pickerView(entry: CatalogEntry, fingerprint: string): string {
   if (servable !== null) {
     return `catalog:${servable.modelsJson}\0${servable.selectedOnlyModelsJson}`;
   }
-  return failure === null ? "none" : `error:${failure.code}`;
+  return failure === null
+    ? "none"
+    : `error:${failure.code}\0${failure.detail ?? ""}`;
 }
 
 function lacksRequiredModel(
@@ -225,7 +249,10 @@ function evaluate(
   if (refreshed) {
     return {
       kind: "serve",
-      result: { kind: "error", code: failure?.code ?? "failed" },
+      result:
+        failure === null
+          ? { kind: "error", code: "failed", detail: entry.unavailableDetail }
+          : { kind: "error", code: failure.code, detail: failure.detail },
       backgroundRefresh: false,
     };
   }
@@ -235,7 +262,7 @@ function evaluate(
   if (active || failure.code === "timeout") {
     return {
       kind: "serve",
-      result: { kind: "error", code: failure.code },
+      result: { kind: "error", code: failure.code, detail: failure.detail },
       backgroundRefresh: !active,
     };
   }
@@ -288,6 +315,7 @@ export function createProviderModelCatalogStore(options: {
       key,
       good: loadStoredGood(deps, key),
       failure: null,
+      unavailableDetail: null,
       refresh: null,
     };
     entries.set(mapKey, entry);
@@ -397,6 +425,7 @@ export function createProviderModelCatalogStore(options: {
         fetchedAt: refresh.markedStale ? 0 : now,
       };
       entry.failure = null;
+      entry.unavailableDetail = null;
       persistGood(deps, entry.key, entry.good);
       fields = {
         outcome: "success",
@@ -413,6 +442,7 @@ export function createProviderModelCatalogStore(options: {
         isHostUnavailableApiError(error) ||
         refresh.sessionId !== deps.hub.getDaemonSessionIdForHost(hostId)
       ) {
+        entry.unavailableDetail = toProviderModelCatalogFailureDetail(error);
         log("info", {
           outcome: "host_unavailable",
           changed: false,
@@ -428,8 +458,10 @@ export function createProviderModelCatalogStore(options: {
       entry.failure = {
         fingerprint: refresh.fingerprint,
         code: code ?? "failed",
+        detail: toProviderModelCatalogFailureDetail(error),
         failedAt: now,
       };
+      entry.unavailableDetail = null;
       level = code === null ? "error" : "warn";
       fields = { outcome: code ?? "failed", ...errorFields };
     }
@@ -558,6 +590,7 @@ export function createProviderModelCatalogStore(options: {
           entry.key.providerId === providerId
         ) {
           entry.failure = null;
+          entry.unavailableDetail = null;
         }
       }
     },
@@ -565,6 +598,7 @@ export function createProviderModelCatalogStore(options: {
     markAllStale() {
       for (const entry of entries.values()) {
         entry.failure = null;
+        entry.unavailableDetail = null;
         if (entry.good !== null) {
           entry.good.fetchedAt = 0;
         }

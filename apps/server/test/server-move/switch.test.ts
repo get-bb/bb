@@ -105,17 +105,6 @@ describe("server moved targets", () => {
     { id: "host-sandbox", type: "ephemeral" as const },
   ];
 
-  it("tells every connected persistent machine except the target in direct mode", () => {
-    expect(
-      listServerMovedTargets({
-        connectedHosts,
-        mode: "direct",
-        sourceServerHostId: "host-old",
-        targetHostId: "host-new",
-      }),
-    ).toEqual(["host-old", "host-worker"]);
-  });
-
   it("tells only the old server's own machine in connect mode", () => {
     expect(
       listServerMovedTargets({

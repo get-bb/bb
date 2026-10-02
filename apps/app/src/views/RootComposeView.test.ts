@@ -12,7 +12,6 @@ import type {
 import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
-  mergeMissingPromptDraftAttachments,
   resolveNewThreadProjectDefaultsState,
   resolveNewThreadSubmitDisabledReason,
   restorePromptDraftAfterOptionChange,
@@ -24,7 +23,8 @@ import {
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
   hasSingleUseRootComposeTargetState,
-  readSectionIdFromLocationState,
+  readNewEnvironmentHostIdFromLocationState,
+  readRootComposeEnvironmentTargetFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   shouldReplaceInitialPromptFromLocationState,
@@ -41,6 +41,7 @@ import { makeTerminalSession as makeTerminalSessionFixture } from "@/test/fixtur
 import {
   buildReuseThreadOptions,
   resolveHostEnvironmentProvider,
+  resolveNewThreadHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "./root-compose-environment-selection";
 
@@ -92,23 +93,43 @@ describe("resolveHostEnvironmentProvider", () => {
   });
 });
 
-describe("root-compose project file routing", () => {
-  it("uses a persisted opener host instead of the newly selected context", () => {
+describe("resolveNewThreadHostEnvironmentProvider", () => {
+  const checkout = makeProjectProvider("project-checkout");
+  const worktree = makeProjectProvider("git-worktree");
+
+  it("keeps the selected provider when the requested machine supports it", () => {
     expect(
-      resolveRootComposeProjectFileRouting({
-        fileOpenerSource: {
-          kind: "workspace",
-          threadId: null,
-          environmentId: null,
-          projectId: "proj_opened",
-          experimental_hostId: "host_opened",
-        },
-        selectedEnvironmentId: "env_selected",
-        selectedHostId: "host_selected",
+      resolveNewThreadHostEnvironmentProvider({
+        currentProviderId: worktree.id,
+        providers: [checkout, worktree],
       }),
-    ).toEqual({ environmentId: null, hostId: "host_opened" });
+    ).toBe(worktree);
   });
 
+  it("falls back to a usable provider and rejects a machine without one", () => {
+    const unavailableWorktree = {
+      ...worktree,
+      availability: {
+        status: "unavailable" as const,
+        message: "Not installed",
+      },
+    };
+    expect(
+      resolveNewThreadHostEnvironmentProvider({
+        currentProviderId: worktree.id,
+        providers: [checkout, unavailableWorktree],
+      }),
+    ).toBe(checkout);
+    expect(
+      resolveNewThreadHostEnvironmentProvider({
+        currentProviderId: worktree.id,
+        providers: [unavailableWorktree],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("root-compose project file routing", () => {
   it("keeps primary-host routing when a persisted opener omits a host", () => {
     expect(
       resolveRootComposeProjectFileRouting({
@@ -247,9 +268,10 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
         modelLoadError: {
           providerId: "codex",
           code: "auth_required",
+          detail: null,
         },
       },
-      "Could not load models for Codex. Authentication is required.",
+      "Could not load models for Codex. Not signed in.",
     ],
     [
       "project-default failure",
@@ -300,7 +322,11 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     expect(
       resolveNewThreadSubmitDisabledReason({
         ...readyState,
-        modelLoadError: { providerId: "claude-code", code: "timeout" },
+        modelLoadError: {
+          providerId: "claude-code",
+          code: "timeout",
+          detail: null,
+        },
       }),
     ).toBeNull();
   });
@@ -513,21 +539,6 @@ describe("shouldReplaceInitialPromptFromLocationState", () => {
   });
 });
 
-describe("readSectionIdFromLocationState", () => {
-  it("returns a trimmed section id seeded by navigation state", () => {
-    expect(readSectionIdFromLocationState({ sectionId: " sec_work " })).toBe(
-      "sec_work",
-    );
-  });
-
-  it("returns null when no usable section id is present", () => {
-    expect(readSectionIdFromLocationState(null)).toBeNull();
-    expect(readSectionIdFromLocationState({})).toBeNull();
-    expect(readSectionIdFromLocationState({ sectionId: "" })).toBeNull();
-    expect(readSectionIdFromLocationState({ sectionId: 42 })).toBeNull();
-  });
-});
-
 describe("readRootComposeSectionTargetFromLocationState", () => {
   it("returns a section target when navigation provides a section id", () => {
     expect(
@@ -547,78 +558,14 @@ describe("readRootComposeSectionTargetFromLocationState", () => {
     expect(
       readRootComposeSectionTargetFromLocationState({ sectionId: "" }),
     ).toEqual({ kind: "clear" });
+    expect(
+      readRootComposeSectionTargetFromLocationState({ sectionId: 42 }),
+    ).toEqual({ kind: "clear" });
   });
 
   it("returns null when no section target instruction is present", () => {
     expect(readRootComposeSectionTargetFromLocationState(null)).toBeNull();
     expect(readRootComposeSectionTargetFromLocationState({})).toBeNull();
-  });
-});
-
-describe("mergeMissingPromptDraftAttachments", () => {
-  it("restores attachments that disappeared during option changes", () => {
-    expect(
-      mergeMissingPromptDraftAttachments(
-        [
-          {
-            type: "localFile",
-            path: "notes.md",
-            name: "notes.md",
-            mimeType: "text/markdown",
-            sizeBytes: 32,
-          },
-        ],
-        [
-          {
-            type: "localImage",
-            path: "screenshot.png",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: 64,
-          },
-        ],
-      ),
-    ).toEqual([
-      {
-        type: "localFile",
-        path: "notes.md",
-        name: "notes.md",
-        mimeType: "text/markdown",
-        sizeBytes: 32,
-      },
-      {
-        type: "localImage",
-        path: "screenshot.png",
-        name: "screenshot.png",
-        mimeType: "image/png",
-        sizeBytes: 64,
-      },
-    ]);
-  });
-
-  it("leaves attachments alone when the preserved paths are still present", () => {
-    expect(
-      mergeMissingPromptDraftAttachments(
-        [
-          {
-            type: "localImage",
-            path: "screenshot.png",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: 64,
-          },
-        ],
-        [
-          {
-            type: "localImage",
-            path: "screenshot.png",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: 64,
-          },
-        ],
-      ),
-    ).toBeNull();
   });
 });
 
@@ -708,41 +655,54 @@ describe("restorePromptDraftAfterOptionChange", () => {
     });
   });
 
-  it("merges missing attachments without replacing new draft text", () => {
+  it("appends missing attachments without replacing new draft text or attachments", () => {
+    const notes = {
+      type: "localFile" as const,
+      path: "notes.md",
+      name: "notes.md",
+      mimeType: "text/markdown",
+      sizeBytes: 32,
+    };
+    const screenshot = {
+      type: "localImage" as const,
+      path: "screenshot.png",
+      name: "screenshot.png",
+      mimeType: "image/png",
+      sizeBytes: 64,
+    };
+
     expect(
       restorePromptDraftAfterOptionChange({
         currentDraft: {
           text: "newer text",
           mentions: [],
-          attachments: [],
+          attachments: [notes],
         },
         preservedDraft: {
           text: "older text",
           mentions: [],
-          attachments: [
-            {
-              type: "localImage",
-              path: "screenshot.png",
-              name: "screenshot.png",
-              mimeType: "image/png",
-              sizeBytes: 64,
-            },
-          ],
+          attachments: [screenshot],
         },
       }),
     ).toEqual({
       text: "newer text",
       mentions: [],
-      attachments: [
-        {
-          type: "localImage",
-          path: "screenshot.png",
-          name: "screenshot.png",
-          mimeType: "image/png",
-          sizeBytes: 64,
-        },
-      ],
+      attachments: [notes, screenshot],
     });
+    expect(
+      restorePromptDraftAfterOptionChange({
+        currentDraft: {
+          text: "newer text",
+          mentions: [],
+          attachments: [screenshot],
+        },
+        preservedDraft: {
+          text: "older text",
+          mentions: [],
+          attachments: [screenshot],
+        },
+      }),
+    ).toBeNull();
   });
 
   it("does not rewrite an unchanged draft", () => {
@@ -772,6 +732,33 @@ describe("hasSingleUseRootComposeTargetState", () => {
     expect(hasSingleUseRootComposeTargetState({ focusPrompt: true })).toBe(
       true,
     );
+  });
+
+  it("treats a machine target as single-use navigation state", () => {
+    expect(
+      hasSingleUseRootComposeTargetState({
+        newEnvironmentHostId: "host_homelab",
+      }),
+    ).toBe(true);
+    expect(
+      readNewEnvironmentHostIdFromLocationState({
+        newEnvironmentHostId: "host_homelab",
+      }),
+    ).toBe("host_homelab");
+    expect(
+      readNewEnvironmentHostIdFromLocationState({
+        newEnvironmentHostId: " ",
+      }),
+    ).toBeNull();
+  });
+
+  it("prioritizes environment reuse over a new-environment machine", () => {
+    expect(
+      readRootComposeEnvironmentTargetFromLocationState({
+        reuseEnvironmentId: "env_existing",
+        newEnvironmentHostId: "host_homelab",
+      }),
+    ).toEqual({ kind: "reuse", environmentId: "env_existing" });
   });
 
   it("ignores non-target state", () => {

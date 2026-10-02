@@ -1,16 +1,11 @@
-import { fileURLToPath } from "node:url";
-import {
-  defineWorkspaceTestConfig,
-  sharedWorkerProjects,
-} from "../../vitest.shared.js";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkspaceTestConfig({
+export default defineConfig({
+  resolve: { tsconfigPaths: true },
   test: {
     silent: "passed-only",
-    projects: sharedWorkerProjects({
-      pkgDir: fileURLToPath(new URL(".", import.meta.url)),
-      name: "bb-plugin-environment-modal-sandbox",
-      include: ["**/*.test.ts", "**/*.test.tsx"],
-    }),
+    name: "bb-plugin-environment-modal-sandbox",
+    include: ["**/*.test.ts", "**/*.test.tsx"],
+    exclude: ["dist/**", "node_modules/**"],
   },
 });

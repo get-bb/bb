@@ -1,5 +1,6 @@
 import type {
   ComposerCustomization,
+  PluginComposerScope,
   PluginComposerThreadRowStatus,
 } from "@get-bb/plugin-sdk";
 
@@ -182,13 +183,13 @@ function parseContributionArray<T extends { id: string }>(
   value: unknown,
   onRejected: RejectionReporter,
   parse: (entryKind: string, value: unknown) => T,
+  seenIds = new Set<string>(),
 ): readonly T[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
     onRejected(`${kind}: must be an array when set`);
     return undefined;
   }
-  const seenIds = new Set<string>();
   const parsed: T[] = [];
   for (const [index, entry] of value.entries()) {
     const entryKind = `${kind}[${index}]`;
@@ -203,13 +204,52 @@ function parseContributionArray<T extends { id: string }>(
   return parsed;
 }
 
+type ComposerMenuItem = NonNullable<ComposerCustomization["plusMenu"]>[number];
+
+function parseMenuItem(entryKind: string, value: unknown): ComposerMenuItem {
+  const entry = value as Record<string, unknown> | null;
+  const id = requireSlotId(entryKind, entry?.id);
+  const icon = requireOptionalString(entryKind, "icon", entry?.icon);
+  const description = requireOptionalString(
+    entryKind,
+    "description",
+    entry?.description,
+  );
+  const disabled = entry?.disabled;
+  if (
+    disabled !== undefined &&
+    typeof disabled !== "boolean" &&
+    typeof disabled !== "function"
+  ) {
+    throw new Error(
+      `${entryKind}: "disabled" must be a boolean or function when set`,
+    );
+  }
+  return {
+    id,
+    label: requireNonEmptyString(entryKind, "label", entry?.label),
+    ...(icon !== undefined ? { icon } : {}),
+    ...(description !== undefined ? { description } : {}),
+    ...(disabled !== undefined
+      ? { disabled: disabled as NonNullable<ComposerMenuItem["disabled"]> }
+      : {}),
+    run: requireFunction<ComposerMenuItem["run"]>(entryKind, "run", entry?.run),
+  };
+}
+
 function parseRegions(
   kind: string,
   registration: Record<string, unknown>,
   onRejected: RejectionReporter,
+  seenPopupIds: Set<string>,
 ): Pick<
   ComposerCustomization,
-  "actions" | "banners" | "plusMenu" | "richText"
+  | "actions"
+  | "banners"
+  | "plusMenu"
+  | "sendMenu"
+  | "richText"
+  | "experimental_popups"
 > {
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
@@ -237,50 +277,34 @@ function parseRegions(
       component: requireComponent(entryKind, entry?.component),
     };
   });
-  const plusMenu = parseContributionArray<
-    NonNullable<ComposerCustomization["plusMenu"]>[number]
-  >(
+  const plusMenu = parseContributionArray<ComposerMenuItem>(
     `${kind}.plusMenu`,
     registration.plusMenu,
     onRejected,
+    parseMenuItem,
+  );
+  const sendMenu = parseContributionArray<ComposerMenuItem>(
+    `${kind}.sendMenu`,
+    registration.sendMenu,
+    onRejected,
+    parseMenuItem,
+  );
+
+  const popups = parseContributionArray<
+    NonNullable<ComposerCustomization["experimental_popups"]>[number]
+  >(
+    `${kind}.experimental_popups`,
+    registration.experimental_popups,
+    onRejected,
     (entryKind, value) => {
       const entry = value as Record<string, unknown> | null;
-      const id = requireSlotId(entryKind, entry?.id);
-      const icon = requireOptionalString(entryKind, "icon", entry?.icon);
-      const description = requireOptionalString(
-        entryKind,
-        "description",
-        entry?.description,
-      );
-      const disabled = entry?.disabled;
-      if (
-        disabled !== undefined &&
-        typeof disabled !== "boolean" &&
-        typeof disabled !== "function"
-      ) {
-        throw new Error(
-          `${entryKind}: "disabled" must be a boolean or function when set`,
-        );
-      }
       return {
-        id,
+        id: requireSlotId(entryKind, entry?.id),
         label: requireNonEmptyString(entryKind, "label", entry?.label),
-        ...(icon !== undefined ? { icon } : {}),
-        ...(description !== undefined ? { description } : {}),
-        ...(disabled !== undefined
-          ? {
-              disabled: disabled as NonNullable<
-                NonNullable<
-                  ComposerCustomization["plusMenu"]
-                >[number]["disabled"]
-              >,
-            }
-          : {}),
-        run: requireFunction<
-          NonNullable<ComposerCustomization["plusMenu"]>[number]["run"]
-        >(entryKind, "run", entry?.run),
+        component: requireComponent(entryKind, entry?.component),
       };
     },
+    seenPopupIds,
   );
 
   let richText: ComposerCustomization["richText"];
@@ -337,7 +361,9 @@ function parseRegions(
     ...(actions !== undefined ? { actions } : {}),
     ...(banners !== undefined ? { banners } : {}),
     ...(plusMenu !== undefined ? { plusMenu } : {}),
+    ...(sendMenu !== undefined ? { sendMenu } : {}),
     ...(richText !== undefined ? { richText } : {}),
+    ...(popups !== undefined ? { experimental_popups: popups } : {}),
   };
 }
 
@@ -349,6 +375,7 @@ export function collectComposerCustomization(
   registration: unknown,
   seenIds: Set<string>,
   onRejected: RejectionReporter,
+  seenPopupIds = new Set<string>(),
 ): ComposerCustomization | null {
   const kind = "composer.customize";
   try {
@@ -375,8 +402,15 @@ export function collectComposerCustomization(
     requireUniqueId(kind, seenIds, id);
     return {
       id,
-      ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
-      ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected),
+      ...(scopes !== undefined
+        ? {
+            scopes: (scopes as string[]).filter(
+              (scope): scope is PluginComposerScope["kind"] =>
+                scope !== "side-chat",
+            ),
+          }
+        : {}),
+      ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected, seenPopupIds),
     };
   } catch (error) {
     onRejected(error instanceof Error ? error.message : String(error));

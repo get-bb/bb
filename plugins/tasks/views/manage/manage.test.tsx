@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
-import { makeTask } from "../../test-fixtures.js";
+import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
@@ -34,8 +34,12 @@ const app = await loadPluginApp(() => import("../../app"));
 const { derivePrefix } = await import("./shared.js");
 const { describePresetEnvironment, savePresetDraft } =
   await import("./preset-dialog.js");
+const { NEW_TASK_DRAFT_STORAGE_KEY } = await import("./new-task-draft.js");
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 const TASK_ID = "01HZZZZZZZZZZZZZZZZZZZZZT1";
@@ -82,6 +86,87 @@ describe("derivePrefix", () => {
 describe("NewTaskDialog", () => {
   it.each([
     {
+      field: "Project",
+      option: "Personal",
+      expected: { projectId: "01HZZZZZZZZZZZZZZZZZZZZZP2" },
+    },
+    {
+      field: "Status",
+      option: "In Progress",
+      expected: { status: "in_progress" },
+    },
+    { field: "Priority", option: "High", expected: { priority: "high" } },
+  ])(
+    "keeps the compact task form accessible while choosing $field",
+    async ({ field, option: optionName, expected }) => {
+      const media = vi
+        .spyOn(window, "matchMedia")
+        .mockImplementation((query) => ({
+          matches: query === "(max-width: 767px)",
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        }));
+      const otherProject = {
+        ...project,
+        id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+        name: "Personal",
+        prefix: "HOME",
+      };
+      const createCalls: Array<Record<string, unknown>> = [];
+      try {
+        const slot = renderSlot(
+          app.navPanels[0]!,
+          { subPath: PROJECT_ID },
+          {
+            rpc: {
+              listProjects: () => ({ projects: [project, otherProject] }),
+              listFolders: () => ({ folders: [] }),
+              listPresets: () => ({ presets: [] }),
+              sidebarSummary: () => ({ projects: [] }),
+              listTasks: () => ({ tasks: [] }),
+              listLabels: () => ({ labels: [] }),
+              createTask: (raw: unknown) => {
+                const input = rpcInput(raw);
+                createCalls.push(input);
+                return { ok: true, task: createdTask(input) };
+              },
+            },
+          },
+        );
+        fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+        const title = await slot.findByLabelText("Task title");
+        fireEvent.change(title, { target: { value: "Keep this draft open" } });
+        fireEvent.click(slot.getByLabelText(field));
+        const option = await slot.findByRole("option", { name: optionName });
+        expect(title.closest('[aria-hidden="true"], [inert]')).toBeNull();
+        fireEvent.click(option);
+        await waitFor(() =>
+          expect(
+            slot
+              .getByRole("textbox", { name: "Task title" })
+              .getAttribute("value"),
+          ).toBe("Keep this draft open"),
+        );
+        fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+        await waitFor(() => expect(createCalls).toHaveLength(1));
+        expect(createCalls[0]).toMatchObject({
+          title: "Keep this draft open",
+          ...expected,
+        });
+      } finally {
+        cleanup();
+        media.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    {
       name: "Ctrl+Enter in title",
       field: "Task title",
       ctrlKey: true,
@@ -118,7 +203,8 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (raw: unknown) => {
+            const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -152,7 +238,8 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (raw: unknown) => {
+            const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -196,7 +283,8 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (raw: unknown) => {
+            const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -268,7 +356,8 @@ describe("NewTaskDialog", () => {
               },
             ],
           }),
-          createLabel: (input: Record<string, unknown>) => {
+          createLabel: (raw: unknown) => {
+            const input = rpcInput(raw);
             createLabelCalls.push(input);
             return {
               label: {
@@ -299,6 +388,221 @@ describe("NewTaskDialog", () => {
       projectId: PROJECT_ID,
       name: "dank",
     });
+  });
+});
+
+describe("NewTaskDialog drafts", () => {
+  function draftRpc(createCalls: Array<Record<string, unknown>>) {
+    return {
+      listProjects: () => ({ projects: [project] }),
+      listFolders: () => ({ folders: [] }),
+      listPresets: () => ({ presets: [] }),
+      sidebarSummary: () => ({ projects: [] }),
+      listTasks: () => ({ tasks: [] }),
+      listLabels: () => ({ labels: [] }),
+      createTask: (raw: unknown) => {
+        const input = rpcInput(raw);
+        createCalls.push(input);
+        return { ok: true, task: createdTask(input) };
+      },
+    };
+  }
+
+  async function reopen(slot: ReturnType<typeof renderSlot>) {
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(slot.queryByLabelText("Task title")).toBeNull());
+    fireEvent.click(slot.getAllByRole("button", { name: /New task/ })[0]!);
+    return (await slot.findByLabelText("Task title")) as HTMLInputElement;
+  }
+
+  it("restores an unsaved draft after the dialog is dismissed", async () => {
+    const createCalls: Array<Record<string, unknown>> = [];
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: draftRpc(createCalls) },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await slot.findByLabelText("Task title"), {
+      target: { value: "Twenty minutes of drafting" },
+    });
+
+    const title = await reopen(slot);
+    expect(title.value).toBe("Twenty minutes of drafting");
+
+    fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+    await waitFor(() => expect(createCalls).toHaveLength(1));
+    expect(createCalls[0]).toMatchObject({
+      title: "Twenty minutes of drafting",
+    });
+    expect(window.localStorage.getItem(NEW_TASK_DRAFT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps the default project and labels when reopened from another project", async () => {
+    const createCalls: Array<Record<string, unknown>> = [];
+    const otherProject = {
+      ...project,
+      id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+      name: "Personal",
+      prefix: "HOME",
+    };
+    const label = {
+      id: "01HZZZZZZZZZZZZZZZZZZZZZL1",
+      projectId: PROJECT_ID,
+      name: "Automation",
+      color: "blue",
+    };
+    const rpc = {
+      ...draftRpc(createCalls),
+      listProjects: () => ({ projects: [project, otherProject] }),
+      listLabels: (raw: unknown) => ({
+        labels: rpcInput(raw).projectId === PROJECT_ID ? [label] : [],
+      }),
+    };
+    const initial = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
+    fireEvent.click(await initial.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await initial.findByLabelText("Task title"), {
+      target: { value: "Preserve my project" },
+    });
+    fireEvent.click(initial.getByRole("button", { name: "Labels" }));
+    fireEvent.click(await initial.findByRole("option", { name: "Automation" }));
+    initial.unmount();
+    const restored = renderSlot(
+      app.navPanels[0]!,
+      { subPath: otherProject.id },
+      { rpc },
+    );
+    fireEvent.click(await restored.findByRole("button", { name: /New task/ }));
+    await restored.findByLabelText("Task title");
+    fireEvent.click(restored.getByRole("button", { name: "Create task" }));
+    await waitFor(() => expect(createCalls).toHaveLength(1));
+    expect(createCalls[0]).toMatchObject({
+      projectId: PROJECT_ID,
+      labelIds: [label.id],
+      title: "Preserve my project",
+    });
+  });
+
+  it("persists the default project when projects load after typing begins", async () => {
+    let resolveProjects: (value: {
+      projects: (typeof project)[];
+    }) => void = () => {};
+    const projects = new Promise<{ projects: (typeof project)[] }>(
+      (resolve) => {
+        resolveProjects = resolve;
+      },
+    );
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: {
+          ...draftRpc([]),
+          listProjects: () => projects,
+        },
+      },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await slot.findByLabelText("Task title"), {
+      target: { value: "Started before projects loaded" },
+    });
+    resolveProjects({ projects: [project] });
+    await waitFor(() =>
+      expect(
+        JSON.parse(window.localStorage.getItem(NEW_TASK_DRAFT_STORAGE_KEY)!),
+      ).toMatchObject({
+        projectId: PROJECT_ID,
+        title: "Started before projects loaded",
+      }),
+    );
+  });
+
+  it.each(["project", "label"])(
+    "drops a restored label when its %s was deleted",
+    async (removed) => {
+      const createCalls: Array<Record<string, unknown>> = [];
+      const otherProject = {
+        ...project,
+        id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+        name: "Personal",
+        prefix: "HOME",
+      };
+      window.localStorage.setItem(
+        NEW_TASK_DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          version: 1,
+          projectId: PROJECT_ID,
+          title: "Recovered draft",
+          description: "Keep this body",
+          status: "todo",
+          priority: "none",
+          labelIds: ["01HZZZZZZZZZZZZZZZZZZZZZL1"],
+          dueDate: "",
+        }),
+      );
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: otherProject.id },
+        {
+          rpc: {
+            ...draftRpc(createCalls),
+            listProjects: () => ({
+              projects:
+                removed === "project"
+                  ? [otherProject]
+                  : [project, otherProject],
+            }),
+          },
+        },
+      );
+      fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+      await slot.findByLabelText("Task title");
+      fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+      await waitFor(() => expect(createCalls).toHaveLength(1));
+      expect(createCalls[0]).toMatchObject({
+        projectId: removed === "project" ? otherProject.id : PROJECT_ID,
+        labelIds: [],
+        title: "Recovered draft",
+        description: "Keep this body",
+      });
+    },
+  );
+
+  it("starts empty after Discard draft", async () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: draftRpc([]) },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await slot.findByLabelText("Task title"), {
+      target: { value: "Throwaway" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Discard draft" }));
+    expect((slot.getByLabelText("Task title") as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(slot.queryByRole("button", { name: "Discard draft" })).toBeNull();
+
+    const title = await reopen(slot);
+    expect(title.value).toBe("");
+  });
+
+  it("ignores a stored draft whose shape does not match", async () => {
+    window.localStorage.setItem(
+      NEW_TASK_DRAFT_STORAGE_KEY,
+      JSON.stringify({ version: 1, title: "Partial", status: "nope" }),
+    );
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      { rpc: draftRpc([]) },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    const title = (await slot.findByLabelText(
+      "Task title",
+    )) as HTMLInputElement;
+    expect(title.value).toBe("");
   });
 });
 
@@ -351,9 +655,9 @@ describe("NewTaskDialog attachments", () => {
     sidebarSummary: () => ({ projects: [] }),
     listTasks: () => ({ tasks: [] }),
     listLabels: () => ({ labels: [] }),
-    createTask: (input: Record<string, unknown>) => ({
+    createTask: (input: unknown) => ({
       ok: true,
-      task: createdTask(input),
+      task: createdTask(rpcInput(input)),
     }),
   });
 
@@ -779,7 +1083,8 @@ describe("PresetDialog environment section", () => {
   it("saves the host picker's provider, model, reasoning, and tier together", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const slot = renderManagePresets([presetRow()], {
-      updatePreset: (input: Record<string, unknown>) => {
+      updatePreset: (raw: unknown) => {
+        const input = rpcInput(raw);
         updates.push(input);
         return { preset: { ...presetRow(), ...input } };
       },
@@ -904,10 +1209,8 @@ describe("Manage folders", () => {
 
     await slot.findByText("Checking what the folder contains…");
     expect(slot.queryByText(/The folder is empty/)).toBeNull();
-    const confirm = slot.getByRole<HTMLButtonElement>("button", {
-      name: "Delete folder",
-    });
-    expect(confirm.disabled).toBe(true);
+    const confirm = slot.getByRole("button", { name: "Delete folder" });
+    expect(confirm).toHaveProperty("disabled", true);
     fireEvent.click(confirm);
     expect(deleteCalls).toHaveLength(0);
 
@@ -917,9 +1220,8 @@ describe("Manage folders", () => {
     );
     await waitFor(() =>
       expect(
-        slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
-          .disabled,
-      ).toBe(false),
+        slot.getByRole("button", { name: "Delete folder" }),
+      ).toHaveProperty("disabled", false),
     );
     fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
     await waitFor(() => expect(deleteCalls).toHaveLength(1));
@@ -938,10 +1240,10 @@ describe("Manage folders", () => {
     await slot.findByText(
       "Could not load the folder's contents: projects unavailable",
     );
-    expect(
-      slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
-        .disabled,
-    ).toBe(true);
+    expect(slot.getByRole("button", { name: "Delete folder" })).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
 
   it("blocks deleting on stale rows after a refresh fails", async () => {
@@ -977,10 +1279,8 @@ describe("Manage folders", () => {
       "Could not load the folder's contents: projects unavailable",
     );
     expect(slot.queryByText(/move to the top level/)).toBeNull();
-    const confirm = slot.getByRole<HTMLButtonElement>("button", {
-      name: "Delete folder",
-    });
-    expect(confirm.disabled).toBe(true);
+    const confirm = slot.getByRole("button", { name: "Delete folder" });
+    expect(confirm).toHaveProperty("disabled", true);
     fireEvent.click(confirm);
     expect(deleteCalls).toHaveLength(0);
   });

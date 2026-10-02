@@ -126,6 +126,7 @@ function buildProviderProcessExitDetail(
 export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
+  shellEnvGeneration: number;
   skillCatalogHash: string | null;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   retainedSkillCatalogHashes: Set<string>;
@@ -174,7 +175,6 @@ export interface RuntimeManagerOptions {
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
-  providerInstallationGateTtlMs?: number;
   providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   applyMachineEnvironment?: (
@@ -261,6 +261,7 @@ export class RuntimeManager {
   private readonly hostWatcher;
   private readonly provisionWorkspace;
   private baseShellEnv;
+  private shellEnvGeneration = 0;
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
   private readonly pendingCatalogHashes = new Map<string, string>();
@@ -297,9 +298,7 @@ export class RuntimeManager {
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
     this.providerInstallationGate = createProviderInstallationGate({
-      ttlMs:
-        options.providerInstallationGateTtlMs ??
-        PROVIDER_INSTALLATION_GATE_TTL_MS,
+      ttlMs: PROVIDER_INSTALLATION_GATE_TTL_MS,
     });
     this.ensureDataDirSkillsWatcher();
   }
@@ -560,6 +559,7 @@ export class RuntimeManager {
     }
 
     this.baseShellEnv = { ...shellEnv };
+    this.shellEnvGeneration += 1;
     this.providerInstallationGate.clear();
     await this.shutdownProviderMaintenanceRuntime();
     await this.evictIdleRuntimeEntries();
@@ -690,6 +690,19 @@ export class RuntimeManager {
   private async ensureCompatibleEntry(
     args: EnsureCompatibleEntryArgs,
   ): Promise<RuntimeEntry | null> {
+    if (
+      args.entry.shellEnvGeneration !== this.shellEnvGeneration &&
+      !this.entryHasActiveRuntimeWork(args.entry) &&
+      !this.hasInFlightThreadCommand(args.entry, args.targetThreadId)
+    ) {
+      this.entries.delete(args.entry.environmentId);
+      await args.entry.runtime.shutdown();
+      await this.cleanupUnusedInjectedSkillStagingDirs(
+        args.skillConfig ? [args.skillConfig.catalogHash] : [],
+      );
+      return null;
+    }
+
     if (
       args.skillConfig === null ||
       args.entry.skillCatalogHash === args.skillConfig.catalogHash ||
@@ -1178,6 +1191,7 @@ export class RuntimeManager {
     });
     let runtime: AgentRuntime | null = null;
     const shellEnv = this.getShellEnv();
+    const shellEnvGeneration = this.shellEnvGeneration;
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath: workspace.path,
@@ -1238,6 +1252,7 @@ export class RuntimeManager {
     return {
       environmentId: args.environmentId,
       runtime,
+      shellEnvGeneration,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
       skillRoots: args.skillConfig?.skillRoots ?? [],
       retainedSkillCatalogHashes: new Set(

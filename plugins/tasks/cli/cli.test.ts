@@ -270,6 +270,52 @@ describe("bb tasks CLI", () => {
     await harness.dispose();
   });
 
+  it("moves a task to another project and still resolves its old key", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    for (const [name, prefix] of [
+      ["Operations", "OPS"],
+      ["Home", "HOME"],
+    ]) {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          name!,
+          "--prefix",
+          prefix!,
+        ]),
+      );
+    }
+    stdout(
+      await harness.runCli(["create", "--project", "OPS", "--title", "Wander"]),
+    );
+
+    expect(
+      stdout(await harness.runCli(["move", "ops-1", "--project", "home"])),
+    ).toBe("Moved OPS-1 to HOME-1  Wander");
+    expect(
+      JSON.parse(stdout(await harness.runCli(["show", "OPS-1", "--json"]))),
+    ).toMatchObject({ task: { key: "HOME-1" } });
+    expect(
+      JSON.parse(
+        stdout(
+          await harness.runCli([
+            "move",
+            "OPS-1",
+            "--project",
+            "HOME",
+            "--json",
+          ]),
+        ),
+      ),
+    ).toMatchObject({ task: { key: "HOME-1" }, previousKey: "HOME-1" });
+
+    await harness.dispose();
+  });
+
   it("assigns and promotes task parents by key or ID with stable JSON output", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     await plugin(bb);
@@ -993,7 +1039,7 @@ describe("bb tasks CLI", () => {
           "--reasoning",
           "high",
           "--service-tier",
-          "fast",
+          "none",
           "--permission",
           "accept-edits",
           "--environment",
@@ -1013,7 +1059,7 @@ describe("bb tasks CLI", () => {
       providerId: "codex",
       modelId: "gpt-5.6-sol",
       reasoningLevel: "high",
-      serviceTier: "fast",
+      serviceTier: "none",
       permissionMode: "accept-edits",
       environmentKind: "new-worktree",
       baseBranch: "main",
@@ -1026,7 +1072,7 @@ describe("bb tasks CLI", () => {
     expect(shown).toContain("Environment   worktree");
     expect(shown).toContain("Base branch   main");
     expect(shown).toContain("Machine       host_air");
-    expect(shown).toContain("Service tier  fast");
+    expect(shown).toContain("Service tier  none");
 
     const updated = JSON.parse(
       stdout(
@@ -1036,8 +1082,7 @@ describe("bb tasks CLI", () => {
           "CLI worker",
           "--reasoning",
           "ultra",
-          "--service-tier",
-          "none",
+          "--clear-service-tier",
           "--name",
           "CLI reviewer",
           "--environment",

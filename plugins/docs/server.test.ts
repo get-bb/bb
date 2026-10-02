@@ -2,14 +2,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
-import { defineRpcContract } from "@get-bb/plugin-sdk";
-import type { PluginRpcClient, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeHostResponse,
 } from "@get-bb/plugin-sdk/testing";
-import simpleNotes, { docsRpcContract } from "./server";
+import simpleNotes from "./server";
 
 const temporaryDirectories: string[] = [];
 
@@ -270,71 +268,7 @@ async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
   };
 }
 
-type DocsRpcHandlers = PluginRpcHandlers<typeof docsRpcContract>;
-
-function assertDocsFrontendInference(
-  client: PluginRpcClient<typeof docsRpcContract>,
-) {
-  expectTypeOf(
-    client.call("saveNote", {
-      vaultId: "personal",
-      path: "plan.md",
-      content: "# Plan",
-      expectedSha256: "sha",
-    }),
-  ).toEqualTypeOf<
-    Promise<
-      | { outcome: "written"; sha256: string; sizeBytes: number }
-      | { outcome: "conflict"; currentSha256: string | null }
-    >
-  >();
-
-  // @ts-expect-error saveNote requires string content.
-  void client.call("saveNote", { path: "plan.md", content: 42 });
-  // @ts-expect-error createVault requires an absolute-path candidate.
-  void client.call("createVault", { name: "Work" });
-}
-
 describe("Docs RPC contract", () => {
-  it("infers parsed handler inputs and frontend results", () => {
-    expectTypeOf<Parameters<DocsRpcHandlers["openFile"]>[0]>().toEqualTypeOf<{
-      source: {
-        kind: "workspace" | "host" | "thread-storage";
-        threadId: string | null;
-        environmentId: string | null;
-        projectId: string | null;
-        experimental_hostId?: string;
-      };
-      path: string;
-    }>();
-    expectTypeOf(assertDocsFrontendInference).toBeFunction();
-  });
-
-  it("rejects invalid method inputs and outputs at runtime", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "docs-contract" });
-    const contract = defineRpcContract({
-      saveNote: docsRpcContract.saveNote,
-    });
-    bb.rpc.register(contract, {
-      saveNote(): { outcome: "written"; sha256: string; sizeBytes: number } {
-        return { outcome: "written", sha256: "sha", sizeBytes: -1 };
-      },
-    });
-
-    await expect(
-      harness.callRpc("saveNote", { path: "plan.md", content: 42 }),
-    ).rejects.toMatchObject({ code: "invalid_input" });
-    await expect(
-      harness.callRpc("saveNote", {
-        path: "../outside.md",
-        content: "# Outside",
-      }),
-    ).rejects.toMatchObject({ code: "invalid_input" });
-    await expect(
-      harness.callRpc("saveNote", { path: "plan.md", content: "# Plan" }),
-    ).rejects.toMatchObject({ code: "invalid_output" });
-  });
-
   it("returns HTTP 400 envelopes for invalid JSON and request input", async () => {
     const { harness } = await loadNotebook({ "plan.md": "# Plan" });
 
@@ -360,6 +294,19 @@ describe("Docs RPC contract", () => {
         issues: [{ path: ["path"] }],
       },
     });
+
+    const invalidContent = await harness.fetchHttp("POST", "/write", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "plan.md", content: 42 }),
+    });
+    expect(invalidContent.status).toBe(400);
+    await expect(invalidContent.json()).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "invalid_input",
+        issues: [{ path: ["content"] }],
+      },
+    });
   });
 });
 
@@ -375,6 +322,139 @@ async function waitForSignal(
 }
 
 describe("Docs mention provider", () => {
+  it("shares note reads across overlapping searches and subsequent keystrokes", async () => {
+    const { harness } = await loadNotebook({
+      "roadmap.md": "# Product Roadmap\n\nQuarterly priorities",
+      "meeting.md": "# Standup\n\nLaunch checklist",
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+    const search = (query: string) =>
+      provider.search({ trigger: "@", query, projectId: null, threadId: null });
+
+    const [roadmap, meeting] = await Promise.all([
+      search("roadmap"),
+      search("launch"),
+    ]);
+    expect(roadmap.map((item) => item.title)).toEqual(["Product Roadmap"]);
+    expect(meeting.map((item) => item.title)).toEqual(["Standup"]);
+    expect(await search("quarterly")).toEqual(roadmap);
+    expect(harness.sdk.callsTo("files.listPaths")).toHaveLength(1);
+    expect(harness.sdk.callsTo("files.read")).toHaveLength(2);
+  });
+
+  it("refreshes cached mentions after saves, moves, deletions, and external edits", async () => {
+    const { harness, setUtf8 } = await loadVirtualSyncVault({
+      "/vault/plan.md": {
+        content: "# Original",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+    const search = () =>
+      provider.search({
+        trigger: "@",
+        query: "",
+        projectId: null,
+        threadId: null,
+      });
+    expect(await search()).toMatchObject([{ title: "Original" }]);
+    await harness.callRpc("saveNote", { path: "plan.md", content: "# Saved" });
+    expect(await search()).toMatchObject([{ title: "Saved" }]);
+    await harness.callRpc("saveOpenedFile", {
+      source: {
+        kind: "host",
+        threadId: null,
+        projectId: null,
+        environmentId: null,
+      },
+      path: "/vault/plan.md",
+      content: "# Edited in file opener",
+    });
+    expect(await search()).toMatchObject([{ title: "Edited in file opener" }]);
+    await harness.callRpc("movePath", { from: "plan.md", to: "renamed.md" });
+    expect(await search()).toMatchObject([{ id: "personal:renamed.md" }]);
+
+    setUtf8("/vault/renamed.md", "# External edit");
+    expect(await provider.resolve("personal:renamed.md")).toMatchObject({
+      context: expect.stringContaining("# External edit"),
+    });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 10_001);
+    try {
+      expect(await search()).toMatchObject([{ title: "External edit" }]);
+    } finally {
+      clock.mockRestore();
+    }
+    await harness.callRpc("deletePath", { path: "renamed.md" });
+    expect(await search()).toEqual([]);
+  });
+
+  it("retries a failed vault scan instead of caching the failure", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+    const listPaths = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Host offline"))
+      .mockResolvedValue({
+        paths: [
+          {
+            kind: "file",
+            path: "plan.md",
+            name: "plan.md",
+            score: 0,
+            positions: [],
+          },
+        ],
+        truncated: false,
+      });
+    harness.sdk.stub("files.listPaths", listPaths);
+    const provider = harness.registrations.mentionProviders[0]!;
+    const context = {
+      trigger: "@" as const,
+      query: "plan",
+      projectId: null,
+      threadId: null,
+    };
+    await expect(provider.search(context)).rejects.toThrow("Host offline");
+    expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
+    expect(listPaths).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds parallel summary reads while preserving tied result order", async () => {
+    const { harness } = await loadNotebook(
+      Object.fromEntries(
+        Array.from({ length: 20 }, (_, i) => [`plan-${i}.md`, "# Plan"]),
+      ),
+    );
+    let active = 0;
+    let peak = 0;
+    harness.sdk.stub("files.read", async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active--;
+      return {
+        path: "/plan.md",
+        content: "# Plan",
+        contentEncoding: "utf8",
+        sizeBytes: 6,
+        modifiedAtMs: 1,
+        sha256: "test-sha",
+      };
+    });
+    const rows = await harness.registrations.mentionProviders[0]!.search({
+      trigger: "@",
+      query: "plan",
+      projectId: null,
+      threadId: null,
+    });
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(rows.map((row) => row.id)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `personal:plan-${i}.md`),
+    );
+  });
+
   it("searches note titles, previews, and filenames", async () => {
     const { harness } = await loadNotebook({
       "roadmap.md": "# Product Roadmap\n\nQuarterly priorities",
@@ -629,14 +709,6 @@ describe("Docs vault operations", () => {
       }),
     ).resolves.toEqual({ path: "brand-new-title.md" });
     expect(harness.sdk.callsTo("files.move")).toHaveLength(1);
-  });
-
-  it("registers the agent-discoverable Docs CLI", async () => {
-    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
-    expect(harness.registrations.cli).toMatchObject({
-      name: "docs",
-      summary: "Discover and safely sync Docs vaults",
-    });
   });
 
   it("round-trips a folder edit through pull and push without changing binary assets", async () => {
@@ -1009,12 +1081,6 @@ describe("Docs vault operations", () => {
     expect(noCommand.exitCode).toBe(2);
     expect(noCommand.stdout).toContain("bb docs <command> [options]");
 
-    const unknownCommand = await harness.runCli(["pul", "plan.md"]);
-    expect(unknownCommand.exitCode).toBe(2);
-    expect(unknownCommand.stderr).toContain(
-      "unknown command 'pul' (Did you mean pull?)",
-    );
-
     const strayArgument = await harness.runCli(["vaults", "personal"]);
     expect(strayArgument.exitCode).toBe(2);
     expect(strayArgument.stderr).toContain("unexpected argument 'personal'");
@@ -1038,13 +1104,6 @@ describe("Docs vault operations", () => {
     expect(combined.exitCode).toBe(2);
     expect(combined.stderr).toContain("--all and --folder cannot be combined");
     expect(files.has("/work/sync/plan.md")).toBe(false);
-
-    for (const argv of [["push", "--help"], ["remove", "-h"], ["help"]]) {
-      const commandHelp = await harness.runCli(argv);
-      expect(commandHelp.exitCode).toBe(0);
-      expect(commandHelp.stderr).toBe("");
-      expect(commandHelp.stdout).toContain("Usage:");
-    }
   });
 
   it("keeps CLI removal non-recursive unless --recursive is passed", async () => {
@@ -1525,7 +1584,22 @@ describe("Docs vault operations", () => {
       if (!notifyChange) {
         throw new Error("Expected vault watcher callback");
       }
+      const provider = harness.registrations.mentionProviders[0]!;
+      const context = {
+        trigger: "@" as const,
+        query: "",
+        projectId: null,
+        threadId: null,
+      };
+      expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
+      await writeFile(
+        path.join(temporaryDirectories[0]!, "plan.md"),
+        "# Updated",
+      );
       notifyChange();
+      expect(await provider.search(context)).toMatchObject([
+        { title: "Updated" },
+      ]);
       await waitForSignal(
         () =>
           harness.realtimeSignals.some(

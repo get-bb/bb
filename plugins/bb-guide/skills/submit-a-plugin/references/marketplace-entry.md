@@ -8,7 +8,9 @@ marketplace repository.
 ## Create the entry
 
 Create entries/<plugin-id>.json. The filename, entry ID, and plugin manifest ID
-must match.
+must match. The marketplace rejects IDs that start with bb-- and the IDs of
+plugins bundled with BB, which are listed in reserved-plugin-ids.json. Rename the
+package if its ID is taken.
 
 The schema rejects an unknown field. The permitted fields are id, displayName,
 description, icon, tags, author, source, category, screenshots, and overview. The

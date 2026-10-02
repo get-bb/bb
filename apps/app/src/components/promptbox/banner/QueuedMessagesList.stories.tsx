@@ -10,10 +10,8 @@ import {
   applyQueuedMessageReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
-import {
-  QueuedMessagesList,
-  type QueuedMessageGroupBoundaryRequest,
-} from "@/components/promptbox/banner/QueuedMessagesList";
+import type { QueuedMessageGroupBoundaryRequest } from "@/components/promptbox/banner/LazyQueuedMessagesList";
+import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {

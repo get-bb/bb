@@ -1,6 +1,7 @@
 export type PostBlock =
   | { kind: "paragraph"; text: string }
   | { kind: "heading"; text: string }
+  | { kind: "subheading"; text: string }
   | { kind: "list"; items: string[] }
   | {
       kind: "image";
@@ -10,6 +11,7 @@ export type PostBlock =
       caption?: string;
     }
   | { kind: "quote"; lines: string[] }
+  | { kind: "video"; src: string; poster: string; caption: string }
   | { kind: "tweet"; href: string; id: string };
 
 export type Post = {
@@ -75,6 +77,7 @@ const LINKED_IMAGE_RE = /^\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)$/;
 const CAPTION_RE = /^\*(.+)\*$/;
 const TWEET_RE =
   /^tweet:(https:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[A-Za-z0-9_]+\/status\/(\d+)(?:\?.*)?)$/;
+const VIDEO_RE = /^video:([^|]+)\|([^|]+)\|(.+)$/;
 
 function parseImage(
   line: string,
@@ -150,6 +153,12 @@ export function parsePost(slug: string, source: string): Post {
       continue;
     }
 
+    if (line.startsWith("### ")) {
+      flushAll();
+      blocks.push({ kind: "subheading", text: line.slice(4) });
+      continue;
+    }
+
     if (line.startsWith("## ")) {
       flushAll();
       blocks.push({ kind: "heading", text: line.slice(3) });
@@ -160,6 +169,18 @@ export function parsePost(slug: string, source: string): Post {
     if (tweet) {
       flushAll();
       blocks.push({ kind: "tweet", href: tweet[1], id: tweet[2] });
+      continue;
+    }
+
+    const video = VIDEO_RE.exec(line);
+    if (video && isRenderableHref(video[1]) && isRenderableHref(video[2])) {
+      flushAll();
+      blocks.push({
+        kind: "video",
+        src: video[1],
+        poster: video[2],
+        caption: video[3],
+      });
       continue;
     }
 

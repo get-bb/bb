@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   collectLogLines,
-  getHelpOutput,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -363,21 +362,5 @@ describe("bb skill commands", () => {
     expect(vi.mocked(console.log)).toHaveBeenCalledWith(
       JSON.stringify({ skill: { ...entry, stars: 27_053 }, detail }, null, 2),
     );
-  });
-
-  it("documents the installed and registry lifecycle", async () => {
-    const help = await getHelpOutput(["skill"], register);
-    for (const command of [
-      "list",
-      "show",
-      "files",
-      "update",
-      "delete",
-      "search",
-      "registry",
-      "install",
-    ]) {
-      expect(help).toContain(command);
-    }
   });
 });

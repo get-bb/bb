@@ -49,9 +49,24 @@ interface OptionalServerFieldGroup {
   reason: string;
 }
 
-const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 45;
+const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 46;
 
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
+  {
+    reason:
+      "Older parent notices have no per-child outcomes. New notices omit interruption details for completed, failed, or unclassified turns; a recorded host-connection-loss cause is optional even when the interruption reason is known.",
+    fields: [
+      "threadTimelineResponseSchema.delta.upsertRows.systemMessageSubject.outcomes",
+      "threadTimelineResponseSchema.delta.upsertRows.systemMessageSubject.outcomes.interruption",
+      "threadTimelineResponseSchema.delta.upsertRows.systemMessageSubject.outcomes.interruption.cause",
+      "threadTimelineResponseSchema.rows.systemMessageSubject.outcomes",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.systemMessageSubject.outcomes",
+      "threadTimelineResponseSchema.rows.systemMessageSubject.outcomes.interruption",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.systemMessageSubject.outcomes.interruption",
+      "threadTimelineResponseSchema.rows.systemMessageSubject.outcomes.interruption.cause",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.systemMessageSubject.outcomes.interruption.cause",
+    ],
+  },
   {
     reason:
       "A submitted plugin form leaves on its row only what the plugin's describeSubmission returned, and the whole description is absent when the plugin declares no describeSubmission or when that call throws or times out. Within one, an absent title means the presentation's completed label stands, an absent detail means the title is the whole row, and an absent payload means the row renders without handing anything to the plugin's own timeline renderer. bb never stores the form's payload or the submitted value, so these fields are the entire record of what happened.",
@@ -117,6 +132,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.activeWorkflows.presentation",
       "threadTimelineResponseSchema.delta.upsertRows.presentation",
       "threadTimelineResponseSchema.rows.presentation",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation",
     ],
   },
   {
@@ -149,10 +165,15 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.delta.upsertRows.presentation.tint",
       "threadTimelineResponseSchema.delta.upsertRows.presentation.title",
       "threadTimelineResponseSchema.rows.presentation.badge",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation.badge",
       "threadTimelineResponseSchema.rows.presentation.detail",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation.detail",
       "threadTimelineResponseSchema.rows.presentation.suppress",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation.suppress",
       "threadTimelineResponseSchema.rows.presentation.tint",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation.tint",
       "threadTimelineResponseSchema.rows.presentation.title",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation.title",
     ],
   },
   {
@@ -166,8 +187,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.delta.upsertRows.questions.options.description",
       "threadTimelineResponseSchema.delta.upsertRows.questions.shortLabel",
       "threadTimelineResponseSchema.rows.questions.options",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.options",
       "threadTimelineResponseSchema.rows.questions.options.description",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.options.description",
       "threadTimelineResponseSchema.rows.questions.shortLabel",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.shortLabel",
     ],
   },
   {
@@ -217,19 +241,33 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.tokens",
       "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.toolCalls",
       "threadTimelineResponseSchema.rows.workflow.agents.agentType",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.agentType",
       "threadTimelineResponseSchema.rows.workflow.agents.durationMs",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.durationMs",
       "threadTimelineResponseSchema.rows.workflow.agents.error",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.error",
       "threadTimelineResponseSchema.rows.workflow.agents.isolation",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.isolation",
       "threadTimelineResponseSchema.rows.workflow.agents.lastToolName",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.lastToolName",
       "threadTimelineResponseSchema.rows.workflow.agents.lastToolSummary",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.lastToolSummary",
       "threadTimelineResponseSchema.rows.workflow.agents.phaseIndex",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.phaseIndex",
       "threadTimelineResponseSchema.rows.workflow.agents.phaseTitle",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.phaseTitle",
       "threadTimelineResponseSchema.rows.workflow.agents.promptPreview",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.promptPreview",
       "threadTimelineResponseSchema.rows.workflow.agents.queuedAt",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.queuedAt",
       "threadTimelineResponseSchema.rows.workflow.agents.resultPreview",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.resultPreview",
       "threadTimelineResponseSchema.rows.workflow.agents.startedAt",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.startedAt",
       "threadTimelineResponseSchema.rows.workflow.agents.tokens",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.tokens",
       "threadTimelineResponseSchema.rows.workflow.agents.toolCalls",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.toolCalls",
     ],
   },
   {
@@ -240,6 +278,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.activeWorkflows.workflow.phases.kind",
       "threadTimelineResponseSchema.delta.upsertRows.workflow.phases.kind",
       "threadTimelineResponseSchema.rows.workflow.phases.kind",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.phases.kind",
     ],
   },
   {
@@ -248,6 +287,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadTimelineResponseSchema.delta.upsertRows.outputPreview",
       "threadTimelineResponseSchema.rows.outputPreview",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.outputPreview",
     ],
   },
   {
@@ -256,6 +296,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadTimelineResponseSchema.delta.upsertRows.reasoningId",
       "threadTimelineResponseSchema.rows.reasoningId",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.reasoningId",
     ],
   },
   {
@@ -264,6 +305,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadTimelineResponseSchema.delta.upsertRows.steps.status",
       "threadTimelineResponseSchema.rows.steps.status",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.steps.status",
     ],
   },
   {
@@ -278,10 +320,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Timeline snapshot fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content.",
+      "Timeline snapshot fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content; older row updates only appear when a latest page omits rows that changed inside its window.",
     fields: [
       "threadTimelineResponseSchema.timelinePage.contentPage",
       "threadTimelineResponseSchema.timelinePage.historySnapshot",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates",
       "threadTimelineResponseSchema.timelinePage.olderRowsSourceSeqEnd",
       "timelineTurnSummaryDetailsQuerySchema.beforeCursor",
     ],
@@ -366,6 +409,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
       "createThreadRequestSchema.sectionId",
+      "createThreadRequestSchema.pinned",
       "createThreadRequestSchema.model",
       "createThreadRequestSchema.parentThreadId",
       "createThreadRequestSchema.providerId",
@@ -502,6 +546,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadListQuerySchema.archived",
       "threadListQuerySchema.environmentId",
+      "threadListQuerySchema.hostId",
       "threadListQuerySchema.sectionId",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
@@ -1206,7 +1251,6 @@ describe("server-contract canonical schemas", () => {
           updatedAt: 2,
           runtime: {
             displayStatus: "idle",
-            hostReconnectGraceExpiresAt: null,
           },
           activity: {
             activeWorkflowCount: 0,
@@ -1422,12 +1466,19 @@ describe("server-contract canonical schemas", () => {
       }),
     ).toThrow("Project path must be an absolute path.");
 
+    expect(
+      contract.updateProjectSourceRequestSchema.parse({
+        type: "local_path",
+        path: " c:/Users/michael/bb/ ",
+      }),
+    ).toMatchObject({ path: "C:\\Users\\michael\\bb" });
+
     expect(() =>
       contract.updateProjectSourceRequestSchema.parse({
         type: "local_path",
-        path: " C:\\Users\\michael\\bb\\ ",
+        path: "\\\\server\\share\\bb",
       }),
-    ).toThrow("Native Windows paths are not supported");
+    ).toThrow("Windows network paths are not supported");
 
     expect(() =>
       contract.updateProjectSourceRequestSchema.parse({
@@ -1939,12 +1990,6 @@ describe("server-contract clients", () => {
       }).pathname,
     ).toBe("/api/v1/projects/proj_123/paths");
     expect(
-      publicClient.projects[":id"].files.content.$url({
-        param: { id: "proj_123" },
-        query: { path: "src/app.ts" },
-      }).pathname,
-    ).toBe("/api/v1/projects/proj_123/files/content");
-    expect(
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
         query: {
@@ -1973,38 +2018,6 @@ describe("server-contract clients", () => {
         },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/thread-storage/paths");
-    expect(
-      publicClient.threads[":id"]["thread-storage"].content.$url({
-        param: { id: "thr_123" },
-        query: { path: "notes/plan.md" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/thread-storage/content");
-    expect(
-      publicClient.threads[":id"]["host-files"].content.$url({
-        param: { id: "thr_123" },
-        query: { path: "/Users/me/notes/plan.md" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/host-files/content");
-    expect(
-      publicClient.threads[":id"]["thread-storage"].files[":filePath{.+}"].$url(
-        {
-          param: { id: "thr_123", filePath: "reports/a%20b/preview.html" },
-        },
-      ).pathname,
-    ).toBe(
-      "/api/v1/threads/thr_123/thread-storage/files/reports/a%20b/preview.html",
-    );
-    expect(
-      publicClient.threads[":id"].worktree.files[":filePath{.+}"].$url({
-        param: { id: "thr_123", filePath: "public/report.html" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/worktree/files/public/report.html");
-    expect(
-      publicClient.threads[":id"].files.raw.$url({
-        param: { id: "thr_123" },
-        query: { path: "/Users/me/report.html" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/files/raw");
     expect(
       publicClient.threads[":id"].interactions.$url({
         param: { id: "thr_123" },
@@ -2039,11 +2052,6 @@ describe("server-contract clients", () => {
     expect(() =>
       contract.threadStorageFilesQuerySchema.parse({ query: longQuery }),
     ).toThrow();
-    expect(
-      contract.threadHostFileContentQuerySchema.parse({
-        path: "/Users/me/notes/plan.md",
-      }),
-    ).toEqual({ path: "/Users/me/notes/plan.md" });
   });
 
   it("keeps project command catalog queries snapshot-only", () => {

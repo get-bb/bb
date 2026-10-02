@@ -56,6 +56,7 @@ beforeEach(() => {
     appUrl: "https://getbb.app",
     serverUrlTemplate: "https://{label}.getbb.app",
     closeTunnel,
+    tunnelConnected: null,
   };
 });
 
@@ -521,122 +522,228 @@ describe("getAccountState (adaptive single / multi)", () => {
   });
 });
 
-describe("server-authenticated machine-code round trip", () => {
-  it("mints for the credential's exact server and redeems one durable bbcm_ token", async () => {
+describe("getAccountState with tunnel objects as the liveness source", () => {
+  it("reports servers and labelled machines online from their tunnel objects, not from last_seen_at", async () => {
     seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const target = await createServer(deps, "u1", "sawyer-desktop");
-    if (!("ok" in target)) throw new Error("server setup failed");
-    const serverCredential = "bbcred_server_owned";
+    await createServer(deps, "u1", "sawyer-desktop");
+    await createServer(deps, "u1", "sawyer-unpaired");
+    const stale = new Date(Date.now() - 60 * 60 * 1000);
+    const fresh = new Date();
     db.update(server)
-      .set({
-        credentialHash: await sha256Hex(serverCredential),
-        revokedAt: null,
-      })
-      .where(eq(server.id, target.server.id))
+      .set({ credentialHash: "hash", revokedAt: null, lastSeenAt: stale })
+      .where(eq(server.subdomain, "sawyer"))
       .run();
-
-    const minted = await createMachineCodeForServerCredential(
-      deps,
-      serverCredential,
-    );
-    if ("status" in minted) throw new Error(minted.error);
-    expect(minted.serverUrl).toBe("https://sawyer-desktop.getbb.app");
-
-    expect(
-      await lookupMachineCodeForServerCredential(
-        deps,
-        serverCredential,
-        minted.code,
-      ),
-    ).toEqual({ consumed: false, machineId: null });
-    const redeemed = await redeemMachineCode(deps, minted.code);
-    if ("error" in redeemed) throw new Error(redeemed.error);
-    expect(
-      await lookupMachineCodeForServerCredential(
-        deps,
-        serverCredential,
-        minted.code,
-      ),
-    ).toEqual({ consumed: true, machineId: redeemed.machineId });
-    expect(
-      await lookupMachineCodeForServerCredential(deps, "bogus", minted.code),
-    ).toMatchObject({ status: 401 });
-    const other = await createServer(deps, "u1", "sawyer-other");
-    if (!("ok" in other)) throw new Error("server setup failed");
     db.update(server)
-      .set({ credentialHash: await sha256Hex("bbcred_other") })
-      .where(eq(server.id, other.server.id))
+      .set({ credentialHash: "hash-2", revokedAt: null, lastSeenAt: fresh })
+      .where(eq(server.subdomain, "sawyer-desktop"))
       .run();
-    expect(
-      await lookupMachineCodeForServerCredential(
-        deps,
-        "bbcred_other",
-        minted.code,
-      ),
-    ).toMatchObject({ status: 404 });
-    expect(redeemed.credential.startsWith("bbcm_")).toBe(true);
-    expect(redeemed.serverUrl).toBe("https://sawyer-desktop.getbb.app");
-    expect(db.select().from(machine).all()).toHaveLength(1);
-    await expect(
-      revokeMachineForServerCredential(
-        deps,
-        serverCredential,
-        redeemed.machineId,
-      ),
-    ).resolves.toEqual({ ok: true });
-    expect(
-      db.select().from(machine).where(eq(machine.id, redeemed.machineId)).get()
-        ?.revokedAt,
-    ).not.toBeNull();
-    const revokedAt = db.select().from(machine).get()?.revokedAt;
-    for (const token of [serverCredential, "bbcred_other"]) {
-      await expect(
-        revokeMachineForServerCredential(deps, token, redeemed.machineId),
-      ).resolves.toEqual({ ok: true });
-    }
-    expect(db.select().from(machine).get()?.revokedAt).toEqual(revokedAt);
-    await expect(
-      revokeMachineForServerCredential(deps, serverCredential, "missing"),
-    ).resolves.toEqual({ error: "not-found", status: 404 });
-    seedUser("foreign");
     db.insert(machine)
-      .values({
-        id: "foreign-device",
-        userId: "foreign",
-        credentialHash: "foreign-hash",
-        createdAt: new Date(),
-        revokedAt: new Date(),
-      })
+      .values([
+        {
+          id: "machine-tunnel",
+          userId: "u1",
+          subdomain: "air",
+          credentialHash: "hash-air",
+          lastSeenAt: stale,
+          createdAt: new Date(1),
+        },
+        {
+          id: "machine-requests",
+          userId: "u1",
+          credentialHash: "hash-requests",
+          lastSeenAt: fresh,
+          createdAt: new Date(2),
+        },
+        {
+          id: "machine-gone",
+          userId: "u1",
+          subdomain: "gone",
+          credentialHash: "hash-gone",
+          lastSeenAt: stale,
+          createdAt: new Date(3),
+        },
+      ])
       .run();
-    await expect(
-      revokeMachineForServerCredential(
-        deps,
-        serverCredential,
-        "foreign-device",
-      ),
-    ).resolves.toEqual({ error: "not-found", status: 404 });
-    for (const token of ["", "bogus"]) {
-      await expect(
-        revokeMachineForServerCredential(deps, token, redeemed.machineId),
-      ).resolves.toEqual({ error: "unauthorized", status: 401 });
+    const machineRoutingKeys = Object.fromEntries(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.kind, "machine"))
+        .all()
+        .map((claim) => [claim.label, `${claim.label}:${claim.generation}`]),
+    );
+    const airKey = machineRoutingKeys.air;
+    const goneKey = machineRoutingKeys.gone;
+    if (airKey === undefined || goneKey === undefined) {
+      throw new Error("expected label claims for both labelled machines");
     }
-    db.update(server)
-      .set({ revokedAt: new Date() })
-      .where(eq(server.id, target.server.id))
-      .run();
-    await expect(
-      revokeMachineForServerCredential(
+    const asked: string[] = [];
+    const answers: Record<string, boolean> = {
+      sawyer: true,
+      "sawyer-desktop": false,
+      [airKey]: true,
+      [goneKey]: false,
+    };
+
+    const state = await getAccountState(
+      {
+        ...deps,
+        tunnelConnected: async (routingKey) => {
+          asked.push(routingKey);
+          return answers[routingKey] ?? null;
+        },
+      },
+      "u1",
+    );
+
+    expect(
+      Object.fromEntries(state.servers.map((s) => [s.subdomain, s.online])),
+    ).toEqual({
+      sawyer: true,
+      "sawyer-desktop": false,
+      "sawyer-unpaired": false,
+    });
+    expect(
+      Object.fromEntries(state.machines.map((m) => [m.id, m.online])),
+    ).toEqual({
+      "machine-tunnel": true,
+      "machine-requests": true,
+      "machine-gone": false,
+    });
+    expect(asked.sort()).toEqual(
+      [airKey, goneKey, "sawyer", "sawyer-desktop"].sort(),
+    );
+  });
+});
+
+describe("server-authenticated machine-code round trip", () => {
+  it.each(["Pixel 9 Pro", null])(
+    "mints for the exact server and redeems a device named %s",
+    async (deviceName) => {
+      seedUser("u1");
+      await claimHandle(deps, "u1", "sawyer");
+      const target = await createServer(deps, "u1", "sawyer-desktop");
+      if (!("ok" in target)) throw new Error("server setup failed");
+      const serverCredential = "bbcred_server_owned";
+      db.update(server)
+        .set({
+          credentialHash: await sha256Hex(serverCredential),
+          revokedAt: null,
+        })
+        .where(eq(server.id, target.server.id))
+        .run();
+
+      const minted = await createMachineCodeForServerCredential(
         deps,
         serverCredential,
-        redeemed.machineId,
-      ),
-    ).resolves.toEqual({ error: "unauthorized", status: 401 });
-    await expect(redeemMachineCode(deps, minted.code)).resolves.toMatchObject({
-      error: "already-used",
-      status: 409,
-    });
-  });
+      );
+      if ("status" in minted) throw new Error(minted.error);
+      expect(minted.serverUrl).toBe("https://sawyer-desktop.getbb.app");
+
+      expect(
+        await lookupMachineCodeForServerCredential(
+          deps,
+          serverCredential,
+          minted.code,
+        ),
+      ).toEqual({ consumed: false, machineId: null });
+      const redeemed = await redeemMachineCode(deps, minted.code, deviceName);
+      if ("error" in redeemed) throw new Error(redeemed.error);
+      expect(
+        await lookupMachineCodeForServerCredential(
+          deps,
+          serverCredential,
+          minted.code,
+        ),
+      ).toEqual({ consumed: true, machineId: redeemed.machineId });
+      expect(
+        await lookupMachineCodeForServerCredential(deps, "bogus", minted.code),
+      ).toMatchObject({ status: 401 });
+      const other = await createServer(deps, "u1", "sawyer-other");
+      if (!("ok" in other)) throw new Error("server setup failed");
+      db.update(server)
+        .set({ credentialHash: await sha256Hex("bbcred_other") })
+        .where(eq(server.id, other.server.id))
+        .run();
+      expect(
+        await lookupMachineCodeForServerCredential(
+          deps,
+          "bbcred_other",
+          minted.code,
+        ),
+      ).toMatchObject({ status: 404 });
+      expect(redeemed.credential.startsWith("bbcm_")).toBe(true);
+      expect(redeemed.serverUrl).toBe("https://sawyer-desktop.getbb.app");
+      expect(db.select().from(machine).all()).toHaveLength(1);
+      expect((await getAccountState(deps, "u1")).machines).toEqual([
+        expect.objectContaining({ id: redeemed.machineId, name: deviceName }),
+      ]);
+      await expect(
+        revokeMachineForServerCredential(
+          deps,
+          serverCredential,
+          redeemed.machineId,
+        ),
+      ).resolves.toEqual({ ok: true });
+      expect(
+        db
+          .select()
+          .from(machine)
+          .where(eq(machine.id, redeemed.machineId))
+          .get()?.revokedAt,
+      ).not.toBeNull();
+      const revokedAt = db.select().from(machine).get()?.revokedAt;
+      for (const token of [serverCredential, "bbcred_other"]) {
+        await expect(
+          revokeMachineForServerCredential(deps, token, redeemed.machineId),
+        ).resolves.toEqual({ ok: true });
+      }
+      expect(db.select().from(machine).get()?.revokedAt).toEqual(revokedAt);
+      await expect(
+        revokeMachineForServerCredential(deps, serverCredential, "missing"),
+      ).resolves.toEqual({ error: "not-found", status: 404 });
+      seedUser("foreign");
+      db.insert(machine)
+        .values({
+          id: "foreign-device",
+          userId: "foreign",
+          credentialHash: "foreign-hash",
+          createdAt: new Date(),
+          revokedAt: new Date(),
+        })
+        .run();
+      await expect(
+        revokeMachineForServerCredential(
+          deps,
+          serverCredential,
+          "foreign-device",
+        ),
+      ).resolves.toEqual({ error: "not-found", status: 404 });
+      for (const token of ["", "bogus"]) {
+        await expect(
+          revokeMachineForServerCredential(deps, token, redeemed.machineId),
+        ).resolves.toEqual({ error: "unauthorized", status: 401 });
+      }
+      db.update(server)
+        .set({ revokedAt: new Date() })
+        .where(eq(server.id, target.server.id))
+        .run();
+      await expect(
+        revokeMachineForServerCredential(
+          deps,
+          serverCredential,
+          redeemed.machineId,
+        ),
+      ).resolves.toEqual({ error: "unauthorized", status: 401 });
+      await expect(
+        redeemMachineCode(deps, minted.code, null),
+      ).resolves.toMatchObject({
+        error: "already-used",
+        status: 409,
+      });
+    },
+  );
 
   it("rejects a bogus server credential", async () => {
     seedUser("u1");

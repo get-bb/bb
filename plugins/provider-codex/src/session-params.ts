@@ -486,7 +486,7 @@ export function gitWritableRootsForWorkspace(
   return [...new Set(writableRoots)];
 }
 
-export function combineWorkspaceWriteRoots(
+function combineWorkspaceWriteRoots(
   roots: readonly string[],
   additionalRoots: readonly string[],
 ): string[] {
@@ -544,11 +544,11 @@ export function toCodexPermissionSettings(
 
 export function toCodexServiceTier(
   tier: ServiceTier | undefined,
-): "fast" | null | undefined {
+): string | null | undefined {
   return tier === "default" ? null : tier;
 }
 
-export function toCodexReasoningEffort(
+function toCodexReasoningEffort(
   reasoningLevel: ReasoningLevel,
 ): CodexReasoningEffort {
   const codexEffort = mapBbReasoningLevelToCodex(reasoningLevel);

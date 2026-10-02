@@ -18,11 +18,9 @@ import {
 } from "@bb/connect-db";
 
 import {
-  createDesktopSessionCookie,
   listAccountServers,
-  resolveAccountUserId,
+  resolveAccount,
   revokeServerCredential,
-  verifyDesktopSessionCookie,
   verifyServerCredential,
 } from "./servers.js";
 import {
@@ -93,30 +91,6 @@ function seedServer(over: {
     .run();
 }
 
-describe("desktop session cookie", () => {
-  it("round-trips account identity until expiry and rejects tampering", async () => {
-    const expiresAt = now.getTime() + 60_000;
-    const cookie = await createDesktopSessionCookie(
-      "acct-a",
-      "test-secret",
-      expiresAt,
-    );
-    await expect(
-      verifyDesktopSessionCookie(cookie, "test-secret", now.getTime()),
-    ).resolves.toBe("acct-a");
-    await expect(
-      verifyDesktopSessionCookie(cookie, "test-secret", expiresAt),
-    ).resolves.toBeNull();
-    await expect(
-      verifyDesktopSessionCookie(
-        `${cookie.slice(0, -1)}x`,
-        "test-secret",
-        now.getTime(),
-      ),
-    ).resolves.toBeNull();
-  });
-});
-
 describe("listAccountServers", () => {
   it("returns only the authenticated account's rows with live from last_seen_at", async () => {
     seedUser("acct-a");
@@ -155,6 +129,67 @@ describe("listAccountServers", () => {
     );
     expect(listed).toHaveLength(2);
     expect(listed.find((s) => s.handle === "other")).toBeUndefined();
+  });
+
+  it("takes live from each paired server's tunnel object when a lookup is given, and the timestamp when it is unknown", async () => {
+    seedUser("acct-a");
+    const liveAt = new Date(now.getTime() - 30_000);
+    const staleAt = new Date(now.getTime() - SERVER_OFFLINE_AFTER_MS - 1_000);
+    seedServer({
+      id: "s1",
+      userId: "acct-a",
+      name: "connected",
+      subdomain: "connected",
+      lastSeenAt: staleAt,
+    });
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "dropped",
+      subdomain: "dropped",
+      lastSeenAt: liveAt,
+    });
+    seedServer({
+      id: "s3",
+      userId: "acct-a",
+      name: "unknown",
+      subdomain: "unknown",
+      lastSeenAt: liveAt,
+    });
+    seedServer({
+      id: "s4",
+      userId: "acct-a",
+      name: "revoked",
+      subdomain: "revoked-box",
+      revokedAt: new Date(now.getTime() - 5_000),
+      lastSeenAt: liveAt,
+    });
+    const asked: string[] = [];
+    const answers: Record<string, boolean | null> = {
+      connected: true,
+      dropped: false,
+      unknown: null,
+    };
+
+    const listed = await listAccountServers(
+      db,
+      "acct-a",
+      now.getTime(),
+      async (routingKey) => {
+        asked.push(routingKey);
+        return answers[routingKey] ?? null;
+      },
+    );
+
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        { handle: "connected", name: "connected", live: true },
+        { handle: "dropped", name: "dropped", live: false },
+        { handle: "unknown", name: "unknown", live: true },
+        { handle: "revoked-box", name: "revoked", live: false },
+      ]),
+    );
+    expect(asked.sort()).toEqual(["connected", "dropped", "unknown"]);
   });
 
   it("falls back name to handle and treats unpaired/revoked as not live", async () => {
@@ -196,7 +231,7 @@ describe("listAccountServers", () => {
   });
 });
 
-describe("verifyServerCredential / resolveAccountUserId", () => {
+describe("verifyServerCredential / resolveAccount", () => {
   it("authenticates a non-revoked server tunnel credential to its owner", async () => {
     seedUser("acct-a");
     const plaintext = "bbcred_server_secret";
@@ -289,21 +324,27 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
     const req = new Request("https://sawyer.getbb.app/api/connect/servers", {
       headers: { "x-bb-connect-machine": machinePlain },
     });
-    const userId = await resolveAccountUserId(
+    const account = await resolveAccount(
       req,
       "secret",
       db,
       SECURE_SESSION_COOKIE,
     );
-    expect(userId).toBe("acct-a");
-    const listed = await listAccountServers(db, userId!, now.getTime());
+    expect(account).toEqual({
+      userId: "acct-a",
+      grant: {
+        kind: "machine",
+        credentialHash: await sha256Hex(machinePlain),
+      },
+    });
+    const listed = await listAccountServers(db, account!.userId, now.getTime());
     expect(listed.map((s) => s.handle)).toEqual(["sawyer"]);
   });
 
   it("returns null (unauthorized) when no credential or session is presented", async () => {
     const req = new Request("https://sawyer.getbb.app/api/connect/servers");
     expect(
-      await resolveAccountUserId(req, "secret", db, SECURE_SESSION_COOKIE),
+      await resolveAccount(req, "secret", db, SECURE_SESSION_COOKIE),
     ).toBeNull();
   });
 
@@ -343,8 +384,11 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
       },
     });
     expect(
-      await resolveAccountUserId(req, secret, db, SECURE_SESSION_COOKIE),
-    ).toBe("acct-a");
+      await resolveAccount(req, secret, db, SECURE_SESSION_COOKIE),
+    ).toEqual({
+      userId: "acct-a",
+      grant: { kind: "session", sessionId: "sess1" },
+    });
 
     const localRequest = new Request(
       "http://sawyer.bb.localhost:8787/api/connect/servers",
@@ -353,12 +397,14 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
       },
     );
     expect(
-      await resolveAccountUserId(
-        localRequest,
-        secret,
-        db,
-        "better-auth.session_token",
-      ),
+      (
+        await resolveAccount(
+          localRequest,
+          secret,
+          db,
+          "better-auth.session_token",
+        )
+      )?.userId,
     ).toBe("acct-a");
   });
 });

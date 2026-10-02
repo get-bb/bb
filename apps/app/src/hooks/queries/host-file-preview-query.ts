@@ -1,12 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { decodeBase64Bytes, encodeBase64Bytes } from "@/lib/base64-bytes";
-import { sdk } from "@/lib/sdk";
-import {
-  buildFilePreview,
-  isHtmlFilePreviewPath,
-  normalizeFilePreviewMimeType,
-  type FilePreview,
-} from "@bb/client-core";
+import { loadFilePreview } from "@/lib/api";
+import { buildHostFileContentUrl } from "@/lib/file-content-urls";
+import type { FilePreview } from "@bb/client-core";
 import type { QueryOptions } from "./query-helpers";
 import { hostFilePreviewQueryKey } from "./query-keys";
 import { HEAVY_PAYLOAD_QUERY_POLICY } from "./query-policies";
@@ -44,23 +39,6 @@ const HOST_MEDIA_PREVIEW_TYPES = new Map<string, HostMediaPreviewType>([
   [".wmv", { kind: "video", mimeType: "video/x-ms-wmv" }],
 ]);
 
-function splitAbsoluteHostFilePath(path: string): {
-  name: string;
-  rootPath: string;
-} {
-  const lastSeparatorIndex = Math.max(
-    path.lastIndexOf("/"),
-    path.lastIndexOf("\\"),
-  );
-  const name = path.slice(lastSeparatorIndex + 1);
-  let rootPath = path.slice(0, lastSeparatorIndex);
-  if (lastSeparatorIndex === 0) rootPath = "/";
-  if (/^[A-Za-z]:$/u.test(rootPath)) {
-    rootPath = `${rootPath}${path[lastSeparatorIndex] ?? "\\"}`;
-  }
-  return { name, rootPath };
-}
-
 function getHostMediaPreviewType(name: string): HostMediaPreviewType | null {
   const extensionIndex = name.lastIndexOf(".");
   if (extensionIndex <= 0) return null;
@@ -85,54 +63,13 @@ export function useHostFilePreview(
       if (activeHostId === null || activePath === null) {
         throw new Error("Host file preview target is incomplete");
       }
-      const { name, rootPath } = splitAbsoluteHostFilePath(activePath);
-      const previewLease = await sdk.files
-        .createPreview({ hostId: activeHostId, rootPath, signal })
-        .catch(() => null);
-      signal.throwIfAborted();
-      const previewUrl =
-        previewLease === null
-          ? null
-          : `${previewLease.baseUrl}/${encodeURIComponent(name)}`;
+      const name = activePath.split(/[\\/]/u).at(-1) ?? activePath;
+      const url = buildHostFileContentUrl(activeHostId, activePath);
       const mediaPreviewType = getHostMediaPreviewType(name);
-      if (previewUrl !== null && mediaPreviewType !== null) {
-        return { ...mediaPreviewType, name, path: activePath, url: previewUrl };
+      if (mediaPreviewType !== null) {
+        return { ...mediaPreviewType, name, path: activePath, url };
       }
-
-      const response = await sdk.files.read({
-        hostId: activeHostId,
-        path: activePath,
-        signal,
-      });
-      const contentBytes =
-        response.contentEncoding === "base64"
-          ? decodeBase64Bytes(response.content)
-          : new TextEncoder().encode(response.content);
-      const mimeType = normalizeFilePreviewMimeType(response.mimeType ?? null);
-      const preview = buildFilePreview({
-        contentBytes,
-        mimeType,
-        name,
-        path: activePath,
-        url: previewUrl ?? activePath,
-      });
-      if (
-        previewUrl !== null ||
-        (preview.kind !== "image" &&
-          preview.kind !== "video" &&
-          !isHtmlFilePreviewPath(activePath))
-      ) {
-        return preview;
-      }
-
-      const base64Content =
-        response.contentEncoding === "base64"
-          ? response.content
-          : encodeBase64Bytes(contentBytes);
-      return {
-        ...preview,
-        url: `data:${mimeType};base64,${base64Content}`,
-      };
+      return loadFilePreview({ name, path: activePath, url }, signal);
     },
     enabled,
     staleTime: 30_000,

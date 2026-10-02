@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
 import type {
   ThreadEvent,
   ThreadEventBackgroundTaskItem,
   ThreadEventItem,
-} from "@bb/domain";
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   TURN_1,
   TURN_2,
@@ -13,6 +12,8 @@ import {
   loadSessionFixture,
   spawningToolUseFor,
   spawningToolUseMessage,
+  threadScope,
+  turnScope,
 } from "./delta-test-harness.js";
 
 const PROGRESS_THROTTLE_MS = 500;
@@ -455,26 +456,6 @@ describe("claude-code background task translation", () => {
     });
   });
 
-  it("settles open tasks as interrupted when the thread detaches (process exit)", () => {
-    const harness = createClaudeDeltaHarness();
-    const context = { threadId: "bb-thread-1" };
-
-    harness.translate(
-      spawningToolUseFor(loadFixture("task-started-workflow.json")),
-      context,
-    );
-    harness.translate(loadFixture("task-started-workflow.json"), context);
-
-    const events = harness.settleSession("bb-thread-1");
-    const completed = events.filter(
-      (event) => event.type === "item/backgroundTask/completed",
-    );
-    expect(completed).toHaveLength(1);
-    expect(backgroundTaskItem(completed[0]!).status).toBe("interrupted");
-
-    expect(harness.settleSession("bb-thread-other")).toEqual([]);
-  });
-
   it("preserves the parent link when a settled Claude task restarts", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
@@ -913,57 +894,6 @@ describe("claude-code background task translation", () => {
         }),
       );
     }
-  });
-
-  it("completes the turn while a workflow keeps running, leaving the task open", () => {
-    const harness = createClaudeDeltaHarness();
-    const context = { threadId: "bb-thread-workflow" };
-    harness.translate(
-      {
-        type: "assistant",
-        message: {
-          role: "assistant",
-          content: [{ type: "text", text: "started the workflow" }],
-        },
-        session_id: "sess-1",
-      },
-      context,
-    );
-    harness.translate(
-      spawningToolUseFor(loadFixture("task-started-workflow.json")),
-      context,
-    );
-    const started = harness.translate(
-      loadFixture("task-started-workflow.json"),
-      context,
-    );
-
-    const events = harness.translate(
-      {
-        type: "result",
-        subtype: "end_turn",
-        session_id: "sess-1",
-      },
-      context,
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(TURN_1),
-        status: "completed",
-      }),
-    );
-    expect(started).toContainEqual(
-      expect.objectContaining({
-        type: "item/started",
-        item: expect.objectContaining({
-          type: "backgroundTask",
-          taskType: "local_workflow",
-          status: "pending",
-        }),
-      }),
-    );
   });
 
   it("opens a fresh turn when a settled workflow reinvokes the model", () => {

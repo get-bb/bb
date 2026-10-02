@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   fetchOAuthRefresh,
+  parseOAuthRefreshResponse,
   TransientOAuthRefreshError,
 } from "./provider-adapter.js";
 
@@ -56,6 +58,8 @@ describe("OAuth refresh transport", () => {
   it.each([
     { status: 400, transient: false },
     { status: 401, transient: false },
+    { status: 403, transient: true },
+    { status: 404, transient: true },
     { status: 408, transient: true },
     { status: 429, transient: true },
     { status: 500, transient: true },
@@ -111,6 +115,18 @@ describe("OAuth refresh transport", () => {
         { refresh_token: "refresh" },
       );
       await expect(refresh).rejects.toBeInstanceOf(TransientOAuthRefreshError);
+    },
+  );
+
+  it.each(["<html>Service unavailable</html>", '{"token_type":"bearer"}'])(
+    "classifies an unreadable successful refresh body as transient: %s",
+    (text) => {
+      expect(() =>
+        parseOAuthRefreshResponse(
+          text,
+          z.object({ access_token: z.string().min(1) }),
+        ),
+      ).toThrow(TransientOAuthRefreshError);
     },
   );
 

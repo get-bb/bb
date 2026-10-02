@@ -8,7 +8,7 @@ import { TASK_SORTS, type TaskSort } from "../../shared/pagination.js";
 import { EMPTY_FILTERS, type ListFilterState } from "./filter-bar.js";
 
 export const LIST_PREFERENCE_STORAGE_KEY = "bb-tasks:list-preferences";
-export const LIST_PREFERENCE_VERSION = 1 as const;
+const LIST_PREFERENCE_VERSION = 1 as const;
 
 type ListPreferenceScope = "all" | "active" | `project:${string}`;
 

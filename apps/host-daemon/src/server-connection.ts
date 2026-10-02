@@ -89,6 +89,8 @@ function recoverableMessageKey(
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
     case "environment-metadata-change":
       return `environment-metadata-change\u0000${message.environmentId}`;
+    case "terminal.exited":
+      return `terminal.exited\u0000${message.terminalId}`;
     default:
       return null;
   }
@@ -344,6 +346,8 @@ export class ServerConnection {
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
         activeThreads: this.options.getActiveThreads?.() ?? [],
+        undeliveredEventThreadIds:
+          this.options.getUndeliveredEventThreadIds?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });
       this.session = session;

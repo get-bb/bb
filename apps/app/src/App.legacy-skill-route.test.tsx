@@ -13,8 +13,8 @@ vi.mock("./views/SettingsView", () => ({
   SettingsView: () => <h1>Settings</h1>,
 }));
 vi.mock("./views/ToolsView", () => ({
-  PluginsView: ({ pluginId }: { pluginId?: string }) => (
-    <h1>Plugin detail: {pluginId}</h1>
+  PluginsView: ({ detailKey }: { detailKey?: string }) => (
+    <h1>Plugin detail: {detailKey}</h1>
   ),
   SkillsView: () => <h1>Skills</h1>,
 }));
@@ -77,7 +77,7 @@ describe("legacy resource redirects", () => {
   );
 
   it.each([
-    ["/settings/usage", "/settings/plugins/provider-usage"],
+    ["/settings/usage", "/settings/plugins/bb--provider-usage"],
     ["/settings/plugins", "/settings/plugins"],
     ["/extensions?view=installed#catalog", "/plugins?view=installed#catalog"],
     ["/extensions/plugins", "/plugins"],
@@ -119,6 +119,24 @@ describe("legacy resource redirects", () => {
       "/skills/library/skill_abc123?source=local#details",
     ],
     ["/tools/automations", "/plugins/automations/automations"],
+    [
+      "/tools/automations?view=browse",
+      "/plugins/automations/automations/browse",
+    ],
+    ["/tools/automations/browse", "/plugins/automations/automations/browse"],
+    ["/automations", "/plugins/automations/automations"],
+    [
+      "/tools/automations/proj_1/auto_1",
+      "/plugins/automations/automations/proj_1/auto_1",
+    ],
+    [
+      "/tools/automations/proj_1/auto_1/edit",
+      "/plugins/automations/automations/proj_1/auto_1/edit",
+    ],
+    [
+      "/automations/proj_1/auto_1",
+      "/plugins/automations/automations/proj_1/auto_1",
+    ],
   ])("redirects %s to %s", async (entry, expected) => {
     render(
       <MemoryRouter initialEntries={[entry]}>

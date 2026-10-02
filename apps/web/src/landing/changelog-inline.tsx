@@ -6,6 +6,8 @@ type InlineToken =
   | { kind: "text"; text: string }
   | { kind: "code"; text: string }
   | { kind: "strong"; children: InlineToken[] }
+  | { kind: "em"; children: InlineToken[] }
+  | { kind: "strongEm"; children: InlineToken[] }
   | { kind: "link"; href: string; children: InlineToken[] };
 
 function appendText(tokens: InlineToken[], text: string): void {
@@ -23,6 +25,7 @@ function appendText(tokens: InlineToken[], text: string): void {
 function parseInline(
   text: string,
   allowStrong: boolean,
+  allowEm: boolean,
   allowLink: boolean,
 ): InlineToken[] {
   const tokens: InlineToken[] = [];
@@ -31,8 +34,9 @@ function parseInline(
   while (cursor < text.length) {
     const codeStart = text.indexOf("`", cursor);
     const strongStart = allowStrong ? text.indexOf("**", cursor) : -1;
+    const emStart = allowEm ? text.indexOf("*", cursor) : -1;
     const linkStart = allowLink ? text.indexOf("[", cursor) : -1;
-    const tokenStart = [codeStart, strongStart, linkStart]
+    const tokenStart = [codeStart, strongStart, emStart, linkStart]
       .filter((index) => index !== -1)
       .reduce((lowest, index) => Math.min(lowest, index), text.length);
 
@@ -59,6 +63,7 @@ function parseInline(
         children: parseInline(
           text.slice(tokenStart + 1, labelEnd),
           allowStrong,
+          allowEm,
           false,
         ),
       });
@@ -68,7 +73,9 @@ function parseInline(
 
     appendText(tokens, text.slice(cursor, tokenStart));
     const isCode = tokenStart === codeStart;
-    const delimiter = isCode ? "`" : "**";
+    const isStrongEm = !isCode && allowStrong && text.startsWith("***", tokenStart);
+    const isStrong = !isCode && !isStrongEm && tokenStart === strongStart;
+    const delimiter = isCode ? "`" : isStrongEm ? "***" : isStrong ? "**" : "*";
     const contentStart = tokenStart + delimiter.length;
     const tokenEnd = text.indexOf(delimiter, contentStart);
 
@@ -81,10 +88,20 @@ function parseInline(
     const content = text.slice(contentStart, tokenEnd);
     if (isCode) {
       tokens.push({ kind: "code", text: content });
-    } else {
+    } else if (isStrongEm) {
+      tokens.push({
+        kind: "strongEm",
+        children: parseInline(content, false, false, allowLink),
+      });
+    } else if (isStrong) {
       tokens.push({
         kind: "strong",
-        children: parseInline(content, false, allowLink),
+        children: parseInline(content, false, allowEm, allowLink),
+      });
+    } else {
+      tokens.push({
+        kind: "em",
+        children: parseInline(content, false, false, allowLink),
       });
     }
     cursor = tokenEnd + delimiter.length;
@@ -100,6 +117,14 @@ function renderTokens(tokens: InlineToken[]): ReactNode {
         return <code key={index}>{token.text}</code>;
       case "strong":
         return <strong key={index}>{renderTokens(token.children)}</strong>;
+      case "em":
+        return <em key={index}>{renderTokens(token.children)}</em>;
+      case "strongEm":
+        return (
+          <strong key={index}>
+            <em>{renderTokens(token.children)}</em>
+          </strong>
+        );
       case "link":
         return (
           <a
@@ -119,5 +144,5 @@ function renderTokens(tokens: InlineToken[]): ReactNode {
 }
 
 export function ChangelogInline({ text }: { text: string }): ReactNode {
-  return renderTokens(parseInline(text, true, true));
+  return renderTokens(parseInline(text, true, true, true));
 }

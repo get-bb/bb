@@ -21,7 +21,7 @@ import type {
 } from "@bb/server-contract";
 import { mergeLatestTimelineRows } from "@bb/client-core";
 import { createDeferredPromise, type DeferredPromise } from "@bb/test-helpers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BottomAnchorContext,
   type BottomAnchorContextValue,
@@ -32,13 +32,21 @@ import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { systemRow } from "@/test/fixtures/thread-timeline-rows";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows";
-import { useScrollToSearchedMessage } from "./useScrollToSearchedMessage";
+import {
+  SearchMessageLocationProvider,
+  useScrollToSearchedMessage,
+} from "./useScrollToSearchedMessage";
 import {
   TIMELINE_CONTROLLER_PROPS_WITHOUT_ROWS,
   useThreadTimelineController,
   type UseThreadTimelineControllerResult,
 } from "./useThreadTimelineController";
 import { makeThreadTimelineResponse as makeTimelineResponse } from "@/test/fixtures/thread-responses";
+import { createQueryNotificationScheduler } from "@/test/queryNotificationScheduler";
+
+const notifications = createQueryNotificationScheduler();
+
+beforeEach(() => notifications.install());
 
 const readTimelineQueryResultKeys = vi.hoisted(() => new Set<PropertyKey>());
 
@@ -75,6 +83,7 @@ vi.mock("@/hooks/useServerConnectionState", () => ({
 
 afterEach(() => {
   cleanup();
+  notifications.restore();
   vi.mocked(sdk.threads.timeline).mockReset();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
@@ -325,7 +334,7 @@ function renderProfiledController(
 }
 
 function flushQueryNotifications(): Promise<void> {
-  return act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
+  return notifications.flush();
 }
 
 async function renderSettledController(
@@ -888,7 +897,9 @@ describe("useThreadTimelineController", () => {
               },
             ]}
           >
-            {children}
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
           </MemoryRouter>
         ),
       });

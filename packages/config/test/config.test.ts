@@ -11,7 +11,6 @@ import {
   loadHostDaemonConnectionConfig,
   loadHostDaemonStartConfig,
 } from "../src/host-daemon.js";
-import { parseProviderModelConfig } from "../src/inference-model.js";
 import { loadLoggerConfig } from "../src/logger.js";
 import {
   resolveConfiguredDataDir,
@@ -49,7 +48,6 @@ function createServerRuntimeEnv(
     BB_HOST_DAEMON_PORT: "5555",
     BB_SERVER_PORT: "4444",
     NODE_ENV: "development",
-    OPENAI_API_KEY: "test-openai-key",
     ...overrides,
   };
 }
@@ -80,7 +78,7 @@ describe("common config", () => {
         },
         homeDir: "/Users/tester",
       }).BB_DATA_DIR,
-    ).toBe("/Users/tester/.bb");
+    ).toBe(path.normalize("/Users/tester/.bb"));
   });
 
   it("requires repoRoot or BB_DATA_DIR for development data dir resolution", () => {
@@ -106,7 +104,7 @@ describe("common config", () => {
         homeDir,
         repoRoot,
       }).BB_DATA_DIR,
-    ).toBe("/Users/tester/.bb-dev/src-bb-9039de53a76a");
+    ).toBe(path.normalize("/Users/tester/.bb-dev/src-bb-9039de53a76a"));
   });
 
   it("expands home-directory overrides for BB_DATA_DIR", () => {
@@ -179,7 +177,7 @@ describe("data-dir helpers", () => {
         mode: "dev",
         repoRoot,
       }),
-    ).toBe("/Users/tester/.bb-dev/src-bb-9039de53a76a");
+    ).toBe(path.normalize("/Users/tester/.bb-dev/src-bb-9039de53a76a"));
   });
 
   it("keeps the legacy fallback label for degenerate checkout labels", () => {
@@ -190,7 +188,7 @@ describe("data-dir helpers", () => {
         mode: "dev",
         repoRoot: "/Users/tester/---",
       }),
-    ).toBe("/Users/tester/.bb-dev/worktree-41987f975862");
+    ).toBe(path.normalize("/Users/tester/.bb-dev/worktree-41987f975862"));
   });
 });
 
@@ -291,23 +289,16 @@ describe("consumer-specific config", () => {
         BB_APP_VERSION: undefined,
         BB_EXTERNAL_URL: undefined,
         BB_FF_PLACEHOLDER: undefined,
-        BB_INFERENCE: undefined,
-        BB_INFERENCE_FALLBACK: undefined,
-        BB_TRANSCRIPTION: undefined,
       }),
     });
 
     expect(serverConfig.BB_SERVER_PORT).toBe(4444);
     expect(serverConfig.BB_HOST_DAEMON_PORT).toBe(5555);
-    expect(serverConfig.databasePath).toBe("/tmp/bb-data/bb.db");
+    expect(serverConfig.databasePath).toBe(path.resolve("/tmp/bb-data/bb.db"));
     expect(serverConfig.BB_APP_URL).toBe("");
     expect(serverConfig.BB_APP_SURFACE).toBe("web");
     expect(serverConfig.BB_APP_VERSION).toBe("0.0.0-dev");
     expect(serverConfig.BB_EXTERNAL_URL).toBe("");
-    expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.6-luna");
-    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe("codex/gpt-5.4-mini");
-    expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-transcribe");
-    expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       timelineWindowEventBudget: 1_500,
@@ -325,6 +316,22 @@ describe("consumer-specific config", () => {
         env: createServerRuntimeEnv({ BB_SERVER_LAUNCH_ID: "launch-123" }),
       }).BB_SERVER_LAUNCH_ID,
     ).toBe("launch-123");
+  });
+
+  it("carries the launcher's in-app update mode and rejects unknown modes", () => {
+    expect(
+      loadServerConfig({ env: createServerRuntimeEnv({}) }),
+    ).not.toHaveProperty("BB_APP_UPDATE_MODE");
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_APP_UPDATE_MODE: "source" }),
+      }).BB_APP_UPDATE_MODE,
+    ).toBe("source");
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_APP_UPDATE_MODE: "brew" }),
+      }),
+    ).toThrow("BB_APP_UPDATE_MODE must be one of npm, source");
   });
 
   it("defaults the server bind host to loopback", () => {
@@ -470,49 +477,9 @@ describe("consumer-specific config", () => {
       },
     });
 
-    expect(databaseConfig.databasePath).toBe("/tmp/bb-data/bb.db");
-  });
-
-  it("requires provider/model format for BB_INFERENCE", () => {
-    expect(() =>
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_INFERENCE: "gpt-4o-mini",
-        }),
-      }),
-    ).toThrow(/BB_INFERENCE/u);
-  });
-
-  it("requires provider/model format for BB_INFERENCE_FALLBACK", () => {
-    expect(() =>
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_INFERENCE_FALLBACK: "gpt-5.4-mini",
-        }),
-      }),
-    ).toThrow(/BB_INFERENCE_FALLBACK/u);
-  });
-
-  it("loads an explicit inference fallback model", () => {
-    const serverConfig = loadServerConfig({
-      env: createServerRuntimeEnv({
-        BB_INFERENCE_FALLBACK: "anthropic/claude-haiku-4-5",
-      }),
-    });
-
-    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe(
-      "anthropic/claude-haiku-4-5",
+    expect(databaseConfig.databasePath).toBe(
+      path.resolve("/tmp/bb-data/bb.db"),
     );
-  });
-
-  it("requires provider/model format for BB_TRANSCRIPTION", () => {
-    expect(() =>
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_TRANSCRIPTION: "gpt-4o-mini-transcribe",
-        }),
-      }),
-    ).toThrow(/BB_TRANSCRIPTION/u);
   });
 
   it("requires a valid server URL for the daemon and CLI", () => {
@@ -588,7 +555,7 @@ describe("consumer-specific config", () => {
       },
     });
 
-    expect(hostDaemonConfig.BB_DATA_DIR).toBe("/tmp/bb-data");
+    expect(hostDaemonConfig.BB_DATA_DIR).toBe(path.resolve("/tmp/bb-data"));
     expect(hostDaemonConfig.BB_SERVER_URL).toBe("http://localhost:9999");
     expect(hostDaemonConfig.BB_HOST_DAEMON_PORT).toBe(3999);
   });
@@ -603,7 +570,7 @@ describe("consumer-specific config", () => {
       },
     });
 
-    expect(hostDaemonStartConfig.dataDir).toBe("/tmp/bb-data");
+    expect(hostDaemonStartConfig.dataDir).toBe(path.resolve("/tmp/bb-data"));
     expect(hostDaemonStartConfig.connectionConfig.BB_SERVER_URL).toBe(
       "http://localhost:9999",
     );
@@ -752,7 +719,6 @@ describe("consumer-specific config", () => {
         BB_HOST_ENROLL_KEY: " enroll-token ",
         BB_HOST_DAEMON_AUTO_UPDATE: "true",
         BB_HOST_ID: " host-123 ",
-        BB_HOST_NAME: " host-123 ",
       },
     });
 
@@ -762,7 +728,6 @@ describe("consumer-specific config", () => {
       BB_HOST_ENROLL_KEY: "enroll-token",
       BB_HOST_DAEMON_AUTO_UPDATE: true,
       BB_HOST_ID: "host-123",
-      BB_HOST_NAME: "host-123",
     });
   });
 
@@ -772,35 +737,9 @@ describe("consumer-specific config", () => {
         BB_BRIDGE_DIR: "",
         BB_CLI_DIR: "   ",
         BB_HOST_ENROLL_KEY: " ",
-        BB_HOST_NAME: "",
       },
     });
 
     expect(hostDaemonEntrypointConfig).toEqual({});
-  });
-});
-
-describe("provider model config", () => {
-  it("parses provider/model values", () => {
-    expect(
-      parseProviderModelConfig({
-        name: "BB_INFERENCE",
-        value: "codex/gpt-5.4-mini",
-      }),
-    ).toEqual({
-      provider: "codex",
-      modelId: "gpt-5.4-mini",
-    });
-  });
-
-  it("rejects empty or nested provider/model values", () => {
-    for (const value of ["gpt-4o-mini", "/gpt-4o-mini", "openai/", "a/b/c"]) {
-      expect(() =>
-        parseProviderModelConfig({
-          name: "BB_INFERENCE",
-          value,
-        }),
-      ).toThrow(/BB_INFERENCE/u);
-    }
   });
 });

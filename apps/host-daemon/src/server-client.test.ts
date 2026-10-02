@@ -68,6 +68,7 @@ describe("createServerClient", () => {
       instanceId: "instance-1",
       localApiPort: null,
       activeThreads: [],
+      undeliveredEventThreadIds: [],
       loadedEnvironments: [],
     });
 
@@ -140,6 +141,7 @@ describe("createServerClient", () => {
           instanceId: "instance-1",
           localApiPort: null,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         }),
       ).rejects.toMatchObject({
@@ -191,6 +193,7 @@ describe("createServerClient", () => {
         instanceId: "instance-1",
         localApiPort: 38_888,
         activeThreads: [],
+        undeliveredEventThreadIds: [],
         loadedEnvironments: [],
       });
       expect(fetchFn).toHaveBeenCalledOnce();

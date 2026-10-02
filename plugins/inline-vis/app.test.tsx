@@ -5,7 +5,10 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const message = {
   id: "msg_1",
@@ -106,6 +109,7 @@ describe("InlineVisDirective", () => {
                 environmentId: "env_1",
                 path: "charts/demo file.html",
               },
+              url: "/api/v1/environments/env_1/files/charts/demo%20file.html",
             };
           },
         },
@@ -125,12 +129,12 @@ describe("InlineVisDirective", () => {
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
     expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
     expect(iframe.getAttribute("src")).toBe(
-      "/api/v1/threads/thr_1/worktree/files/charts/demo%20file.html",
+      "/api/v1/environments/env_1/files/charts/demo%20file.html",
     );
     expect(iframe.getAttribute("srcdoc")).toBeNull();
     expect(iframe.style.height).toBe("224px");
     fireEvent.click(
-      slot.getByRole("button", {
+      slot.getByRole("link", {
         name: "Open charts/demo file.html in sidebar",
       }),
     );
@@ -188,6 +192,7 @@ describe("InlineVisDirective", () => {
                 threadId: "thr_1",
                 path: "reports/result file.html",
               },
+              url: "/api/v1/threads/thr_1/thread-storage/files/reports/result%20file.html",
             };
           },
         },
@@ -205,7 +210,7 @@ describe("InlineVisDirective", () => {
     );
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
     fireEvent.click(
-      slot.getByRole("button", {
+      slot.getByRole("link", {
         name: "Open reports/result file.html in sidebar",
       }),
     );
@@ -224,12 +229,12 @@ describe("InlineVisDirective", () => {
     ]);
   });
 
-  it("uses an optional bounded height attribute", async () => {
+  it("leaves modified clicks on the open action to the browser so they open the page itself", async () => {
     const slot = renderSlot(
       app.messageDirectives[0]!,
       {
-        attributes: { file: "demo.html", height: "480" },
-        source: '::inline-vis{file="demo.html" height="480"}',
+        attributes: { file: "demo.html" },
+        source: '::inline-vis{file="demo.html"}',
         message,
         openWorkspaceFile: null,
       },
@@ -244,17 +249,92 @@ describe("InlineVisDirective", () => {
               environmentId: "env_1",
               path: "demo.html",
             },
+            url: "/api/v1/environments/env_1/files/demo.html",
           }),
         },
       },
     );
 
-    const iframe = await waitFor(() => {
-      const el = slot.container.querySelector("iframe");
-      expect(el).toBeTruthy();
-      return el as HTMLIFrameElement;
+    const open = await slot.findByRole("link", {
+      name: "Open demo.html in sidebar",
     });
-    expect(iframe.style.height).toBe("480px");
+    expect(open.getAttribute("href")).toBe(
+      "/api/v1/environments/env_1/files/demo.html",
+    );
+    expect(fireEvent.click(open, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(open, { ctrlKey: true })).toBe(true);
+    expect(fireEvent.click(open, { shiftKey: true })).toBe(true);
+    expect(slot.navigateCalls).toEqual([]);
+
+    expect(fireEvent.click(open)).toBe(false);
+    expect(slot.navigateCalls).toEqual([
+      {
+        method: "experimental_openFilePreview",
+        options: {
+          target: {
+            kind: "workspace",
+            environmentId: "env_1",
+            path: "demo.html",
+          },
+          location: null,
+        },
+      },
+    ]);
+  });
+
+  it("persists the collapsed preference for subsequent previews", async () => {
+    const options = {
+      rpc: {
+        preparePreview: () => ({
+          kind: "html" as const,
+          file: "demo.html",
+          source: "workspace" as const,
+          target: {
+            kind: "workspace" as const,
+            environmentId: "env_1",
+            path: "demo.html",
+          },
+          url: "/api/v1/environments/env_1/files/demo.html",
+        }),
+      },
+    };
+    const props = {
+      attributes: { file: "demo.html" },
+      source: '::inline-vis{file="demo.html"}',
+      message,
+      openWorkspaceFile: null,
+    };
+    const first = renderSlot(app.messageDirectives[0]!, props, options);
+
+    await waitFor(() => {
+      expect(first.container.querySelector("iframe")).toBeTruthy();
+    });
+    const collapse = first.getByRole("button", {
+      name: "Collapse visualization demo.html",
+    });
+    const header = collapse.parentElement!;
+    expect(header.classList.contains("border-b")).toBe(true);
+    fireEvent.click(collapse);
+
+    expect(first.container.querySelector("iframe")).toBeNull();
+    expect(header.classList.contains("border-b")).toBe(false);
+    expect(window.localStorage.getItem("bb.inline-vis.collapsed")).toBe("true");
+    first.unmount();
+
+    const second = renderSlot(app.messageDirectives[0]!, props, options);
+    const expand = await second.findByRole("button", {
+      name: "Expand visualization demo.html",
+    });
+    expect(second.container.querySelector("iframe")).toBeNull();
+
+    fireEvent.click(expand);
+
+    await waitFor(() => {
+      expect(second.container.querySelector("iframe")).toBeTruthy();
+    });
+    expect(window.localStorage.getItem("bb.inline-vis.collapsed")).toBe(
+      "false",
+    );
   });
 
   it("reserves the preview height while loading so the timeline does not jump", async () => {
@@ -263,6 +343,7 @@ describe("InlineVisDirective", () => {
       file: string;
       source: "workspace" | "thread-storage";
       target: { kind: "workspace"; environmentId: string; path: string };
+      url: string;
     };
     let resolvePreview = (_result: HtmlPreview) => {};
     const pendingPreview = new Promise<HtmlPreview>((resolve) => {
@@ -294,9 +375,6 @@ describe("InlineVisDirective", () => {
     expect(
       slot.getByRole("status", { name: "Loading visualization demo.html" }),
     ).toBe(loading);
-    const loadingCard = loading.parentElement!;
-    const loadingHeader = loadingCard.firstElementChild!;
-    const loadingHeaderHtml = loadingHeader.outerHTML;
 
     resolvePreview({
       kind: "html",
@@ -307,6 +385,7 @@ describe("InlineVisDirective", () => {
         environmentId: "env_1",
         path: "demo.html",
       },
+      url: "/api/v1/environments/env_1/files/demo.html",
     });
 
     const iframe = await waitFor(() => {
@@ -318,15 +397,6 @@ describe("InlineVisDirective", () => {
     });
     expect(iframe.style.height).toBe("480px");
     expect(slot.queryByRole("status")).toBeNull();
-
-    const readyCard = iframe.parentElement!;
-    expect(readyCard.className).toBe(loadingCard.className);
-    const readyHeader = readyCard.firstElementChild!;
-    expect(readyHeader.className).toBe(loadingHeader.className);
-    expect(readyHeader.lastElementChild!.classList.contains("size-5")).toBe(
-      true,
-    );
-    expect(loadingHeaderHtml).toContain("size-5");
   });
 
   it("renders a Markdown document with the host renderer and no iframe", async () => {
@@ -438,37 +508,6 @@ describe("InlineVisDirective", () => {
     ]);
   });
 
-  it("uses an optional bounded height for Markdown", async () => {
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: { file: "notes.md", height: "480" },
-        source: '::inline-vis{file="notes.md" height="480"}',
-        message,
-        openWorkspaceFile: null,
-      },
-      {
-        rpc: {
-          preparePreview: () => ({
-            kind: "markdown",
-            file: "notes.md",
-            source: "workspace",
-            target: {
-              kind: "workspace",
-              environmentId: "env_1",
-              path: "notes.md",
-            },
-            rootPath: "/work/repo",
-            content: "# Notes",
-          }),
-        },
-      },
-    );
-
-    const markdown = await slot.findByTestId("bb-markdown");
-    expect(markdown.parentElement?.style.height).toBe("480px");
-  });
-
   it("reserves the Markdown preview height while loading", async () => {
     type MarkdownPreview = {
       kind: "markdown";
@@ -544,28 +583,5 @@ describe("InlineVisDirective", () => {
     );
     expect(slot.container.querySelector("iframe")).toBeNull();
     expect(slot.rpcCalls).toEqual([]);
-  });
-
-  it("shows an error when rpc fails", async () => {
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: { file: "missing.html" },
-        source: '::inline-vis{file="missing.html"}',
-        message,
-        openWorkspaceFile: null,
-      },
-      {
-        rpc: {
-          preparePreview: () => {
-            throw new Error("Preview file not found: missing.html");
-          },
-        },
-      },
-    );
-
-    const alert = await slot.findByRole("alert");
-    expect(alert.textContent).toMatch(/Preview file not found: missing\.html/);
-    expect(slot.container.querySelector("iframe")).toBeNull();
   });
 });

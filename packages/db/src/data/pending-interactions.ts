@@ -38,16 +38,14 @@ export interface PendingInteractionProviderRequestIdentity {
 }
 
 export interface ListPendingInteractionsArgs {
-  limit?: number;
   statuses?: readonly PendingInteractionStatus[];
   threadId: string;
 }
 
 export interface SetPendingInteractionTerminalStateArgs {
-  allowedCurrentStatuses?: readonly PendingInteractionStatus[];
+  allowedCurrentStatuses: readonly PendingInteractionStatus[];
   id: string;
   resolution: string | null;
-  resolvedAt?: number;
   status: "interrupted" | "resolved";
   statusReason: string | null;
 }
@@ -59,20 +57,17 @@ export interface SetPendingInteractionResolvingArgs {
 
 export interface InterruptPendingInteractionsForThreadsArgs {
   providerId: string;
-  resolvedAt?: number;
   statusReason: string;
   threadIds: readonly string[];
 }
 
 export interface InterruptPendingInteractionsForThreadIdsArgs {
-  resolvedAt?: number;
   statusReason: string;
   threadIds: readonly string[];
 }
 
 export interface InterruptPendingInteractionsForPluginArgs {
   pluginId: string;
-  resolvedAt?: number;
   statusReason: string;
 }
 
@@ -105,17 +100,13 @@ function updatePendingInteractionTerminalState(
         status: args.status,
         resolution: args.resolution,
         statusReason: args.statusReason,
-        resolvedAt: args.resolvedAt ?? now,
+        resolvedAt: now,
         updatedAt: now,
       })
       .where(
         and(
           eq(pendingInteractions.id, args.id),
-          args.allowedCurrentStatuses
-            ? inArray(pendingInteractions.status, [
-                ...args.allowedCurrentStatuses,
-              ])
-            : undefined,
+          inArray(pendingInteractions.status, [...args.allowedCurrentStatuses]),
         ),
       )
       .returning()
@@ -228,7 +219,7 @@ export function listPendingInteractionsByThread(
   db: PendingInteractionReadConnection,
   args: ListPendingInteractionsArgs,
 ): PendingInteractionRow[] {
-  const query = db
+  return db
     .select()
     .from(pendingInteractions)
     .where(
@@ -239,9 +230,8 @@ export function listPendingInteractionsByThread(
           : undefined,
       ),
     )
-    .orderBy(desc(pendingInteractions.createdAt));
-
-  return args.limit ? query.limit(args.limit).all() : query.all();
+    .orderBy(desc(pendingInteractions.createdAt))
+    .all();
 }
 
 export function setPendingInteractionResolved(
@@ -306,7 +296,6 @@ function interruptPendingInteractionsBatched(
   db: PendingInteractionWriteConnection,
   args: {
     extraConditions: SQL[];
-    resolvedAt?: number;
     statusReason: string;
     threadIds: readonly string[];
   },
@@ -325,7 +314,7 @@ function interruptPendingInteractionsBatched(
         .set({
           status: "interrupted",
           statusReason: args.statusReason,
-          resolvedAt: args.resolvedAt ?? now,
+          resolvedAt: now,
           updatedAt: now,
         })
         .where(
@@ -352,7 +341,6 @@ export function interruptPendingInteractionsForThreads(
       eq(pendingInteractions.originKind, "provider"),
       eq(pendingInteractions.providerId, args.providerId),
     ],
-    resolvedAt: args.resolvedAt,
     statusReason: args.statusReason,
     threadIds: args.threadIds,
   });
@@ -368,7 +356,7 @@ export function interruptPendingInteractionsForPlugin(
     .set({
       status: "interrupted",
       statusReason: args.statusReason,
-      resolvedAt: args.resolvedAt ?? now,
+      resolvedAt: now,
       updatedAt: now,
     })
     .where(
@@ -388,7 +376,6 @@ export function interruptPendingInteractionsForThreadIds(
 ): PendingInteractionRow[] {
   return interruptPendingInteractionsBatched(db, {
     extraConditions: [],
-    resolvedAt: args.resolvedAt,
     statusReason: args.statusReason,
     threadIds: args.threadIds,
   });

@@ -23,6 +23,7 @@ import {
   unexpectedProviderMaintenance,
 } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
+import { PROVIDER_INSTALLATION_GATE_TTL_MS } from "./provider-installation-gate.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import { stageInjectedSkillSources } from "./injected-skills.js";
 
@@ -456,7 +457,7 @@ describe("dispatchCommand", () => {
       },
     );
 
-    expect(result).toEqual({ appliedAs: "steer" });
+    expect(result).toEqual({});
     expect(runtime.waitForActiveTurn).toHaveBeenCalledWith("thread-1", {
       timeoutMs: 5_000,
     });
@@ -500,7 +501,7 @@ describe("dispatchCommand", () => {
       },
     );
 
-    expect(result).toEqual({ appliedAs: "steer" });
+    expect(result).toEqual({});
     expect(runtime.steerTurn).toHaveBeenCalledWith(
       expect.objectContaining({ expectedTurnId: "turn-new" }),
     );
@@ -534,7 +535,7 @@ describe("dispatchCommand", () => {
       },
     );
 
-    expect(result).toEqual({ appliedAs: "new-turn" });
+    expect(result).toEqual({});
     expect(runtime.waitForActiveTurn).not.toHaveBeenCalled();
     expect(runtime.runTurn).toHaveBeenCalledOnce();
   });
@@ -880,7 +881,7 @@ describe("dispatchCommand", () => {
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
 
-    expect(result).toEqual({ appliedAs: "new-turn" });
+    expect(result).toEqual({});
     expect(oldRuntime.stopThread).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
@@ -896,6 +897,7 @@ describe("dispatchCommand", () => {
         threadId: "thread-1",
       }),
     );
+    expect(newRuntime.runTurn).toHaveBeenCalledOnce();
     expect(
       (oldRuntime.stopThread as unknown as Mock).mock.invocationCallOrder[0],
     ).toBeLessThan(
@@ -1527,7 +1529,10 @@ describe("dispatchCommand", () => {
       }),
     ).resolves.toEqual({ providerThreadId: "provider-thread-rewind-1" });
     expect(providerInstallationStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ requirement: "thread_rewind" }),
+      expect.objectContaining({
+        requirement: "thread_rewind",
+        checkUpdates: false,
+      }),
     );
     expect(runtime.prepareThreadRewind).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1620,36 +1625,9 @@ describe("dispatchCommand", () => {
 
     expect(providerInstallationStatus).toHaveBeenCalledOnce();
     expect(runtime.startThread).toHaveBeenCalledTimes(2);
-  });
-
-  it("shares one in-flight probe between concurrent thread starts", async () => {
-    const runtime = createRuntime();
-    const manager = new RuntimeManager({
-      createRuntime: () => runtime,
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const probe = createDeferredPromise<ProviderCliStatus>();
-    const providerInstallationStatus = vi.fn(() => probe.promise);
-    const options = makeDispatchOptions({
-      runtimeManager: manager,
-      providerInstallationStatus,
-    });
-
-    const starts = Promise.all([
-      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
-      dispatchCommand(createInstallationGatedThreadStart("thread-2"), options),
-    ]);
-    await vi.waitFor(() =>
-      expect(providerInstallationStatus).toHaveBeenCalledOnce(),
+    expect(providerInstallationStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ checkUpdates: false }),
     );
-    probe.resolve(supportedCodexInstallationStatus());
-
-    await expect(starts).resolves.toEqual([
-      { providerThreadId: "provider-thread-1" },
-      { providerThreadId: "provider-thread-1" },
-    ]);
-    expect(providerInstallationStatus).toHaveBeenCalledOnce();
-    expect(runtime.startThread).toHaveBeenCalledTimes(2);
   });
 
   it("retries concurrent thread starts when a shell env refresh interrupts their shared probe", async () => {
@@ -1686,37 +1664,6 @@ describe("dispatchCommand", () => {
     ]);
     expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
     expect(runtime.startThread).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not remember an unsupported installation", async () => {
-    const runtime = createRuntime();
-    const manager = new RuntimeManager({
-      createRuntime: () => runtime,
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const providerInstallationStatus = vi
-      .fn<() => Promise<ProviderCliStatus>>()
-      .mockResolvedValueOnce({
-        ...supportedCodexInstallationStatus(),
-        currentVersion: "0.135.0",
-        npmGlobalPackageVersion: "0.135.0",
-        versionUnsupported: true,
-      })
-      .mockResolvedValue(supportedCodexInstallationStatus());
-    const options = makeDispatchOptions({
-      runtimeManager: manager,
-      providerInstallationStatus,
-    });
-
-    await expect(
-      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
-    ).rejects.toMatchObject({ code: "provider_cli_unsupported_version" });
-    await expect(
-      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
-    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
-
-    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
-    expect(runtime.startThread).toHaveBeenCalledOnce();
   });
 
   it("keys the rewind requirement separately from thread start", async () => {
@@ -1887,13 +1834,12 @@ describe("dispatchCommand", () => {
   });
 
   it("expires the remembered probe after the gate TTL", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
     try {
       const runtime = createRuntime();
       const manager = new RuntimeManager({
         createRuntime: () => runtime,
         provisionWorkspace: async () => createWorkspace(),
-        providerInstallationGateTtlMs: 100,
       });
       const providerInstallationStatus = vi.fn(async () =>
         supportedCodexInstallationStatus(),
@@ -1903,20 +1849,25 @@ describe("dispatchCommand", () => {
         providerInstallationStatus,
       });
 
-      const probedAt = Date.now();
       await dispatchCommand(
         createInstallationGatedThreadStart("thread-1"),
         options,
       );
-      vi.setSystemTime(probedAt + 101);
+      now.mockReturnValue(PROVIDER_INSTALLATION_GATE_TTL_MS - 1);
       await dispatchCommand(
         createInstallationGatedThreadStart("thread-2"),
         options,
       );
+      expect(providerInstallationStatus).toHaveBeenCalledOnce();
 
+      now.mockReturnValue(PROVIDER_INSTALLATION_GATE_TTL_MS);
+      await dispatchCommand(
+        createInstallationGatedThreadStart("thread-3"),
+        options,
+      );
       expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
     } finally {
-      vi.useRealTimers();
+      now.mockRestore();
     }
   });
 
@@ -2417,7 +2368,7 @@ describe("dispatchCommand", () => {
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
 
-    expect(result).toEqual({ appliedAs: "new-turn" });
+    expect(result).toEqual({});
     expect(fixture.runtime.runTurn).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.resumeThread).not.toHaveBeenCalled();
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);

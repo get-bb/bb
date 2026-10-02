@@ -96,17 +96,28 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Use `bb machine enroll` for a private core-prepared bundle. Local lifecycle is
   handled by `install-machine.sh --start|--stop|--uninstall --host-id <id>`;
   see references/thread-creation.md for ownership checks.
-- Move the bb server to another machine with
-  `bb server move --to <machine> --check`, then the same command without
-  `--check`; it stops all running work. `bb server export --out <file>` backs
+- Moving the bb server to another machine is experimental (the `serverMove`
+  experiment). Never move a server, abandon a move, or unlock an old copy
+  without the user's explicit confirmation in this conversation: run
+  `bb server move --to <machine> --check`, show them the checklist, and run
+  the same command without `--check` only after they confirm. A move stops
+  all running work. `bb server export --out <file>` backs
   up a running server. `bb server import`, `unlock`, `allow-connect`, and
   `delete-old-copy` act on this computer's data directory without calling a
-  server. An imported server keeps its connect tunnel off until
-  `bb server allow-connect`.
+  server. An imported server keeps its connect tunnel and bb account off
+  until `bb server allow-connect`. On the computer a server moved away from,
+  `bb server install-machine-service` installs the persistent, self-updating
+  machine service (needs Node.js 22.19+ on the PATH).
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a
   failed provider teardown immediately.
+- Use `bb machine reconnect <id-or-name>` when a disconnected machine's
+  server access or host key is rejected but its BB host ID must remain.
+  Run the printed short-lived command on that machine as is; it reuses the
+  machine's recorded data directory, refreshes access, and re-enrolls under
+  the same host ID. Connected machines are refused, and
+  `--json` returns without waiting.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. With `--project <id> --machine <id>`
   it also prints that machine's availability (`available`, `setup-required`,
@@ -146,7 +157,7 @@ bb skill list --environment "$BB_ENVIRONMENT_ID" --json
 Confirm the command result and any affected thread, environment, plugin, or
 remote service. Report the stable ID or URL that the user needs next.
 
-`bb environment show <id>` reports core-owned lifecycle, retirement deadline and teardown attempts. Archive/delete of the last live thread starts the provider grace; unarchive cancels pending retirement. Teardown errors remain visible and retry automatically. `bb environment delete <id>` requests cleanup immediately, including under a never-retire policy; destroyed is recorded after cleanup completes. Removal waits for live or stopping runtimes. Project source deletion remains available during project deletion, including removal of the last source, so providers can finish cleanup.
+`bb environment show <id>` reports core-owned lifecycle, retirement deadline and teardown attempts. Archive/delete of the last live thread starts the provider grace; unarchive cancels pending retirement. Once the grace passes and the workspace is destroyed, sends to the thread fail until `bb thread restore-environment <id>` asks the environment provider to restore it and reattaches it to an unarchived thread, without starting a turn; providers decide what restoring means (a worktree returns on the branch it held), some cannot restore, and uncommitted changes in the removed workspace are gone. Teardown errors remain visible and retry automatically. `bb environment delete <id>` requests cleanup immediately, including under a never-retire policy; destroyed is recorded after cleanup completes. Removal waits for live or stopping runtimes. Project source deletion remains available during project deletion, including removal of the last source, so providers can finish cleanup.
 
 ## Plugin configuration
 
@@ -160,9 +171,16 @@ Keep this skill and its references focused on core BB commands. Plugin-specific
 behavior belongs in the owning plugin’s `skills/` directory, including built-in
 plugins; do not add plugin command manuals here.
 
+## Native mobile builds
+
+For Android mobile builds and distribution, see `apps/mobile/README.md`.
+`GOOGLE_SERVICES_JSON` points to the optional Firebase Android config file;
+local builds fall back to `apps/mobile/google-services.json`. EAS uses a file
+environment variable. See `bb guide customization` for push controls.
+
 ## Built-in browser control
 
-Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Revealing tabs or acquiring control opens the side panel and selects the tab only in the already focused thread, without switching threads or activating the desktop window. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares. `import-sources` and `import-cookies --from <source> --profile <dir> [--into personal|automation:<id>]` copy signed-in cookies from an installed browser (including Helium on macOS) into a BB browser profile; they need `--host`, `--instance`, and `--generation` only, and the source browser must be quit first.
+Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. All tabs, including agent-created ones, share the BB browser profile and its signed-in cookies. Revealing tabs or acquiring control opens the side panel and selects the tab only in the already focused thread, without switching threads or activating the desktop window. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares. `import-sources` and `import-cookies --from <source> --profile <dir>` combine known-browser entries (including Helium and Dia) with schema-detected Chromium/Firefox profiles matched to registered web browsers and copy a selected profile into BB; use the returned source ID, including opaque `storage-…` IDs, rather than assuming a fixed browser list; they need `--host`, `--instance`, and `--generation` only, and the source browser must be quit first.
 
 `bb machine show <id-or-name> --json` includes provider-owned inventory and
 estimates in `providerDetails` when available. Provider inventory failures are
@@ -175,3 +193,10 @@ and no open terminals; empty machines can use an opted-in provider idle policy.
 suspended state through the provider and waits for completion. It leaves active
 machines and in-progress lifecycle operations alone. Use `machine suspend` to
 request a new pause. Core does not schedule reconciliation polling.
+
+Provider management lives in Settings → Providers. Use `bb provider list --all`
+for the global catalog, `bb provider disable ID` to hide one provider and prevent
+new turns, and `bb provider enable ID` to restore it (enabling its plugin if
+needed). These preserve the CLI and thread history. Individual opt-outs survive
+plugin off/on. Install provider plugins in Settings → Plugins; configure custom
+ACP agents in the ACP providers plugin settings.

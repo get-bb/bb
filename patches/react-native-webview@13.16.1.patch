@@ -1,0 +1,38 @@
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+index 80c68034b193a47bedb56ca527352de9548e8ac6..774bda697582dcc2f1e3f5e90dda3c36861c5034 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+@@ -9,6 +9,7 @@ import android.view.Menu;
+ import android.view.MenuItem;
+ import android.view.MotionEvent;
+ import android.view.View;
++import android.view.WindowInsets;
+ import android.webkit.JavascriptInterface;
+ import android.webkit.ValueCallback;
+ import android.webkit.WebChromeClient;
+@@ -17,6 +18,8 @@ import android.webkit.WebViewClient;
+ 
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
++import androidx.core.graphics.Insets;
++import androidx.core.view.WindowInsetsCompat;
+ import androidx.webkit.JavaScriptReplyProxy;
+ import androidx.webkit.WebMessageCompat;
+ import androidx.webkit.WebViewCompat;
+@@ -130,6 +133,16 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         return super.onTouchEvent(event);
+     }
+ 
++    @Override
++    public WindowInsets onApplyWindowInsets(WindowInsets insets) {
++        WindowInsets adjusted = new WindowInsetsCompat.Builder(
++                WindowInsetsCompat.toWindowInsetsCompat(insets, this))
++                .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
++                .build()
++                .toWindowInsets();
++        return super.onApplyWindowInsets(adjusted);
++    }
++
+     @Override
+     protected void onSizeChanged(int w, int h, int ow, int oh) {
+         super.onSizeChanged(w, h, ow, oh);

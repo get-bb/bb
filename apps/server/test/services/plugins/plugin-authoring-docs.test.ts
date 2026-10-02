@@ -32,6 +32,7 @@ import {
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
   type ExperimentalSidebarNavigationProps,
+  type ExperimentalSidebarHeaderProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -70,8 +71,13 @@ function readReference(name: string): string {
 }
 
 function exportedTypeNames(source: string): string[] {
-  return [...source.matchAll(/^export (?:interface|type) ([A-Za-z0-9_]+)/gm)]
-    .map((match) => match[1])
+  return [
+    ...source.matchAll(
+      /(\/\*\*(?:(?!\*\/)[\s\S])*\*\/\s*)?^export (?:interface|type) ([A-Za-z0-9_]+)/gm,
+    ),
+  ]
+    .filter((match) => !(match[1] ?? "").includes("@internal"))
+    .map((match) => match[2])
     .filter((name): name is string => name !== undefined);
 }
 
@@ -133,7 +139,6 @@ const FRONTEND_TEST_EXPORT_NAMES = [
 
 const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
   "bb-plugin-sdk.d.ts",
-  "bb-plugin-sdk-ai-services.d.ts",
   "bb-plugin-sdk-provider-bridge.d.ts",
   "bb-plugin-sdk-provider-bridge-testing.d.ts",
   "bb-plugin-sdk-provider-bridge-acp.d.ts",
@@ -172,6 +177,7 @@ const BB_PLUGIN_API_KEYS = [
   "experimental_serverAccess",
   "sdk",
   "onDispose",
+  "onInstall",
 ] as const satisfies readonly (keyof BbPluginApi)[];
 
 type MissingApiKey = Exclude<
@@ -216,6 +222,7 @@ void _assertAllAuthModesListed;
 const THREAD_EVENT_PAYLOAD_FIELDS = {
   "experimental_thread.events": ["thread", "sequence"],
   "experimental_terminal.input": ["terminal"],
+  "experimental_host.deleted": ["host"],
   "thread.created": ["thread"],
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
@@ -263,6 +270,7 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
+  experimental_sidebarHeader: ExperimentalSidebarHeaderProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
@@ -340,20 +348,16 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   experimental_sidebarNavigation: [
-    "items",
-    "activeItemId",
     "isCompactViewport",
-    "experimental_activate",
     "experimental_Original",
   ],
+  experimental_sidebarHeader: ["width", "controlSize", "isCompactViewport"],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
-    "Original",
-    "experimental_Original",
   ],
   experimental_threadHeaderAction: [
     "threadId",
@@ -367,20 +371,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "experimental_page",
     "isCompactViewport",
   ],
-  fileOpener: [
-    "path",
-    "source",
-    "experimental_lineRange",
-    "Original",
-    "experimental_Original",
-  ],
+  fileOpener: ["path", "source", "experimental_lineRange", "Original"],
   experimental_sourceCodeRenderer: [
     "content",
     "path",
     "overflow",
     "highlightedLines",
     "Original",
-    "experimental_Original",
   ],
   experimental_diffRenderer: [
     "patch",
@@ -390,10 +387,15 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "showLineNumbers",
     "experimental_fullFileContents",
     "Original",
-    "experimental_Original",
   ],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
-  messageAction: ["threadId", "message", "selectedText", "openPanel"],
+  messageAction: [
+    "threadId",
+    "message",
+    "selectedText",
+    "openPanel",
+    "composer",
+  ],
   commandPaletteAction: ["threadId", "projectId", "openPanel"],
   experimental_providerIcon: ["providerKind", "providerId", "icon"],
   experimental_timelineRenderer: [

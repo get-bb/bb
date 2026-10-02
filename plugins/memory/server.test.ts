@@ -288,17 +288,13 @@ describe("bb-plugin-memory", () => {
     expect(stray.stderr).toContain("--details");
   });
 
-  it("documents the write limits and suggests a near-miss subcommand", async () => {
+  it("documents the write limits in add --help", async () => {
     const host = await loadPlugin();
     const help = await host.harness.runCli(["add", "--help"]);
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("at most 400 characters");
     expect(help.stdout).toContain("at most 16000 characters");
     expect(help.stdout).toContain("--tag <TAG>");
-
-    const mistyped = await host.harness.runCli(["catlog"]);
-    expect(mistyped.exitCode).toBe(1);
-    expect(mistyped.stderr).toContain("(Did you mean catalog?)");
   });
 
   it("uses optimistic versions for updates and forgetting", async () => {

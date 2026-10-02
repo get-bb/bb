@@ -12,9 +12,15 @@ type PluginCatalogInstallControlProps = {
   displayName: string;
   count?: { display: string; accessibleLabel: string };
   showLabel?: boolean;
+  subtle?: boolean;
 } & (
   | { installed: true; included: boolean; onUninstall?: () => void }
-  | { installed: false; disabled: boolean; onInstall: () => void }
+  | {
+      installed: false;
+      disabled: boolean;
+      unavailableReason?: string | null;
+      onInstall: () => void;
+    }
 );
 
 export function PluginCatalogInstallControl(
@@ -29,7 +35,14 @@ export function PluginCatalogInstallControl(
     ? "Included with BB; cannot be uninstalled."
     : installed
       ? "Installed"
-      : `Install ${displayName}`;
+      : disabled
+        ? (props.unavailableReason ?? "Unavailable for this version of BB.")
+        : `Install ${displayName}`;
+  const stateIcon = installed
+    ? "Check"
+    : disabled
+      ? "AlertTriangle"
+      : "Download";
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -37,22 +50,21 @@ export function PluginCatalogInstallControl(
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant={installed ? "ghost" : "outline"}
+            variant={installed || props.subtle ? "ghost" : "outline"}
             size="sm"
             aria-disabled={disabled}
-            disabled={!installed && disabled}
             aria-label={`${installed ? `${displayName} installed` : `Install ${displayName}`}${
               count === undefined ? "" : ` — ${count.accessibleLabel}`
             }`}
             className={cn(
               "group/install h-7 min-w-7 shrink-0 gap-1.5 px-2 text-xs shadow-none",
-              installed
+              installed || props.subtle
                 ? "font-normal text-subtle-foreground"
                 : "border-border/80 bg-background text-foreground hover:bg-state-hover",
               installed && !disabled && "hover:text-destructive-text",
               disabled &&
                 "cursor-not-allowed hover:bg-transparent hover:text-subtle-foreground",
-              !installed && disabled && "opacity-50",
+              installed && "opacity-50 hover:opacity-100 focus-visible:opacity-100",
             )}
             onClick={() => {
               if (disabled) return;
@@ -62,9 +74,10 @@ export function PluginCatalogInstallControl(
           >
             <span className="grid place-items-center" aria-hidden>
               <Icon
-                name="Download"
+                name={stateIcon}
                 className={cn(
                   "col-start-1 row-start-1 size-3.5",
+                  !installed && disabled && "text-warning-text",
                   installed &&
                     !disabled &&
                     "group-hover/install:opacity-0 group-focus-visible/install:opacity-0",

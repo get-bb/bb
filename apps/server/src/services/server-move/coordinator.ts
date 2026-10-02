@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { rm, rmdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import type { AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import { listNonDestroyedHostsByIds } from "@bb/db";
 import {
@@ -110,6 +111,7 @@ export interface ServerMoveEnvironment {
   ): Promise<ServerMoveGrant>;
   resumeDeferredWork(): void;
   retireProcess(): void;
+  serverAppSurface: AppSurface;
   serverTimeZone: string | null;
   stopRunningWork(args: ServerMoveStopWorkArgs): Promise<void>;
   targetServerPort(): number;
@@ -322,6 +324,7 @@ export function createServerMoveCoordinator(
     inspectTimeoutMs: timings.inspectTimeoutMs,
     readServerDiskFreeBytes: () => environment.readServerDiskFreeBytes(),
     resolveMode: () => environment.resolveMode(),
+    serverAppSurface: environment.serverAppSurface,
     serverTimeZone: environment.serverTimeZone,
     targetServerPort: () => environment.targetServerPort(),
   };

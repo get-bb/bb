@@ -22,7 +22,7 @@ export function validateToolInput(input: ToolInput): string | null {
 
 export const MAX_INTERACTION_PAYLOAD_BYTES = 60 * 1024;
 
-export class PreviewTooLargeError extends Error {
+class PreviewTooLargeError extends Error {
   constructor(byteLength: number) {
     super(
       `The questions are too large to display (${byteLength} bytes of option previews, limit ${MAX_INTERACTION_PAYLOAD_BYTES}). Shorten or drop the option previews and call the tool again.`,

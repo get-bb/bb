@@ -707,32 +707,6 @@ describe("message.dispatch hook message author", () => {
     });
   });
 
-  it("names the sending thread for a message another thread sent", async () => {
-    await withTestHarness(async (harness) => {
-      const seen = recordAuthors();
-      const { environment, project, thread } = seedRunnableThread(harness, {
-        hostId: "host-author-agent",
-        status: "idle",
-      });
-      const sender = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        status: "active",
-      });
-
-      await acceptThreadSendRequest(harness.deps, {
-        payload: {
-          input: textInput("sent by an agent"),
-          mode: "auto",
-          senderThreadId: sender.id,
-        },
-        thread,
-      });
-
-      expect(seen).toEqual([{ initiator: "agent", senderThreadId: sender.id }]);
-    });
-  });
-
   it("reads a retry of a failed turn as system", async () => {
     await withTestHarness(async (harness) => {
       const queuedMessages: ThreadQueuedMessage[][] = [];

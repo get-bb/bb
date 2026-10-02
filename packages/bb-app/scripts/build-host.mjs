@@ -80,6 +80,10 @@ await copyFile(
   resolve(hostDaemonTarget, "bb"),
 );
 await chmod(resolve(hostDaemonTarget, "bb"), 0o755);
+await copyFile(
+  resolve(hostDaemonSource, "bb.cmd"),
+  resolve(hostDaemonTarget, "bb.cmd"),
+);
 await copyDirectory({
   from: resolve(hostDaemonSource, "bb-chunks"),
   to: resolve(hostDaemonTarget, "bb-chunks"),

@@ -20,8 +20,8 @@ import {
 } from "./file-list.js";
 import {
   readFileForTransport,
+  readFileChunkForTransport,
   readFileFromGitRef,
-  readFileMetadataForTransport,
   readRootRelativeFileForTransport,
   type ReadFileContentForTransportResult,
 } from "./file-read.js";
@@ -242,14 +242,17 @@ export async function readHostFile(
   });
 }
 
-export async function readHostFileMetadata(
-  command: CommandOf<"host.file_metadata">,
-): Promise<HostDaemonOnlineRpcResult<"host.file_metadata">> {
+export async function readHostFileChunk(
+  command: CommandOf<"host.read_file_chunk">,
+): Promise<HostDaemonOnlineRpcResult<"host.read_file_chunk">> {
   assertAbsoluteHostDiskPathCommand(command);
-  return readFileMetadataForTransport({
+  return readFileChunkForTransport({
     resolvedPath: command.path,
     resultPath: command.path,
-    ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
+    rootPath: command.rootPath,
+    offset: command.offset,
+    length: command.length,
+    revision: command.revision,
   });
 }
 

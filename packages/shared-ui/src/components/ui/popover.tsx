@@ -157,11 +157,14 @@ const PopoverContent = React.forwardRef<
           closeOnBackdropClick={dismissOnOutsideInteraction}
           contentClassName={mobileClassName}
           onContentAnimationEnd={onMobileContentAnimationEnd}
+          onEscapeKeyDown={props.onEscapeKeyDown}
+          onPointerDownOutside={props.onPointerDownOutside}
+          onInteractOutside={onInteractOutside}
         >
           <div
             ref={ref}
             className={cn(
-              "overflow-y-auto px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]",
+              "overflow-y-auto px-4 pt-2 pb-4",
               className,
             )}
             {...domProps}

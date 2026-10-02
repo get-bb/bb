@@ -23,7 +23,8 @@ describe("@bb/templates", () => {
     expect(guide).toContain("Partial updates to an existing");
     expect(guide).toContain("--env-json");
     expect(guide).toContain("--reasoning <none|low|medium|high");
-    expect(guide).toContain("--service-tier default|fast|none");
+    expect(guide).toContain("--service-tier <tier>");
+    expect(guide).toContain("--clear-service-tier");
     expect(guide).toContain("--permission-mode <accept-edits|auto|full>");
     expect(guide).not.toContain("workspace-write|readonly");
   });
@@ -47,18 +48,6 @@ describe("@bb/templates", () => {
         "",
         "Please check the failing test.",
       ].join("\n"),
-    );
-  });
-
-  it("renders standardAgentAppendInstructions without user-question guidance", () => {
-    const rendered = renderTemplate("standardAgentAppendInstructions", {});
-
-    expect(rendered).toContain("You are working inside bb");
-    expect(rendered).toContain("agentic IDE");
-    expect(rendered).toContain("Reference a BB thread as `@thread:thr_abc123`");
-    expect(rendered).toContain("Do not construct thread URLs manually");
-    expect(rendered).not.toContain(
-      "Ask the user a blocking question only when",
     );
   });
 

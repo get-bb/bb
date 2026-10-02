@@ -1,6 +1,6 @@
 # @bb/desktop
 
-macOS and Linux Electron shell for bb. The desktop app loads the existing bb
+macOS, Linux, and Windows Electron shell for bb. The desktop app loads the existing bb
 web UI and uses the packaged `bb-app` launcher for server and host-daemon
 lifecycle.
 
@@ -52,6 +52,28 @@ binaries work with Electron without an ABI-specific rebuild. The packaging
 hook opens an in-memory database with Electron before accepting the packaged
 SQLite module; older ABI-specific modules still use the prebuild fallback.
 
+macOS notifications require a signed application. Unsigned local and CI artifact
+builds cannot display macOS notifications. Published releases use the existing
+signing and notarization workflow.
+
+The shipped Linux x64 SQLite prebuild requires glibc 2.34 or newer and
+libstdc++ with `GLIBCXX_3.4.29` support (GCC 11 or newer).
+
+The AppImage packaging patch exposes its bundled legacy `libnotify` only as
+`libnotify.so`. Electron first tries the system's versioned library names, so
+libnotify 0.7.10 or newer can supply notification activation tokens on Wayland.
+If no versioned system library loads, Electron can still use the bundled
+unversioned fallback for notifications. Older libraries keep their existing
+notification behavior but cannot forward activation tokens.
+
+Electron downloads its development runtime lazily; the desktop test command
+installs it before starting parallel workers.
+
+The macOS bundle declares macOS 13 as its minimum. The release feed generator
+writes the corresponding Darwin kernel minimum, 22.0.0, into both JSON and YAML
+update feeds. Run it before publishing release artifacts so older Macs reject
+incompatible updates.
+
 ## Validation
 
 ```bash
@@ -60,6 +82,10 @@ pnpm exec turbo run build --filter=@bb/desktop
 pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force
 pnpm exec turbo run dev --filter=@bb/desktop
 ```
+
+The desktop tests include an Electron startup smoke that opens a real window.
+On Linux it runs only when `DISPLAY` is set; on a headless host, wrap the test
+command in `xvfb-run -a`, as CI does.
 
 ## Packaging
 
@@ -114,6 +140,33 @@ before and after to reject bundle mutations. Fixtures are removed afterward.
 The bb-app tarball smoke covers a different packaging pipeline and cannot
 detect Electron artifact omissions. A source build or `npm --version` alone
 does not verify a desktop plugin dependency install.
+
+### Windows (NSIS, x64)
+
+Windows packaging needs a Windows x64 host; `afterPack` refuses to cross-build
+because it verifies the packaged native modules by loading them. From the repo
+root, install with `pnpm install --frozen-lockfile --ignore-scripts`, then build
+an unpacked app, an installer, or smoke test the current packaged output with:
+
+```powershell
+pnpm exec turbo run package:win --filter=@bb/desktop
+pnpm exec turbo run desktop:build:win --filter=@bb/desktop
+pnpm exec turbo run smoke:packaged --filter=@bb/desktop
+```
+
+`desktop:build:win` writes `release/bb-<version>-x64.exe`, a one-click per-user
+NSIS installer that installs to `%LOCALAPPDATA%\Programs\bb` (`bb-nightly` on
+the nightly channel) without elevation, plus `latest.yml` for electron-updater.
+The installer is unsigned, so Windows SmartScreen warns before running it.
+
+`afterPack` copies `@parcel/watcher-win32-x64` into the package when
+electron-builder leaves it out and loads it with the packaged Electron; without
+it the file watcher cannot start.
+
+Windows builds neither check for nor install updates: no Windows version feed is
+published yet. The feed file name (`desktop-version-windows.json`) and updater
+metadata names (`latest.yml`, `nightly.yml`) are reserved so a later release
+change can turn both on.
 
 ### Linux (AppImage, x64)
 
@@ -363,31 +416,33 @@ recovery path for those cases.
 
 ### Saved servers
 
-Use **Window → Server → Add Server…** to save and switch to another machine's
-HTTP(S) bb server URL. Saved URLs remain in the menu across restarts; adding an
-existing URL selects it without creating a duplicate. **This Mac** switches back
-to the built-in server without removing saved entries.
+Use **bb → Desktop Settings → Server → Add Server…** to save and switch to
+another machine's HTTP(S) bb server URL. **Window → Server** opens the same
+menu. Saved URLs remain in the menu across restarts; adding an existing URL
+selects it without creating a duplicate. **This Mac** on macOS or **This
+Computer** on Linux switches back to the built-in server without removing
+saved entries.
 
 **Set Server URL…** edits the last selected custom server. Clearing its URL removes
-that entry and switches an active custom target to This Mac. Other saved servers
-and Connect discovery remain available. Existing single-server preferences are
+that entry and switches an active custom target to the built-in server. Other
+saved servers and Connect discovery remain available. Existing single-server preferences are
 loaded automatically into the saved list in `<userData>/server-target.json`.
 
 ### Server moves
 
 After `bb server move`, the old computer's data dir (`~/.bb` or
 `$BB_DATA_DIR`) contains `server-moved.json`. The desktop app reads it at
-startup, whenever the "This Mac" target loads, and while that target is active.
+startup, whenever the built-in server target loads, and while that target is active.
 While the target is active, the app watches the data dir. If `fs.watch` fails,
 for example with `ENOSPC`, the app checks the file every 2 seconds instead
 (`src/server-moved.ts`). The server writes the lock before the new machine
 takes over and removes it if the move is rolled back, so the app acts only on a
 committed move. A move is committed when the local server address answers
 `/health` with 410 `code: "server_moved"`, or when nothing listens there and no
-launcher process is alive. The app checks once when it starts or loads "This
-Mac". When a move finishes while the app is open, the app checks every second
-for up to 120 seconds. It stops if the lock disappears. A committed lock
-switches the server target:
+launcher process is alive. The app checks once when it starts or loads the
+built-in server. When a move finishes while the app is open, the app checks every
+second for up to 120 seconds. It stops if the lock disappears. The first time the app
+sees a committed lock for a `moveId`, it switches the server target once:
 
 - `mode: "connect"` selects `connectHandle` with `serverUrl`.
 - `mode: "direct"` sets the custom server URL. When a move finishes while
@@ -401,3 +456,23 @@ runs this computer as a regular machine, and quitting the app stops it. If the
 app has no stored bb Connect credential, it signs in to a connect target with
 the `x-bb-connect-machine` header that the move wrote to the data dir's
 `config.json`. The app logs a warning and ignores an invalid lock.
+
+On startup, a saved built-in server choice also switches to the moved server;
+it never starts the old copy automatically. A different saved remote server
+choice remains selected. Explicitly picking the built-in server while the move
+lock exists shows "bb moved to <toHostName>" with **Open <toHostName>** and
+**Choose server…**. The screen explains whether the old copy is locked or was
+deleted. Selecting the built-in server does not unlock the old copy or remove
+its background machine service.
+
+Startup error screens list their actions as buttons. Any screen where
+retrying can help shows **Try again**. **Choose server…** opens the Server menu,
+where the user can select the built-in server if needed. A bb Connect
+`unauthorized` error has no **Try again**, because the same credential fails
+the same way. **Reconnect** opens account sign-in in a desktop
+window. The app clears its old account sign-in, waits for a new session, then
+retries the selected server. A valid account session can mint and renew the
+desktop session when a machine credential is rejected. Closing the sign-in
+window leaves the error screen available. Fatal errors have no buttons. The renderer sends the chosen
+action on `bb-desktop:startup-action`. The main process accepts only actions
+from the error page that is currently loaded in an app window's main frame.

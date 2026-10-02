@@ -28,6 +28,7 @@ import {
   type ExperimentalPluginProviderEnvContext,
   type ExperimentalPluginProviderEnvHealthContext,
   type PluginRpcError,
+  type ExperimentalPluginRpcCaller,
 } from "@get-bb/plugin-sdk";
 import {
   enforcePluginCliOutputLimit,
@@ -55,6 +56,7 @@ import {
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
   type PluginCapabilitySummary,
+  type PluginSafeModeUpdateResponse,
   type PluginSourceDetail,
   type PluginSourceSelection,
   type PluginUpdateCheckEntry,
@@ -64,7 +66,10 @@ import {
   deleteAllPluginSettings,
   deleteInstalledPlugin,
   deletePluginSchedules,
+  forgetPluginProviders,
+  getDisabledPluginProviderCatalog,
   getInstalledPlugin,
+  getPluginSafeMode,
   getThread,
   getLatestThreadSequence,
   listDuePluginSchedules,
@@ -75,10 +80,13 @@ import {
   listThreadPluginMetadataRows,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
+  setDisabledPluginProviderCatalog,
   setInstalledPluginEnabled,
+  setPluginSafeMode,
   type InstalledPluginRow,
   type PluginMarketplaceRow,
 } from "@bb/db";
+import { toHostRecord } from "../lib/entity-lookup.js";
 import {
   catalogEntryMetadata,
   isBundledMarketplaceEntry,
@@ -116,6 +124,7 @@ import {
   type PluginRpcHandler,
   type PluginWebSocketRouteRecord,
 } from "./plugin-api.js";
+import type { PluginRpcCallerResolution } from "./plugin-rpc-caller.js";
 import {
   syncPluginCommandsSkill,
   type PluginCliContribution,
@@ -147,7 +156,11 @@ import {
   forgetMutableRoot,
   type PluginLoadHold,
 } from "./plugin-runtime.js";
-import { nextCronRunAt, raceTimeout } from "./plugin-time-box.js";
+import {
+  nextCronRunAt,
+  raceTimeout,
+  settledWithin,
+} from "./plugin-time-box.js";
 import { createPluginUpdates } from "./plugin-updates.js";
 
 import type {
@@ -231,6 +244,11 @@ export interface PluginService {
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
   list(): InstalledPlugin[];
+  providerCatalog(): Array<{
+    id: string;
+    displayName: string;
+    pluginId: string;
+  }>;
   listThemes(): PluginThemeMeta[];
   readThemeCss(themeId: string): Promise<string | null>;
   readThemeCodeTheme(themeId: string): DeclaredCodeTheme | null;
@@ -272,6 +290,8 @@ export interface PluginService {
     enabled: boolean,
   ): Promise<InstalledPlugin | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
+  getSafeMode(): boolean;
+  setSafeMode(enabled: boolean): Promise<PluginSafeModeUpdateResponse>;
   getApi(id: string): BbPluginApi | undefined;
   /**
    * Whether this server still means to run this plugin, which is what decides
@@ -341,6 +361,12 @@ export interface PluginService {
   ): PluginWireLookup<PluginWebSocketRouteRecord>;
   discoverRpc(query: PluginRpcDiscoveryQuery): PublishedPluginRpcMethod[];
   getRpcHandler(id: string, method: string): PluginWireLookup<PluginRpcHandler>;
+  /**
+   * The caller of a plugin rpc request: a plugin when `token` is the live
+   * per-load token its `bb.sdk.plugins.callRpc` attaches, the client when no
+   * token was sent, and not ok for any other token.
+   */
+  resolveRpcCaller(token: string | undefined): PluginRpcCallerResolution;
   invokeHttpRoute(
     id: string,
     route: PluginHttpRouteRecord,
@@ -365,6 +391,7 @@ export interface PluginService {
     method: string,
     handler: PluginRpcHandler,
     input: unknown,
+    caller: ExperimentalPluginRpcCaller,
   ): Promise<
     { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
   >;
@@ -535,8 +562,32 @@ function normalizeMentionSearchItems(
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
+  const installHandlerTimeoutMs = deps.installHandlerTimeoutMs ?? 30_000;
+
+  async function runInstallHandlers(id: string): Promise<void> {
+    const plugin = loaded.get(id);
+    if (plugin === undefined) return;
+    const handlers = [...plugin.handle.installHandlers];
+    if (handlers.length === 0) return;
+    const run = (async () => {
+      for (const handler of handlers) {
+        await invokeWrapped(id, "install handler", handler);
+      }
+    })();
+    if (!(await settledWithin(run, installHandlerTimeoutMs))) {
+      logger.warn(
+        `[plugin:${id}] install handlers were still running after ${installHandlerTimeoutMs / 1000}s; the install finished without waiting for them`,
+      );
+    }
+  }
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
+  function isOrphanedBuiltinRow(row: InstalledPluginRow): boolean {
+    return (
+      row.sourceKind === "builtin" &&
+      !bundledPlugins.some((bundled) => bundled.name === row.sourceBuiltinName)
+    );
+  }
   const mentionSearchTimeoutMs =
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
@@ -571,6 +622,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     agentToolProblems,
     appBundles,
     bindSdk: bindRuntimeSdk,
+    resolveRpcCaller,
     buildThreadDto,
     builtinSourceWatchers,
     checkEngineRange,
@@ -587,6 +639,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     identities,
     invokeWrapped,
     isBuiltinPluginId,
+    isSafeModeExemptRow,
+    isSuppressedBySafeMode,
     listPluginHooks,
     listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
@@ -599,6 +653,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     loaded,
     loadOne,
     brandingAssets,
+    safeModeActivationRefusal,
     setDevBuildProblem,
     setLoadHold,
     setStatus,
@@ -612,6 +667,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withPluginOperationLock,
   } = createPluginRuntime({
     deps,
+    includedBuiltinNames: new Set(
+      bundledPlugins
+        .filter((plugin) => plugin.autoInstall)
+        .map((plugin) => plugin.name),
+    ),
     machineEnrollments: deps.machineEnrollments ?? null,
     settingsChanged: notifyPluginsChanged,
   });
@@ -635,6 +695,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     restoreRegistration,
     sourceFingerprint,
   } = createPluginRegistration({
+    runInstallHandlers,
+    safeModeActivationRefusal,
     deps,
     bundledPlugins,
     withLifecycleLock,
@@ -692,6 +754,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   const pluginUpdates = createPluginUpdates({
     deps,
+    safeModeActivationRefusal,
     registrationMutationKey: REGISTRATION_MUTATION_KEY,
     withLifecycleLock,
     withPluginOperationLock,
@@ -983,11 +1046,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             catalogMarketplaceName: row.catalogMarketplaceName,
             labels: catalogData.publisherLabels,
           }),
-          isOrphanedBuiltin:
-            row.sourceKind === "builtin" &&
-            !bundledPlugins.some(
-              (bundled) => bundled.name === row.sourceBuiltinName,
-            ),
+          isOrphanedBuiltin: isOrphanedBuiltinRow(row),
           sourceDisplay: sourceDisplayForRow(row),
           updateState: updateStateForRow(row),
           enabled: row.enabled,
@@ -1161,6 +1220,62 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return { metadataByPluginId, publisherLabels };
   }
 
+  function pluginProviderCatalog(
+    row: InstalledPluginRow,
+  ): Array<{ id: string; displayName: string }> {
+    const manifest =
+      loaded.get(row.id)?.manifest ?? identities.get(row.id)?.manifest;
+    const catalog = new Map(
+      (manifest?.providerCatalog ?? []).map((provider) => [
+        provider.id,
+        provider,
+      ]),
+    );
+    if (!row.enabled) {
+      for (const provider of getDisabledPluginProviderCatalog(deps.db, row.id))
+        catalog.set(provider.id, provider);
+    }
+    return [...catalog.values()];
+  }
+
+  function pluginProviderIds(row: InstalledPluginRow): Set<string> {
+    return new Set([
+      ...pluginProviderCatalog(row).map((provider) => provider.id),
+      ...(loaded
+        .get(row.id)
+        ?.handle.listProviderDeclarations()
+        .map((declaration) => declaration.id) ?? []),
+    ]);
+  }
+
+  async function deleteRemovedPluginData(
+    row: InstalledPluginRow,
+    providerIds: ReadonlySet<string>,
+  ): Promise<void> {
+    deps.onPluginUnregistered?.(row.id);
+    forgetPluginProviders(deps.db, row.id, providerIds);
+    // The uninstalled tree is no longer reloadable, so stop the module
+    // resolve hook from scanning it on every later import.
+    forgetMutableRoot(row.rootDir);
+    deletePluginSchedules(deps.db, row.id);
+    deleteAllPluginSettings(deps.db, row.id);
+    await rm(pluginSecretsDir(deps.dataDir, row.id), {
+      recursive: true,
+      force: true,
+    });
+  }
+
+  async function removeUnbundledBuiltins(): Promise<void> {
+    for (const row of listInstalledPlugins(deps.db)) {
+      if (!isOrphanedBuiltinRow(row)) continue;
+      await deleteRemovedPluginData(row, pluginProviderIds(row));
+      deleteInstalledPlugin(deps.db, row.id);
+      logger.info(
+        `plugin ${row.id} removed because bb no longer bundles ${row.source}; its settings, secrets, and schedules were deleted`,
+      );
+    }
+  }
+
   return {
     isBuiltin: isBuiltinPluginId,
 
@@ -1212,6 +1327,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       },
       emitTerminalInput(terminal) {
         emitThreadEvent("experimental_terminal.input", () => ({ terminal }));
+      },
+      emitHostDeleted(host) {
+        emitThreadEvent("experimental_host.deleted", () => ({
+          host: toHostRecord(host, "disconnected"),
+        }));
       },
       emitThreadCreated(thread) {
         emitThreadEvent("thread.created", () => ({
@@ -1315,6 +1435,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           await recoverIncompletePluginRollbacks();
         });
         await reconcileBundled();
+        await removeUnbundledBuiltins();
         await loadAll();
       } finally {
         loadPassActive = false;
@@ -1423,6 +1544,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     handleUncaughtException,
 
     list,
+    providerCatalog() {
+      return listInstalledPlugins(deps.db).flatMap((row) =>
+        pluginProviderCatalog(row).map((provider) => ({
+          ...provider,
+          pluginId: row.id,
+        })),
+      );
+    },
 
     async install(source, selection) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
@@ -1513,6 +1642,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     async remove(id) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
+        const providerIds = row ? pluginProviderIds(row) : new Set<string>();
         await withLifecycleLock(id, () => disposeOne(id));
         statuses.delete(id);
         handlerStats.delete(id);
@@ -1526,16 +1656,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : deleteInstalledPlugin(deps.db, id)
           : false;
         if (removed && row) {
-          deps.onPluginUnregistered?.(id);
-          // The uninstalled tree is no longer reloadable, so stop the module
-          // resolve hook from scanning it on every later import.
-          forgetMutableRoot(row.rootDir);
-          deletePluginSchedules(deps.db, id);
-          deleteAllPluginSettings(deps.db, id);
-          await rm(pluginSecretsDir(deps.dataDir, id), {
-            recursive: true,
-            force: true,
-          });
+          await deleteRemovedPluginData(row, providerIds);
           logger.info(
             `plugin ${id} removed from ${row.source}; its settings, secrets, and schedules were deleted`,
           );
@@ -1564,6 +1685,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async setEnabled(id, enabled) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const plugin = loaded.get(id);
+        if (!enabled && plugin !== undefined) {
+          setDisabledPluginProviderCatalog(
+            deps.db,
+            id,
+            plugin.handle
+              .listProviderDeclarations()
+              .map(({ id, displayName }) => ({ id, displayName })),
+          );
+        }
         if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
         if (enabled) {
           const row = getInstalledPlugin(deps.db, id);
@@ -1587,6 +1718,33 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
+    getSafeMode() {
+      return getPluginSafeMode(deps.db);
+    },
+
+    async setSafeMode(enabled) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        if (getPluginSafeMode(deps.db) === enabled) {
+          return { enabled, problems: [] };
+        }
+        setPluginSafeMode(deps.db, enabled);
+        const rows = listInstalledPlugins(deps.db)
+          .filter((row) => row.enabled && !isSafeModeExemptRow(row))
+          .sort((a, b) => a.id.localeCompare(b.id));
+        const problems: string[] = [];
+        for (const row of rows) {
+          const problem = await withLifecycleLock(row.id, () => loadOne(row));
+          if (problem !== null) {
+            problems.push(`plugin "${row.id}" did not start: ${problem}`);
+          }
+          if (enabled) deps.onPluginUnregistered?.(row.id);
+        }
+        await syncCliSkill();
+        notifyPluginsChanged();
+        return { enabled, problems };
+      });
+    },
+
     async reload(id) {
       const rows = listInstalledPlugins(deps.db).filter(
         (row) => id === undefined || row.id === id,
@@ -1596,6 +1754,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const problem = await withLifecycleLock(row.id, () => loadOne(row));
         if (problem !== null) {
           failures.push(`plugin "${row.id}" reload failed: ${problem}`);
+        } else if (isSuppressedBySafeMode(row)) {
+          failures.push(
+            `plugin "${row.id}" was not reloaded: plugin safe mode is on`,
+          );
         }
       }
       await syncCliSkill();
@@ -1816,6 +1978,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return wireLookup(id, (plugin) => plugin.handle.rpcHandlers.get(method));
     },
 
+    resolveRpcCaller,
+
     async invokeHttpRoute(id, route, context) {
       const outcome = await invokeWrapped(
         id,
@@ -1870,7 +2034,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await invokeWrapped(id, `websocket ${route.path} ${event}`, run);
     },
 
-    async invokeRpcHandler(id, method, handler, input) {
+    async invokeRpcHandler(id, method, handler, input, caller) {
       const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
         const parsedInput = await validateRpcValue(
           handler.inputSchema,
@@ -1878,7 +2042,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           "input",
           throwRpcBoundaryError,
         );
-        const result = await handler.handler(parsedInput);
+        const result = await handler.handler(parsedInput, {
+          experimental_caller: caller,
+        });
         const parsedOutput = await validateRpcValue(
           handler.outputSchema,
           result,

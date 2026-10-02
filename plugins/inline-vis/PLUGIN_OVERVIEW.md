@@ -5,6 +5,8 @@ See an agent's chart, demo, report, or Markdown document in the conversation wit
 - A live HTML preview or formatted Markdown document in the message.
 - A default viewport height of 224 pixels. The agent can set a height from 120 to 1200 pixels.
 - A header action that opens the source file in bb's sidebar viewer, for workspace and thread-storage previews alike.
+- Cmd-click, Ctrl-click, or middle-click that action on an HTML preview to open the rendered page in a browser tab instead.
+- A collapse control that remembers whether inline previews should stay collapsed on the current client.
 - A clear inline error when the file is missing, too large, or unsupported.
 
 ## How it works
@@ -24,7 +26,7 @@ Read-only artifacts in the thread's storage directory can be rendered without re
 
 The plugin confirms the file exists in the selected source before it renders. Files must be UTF-8 text with a maximum size of 5 MiB. Relative assets next to HTML files load as usual.
 
-HTML runs in a sandboxed iframe with an opaque origin. Scripts in the file cannot read the bb page, its cookies, or its storage. Markdown uses bb's renderer with raw HTML disabled.
+HTML runs in a sandboxed iframe with an opaque origin. Scripts in the file cannot read the bb page, its cookies, or its storage. Markdown uses bb's renderer with sanitized HTML support.
 
 ## For agents
 

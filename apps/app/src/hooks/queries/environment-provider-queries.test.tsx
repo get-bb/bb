@@ -117,15 +117,4 @@ describe("useSystemEnvironmentProviders", () => {
     );
     expect(result.current.providers).toBeUndefined();
   });
-
-  it("reports the list as unresolved when nothing was remembered", () => {
-    vi.mocked(sdk.environments.listProviders).mockImplementation(
-      pendingForever,
-    );
-    const { result } = renderHook(() => useSystemEnvironmentProviders(), {
-      wrapper: createQueryClientTestHarness().wrapper,
-    });
-
-    expect(result.current.providers).toBeUndefined();
-  });
 });

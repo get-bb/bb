@@ -13,14 +13,6 @@ function graphemeWidth(grapheme: string): number {
   return WIDE_SCRIPT_PATTERN.test(grapheme) ? 2 : 1;
 }
 
-export function displayWidth(text: string): number {
-  let width = 0;
-  for (const segment of graphemeSegmenter.segment(text)) {
-    width += graphemeWidth(segment.segment);
-  }
-  return width;
-}
-
 export function truncateToWidth(text: string, maxWidth: number): string {
   let width = 0;
   let end = 0;

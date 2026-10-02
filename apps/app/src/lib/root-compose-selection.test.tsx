@@ -6,17 +6,19 @@ import { describe, expect, it } from "vitest";
 import type { ForkThreadCreateSeed } from "@bb/client-core";
 import {
   useRootComposeForkSeed,
-  useRootComposeSectionId,
+  useRootComposePlacement,
+  useRootComposeReuseEnvironment,
 } from "./root-compose-selection";
 
 describe("root compose targets across layout remounts", () => {
-  it("retains section and fork targets when the composer remounts, then clears them", () => {
+  it("persists placement into a fresh store without persisting the fork seed, then clears it", () => {
     const store = createStore();
     const wrapper = ({ children }: { children: ReactNode }) => (
       <Provider store={store}>{children}</Provider>
     );
     const useTargets = () => ({
-      section: useRootComposeSectionId(),
+      placement: useRootComposePlacement(),
+      environment: useRootComposeReuseEnvironment(),
       fork: useRootComposeForkSeed(),
     });
     const fork: ForkThreadCreateSeed = {
@@ -33,20 +35,35 @@ describe("root compose targets across layout remounts", () => {
     };
     const first = renderHook(useTargets, { wrapper });
     act(() => {
-      first.result.current.section[1]("sec_research");
+      first.result.current.placement[1]({
+        sectionId: "sec_research",
+        pinned: true,
+      });
+      first.result.current.environment[1]("reuse:env_test");
       first.result.current.fork[1](fork);
     });
     first.unmount();
-    const remounted = renderHook(useTargets, { wrapper });
-    expect(remounted.result.current.section[0]).toBe("sec_research");
-    expect(remounted.result.current.fork[0]).toEqual(fork);
+    const reloadedWrapper = ({ children }: { children: ReactNode }) => (
+      <Provider store={createStore()}>{children}</Provider>
+    );
+    const remounted = renderHook(useTargets, { wrapper: reloadedWrapper });
+    expect(remounted.result.current.placement[0]).toEqual({
+      sectionId: "sec_research",
+      pinned: true,
+    });
+    expect(remounted.result.current.environment[0]).toBe("reuse:env_test");
+    expect(remounted.result.current.fork[0]).toBeNull();
     act(() => {
-      remounted.result.current.section[1](null);
+      remounted.result.current.placement[1]({ sectionId: null, pinned: false });
+      remounted.result.current.environment[1](null);
       remounted.result.current.fork[1](null);
     });
     remounted.unmount();
-    const fresh = renderHook(useTargets, { wrapper });
-    expect(fresh.result.current.section[0]).toBeNull();
+    const fresh = renderHook(useTargets, { wrapper: reloadedWrapper });
+    expect(fresh.result.current.placement[0]).toEqual({
+      sectionId: null,
+      pinned: false,
+    });
     expect(fresh.result.current.fork[0]).toBeNull();
   });
 });

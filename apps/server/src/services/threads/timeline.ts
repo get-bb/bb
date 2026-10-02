@@ -134,17 +134,6 @@ interface FilterExactEventRowsForRequestedTurnArgs {
   turnId: string;
 }
 
-interface FilterExactEventRowsForRequestedTurnResult {
-  removedRows: boolean;
-  rows: readonly StoredEventRow[];
-}
-
-interface ResolveTurnSummaryDetailsSourceRangeArgs {
-  exactEventRows: readonly StoredEventRow[];
-  fallbackRange: TimelineTurnSummarySelection;
-  useExactEventRowBounds: boolean;
-}
-
 interface BuildThreadTimelineOptions {
   completedTurnDisplay: CompletedTurnDisplay;
   eventBudget: number;
@@ -646,9 +635,8 @@ const CROSS_TURN_TOOL_ITEM_KINDS: ReadonlySet<ThreadEventItemType> = new Set([
 
 function filterExactEventRowsForRequestedTurn(
   args: FilterExactEventRowsForRequestedTurnArgs,
-): FilterExactEventRowsForRequestedTurnResult {
+): StoredEventRow[] {
   const rows: StoredEventRow[] = [];
-  let removedRows = false;
   const openToolCallIds = new Set<string>();
   for (const row of args.exactEventRows) {
     if (row.scopeKind === "turn" && row.turnId !== args.turnId) {
@@ -657,7 +645,6 @@ function filterExactEventRowsForRequestedTurn(
         row.type.startsWith("item/") &&
         openToolCallIds.has(row.itemId);
       if (!continuesOpenToolCall) {
-        removedRows = true;
         continue;
       }
     } else if (
@@ -677,37 +664,12 @@ function filterExactEventRowsForRequestedTurn(
       requestId !== null &&
       args.acceptedClientRequestIdsForOtherTurns.has(requestId)
     ) {
-      removedRows = true;
       continue;
     }
     rows.push(row);
   }
 
-  return {
-    removedRows,
-    rows,
-  };
-}
-
-function resolveTurnSummaryDetailsSourceRange(
-  args: ResolveTurnSummaryDetailsSourceRangeArgs,
-): TimelineTurnSummarySelection {
-  const fallbackRange = args.fallbackRange;
-  if (!args.useExactEventRowBounds) {
-    return fallbackRange;
-  }
-
-  const firstRow = args.exactEventRows[0];
-  const lastRow = args.exactEventRows.at(-1);
-  if (!firstRow || !lastRow) {
-    return fallbackRange;
-  }
-
-  return {
-    sourceSeqEnd: lastRow.sequence,
-    sourceSeqStart: firstRow.sequence,
-    turnId: fallbackRange.turnId,
-  };
+  return rows;
 }
 
 function collectTurnIdsMissingStartedRows(
@@ -884,7 +846,10 @@ function ensureTimelineWindowBackgroundTaskStateRows(
 ): StoredEventRow[] {
   const itemIds = new Set<string>();
   for (const row of args.rows) {
-    if (row.itemKind === "backgroundTask" && row.itemId !== null) {
+    if (
+      (row.itemKind === "backgroundTask" || row.itemKind === "delegation") &&
+      row.itemId !== null
+    ) {
       itemIds.add(row.itemId);
     }
   }
@@ -1275,6 +1240,7 @@ function buildThreadTimelineInternal(
   thread: Thread,
   options: BuildThreadTimelineOptions,
 ): BuildThreadTimelineInternalResult {
+  const workspaceRoot = resolveThreadWorkspaceRoot(db, thread);
   const snapshot = resolveTimelineSnapshot(
     db,
     thread,
@@ -1285,7 +1251,7 @@ function buildThreadTimelineInternal(
       options.maxInlineOutputChars,
       options.providerDisplayName ?? null,
       thread.title ?? thread.titleFallback ?? "",
-      resolveThreadWorkspaceRoot(db, thread),
+      workspaceRoot,
       options.completedTurnDisplay,
     ]),
     options.maxSeq === 0 ? undefined : options.maxSeq,
@@ -1410,7 +1376,7 @@ function buildThreadTimelineInternal(
     planCommand: options.planCommand,
     threadStatus: snapshot.status,
     threadName: thread.title ?? thread.titleFallback ?? "",
-    workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+    workspaceRoot,
   };
   const contextWindowEvents = measureThreadTimelineStage(
     profile,
@@ -1511,6 +1477,9 @@ function buildThreadTimelineInternal(
       ),
       historySnapshot: timelineSnapshotKey(snapshot),
       olderRowsSourceSeqEnd: paginatedTimeline.olderRowsSourceSeqEnd,
+      olderRowUpdates: options.summaryOnly
+        ? undefined
+        : paginatedTimeline.olderRowUpdates,
       contentPage: paginatedTimeline.contentPage,
     },
   };
@@ -1838,7 +1807,7 @@ function buildTimelineTurnSummaryDetailsPage(
     turnId: options.turnId,
   });
   const eventRows = mergeStoredEventRowsById([
-    ...exactEventRowsForRequestedTurn.rows,
+    ...exactEventRowsForRequestedTurn,
     ...acceptedInputRowsByTurn.requestedTurnRows,
   ]);
 
@@ -1874,15 +1843,6 @@ function buildTimelineTurnSummaryDetailsPage(
       `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} cannot resolve turn/started for ${options.turnId}`,
     );
   }
-  const sourceRange = resolveTurnSummaryDetailsSourceRange({
-    exactEventRows: exactEventRowsForRequestedTurn.rows,
-    fallbackRange: {
-      sourceSeqEnd: options.sourceSeqEnd,
-      sourceSeqStart: options.sourceSeqStart,
-      turnId: options.turnId,
-    },
-    useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
-  });
   const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
     beforeSequence: detailsWindow.beforeSequence,
     maxInlineOutputChars: detailsInlineOutputLimit,
@@ -1923,13 +1883,6 @@ function buildTimelineTurnSummaryDetailsPage(
     THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT
       ? hydratedEventRows
       : eventRowsWithBackgroundTaskState;
-  const projectionSourceSeqStart = eventRowsWithTurnStarts.reduce(
-    (sourceSeqStart, row) =>
-      row.type === "turn/started" && row.turnId === options.turnId
-        ? Math.min(sourceSeqStart, row.sequence)
-        : sourceSeqStart,
-    sourceRange.sourceSeqStart,
-  );
   const projectionEvents = projectionEventRows
     .filter((row) => row.sequence <= snapshot.maxSeq)
     .map((row) => toThreadEventWithMeta(row));
@@ -1938,8 +1891,8 @@ function buildTimelineTurnSummaryDetailsPage(
     options: {
       completedTurnDisplay: options.completedTurnDisplay,
       includeDiagnosticOperations,
-      sourceSeqEnd: sourceRange.sourceSeqEnd,
-      sourceSeqStart: projectionSourceSeqStart,
+      sourceSeqStart: options.sourceSeqStart,
+      turnId: options.turnId,
       providerDisplayName: options.providerDisplayName,
       threadStatus: snapshot.status,
       threadName: thread.title ?? thread.titleFallback ?? "",

@@ -29,7 +29,6 @@ function nativeTab(tabId: string, threadId: string): DesktopBrowserNativeTab {
     canGoForward: false,
     errorText: null,
     generation: "tab-generation",
-    profile: { kind: "personal" },
     presentation: "reveal",
   };
 }
@@ -42,6 +41,8 @@ function createFakeWindow() {
       send: vi.fn(),
     },
     isDestroyed: () => false,
+    isFocused: () => true,
+    once: () => undefined,
     focus: () => undefined,
     show: () => undefined,
     restore: () => undefined,
@@ -63,7 +64,7 @@ describe("desktop browser broker snapshots", () => {
     let notifyTabsChanged: () => void = () => undefined;
     const manager: Pick<
       DesktopBrowserViewManager,
-      "listTabs" | "subscribeAutomationTabs" | "profileSession" | "destroyAll"
+      "listTabs" | "subscribeAutomationTabs" | "session" | "destroyAll"
     > = {
       listTabs: ({ threadId }) =>
         tabs.filter((tab) => threadId === null || tab.threadId === threadId),
@@ -71,7 +72,7 @@ describe("desktop browser broker snapshots", () => {
         notifyTabsChanged = listener;
         return () => undefined;
       },
-      profileSession: () => ({}) as Session,
+      session: () => ({}) as Session,
       destroyAll: () => undefined,
     };
     const broker = createDesktopBrowserBroker({
@@ -100,49 +101,54 @@ describe("desktop browser broker snapshots", () => {
   });
 });
 
-
 describe("desktop browser broker window cleanup", () => {
-  it.each([false, true])("releases a destroyed window with active lease: %s", async (withLease) => {
-    const tab = nativeTab("thread-tab", THREAD_ID);
-    const manager: Pick<DesktopBrowserViewManager, "listTabs" | "subscribeAutomationTabs"> = {
-      listTabs: () => [tab],
-      subscribeAutomationTabs: () => () => undefined,
-    };
-    const broker = createDesktopBrowserBroker({
-      manager: manager as DesktopBrowserViewManager,
-      product: "Chrome/1",
-    });
-    const window = createFakeWindow();
-    const webContents = window.webContents;
-    let destroyed = false;
-    window.isDestroyed = () => destroyed;
-    Object.defineProperty(window, "webContents", {
-      get() {
-        if (destroyed) throw new TypeError("Object has been destroyed");
-        return webContents;
-      },
-    });
-    broker.registerWindow(window);
-    broker.setHostId("host_local");
-    const target = broker.getTarget(webContents.id)!;
-    if (withLease) {
-      await broker.execute({
-        type: "desktop.browser.acquire_control",
-        ...target,
-        threadId: THREAD_ID,
-        tabIds: [tab.tabId],
-        leaseId: "cleanup-lease",
-        controllerLabel: "Cleanup test",
-        expiresAt: Date.now() + 60_000,
+  it.each([false, true])(
+    "releases a destroyed window with active lease: %s",
+    async (withLease) => {
+      const tab = nativeTab("thread-tab", THREAD_ID);
+      const manager: Pick<
+        DesktopBrowserViewManager,
+        "listTabs" | "subscribeAutomationTabs"
+      > = {
+        listTabs: () => [tab],
+        subscribeAutomationTabs: () => () => undefined,
+      };
+      const broker = createDesktopBrowserBroker({
+        manager: manager as DesktopBrowserViewManager,
+        product: "Chrome/1",
       });
-    }
-    const registryChanged = vi.fn();
-    broker.subscribeInstances(registryChanged);
-    destroyed = true;
-    expect(() => broker.releaseWindow(webContents.id)).not.toThrow();
-    expect(broker.listInstances()).toEqual([]);
-    expect(registryChanged).toHaveBeenCalledTimes(1);
-    expect(() => broker.releaseWindow(webContents.id)).not.toThrow();
-    broker.dispose();
-  });
+      const window = createFakeWindow();
+      const webContents = window.webContents;
+      let destroyed = false;
+      window.isDestroyed = () => destroyed;
+      Object.defineProperty(window, "webContents", {
+        get() {
+          if (destroyed) throw new TypeError("Object has been destroyed");
+          return webContents;
+        },
+      });
+      broker.registerWindow(window);
+      broker.setHostId("host_local");
+      const target = broker.getTarget(webContents.id)!;
+      if (withLease) {
+        await broker.execute({
+          type: "desktop.browser.acquire_control",
+          ...target,
+          threadId: THREAD_ID,
+          tabIds: [tab.tabId],
+          leaseId: "cleanup-lease",
+          controllerLabel: "Cleanup test",
+          expiresAt: Date.now() + 60_000,
+        });
+      }
+      const registryChanged = vi.fn();
+      broker.subscribeInstances(registryChanged);
+      destroyed = true;
+      expect(() => broker.releaseWindow(webContents.id)).not.toThrow();
+      expect(broker.listInstances()).toEqual([]);
+      expect(registryChanged).toHaveBeenCalledTimes(1);
+      expect(() => broker.releaseWindow(webContents.id)).not.toThrow();
+      broker.dispose();
+    },
+  );
 });

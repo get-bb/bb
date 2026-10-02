@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.43.3",
+  "version": "0.44.0",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -46,6 +46,7 @@
     "app/dist",
     "dist",
     "host-daemon/dist/bb",
+    "host-daemon/dist/bb.cmd",
     "host-daemon/dist/bb-chunks",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
     "host-daemon/dist/bb-plugin-host-worker.mjs",
@@ -63,6 +64,7 @@
     "build:host": "node scripts/build-host.mjs",
     "clean": "rimraf dist app host-daemon server tsconfig.tsbuildinfo",
     "prepack": "node dist/prune-bb-chunks.mjs",
+    "smoke:boot": "node scripts/smoke-boot.mjs",
     "smoke:tarball": "node scripts/smoke-tarball.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
@@ -72,14 +74,13 @@
     "better-sqlite3": "13.0.3",
     "fs-native-extensions": "1.5.0",
     "hono": "^4.7.0",
-    "jiti": "^2.6.1",
     "node-pty": "1.2.0-beta.15",
     "npm": "11.16.0",
     "picocolors": "^1.1.1",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "pino-roll": "^4.0.0",
-    "zod": "4.3.6"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@bb/config": "workspace:*",
@@ -88,9 +89,11 @@
     "@bb/server-archive": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
     "rimraf": "^6.1.0",
     "rollup": "^4.62.2",
     "rollup-plugin-dts": "^6.4.1",
+    "semver": "^7.7.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"

@@ -19,6 +19,7 @@ interface BuildThreadMentionSuggestionsArgs {
   currentEnvironmentId: string | null;
   projectNamesById: ReadonlyMap<string, string>;
   limit: number;
+  resolveTitle: (title: string) => string;
 }
 
 interface RankedThreadMentionSuggestion {
@@ -205,7 +206,14 @@ export function buildThreadMentionSuggestions(
     items: candidateThreads,
     query: trimmedQuery,
     getText: getThreadSearchText,
-    getAliases: (thread) => [thread.id],
+    getAliases: (thread) => {
+      const title = getThreadDisplayTitle(thread);
+      const resolvedTitle =
+        title === undefined ? undefined : args.resolveTitle(title);
+      return resolvedTitle === undefined || resolvedTitle === title
+        ? [thread.id]
+        : [thread.id, resolvedTitle];
+    },
     limit: candidateThreads.length,
   });
 

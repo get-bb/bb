@@ -1,4 +1,3 @@
-import { DEFAULTS } from "@bb/config/defaults";
 import {
   defaultAppSettings,
   defaultAppTheme,
@@ -32,12 +31,6 @@ export function makeSystemConfig(
     primaryHostId: null,
     primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
-    aiServices: {
-      inference: DEFAULTS.inferenceModel,
-      inferenceFallback: DEFAULTS.inferenceFallbackModel,
-      transcription: DEFAULTS.transcriptionModel,
-      services: [],
-    },
     dataDir: "/tmp/bb-test",
     ...overrides,
   };

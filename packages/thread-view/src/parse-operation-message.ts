@@ -123,6 +123,8 @@ function threadInterruptedTitle(
     return "Stopped — connection to host was lost";
   }
   switch (reason) {
+    case "host-removed":
+      return "Stopped because the machine was removed";
     case "manual-stop":
       return "Stopped manually";
     case "host-daemon-restarted":

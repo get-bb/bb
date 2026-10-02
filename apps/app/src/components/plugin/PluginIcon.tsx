@@ -1,5 +1,12 @@
+import { useSyncExternalStore } from "react";
+import {
+  getAppIcon,
+  getPluginAssetIcon,
+  subscribeAppIcons,
+  subscribePluginAssetIcons,
+} from "@bb/shared-ui/icon-registry";
 import { PluginCompactIconMask } from "@bb/shared-ui/plugin-icon";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon, isBuiltinIconName, type IconName } from "@bb/shared-ui/icon";
 import { usePluginCompactBranding } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -39,4 +46,36 @@ export function PluginIcon({
       aria-hidden="true"
     />
   );
+}
+
+export function PluginItemIcon({
+  pluginId,
+  icon,
+  className,
+}: {
+  pluginId: string;
+  icon: string | null;
+  className?: string;
+}) {
+  const name = icon ?? "";
+  const custom = useSyncExternalStore(
+    subscribeAppIcons,
+    () => getAppIcon(name),
+    () => getAppIcon(name),
+  );
+  const asset = useSyncExternalStore(
+    subscribePluginAssetIcons,
+    () => getPluginAssetIcon(name),
+    () => getPluginAssetIcon(name),
+  );
+  if (isBuiltinIconName(name) || custom !== undefined || asset !== undefined) {
+    return (
+      <Icon
+        name={name}
+        className={cn("size-4 shrink-0", className)}
+        aria-hidden
+      />
+    );
+  }
+  return <PluginIcon pluginId={pluginId} icon={null} className={className} />;
 }

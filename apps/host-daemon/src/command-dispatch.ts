@@ -48,7 +48,7 @@ import {
   listHostFiles,
   listHostPaths,
   readHostFile,
-  readHostFileMetadata,
+  readHostFileChunk,
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { writeHostFile } from "./command-handlers/file-write.js";
@@ -135,7 +135,6 @@ async function stopThreadRuntime(
 }
 
 export {
-  CommandDispatchError,
   getErrorCode,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
@@ -278,7 +277,6 @@ async function runProviderInstallationOnHost(
     );
     const maintenanceArgs = {
       providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       bridgeLaunch,
     };
     const run = await options.providerInstallationRun({
@@ -385,9 +383,7 @@ async function forwardDesktopBrowserCommand<
 }
 
 async function withResolvedBridgeLaunch<TResult>(
-  command: CommandOf<
-    "provider.list_models" | "provider.health" | "provider.usage"
-  >,
+  command: CommandOf<"provider.list_models" | "provider.health">,
   options: CommandDispatchOptions,
   call: (args: {
     providerId: string;
@@ -656,8 +652,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     readGlobalSkillsStatus(command, {}),
   "host.inspect_git_source": inspectHostGitSource,
   "host.list_branch_options": listHostBranchOptions,
-  "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
+  "host.read_file_chunk": readHostFileChunk,
   "host.read_file_relative": readHostRelativeFile,
   "host.write_file": writeHostFile,
   "provider.list_models": (command, options) =>
@@ -668,10 +664,14 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     withResolvedBridgeLaunch(command, options, (args) =>
       options.providerHealth(args),
     ),
-  "provider.usage": (command, options) =>
-    withResolvedBridgeLaunch(command, options, (args) =>
-      options.providerUsage(args),
-    ),
+  "provider.usage": async (command, options) =>
+    options.providerUsage({
+      providerId: command.providerId,
+      bridgeLaunch: await resolveRuntimeBridgeLaunch(
+        command.bridgeLaunch,
+        options,
+      ),
+    }),
   "provider.installation.status": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
@@ -679,10 +679,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     );
     return options.providerInstallationStatus({
       providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.requirement !== undefined
-        ? { requirement: command.requirement }
-        : {}),
       bridgeLaunch,
     });
   },

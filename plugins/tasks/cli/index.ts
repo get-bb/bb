@@ -54,7 +54,6 @@ const ACTIVE_THREAD_STATUSES = new Set(["starting", "working"]);
 const DEFAULT_PROJECT_COLOR = "blue";
 const DEFAULT_LABEL_COLOR = "gray";
 
-const PRESET_SERVICE_TIERS = ["default", "fast", "none"] as const;
 const PRESET_ENVIRONMENTS = ["project-default", "worktree"] as const;
 
 const JSON_OPTION = {
@@ -504,10 +503,15 @@ function presetEnvironmentKind(
 }
 
 function presetServiceTier(
-  value: (typeof PRESET_SERVICE_TIERS)[number] | undefined,
-): "default" | "fast" | null | undefined {
-  if (value === undefined) return undefined;
-  return value === "none" ? null : value;
+  value: string | undefined,
+  clear: boolean | undefined,
+): string | null | undefined {
+  if (clear && value !== undefined) {
+    throw new CliError(
+      "Cannot combine --service-tier and --clear-service-tier.",
+    );
+  }
+  return clear ? null : value;
 }
 
 async function resolveMachineId(
@@ -1787,6 +1791,46 @@ export function registerTasksCli(
           },
         }),
 
+        move: cliCommand({
+          summary: "Move a task and its sub-tasks to another project",
+          description:
+            "Moved tasks get new keys in the target project; their old keys keep resolving. Labels are matched by name in the target project and created there when missing. A sub-task moved on its own is detached from its parent.",
+          positionals: [KEY_POSITIONAL],
+          options: {
+            project: REQUIRED_PROJECT_OPTION,
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const project = await requiredProject(
+                domain,
+                ctx,
+                input.options.project,
+              );
+              const result = tasksRpcContract.moveTaskToProject.output.parse(
+                await domain.moveTaskToProject(
+                  tasksRpcContract.moveTaskToProject.input.parse({
+                    taskId: task.id,
+                    projectId: project.id,
+                    authorName: taskAuthor(ctx),
+                  }),
+                ),
+              );
+              const moved = unwrapTask(result);
+              if (input.options.json) {
+                return JSON.stringify({ task: moved, previousKey: task.key });
+              }
+              return moved.key === task.key
+                ? `${task.key} is already in ${project.prefix}`
+                : `Moved ${task.key} to ${moved.key}  ${moved.title}`;
+            });
+          },
+        }),
+
         comment: cliCommand({
           summary: "Add a markdown comment to a task",
           positionals: [KEY_POSITIONAL],
@@ -2299,9 +2343,14 @@ export function registerTasksCli(
               description: "Permission mode for the dispatched thread",
             },
             "service-tier": {
-              type: "enum",
-              values: PRESET_SERVICE_TIERS,
-              description: "Service tier; none clears it",
+              type: "string",
+              placeholder: "tier",
+              description:
+                "Service tier id the provider lists for the model, such as default or fast",
+            },
+            "clear-service-tier": {
+              type: "boolean",
+              description: "Leave the preset without a service tier",
             },
             environment: {
               type: "enum",
@@ -2348,7 +2397,10 @@ export function registerTasksCli(
                     modelId: input.options.model,
                     reasoningLevel: input.options.reasoning,
                     serviceTier:
-                      presetServiceTier(input.options["service-tier"]) ?? null,
+                      presetServiceTier(
+                        input.options["service-tier"],
+                        input.options["clear-service-tier"],
+                      ) ?? null,
                     permissionMode: input.options.permission,
                     environmentKind,
                     baseBranch: baseBranch ?? null,
@@ -2398,9 +2450,14 @@ export function registerTasksCli(
               description: "Permission mode for the dispatched thread",
             },
             "service-tier": {
-              type: "enum",
-              values: PRESET_SERVICE_TIERS,
-              description: "Service tier; none clears it",
+              type: "string",
+              placeholder: "tier",
+              description:
+                "Service tier id the provider lists for the model, such as default or fast",
+            },
+            "clear-service-tier": {
+              type: "boolean",
+              description: "Leave the preset without a service tier",
             },
             environment: {
               type: "enum",
@@ -2453,6 +2510,7 @@ export function registerTasksCli(
                     reasoningLevel: input.options.reasoning,
                     serviceTier: presetServiceTier(
                       input.options["service-tier"],
+                      input.options["clear-service-tier"],
                     ),
                     permissionMode: input.options.permission,
                     environmentKind:

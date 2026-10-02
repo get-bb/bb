@@ -7,6 +7,7 @@ import {
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
+  type ProviderRateLimitState,
   sanitizeInheritedChildProcessEnv,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -42,7 +43,6 @@ import {
   type BridgeJsonRpcResponse,
   type DecodedInteractiveRequest,
   type PreparedProviderCommandDispatch,
-  type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
   experimental_defineProviderBridge,
   type ProviderRecoveryHint,
@@ -60,7 +60,10 @@ import {
 } from "../interactive-requests.js";
 import { parseModelsResponse } from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
-import { codexTurnSchema } from "../schemas.js";
+import {
+  codexTurnSchema,
+  codexRateLimitReadResponseSchema,
+} from "../schemas.js";
 import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
@@ -280,6 +283,7 @@ const CODEX_INITIALIZE_PARAMS = {
 };
 
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
+const RATE_LIMIT_RECOVERY_TIMEOUT_MS = 5_000;
 const INTERRUPT_SETTLEMENT_TIMEOUT_MS = 5_000;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
@@ -400,8 +404,12 @@ function buildAppServerEnv(
   );
 }
 
+function isCodexSpawnFailure(error: unknown): boolean {
+  return error instanceof CodexAppServerExitedError && error.spawnFailed;
+}
+
 function describeCodexLaunchError(error: unknown): string {
-  if (error instanceof CodexAppServerExitedError && error.spawnFailed) {
+  if (isCodexSpawnFailure(error)) {
     return MISSING_CODEX_CLI_GUIDANCE;
   }
   return error instanceof Error ? error.message : String(error);
@@ -461,6 +469,9 @@ interface CodexBridgeSession {
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
   pendingPreIdentityDeltas: ThreadDelta[];
+  turnRateLimits: ProviderRateLimitState | null;
+  quotaRecoveryAttempted: boolean;
+  quotaRecoveryAllowed: boolean;
   rebuildBeforeNextTurnReason: string | null;
   closing: boolean;
   previousChildExit: Promise<void> | null;
@@ -587,7 +598,13 @@ function sendThreadDeltas(
           (dispatch) => dispatch.clientRequestId !== delta.clientRequestId,
         );
     }
+    if (delta.kind === "provider.rateLimits") {
+      session.turnRateLimits = delta.rateLimits;
+    }
     if (delta.kind === "turn.open") {
+      session.translator.resetRateLimits();
+      session.turnRateLimits = null;
+      session.quotaRecoveryAttempted = false;
       session.awaitingReplayedUsage = false;
       if (delta.providerTurnId !== undefined) {
         session.openCodexTurnIds.add(delta.providerTurnId);
@@ -662,12 +679,12 @@ function toProviderRuntimeEvent(
   } as ProviderRuntimeEvent;
 }
 
-function handleChildNotification(
+async function handleChildNotification(
   bbThreadId: string,
   serial: number,
   method: string,
   params: unknown,
-): void {
+): Promise<void> {
   const session = currentSession(bbThreadId, serial);
   if (!session) {
     return;
@@ -690,6 +707,47 @@ function handleChildNotification(
   const deltas = session.translator.translateEvent(
     toProviderRuntimeEvent(method, params),
   );
+  const quotaFailure = deltas.some(
+    (delta) =>
+      delta.kind === "provider.error" &&
+      delta.willRetry !== true &&
+      delta.errorInfo?.category === "rate-limit",
+  );
+  const quota = session.turnRateLimits;
+  const blockedWindows =
+    quota?.windows.filter((window) => window.status === "blocked") ?? [];
+  const quotaExplainsFailure =
+    quota?.status === "blocked" &&
+    (quota.kind !== "subscription-window" ||
+      (blockedWindows.length > 0 &&
+        blockedWindows.every(
+          (window) =>
+            window.resetsAtMs !== null && window.resetsAtMs > Date.now(),
+        )));
+  if (
+    quotaFailure &&
+    !quotaExplainsFailure &&
+    !session.quotaRecoveryAttempted
+  ) {
+    session.quotaRecoveryAttempted = true;
+    try {
+      const snapshot =
+        session.quotaRecoveryAllowed && session.connection !== null
+          ? await session.connection.request({
+              method: "account/rateLimits/read",
+              params: { excludeResetCreditDetails: true },
+              resultSchema: codexRateLimitReadResponseSchema,
+              timeoutMs: RATE_LIMIT_RECOVERY_TIMEOUT_MS,
+            })
+          : null;
+      if (currentSession(bbThreadId, serial) !== session) return;
+      sendThreadDeltas(session, session.translator.recoverRateLimits(snapshot));
+    } catch {
+      if (currentSession(bbThreadId, serial) !== session) return;
+      sendThreadDeltas(session, session.translator.recoverRateLimits(null));
+    }
+    if (currentSession(bbThreadId, serial) !== session) return;
+  }
   sendThreadDeltas(session, deltas);
   for (const delta of deltas) {
     if (delta.kind === "provider.error" && delta.willRetry !== true) {
@@ -923,7 +981,6 @@ const ignoredChildResultSchema = z.unknown();
 
 async function initializeChild(
   connection: CodexAppServerConnection,
-  postInitializeRequests?: readonly ProviderPostInitializeRequest[],
 ): Promise<void> {
   await connection.request({
     method: "initialize",
@@ -931,23 +988,6 @@ async function initializeChild(
     resultSchema: ignoredChildResultSchema,
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
-  for (const request of postInitializeRequests ?? []) {
-    try {
-      const result = await connection.request({
-        method: request.plan.method,
-        ...("params" in request.plan && request.plan.params !== undefined
-          ? { params: request.plan.params }
-          : {}),
-        resultSchema: ignoredChildResultSchema,
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      });
-      request.onResult(result);
-    } catch (error) {
-      if (request.required) {
-        throw error;
-      }
-    }
-  }
   if (configuredSkillExtraRoots !== null) {
     await connection.request({
       method: "skills/extraRoots/set",
@@ -1037,6 +1077,7 @@ async function constructThreadSession(
         : { presentation: tool.presentation }),
     })),
   );
+  const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
     codexThreadId:
@@ -1060,6 +1101,11 @@ async function constructThreadSession(
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
+    turnRateLimits: null,
+    quotaRecoveryAttempted: false,
+    quotaRecoveryAllowed: !(
+      launchEnv[CODEX_POOL_BASE_URL_ENV] && launchEnv[CODEX_POOL_AUTH_TOKEN_ENV]
+    ),
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,
@@ -1086,19 +1132,34 @@ async function constructThreadSession(
   }
   sendThreadDeltas(session, [{ kind: "session.reset" }]);
 
+  let notifications = Promise.resolve();
   const connection = spawnChildConnection({
     envVars: decoded.sessionOptions.envVars,
     recordThreadId: args.threadId,
-    onNotification: (method, params) =>
-      handleChildNotification(args.threadId, serial, method, params),
+    onNotification: (method, params) => {
+      notifications = notifications
+        .then(() =>
+          handleChildNotification(args.threadId, serial, method, params),
+        )
+        .catch((error: unknown) => {
+          sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
+            threadId: args.threadId,
+            message: describeCodexLaunchError(error),
+          });
+        });
+    },
     onRequest: (method, params, responder) =>
       handleChildRequest(args.threadId, serial, method, params, responder),
-    onExit: (info) => handleChildExit(args.threadId, serial, info),
+    onExit: (info) => {
+      void notifications.then(() =>
+        handleChildExit(args.threadId, serial, info),
+      );
+    },
   });
   session.connection = connection;
 
   try {
-    await initializeChild(connection, translator.buildPostInitializeRequests());
+    await initializeChild(connection);
 
     const preparedGitRoots = translator.prepareWorkspaceWriteGitRoots({
       command: {
@@ -1219,6 +1280,9 @@ function registerResumableSession(session: CodexBridgeSession): void {
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
     pendingPreIdentityDeltas: [],
+    turnRateLimits: null,
+    quotaRecoveryAttempted: false,
+    quotaRecoveryAllowed: session.quotaRecoveryAllowed,
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,
@@ -1401,7 +1465,9 @@ async function handleModelList(id: string | number): Promise<void> {
     }
     sendError(
       id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      isCodexSpawnFailure(error)
+        ? BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE
+        : BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
       describeCodexLaunchError(error),
     );
   }
@@ -2144,7 +2210,10 @@ async function handleRequest(
     case "provider/installation/status":
       sendResult(
         request.id,
-        await getCodexProviderInstallationStatus(request.params.requirement),
+        await getCodexProviderInstallationStatus(
+          request.params.requirement,
+          request.params.checkUpdates,
+        ),
       );
       break;
     case "provider/installation/run":

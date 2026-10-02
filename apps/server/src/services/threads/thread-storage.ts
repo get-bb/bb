@@ -1,8 +1,16 @@
-import path from "node:path";
 import { getLatestSessionForHost } from "@bb/db";
 import { ApiError } from "../../errors.js";
+import { joinHostPathSegments } from "../lib/host-path.js";
 import type { WorkSessionDeps } from "../../types.js";
-import { requireConnectedHostSession } from "../lib/entity-lookup.js";
+import {
+  requireConnectedHostSession,
+  requireEnvironment,
+  requirePublicThread,
+} from "../lib/entity-lookup.js";
+import {
+  threadEnvironmentUnavailableDetails,
+  throwThreadEnvironmentUnavailable,
+} from "../lib/lifecycle-api-errors.js";
 
 interface RequireThreadStoragePathArgs {
   hostId: string;
@@ -22,7 +30,7 @@ export async function requireThreadStoragePath(
       false,
     );
   }
-  return path.join(session.dataDir, "thread-storage", args.threadId);
+  return joinHostPathSegments(session.dataDir, "thread-storage", args.threadId);
 }
 
 export async function requireLiveThreadStoragePath(
@@ -30,5 +38,34 @@ export async function requireLiveThreadStoragePath(
   args: RequireThreadStoragePathArgs,
 ): Promise<string> {
   const session = requireConnectedHostSession(deps, args.hostId);
-  return path.join(session.dataDir, "thread-storage", args.threadId);
+  return joinHostPathSegments(session.dataDir, "thread-storage", args.threadId);
+}
+
+export interface ThreadStorageTarget {
+  hostId: string;
+  storagePath: string;
+}
+
+export function requireThreadEnvironmentHostId(
+  deps: Pick<WorkSessionDeps, "db">,
+  threadId: string,
+): string {
+  const thread = requirePublicThread(deps.db, threadId);
+  if (!thread.environmentId) {
+    throwThreadEnvironmentUnavailable(
+      threadEnvironmentUnavailableDetails("never_attached", null),
+    );
+  }
+  return requireEnvironment(deps.db, thread.environmentId).hostId;
+}
+
+export async function requireThreadStorageTarget(
+  deps: WorkSessionDeps,
+  threadId: string,
+): Promise<ThreadStorageTarget> {
+  const hostId = requireThreadEnvironmentHostId(deps, threadId);
+  return {
+    hostId,
+    storagePath: await requireThreadStoragePath(deps, { hostId, threadId }),
+  };
 }

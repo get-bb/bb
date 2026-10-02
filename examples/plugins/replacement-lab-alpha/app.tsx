@@ -10,43 +10,30 @@ const LABEL = "Alpha";
 function AlphaThreadList({
   activeProjectId,
   activeThreadId,
-  Original,
   searchQuery,
 }: PluginThreadListProps) {
-  const [embedOriginal, setEmbedOriginal] = useState(false);
   const [shouldCrash, setShouldCrash] = useState(false);
   if (shouldCrash) throw new Error("Alpha thread-list test crash");
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
-      <LabHeader
-        kind="Thread list"
-        embedOriginal={embedOriginal}
-        onEmbedOriginalChange={setEmbedOriginal}
-        onCrash={() => setShouldCrash(true)}
-      />
-      {embedOriginal ? (
-        <div className="flex min-h-0 flex-1 flex-col border-t border-border">
-          <Original />
-        </div>
-      ) : (
-        <div className="space-y-3 overflow-auto p-3 text-xs">
-          <p className="rounded-md border border-border bg-muted/30 p-3">
-            Alpha owns the scrolling thread-list region.
-          </p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-muted-foreground">
-            <dt>Thread</dt>
-            <dd className="truncate font-mono">{activeThreadId ?? "none"}</dd>
-            <dt>Project</dt>
-            <dd className="truncate font-mono">{activeProjectId ?? "none"}</dd>
-            <dt>Search</dt>
-            <dd className="truncate font-mono">{searchQuery || "empty"}</dd>
-          </dl>
-          <p className="text-muted-foreground">
-            Use Appearance → Sidebar to switch to Beta, BB, or Automatic.
-          </p>
-        </div>
-      )}
+      <LabHeader kind="Thread list" onCrash={() => setShouldCrash(true)} />
+      <div className="space-y-3 overflow-auto p-3 text-xs">
+        <p className="rounded-md border border-border bg-muted/30 p-3">
+          Alpha owns the scrolling thread-list region.
+        </p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-muted-foreground">
+          <dt>Thread</dt>
+          <dd className="truncate font-mono">{activeThreadId ?? "none"}</dd>
+          <dt>Project</dt>
+          <dd className="truncate font-mono">{activeProjectId ?? "none"}</dd>
+          <dt>Search</dt>
+          <dd className="truncate font-mono">{searchQuery || "empty"}</dd>
+        </dl>
+        <p className="text-muted-foreground">
+          Use Appearance → Sidebar to switch to Beta or Automatic.
+        </p>
+      </div>
     </section>
   );
 }
@@ -92,24 +79,26 @@ function LabHeader({
   onCrash,
   onEmbedOriginalChange,
 }: {
-  embedOriginal: boolean;
+  embedOriginal?: boolean;
   kind: string;
   onCrash: () => void;
-  onEmbedOriginalChange: (next: boolean) => void;
+  onEmbedOriginalChange?: (next: boolean) => void;
 }) {
   return (
     <header className="flex items-center gap-2 border-b border-border bg-muted/20 px-3 py-2 text-xs">
       <strong className="mr-auto">
         {LABEL} · {kind}
       </strong>
-      <label className="flex items-center gap-1.5">
-        <input
-          type="checkbox"
-          checked={embedOriginal}
-          onChange={(event) => onEmbedOriginalChange(event.target.checked)}
-        />
-        Embed BB original
-      </label>
+      {onEmbedOriginalChange === undefined ? null : (
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={embedOriginal ?? false}
+            onChange={(event) => onEmbedOriginalChange(event.target.checked)}
+          />
+          Embed BB original
+        </label>
+      )}
       <button
         type="button"
         className="rounded border border-border px-2 py-1 hover:bg-muted"

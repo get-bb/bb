@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import {
   bbDesktopVersionFeedSchema,
@@ -35,19 +35,23 @@ const packageJsonSchema = z.object({
   version: z.string().min(1),
 });
 
-const updateMetadataFileSchema = z.object({
-  url: z.string().min(1),
-  sha512: z.string().min(1),
-  size: z.number().int().nonnegative(),
-});
+const updateMetadataFileSchema = z
+  .object({
+    url: z.string().min(1),
+    sha512: z.string().min(1),
+    size: z.number().int().nonnegative(),
+  })
+  .passthrough();
 
-const updateMetadataSchema = z.object({
-  version: z.string().min(1),
-  files: z.array(updateMetadataFileSchema).min(1),
-  path: z.string().min(1),
-  sha512: z.string().min(1),
-  releaseDate: z.iso.datetime(),
-});
+const updateMetadataSchema = z
+  .object({
+    version: z.string().min(1),
+    files: z.array(updateMetadataFileSchema).min(1),
+    path: z.string().min(1),
+    sha512: z.string().min(1),
+    releaseDate: z.iso.datetime(),
+  })
+  .passthrough();
 
 function parseJson(text: string): unknown {
   return JSON.parse(text);
@@ -69,7 +73,7 @@ if (updateMetadata.version !== packageJson.version) {
 const desktopVersionFeed: BbDesktopVersionFeed = {
   channel: releaseChannel,
   files: updateMetadata.files,
-  minimumSystemVersion: null,
+  minimumSystemVersion: buildPlatform === "macos" ? "22.0.0" : null,
   path: updateMetadata.path,
   platform: buildPlatform,
   releaseDate: updateMetadata.releaseDate,
@@ -82,6 +86,16 @@ const desktopVersionFeed: BbDesktopVersionFeed = {
 };
 
 const validatedFeed = bbDesktopVersionFeedSchema.parse(desktopVersionFeed);
+if (validatedFeed.minimumSystemVersion !== null) {
+  await writeFile(
+    updateMetadataPath,
+    stringifyYaml({
+      ...updateMetadata,
+      minimumSystemVersion: validatedFeed.minimumSystemVersion,
+    }),
+    "utf8",
+  );
+}
 await writeFile(
   desktopVersionFeedPath,
   `${JSON.stringify(validatedFeed, null, 2)}\n`,

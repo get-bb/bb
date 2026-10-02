@@ -22,7 +22,10 @@ export function describeUnresolvedZod(args: {
 
 export function zodResolutionPlugin(
   entryKind: "host" | "server",
-  options: { hostProvidedBareZod?: boolean } = {},
+  options: {
+    hostProvidedBareZod?: boolean;
+    fallbackResolve?: (specifier: string) => string | undefined;
+  } = {},
 ): Plugin {
   return {
     name: "bb-zod-resolution",
@@ -39,6 +42,8 @@ export function zodResolutionPlugin(
           pluginData: RESOLVED_MARK,
         });
         if (resolved.errors.length > 0 || resolved.path === "") {
+          const fallback = options.fallbackResolve?.(args.path);
+          if (fallback !== undefined) return { path: fallback };
           return {
             errors: [
               {

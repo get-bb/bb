@@ -7,7 +7,6 @@ import {
   type TimelineTitle,
   type TimelineTitleAction,
   type TimelineTitleDecoration,
-  type TimelineTitleLink,
   type TimelineTitleSegment,
   type TimelineTitleSegmentAccent,
   type TimelineTitleTone,
@@ -18,6 +17,11 @@ import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { LiveDurationText } from "./LiveDurationText.js";
 import {
+  ThreadTitleMentions,
+  useResolveThreadTitle,
+  useThreadRoutePath,
+} from "@/components/thread/ThreadTitleMentions";
+import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
@@ -26,14 +30,9 @@ export type TimelineTitleActionResolver = (
   action: TimelineTitleAction,
 ) => (() => void) | null;
 
-export type TimelineTitleLinkResolver = (
-  link: TimelineTitleLink,
-) => string | null;
-
 interface TimelineTitleViewProps {
   title: TimelineTitle;
   onTitleAction?: TimelineTitleActionResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   wrap?: boolean;
 }
 
@@ -104,6 +103,14 @@ function renderStatusDecorationText(
   );
 }
 
+function segmentContent(segment: TimelineTitleSegment): ReactNode {
+  return segment.link?.kind === "thread" ? (
+    <ThreadTitleMentions title={segment.text} />
+  ) : (
+    segment.text
+  );
+}
+
 function renderSegment(
   segment: TimelineTitleSegment,
   index: number,
@@ -150,7 +157,7 @@ function renderSegment(
           }
         }}
       >
-        {segment.text}
+        {segmentContent(segment)}
       </RouteAnchor>
     );
   }
@@ -178,14 +185,14 @@ function renderSegment(
           }
         }}
       >
-        {segment.text}
+        {segmentContent(segment)}
       </span>
     );
   }
 
   return (
     <span key={index} className={baseClass}>
-      {segment.text}
+      {segmentContent(segment)}
     </span>
   );
 }
@@ -291,7 +298,7 @@ function renderDecoration(
       return (
         <span
           key={index}
-          className="inline-flex shrink-0 items-center"
+          className="inline-flex shrink-0 items-center self-center align-middle"
           title={decoration.hint}
         >
           <Icon
@@ -310,11 +317,15 @@ function renderDecoration(
 export function TimelineTitleView({
   title,
   onTitleAction,
-  resolveSegmentLinkHref,
   wrap = false,
 }: TimelineTitleViewProps) {
   const onClick =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
+  const resolveTitle = useResolveThreadTitle();
+  const threadRoutePath = useThreadRoutePath();
+  const plainTitle = title.segments.some((segment) => segment.link)
+    ? resolveTitle(title.plain)
+    : title.plain;
 
   return (
     <span
@@ -324,13 +335,12 @@ export function TimelineTitleView({
           ? "whitespace-pre-wrap [overflow-wrap:anywhere]"
           : "inline-flex items-baseline gap-1 overflow-hidden whitespace-nowrap",
       )}
-      title={title.plain}
+      title={plainTitle}
     >
       {title.segments.map((segment, index) => {
-        const linkHref =
-          segment.link && resolveSegmentLinkHref
-            ? resolveSegmentLinkHref(segment.link)
-            : null;
+        const linkHref = segment.link
+          ? threadRoutePath(segment.link.threadId, undefined)
+          : null;
         return (
           <Fragment key={`segment-${index}`}>
             {index > 0 ? " " : null}

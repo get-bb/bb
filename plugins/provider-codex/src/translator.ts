@@ -5,12 +5,12 @@ import {
   type ThreadEventItemStatus,
   extractResultText,
   type PreparedProviderCommandDispatch,
-  type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
+  normalizeCodexRateLimits,
   clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
   setCodexInjectedTools,
@@ -1609,31 +1609,39 @@ export function createCodexEventTranslator(
     return repairedDeltas;
   }
 
-  function buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[] {
+  function resetRateLimits(): void {
+    eventTranslationState.rateLimitsByLimitId.clear();
+    eventTranslationState.latestRateLimitId = "codex";
+  }
+
+  function recoverRateLimits(
+    response: z.output<typeof codexRateLimitReadResponseSchema> | null,
+  ): ThreadDelta[] {
+    const preferredLimitId = eventTranslationState.latestRateLimitId;
+    eventTranslationState.rateLimitsByLimitId.clear();
+    const snapshots = response?.rateLimitsByLimitId ?? null;
+    if (response === null) {
+      applyCodexRateLimitUpdate(eventTranslationState, {
+        limitId: preferredLimitId,
+      });
+    } else if (snapshots === null || Object.keys(snapshots).length === 0) {
+      applyCodexRateLimitUpdate(eventTranslationState, response.rateLimits);
+    } else {
+      for (const [limitId, snapshot] of Object.entries(snapshots)) {
+        applyCodexRateLimitUpdate(eventTranslationState, {
+          ...snapshot,
+          limitId: snapshot.limitId ?? limitId,
+        });
+      }
+    }
+    eventTranslationState.latestRateLimitId = preferredLimitId;
     return [
       {
-        plan: {
-          kind: "request" as const,
-          method: "account/rateLimits/read",
-        },
-        required: false,
-        onResult(result: unknown) {
-          const response = codexRateLimitReadResponseSchema.parse(result);
-          const snapshots = response.rateLimitsByLimitId;
-          if (snapshots === null || Object.keys(snapshots).length === 0) {
-            applyCodexRateLimitUpdate(
-              eventTranslationState,
-              response.rateLimits,
-            );
-            return;
-          }
-          for (const [limitId, snapshot] of Object.entries(snapshots)) {
-            applyCodexRateLimitUpdate(eventTranslationState, {
-              ...snapshot,
-              limitId: snapshot.limitId ?? limitId,
-            });
-          }
-        },
+        kind: "provider.rateLimits",
+        rateLimits: normalizeCodexRateLimits(
+          eventTranslationState,
+          preferredLimitId,
+        ),
       },
     ];
   }
@@ -1681,7 +1689,8 @@ export function createCodexEventTranslator(
 
   return {
     activateThreadGitWritableRoots,
-    buildPostInitializeRequests,
+    recoverRateLimits,
+    resetRateLimits,
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,

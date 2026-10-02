@@ -37,8 +37,9 @@ For a visible method, inspect these sources:
 3. The closest app test that defines the real states.
 
 Record stable source paths and anchors in
-`packages/plugin-api-map/src/anatomy-manifest.json`. Use labels, roles, data
-attributes, class constants, and state names as anchors.
+`plugins/plugin-api-docs/src/anatomy-manifest.json`. Use labels, roles, data
+attributes, class constants, and state names as anchors. The `@bb/app` tests
+check the anchors against the source.
 
 For a method without a visible surface, use the Plugin backend group. Do not
 invent interface elements.
@@ -48,7 +49,7 @@ invent interface elements.
 For a new Guide entry, run the scaffold command with its sources and symbols:
 
 ```sh
-pnpm exec turbo run scaffold:surface-entry --filter=@bb/plugin-api-map -- \
+pnpm exec turbo run scaffold:surface-entry --filter=bb-plugin-plugin-api-docs -- \
   --id <stable-id> \
   --title "<visible-product-object>" \
   --group <group> \
@@ -58,9 +59,12 @@ pnpm exec turbo run scaffold:surface-entry --filter=@bb/plugin-api-map -- \
 
 Complete the applicable changes:
 
-- Update `packages/plugin-api-map/src/surfaces.ts`.
+- Update `plugins/plugin-api-docs/src/surfaces.ts`.
 - Prefer an existing card unless the API creates a new product surface.
 - Keep existing surface IDs stable and list each exact exported symbol.
+- Name example plugins in `firstParty` by display name. A plugin missing from
+  `plugins/plugin-api-docs/src/first-party-plugins.json` needs a row there;
+  the `@bb/scripts` tests check each row against the plugin's manifest.
 - For a visible method, update `wireframes.tsx` and its marker.
 - Match the real ownership, labels, roles, order, states, actions, and outcome.
 - Keep Guide annotations separate from the product interface.
@@ -77,8 +81,10 @@ separate layout contracts. Whenever an annotation is added, removed, moved, or
 renumbered, or its target or surrounding layout changes:
 
 1. Build and reload the real Plugin Guide at each relevant viewport. Redraw the
-   complete affected sequence, then update `surfaces.ts`, the matching
-   `*_MARKS` order in `wireframes.tsx`, and the focused order test.
+   complete affected sequence, then update `surfaces.ts` and the focused
+   order test. `test/wireframes.test.ts` ("draws exactly the surfaces of each
+   visual group on its fixture") fails until the fixture's targets match the
+   group's surface ids.
 2. Inspect each rendered badge footprint, including its outline, ring, and
    hover scaling. It must remain inside its container, not intersect another
    badge, and leave its annotated content readable.
@@ -101,13 +107,15 @@ one stable readable sequence before shipping.
 For a public API change, run:
 
 ```sh
-pnpm exec turbo run test typecheck \
+pnpm exec turbo run test typecheck lint \
   --filter=@get-bb/plugin-sdk \
-  --filter=@bb/plugin-api-map \
   --filter=@bb/app \
   --filter=bb-plugin-plugin-api-docs
 bb plugin build plugins/plugin-api-docs
 ```
+
+When `first-party-plugins.json` changes, also run
+`pnpm exec turbo run test --filter=@bb/scripts`.
 
 For annotation-only maintenance, use the affected package and Plugin Guide
 checks required by repository validation policy. Start

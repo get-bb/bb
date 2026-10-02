@@ -141,6 +141,7 @@ export function MachineAccessGate({
 export interface EnrollmentCommand {
   value: string;
   expiresAt: number;
+  unavailable: boolean;
 }
 
 export function ManualMachineSetup({
@@ -203,17 +204,27 @@ export function ManualMachineSetup({
         > = null;
         while (host.lifecycle.phase === "creating") {
           controller.signal.throwIfAborted();
-          if (enrollment === null) {
-            enrollment = await sdk.hosts.experimental_getEnrollmentCommand({
+          const currentEnrollment =
+            await sdk.hosts.experimental_getEnrollmentCommand({
               hostId: host.id,
               signal: controller.signal,
             });
-            setCommand(
-              enrollment === null
-                ? null
+          if (currentEnrollment !== null) {
+            enrollment = currentEnrollment;
+            setCommand({
+              value: currentEnrollment.command,
+              expiresAt: currentEnrollment.expiresAt,
+              unavailable: false,
+            });
+          } else if (enrollment !== null) {
+            const usedEnrollment = enrollment;
+            setCommand((previous) =>
+              previous?.unavailable
+                ? previous
                 : {
-                    value: enrollment.command,
-                    expiresAt: enrollment.expiresAt,
+                    value: usedEnrollment.command,
+                    expiresAt: usedEnrollment.expiresAt,
+                    unavailable: true,
                   },
             );
           }
@@ -307,6 +318,7 @@ export function ManualMachineSetupView({
           key={command.value}
           command={command.value}
           expiresAt={command.expiresAt}
+          unavailable={command.unavailable}
           onRegenerate={onRegenerate}
         />
       )}
@@ -370,10 +382,12 @@ function formatCountdown(remainingMs: number): string {
 export function MachineLaunchCommand({
   command,
   expiresAt,
+  unavailable = false,
   onRegenerate,
 }: {
   command: string;
   expiresAt: number;
+  unavailable?: boolean;
   onRegenerate: () => void;
 }) {
   const { copied, copy } = useClipboardCopy({ text: command });
@@ -392,7 +406,11 @@ export function MachineLaunchCommand({
         {command}
       </pre>
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-        {expired ? (
+        {unavailable ? (
+          <span role="status" className="text-xs text-subtle-foreground">
+            Command used
+          </span>
+        ) : expired ? (
           <>
             <span role="status" className="text-xs text-subtle-foreground">
               Command expired
@@ -420,7 +438,7 @@ export function MachineLaunchCommand({
           size="sm"
           variant="outline"
           className="ml-auto h-7 px-2.5 text-xs"
-          disabled={expired}
+          disabled={expired || unavailable}
           onClick={() => void copy()}
         >
           {copied ? "Copied" : "Copy"}

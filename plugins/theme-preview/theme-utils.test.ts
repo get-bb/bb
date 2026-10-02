@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 
 import { LatestRequest, contrastRatio } from "./theme-utils";
 
@@ -21,13 +20,5 @@ describe("LatestRequest", () => {
     const latest = requests.begin();
     expect(requests.isLatest(latest)).toBe(true);
     expect(requests.isLatest(stale)).toBe(false);
-  });
-});
-
-describe("bb theme preference integration", () => {
-  it("leaves color-scheme ownership with bb's theme CSS", () => {
-    const source = readFileSync(new URL("./app.tsx", import.meta.url), "utf8");
-    expect(source.match(/MODE_KEY/g)).toHaveLength(4);
-    expect(source).not.toContain("style.colorScheme");
   });
 });

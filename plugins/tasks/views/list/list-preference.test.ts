@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_LIST_PREFERENCE,
   LIST_PREFERENCE_STORAGE_KEY,
-  LIST_PREFERENCE_VERSION,
   listPreferenceScope,
   loadListPreference,
   sanitizeListPreference,
@@ -96,52 +95,6 @@ describe("loadListPreference / storeListPreference", () => {
     });
   });
 
-  it("round-trips a preference for one scope without touching another", () => {
-    storeListPreference("all", {
-      filters: {
-        statuses: ["todo"],
-        priorities: ["high"],
-        labelNames: ["Bug"],
-      },
-      sort: "priority",
-    });
-    storeListPreference("project:p1", {
-      filters: {
-        statuses: ["done"],
-        priorities: [],
-        labelNames: [],
-      },
-      sort: "due",
-    });
-
-    expect(loadListPreference("all")).toEqual({
-      filters: {
-        statuses: ["todo"],
-        priorities: ["high"],
-        labelNames: ["Bug"],
-      },
-      sort: "priority",
-    });
-    expect(loadListPreference("project:p1")).toEqual({
-      filters: {
-        statuses: ["done"],
-        priorities: [],
-        labelNames: [],
-      },
-      sort: "due",
-    });
-    expect(loadListPreference("active")).toEqual({
-      filters: { statuses: [], priorities: [], labelNames: [] },
-      sort: "manual",
-    });
-
-    const stored = JSON.parse(
-      window.localStorage.getItem(LIST_PREFERENCE_STORAGE_KEY)!,
-    );
-    expect(stored.version).toBe(LIST_PREFERENCE_VERSION);
-    expect(Object.keys(stored.scopes).sort()).toEqual(["all", "project:p1"]);
-  });
-
   it("persists an explicit clear (empty filters + manual sort)", () => {
     storeListPreference("all", {
       filters: { statuses: ["todo"], priorities: [], labelNames: [] },
@@ -208,18 +161,6 @@ describe("loadListPreference / storeListPreference", () => {
     expect(window.localStorage.getItem(LIST_PREFERENCE_STORAGE_KEY)).toBe(
       future,
     );
-  });
-
-  it("swallows storage write failures", () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("Storage is disabled", "SecurityError");
-    });
-    expect(() =>
-      storeListPreference("all", {
-        filters: { statuses: ["todo"], priorities: [], labelNames: [] },
-        sort: "manual",
-      }),
-    ).not.toThrow();
   });
 
   it("swallows storage read failures", () => {

@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { JsonValue } from "@get-bb/plugin-sdk/app";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const app = await loadPluginApp(() => import("./app"));
-const { selectedBranchName, selectedExistingPath, worktreePathLabel } =
-  await import("./app");
 
 afterEach(() => {
   cleanup();
@@ -93,7 +97,9 @@ describe("worktree inputs control", () => {
     expect(
       slot.getByRole("button", { name: "Existing worktree" }),
     ).toBeTruthy();
-    expect(slot.getByText("Branch from:")).toBeTruthy();
+    expect(
+      within(slot.getByRole("dialog")).getByText("Branch from:"),
+    ).toBeTruthy();
     expect(slot.getByRole("button", { name: "Default branch" })).toBeTruthy();
     expect(slot.getByRole("button", { name: "release" })).toBeTruthy();
   });
@@ -228,20 +234,38 @@ describe("worktree inputs control", () => {
     await waitFor(() =>
       expect(
         fresh.slot.getByRole("combobox", { name: "Worktree" }).textContent,
-      ).toContain("Branch from: main"),
+      ).toContain("Branch from:main"),
     );
     cleanup();
 
     const named = render({ branch: { kind: "named", name: "release" } });
     expect(
       named.slot.getByRole("combobox", { name: "Worktree" }).textContent,
-    ).toContain("Branch from: release");
+    ).toContain("Branch from:release");
+    cleanup();
+
+    const reused = render({ kind: "existing", path: "/code/app-feature/" });
+    expect(
+      reused.slot.getByRole("combobox", { name: "Worktree" }).textContent,
+    ).toContain("Reuse:code/app-feature");
+  });
+
+  it("drops the trigger prefix in a compact promptbox", async () => {
+    const { slot } = render({ branch: { kind: "named", name: "release" } });
+    const trigger = slot.getByRole("combobox", { name: "Worktree" });
+    const prefix = within(trigger).getByText("Branch from:");
+    expect(prefix.dataset.promptboxHideCompact).toBe("");
+    expect(
+      within(trigger).getByText("release").dataset.promptboxHideCompact,
+    ).toBeUndefined();
     cleanup();
 
     const reused = render({ kind: "existing", path: "/code/app-feature" });
     expect(
-      reused.slot.getByRole("combobox", { name: "Worktree" }).textContent,
-    ).toContain("Reuse: code/app-feature");
+      within(reused.slot.getByRole("combobox", { name: "Worktree" })).getByText(
+        "Reuse:",
+      ).dataset.promptboxHideCompact,
+    ).toBe("");
   });
 
   it("loads existing worktrees only after selecting that section", async () => {
@@ -268,17 +292,6 @@ describe("worktree inputs control", () => {
       expect(slot.getByText("No existing worktrees found.")).toBeTruthy(),
     );
     expect(list).toHaveBeenCalledTimes(1);
-  });
-
-  it("reads the current selection out of persisted inputs", () => {
-    expect(
-      selectedBranchName({ branch: { kind: "named", name: "main" } }),
-    ).toBe("main");
-    expect(selectedBranchName({ branch: { kind: "default" } })).toBeNull();
-    expect(selectedBranchName(null)).toBeNull();
-    expect(selectedExistingPath({ kind: "existing", path: "/x" })).toBe("/x");
-    expect(selectedExistingPath({ branch: { kind: "default" } })).toBeNull();
-    expect(worktreePathLabel("/code/app-feature/")).toBe("code/app-feature");
   });
 });
 
@@ -386,7 +399,7 @@ describe("default branch label scope", () => {
         },
       });
       expect(slot.getByRole("combobox").textContent).toContain(
-        "Branch from: default",
+        "Branch from:default",
       );
       const Component = inputsSlot().component;
       slot.rerender(
@@ -401,11 +414,11 @@ describe("default branch label scope", () => {
       );
       await act(async () => requests[1]!({ branch: "origin/main" }));
       expect(slot.getByRole("combobox").textContent).toContain(
-        "Branch from: origin/main",
+        "Branch from:origin/main",
       );
       await act(async () => requests[0]!({ branch: "old-branch" }));
       expect(slot.getByRole("combobox").textContent).toContain(
-        "Branch from: origin/main",
+        "Branch from:origin/main",
       );
       expect(onChange).not.toHaveBeenCalled();
       expect(list).not.toHaveBeenCalled();

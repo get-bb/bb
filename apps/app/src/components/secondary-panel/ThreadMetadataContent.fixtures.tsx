@@ -50,6 +50,8 @@ export function makePullRequest(
     baseRefName: "main",
     headRefName: "bb/pr-info-panel",
     updatedAt: "2026-06-16T12:30:00Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "passing",
       totalCount: 3,

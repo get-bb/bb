@@ -6,11 +6,11 @@ import {
   listHostThreadIds,
   type HostDaemonSessionRow,
 } from "@bb/db";
-import type { HostDaemonActiveThread } from "@bb/host-daemon-contract";
-import {
-  DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS,
-  DAEMON_DISCONNECT_GRACE_MS,
-} from "../constants.js";
+import type {
+  HostDaemonActiveThread,
+  HostDaemonSessionCloseReason,
+} from "@bb/host-daemon-contract";
+import { HOST_RECONNECT_GRACE_MS, LEASE_TIMEOUT_MS } from "../constants.js";
 import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
@@ -33,48 +33,33 @@ const DAEMON_DISCONNECTED_ENVIRONMENT_PROVISIONING_REASON =
   "The connection to the host was lost while preparing the workspace. Retry provisioning to continue.";
 
 type HostSessionOpenedDeps = LoggedPendingInteractionWorkSessionDeps;
-type DaemonSocketClosedDeps = Pick<
-  AppDeps,
-  | "db"
-  | "hub"
-  | "logger"
-  | "pendingInteractions"
-  | "providerRegistry"
-  | "sharedPorts"
-  | "terminalSessions"
->;
-type DaemonDisconnectGraceDeps = Pick<
-  AppDeps,
-  | "db"
-  | "hub"
-  | "logger"
-  | "pendingInteractions"
-  | "providerRegistry"
-  | "terminalSessions"
->;
+type DaemonSocketClosedDeps = LoggedPendingInteractionWorkSessionDeps &
+  Pick<AppDeps, "sharedPorts">;
+type LostHostWorkDeps = LoggedPendingInteractionWorkSessionDeps;
 
 interface HandleHostSessionOpenedArgs {
   activeThreads: HostDaemonActiveThread[];
   hostId: string;
   openedSession: HostDaemonSessionRow;
   previousSession: HostDaemonSessionRow | null;
+  undeliveredEventThreadIds: string[];
 }
 
 interface HandleDaemonSocketClosedArgs {
   sessionId: string;
 }
 
-interface HandleHostRemovedArgs {
-  hostId: string;
+interface HandleDaemonSessionLostArgs {
+  reason: Extract<
+    HostDaemonSessionCloseReason,
+    "daemon-disconnect" | "expired"
+  >;
   sessionId: string;
 }
 
-interface CompleteDaemonDisconnectGraceArgs {
+interface HandleHostRemovedArgs {
   hostId: string;
-}
-
-interface CompleteDaemonActiveWorkDisconnectGraceArgs {
-  hostId: string;
+  sessionId: string;
 }
 
 export async function handleHostSessionOpened(
@@ -119,6 +104,7 @@ export async function handleHostSessionOpened(
         reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
       });
       interruptActiveThreadsForHost(deps, {
+        includeStopping: false,
         hostId: args.hostId,
         reason: "host-daemon-restarted",
       });
@@ -130,6 +116,7 @@ export async function handleHostSessionOpened(
     activeThreadIds: args.activeThreads.map((thread) => thread.threadId),
     hostId: args.hostId,
     sameDaemonInstance,
+    undeliveredEventThreadIds: args.undeliveredEventThreadIds,
   });
 }
 
@@ -138,6 +125,38 @@ export function handleDaemonSocketClosed(
   args: HandleDaemonSocketClosedArgs,
 ): void {
   deps.logger.info({ sessionId: args.sessionId }, "Daemon WebSocket closed");
+  handleDaemonSessionLost(deps, {
+    reason: "daemon-disconnect",
+    sessionId: args.sessionId,
+  });
+}
+
+export function handleDaemonSocketOpened(
+  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
+  args: { hostId: string },
+): void {
+  notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
+}
+
+export function handleDaemonSessionSilent(
+  deps: DaemonSocketClosedDeps,
+  args: HandleDaemonSocketClosedArgs,
+): void {
+  deps.logger.warn(
+    { leaseTimeoutMs: LEASE_TIMEOUT_MS, sessionId: args.sessionId },
+    "Daemon sent nothing within its lease; closing its socket",
+  );
+  deps.hub.closeDaemonSession(args.sessionId, "expired");
+  handleDaemonSessionLost(deps, {
+    reason: "expired",
+    sessionId: args.sessionId,
+  });
+}
+
+function handleDaemonSessionLost(
+  deps: DaemonSocketClosedDeps,
+  args: HandleDaemonSessionLostArgs,
+): void {
   deps.hub.unregisterDaemon(args.sessionId);
   deps.sharedPorts.clearHostConnectCapability(args.sessionId);
 
@@ -153,24 +172,22 @@ export function handleDaemonSocketClosed(
     sessionId: args.sessionId,
   });
 
-  closeSession(deps.db, deps.hub, args.sessionId, "daemon-disconnect");
+  closeSession(deps.db, deps.hub, args.sessionId, args.reason);
 
   notifyHostThreadRuntimeStatusChanged(deps, session.hostId);
+  if (args.reason === "expired") {
+    return;
+  }
   deps.hub.scheduleDaemonDisconnect(
     args.sessionId,
-    DAEMON_DISCONNECT_GRACE_MS,
-    () =>
-      completeDaemonDisconnectGrace(deps, {
-        hostId: session.hostId,
-      }),
-  );
-  deps.hub.scheduleDaemonActiveWorkDisconnect(
-    args.sessionId,
-    DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS,
-    () =>
-      completeDaemonActiveWorkDisconnectGrace(deps, {
-        hostId: session.hostId,
-      }),
+    HOST_RECONNECT_GRACE_MS,
+    () => {
+      if (deps.hub.hasDaemonForHost(session.hostId)) {
+        return;
+      }
+      deps.hub.notifyHost(session.hostId, ["host-disconnected"]);
+      notifyHostThreadRuntimeStatusChanged(deps, session.hostId);
+    },
   );
 }
 
@@ -196,17 +213,25 @@ export function handleHostRemoved(
   deps.terminalSessions.handleDaemonSessionClosed({
     sessionId: args.sessionId,
   });
+  settleRemovedHostWork(deps, { hostId: args.hostId });
+}
+
+export function settleRemovedHostWork(
+  deps: Omit<DaemonSocketClosedDeps, "sharedPorts">,
+  args: { hostId: string },
+): void {
   interruptPendingInteractionsForHostThreads(deps, {
     hostId: args.hostId,
-    reason: DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON,
+    reason: "The machine was removed",
   });
   interruptEnvironmentProvisioningForHost(deps, {
     hostId: args.hostId,
     reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,
   });
   interruptActiveThreadsForHost(deps, {
+    includeStopping: true,
     hostId: args.hostId,
-    reason: "host-daemon-restarted",
+    reason: "host-removed",
   });
   settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
@@ -217,7 +242,7 @@ interface DisconnectImportedDaemonSessionsArgs {
 }
 
 export function disconnectImportedDaemonSessions(
-  deps: DaemonDisconnectGraceDeps,
+  deps: LostHostWorkDeps,
   args: DisconnectImportedDaemonSessionsArgs,
 ): void {
   if (args.sessions.length === 0) {
@@ -230,8 +255,7 @@ export function disconnectImportedDaemonSessions(
     hostIds.add(session.hostId);
   }
   for (const hostId of hostIds) {
-    completeDaemonDisconnectGrace(deps, { hostId });
-    completeDaemonActiveWorkDisconnectGrace(deps, { hostId });
+    settleLostHostWork(deps, { hostId });
   }
   deps.logger.info(
     { hosts: hostIds.size, sessions: args.sessions.length },
@@ -239,34 +263,18 @@ export function disconnectImportedDaemonSessions(
   );
 }
 
-function completeDaemonDisconnectGrace(
-  deps: DaemonDisconnectGraceDeps,
-  args: CompleteDaemonDisconnectGraceArgs,
+function settleLostHostWork(
+  deps: LostHostWorkDeps,
+  args: { hostId: string },
 ): void {
-  if (deps.hub.hasDaemonForHost(args.hostId)) {
-    return;
-  }
-
   interruptPendingInteractionsForHostThreads(deps, {
     hostId: args.hostId,
     reason: DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON,
   });
   settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
-}
-
-function completeDaemonActiveWorkDisconnectGrace(
-  deps: Pick<
-    AppDeps,
-    "db" | "hub" | "logger" | "pendingInteractions" | "providerRegistry"
-  >,
-  args: CompleteDaemonActiveWorkDisconnectGraceArgs,
-): void {
-  if (deps.hub.hasDaemonForHost(args.hostId)) {
-    return;
-  }
-
   interruptActiveThreadsForHost(deps, {
+    includeStopping: false,
     hostId: args.hostId,
     reason: "host-daemon-restarted",
     cause: "host-connection-lost",

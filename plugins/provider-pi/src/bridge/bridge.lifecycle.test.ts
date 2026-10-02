@@ -174,22 +174,6 @@ it("discard ends the child and removes the session file", async () => {
   await expectEveryChildGone(1);
 }, 90_000);
 
-it("a failed construction leaves no child", async () => {
-  vi.stubEnv("FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE", "1");
-  const response = await harness.request((nextId += 1), "thread/start", {
-    threadId: "thr_lc_failed",
-    cwd: harness.workspaceDir,
-    instructionMode: "append",
-    options: FULL_PERMISSION_OPTIONS,
-  });
-  expect(response.error).toMatchObject({
-    message: expect.stringContaining("pi exited"),
-  });
-  const log = harness.readProcessLog();
-  expect(log.spawned).toHaveLength(1);
-  await expectEveryChildGone(1);
-}, 90_000);
-
 it("the fork helper child exits once the fork is done", async () => {
   const sessionDir = join(harness.workspaceDir, "sessions");
   const { SessionManager } = await import("@earendil-works/pi-coding-agent");
@@ -517,7 +501,9 @@ it("a child's tool and prompt files go with the child after release and failed c
     instructionMode: "append",
     options: { ...FULL_PERMISSION_OPTIONS, instructions: "be brief" },
   });
-  expect(failed.error).toBeDefined();
+  expect(failed.error).toMatchObject({
+    message: expect.stringContaining("pi exited"),
+  });
   const log = harness.readProcessLog();
   expect(log.spawned).toHaveLength(2);
   await expectEveryChildGone(2);

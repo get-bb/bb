@@ -155,6 +155,7 @@ export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export interface EnvironmentsArea {
+  experimental_cleanup(args: EnvironmentActionArgs): Promise<{ ok: true }>;
   archiveThreads(
     args: EnvironmentActionArgs,
   ): Promise<EnvironmentArchiveThreadsResult>;
@@ -398,6 +399,13 @@ export function createEnvironmentsArea(
         ),
       );
       return response.providers;
+    },
+    async experimental_cleanup(input) {
+      return transport.readJson(
+        transport.api.v1.environments[":id"]["cleanup"].$post({
+          param: { id: input.environmentId },
+        }),
+      );
     },
     async delete(input) {
       const body = await transport.readJson(

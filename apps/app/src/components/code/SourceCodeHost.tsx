@@ -1,6 +1,6 @@
-import { Suspense, lazy, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
-import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
+import { defineSplit } from "@/lib/define-split";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
@@ -9,7 +9,14 @@ import {
 
 const SOURCE_CODE_RENDERER_SLOT_KIND = "sourceCodeRenderer";
 
-const BbSourceCode = lazy(() => import("./BbSourceCode"));
+const BbSourceCodeSplit = defineSplit<
+  BbSourceCodeProps & { fallback: ReactNode }
+>({
+  id: "bb-source-code",
+  load: () => import("./BbSourceCode").then((module) => module.default),
+  loading: ({ fallback }) => fallback,
+  preload: "render",
+});
 
 interface SourceCodeHostProps extends Omit<
   BbSourceCodeProps,
@@ -34,18 +41,17 @@ export function SourceCodeHost({
   const replacement = useSourceCodeRendererReplacement();
 
   const original = (
-    <Suspense fallback={fallback}>
-      <BbSourceCode
-        content={content}
-        path={path}
-        cacheKey={cacheKey}
-        overflow={overflow}
-        highlightedLines={highlightedLines}
-        className={className}
-        scrollToHighlightedLines={scrollToHighlightedLines}
-        onSelectionAddToChat={onSelectionAddToChat}
-      />
-    </Suspense>
+    <BbSourceCodeSplit
+      content={content}
+      path={path}
+      cacheKey={cacheKey}
+      overflow={overflow}
+      highlightedLines={highlightedLines}
+      className={className}
+      fallback={fallback}
+      scrollToHighlightedLines={scrollToHighlightedLines}
+      onSelectionAddToChat={onSelectionAddToChat}
+    />
   );
 
   return (
@@ -62,7 +68,6 @@ export function SourceCodeHost({
             overflow={overflow}
             highlightedLines={highlightedLines}
             Original={BoundOriginal}
-            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

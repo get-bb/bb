@@ -28,7 +28,6 @@ export function Overview() {
           selectedHostId={HOST_IDS.local}
           onChange={noop}
           modal={false}
-          multiMachinePickerEnabled
         />
       </StoryRow>
     </StoryCard>

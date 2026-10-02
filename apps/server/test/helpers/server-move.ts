@@ -57,7 +57,6 @@ export function inspectResult(
     timeZone: "UTC",
     bbAppVersion: "0.0.0-test",
     serverEntryAvailable: true,
-    serviceManager: "systemd-user",
     existingServerData: null,
     dataDirHasServerData: false,
     portAvailable: true,
@@ -214,6 +213,7 @@ export function createTestServerMoveEnvironment(
     retireProcess() {
       events.push("retire");
     },
+    serverAppSurface: "web",
     serverTimeZone: "UTC",
     stopRunningWork: async () => {
       events.push("stop-work");

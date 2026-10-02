@@ -10,6 +10,10 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  setPluginLogoUrls,
+  resetPluginLogoStoreForTest,
+} from "@/lib/plugin-logos";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
@@ -21,6 +25,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  resetPluginLogoStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -96,24 +101,6 @@ describe("MessageActionBar", () => {
     ).toBeUndefined();
   });
 
-  it("renders the send-to-main action and fires its handler when supplied", () => {
-    const onSendToMain = vi.fn();
-    render(
-      <MessageActionBar
-        messageText="An answer worth keeping."
-        alignment="start"
-        mobileActionDisplay="overflow"
-        onSendToMain={onSendToMain}
-      />,
-    );
-
-    const button = screen.getByRole("button", {
-      name: "Send to main thread",
-    });
-    fireEvent.click(button);
-    expect(onSendToMain).toHaveBeenCalledTimes(1);
-  });
-
   it("orders agent actions as copy, add, then fork", () => {
     const { container } = render(
       <MessageActionBar
@@ -132,30 +119,22 @@ describe("MessageActionBar", () => {
     ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
   });
 
-  it("keeps the same agent action order in the mobile overflow", () => {
-    mockMobileCoarsePointer();
-    render(
-      <MessageActionBar
-        messageText="An answer."
-        alignment="start"
-        mobileActionDisplay="overflow"
-        onAddToChat={vi.fn()}
-        onFork={vi.fn()}
-      />,
+  it("renders plugin action icons before branding and fires their handlers", () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "demo",
+          {
+            displayName: "Demo",
+            icon: "Check",
+            compactIconUrl: "/demo.svg",
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
-    const content =
-      document.body.querySelector<HTMLElement>('[data-side="top"]');
-    if (!content) throw new Error("Missing mobile message action menu");
-    expect(
-      within(content)
-        .getAllByRole("button")
-        .map((button) => button.textContent),
-    ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
-  });
-
-  it("renders plugin actions after the native ones and fires their handlers", () => {
     const onSelect = vi.fn();
     const { container } = render(
       <MessageActionBar
@@ -186,6 +165,11 @@ describe("MessageActionBar", () => {
       "Fork into new thread",
       "Summarize",
     ]);
+    expect(
+      screen
+        .getByRole("button", { name: "Summarize" })
+        .querySelector('[data-icon="Zap"]'),
+    ).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
@@ -210,7 +194,22 @@ describe("MessageActionBar", () => {
     expect(screen.getByRole("button", { name: "Summarize" })).toBeTruthy();
   });
 
-  it("includes plugin actions in the mobile overflow menu", () => {
+  it("includes explicit plugin icons in the mobile overflow menu", () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "demo",
+          {
+            displayName: "Demo",
+            icon: "Check",
+            compactIconUrl: "/demo.svg",
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
     mockMobileCoarsePointer();
     const onSelect = vi.fn();
     render(
@@ -235,6 +234,11 @@ describe("MessageActionBar", () => {
     const content =
       document.body.querySelector<HTMLElement>('[data-side="top"]');
     if (!content) throw new Error("Missing mobile message action menu");
+    expect(
+      within(content)
+        .getByRole("button", { name: "Summarize" })
+        .querySelector('[data-icon="Zap"]'),
+    ).not.toBeNull();
     fireEvent.click(within(content).getByRole("button", { name: "Summarize" }));
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
@@ -470,6 +474,28 @@ describe("MessageActionBar", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Add to chat" }));
     expect(onAddToChat).toHaveBeenCalledWith("An answer.");
+  });
+
+  it("marks the action row while its overflow menu is open", () => {
+    const resizeObserver = installControlledResizeObserver();
+    render(
+      <MessageActionBar
+        messageText="An answer."
+        alignment="end"
+        mobileActionDisplay="overflow"
+        onAddToChat={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
+    resizeObserver.reportWidth(44);
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    const row = trigger.parentElement;
+
+    expect(row?.hasAttribute("data-menu-open")).toBe(false);
+    fireEvent.pointerDown(trigger);
+    expect(row?.hasAttribute("data-menu-open")).toBe(true);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(row?.hasAttribute("data-menu-open")).toBe(false);
   });
 
   it("keeps every desktop action in the overflow menu when nothing fits inline", () => {

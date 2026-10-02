@@ -2,15 +2,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import {
-  createStandaloneBuiltinCompactCommandInput,
-  type ThreadEvent,
-} from "@bb/domain";
+import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   experimental_assembleCapturedThreadEvents as assembleCapturedThreadEvents,
   experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type {
+  BridgeJsonRpcTestHarness,
+  ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 import { handleLine } from "./bridge.js";
 import {
@@ -22,6 +22,30 @@ const THREAD_ID = "thr_zero_work_1";
 
 let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
+
+function compactCommandInput(): PromptInput[] {
+  return [
+    {
+      type: "text",
+      text: "/compact",
+      mentions: [
+        {
+          start: 0,
+          end: "/compact".length,
+          resource: {
+            kind: "command",
+            trigger: "/",
+            name: "compact",
+            source: "command",
+            origin: "builtin",
+            label: "compact",
+            argumentHint: null,
+          },
+        },
+      ],
+    },
+  ];
+}
 
 function threadEvents(): ThreadEvent[] {
   return assembleCapturedThreadEvents(harness.messages, "codex");
@@ -414,7 +438,7 @@ async function compactAndWaitForCompletion(
   harness.sendRequest(2, "turn/start", {
     threadId: THREAD_ID,
     providerThreadId,
-    input: createStandaloneBuiltinCompactCommandInput(),
+    input: compactCommandInput(),
     clientRequestId,
     options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
@@ -693,7 +717,7 @@ it("does not acknowledge a rejected compaction after an early idle status", asyn
   harness.sendRequest(2, "turn/start", {
     threadId: THREAD_ID,
     providerThreadId,
-    input: createStandaloneBuiltinCompactCommandInput(),
+    input: compactCommandInput(),
     clientRequestId: "creq_reject2345",
     options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });

@@ -139,7 +139,7 @@ describe("Claude context usage normalization", () => {
 });
 
 describe("Claude context usage capture", () => {
-  it("discards a delayed read after new input invalidates it", async () => {
+  it("marks delayed usage stale after new input without discarding capacity", async () => {
     const collector = new ClaudeContextUsageCollector();
     const pending = deferred<unknown>();
     const publish = vi.fn();
@@ -150,6 +150,25 @@ describe("Claude context usage capture", () => {
       providerSessionId: "session-1",
     });
     collector.invalidate();
+    pending.resolve(report);
+    await capture;
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({ contextWindowTokens: 10_000 }),
+      false,
+    );
+  });
+
+  it("discards capacity from a previous model even without a newer read", async () => {
+    const collector = new ClaudeContextUsageCollector();
+    const pending = deferred<unknown>();
+    const publish = vi.fn();
+    const capture = collector.capture({
+      read: () => pending.promise,
+      isCurrent: () => true,
+      publish,
+      providerSessionId: "session-1",
+    });
+    collector.invalidateCapacity();
     pending.resolve(report);
     await capture;
     expect(publish).not.toHaveBeenCalled();

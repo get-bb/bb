@@ -87,6 +87,9 @@ export function resolveDesktopUpdateSupport(
   if (args.platform === "macos") {
     return { autoUpdate: true, versionCheck: true };
   }
+  if (args.platform === "windows") {
+    return { autoUpdate: false, versionCheck: false };
+  }
 
   const appImagePath = args.env.APPIMAGE?.trim() ?? "";
   if (appImagePath.length === 0) {

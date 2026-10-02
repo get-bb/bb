@@ -28,7 +28,11 @@
   // Production: every *.getbb.app subdomain hits the gate via the wildcard
   // zone route (backed by a proxied `*` DNS record). The apex + www are
   // custom domains on bb-web and take precedence over this route.
-  "vars": { "BASE_DOMAIN": "getbb.app" },
+  "vars": {
+    "BASE_DOMAIN": "getbb.app",
+    "PRESENCE_WRITES": "on-change",
+    "WORKER_HELD_RESPONSES": "on"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -48,7 +52,11 @@
       "durable_objects": {
         "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
       },
-      "vars": { "BASE_DOMAIN": "vibecodethis.site" },
+      "vars": {
+        "BASE_DOMAIN": "vibecodethis.site",
+        "WORKER_HELD_RESPONSES": "on",
+        "PRESENCE_WRITES": "on-change"
+      },
       // Staging now has a dashboard-managed wildcard (`*.vibecodethis.site`
       // proxied DNS + zone route to this worker, added 2026-07-08), matching
       // prod's model — new labels/share hosts need no per-host config. The

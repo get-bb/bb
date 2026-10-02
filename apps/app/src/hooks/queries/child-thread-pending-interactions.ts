@@ -23,7 +23,7 @@ export interface ChildThreadPendingAttention {
 export const EMPTY_CHILD_THREAD_PENDING_ATTENTION: readonly ChildThreadPendingAttention[] =
   Object.freeze([]);
 
-export function collectChildThreadPendingAttention(
+function collectChildThreadPendingAttention(
   children: readonly ChildThreadPendingAttentionSource[],
   interactionsByThreadId: ReadonlyMap<
     string,

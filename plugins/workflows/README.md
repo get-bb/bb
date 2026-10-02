@@ -33,16 +33,19 @@ threads, reports cache and result state, and can stop an active run. It may also
 be opened directly from the thread panel action, in which case it shows that
 thread's latest run.
 
-Both surfaces are implemented by the plugin app with `@bb/shared-ui` controls
+Both surfaces are implemented by the plugin app with bb's registry components
 and BB theme tokens. Directive attributes and restored panel parameters are
 treated as untrusted input. The backend additionally binds every requested run
 to the directive message or panel thread, so a run ID from another thread
 cannot be inspected or stopped through these UI RPCs. The service publishes a
 `workflow-runs` realtime signal for the origin thread when a run starts, is
-claimed, settles, or is cancelled, so the composer status surface learns about
-new runs without a standing poll; it and the active message cards poll once
-per second only while a run is active and the page is visible, refresh once
-when the page or the realtime connection comes back, and stop when terminal.
+claimed, settles, or is cancelled, and whenever its phase or one of its agent
+calls changes, so the composer status surface and the message cards follow a
+run from signals instead of a standing poll. While the page is visible they
+refresh on each signal (a burst folds into one follow-up request), refresh once
+when the page or the realtime connection comes back, and keep only a 15-second
+fallback poll while a run is active. A failing refresh retries with backoff from
+2 seconds up to one minute, and everything stops when the run is terminal.
 
 The security boundary is the QuickJS context: workflow code has JSON data and
 explicit orchestration capabilities, but no Node, filesystem, shell, network,

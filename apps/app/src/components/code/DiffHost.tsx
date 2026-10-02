@@ -1,19 +1,25 @@
-import { Suspense, lazy, useMemo, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
-import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
+import { defineSplit } from "@/lib/define-split";
 import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
 import { buildFileDiffPatchText } from "@/components/git-diff/git-diff-patch-text";
 import { useDiffRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
   DEFAULT_DIFF_VIEW,
+  type BbDiffProps,
   type DiffPresentation,
 } from "./code-rendering";
 
 const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
 
-const BbDiff = lazy(() => import("./BbDiff"));
+const BbDiffSplit = defineSplit<BbDiffProps & { fallback: ReactNode }>({
+  id: "bb-diff",
+  load: () => import("./BbDiff").then((module) => module.default),
+  loading: ({ fallback }) => fallback,
+  preload: "render",
+});
 
 interface DiffHostProps extends Partial<DiffPresentation> {
   file: ParsedGitDiffFile;
@@ -43,18 +49,17 @@ export function DiffHost({
   );
 
   const original = (
-    <Suspense fallback={fallback}>
-      <BbDiff
-        file={file}
-        patchText={patchText}
-        fullFileContents={fullFileContents}
-        view={view}
-        overflow={overflow}
-        showLineNumbers={showLineNumbers}
-        className={className}
-        onSelectionAddToChat={onSelectionAddToChat}
-      />
-    </Suspense>
+    <BbDiffSplit
+      file={file}
+      patchText={patchText}
+      fullFileContents={fullFileContents}
+      view={view}
+      overflow={overflow}
+      showLineNumbers={showLineNumbers}
+      className={className}
+      fallback={fallback}
+      onSelectionAddToChat={onSelectionAddToChat}
+    />
   );
 
   return (
@@ -73,7 +78,6 @@ export function DiffHost({
             showLineNumbers={showLineNumbers}
             experimental_fullFileContents={fullFileContents}
             Original={BoundOriginal}
-            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

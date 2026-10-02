@@ -67,19 +67,6 @@ describe("machine server access", () => {
     });
   });
 
-  it("reports provider availability without acquiring a grant", async () => {
-    await withTestHarness(async ({ deps }) => {
-      const availability = vi.fn(() => ({ status: "available" as const }));
-      const acquire = vi.fn(provider().acquire);
-      installProvider({ ...provider(), availability, acquire });
-      const status = await serverAccessStatus(deps);
-      const access = status.providers.find((entry) => entry.id === "relay");
-      expect(access).toMatchObject({ id: "relay", pluginId: "access-plugin" });
-      expect(access?.availability).toEqual({ status: "available" });
-      expect(availability).toHaveBeenCalledOnce();
-      expect(acquire).not.toHaveBeenCalled();
-    });
-  });
   it("prefers the first registered provider and respects an explicit direct default", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
@@ -141,19 +128,18 @@ describe("machine server access", () => {
     });
   });
 
-  it("returns direct access without headers", async () => {
+  it("returns direct access without headers, including on repair", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
       const host = upsertHost(deps.db, deps.hub, { name: "direct" })!;
-      const grant = await serverAccess.resolve(deps, {
-        key: "direct",
-        hostId: host.id,
-        signal,
-      });
-      expect(grant).toEqual({
+      const args = { key: "direct", hostId: host.id, signal };
+      const expected = {
         id: host.id,
         serverUrl: "https://direct.example.com",
-      });
+      };
+      await expect(serverAccess.resolve(deps, args)).resolves.toEqual(expected);
+      await expect(serverAccess.repair(deps, args)).resolves.toEqual(expected);
+      expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBe("direct");
     });
   });
 
@@ -181,6 +167,84 @@ describe("machine server access", () => {
       ).toEqual(grant);
       await serverAccess.release(deps, { key: "k", hostId: host.id });
       expect(getHost(deps.db, host.id)?.serverAccessGrantId).toBeNull();
+    });
+  });
+
+  it("releases before reacquiring from the selected provider and accepts a new grant identity", async () => {
+    await withTestHarness(async ({ deps }) => {
+      const release = vi.fn(provider().release);
+      const acquire = vi.fn(provider().acquire);
+      installProvider({ ...provider(), release, acquire });
+      const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
+      const args = { key: "k", hostId: host.id, signal };
+      await serverAccess.resolve(deps, args);
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        defaultMachineAccess: "direct",
+      });
+      acquire.mockImplementationOnce(async () => {
+        expect(release).toHaveBeenCalledWith({
+          key: "k",
+          hostId: host.id,
+          grantId: host.id,
+        });
+        return {
+          id: "replacement",
+          serverUrl: "https://bb.example.com",
+          headers: { "x-access-token": "new" },
+        };
+      });
+      await expect(serverAccess.repair(deps, args)).resolves.toMatchObject({
+        id: "replacement",
+      });
+      expect(getHost(deps.db, host.id)).toMatchObject({
+        serverAccessProviderId: "relay",
+        serverAccessGrantId: "replacement",
+      });
+    });
+  });
+
+  it("retains the selected provider and supports retry after failed reacquisition", async () => {
+    await withTestHarness(async ({ deps }) => {
+      const acquire = vi.fn(provider().acquire);
+      installProvider({ ...provider(), acquire });
+      const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
+      const args = { key: "k", hostId: host.id, signal };
+      await serverAccess.resolve(deps, args);
+      acquire.mockRejectedValueOnce(new Error("unavailable"));
+      await expect(serverAccess.repair(deps, args)).rejects.toThrow(
+        "unavailable",
+      );
+      expect(getHost(deps.db, host.id)).toMatchObject({
+        serverAccessProviderId: "relay",
+        serverAccessGrantId: null,
+      });
+      await expect(serverAccess.repair(deps, args)).resolves.toMatchObject({
+        id: host.id,
+      });
+    });
+  });
+
+  it("does not reacquire when release fails or switch providers when the selected one is missing", async () => {
+    await withTestHarness(async ({ deps }) => {
+      const acquire = vi.fn(provider().acquire);
+      const release = vi.fn().mockRejectedValue(new Error("release failed"));
+      installProvider({ ...provider(), acquire, release });
+      const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
+      const args = { key: "k", hostId: host.id, signal };
+      await serverAccess.resolve(deps, args);
+      await expect(serverAccess.repair(deps, args)).rejects.toThrow(
+        "release failed",
+      );
+      expect(acquire).toHaveBeenCalledOnce();
+      setServerAccessBridge(undefined);
+      await expect(serverAccess.repair(deps, args)).rejects.toThrow(
+        "provider is unavailable",
+      );
+      expect(getHost(deps.db, host.id)).toMatchObject({
+        serverAccessProviderId: "relay",
+        serverAccessGrantId: host.id,
+      });
     });
   });
 
@@ -330,6 +394,7 @@ it.each([
       else availability.mockResolvedValue(output);
       installProvider({ ...provider(), availability });
       const status = await serverAccessStatus(deps);
+      expect(availability).toHaveBeenCalledOnce();
       expect(status.providers[0]?.availability?.status).toBe("unavailable");
       expect(JSON.stringify(status)).not.toMatch(
         /secret|password|private diagnostics/,

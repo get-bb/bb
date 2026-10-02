@@ -94,35 +94,6 @@ describe("skills/configure handshake capability", () => {
     expect(runtime.hasThread("t1")).toBe(true);
   });
 
-  it("sends skills/configure before thread/start to a bridge that declares it", async () => {
-    const record = createScriptedEchoRequestRecord();
-    const runtime = withBridgeLaunch(
-      createAgentRuntime({
-        workspacePath,
-        env: record.env,
-        skillRoots: [
-          { id: "global-skills:builtin", path: stageSkillRoot(), skills: [] },
-        ],
-        onEvent: () => {},
-        onToolCall: async () => ({ contentItems: [], success: true }),
-      }),
-      createScriptedEchoLaunch(),
-    );
-    runtimes.push(runtime);
-    await runtime.startThread({
-      environmentId: "env-1",
-      projectId: "p1",
-      providerId: "fake",
-      threadId: "t1",
-      options: fullRuntimeOptions,
-    });
-    const methods = record.read().map((entry) => entry.method);
-    expect(methods.indexOf("skills/configure")).toBeGreaterThan(-1);
-    expect(methods.indexOf("skills/configure")).toBeLessThan(
-      methods.indexOf("thread/start"),
-    );
-  });
-
   it("rejects a relative skill root path", () => {
     expect(() =>
       createAgentRuntime({

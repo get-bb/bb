@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalPluginBrowserPage,
   ExperimentalPluginBrowserPageEvaluateOptions,
+  ExperimentalPluginBrowserToolbarActionProps,
   JsonValue,
 } from "@get-bb/plugin-sdk/app";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -116,7 +117,7 @@ describe("AnnotateAction", () => {
       fake.emit({ type: "annotation", annotation: pageAnnotation });
     });
     await waitFor(() => {
-      expect(slot.inspection.composer.mentions).toEqual([
+      expect(slot.inspection.composer.draft.mentions).toMatchObject([
         {
           provider: "annotation",
           id: "ann_saved",
@@ -153,7 +154,7 @@ describe("AnnotateAction", () => {
         input: { id: pageAnnotation.id, comment: "Make this blue" },
       });
     });
-    expect(slot.inspection.composer.mentions).toHaveLength(1);
+    expect(slot.inspection.composer.draft.mentions).toHaveLength(1);
 
     act(() => {
       fake.emit({ type: "state", active: false, count: 1 });
@@ -170,27 +171,27 @@ describe("AnnotateAction", () => {
     const fake = createFakePage();
     const action = registration();
     const AnnotateAction = action.component;
+    const AnnotateWithSubmit = (
+      props: ExperimentalPluginBrowserToolbarActionProps,
+    ) => {
+      const composer = useComposer();
+      return (
+        <>
+          <AnnotateAction {...props} />
+          <button
+            onClick={() => {
+              void composer.submit({
+                experimental_data: null,
+              });
+            }}
+          >
+            Submit test
+          </button>
+        </>
+      );
+    };
     const slot = renderSlot(
-      {
-        ...action,
-        component: (props) => {
-          const composer = useComposer();
-          return (
-            <>
-              <AnnotateAction {...props} />
-              <button
-                onClick={() => {
-                  void composer.experimental_submit({
-                    experimental_data: null,
-                  });
-                }}
-              >
-                Submit test
-              </button>
-            </>
-          );
-        },
-      },
+      { ...action, component: AnnotateWithSubmit },
       {
         threadId: "thr_1",
         tabId: "browser:1",
@@ -198,16 +199,45 @@ describe("AnnotateAction", () => {
         isCompactViewport: false,
         experimental_page: fake.page,
       },
-      { rpc: { save: () => ({ id: pageAnnotation.id }) } },
+      {
+        rpc: { save: () => ({ id: pageAnnotation.id }) },
+        composer: {
+          text: "🙂 @keep ",
+          mentions: [
+            {
+              kind: "plugin",
+              pluginId: "other-plugin",
+              provider: "annotation",
+              id: pageAnnotation.id,
+              label: "keep",
+              from: 3,
+              to: 8,
+            },
+          ],
+          attachments: [
+            {
+              type: "localFile",
+              path: "attachments/spec.txt",
+              name: "spec.txt",
+              sizeBytes: 12,
+            },
+          ],
+        },
+      },
     );
     act(() => fake.emit({ type: "annotation", annotation: pageAnnotation }));
     await waitFor(() =>
-      expect(slot.inspection.composer.mentions).toHaveLength(1),
+      expect(slot.inspection.composer.draft.mentions).toHaveLength(2),
     );
     act(() => fake.emit({ type: "annotation-delete", id: pageAnnotation.id }));
     await waitFor(() =>
-      expect(slot.inspection.composer.mentions).toHaveLength(0),
+      expect(slot.inspection.composer.draft.mentions).toHaveLength(1),
     );
+    expect(slot.composer.draft.text).toBe("🙂 @keep  ");
+    expect(slot.composer.draft.mentions).toMatchObject([
+      { pluginId: "other-plugin", from: 3, to: 8 },
+    ]);
+    expect(slot.composer.draft.attachments).toHaveLength(1);
     await slot.behavior.setComposerText("");
     expect(
       fake.evaluate.mock.calls.some(([expression]) =>
@@ -246,7 +276,7 @@ describe("AnnotateAction", () => {
       await Promise.resolve();
     });
     expect(slot.inspection.rpcCalls).toEqual([]);
-    expect(slot.inspection.composer.mentions).toEqual([]);
+    expect(slot.inspection.composer.draft.mentions).toEqual([]);
   });
 
   it("is disabled outside the desktop app", () => {

@@ -1,116 +1,18 @@
 // @vitest-environment jsdom
 
+import { LazyMarkdownHtml } from "@/components/ui/lazy-markdown-html";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
-import { resetDeprecatedAliasWarningsForTests } from "./plugin-sdk-deprecated-aliases";
 import { AppNavigationHostProvider } from "./app-navigation-host";
 
+beforeAll(() => LazyMarkdownHtml.preload());
+
 afterEach(cleanup);
-
-describe("plugin SDK deprecated aliases", () => {
-  beforeEach(() => {
-    resetDeprecatedAliasWarningsForTests();
-  });
-
-  it("hands experimental_UrlLink a stable alias that warns on its first render, not on access", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const runtime = pluginSdkAppImplementation;
-      const alias = Reflect.get(runtime, "experimental_UrlLink");
-      expect(typeof alias).toBe("function");
-      expect(Reflect.get(runtime, "experimental_UrlLink")).toBe(alias);
-      expect(warn).not.toHaveBeenCalled();
-      expect(Object.keys(runtime)).not.toContain("experimental_UrlLink");
-
-      const LegacyUrlLink = alias as typeof runtime.UrlLink;
-      const view = render(
-        <MemoryRouter>
-          <AppNavigationHostProvider capabilities={{ openUrl: () => true }}>
-            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
-              <LegacyUrlLink href="https://example.com/docs">
-                Docs
-              </LegacyUrlLink>
-            </PluginSlotMount>
-          </AppNavigationHostProvider>
-        </MemoryRouter>,
-      );
-      expect(screen.getByText("Docs").closest("a")?.getAttribute("href")).toBe(
-        "https://example.com/docs",
-      );
-      view.rerender(
-        <MemoryRouter>
-          <AppNavigationHostProvider capabilities={{ openUrl: () => true }}>
-            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
-              <LegacyUrlLink href="https://example.com/docs">
-                Docs again
-              </LegacyUrlLink>
-            </PluginSlotMount>
-          </AppNavigationHostProvider>
-        </MemoryRouter>,
-      );
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn).toHaveBeenCalledWith(
-        "experimental_UrlLink is deprecated; use UrlLink. Removed in bb 0.42",
-      );
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
-  it("forwards navigate.experimental_openUrl to openUrl and warns once", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const openUrl = vi.fn(() => true);
-    const results: unknown[] = [];
-    function Probe() {
-      const navigate = pluginSdkAppImplementation.useBbNavigate();
-      const legacyOpenUrl = Reflect.get(navigate, "experimental_openUrl");
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            if (typeof legacyOpenUrl !== "function") {
-              results.push("missing");
-              return;
-            }
-            results.push(legacyOpenUrl("https://example.com/a"));
-            results.push(legacyOpenUrl("https://example.com/b"));
-          }}
-        >
-          Open
-        </button>
-      );
-    }
-    try {
-      render(
-        <MemoryRouter>
-          <AppNavigationHostProvider capabilities={{ openUrl }}>
-            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
-              <Probe />
-            </PluginSlotMount>
-          </AppNavigationHostProvider>
-        </MemoryRouter>,
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Open" }));
-      expect(results).toEqual([true, true]);
-      expect(openUrl).toHaveBeenNthCalledWith(1, {
-        url: "https://example.com/a",
-      });
-      expect(openUrl).toHaveBeenNthCalledWith(2, {
-        url: "https://example.com/b",
-      });
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn).toHaveBeenCalledWith(
-        "experimental_openUrl is deprecated; use openUrl. Removed in bb 0.42",
-      );
-    } finally {
-      warn.mockRestore();
-    }
-  });
-});
 
 describe("plugin SDK Markdown", () => {
   it("uses the surrounding thread detail navigation for file and web links", () => {
@@ -139,10 +41,11 @@ describe("plugin SDK Markdown", () => {
     fireEvent.click(fileLink);
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       lineRange: null,
+      openTargetId: null,
       path: "/workspace/README.md",
     });
     expect(screen.getByRole("img", { name: "chart" }).getAttribute("src")).toBe(
-      "/api/v1/threads/thr_plugin/host-files/content?path=%2Fworkspace%2Fimages%2Fchart.png",
+      "/api/v1/threads/thr_plugin/host-files/workspace/images/chart.png",
     );
 
     fireEvent.click(screen.getByRole("link", { name: "the docs" }));
@@ -173,7 +76,7 @@ describe("plugin SDK Markdown", () => {
             };
       const props = {
         content:
-          "[Sibling](sibling.md#L2-L4) ![Chart](../chart%20one.svg) [Parent](../summary.md) [Missing](missing.md) [Web](https://example.com)",
+          '[Sibling](sibling.md#L2-L4) ![Chart](../chart%20one.svg) [Parent](../summary.md) [Missing](missing.md) [Web](https://example.com)\n\n<video src="../clip.mp4" controls title="Clip"></video>',
         experimental_document: { target, rootPath, threadId: "thr_document" },
       };
       render(
@@ -200,7 +103,14 @@ describe("plugin SDK Markdown", () => {
       expect(
         screen.getByRole("img", { name: "Chart" }).getAttribute("src"),
       ).toBe(
-        `/api/v1/threads/thr_document/${kind === "workspace" ? "worktree" : kind}/files/reports/chart%20one.svg`,
+        kind === "workspace"
+          ? "/api/v1/environments/env_document/files/reports/chart%20one.svg"
+          : "/api/v1/threads/thr_document/thread-storage/files/reports/chart%20one.svg",
+      );
+      expect(screen.getByLabelText("Clip").getAttribute("src")).toBe(
+        kind === "workspace"
+          ? "/api/v1/environments/env_document/files/reports/clip.mp4"
+          : "/api/v1/threads/thr_document/thread-storage/files/reports/clip.mp4",
       );
       fireEvent.click(screen.getByRole("link", { name: "Parent" }));
       expect(openFilePreview).toHaveBeenLastCalledWith({
@@ -257,12 +167,11 @@ describe("plugin SDK Markdown", () => {
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       path: "/outside.md",
       lineRange: null,
+      openTargetId: null,
     });
     expect(
       screen.getByRole("img", { name: "Absolute" }).getAttribute("src"),
-    ).toBe(
-      "/api/v1/threads/thr_document/host-files/content?path=%2Foutside.svg",
-    );
+    ).toBe("/api/v1/threads/thr_document/host-files/outside.svg");
   });
 
   it("routes web links without requiring a thread navigation context", () => {
@@ -279,6 +188,36 @@ describe("plugin SDK Markdown", () => {
 });
 
 describe("plugin SDK navigation components", () => {
+  it("sends navigate.openUrl to the navigation host", () => {
+    const openUrl = vi.fn(() => true);
+    const results: boolean[] = [];
+    function Probe() {
+      const navigate = pluginSdkAppImplementation.useBbNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            results.push(navigate.openUrl("https://example.com/a"));
+          }}
+        >
+          Open
+        </button>
+      );
+    }
+    render(
+      <MemoryRouter>
+        <AppNavigationHostProvider capabilities={{ openUrl }}>
+          <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+            <Probe />
+          </PluginSlotMount>
+        </AppNavigationHostProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(results).toEqual([true]);
+    expect(openUrl).toHaveBeenCalledWith({ url: "https://example.com/a" });
+  });
+
   it("exposes the file link through the real runtime", () => {
     const openFilePreview = vi.fn(() => true);
     const FileLink = pluginSdkAppImplementation.experimental_FileLink;

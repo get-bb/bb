@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createAccountCookieSource,
   createCredentialCookieSource,
   createLocalServerCookieSource,
   installConnectDesktopSession,
@@ -38,6 +39,131 @@ function localRpcResponse(): Response {
 function gateResponse(): Response {
   return new Response(JSON.stringify({ cookie: COOKIE }));
 }
+
+describe("createAccountCookieSource", () => {
+  it("mints a desktop session from the signed-in account", async () => {
+    const fetchImpl = vi.fn(async (url: string) =>
+      url.endsWith("/api/connect/servers")
+        ? new Response(JSON.stringify({ servers: [{ handle: "laptop" }] }))
+        : gateResponse(),
+    );
+    const result = await installConnectDesktopSession({
+      cookieStore: createCookieStore(),
+      mintCookie: createAccountCookieSource({
+        accountCookie: {
+          name: "__Secure-better-auth.session_token",
+          value: "account-token",
+        },
+        fetchImpl: fetchImpl as typeof fetch,
+        remoteServerUrl: "https://laptop.getbb.app",
+        targetHandle: "laptop",
+      }),
+      remoteServerUrl: "https://laptop.getbb.app",
+    });
+    expect(result).toEqual({ expiresAt: 1_800_000, ok: true });
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://laptop.getbb.app/api/connect/servers",
+      {
+        headers: { cookie: "__Secure-better-auth.session_token=account-token" },
+      },
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "https://laptop.getbb.app/api/connect/desktop-session",
+      {
+        method: "POST",
+        headers: { cookie: "__Secure-better-auth.session_token=account-token" },
+      },
+    );
+  });
+
+  it("uses the server origin including its protocol and port for local Connect", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
+      .mockResolvedValueOnce(gateResponse());
+    const source = createAccountCookieSource({
+      accountCookie: {
+        name: "better-auth.session_token",
+        value: "account-token",
+      },
+      fetchImpl,
+      remoteServerUrl: "http://laptop.bb.localhost:8787/threads?view=full",
+      targetHandle: "laptop",
+    });
+
+    await expect(source()).resolves.toEqual({ cookie: COOKIE, ok: true });
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://laptop.bb.localhost:8787/api/connect/servers",
+      { headers: { cookie: "better-auth.session_token=account-token" } },
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://laptop.bb.localhost:8787/api/connect/desktop-session",
+      {
+        method: "POST",
+        headers: { cookie: "better-auth.session_token=account-token" },
+      },
+    );
+  });
+
+  it("checks the selected handle when the server uses a custom hostname", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ servers: [{ handle: "laptop" }] }))
+      .mockResolvedValueOnce(gateResponse());
+    const source = createAccountCookieSource({
+      accountCookie: {
+        name: "__Secure-better-auth.session_token",
+        value: "account-token",
+      },
+      fetchImpl,
+      remoteServerUrl: "https://bb.example.com",
+      targetHandle: "laptop",
+    });
+
+    await expect(source()).resolves.toEqual({ cookie: COOKIE, ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports an expired account session as unauthorized", async () => {
+    const source = createAccountCookieSource({
+      accountCookie: { name: "better-auth.session_token", value: "expired" },
+      fetchImpl: async () => new Response(null, { status: 401 }),
+      remoteServerUrl: "http://laptop.getbb.localhost:8787",
+      targetHandle: "laptop",
+    });
+    await expect(source()).resolves.toEqual({
+      code: "unauthorized",
+      detail: "bb Connect sign-in is no longer valid",
+      ok: false,
+    });
+  });
+
+  it("rejects a sign-in from an account that does not own the server", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ servers: [{ handle: "other" }] })),
+    );
+    const source = createAccountCookieSource({
+      accountCookie: {
+        name: "__Secure-better-auth.session_token",
+        value: "other-account",
+      },
+      fetchImpl: fetchImpl as typeof fetch,
+      remoteServerUrl: "https://laptop.getbb.app",
+      targetHandle: "laptop",
+    });
+    await expect(source()).resolves.toEqual({
+      code: "unauthorized",
+      detail: "this account does not own the selected server",
+      ok: false,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
 
 function successfulSource() {
   return async () => ({ cookie: COOKIE, ok: true }) as const;

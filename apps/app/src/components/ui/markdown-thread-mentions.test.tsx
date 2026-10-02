@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type { ThreadResponse } from "@bb/server-contract";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import {
   ThreadTitleMentionResourcesProvider,
@@ -59,18 +58,6 @@ function markdownTree(node: ReactNode) {
       <RouteNavigationProvider>{node}</RouteNavigationProvider>
     </MemoryRouter>
   );
-}
-
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
-}
-
-function resolveUpdatedThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}?updated=1`
-    : null;
 }
 
 function threadResponse(
@@ -419,7 +406,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [
@@ -453,7 +439,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [],
@@ -638,7 +623,7 @@ describe("MarkdownPreview thread mentions", () => {
     expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(1);
   });
 
-  it("resolves and links a thread absent from sidebar resources through the authoritative thread query", () => {
+  it("links a queried thread mention through its own project", () => {
     const queriedThread = threadResponse({
       id: "thr_archived",
       projectId: "proj_archive",
@@ -671,7 +656,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [THREAD_MENTION],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
     );
@@ -692,7 +676,6 @@ describe("MarkdownPreview thread mentions", () => {
           threadMentions={{
             mentions: [UPDATED_THREAD_MENTION],
             preserveSoftBreaks: true,
-            resolveLinkHref: resolveUpdatedThreadLink,
           }}
         />,
       ),
@@ -702,7 +685,7 @@ describe("MarkdownPreview thread mentions", () => {
     const pill = screen.getByText("Updated child").closest("a");
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_child?updated=1",
+      "/projects/proj_demo/threads/thr_child",
     );
   });
 
@@ -713,7 +696,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [
@@ -732,63 +714,53 @@ describe("MarkdownPreview thread mentions", () => {
     );
   });
 
-  it("leaves a labeled text directive on the authored directive rendering path", () => {
-    const { container } = renderMarkdown(
-      <MarkdownPreview
-        content="@thread:thr_child[label]"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
+  it.each([
+    ["a labeled", "@thread:thr_child[label]"],
+    ["an attributed", "@thread:thr_child{#authored-directive}"],
+  ])(
+    "leaves %s text directive on the authored directive rendering path",
+    (_label, content) => {
+      const { container } = renderMarkdown(
+        <MarkdownPreview
+          content={content}
+          threadMentions={{
+            mentions: [THREAD_MENTION],
+            preserveSoftBreaks: true,
+          }}
+          messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
+        />,
+      );
 
-    const paragraph = container.querySelector("p");
-    expect(paragraph?.textContent).toBe("@thread:thr_child[label]");
-    expect(paragraph?.querySelector("a")).toBeNull();
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
-  });
+      const paragraph = container.querySelector("p");
+      expect(paragraph?.textContent).toBe(content);
+      expect(paragraph?.querySelector("a")).toBeNull();
+      expect(screen.queryByText("Rebuild comments")).toBeNull();
+    },
+  );
 
-  it("leaves an attributed text directive on the authored directive rendering path", () => {
-    const { container } = renderMarkdown(
-      <MarkdownPreview
-        content="@thread:thr_child{#authored-directive}"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
+  it.each([
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+  ])(
+    "leaves a thread token inside an authored Markdown link %s",
+    (_label, messageDirectives) => {
+      renderMarkdown(
+        <MarkdownPreview
+          content="[@thread:thr_child](https://example.com)"
+          threadMentions={{
+            mentions: [THREAD_MENTION],
+            preserveSoftBreaks: true,
+          }}
+          messageDirectives={messageDirectives}
+        />,
+      );
 
-    const paragraph = container.querySelector("p");
-    expect(paragraph?.textContent).toBe(
-      "@thread:thr_child{#authored-directive}",
-    );
-    expect(paragraph?.querySelector("a")).toBeNull();
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
-  });
-
-  it("leaves a raw thread token inside an authored Markdown link", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content="[@thread:thr_child](https://example.com)"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-      />,
-    );
-
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
-  });
+      const link = screen.getByRole("link", { name: "@thread:thr_child" });
+      expect(link.getAttribute("href")).toBe("https://example.com");
+      expect(screen.getAllByRole("link")).toHaveLength(1);
+      expect(screen.queryByText("Rebuild comments")).toBeNull();
+    },
+  );
 
   it("replaces a resolvable raw-id Markdown link label with one thread pill", () => {
     renderMarkdown(
@@ -797,7 +769,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
       [
@@ -930,25 +901,6 @@ describe("MarkdownPreview thread mentions", () => {
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  it("reconstructs a directive-split thread token inside an authored Markdown link", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content="[@thread:thr_child](https://example.com)"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
-
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
-  });
-
   it("leaves assistant content (no mentions prop) untouched — token stays literal", () => {
     renderMarkdown(
       <MarkdownPreview content="See @thread:thr_child for the report." />,
@@ -972,7 +924,6 @@ describe("MarkdownPreview thread mentions", () => {
         threadMentions={{
           mentions: [THREAD_MENTION],
           preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
         }}
         messageDirectives={messageDirectives}
       />,
@@ -1054,7 +1005,6 @@ describe("MarkdownPreview thread mentions", () => {
             threadMentions={{
               mentions: [THREAD_MENTION],
               preserveSoftBreaks: true,
-              resolveLinkHref: resolveThreadLink,
             }}
             messageDirectives={messageDirectives}
           />,

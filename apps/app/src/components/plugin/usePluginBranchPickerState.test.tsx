@@ -117,4 +117,29 @@ describe("usePluginBranches", () => {
       }),
     );
   });
+
+  it("only requests branches for the query a typist settles on", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    vi.mocked(readProjectBranchOptions).mockResolvedValue(BRANCHES);
+    const { rerender } = renderHook(
+      ({ query }: { query: string }) =>
+        usePluginBranches({ hostId: "host-1", projectId: "project-1", query }),
+      { wrapper, initialProps: { query: "" } },
+    );
+    await waitFor(() =>
+      expect(readProjectBranchOptions).toHaveBeenCalledTimes(1),
+    );
+
+    for (const query of ["r", "re", "rel", "rele", "relea", "releas"]) {
+      rerender({ query });
+    }
+    rerender({ query: "release" });
+
+    await waitFor(() =>
+      expect(readProjectBranchOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ query: "release" }),
+      ),
+    );
+    expect(readProjectBranchOptions).toHaveBeenCalledTimes(2);
+  });
 });

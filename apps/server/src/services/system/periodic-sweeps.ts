@@ -9,6 +9,10 @@ import {
   runProjectAttachmentPrune,
 } from "../projects/attachment-maintenance.js";
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
+import {
+  runThreadStorageOrphanSweep,
+  THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
+} from "../threads/thread-storage-orphans.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
@@ -19,9 +23,6 @@ import {
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
-  DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
-  DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
-  DESTROYED_ENVIRONMENT_TTL_MS,
   deleteExpiredRetainedEventOutputs,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
@@ -30,12 +31,12 @@ import {
   getDatabaseMaintenanceActivity,
   getEnvironment,
   isDatabaseMaintenanceIdle,
+  listArchivedThreadsPendingTeardown,
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
   environments,
   pruneClosedSessions,
-  pruneDestroyedEnvironments,
   RETAINED_EVENT_OUTPUT_TARGETS,
   runIncrementalVacuum,
   shouldCompactDatabase,
@@ -56,9 +57,13 @@ import {
 import {
   finalizeStoppedThread,
   hasLiveThreadStartInFlight,
-  requestThreadStorageDeletion,
   requestThreadStopForCurrentState,
+  requestThreadStorageDeletion,
 } from "../threads/thread-lifecycle.js";
+import {
+  archiveUndoGraceKeepsTerminals,
+  archiveUndoGraceKeepsTurnRunning,
+} from "../threads/archive-undo-grace.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   runQueuedMessageDispatch,
@@ -302,6 +307,7 @@ export async function runEnvironmentProvisioningSweep(
 
 async function runThreadProvisioningOrphanCleanupSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
 ): Promise<void> {
   const provisioningThreads = deps.db
     .select({
@@ -330,19 +336,15 @@ async function runThreadProvisioningOrphanCleanupSweep(
       );
     }
   }
-  const archivedThreads = deps.db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        isNotNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-        inArray(threads.status, ["pending", "starting", "active", "stopping"]),
-      ),
-    )
-    .all();
-  for (const thread of archivedThreads) {
-    deps.terminalSessions.closeArchivedThreadTerminals({ threadId: thread.id });
+  for (const thread of listArchivedThreadsPendingTeardown(deps.db)) {
+    if (!archiveUndoGraceKeepsTerminals(thread, now)) {
+      deps.terminalSessions.closeArchivedThreadTerminals({
+        threadId: thread.id,
+      });
+    }
+    if (archiveUndoGraceKeepsTurnRunning(thread, now)) {
+      continue;
+    }
     requestThreadStopForCurrentState(
       deps,
       thread,
@@ -376,7 +378,7 @@ async function runThreadProvisioningOrphanCleanupSweep(
 export async function runThreadLifecycleSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  await runThreadProvisioningOrphanCleanupSweep(deps);
+  await runThreadProvisioningOrphanCleanupSweep(deps, Date.now());
   await sweepProviderLifecycles(deps);
   await sweepMachineLifecycles(deps);
 }
@@ -434,7 +436,7 @@ async function runCompletedEventOutputMigrationSweep(
     }
   } finally {
     for (const threadId of changedThreadIds) {
-      deps.hub.notifyThread(threadId, ["history-rewritten"]);
+      deps.hub.notifyThread(threadId, ["history-compacted"]);
     }
   }
 }
@@ -468,7 +470,7 @@ async function runRetainedEventOutputExpirySweep(
     }
   } finally {
     for (const threadId of changedThreadIds) {
-      deps.hub.notifyThread(threadId, ["history-rewritten"]);
+      deps.hub.notifyThread(threadId, ["history-compacted"]);
     }
   }
 }
@@ -481,31 +483,6 @@ function runClosedSessionPruneSweep(
     closedBefore: now - CLOSED_SESSION_ROW_RETENTION_MS,
     limit: DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   });
-}
-
-async function runDestroyedEnvironmentPruneSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
-): Promise<void> {
-  for (
-    let pruned = 0;
-    pruned < DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE;
-    pruned += 1
-  ) {
-    const { deleted, detachedEvents } = runEventLoopWorkSync(
-      "sweep:destroyed-environment-prune:advance",
-      () =>
-        pruneDestroyedEnvironments(deps.db, deps.hub, {
-          updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
-          eventBatchSize: DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
-          limit: 1,
-        }),
-    );
-    if (deleted === 0 && detachedEvents === 0) {
-      break;
-    }
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
 }
 
 export function createThreadEventPruningJob(
@@ -555,12 +532,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "closed-session-prune",
     run: runClosedSessionPruneSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "retention",
-    name: "destroyed-environment-prune",
-    run: runDestroyedEnvironmentPruneSweep,
   },
   {
     cadenceMs: 0,
@@ -643,6 +614,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "project-attachment-orphan-prune",
     run: runProjectAttachmentPrune,
+  },
+  {
+    cadenceMs: THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
+    category: "orphan-cleanup",
+    name: "thread-storage-orphan-cleanup",
+    run: runThreadStorageOrphanSweep,
   },
 ];
 

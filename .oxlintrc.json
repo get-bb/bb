@@ -81,6 +81,50 @@
     },
     {
       "files": [
+        "packages/agent-runtime/src/**/*.ts",
+        "packages/provider-bridge-acp/src/bridge/agent-connection.ts",
+        "packages/config/src/verified-process-stop.ts",
+        "packages/host-workspace/src/git-host.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:child_process",
+                "allowTypeImports": true,
+                "message": "Use @bb/process-utils managed processes or buffered commands so launch and termination share one owner."
+              },
+              {
+                "name": "child_process",
+                "allowTypeImports": true,
+                "message": "Use @bb/process-utils managed processes or buffered commands so launch and termination share one owner."
+              },
+              {
+                "name": "cross-spawn",
+                "allowTypeImports": true,
+                "message": "Use @bb/process-utils managed processes or buffered commands so launch and termination share one owner."
+              },
+              {
+                "name": "@bb/process-utils",
+                "importNames": [
+                  "spawnPortableProcess",
+                  "spawnPortablePipedProcess",
+                  "spawnPortableOutputProcess",
+                  "supportsProcessGroups",
+                  "killProcessGroup",
+                  "stopProcessGroupLeaderFirst"
+                ],
+                "message": "Use spawnManagedProcess for owned subprocesses; it owns process-group setup and awaited termination."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
         "**/__tests__/**",
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -166,6 +210,12 @@
       "rules": {
         "bb/no-native-title-with-aria-label": "off",
         "bb/no-native-title-on-button": "off"
+      }
+    },
+    {
+      "files": ["plugins/**/*.{ts,tsx,mts,cts,js,mjs,cjs}"],
+      "rules": {
+        "bb/forkable-plugin-imports": "error"
       }
     }
   ]

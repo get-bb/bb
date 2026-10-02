@@ -14,7 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Keyboard, View } from "react-native";
+import { BackHandler, Keyboard, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { withAlpha } from "@/theme/colors";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -23,7 +23,7 @@ import { useDeferredRealization } from "./useDeferredRealization";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
 
-export const SHEET_CORNER_RADIUS = IS_IOS ? 38 : 12;
+export const SHEET_CORNER_RADIUS = IS_IOS ? 38 : 28;
 const GRABBER_WIDTH = 36;
 const GRABBER_HEIGHT = 5;
 const GRABBER_ALPHA = 0.3;
@@ -81,6 +81,18 @@ export function Sheet({ controller, children, onDismiss }: SheetProps) {
     return () => controller.attach(null);
   }, [controller]);
 
+  useEffect(() => {
+    if (IS_IOS || !presented) return;
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        modalRef.current?.dismiss();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [presented]);
+
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
@@ -97,12 +109,14 @@ export function Sheet({ controller, children, onDismiss }: SheetProps) {
 
   const backgroundStyle = useMemo(
     () => ({
-      backgroundColor: tokens.surfaceGrouped,
+      backgroundColor: IS_IOS
+        ? tokens.surfaceGrouped
+        : tokens.surfaceGroupedCell,
       borderTopLeftRadius: SHEET_CORNER_RADIUS,
       borderTopRightRadius: SHEET_CORNER_RADIUS,
       borderCurve: "continuous" as const,
     }),
-    [tokens.surfaceGrouped],
+    [tokens.surfaceGrouped, tokens.surfaceGroupedCell],
   );
   const handleIndicatorStyle = useMemo(
     () => ({

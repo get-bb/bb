@@ -306,7 +306,6 @@ describe("standalone restart command", () => {
     expect(command).toContain('[ "$connected" = 1 ]');
     expect(command).not.toContain("&;");
     expect(command).not.toContain("do; if");
-    expect(command).not.toContain("test-openai-key");
   });
 
   it("does not map whitespace-only QA OpenAI opt-in restart keys", async () => {

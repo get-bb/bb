@@ -1,6 +1,5 @@
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
 import {
@@ -29,12 +28,6 @@ function TimelineStage({
       {children}
     </div>
   );
-}
-
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
 }
 
 const resolveMentionLink = () => () => {};
@@ -74,7 +67,6 @@ function UserMessage({
         senderThreadId={null}
         senderThreadTitle={null}
         senderIsPluginSideChat={false}
-        resolveSegmentLinkHref={resolveThreadLink}
         resolveMentionLink={resolveMentionLink}
         onAddToChat={onAddToChat}
         systemMessageKind="unlabeled"

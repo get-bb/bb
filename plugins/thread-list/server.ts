@@ -12,6 +12,7 @@ import {
   getPreferenceDefault,
   isPreferenceKey,
   parsePreferenceValue,
+  parseStoredPreferenceValue,
   PREFERENCE_KEYS,
   PREFERENCES_CHANGED_CHANNEL,
   preferenceDefinitions,
@@ -62,7 +63,7 @@ export function createPreferenceStore(bb: BbPluginApi) {
   ): Promise<PreferenceValue<Key>> {
     const stored = await bb.storage.kv.get<unknown>(kvKey(key));
     if (stored === undefined) return getPreferenceDefault(key);
-    const parsed = parsePreferenceValue(key, stored);
+    const parsed = parseStoredPreferenceValue(key, stored);
     if (parsed.success) return parsed.value;
     bb.log.warn(
       `stored preference ${key} is invalid (${parsed.message}); using the default`,
@@ -142,7 +143,9 @@ export async function migrateFromUiPreferences(
   for (const key of PREFERENCE_KEYS) {
     const existing = await bb.storage.kv.get<unknown>(kvKey(key));
     if (existing !== undefined) continue;
-    const legacy = entries[preferenceDefinitions[key].legacyKey];
+    const legacyKey = preferenceDefinitions[key].legacyKey;
+    if (legacyKey === null) continue;
+    const legacy = entries[legacyKey];
     if (legacy === undefined) continue;
     const parsed = parsePreferenceValue(key, legacy.value);
     if (!parsed.success) continue;
@@ -194,7 +197,7 @@ export default async function threadListPlugin(bb: BbPluginApi) {
 
   bb.cli.register(
     defineCli({
-      name: "thread-list",
+      name: bb.pluginId,
       summary: "Inspect and change the sidebar thread list's layout preferences",
       description:
         "Organization mode, sort, section order, hidden groups, and collapsed groups for bb's sidebar thread list. Values are JSON; a bare word is read as a string.",

@@ -47,7 +47,6 @@ function makeThreadWithRuntime(
     updatedAt: 1,
     runtime: {
       displayStatus: "waiting-for-host",
-      hostReconnectGraceExpiresAt: null,
     },
     ...thread,
   });
@@ -128,146 +127,74 @@ describe("thread state mutations", () => {
     }
   });
 
-  it("optimistically renames a thread while the update request is pending", async () => {
-    const { queryClient, wrapper } = createQueryClientTestHarness();
-    const threadId = "thread-1";
-    const thread = makeThreadWithRuntime({
-      id: threadId,
-      title: "Old title",
-    });
-    const listEntry = makeThreadListEntry({
-      id: threadId,
-      title: "Old title",
-    });
-    const threadListKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-1",
-    });
-    let resolveUpdate: (thread: ThreadResponse) => void = () => {};
+  it.each([
+    ["title", "Old title", "New title"],
+    ["sectionId", "sec_work", "sec_personal"],
+  ] as const)(
+    "optimistically updates a thread's %s while the update request is pending",
+    async (field, before, after) => {
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      const threadId = "thread-1";
+      const thread = makeThreadWithRuntime({ id: threadId, [field]: before });
+      const listEntry = makeThreadListEntry({ id: threadId, [field]: before });
+      const threadListKey = threadListQueryKey({
+        archived: false,
+        projectId: "project-1",
+      });
+      let resolveUpdate: (thread: ThreadResponse) => void = () => {};
 
-    queryClient.setQueryData(threadQueryKey(threadId), thread);
-    queryClient.setQueryData(threadListKey, [listEntry]);
-    queryClient.setQueryData(
-      sidebarNavigationQueryKey(),
-      makeSidebarNavigation([listEntry]),
-    );
-    vi.mocked(sdk.threads.update).mockImplementation(
-      () =>
-        new Promise<ThreadResponse>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
-
-    const { result } = renderHook(() => useUpdateThread(), { wrapper });
-
-    act(() => {
-      result.current.mutate({ id: threadId, title: "New title" });
-    });
-
-    await waitFor(() => {
-      expect(
-        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-          ?.title,
-      ).toBe("New title");
-    });
-    expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.title,
-    ).toBe("New title");
-    expect(
-      queryClient.getQueryData<SidebarBootstrapResponse>(
+      queryClient.setQueryData(threadQueryKey(threadId), thread);
+      queryClient.setQueryData(threadListKey, [listEntry]);
+      queryClient.setQueryData(
         sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.title,
-    ).toBe("New title");
-    expect(sdk.threads.update).toHaveBeenCalledWith({
-      threadId,
-      title: "New title",
-    });
-
-    act(() => {
-      resolveUpdate(
-        makeThreadResponse({
-          id: threadId,
-          title: "New title",
-          updatedAt: 2,
-        }),
+        makeSidebarNavigation([listEntry]),
       );
-    });
+      vi.mocked(sdk.threads.update).mockImplementation(
+        () =>
+          new Promise<ThreadResponse>((resolve) => {
+            resolveUpdate = resolve;
+          }),
+      );
 
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true);
-    });
-  });
+      const { result } = renderHook(() => useUpdateThread(), { wrapper });
 
-  it("optimistically moves a thread between sections while the update request is pending", async () => {
-    const { queryClient, wrapper } = createQueryClientTestHarness();
-    const threadId = "thread-1";
-    const thread = makeThreadWithRuntime({
-      id: threadId,
-      sectionId: "sec_work",
-    });
-    const listEntry = makeThreadListEntry({
-      id: threadId,
-      sectionId: "sec_work",
-    });
-    const threadListKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-1",
-    });
-    let resolveUpdate: (thread: ThreadResponse) => void = () => {};
+      act(() => {
+        result.current.mutate({ id: threadId, [field]: after });
+      });
 
-    queryClient.setQueryData(threadQueryKey(threadId), thread);
-    queryClient.setQueryData(threadListKey, [listEntry]);
-    queryClient.setQueryData(
-      sidebarNavigationQueryKey(),
-      makeSidebarNavigation([listEntry]),
-    );
-    vi.mocked(sdk.threads.update).mockImplementation(
-      () =>
-        new Promise<ThreadResponse>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
-
-    const { result } = renderHook(() => useUpdateThread(), { wrapper });
-
-    act(() => {
-      result.current.mutate({ id: threadId, sectionId: "sec_personal" });
-    });
-
-    await waitFor(() => {
+      await waitFor(() => {
+        expect(
+          queryClient.getQueryData<ThreadWithRuntime>(
+            threadQueryKey(threadId),
+          )?.[field],
+        ).toBe(after);
+      });
       expect(
-        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-          ?.sectionId,
-      ).toBe("sec_personal");
-    });
-    expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
-        ?.sectionId,
-    ).toBe("sec_personal");
-    expect(
-      queryClient.getQueryData<SidebarBootstrapResponse>(
-        sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.sectionId,
-    ).toBe("sec_personal");
-    expect(sdk.threads.update).toHaveBeenCalledWith({
-      threadId,
-      sectionId: "sec_personal",
-    });
+        queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.[
+          field
+        ],
+      ).toBe(after);
+      expect(
+        queryClient.getQueryData<SidebarBootstrapResponse>(
+          sidebarNavigationQueryKey(),
+        )?.projects[0]?.threads[0]?.[field],
+      ).toBe(after);
+      expect(sdk.threads.update).toHaveBeenCalledWith({
+        threadId,
+        [field]: after,
+      });
 
-    act(() => {
-      resolveUpdate(
-        makeThreadResponse({
-          id: threadId,
-          sectionId: "sec_personal",
-          updatedAt: 2,
-        }),
-      );
-    });
+      act(() => {
+        resolveUpdate(
+          makeThreadResponse({ id: threadId, [field]: after, updatedAt: 2 }),
+        );
+      });
 
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true);
-    });
-  });
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+    },
+  );
 
   it("serializes unpin before section move while optimistically applying both fields", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();

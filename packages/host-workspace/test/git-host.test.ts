@@ -8,14 +8,14 @@ import {
 
 const execFileMock = vi.hoisted(() => vi.fn());
 
-vi.mock("node:child_process", async () => {
+vi.mock("@bb/process-utils", async () => {
   const actual =
-    await vi.importActual<typeof import("node:child_process")>(
-      "node:child_process",
+    await vi.importActual<typeof import("@bb/process-utils")>(
+      "@bb/process-utils",
     );
-  const { promisify } = await import("node:util");
-  Object.defineProperty(execFileMock, promisify.custom, {
-    value: (file: string, args: readonly string[], options: object) =>
+  return {
+    ...actual,
+    execPortableFile: (file: string, args: string[], options: object) =>
       new Promise((resolve, reject) => {
         execFileMock(
           file,
@@ -27,10 +27,6 @@ vi.mock("node:child_process", async () => {
           },
         );
       }),
-  });
-  return {
-    ...actual,
-    execFile: execFileMock,
   };
 });
 
@@ -68,6 +64,8 @@ describe("parseGitHostPullRequest", () => {
       baseRefName: "main",
       headRefName: "bb/add-pr-section",
       updatedAt: "2026-06-16T12:30:00Z",
+      autoMerge: false,
+      inMergeQueue: null,
       checks: [],
       reviewDecision: null,
       reviewRequestCount: 0,
@@ -240,7 +238,6 @@ describe("runPullRequestActionForCurrentBranch", () => {
         expectedArgs,
         expect.objectContaining({
           cwd: "/tmp/workspace",
-          encoding: "utf8",
           env: expect.objectContaining({
             PATH: "/Users/test/.local/bin:/usr/bin",
           }),
@@ -332,6 +329,59 @@ describe("getPullRequestForCurrentBranch", () => {
     );
   }
 
+  it.each([
+    [
+      "queued",
+      JSON.stringify({ data: { resource: { isInMergeQueue: true } } }),
+      true,
+    ],
+    [
+      "not queued",
+      JSON.stringify({ data: { resource: { isInMergeQueue: false } } }),
+      false,
+    ],
+    ["invalid response", "not json", null],
+    ["missing resource", JSON.stringify({ data: { resource: null } }), null],
+    [
+      "wrong field type",
+      JSON.stringify({ data: { resource: { isInMergeQueue: "true" } } }),
+      null,
+    ],
+    ["unavailable", new Error("GraphQL unavailable"), null],
+  ])(
+    "preserves auto-merge and handles a %s queue lookup",
+    async (_name, queueOutput, inMergeQueue) => {
+      execFileMock.mockImplementation(
+        (
+          file: string,
+          args: string[],
+          _options: object,
+          callback: (
+            error: Error | null,
+            stdout?: string,
+            stderr?: string,
+          ) => void,
+        ) => {
+          if (file === "git") return callback(null, "", "");
+          if (args[0] === "pr")
+            return callback(
+              null,
+              ghJson({ autoMergeRequest: { mergeMethod: "SQUASH" } }),
+              "",
+            );
+          if (queueOutput instanceof Error) return callback(queueOutput);
+          callback(null, String(queueOutput), "");
+        },
+      );
+      await expect(
+        getPullRequestForCurrentBranch(lookupArgs),
+      ).resolves.toMatchObject({
+        outcome: "found",
+        pullRequest: { number: 42, autoMerge: true, inMergeQueue },
+      });
+    },
+  );
+
   it("uses bare gh lookup when the branch has no differently named upstream", async () => {
     mockGhStdout(ghJson());
     await expect(
@@ -351,28 +401,6 @@ describe("getPullRequestForCurrentBranch", () => {
       }),
       expect.any(Function),
     );
-  });
-
-  it("returns none when gh reports the branch has no PR", async () => {
-    mockGhFailure(
-      Object.assign(new Error("gh exited 1"), {
-        code: 1,
-        stderr: 'no pull requests found for branch "bb/pr-lookup"',
-      }),
-    );
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
-      outcome: "none",
-    });
-  });
-
-  it("returns unavailable when gh is not installed", async () => {
-    mockGhFailure(
-      Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }),
-    );
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
-      outcome: "unavailable",
-      message: "GitHub CLI is not available",
-    });
   });
 
   it("returns unavailable with the stderr detail for an auth failure", async () => {

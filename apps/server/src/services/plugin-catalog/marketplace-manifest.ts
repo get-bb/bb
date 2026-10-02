@@ -41,8 +41,6 @@ export const CURATED_MARKETPLACE_V2_URL =
 
 export const BUILTIN_PUBLISHER_LABEL = "BB Official";
 
-const MARKETPLACE_MAX_ENTRIES = 256;
-
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
@@ -245,25 +243,19 @@ const marketplaceManifestV1Schema = z
     name: pluginMarketplaceNameSchema,
     displayName: z.string().min(1),
     description: z.string().min(1).optional(),
-    plugins: z
-      .array(marketplaceEntryV1Schema)
-      .max(
-        MARKETPLACE_MAX_ENTRIES,
-        `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
-      )
-      .superRefine((entries, ctx) => {
-        const seen = new Set<string>();
-        entries.forEach((entry, index) => {
-          if (seen.has(entry.id)) {
-            ctx.addIssue({
-              code: "custom",
-              path: [index, "id"],
-              message: `duplicate plugin id "${entry.id}"`,
-            });
-          }
-          seen.add(entry.id);
-        });
-      }),
+    plugins: z.array(marketplaceEntryV1Schema).superRefine((entries, ctx) => {
+      const seen = new Set<string>();
+      entries.forEach((entry, index) => {
+        if (seen.has(entry.id)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [index, "id"],
+            message: `duplicate plugin id "${entry.id}"`,
+          });
+        }
+        seen.add(entry.id);
+      });
+    }),
   })
   .strict();
 
@@ -275,12 +267,7 @@ const marketplaceManifestV2Schema = z.object({
   description: z.string().min(1).optional(),
   categories: z.array(pluginMarketplaceCategorySchema).optional(),
   collections: z.array(pluginMarketplaceCollectionSchema).optional(),
-  plugins: z
-    .array(marketplaceEntryV2Schema)
-    .max(
-      MARKETPLACE_MAX_ENTRIES,
-      `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
-    ),
+  plugins: z.array(marketplaceEntryV2Schema),
 });
 
 export type MarketplaceManifestV1 = z.infer<typeof marketplaceManifestV1Schema>;

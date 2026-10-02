@@ -25,6 +25,7 @@
     // Resend audience that /api/subscribe adds emails to ("bb users").
     // Not a secret — only the API key is.
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
+    "PRESENCE_WRITES": "on-change",
   },
   "secrets": {
     "required": [
@@ -61,6 +62,13 @@
       "bucket_name": "bb-marketplace-staging",
     },
   ],
+  "ratelimits": [
+    {
+      "name": "LINK_START_RATE_LIMITER",
+      "namespace_id": "4203",
+      "simple": { "limit": 10, "period": 60 },
+    },
+  ],
   "routes": [{ "pattern": "vibecodethis.site", "custom_domain": true }],
   "env": {
     // Production (getbb.app). Cutover note: the getbb.app + www custom domains
@@ -86,6 +94,7 @@
       "vars": {
         "BASE_DOMAIN": "getbb.app",
         "APP_URL": "https://getbb.app",
+        "PRESENCE_WRITES": "on-change",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
       },
       "d1_databases": [
@@ -108,6 +117,13 @@
         {
           "binding": "MARKETPLACE",
           "bucket_name": "bb-marketplace",
+        },
+      ],
+      "ratelimits": [
+        {
+          "name": "LINK_START_RATE_LIMITER",
+          "namespace_id": "4204",
+          "simple": { "limit": 10, "period": 60 },
         },
       ],
     },

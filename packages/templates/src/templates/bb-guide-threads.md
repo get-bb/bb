@@ -45,10 +45,12 @@ Spawning:
                                    none). Required when the provider declares inputs,
                                    refused when it does not
     --machine <id-or-name>         Run on a machine (--host is an alias)
-    --service-tier <tier>          Service tier: fast, default
+    --service-tier <tier>          Service tier id the provider lists for the model, such as
+                                   default or fast (see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
+    --pinned                       Create the thread in Pinned
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
@@ -141,8 +143,11 @@ Editing a sent message:
   Failed and incomplete turns are eligible. If the thread is running,
   submission stops the current turn and waits for it to settle. It then
   replaces the selected turn and every later turn while retaining workspace
-  changes. From an agent thread, the command carries `BB_THREAD_ID` so the
-  replacement runs under agent permission policy.
+  changes. Unsent queued messages remain in the queue and dispatch after the
+  replacement turn when their waits clear. An already-sending queued message
+  must finish before the edit can start. Retries of turns replaced by the edit
+  are removed from the queue. From an agent thread, the command
+  carries `BB_THREAD_ID` so the replacement runs under agent permission policy.
   An edit is refused if removing its history would erase ownership evidence
   shared with another thread. Use bb thread clear <id> to start a new session
   while keeping the history and its ownership evidence.
@@ -152,6 +157,7 @@ Listing:
   bb thread list                           List threads
     --project <id>                         Filter by project
     --environment <id>                     Filter by environment
+    --machine <id-or-name>                 Filter by the machine the environment is on (alias --host)
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
     --section <id>                         Filter by section
@@ -235,9 +241,8 @@ Opening threads and files in the app:
   bb thread pane <action> [thread-id]      Maximize, restore, toggle, spotlight, or clear spotlight
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
-  the thread ID argument is omitted for file-only opens. Pass an explicit thread
-  ID with --split to open another thread. Outside a BB thread, pass the thread ID
-  as the first argument. A thread already open in a pane is focused instead of
+  the thread ID argument is omitted for file-only opens. Outside a BB thread,
+  pass the thread ID as the first argument. A thread already open in a pane is focused instead of
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
   Pane actions broadcast to connected BB app windows and affect the matching
@@ -349,7 +354,7 @@ Interactions:
 Queued messages:
 
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
-  bb thread queue create <thread-id> <message>
+  bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
   bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
@@ -425,6 +430,22 @@ Lifecycle:
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread
+
+  bb thread restore-environment [id]       Restore a destroyed workspace
+    --self                                 Restore current thread
+
+  Archiving a thread retires its environment, and a managed workspace is removed
+  from disk once the provider's grace window passes. Sending to a thread whose
+  workspace is gone fails; `restore-environment` asks the environment provider
+  to build it again and attaches it, leaving the conversation where it was.
+  Each provider decides what that means: a worktree is re-created on the branch
+  it held, a project checkout switches back to that branch, and a personal
+  workspace cannot be restored. It starts no turn — the thread settles back to
+  idle with a live workspace (check `canRestoreEnvironment` on `bb thread show
+  --json`). Unarchive the thread first; the command is refused while the thread
+  is archived, while its workspace is still there, and when the provider does
+  not restore, is gone, or its machine is gone. Uncommitted changes in the
+  removed workspace are not recoverable.
 
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation

@@ -66,7 +66,7 @@ function registerSuccessfulTurnResponder(
           errorMessage: `Path does not exist: ${command.path}`,
         };
       }
-      return { ok: true, result: { appliedAs: "new-turn" } };
+      return { ok: true, result: {} };
     },
   });
 }

@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { firstParam } from "@/screens/shell/hrefs";
+import { WebViewKeyboardFrame } from "@/screens/webview/WebViewKeyboardFrame";
 import type { MediaCapturePermissionGrantType } from "react-native-webview/lib/WebViewTypes";
 import {
   BOOT_TIMING_PROBE,
@@ -320,7 +321,7 @@ export function WebViewSpikeScreen() {
         </View>
       ) : null}
 
-      <View style={{ flex: 1 }}>
+      <WebViewKeyboardFrame style={{ flex: 1 }}>
         <WebView
           key={`${loadedUrl}#${reloadKey}#${incognito ? "i" : "p"}#${cacheEnabled ? "c" : "n"}#${hideAccessoryBar ? "a" : "b"}#${probeNonce ?? ""}#${appBound ? "ab" : "nb"}`}
           ref={webViewRef}
@@ -376,7 +377,7 @@ export function WebViewSpikeScreen() {
             record("native", { kind: "contentProcessTerminated" })
           }
         />
-      </View>
+      </WebViewKeyboardFrame>
 
       {showChrome ? (
         <ScrollView style={{ maxHeight: 190, backgroundColor: "#111" }}>

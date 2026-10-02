@@ -54,17 +54,9 @@ describe("bb terminal command output", () => {
   const register: CommandRegistrar = (program) =>
     registerTerminalCommands(program, () => "http://server");
 
-  it("documents scope selectors only on list and create", async () => {
-    const help = await getHelpOutput(["terminal"], register);
-    const createHelp = await getHelpOutput(["terminal", "create"], register);
+  it("does not document scope selectors on send", async () => {
     const sendHelp = await getHelpOutput(["terminal", "send"], register);
 
-    expect(help).toContain("list [options]");
-    expect(help).toContain("create|start [options] [command...]");
-    expect(help).toContain("send [options] <terminalId>");
-    expect(createHelp).toContain("--thread <id>");
-    expect(createHelp).toContain("--environment <id>");
-    expect(createHelp).toContain("--machine <id-or-name>");
     expect(sendHelp).not.toContain("--thread");
     expect(sendHelp).not.toContain("<threadId>");
   });
@@ -132,6 +124,34 @@ describe("bb terminal command output", () => {
       });
     },
   );
+
+  it("sends positional command arguments unquoted for the machine to quote", async () => {
+    const create = vi.fn(async () => makeTerminalSession());
+    stubServerApi({ "v1.terminals.$post": create });
+
+    await runCommand(
+      [
+        "terminal",
+        "create",
+        "--thread",
+        "thr-1",
+        "--",
+        "C:\\Program Files\\tool.exe",
+        "hello world",
+        "it's",
+      ],
+      register,
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        start: {
+          mode: "argv",
+          argv: ["C:\\Program Files\\tool.exe", "hello world", "it's"],
+        },
+      }),
+    });
+  });
 
   it("creates a machine terminal at host home with an explicit host ID", async () => {
     const hosts = vi.fn(async () => [makeHost()]);
@@ -289,7 +309,7 @@ describe("bb terminal command output", () => {
     expect(send).toHaveBeenCalledWith({
       param: { terminalId: "term-1" },
       json: {
-        dataBase64: Buffer.from("echo hi\n", "utf8").toString("base64"),
+        dataBase64: Buffer.from("echo hi\r", "utf8").toString("base64"),
       },
     });
     expect(resize).toHaveBeenCalledWith({
@@ -302,7 +322,7 @@ describe("bb terminal command output", () => {
     });
   });
 
-  it("preserves arbitrary stdin bytes and appends enter as one byte", async () => {
+  it("preserves arbitrary stdin bytes and presses Enter with a carriage return", async () => {
     const input = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
 
     const result = await resolveSendData(
@@ -310,7 +330,7 @@ describe("bb terminal command output", () => {
       Readable.from([input]),
     );
 
-    expect(result).toEqual(Buffer.concat([input, Buffer.from("\n")]));
+    expect(result).toEqual(Buffer.concat([input, Buffer.from("\r")]));
   });
 
   it("splits large input into sequential requests at the wire byte limit", async () => {

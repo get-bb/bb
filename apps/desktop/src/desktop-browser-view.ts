@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { captureDesktopBrowserPage } from "./desktop-browser-capture.js";
 import {
   BrowserWindow,
@@ -150,14 +150,9 @@ const BB_BROWSER_PARTITION = "persist:bb-browser";
 
 const ERR_ABORTED = -3;
 
-export type DesktopBrowserTabProfile =
-  | { kind: "personal" }
-  | { kind: "automation"; id: string };
-
 export interface DesktopBrowserNativeTab extends BbDesktopBrowserState {
   threadId: string;
   generation: string;
-  profile: DesktopBrowserTabProfile;
   presentation: "hidden" | "reveal";
 }
 
@@ -178,8 +173,6 @@ interface BrowserViewEntry {
   hostWindow: DesktopBrowserHostWindow;
   threadId: string;
   generation: string;
-  profile: DesktopBrowserTabProfile;
-  partition: string;
   lastErrorText: string | null;
   desiredBounds: BbDesktopBrowserViewBounds;
   popupTimestamps: number[];
@@ -223,6 +216,8 @@ export interface DesktopBrowserHostWindow {
   contentView: DesktopBrowserHostContentView;
   getContentBounds(): DesktopBrowserHostContentBounds;
   isDestroyed(): boolean;
+  isFocused(): boolean;
+  once(event: "focus", listener: () => void): unknown;
   webContents: DesktopBrowserHostWebContents;
 }
 
@@ -257,7 +252,7 @@ interface CreateEntryArgs {
   hostWindow: DesktopBrowserHostWindow;
   tabId: string;
   threadId: string;
-  profile: DesktopBrowserTabProfile;
+  backgroundThrottling: boolean;
 }
 
 interface HostWindowViewportBoundsArgs {
@@ -276,7 +271,6 @@ export interface DesktopBrowserViewManager {
     tabId: string;
     threadId: string;
     url: string;
-    profile: DesktopBrowserTabProfile;
     viewport: BbDesktopBrowserViewportBounds;
   }): DesktopBrowserNativeTab;
   listTabs(args: NativeTabScope): DesktopBrowserNativeTab[];
@@ -293,7 +287,8 @@ export interface DesktopBrowserViewManager {
     threadId: string;
   }): Array<{ tabId: string; webContents: WebContents }>;
   subscribeAutomationTabs(listener: () => void): () => void;
-  profileSession(profile: DesktopBrowserTabProfile): Session;
+  setAutomationControlled(webContents: WebContents, controlled: boolean): void;
+  session(): Session;
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
   focus(args: HostScopedTabArgs): void;
@@ -422,7 +417,7 @@ function buildBrowserState(
   };
 }
 
-export function isAllowedBrowserPermission(permission: string): boolean {
+function isAllowedBrowserPermission(permission: string): boolean {
   return permission === "clipboard-sanitized-write";
 }
 
@@ -435,7 +430,9 @@ export function createDesktopBrowserViewManager(
   const automationTabListeners = new Set<() => void>();
   const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
-  const hardenedSessions = new Map<string, Session>();
+  let hardenedSession: Session | null = null;
+  const automationControlled = new WeakSet<WebContents>();
+  const pendingHostFocusReturns = new WeakSet<DesktopBrowserHostWindow>();
 
   function notifyAutomationTabs(): void {
     for (const listener of automationTabListeners) {
@@ -539,18 +536,11 @@ export function createDesktopBrowserViewManager(
       });
   }
 
-  function partitionForProfile(profile: DesktopBrowserTabProfile): string {
-    return profile.kind === "personal"
-      ? partition
-      : `persist:bb-browser-automation-${createHash("sha256").update(profile.id).digest("hex")}`;
-  }
-
-  function ensureHardenedSession(tabPartition: string): Session {
-    const existing = hardenedSessions.get(tabPartition);
-    if (existing !== undefined) {
-      return existing;
+  function ensureHardenedSession(): Session {
+    if (hardenedSession !== null) {
+      return hardenedSession;
     }
-    const browserSession = session.fromPartition(tabPartition);
+    const browserSession = session.fromPartition(partition);
     browserSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(isAllowedBrowserPermission(permission));
     });
@@ -560,7 +550,7 @@ export function createDesktopBrowserViewManager(
     browserSession.on("will-download", (event) => {
       event.preventDefault();
     });
-    hardenedSessions.set(tabPartition, browserSession);
+    hardenedSession = browserSession;
     return browserSession;
   }
 
@@ -579,9 +569,9 @@ export function createDesktopBrowserViewManager(
     );
   }
 
-  function hardenedWebPreferences(tabPartition: string): WebPreferences {
+  function hardenedWebPreferences(): WebPreferences {
     return {
-      partition: tabPartition,
+      partition,
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -607,7 +597,7 @@ export function createDesktopBrowserViewManager(
       show: true,
       transparent: false,
       webContents: options.webContents,
-      webPreferences: hardenedWebPreferences(entry.partition),
+      webPreferences: hardenedWebPreferences(),
       width: clampPopupDimension(
         options.width,
         POPUP_DEFAULT_WIDTH,
@@ -685,6 +675,10 @@ export function createDesktopBrowserViewManager(
     webContents.on("focus", () => {
       if (entry.suppressNextFocusNotification) {
         entry.suppressNextFocusNotification = false;
+        return;
+      }
+      if (automationControlled.has(webContents) || !entry.visible) {
+        setTimeout(() => returnFocusToHost(hostWindow), 0);
         return;
       }
       send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
@@ -862,12 +856,11 @@ export function createDesktopBrowserViewManager(
   }
 
   function createEntry(args: CreateEntryArgs): BrowserViewEntry {
-    const tabPartition = partitionForProfile(args.profile);
-    ensureHardenedSession(tabPartition);
+    ensureHardenedSession();
     const view = new WebContentsView({
       webPreferences: {
-        ...hardenedWebPreferences(tabPartition),
-        backgroundThrottling: args.profile.kind === "personal",
+        ...hardenedWebPreferences(),
+        backgroundThrottling: args.backgroundThrottling,
         ...(pagePreloadPath === null ? {} : { preload: pagePreloadPath }),
       },
     });
@@ -877,8 +870,6 @@ export function createDesktopBrowserViewManager(
       hostWindow: args.hostWindow,
       threadId: args.threadId,
       generation: randomUUID(),
-      profile: { ...args.profile },
-      partition: tabPartition,
       lastErrorText: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
@@ -969,7 +960,6 @@ export function createDesktopBrowserViewManager(
       ...buildBrowserState(tabId, entry),
       threadId: entry.threadId,
       generation: entry.generation,
-      profile: { ...entry.profile },
       presentation: entry.visible ? "reveal" : "hidden",
     };
   }
@@ -986,6 +976,41 @@ export function createDesktopBrowserViewManager(
       }
     }
     return false;
+  }
+
+  function controlledViewHasFocus(
+    hostWindow: DesktopBrowserHostWindow,
+  ): boolean {
+    const hostPrefix = `${hostWindow.webContents.id}:`;
+    for (const [key, entry] of entries) {
+      if (
+        key.startsWith(hostPrefix) &&
+        (automationControlled.has(entry.webContents) || !entry.visible) &&
+        !entry.webContents.isDestroyed() &&
+        entry.webContents.isFocused()
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function returnFocusToHost(hostWindow: DesktopBrowserHostWindow): void {
+    if (hostWindow.isDestroyed() || hostWindow.webContents.isDestroyed()) {
+      return;
+    }
+    if (!hostWindow.isFocused()) {
+      if (pendingHostFocusReturns.has(hostWindow)) return;
+      pendingHostFocusReturns.add(hostWindow);
+      hostWindow.once("focus", () => {
+        pendingHostFocusReturns.delete(hostWindow);
+        returnFocusToHost(hostWindow);
+      });
+      return;
+    }
+    if (controlledViewHasFocus(hostWindow)) {
+      args.focusHostWebContents(hostWindow.webContents.id);
+    }
   }
 
   function focusEntryWithoutNotifying(entry: BrowserViewEntry): void {
@@ -1036,6 +1061,7 @@ export function createDesktopBrowserViewManager(
       const entry = createEntry({
         ...request,
         desiredBounds: { x: 0, y: 0, ...request.viewport },
+        backgroundThrottling: false,
       });
       applyEntryDesiredBounds(entry, request.hostWindow);
       applyEntryVisibility(entry, request.hostWindow);
@@ -1065,8 +1091,8 @@ export function createDesktopBrowserViewManager(
         browserViewKey(entry.hostWindow, ref.tabId),
       );
     },
-    profileSession(profile) {
-      return ensureHardenedSession(partitionForProfile(profile));
+    session() {
+      return ensureHardenedSession();
     },
     async captureTab(request) {
       const entry = requireNativeEntry(request);
@@ -1124,6 +1150,10 @@ export function createDesktopBrowserViewManager(
         automationTabListeners.delete(listener);
       };
     },
+    setAutomationControlled(webContents, controlled) {
+      if (controlled) automationControlled.add(webContents);
+      else automationControlled.delete(webContents);
+    },
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
       const existing = entries.get(key) ?? null;
@@ -1139,7 +1169,7 @@ export function createDesktopBrowserViewManager(
           hostWindow,
           tabId: request.tabId,
           threadId: request.threadId,
-          profile: { kind: "personal" },
+          backgroundThrottling: true,
         });
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       entry.visible = request.visible;

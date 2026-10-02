@@ -81,7 +81,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   )} ${staleProviders.length === 1 ? "update" : "updates"} available`;
 
   return (
-    <SidebarMenuItem className="flex min-w-0 items-center gap-1">
+    <SidebarMenuItem className="flex min-w-0 max-w-[50%] items-center gap-1">
       {bbUpdateCount > 0 ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -107,7 +107,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               onClick={onNavigate}
               aria-label={providerLabel}
               data-testid="sidebar-updates-badge-providers"
-              className={CHIP_CLASS}
+              className={cn(CHIP_CLASS, "min-w-0 shrink")}
             >
               <Icon
                 name={providerUpdateRunning ? "Loading" : "Download"}
@@ -116,7 +116,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
                   providerUpdateRunning && "animate-spin",
                 )}
               />
-              <span className="flex items-center gap-1">
+              <span className="flex min-w-0 items-center gap-1 overflow-hidden">
                 {staleProviders.map((stale) => {
                   const providerId = stale.provider;
                   const provider = providers?.find(

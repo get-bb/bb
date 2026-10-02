@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Button } from "@bb/shared-ui/button";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -9,12 +11,12 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type {
   SidebarVisibilityItem,
   SidebarActivationModifiers,
 } from "./SidebarVisibilityControls";
+import { SidebarVisibilityCustomizeFrame } from "./SidebarVisibilityCustomizeFrame";
 import { useSidebarSortable } from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 
@@ -26,22 +28,20 @@ export function SidebarVisibilityCustomize({
   onExit,
   onReorder,
   onVisibleChange,
-  testIdPrefix = "sidebar-navigation",
   title,
   variant,
   visibleIds,
 }: {
   items: readonly SidebarVisibilityItem[];
   listLabel: string;
-  onActivate?: (
+  onActivate: (
     item: SidebarVisibilityItem,
     event: SidebarActivationModifiers,
   ) => void;
   onDone: () => void;
-  onExit?: () => void;
+  onExit: () => void;
   onReorder: (activeId: string, overId: string) => void;
   onVisibleChange: (id: string, visible: boolean) => void;
-  testIdPrefix?: string;
   title: string;
   variant: "compact" | "card";
   visibleIds: readonly string[];
@@ -93,16 +93,11 @@ export function SidebarVisibilityCustomize({
               item={item}
               checked={visibleIdSet.has(item.id)}
               reorderDisabled={items.length < 2}
-              onActivate={
-                onActivate
-                  ? (event) => {
-                      onActivate(item, event);
-                      onExit?.();
-                    }
-                  : undefined
-              }
+              onActivate={(event) => {
+                onActivate(item, event);
+                onExit();
+              }}
               onCheckedChange={(checked) => onVisibleChange(item.id, checked)}
-              testIdPrefix={testIdPrefix}
             />
           ))}
         </SortableContext>
@@ -110,69 +105,17 @@ export function SidebarVisibilityCustomize({
     </div>
   );
 
-  if (variant === "compact") {
-    return (
-      <div
-        ref={containerRef}
-        className="flex min-h-0 flex-1 flex-col"
-        data-testid={`${testIdPrefix}-customize-inline`}
-      >
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            ref={doneButtonRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Back to sidebar"
-            className={cn(
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "shrink-0 text-muted-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
-            )}
-            onClick={onDone}
-          >
-            <Icon name="ChevronLeft" aria-hidden="true" />
-          </Button>
-          <div
-            className={cn("min-w-0 flex-1 px-1", CHROME_SECTION_LABEL_CLASS)}
-          >
-            {title}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pt-1">{list}</div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      ref={containerRef}
-      className="rounded-lg border border-sidebar-border/40 bg-sidebar-accent/40 p-1"
-      data-testid={`${testIdPrefix}-customize-inline`}
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        onDone();
-      }}
+    <SidebarVisibilityCustomizeFrame
+      containerRef={containerRef}
+      doneButtonRef={doneButtonRef}
+      onDone={onDone}
+      testId="sidebar-navigation-customize-inline"
+      title={title}
+      variant={variant}
     >
-      <div className="flex items-center gap-1 pb-1">
-        <div
-          className={cn("min-w-0 flex-1 px-2 py-1", CHROME_SECTION_LABEL_CLASS)}
-        >
-          {title}
-        </div>
-        <Button
-          ref={doneButtonRef}
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2"
-          onClick={onDone}
-        >
-          Done
-        </Button>
-      </div>
       {list}
-    </div>
+    </SidebarVisibilityCustomizeFrame>
   );
 }
 
@@ -182,21 +125,18 @@ function SidebarCustomizeItem({
   onActivate,
   onCheckedChange,
   reorderDisabled,
-  testIdPrefix,
 }: {
   checked: boolean;
   item: SidebarVisibilityItem;
-  onActivate?: ((event: SidebarActivationModifiers) => void) | undefined;
+  onActivate: (event: SidebarActivationModifiers) => void;
   onCheckedChange: (checked: boolean) => void;
   reorderDisabled: boolean;
-  testIdPrefix: string;
 }) {
   const checkboxId = useId();
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
     id: item.id,
     disabled: reorderDisabled,
   });
-  const isNavigation = testIdPrefix === "sidebar-navigation";
 
   return (
     <div
@@ -209,7 +149,7 @@ function SidebarCustomizeItem({
         "text-sidebar-foreground hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
       )}
       data-sidebar-customize-item={item.id}
-      data-plugin-nav-customize-item={isNavigation ? item.id : undefined}
+      data-plugin-nav-customize-item={item.id}
     >
       <button
         type="button"
@@ -223,9 +163,7 @@ function SidebarCustomizeItem({
           "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
         )}
         onClick={(event) => event.stopPropagation()}
-        data-plugin-nav-customize-drag-handle={
-          isNavigation ? item.id : undefined
-        }
+        data-plugin-nav-customize-drag-handle={item.id}
       >
         <Icon
           name="DragDropVertical"
@@ -239,15 +177,11 @@ function SidebarCustomizeItem({
           "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left outline-none disabled:cursor-default disabled:opacity-50",
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         )}
-        onClick={(event) => {
-          if (onActivate)
-            onActivate({ metaKey: event.metaKey, ctrlKey: event.ctrlKey });
-          else onCheckedChange(!checked);
-        }}
-        data-sidebar-customize-launch={item.id}
-        data-sidebar-navigation-customize-launch={
-          isNavigation ? item.id : undefined
+        onClick={(event) =>
+          onActivate({ metaKey: event.metaKey, ctrlKey: event.ctrlKey })
         }
+        data-sidebar-customize-launch={item.id}
+        data-sidebar-navigation-customize-launch={item.id}
       >
         {item.icon ? (
           <span className="flex size-4 shrink-0 items-center justify-center">
@@ -271,9 +205,7 @@ function SidebarCustomizeItem({
           onCheckedChange={(nextChecked) =>
             onCheckedChange(nextChecked === true)
           }
-          data-plugin-nav-customize-checkbox={
-            isNavigation ? item.id : undefined
-          }
+          data-plugin-nav-customize-checkbox={item.id}
         />
       </label>
     </div>

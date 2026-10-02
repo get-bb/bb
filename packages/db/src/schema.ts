@@ -326,6 +326,9 @@ export const installedPlugins = sqliteTable("plugins", {
   rootDir: text("root_dir").notNull(),
   version: text("version").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  enabledFollowsDefault: integer("enabled_follows_default", { mode: "boolean" })
+    .notNull()
+    .default(false),
   removedAt: integer("removed_at"),
   installedAt: integer("installed_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
@@ -563,7 +566,9 @@ export const environments = sqliteTable(
       table.path,
     ),
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
-    uniqueIndex("environments_owner_thread_idx").on(table.ownerThreadId),
+    uniqueIndex("environments_owner_thread_idx")
+      .on(table.ownerThreadId)
+      .where(sql`${table.ownerThreadId} IS NOT NULL`),
     index("environments_claim_idx").on(table.hostId, table.claimPath),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
@@ -571,6 +576,11 @@ export const environments = sqliteTable(
       table.environmentProviderId,
       table.environmentProviderInstanceKey,
     ),
+    index("environments_provider_lifecycle_idx")
+      .on(table.environmentProviderId)
+      .where(
+        sql`${table.status} <> 'destroyed' OR ${table.teardownStatus} IS NOT 'removed'`,
+      ),
   ],
 );
 
@@ -945,6 +955,11 @@ export const promptHistoryEntries = sqliteTable(
     index("prompt_history_entries_project_scope_created_idx").on(
       table.projectId,
       table.scope,
+      table.createdAt,
+      table.requestSequence,
+      table.id,
+    ),
+    index("prompt_history_entries_created_idx").on(
       table.createdAt,
       table.requestSequence,
       table.id,

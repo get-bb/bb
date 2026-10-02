@@ -1,15 +1,10 @@
-import { fileURLToPath } from "node:url";
-import {
-  defineWorkspaceTestConfig,
-  sharedWorkerProjects,
-} from "../../vitest.shared.js";
-export default defineWorkspaceTestConfig({
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  resolve: { tsconfigPaths: true },
   test: {
-    projects: sharedWorkerProjects({
-      pkgDir: fileURLToPath(new URL(".", import.meta.url)),
-      name: "bb-plugin-browser-automation",
-      include: ["**/*.test.{ts,tsx}"],
-      exclude: ["dist/**", "node_modules/**"],
-    }),
+    name: "bb-plugin-browser-automation",
+    include: ["**/*.test.{ts,tsx}"],
+    exclude: ["dist/**", "node_modules/**"],
   },
 });

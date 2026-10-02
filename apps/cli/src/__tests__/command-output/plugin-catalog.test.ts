@@ -29,6 +29,7 @@ const searchResult = {
   official: true,
   author: null,
   installed: false,
+  conflictingInstallSource: null,
   installs: null,
   compatible: true,
   incompatibleReason: null,
@@ -125,6 +126,25 @@ describe("bb plugin catalog", () => {
     expect(output).toContain("Developer tools");
     expect(output).toContain("compatible");
     expect(output).not.toContain("Marketplace");
+  });
+
+  it("names the installed plugin that holds a listing's id", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        results: [
+          {
+            ...searchResult,
+            conflictingInstallSource: "path:/Users/me/git/linear",
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "search", "lin"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("id in use by path:/Users/me/git/linear");
+    expect(output).not.toContain("compatible");
   });
 
   it("names the marketplace once a third-party listing appears", async () => {
@@ -456,22 +476,6 @@ describe("bb plugin catalog", () => {
     await runCommand(["plugin", "install", "linear"], register);
 
     expect(readlineMocks.question).toHaveBeenCalledWith("Install? [y/N] ");
-  });
-
-  it("routes entry@marketplace to that marketplace without a search", async () => {
-    const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(json({ plan: bundledPlan }))
-      .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
-
-    await runCommand(
-      ["plugin", "install", "linear@bb-official", "--yes"],
-      register,
-    );
-
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear&marketplace=bb-official",
-    );
   });
 
   it("reports both interpretations and direct-source escape hatches", async () => {

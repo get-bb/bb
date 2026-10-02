@@ -19,7 +19,6 @@ import {
   getThreadEventScopeTurnId,
   isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
-  resolveSystemErrorReconnectProgress,
   systemErrorEventDataSchema,
   threadScope,
   turnRequestEventDataSchema,
@@ -136,8 +135,6 @@ interface AppendSystemErrorEventArgs {
   detail?: string;
   environmentId?: string | null;
   message: string;
-  reconnectAttempt?: number;
-  reconnectTotal?: number;
   scope: ThreadEventScope;
   threadId: string;
 }
@@ -702,20 +699,12 @@ export function appendSystemErrorEventInTransaction(
 }
 
 export function buildSystemErrorEventData(
-  args: Pick<
-    AppendSystemErrorEventArgs,
-    "code" | "detail" | "message" | "reconnectAttempt" | "reconnectTotal"
-  >,
+  args: Pick<AppendSystemErrorEventArgs, "code" | "detail" | "message">,
 ): SystemErrorEventData {
-  const reconnectProgress = resolveSystemErrorReconnectProgress(args);
   return systemErrorEventDataSchema.parse({
     code: args.code,
     message: args.message,
     ...(args.detail ? { detail: args.detail } : {}),
-    ...(reconnectProgress
-      ? { reconnectAttempt: reconnectProgress.attempt }
-      : {}),
-    ...(reconnectProgress ? { reconnectTotal: reconnectProgress.total } : {}),
   });
 }
 

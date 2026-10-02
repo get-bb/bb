@@ -1,4 +1,4 @@
-import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
+import { ResourceOverflowMenu } from "@/components/ui/resource-list";
 
 export function AutomationActionsMenu({
   name,

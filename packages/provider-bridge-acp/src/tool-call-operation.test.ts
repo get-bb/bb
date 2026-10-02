@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   classifyAcpToolCall,
@@ -5,35 +6,6 @@ import {
 } from "./tool-call-operation.js";
 
 describe("classifyAcpToolCall", () => {
-  it("treats an other-kind tool with locations as generic, not as a file change", () => {
-    expect(
-      classifyAcpToolCall({
-        kind: "other",
-        title: "/tmp/qa-1719",
-        locations: [{ path: "/tmp/qa-1719/notes.md" }],
-      }),
-    ).toEqual({ kind: "generic" });
-  });
-
-  it("keeps move generic but treats path-pending edits and deletes as file changes", () => {
-    expect(
-      classifyAcpToolCall({
-        kind: "move",
-        locations: [{ path: "/tmp/a" }, { path: "/tmp/b" }],
-      }),
-    ).toEqual({ kind: "generic" });
-    expect(classifyAcpToolCall({ kind: "edit", title: "Edit" })).toEqual({
-      kind: "file_change",
-      changeKind: "update",
-      paths: [],
-    });
-    expect(classifyAcpToolCall({ kind: "delete", title: "Delete" })).toEqual({
-      kind: "file_change",
-      changeKind: "delete",
-      paths: [],
-    });
-  });
-
   it("drops blank location paths and falls back to rawInput paths", () => {
     expect(
       classifyAcpToolCall({
@@ -72,7 +44,7 @@ describe("resolveAcpFileChangeWriteScope", () => {
         "/tmp/qa-1719/notes.md",
         "/tmp/qa-1719/",
       ]),
-    ).toBe("/tmp/qa-1719");
+    ).toBe(path.normalize("/tmp/qa-1719"));
   });
 
   it("normalizes .. segments so a path outside the candidate does not pass a raw prefix test", () => {
@@ -81,7 +53,7 @@ describe("resolveAcpFileChangeWriteScope", () => {
     ).toBeNull();
     expect(
       resolveAcpFileChangeWriteScope(["/repo/src/../notes.md", "/repo"]),
-    ).toBe("/repo");
+    ).toBe(path.normalize("/repo"));
   });
 
   it("returns null for paths in different directories and for a lookalike prefix", () => {
@@ -96,7 +68,16 @@ describe("resolveAcpFileChangeWriteScope", () => {
   it("ignores blank paths and never yields an empty scope", () => {
     expect(resolveAcpFileChangeWriteScope(["", "  "])).toBeNull();
     expect(resolveAcpFileChangeWriteScope(["", "/tmp/qa-1719/notes.md"])).toBe(
-      "/tmp/qa-1719/notes.md",
+      path.normalize("/tmp/qa-1719/notes.md"),
     );
   });
+});
+
+it.runIf(process.platform === "win32").each([
+  [["C:\\work\\file.txt", "c:\\WORK"], "c:\\WORK"],
+  [["C:\\work\\file.txt", "C:\\"], "C:\\"],
+  [["C:\\work", "D:\\work"], null],
+  [["C:\\work", "C:\\work-other\\file.txt"], null],
+])("resolves native Windows write scopes for %j", (paths, expected) => {
+  expect(resolveAcpFileChangeWriteScope(paths)).toBe(expected);
 });

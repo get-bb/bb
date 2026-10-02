@@ -132,6 +132,7 @@ export function EnrollmentCommandState() {
             command={{
               value: ENROLLMENT_COMMAND,
               expiresAt: issuedAt + 15 * 60_000,
+              unavailable: false,
             }}
             errorMessage={null}
             onRetry={noop}
@@ -151,6 +152,7 @@ export function EnrollmentCommandState() {
             command={{
               value: ENROLLMENT_COMMAND,
               expiresAt: issuedAt + 40_000,
+              unavailable: false,
             }}
             errorMessage={null}
             onRetry={noop}
@@ -170,6 +172,7 @@ export function EnrollmentCommandState() {
             command={{
               value: ENROLLMENT_COMMAND,
               expiresAt: issuedAt - 1_000,
+              unavailable: false,
             }}
             errorMessage={null}
             onRetry={noop}
@@ -189,6 +192,7 @@ export function EnrollmentCommandState() {
             command={{
               value: ENROLLMENT_COMMAND,
               expiresAt: issuedAt + 15 * 60_000,
+              unavailable: false,
             }}
             connectedHost={CONNECTED_HOST}
             serverMachineName="Mac mini"

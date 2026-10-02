@@ -1,3 +1,4 @@
+import { registerCodexAiService } from "./src/ai-service.js";
 import { registerUsageSource } from "./src/usage-source.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { codexExtensionKinds } from "./src/extension-kinds.js";
@@ -5,11 +6,7 @@ import { CODEX_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
 
 export default function plugin(bb: BbPluginApi) {
   registerUsageSource(bb);
-  bb.experimental_aiServices.register({
-    id: "codex",
-    displayName: "Codex (ChatGPT account or API key)",
-    kinds: ["inference", "voice"],
-  });
+  registerCodexAiService(bb);
 
   bb.settings.define({
     memoryEnabled: {
@@ -66,6 +63,7 @@ export default function plugin(bb: BbPluginApi) {
     serviceTiers: [
       { id: "default", label: "Default" },
       { id: "fast", label: "Fast" },
+      { id: "ultrafast", label: "Ultrafast" },
     ],
     composerActions: ["plan", "goal"],
     deriveProviderOptions(context) {

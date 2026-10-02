@@ -1,7 +1,6 @@
 import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { ThreadTimelinePluginMessageAction } from "@/components/thread/timeline/types";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import { renderTemplate } from "@bb/templates";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
@@ -38,13 +37,6 @@ function TimelineStage({
 }
 
 const resolveImageSrc = (path: string) => path;
-
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  switch (link.kind) {
-    case "thread":
-      return `/projects/proj_demo/threads/${link.threadId}`;
-  }
-}
 
 const acceptedMessage = {
   isGrouped: false,
@@ -359,15 +351,13 @@ const parentChildSystemMessageFixtures = [
   },
   {
     label: "interrupted",
-    hint: "single child thread interruption carries the manual-stop guidance",
+    hint: "single child thread interruption explains its recorded cause",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates: [
-          "@thread:thr_docs was interrupted.",
+          "@thread:thr_docs was interrupted because its host connection was lost.",
           "",
           "Review the thread before deciding next steps.",
-          "",
-          "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
         ].join("\n"),
       }),
       [
@@ -391,9 +381,7 @@ const parentChildSystemMessageFixtures = [
           "",
           "- @thread:thr_schema completed.",
           "- @thread:thr_rebase failed.",
-          "- @thread:thr_docs was interrupted.",
-          "",
-          "If the user stopped any interrupted thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
+          "- @thread:thr_docs was interrupted because its host daemon restarted.",
         ].join("\n"),
       }),
       [
@@ -772,7 +760,6 @@ export function Overview() {
             role="user"
             originKind={null}
             initiator="agent"
-            resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_ux3h8sxg65"
             senderThreadTitle="Render Rich Thread Names"
             senderIsPluginSideChat={false}
@@ -795,7 +782,6 @@ export function Overview() {
             role="user"
             originKind={null}
             initiator="agent"
-            resolveSegmentLinkHref={resolveThreadLink}
             onTitleAction={() => () => undefined}
             senderThreadId="thr_side_chat"
             senderThreadTitle="new thread"
@@ -819,7 +805,6 @@ export function Overview() {
             role="user"
             originKind={null}
             initiator="agent"
-            resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_h4u3fgr6be"
             senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
             senderIsPluginSideChat={false}
@@ -1056,7 +1041,6 @@ export function ParentChildSystemMessages() {
               senderThreadTitle={null}
               originKind={null}
               senderIsPluginSideChat={false}
-              resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={fixture.message.text}

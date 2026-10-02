@@ -5,16 +5,10 @@ import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
 
 const MAX_THREAD_HIERARCHY_DEPTH = 4;
 
-export function isAgentDelegatedChildThread<
-  T extends Pick<Thread, "parentThreadId">,
->(thread: T): thread is T & { parentThreadId: string } {
-  return thread.parentThreadId !== null;
-}
-
 export function isParentNotifiableChildThread<
   T extends Pick<Thread, "parentThreadId" | "originKind">,
 >(thread: T): thread is T & { parentThreadId: string } {
-  return isAgentDelegatedChildThread(thread) && thread.originKind === null;
+  return thread.parentThreadId !== null && thread.originKind === null;
 }
 
 export type ParentThread = Pick<

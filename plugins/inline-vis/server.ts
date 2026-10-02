@@ -129,6 +129,7 @@ export const inlineVisRpcContract = defineRpcContract({
           file: z.string(),
           source: z.enum(["workspace", "thread-storage"]),
           target: previewTargetSchema,
+          url: z.string(),
         })
         .strict(),
       z
@@ -218,9 +219,22 @@ export default async function plugin(bb: BbPluginApi) {
       }
 
       const kind = previewKind(file);
-      return kind === "markdown"
-        ? { kind, file, source, target, rootPath, content: result.content }
-        : { kind, file, source, target };
+      if (kind === "markdown") {
+        return {
+          kind,
+          file,
+          source,
+          target,
+          rootPath,
+          content: result.content,
+        };
+      }
+      const encodedFile = file.split("/").map(encodeURIComponent).join("/");
+      const url =
+        target.kind === "thread-storage"
+          ? `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodedFile}`
+          : `/api/v1/environments/${encodeURIComponent(target.environmentId)}/files/${encodedFile}`;
+      return { kind, file, source, target, url };
     },
   });
 }

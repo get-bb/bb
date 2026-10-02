@@ -38,16 +38,6 @@ interface ClaudeToolUseBlockData {
   name: string;
 }
 
-interface ClaudeReasoningBlockData {
-  contentIndex: number;
-  text: string;
-}
-
-interface ClaudeStreamDelta {
-  contentIndex: number;
-  delta: string;
-}
-
 interface ClaudeToolResultBlockData {
   content: unknown;
   isError: boolean;
@@ -73,7 +63,6 @@ interface ClaudeCommandExecutionOutputArgs {
 const CLAUDE_EMPTY_BASH_OUTPUT_PLACEHOLDERS = [
   "(Bash completed with no output)",
 ] as const;
-const DEFAULT_CLAUDE_CONTEXT_WINDOW = 200_000;
 const LARGE_CLAUDE_CONTEXT_WINDOW = 1_000_000;
 const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
   "best",
@@ -133,7 +122,7 @@ export function extractToolUses(
 
 export function extractStreamTextDelta(
   message: ClaudeStreamEventMessage,
-): ClaudeStreamDelta | undefined {
+): string | undefined {
   const parsed = streamEventSchema.safeParse(message.event);
   if (!parsed.success) return undefined;
 
@@ -141,21 +130,17 @@ export function extractStreamTextDelta(
     if (parsed.data.delta.type !== "text_delta") {
       return undefined;
     }
-    return parsed.data.delta.text.length > 0
-      ? { contentIndex: parsed.data.index, delta: parsed.data.delta.text }
-      : undefined;
+    return parsed.data.delta.text || undefined;
   }
   if (parsed.data.content_block.type !== "text") {
     return undefined;
   }
-  return parsed.data.content_block.text.length > 0
-    ? { contentIndex: parsed.data.index, delta: parsed.data.content_block.text }
-    : undefined;
+  return parsed.data.content_block.text || undefined;
 }
 
 export function extractStreamThinkingDelta(
   message: ClaudeStreamEventMessage,
-): ClaudeStreamDelta | undefined {
+): string | undefined {
   const parsed = streamEventSchema.safeParse(message.event);
   if (!parsed.success) return undefined;
 
@@ -163,35 +148,23 @@ export function extractStreamThinkingDelta(
     if (parsed.data.delta.type !== "thinking_delta") {
       return undefined;
     }
-    return parsed.data.delta.thinking.length > 0
-      ? { contentIndex: parsed.data.index, delta: parsed.data.delta.thinking }
-      : undefined;
+    return parsed.data.delta.thinking || undefined;
   }
   if (parsed.data.content_block.type !== "thinking") {
     return undefined;
   }
-  return parsed.data.content_block.thinking.length > 0
-    ? {
-        contentIndex: parsed.data.index,
-        delta: parsed.data.content_block.thinking,
-      }
-    : undefined;
+  return parsed.data.content_block.thinking || undefined;
 }
 
 export function extractThinkingBlocks(
   message: ClaudeAssistantMessage,
-): ClaudeReasoningBlockData[] {
-  const thinkingBlocks: ClaudeReasoningBlockData[] = [];
-  const content = parseMessageContent(message);
-  for (const [contentIndex, block] of content.entries()) {
+): string[] {
+  const thinkingBlocks: string[] = [];
+  for (const block of parseMessageContent(message)) {
     const thinkingBlock = thinkingBlockSchema.safeParse(block);
-    if (!thinkingBlock.success || thinkingBlock.data.thinking.length === 0) {
-      continue;
+    if (thinkingBlock.success && thinkingBlock.data.thinking.length > 0) {
+      thinkingBlocks.push(thinkingBlock.data.thinking);
     }
-    thinkingBlocks.push({
-      contentIndex,
-      text: thinkingBlock.data.thinking,
-    });
   }
   return thinkingBlocks;
 }
@@ -388,8 +361,5 @@ export function resolveClaudeModelContextWindowHint(
   ) {
     return LARGE_CLAUDE_CONTEXT_WINDOW;
   }
-  if (selectedModel === "default") {
-    return null;
-  }
-  return DEFAULT_CLAUDE_CONTEXT_WINDOW;
+  return null;
 }

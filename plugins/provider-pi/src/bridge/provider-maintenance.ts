@@ -170,14 +170,18 @@ export function describePiVersionProbeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function getPiProviderInstallationStatus(): Promise<ProviderInstallationStatus> {
+export async function getPiProviderInstallationStatus(
+  checkUpdates = true,
+): Promise<ProviderInstallationStatus> {
   const launch = resolvePiLaunch(process.env);
   const [resolvedExecutable, probe, latestVersion, npmGlobal] =
     await Promise.all([
       resolveExecutablePath(launch.command),
       probePiVersion(),
-      npmLatestVersion(PI_NPM_PACKAGE),
-      probeNpmGlobalPackage(PI_NPM_PACKAGE),
+      checkUpdates ? npmLatestVersion(PI_NPM_PACKAGE) : null,
+      checkUpdates
+        ? probeNpmGlobalPackage(PI_NPM_PACKAGE)
+        : { npmBin: null, npmGlobalPackageVersion: null },
     ]);
   const currentVersion = probe.version;
   const installed = resolvedExecutable !== null || currentVersion !== null;
@@ -196,7 +200,7 @@ export async function getPiProviderInstallationStatus(): Promise<ProviderInstall
       ? "update"
       : null;
   const installAction: ProviderInstallationStatus["installAction"] =
-    actionKind === null
+    actionKind === null || !checkUpdates
       ? null
       : {
           kind: actionKind,

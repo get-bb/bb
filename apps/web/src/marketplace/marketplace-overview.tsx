@@ -1,3 +1,5 @@
+import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { ComponentPropsWithoutRef } from "react";
 import ReactMarkdown, {
   type Components,
@@ -45,6 +47,7 @@ function OverviewLink({ children, href }: ComponentPropsWithoutRef<"a">) {
   return (
     <a href={safeHref} target="_blank" rel="noopener noreferrer">
       {children}
+      <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
     </a>
   );
 }

@@ -1,5 +1,10 @@
-import { useMemo, useState, type ReactNode } from "react";
-import type { ComposerPlusMenuItem, ComposerView } from "@get-bb/plugin-sdk";
+import { getComposerEditorBridge } from "@/lib/composer-editor-registry";
+import { memo, useMemo, useState, type ReactNode } from "react";
+import type {
+  ComposerPlusMenuItem,
+  ComposerView,
+  PluginComposerApi,
+} from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { DropdownMenuItem } from "@bb/shared-ui/dropdown-menu";
@@ -21,7 +26,7 @@ import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
   composerScopeIdentity,
-  useOptionalPluginComposerView,
+  useOptionalPluginComposerStaticView,
 } from "./plugin-composer-host";
 
 const PLUGIN_COMPOSER_INLINE_PLUGIN_LIMIT = 3;
@@ -50,7 +55,7 @@ export function ComposerActionsSlot({
   children?: ReactNode;
   includePluginContributions?: boolean;
 }) {
-  const providedView = useOptionalPluginComposerView();
+  const providedView = useOptionalPluginComposerStaticView();
   const composerView = view ?? providedView;
   const actions = useResolvedComposerActions(
     includePluginContributions ? (composerView?.scope.kind ?? null) : null,
@@ -70,7 +75,7 @@ export function ComposerActionsSlot({
   );
 }
 
-function PluginComposerActionList({
+const PluginComposerActionList = memo(function PluginComposerActionList({
   actions,
   scopeKey,
 }: {
@@ -159,7 +164,7 @@ function PluginComposerActionList({
       ) : null}
     </>
   );
-}
+});
 
 function PluginComposerActionGroupMount({
   group,
@@ -185,7 +190,7 @@ function PluginComposerActionGroupMount({
         <div
           key={`${key}/${scopeKey}`}
           data-plugin-composer-action=""
-          className="flex h-9 max-h-9 shrink-0 items-center overflow-hidden"
+          className="flex h-9 max-h-9 min-w-0 max-w-full shrink-0 items-center overflow-hidden"
         >
           <PluginSlotMount
             pluginId={pluginId}
@@ -246,16 +251,18 @@ function preserveOpenPluginOrder(
 export function PluginComposerPlusMenuEntry({
   contribution,
   onSelected,
+  slotKind = "composerPlusMenuItem",
 }: {
   contribution: PluginComposerPlusMenuContribution;
   onSelected?(selection: PluginComposerPlusMenuSelection): void;
+  slotKind?: "composerPlusMenuItem" | "composerSendMenuItem";
 }) {
   const { key, pluginId, customizationId, item } = contribution;
   return (
     <PluginSlotMount
       key={key}
       pluginId={pluginId}
-      slotKind="composerPlusMenuItem"
+      slotKind={slotKind}
       slotId={`${customizationId}/${item.id}`}
       crashFallback={<></>}
     >
@@ -280,11 +287,13 @@ function PluginComposerPlusMenuEntryContent({
   const composer = useComposer();
   const view = useComposerView();
   const disabled =
-    typeof item.disabled === "function" ? item.disabled(view) : item.disabled;
+    typeof item.disabled === "function"
+      ? item.disabled(composer)
+      : item.disabled;
 
   const run = async () => {
     try {
-      await item.run({ composer, view });
+      await item.run({ composer, view } as { composer: PluginComposerApi });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(
@@ -301,13 +310,20 @@ function PluginComposerPlusMenuEntryContent({
       aria-description={item.description}
       onSelect={() => {
         onSelected?.({
-          restoreComposerFocus: () => composer.focus(),
+          restoreComposerFocus: () => {
+            if (!getComposerEditorBridge(composer.key)?.isPopupOpen())
+              composer.focus();
+          },
           selectedElement: document.activeElement,
         });
         void run();
       }}
     >
-      <PluginIcon pluginId={pluginId} icon={item.icon ?? null} />
+      {item.icon ? (
+        <Icon name={item.icon} className="size-4 shrink-0" aria-hidden="true" />
+      ) : (
+        <PluginIcon pluginId={pluginId} icon={null} />
+      )}
       {item.label}
     </DropdownMenuItem>
   );

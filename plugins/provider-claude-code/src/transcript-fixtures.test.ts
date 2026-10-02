@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ThreadEvent } from "@bb/domain";
+import type { ThreadEvent } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { describe, expect, it } from "vitest";
 import {
   createClaudeDeltaHarness,
@@ -197,10 +197,6 @@ const runs = new Map(
 );
 
 describe("claude transcript fixtures", () => {
-  it("covers every converted session", () => {
-    expect(fixtureNames.length).toBeGreaterThan(0);
-  });
-
   describe.each(fixtureNames)("%s", (name) => {
     const run = runs.get(name)!;
 

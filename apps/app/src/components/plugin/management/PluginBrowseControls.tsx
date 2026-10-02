@@ -112,6 +112,7 @@ export function PluginCollectionToolbar({
   installsKnown: boolean;
   changeSearchParams: (change: (next: URLSearchParams) => void) => void;
 }) {
+  const search = usePluginSearchDraft(query, changeSearchParams);
   const sortProps = {
     value: sort,
     direction: sortDirection,
@@ -213,15 +214,10 @@ export function PluginCollectionToolbar({
         compact
         expandSearchOnFocus
         action={action}
-        searchValue={query}
+        searchValue={search.value}
         searchLabel={searchPlaceholder}
         searchPlaceholder="Search plugins..."
-        onSearchChange={(value) =>
-          changeSearchParams((next) => {
-            if (value === "") next.delete("query");
-            else next.set("query", value);
-          })
-        }
+        onSearchChange={search.change}
         controls={
           <>
             {showCategoryFilter ? (
@@ -246,6 +242,60 @@ export function PluginCollectionToolbar({
       />
     </div>
   );
+}
+
+const SEARCH_COMMIT_DELAY_MS = 200;
+
+function usePluginSearchDraft(
+  query: string,
+  changeSearchParams: (change: (next: URLSearchParams) => void) => void,
+) {
+  const [draft, setDraft] = useState(query);
+  const [synced, setSynced] = useState<{
+    query: string;
+    pending: readonly string[];
+  }>({ query, pending: [] });
+  const timerRef = useRef<number | null>(null);
+  if (query !== synced.query) {
+    const pendingIndex = synced.pending.indexOf(query);
+    setSynced({ query, pending: synced.pending.slice(pendingIndex + 1) });
+    if (pendingIndex === -1) setDraft(query);
+  }
+
+  const cancelPending = () => {
+    if (timerRef.current === null) return;
+    window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  };
+
+  useEffect(() => cancelPending, []);
+
+  const commit = (value: string) => {
+    cancelPending();
+    setSynced((current) => ({
+      ...current,
+      pending: [...current.pending, value],
+    }));
+    changeSearchParams((next) => {
+      if (value === "") next.delete("query");
+      else next.set("query", value);
+    });
+  };
+
+  const change = (value: string) => {
+    setDraft(value);
+    cancelPending();
+    if (value === "") {
+      commit(value);
+      return;
+    }
+    timerRef.current = window.setTimeout(
+      () => commit(value),
+      SEARCH_COMMIT_DELAY_MS,
+    );
+  };
+
+  return { value: draft, change };
 }
 
 type PluginControlPage = {

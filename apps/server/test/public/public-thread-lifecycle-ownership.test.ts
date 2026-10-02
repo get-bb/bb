@@ -18,6 +18,7 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import {
+  expireArchiveUndoGrace,
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
@@ -136,6 +137,7 @@ describe("lifecycle ownership deletion", () => {
         await reconcileDaemonReportedThreads(harness.deps, {
           hostId: other.id,
           activeThreadIds: [child.id],
+          undeliveredEventThreadIds: [],
           sameDaemonInstance: false,
         });
         const retry = await waitForQueuedCommand(
@@ -316,6 +318,8 @@ it("environment archival stops cross-environment lifecycle dependents on their o
     expect(getThread(harness.db, child.id)?.archivedAt).toEqual(
       expect.any(Number),
     );
+    expireArchiveUndoGrace(harness.deps, child.id);
+    await runThreadLifecycleSweep(harness.deps);
     const command = await waitForQueuedCommand(
       harness,
       ({ command }) =>
@@ -352,6 +356,9 @@ it("recovers archived active threads through the periodic sweep", async () => {
       providerThreadId: "sweep-recovery",
     });
     archiveThread(harness.db, harness.deps.hub, thread.id);
+    await runThreadLifecycleSweep(harness.deps);
+    expect(getThread(harness.db, thread.id)?.status).toBe("active");
+    expireArchiveUndoGrace(harness.deps, thread.id);
     await runThreadLifecycleSweep(harness.deps);
     const command = await waitForQueuedCommand(
       harness,
@@ -420,6 +427,7 @@ it("keeps an owning project pending while cross-project host cleanup fails and c
     await reconcileDaemonReportedThreads(harness.deps, {
       hostId: remote.id,
       activeThreadIds: [child.id],
+      undeliveredEventThreadIds: [],
       sameDaemonInstance: false,
     });
     const retry = await waitForQueuedCommand(

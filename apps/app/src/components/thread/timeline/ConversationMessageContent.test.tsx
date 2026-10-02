@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
+import { LazyMarkdownHtml } from "@/components/ui/lazy-markdown-html";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeAll, afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -14,6 +15,8 @@ import { ConversationMessageContent } from "./ConversationMessageContent";
 import { USER_MESSAGE_CHAR_CAP } from "@bb/client-core";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-helpers/domain-fixtures";
+
+beforeAll(() => LazyMarkdownHtml.preload());
 
 afterEach(cleanup);
 
@@ -46,7 +49,9 @@ describe("ConversationMessageContent assistant images", () => {
             showActions={false}
             mobileActionDisplay="overflow"
             streaming={false}
-            text="![Generated diagram](/workspace/output/diagram.png)"
+            text={
+              '![Generated diagram](/workspace/output/diagram.png)\n\n<video src="/workspace/output/clip.mp4" title="Clip" controls></video>'
+            }
           />
         </RouteNavigationProvider>
       </MemoryRouter>,
@@ -56,8 +61,9 @@ describe("ConversationMessageContent assistant images", () => {
       screen
         .getByRole("img", { name: "Generated diagram" })
         .getAttribute("src"),
-    ).toBe(
-      "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
+    ).toBe("/api/v1/threads/thr_image/host-files/workspace/output/diagram.png");
+    expect(screen.getByLabelText("Clip").getAttribute("src")).toBe(
+      "/api/v1/threads/thr_image/host-files/workspace/output/clip.mp4",
     );
   });
 });
@@ -93,9 +99,46 @@ describe("ConversationMessageContent user images", () => {
 
     expect(
       screen.getByRole("img", { name: "diagram" }).getAttribute("src"),
-    ).toBe(
-      "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
+    ).toBe("/api/v1/threads/thr_image/host-files/workspace/output/diagram.png");
+  });
+});
+
+describe("ConversationMessageContent user HTML", () => {
+  it("shows typed HTML tags as literal text", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={null}
+            initiator="user"
+            mentions={[]}
+            originKind={null}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text={
+              "<details><summary>x</summary>hidden</details>\n\ninline <b>bold</b> here"
+            }
+            threadId="thr_html"
+            turnRequest={{
+              isGrouped: false,
+              kind: "message",
+              status: "accepted",
+            }}
+            workspaceRootPath="/workspace"
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
     );
+
+    expect(container.querySelector("details, b")).toBeNull();
+    expect(
+      screen.getByText("<details><summary>x</summary>hidden</details>"),
+    ).toBeTruthy();
+    expect(screen.getByText("inline <b>bold</b> here")).toBeTruthy();
   });
 });
 
@@ -296,50 +339,6 @@ describe("ConversationMessageContent long user messages", () => {
 });
 
 describe("ConversationMessageContent user thread mentions", () => {
-  it("renders an exact raw thread id inline-code span as a linked mention pill", () => {
-    const mentionedThread = threadListEntry({
-      id: "thr_dcwivn5n8w",
-      projectId: "proj_personal",
-      title: "Inline user mention target",
-    });
-
-    const { container } = render(
-      <MemoryRouter>
-        <RouteNavigationProvider>
-          <ThreadTitleMentionResourcesProvider
-            sectionNamesById={new Map()}
-            projectNamesById={new Map()}
-            threadById={new Map([[mentionedThread.id, mentionedThread]])}
-          >
-            <ConversationMessageContent
-              role="user"
-              attachments={null}
-              originKind={null}
-              initiator="user"
-              mentions={[]}
-              senderThreadId={null}
-              senderThreadTitle={null}
-              senderIsPluginSideChat={false}
-              systemMessageKind="unlabeled"
-              systemMessageSubject={null}
-              text="Use `thr_dcwivn5n8w` for the follow-up."
-              turnRequest={{
-                isGrouped: false,
-                kind: "message",
-                status: "accepted",
-              }}
-            />
-          </ThreadTitleMentionResourcesProvider>
-        </RouteNavigationProvider>
-      </MemoryRouter>,
-    );
-
-    expect(
-      screen.getByRole("link", { name: "Inline user mention target" }),
-    ).not.toBeNull();
-    expect(container.querySelector("code")).toBeNull();
-  });
-
   it("renders a raw thread id in message text as a linked mention pill", () => {
     const mentionedThread = threadListEntry({
       id: "thr_dcwivn5n8w",
@@ -387,51 +386,6 @@ describe("ConversationMessageContent user thread mentions", () => {
     expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
   });
 
-  it("renders a raw thread token as the canonical pill when structured mentions are empty", () => {
-    const mentionedThread = threadListEntry({
-      id: "thr_ti4st72wgs",
-      projectId: "proj_personal",
-      title: "Mention pill QA thread",
-    });
-
-    render(
-      <MemoryRouter>
-        <RouteNavigationProvider>
-          <ThreadTitleMentionResourcesProvider
-            sectionNamesById={new Map()}
-            projectNamesById={new Map()}
-            threadById={new Map([[mentionedThread.id, mentionedThread]])}
-          >
-            <ConversationMessageContent
-              role="user"
-              attachments={null}
-              originKind={null}
-              initiator="user"
-              mentions={[]}
-              senderThreadId={null}
-              senderThreadTitle={null}
-              senderIsPluginSideChat={false}
-              systemMessageKind="unlabeled"
-              systemMessageSubject={null}
-              text="Why was @thread:thr_ti4st72wgs not a pill?"
-              turnRequest={{
-                isGrouped: false,
-                kind: "message",
-                status: "accepted",
-              }}
-            />
-          </ThreadTitleMentionResourcesProvider>
-        </RouteNavigationProvider>
-      </MemoryRouter>,
-    );
-
-    const mentionLink = screen.getByRole("link", {
-      name: "Mention pill QA thread",
-    });
-    expect(mentionLink.getAttribute("href")).toBe("/threads/thr_ti4st72wgs");
-    expect(screen.queryByText("@thread", { exact: false })).toBeNull();
-  });
-
   it("routes a raw thread token through the target thread project", () => {
     const mentionedThread = threadListEntry({
       id: "thr_cross_project",
@@ -453,11 +407,6 @@ describe("ConversationMessageContent user thread mentions", () => {
               originKind={null}
               initiator="user"
               mentions={[]}
-              resolveSegmentLinkHref={(link) =>
-                link.kind === "thread"
-                  ? `/projects/proj_current/threads/${link.threadId}`
-                  : null
-              }
               senderThreadId={null}
               senderThreadTitle={null}
               senderIsPluginSideChat={false}

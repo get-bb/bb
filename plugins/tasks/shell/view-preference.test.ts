@@ -8,20 +8,12 @@ import {
 } from "./view-preference.js";
 
 const PROJECT_A = "01HZZZZZZZZZZZZZZZZZZZZZP1";
-const PROJECT_B = "01HZZZZZZZZZZZZZZZZZZZZZP2";
 
 beforeEach(() => window.localStorage.clear());
 
 describe("view preference storage", () => {
   it("falls back to the list before anything is stored", () => {
     expect(loadViewMode(PROJECT_A)).toBe("list");
-  });
-
-  it("keeps other projects' choices when one project changes", () => {
-    storeViewMode(PROJECT_A, "board");
-    storeViewMode(PROJECT_B, "list");
-    expect(loadViewMode(PROJECT_A)).toBe("board");
-    expect(loadViewMode(PROJECT_B)).toBe("list");
   });
 
   it("treats corrupt or partial documents as unset rather than throwing", () => {

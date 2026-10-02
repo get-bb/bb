@@ -1,6 +1,10 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
-import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  experimental_killPortableProcess,
+  experimental_recordProviderChildIo,
+  experimental_spawnPortableProcess,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
@@ -111,7 +115,9 @@ function isClosedChildStdinError(error: Error): boolean {
 export function createCodexAppServerConnection(
   options: CreateCodexAppServerConnectionOptions,
 ): CodexAppServerConnection {
-  const child: ChildProcess = spawn(options.command, options.args, {
+  const child: ChildProcess = experimental_spawnPortableProcess({
+    command: options.command,
+    args: options.args,
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
@@ -161,12 +167,14 @@ export function createCodexAppServerConnection(
     }
     killStarted = true;
     const termination = setTimeout(() => {
-      if (!finalized && exitStatus === null) child.kill("SIGTERM");
+      if (!finalized && exitStatus === null) {
+        experimental_killPortableProcess(child, "SIGTERM");
+      }
     }, TERMINATE_ESCALATION_MS);
     termination.unref?.();
     const escalation = setTimeout(() => {
       if (!finalized) {
-        child.kill("SIGKILL");
+        experimental_killPortableProcess(child, "SIGKILL");
       }
     }, KILL_ESCALATION_MS);
     escalation.unref?.();
@@ -191,7 +199,7 @@ export function createCodexAppServerConnection(
     stdinFailure = new CodexAppServerExitedError(`codex app-server ${detail}`);
     pushStderrChunk(detail);
     killStarted = true;
-    child.kill("SIGKILL");
+    experimental_killPortableProcess(child, "SIGKILL");
   }
 
   function writeLine(message: object): void {

@@ -1,4 +1,5 @@
 import { cacheKey, serveWithCache, shellCacheKey } from "../src/cache.js";
+import { fetchThroughRelay } from "../src/relay.js";
 
 export { TunnelDO } from "../src/tunnel-do.js";
 
@@ -11,6 +12,7 @@ interface FixtureEnv {
 }
 
 const NAMESPACE = "fixture-label";
+const TRANSPORT_HEADER = "x-fixture-transport";
 
 function gzipBytes(env: FixtureEnv): Uint8Array {
   const bin = atob(env.GZIP_BODY_B64);
@@ -74,12 +76,20 @@ export default {
       return new Response(cached.body, cached);
     }
 
+    const workerHeld = request.headers.get(TRANSPORT_HEADER) === "worker-held";
+    const fetchOrigin = async (originRequest: Request): Promise<Response> => {
+      if (!workerHeld) return stub.fetch(originRequest);
+      return (
+        (await fetchThroughRelay(stub, originRequest)) ??
+        stub.fetch(originRequest)
+      );
+    };
     return (
       await serveWithCache(request, NAMESPACE, ctx, (init) => {
-        if (init === undefined) return stub.fetch(request);
+        if (init === undefined) return fetchOrigin(request);
         const headers = new Headers(request.headers);
         headers.set("if-none-match", init.ifNoneMatch);
-        return stub.fetch(new Request(request, { headers }));
+        return fetchOrigin(new Request(request, { headers }));
       })
     ).response;
   },

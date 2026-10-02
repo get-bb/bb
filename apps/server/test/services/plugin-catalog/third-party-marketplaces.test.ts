@@ -542,6 +542,7 @@ describe("third-party marketplaces", () => {
       rootDir: "/plugins/notes",
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const removed = await catalog.removeMarketplace("acme-plugins");
@@ -869,7 +870,7 @@ describe("third-party marketplaces", () => {
     });
   });
 
-  it("refuses an oversize local manifest before reading it", async () => {
+  it("adds a local manifest larger than 1 MiB", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bb-marketplace-big-"));
     cleanup.push(directory);
     const padded = manifest("acme-plugins", [
@@ -881,10 +882,11 @@ describe("third-party marketplaces", () => {
     );
     const catalog = service({ fetch: marketplaceFetch({}) });
 
-    await expect(catalog.addMarketplace(`path:${directory}`)).rejects.toThrow(
-      /marketplace manifest exceeds/u,
-    );
-    expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
+    await catalog.addMarketplace(`path:${directory}`);
+    expect(getPluginMarketplace(db, "acme-plugins")?.lastError).toBeNull();
+    expect(await catalog.search("Acme Notes")).toEqual([
+      expect.objectContaining({ entryId: "notes" }),
+    ]);
   });
 
   it("binds an npm install to the exact version it confirmed", async () => {
@@ -951,37 +953,6 @@ describe("third-party marketplaces", () => {
         expectedNpmIntegrity: "sha512-1.5.0",
       }),
     ]);
-  });
-
-  it("refuses an npm install whose version cannot be resolved", async () => {
-    const npmEntry = entry({
-      source: { npm: { package: "bb-plugin-notes", tag: "beta" } },
-    });
-    const catalog = service({
-      fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-community", []),
-        [ACME_URL]: manifest("acme-plugins", [npmEntry]),
-      }),
-      resolveNpm: async () => ({
-        outcome: "unavailable" as const,
-        detail: "registry is unreachable",
-      }),
-    });
-    await catalog.addMarketplace(ACME_URL);
-
-    const plan = await catalog.installPlan({
-      entryId: "notes",
-      marketplace: "acme-plugins",
-    });
-    if (plan.kind !== "marketplace") throw new Error("expected a marketplace");
-    await expect(
-      catalog.install({
-        entryId: "notes",
-        marketplace: "acme-plugins",
-        confirmedSource: plan.resolvedSource,
-      }),
-    ).rejects.toThrow(/npm source could not be resolved/u);
-    expect(installedCatalogEntries).toEqual([]);
   });
 
   it("holds the marketplace lock across an install", async () => {

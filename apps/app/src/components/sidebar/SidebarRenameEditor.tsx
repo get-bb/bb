@@ -1,22 +1,10 @@
 import { useEffect, useId, useRef } from "react";
 import { BbHttpError } from "@bb/sdk/browser";
-import { Icon } from "@bb/shared-ui/icon";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 import type { RenameSession, RenameController } from "./SidebarInlineRename";
 
-export function renameError(error: unknown, kind: RenameSession["kind"]) {
+export function renameError(error: unknown) {
   if (error instanceof BbHttpError) {
-    if (
-      error.code === "section_name_conflict" ||
-      (kind === "section" && error.status === 409)
-    ) {
-      return {
-        error: "A section with this name already exists.",
-        cannotRetry: false,
-      };
-    }
     if (error.status === 404 || error.status === 410) {
       return { error: "This item no longer exists.", cannotRetry: true };
     }
@@ -72,11 +60,11 @@ export default function SidebarRenameEditor({
     });
   };
 
-  const submit = async (restore: boolean, clear = false) => {
+  const submit = async (restore: boolean) => {
     restoreFocusRef.current = restore;
     const input = inputRef.current;
     input?.setSelectionRange(input.value.length, input.value.length);
-    const saved = await controller.save(clear);
+    const saved = await controller.save();
     if (saved && restoreFocusRef.current) restoreFocus();
   };
 
@@ -93,11 +81,7 @@ export default function SidebarRenameEditor({
       className="relative z-50 flex min-w-0 flex-1 items-center gap-1"
       aria-busy={isPending}
       onBlur={(event) => {
-        if (
-          openingRef.current ||
-          event.currentTarget.contains(event.relatedTarget)
-        )
-          return;
+        if (openingRef.current) return;
         restoreFocusRef.current = false;
         if (!isPending) void submit(false);
       }}
@@ -137,7 +121,7 @@ export default function SidebarRenameEditor({
         autoCapitalize="sentences"
         autoCorrect="off"
         className={cn(
-          "min-w-0 flex-1 appearance-none border-0 bg-transparent px-0 py-0 [font:inherit] outline-none",
+          "min-w-0 flex-1 appearance-none border-0 bg-transparent px-0 py-0 [font:inherit] outline-none field-sizing-content",
           isPending && "animate-shine motion-reduce:opacity-60",
         )}
         spellCheck={false}
@@ -156,22 +140,6 @@ export default function SidebarRenameEditor({
         <span role="status" aria-label="Saving name" className="sr-only">
           Saving name
         </span>
-      )}
-      {session.onClear && session.name && (
-        <button
-          type="button"
-          aria-label="Clear custom name"
-          disabled={isPending || session.cannotRetry}
-          className={cn(
-            SIDEBAR_CONTROL_BUTTON_CLASS,
-            "inline-flex items-center justify-center disabled:opacity-50",
-          )}
-          onClick={(event) => {
-            void submit(event.detail === 0, true);
-          }}
-        >
-          <Icon name="RotateCcw" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        </button>
       )}
       {session.error && (
         <span

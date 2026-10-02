@@ -57,7 +57,10 @@ provider, and directive are all Docs.
   the selected vault root. HTML responses use `sandbox allow-scripts`, and the
   iframe never receives `allow-same-origin`.
 - **Chat mentions:** `@` searches every vault's titles, previews, filenames,
-  and folders. A selected document resolves to its latest content at send time.
+  and folders. Searches share in-flight reads and cache summaries for up to
+  ten seconds. Docs edits and local filesystem notifications invalidate the
+  affected vault's cache. A selected document resolves to its latest content
+  at send time.
 - **Thread documents:** Markdown cards are editable and autosave directly in
   the timeline. Open in tab opens the same document with shared editing state.
   Pending agent proposals show live inline additions and deletions, with compact

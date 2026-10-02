@@ -177,7 +177,6 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
               threadId: thread.id,
               url: "https://example.com",
               title: "Example",
-              profile: { kind: "automation", id: "automation-profile" },
               presentation: "hidden",
               control: null,
             },
@@ -267,7 +266,7 @@ function seedDisconnectedTerminal(harness: TestAppHarness, hostId: string) {
   });
   updateTerminalSession(harness.db, {
     scope: { kind: "terminal", terminalId: terminal.id },
-    update: { kind: "disconnect" },
+    update: { kind: "disconnect", retainDaemonSession: false },
   });
   const session = seedSession(harness.deps, host.id);
   return {

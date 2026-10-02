@@ -14,14 +14,13 @@ import {
   type PluginComposerPlusMenuSelection,
 } from "@/components/plugin/PluginComposerActions";
 import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
-import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
+import { useOptionalPluginComposerStaticView } from "@/components/plugin/plugin-composer-host";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import type { ProviderPromptActionCommand } from "@bb/client-core";
 
-type PromptBoxActionKind = "skills" | "plan" | "goal" | "automation" | "plugin";
+type PromptBoxActionKind = "skills" | "plan" | "goal";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
@@ -36,37 +35,15 @@ interface PromptBoxActionsMenuProps {
   pluginItems?: readonly PluginComposerPlusMenuContribution[];
 }
 
-export function ComposerPlusMenuSlot({
-  includePluginContributions = true,
-  ...props
-}: Omit<PromptBoxActionsMenuProps, "pluginItems"> & {
-  includePluginContributions?: boolean;
-}) {
-  const view = useOptionalPluginComposerView();
+export function ComposerPlusMenuSlot(
+  props: Omit<PromptBoxActionsMenuProps, "pluginItems">,
+) {
+  const view = useOptionalPluginComposerStaticView();
   const pluginItems = useResolvedComposerPlusMenuItems(
-    includePluginContributions ? (view?.scope.kind ?? null) : null,
+    view?.scope.kind ?? null,
   );
   return <PromptBoxActionsMenu {...props} pluginItems={pluginItems} />;
 }
-
-export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
-  kind: "automation",
-  command: { trigger: "/", name: "automation", trailingText: " " },
-  text: "/automation ",
-};
-
-export const CREATE_PLUGIN_PROMPT_ACTION: PromptBoxAction = {
-  kind: "plugin",
-  text: CREATE_PLUGIN_PROMPT,
-};
-
-const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
-  "skills",
-  "plan",
-  "goal",
-  "automation",
-  "plugin",
-];
 
 const PROMPT_ACTION_PRESENTATION = {
   skills: {
@@ -81,30 +58,16 @@ const PROMPT_ACTION_PRESENTATION = {
     label: "Goal",
     icon: "Target",
   },
-  automation: {
-    label: "Automation",
-    icon: "Repeat",
-  },
-  plugin: {
-    label: "Plugin",
-    icon: "Plug02",
-  },
 } as const satisfies Record<
   PromptBoxActionKind,
   { label: string; icon: IconName }
 >;
 
-export function withAppPromptActions(
-  actions: readonly PromptBoxAction[],
-): PromptBoxAction[] {
-  const appActions = [AUTOMATION_PROMPT_ACTION, CREATE_PLUGIN_PROMPT_ACTION];
-  return [
-    ...actions,
-    ...appActions.filter(
-      (appAction) => !actions.some((action) => action.kind === appAction.kind),
-    ),
-  ];
-}
+const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
+  "skills",
+  "plan",
+  "goal",
+];
 
 function orderedPromptActions(
   actions: readonly PromptBoxAction[],
@@ -239,7 +202,6 @@ export function PromptBoxActionsMenu({
             </DropdownMenuItem>
           );
         })}
-        {pluginItems.length > 0 ? <DropdownMenuSeparator /> : null}
         {pluginItems.map((contribution) => (
           <PluginComposerPlusMenuEntry
             key={contribution.key}

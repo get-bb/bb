@@ -209,15 +209,10 @@ describe("managed JSON CLI process transactions", options, () => {
                   customModels: [
                     { providerId: "future-provider", model: "synthetic" },
                   ],
-                  customAcpAgents: [
-                    { id: "synthetic", command: "missing-synthetic-command" },
-                  ],
                 }
               : {};
-          const keep =
-            kind === "env"
-              ? { KEEP: "preserved" }
-              : { BB_INFERENCE: "codex/synthetic" };
+          const keep: Record<string, string> =
+            kind === "env" ? { KEEP: "preserved" } : {};
           const path = seed(dir, kind, {
             ...extras,
             [kind]: { ...keep, ...(operation === "unset" ? { [a]: va } : {}) },

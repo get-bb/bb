@@ -64,6 +64,8 @@ describe("bb environment command output", () => {
     baseRefName: "main",
     headRefName: "bb/environment-cli",
     updatedAt: "2026-07-14T12:00:00.000Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "passing",
       totalCount: 2,
@@ -83,21 +85,9 @@ describe("bb environment command output", () => {
     attention: "ready_to_merge",
   };
 
-  it("discovers every direct environment inspection command in help", async () => {
+  it("does not list a squash-merge command in help", async () => {
     const help = await getHelpOutput(["environment"], register);
 
-    expect(help).toContain("providers [options]");
-    expect(help).toContain("status [options] <id>");
-    expect(help).toContain("branches [options] <id>");
-    expect(help).toContain("paths [options] <id>");
-    expect(help).toContain("diff [options] <id>");
-    expect(help).toContain("diff-files [options] <id>");
-    expect(help).toContain("diff-file [options] <id>");
-    expect(help).toContain("diff-patch [options] <id>");
-    expect(help).toContain("pull-request");
-    expect(help).toMatch(
-      /List environments, including destroyed ones\s+when requested/u,
-    );
     expect(help).not.toContain("squash-merge");
   });
 
@@ -289,33 +279,22 @@ describe("bb environment command output", () => {
     ]);
   });
 
-  it("bb environment list names invalid --limit as a non-negative integer", async () => {
-    const list = vi.fn(async () => []);
-    stubServerApi({ "v1.environments.$get": list });
+  it.each(["--limit", "--offset"])(
+    "bb environment list names invalid %s as a non-negative integer",
+    async (flag) => {
+      const list = vi.fn(async () => []);
+      stubServerApi({ "v1.environments.$get": list });
 
-    await expect(
-      runCommand(["environment", "list", "--limit", "nope"], register),
-    ).rejects.toThrow("process.exit:1");
+      await expect(
+        runCommand(["environment", "list", flag, "nope"], register),
+      ).rejects.toThrow("process.exit:1");
 
-    expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: --limit must be a non-negative integer.",
-    );
-    expect(list).not.toHaveBeenCalled();
-  });
-
-  it("bb environment list names invalid --offset as a non-negative integer", async () => {
-    const list = vi.fn(async () => []);
-    stubServerApi({ "v1.environments.$get": list });
-
-    await expect(
-      runCommand(["environment", "list", "--offset", "nope"], register),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: --offset must be a non-negative integer.",
-    );
-    expect(list).not.toHaveBeenCalled();
-  });
+      expect(collectLogLines(vi.mocked(console.error))).toContain(
+        `Error: ${flag} must be a non-negative integer.`,
+      );
+      expect(list).not.toHaveBeenCalled();
+    },
+  );
 
   it("bb environment delete reports requested cleanup and its lifecycle", async () => {
     const remove = vi.fn(async () => ({ ok: true as const }));
@@ -466,6 +445,8 @@ describe("bb environment command output", () => {
         "Pull request: #701 open - Environment inspection parity",
         "Branch: bb/environment-cli -> main",
         "Checks: passing (2 passed, 0 failed, 0 pending, 2 total)",
+        "Auto-merge: off",
+        "Merge queue: not queued",
       ]),
     );
   });

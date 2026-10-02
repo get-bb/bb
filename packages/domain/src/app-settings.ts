@@ -17,6 +17,7 @@ export const appSettingsSchema = z
   .object({
     showKeyboardHints: z.boolean(),
     steerActiveThreadOnEnter: z.boolean(),
+    confirmThreadArchive: z.boolean(),
     showDiagnosticEvents: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
@@ -25,6 +26,7 @@ export const appSettingsSchema = z
       completedTurnDisplaySchema,
     ),
     streamerMode: z.boolean(),
+    allowFastServiceTier: z.boolean(),
     telemetryEnabled: z.boolean(),
     managedBranchPrefix: managedBranchPrefixSchema,
     machineServerUrl: z
@@ -48,11 +50,13 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
   steerActiveThreadOnEnter: true,
+  confirmThreadArchive: true,
   showDiagnosticEvents: false,
   providerOrder: [],
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
   streamerMode: false,
+  allowFastServiceTier: true,
   telemetryEnabled: true,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
   machineServerUrl: null,
@@ -60,13 +64,19 @@ export const defaultAppSettings: AppSettings = {
   machineGitCredentialsEnabled: true,
 };
 
+export const disabledProviderIdsSchema = z.array(z.string().min(1));
+
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
+    allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
+    confirmThreadArchive: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
+    allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
+    confirmThreadArchive: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
   }),
 ]);

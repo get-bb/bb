@@ -73,6 +73,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: pluginDir,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     const previousRegistration = getInstalledPlugin(db, "snapshot-test");
     if (previousRegistration === undefined) {
@@ -128,6 +129,61 @@ describe("plugin activation snapshots and garbage collection", () => {
     expect(await readFile(secretPath, "utf8")).toBe("opaque-secret");
   });
 
+  it("reads a registration snapshotted before enabled-default tracking as an explicit choice", async () => {
+    const pluginDir = join(dataDir, "plugins", "pre-default-tracking");
+    await mkdir(pluginDir, { recursive: true });
+    upsertInstalledPlugin(db, {
+      id: "pre-default-tracking",
+      source: "npm:bb-plugin-pre-default-tracking@1.0.0",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-pre-default-tracking",
+        registry: "https://registry.npmjs.org",
+        requestedSpec: "1.0.0",
+        specKind: "exact",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.0.0",
+        integrity: "sha512-pre-default-tracking",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: pluginDir,
+      version: "1.0.0",
+      enabled: false,
+      enabledFollowsDefault: false,
+    });
+    const registration = getInstalledPlugin(db, "pre-default-tracking");
+    if (registration === undefined) throw new Error("missing registration");
+    const snapshot = await createPluginStateSnapshotOnDisk({
+      db,
+      dataDir,
+      pluginId: registration.id,
+      fromArtifactId: null,
+      toArtifactId: "candidate",
+      now: 100,
+      retainedUntil: 200,
+      previousRegistration: registration,
+    });
+    if (snapshot.registrationPath === null) {
+      throw new Error("missing snapshot registration path");
+    }
+    const { enabledFollowsDefault: _enabledFollowsDefault, ...preTracking } =
+      registration;
+    await writeFile(snapshot.registrationPath, JSON.stringify(preTracking));
+
+    await expect(
+      readPluginSnapshotRegistration({ db, snapshotId: snapshot.id }),
+    ).resolves.toEqual({ ...preTracking, enabledFollowsDefault: false });
+  });
+
   it("normalizes legacy marketplace registrations against migrated provenance", async () => {
     const pluginDir = join(dataDir, "plugins", "legacy-snapshot");
     await mkdir(pluginDir, { recursive: true });
@@ -161,6 +217,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: pluginDir,
       version: "1.2.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     const registration = getInstalledPlugin(db, "legacy-snapshot");
     if (registration === undefined) throw new Error("missing registration");
@@ -311,6 +368,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: nestedPath,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const warnings: string[] = [];
@@ -378,6 +436,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: checkout,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const warnings: string[] = [];
@@ -445,6 +504,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: checkout,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const warnings: string[] = [];
@@ -552,6 +612,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       rootDir: activePath,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     const snapshotPath = join(
       dataDir,

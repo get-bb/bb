@@ -34,7 +34,7 @@ export function UserQuestionAnswerForm({
   const rootRef = useRef<HTMLDivElement>(null);
   const availableHeight = useStickyFooterAvailableHeight(rootRef);
   const queryClient = useQueryClient();
-  const resolvePendingInteraction = useResolveThreadPendingInteraction();
+  const resolvePendingInteraction = useResolveThreadPendingInteraction(threadId);
   const stopThread = useStopThread();
   const disabled = resolvePendingInteraction.isPending || isResolving;
   const error = resolvePendingInteraction.error

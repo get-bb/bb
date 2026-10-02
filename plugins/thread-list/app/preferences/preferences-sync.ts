@@ -1,8 +1,10 @@
 import { atom, getDefaultStore, type PrimitiveAtom } from "jotai";
+
+type PreferencesStore = ReturnType<typeof getDefaultStore>;
 import {
   defaultPreferences,
   getPreferenceDefault,
-  parsePreferenceValue,
+  parseStoredPreferenceValue,
   PREFERENCE_KEYS,
   preferencesChangedSignalSchema,
   type PreferenceKey,
@@ -10,8 +12,11 @@ import {
   type PreferenceValues,
 } from "../../shared/preferences.js";
 
-export const PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-list.preferences.v1";
 const WRITE_DEBOUNCE_MS = 150;
+
+export function preferencesMirrorStorageKey(pluginId: string): string {
+  return `bb.${pluginId}.preferences.v1`;
+}
 
 export interface PreferencesRpc {
   call(method: "listPreferences", input: null): Promise<unknown>;
@@ -24,8 +29,13 @@ export interface PreferencesRpc {
 interface SyncState {
   valueAtoms: Map<PreferenceKey, PrimitiveAtom<unknown>>;
   readyAtom: PrimitiveAtom<boolean>;
-  pendingWrites: Map<PreferenceKey, { timer: number | null; inFlight: boolean }>;
+  pendingWrites: Map<
+    PreferenceKey,
+    { timer: number | null; inFlight: boolean; value: unknown }
+  >;
   rpc: PreferencesRpc | null;
+  store: PreferencesStore | null;
+  pluginId: string | null;
   hydrateGeneration: number;
 }
 
@@ -35,11 +45,35 @@ function createSyncState(): SyncState {
     readyAtom: atom(false),
     pendingWrites: new Map(),
     rpc: null,
+    store: null,
+    pluginId: null,
     hydrateGeneration: 0,
   };
 }
 
-let state = createSyncState();
+const state = createSyncState();
+
+function activeStore(): PreferencesStore {
+  return state.store ?? getDefaultStore();
+}
+
+export function attachPreferencesStore(
+  store: PreferencesStore,
+  pluginId: string,
+): void {
+  state.store = store;
+  state.pluginId = pluginId;
+}
+
+function mirrorStorageKey(): string | null {
+  return state.pluginId === null
+    ? null
+    : preferencesMirrorStorageKey(state.pluginId);
+}
+
+function logPrefix(): string {
+  return state.pluginId === null ? "" : `${state.pluginId}: `;
+}
 
 function valueAtomFor<Key extends PreferenceKey>(
   key: Key,
@@ -63,10 +97,11 @@ export function preferencesReadyAtom(): PrimitiveAtom<boolean> {
 }
 
 function readMirror(storage: Storage | null): Partial<PreferenceValues> | null {
-  if (storage === null) return null;
+  const storageKey = mirrorStorageKey();
+  if (storage === null || storageKey === null) return null;
   let raw: string | null;
   try {
-    raw = storage.getItem(PREFERENCES_MIRROR_STORAGE_KEY);
+    raw = storage.getItem(storageKey);
   } catch {
     return null;
   }
@@ -82,7 +117,7 @@ function readMirror(storage: Storage | null): Partial<PreferenceValues> | null {
   for (const key of PREFERENCE_KEYS) {
     const candidate = (parsed as Record<string, unknown>)[key];
     if (candidate === undefined) continue;
-    const result = parsePreferenceValue(key, candidate);
+    const result = parseStoredPreferenceValue(key, candidate);
     if (result.success) {
       (values as Record<PreferenceKey, unknown>)[key] = result.value;
     }
@@ -91,14 +126,15 @@ function readMirror(storage: Storage | null): Partial<PreferenceValues> | null {
 }
 
 function writeMirror(storage: Storage | null): void {
-  if (storage === null) return;
-  const store = getDefaultStore();
+  const storageKey = mirrorStorageKey();
+  if (storage === null || storageKey === null) return;
+  const store = activeStore();
   const snapshot: Record<string, unknown> = {};
   for (const key of PREFERENCE_KEYS) {
     snapshot[key] = store.get(valueAtomFor(key));
   }
   try {
-    storage.setItem(PREFERENCES_MIRROR_STORAGE_KEY, JSON.stringify(snapshot));
+    storage.setItem(storageKey, JSON.stringify(snapshot));
   } catch {
     return;
   }
@@ -122,7 +158,7 @@ export function setPreferencesMirrorStorageForTest(
 }
 
 function applyValues(values: Partial<PreferenceValues>): void {
-  const store = getDefaultStore();
+  const store = activeStore();
   for (const key of PREFERENCE_KEYS) {
     const value = values[key];
     if (value === undefined) continue;
@@ -150,7 +186,7 @@ export async function hydratePreferences(rpc: PreferencesRpc): Promise<void> {
   const values: Partial<PreferenceValues> = {};
   if (typeof preferences === "object" && preferences !== null) {
     for (const key of PREFERENCE_KEYS) {
-      const result = parsePreferenceValue(
+      const result = parseStoredPreferenceValue(
         key,
         (preferences as Record<string, unknown>)[key],
       );
@@ -161,14 +197,14 @@ export async function hydratePreferences(rpc: PreferencesRpc): Promise<void> {
   }
   applyValues({ ...defaultPreferences(), ...values });
   writeMirror(mirrorStorage());
-  getDefaultStore().set(state.readyAtom, true);
+  activeStore().set(state.readyAtom, true);
 }
 
 export function applyRemotePreferenceSignal(payload: unknown): void {
   const parsed = preferencesChangedSignalSchema.safeParse(payload);
   if (!parsed.success) return;
   const { key, value } = parsed.data;
-  const result = parsePreferenceValue(key, value);
+  const result = parseStoredPreferenceValue(key, value);
   if (!result.success) return;
   applyValues({ [key]: result.value } as Partial<PreferenceValues>);
   writeMirror(mirrorStorage());
@@ -184,12 +220,12 @@ function flushWrite(key: PreferenceKey): void {
     return;
   }
   pending.inFlight = true;
-  const value = getDefaultStore().get(valueAtomFor(key));
+  const value = pending.value;
   void rpc
     .call("setPreference", { key, value })
     .catch((error: unknown) => {
       console.warn(
-        `thread-list: saving preference ${key} failed: ${
+        `${logPrefix()}saving preference ${key} failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -205,19 +241,19 @@ function flushWrite(key: PreferenceKey): void {
     });
 }
 
-export function schedulePreferenceWrite(key: PreferenceKey): void {
+export function schedulePreferenceWrite(
+  key: PreferenceKey,
+  value: unknown,
+): void {
   writeMirror(mirrorStorage());
   let pending = state.pendingWrites.get(key);
   if (pending === undefined) {
-    pending = { timer: null, inFlight: false };
+    pending = { timer: null, inFlight: false, value };
     state.pendingWrites.set(key, pending);
   }
+  pending.value = value;
   if (pending.timer !== null) window.clearTimeout(pending.timer);
   pending.timer = window.setTimeout(() => flushWrite(key), WRITE_DEBOUNCE_MS);
-}
-
-export function hasPendingPreferenceWrite(key: PreferenceKey): boolean {
-  return state.pendingWrites.has(key);
 }
 
 export async function flushPreferenceWritesForTest(): Promise<void> {
@@ -235,10 +271,14 @@ export function resetPreferencesSyncForTest(): void {
   for (const pending of state.pendingWrites.values()) {
     if (pending.timer !== null) window.clearTimeout(pending.timer);
   }
-  const store = getDefaultStore();
+  state.pendingWrites.clear();
+  state.rpc = null;
+  state.hydrateGeneration += 1;
+  const store = activeStore();
   for (const key of PREFERENCE_KEYS) {
     store.set(valueAtomFor(key), getPreferenceDefault(key));
   }
   store.set(state.readyAtom, false);
-  state = createSyncState();
+  state.store = null;
+  state.pluginId = null;
 }

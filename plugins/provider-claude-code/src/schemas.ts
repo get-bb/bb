@@ -366,6 +366,9 @@ export const claudeUserMessageSchema = z
   .object({
     type: z.literal("user"),
     message: z.unknown(),
+    uuid: z.string().min(1).optional(),
+    isSynthetic: z.boolean().optional(),
+    parent_tool_use_id: z.string().nullable().optional(),
   })
   .passthrough();
 export type ClaudeUserMessage = z.infer<typeof claudeUserMessageSchema>;

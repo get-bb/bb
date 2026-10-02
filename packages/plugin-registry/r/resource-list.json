@@ -1,0 +1,25 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "resource-list",
+  "type": "registry:ui",
+  "title": "resource-list",
+  "description": "BB ui \"resource-list\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/resource-atoms",
+    "@bb/resource-collection",
+    "@bb/resource-detail-controls",
+    "@bb/resource-detail-sections",
+    "@bb/resource-detail-shell",
+    "@bb/resource-route-label",
+    "@bb/resource-row",
+    "@bb/resource-toolbar"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/resource-list.tsx",
+      "content": "export {\n  ResourceCardStat,\n  ResourceIconFrame,\n  ResourceMeta,\n  ResourceStatus,\n  type ResourceStatusTone,\n} from \"./resource/atoms\";\nexport { useResourceRouteLabel } from \"./resource-route-label\";\nexport {\n  ResourceControlButton,\n  ResourceMultiSelectMenuItems,\n  ResourceSortMenuItems,\n  type ResourceOption,\n  ResourceCreateButton,\n  type ResourceCreateMenuAction,\n  type ResourceCreateTemplateGroup,\n  ResourceFilterMenu,\n  ResourceMultiSelectMenu,\n  ResourceSortMenu,\n  ResourceToolbar,\n  ResourceTabDescription,\n} from \"./resource/toolbar\";\nexport {\n  ResourceActionButton,\n  ResourceListPanel,\n  ResourceListState,\n  ResourceOverflowMenu,\n  type ResourceOverflowMenuItem,\n  ResourceRow,\n  ResourceRowDetailChevron,\n  targetsResourceAction,\n} from \"./resource/row\";\nexport {\n  ResourceDetailCollection,\n  ResourceDetailPanel,\n  ResourceDetailStack,\n  ResourcePromptPreview,\n} from \"./resource/detail-shell\";\nexport {\n  ResourceActivitySection,\n  ResourceDefinitionSection,\n  ResourceDetailConfigurationSection,\n  ResourceDetailIncludesSection,\n  ResourceDetailOverviewSection,\n  ResourceDetailPage,\n  ResourceDetailReleaseSection,\n} from \"./resource/detail-sections\";\nexport {\n  ResourceInstallControl,\n  ResourceInstalledControl,\n} from \"./resource/detail-controls\";\nexport {\n  ResourceBrowseCard,\n  ResourceBrowseGrid,\n  ResourceCollectionPage,\n  ResourceCollectionViewport,\n  ResourceShelfSeeAllAction,\n  ResourceShelfAction,\n  ResourceSourceShelf,\n  ResourceTemplateBrowseCard,\n} from \"./resource/collection\";\n",
+      "type": "registry:ui",
+      "target": "components/ui/resource-list.tsx"
+    }
+  ]
+}

@@ -1,3 +1,8 @@
+import { idleSplitDownload } from "@/lib/split-prefetch";
+import { pluginDetailKeyFromRoute } from "@/components/plugin/plugin-detail-key";
+import { ModelReasoningMenu } from "@/components/pickers/ModelReasoningMenuSplit";
+import { useSplitPreload } from "@/lib/define-split";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { lazy, useMemo } from "react";
 import { disableGlobalCursorStyles } from "react-resizable-panels";
 import { matchPath, Navigate, useLocation } from "react-router-dom";
@@ -24,7 +29,12 @@ const PluginsView = lazy(() =>
   import("./ToolsView").then((m) => ({ default: m.PluginsView })),
 );
 
+const markdownHtmlDownload = idleSplitDownload("markdown-html");
+
 export default function SplitWorkspaceRoute() {
+  useSplitPreload(LazyThreadSecondaryPanel);
+  useSplitPreload(ModelReasoningMenu);
+  useSplitPreload(markdownHtmlDownload);
   const location = useLocation();
   const { projectId, threadId, isThreadView } = useRouteState();
   const pluginMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);
@@ -84,7 +94,14 @@ export default function SplitWorkspaceRoute() {
     routeContent.kind === "plugin-detail" &&
     !holdsPluginDetailPane(layout, routeContent.pluginId)
   ) {
-    return <PluginsView pluginId={routeContent.pluginId} />;
+    return (
+      <PluginsView
+        detailKey={pluginDetailKeyFromRoute(
+          routeContent.pluginId,
+          location.search,
+        )}
+      />
+    );
   }
   return <SplitThreadArea routeContent={routeContent} />;
 }

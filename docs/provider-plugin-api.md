@@ -71,7 +71,8 @@ bb.providers.register({
     { id: "low", label: "Low" },
     { id: "high", label: "High" },
   ],
-  serviceTiers: undefined,       // optional; open list, model/list is precise
+  serviceTiers: undefined,       // optional; open list of { id, label, description? },
+                                 // "default" is the standard tier; model/list is precise
   composerActions: ["plan"],     // "plan" | "goal"
   completedTurnDisplay: "flat",  // "collapse" (default) | "flat"; the user's per-provider setting wins
   extensionKinds: {},            // "<name>": { item?: Schema, state?: Schema }
@@ -86,6 +87,14 @@ bb.providers.register({
 })
 // => { dispose(): void }
 ```
+
+Each `model/list` entry may carry `supportedServiceTiers: [{ id, label?,
+description? }]`, the tiers that model accepts besides `default`. bb offers
+only the ids the declaration also lists, preferring the entry's label and
+description; an empty array hides the tier picker for that model, and an entry
+without the field accepts every declared tier. The server rejects an explicit
+tier the declaration does not list and passes the chosen id to the bridge as
+`serviceTier`.
 
 bb keeps each machine's last successful `model/list` answer per
 `models.scope` across daemon reconnects and server restarts, serves it
@@ -408,18 +417,13 @@ trust, identical to every other plugin.
 
 ## 7. AI services
 
-bb's helper inference (thread titles, commit messages) and voice transcription
-are plugin-served too. A plugin registers
-`bb.experimental_aiServices.register({ id, displayName, kinds })` and
-implements `experimental_aiServicesHostContract`
-(`@get-bb/plugin-sdk/ai-services`: `ai.inference.complete`,
-`ai.voice.transcribe`, each carrying `serviceId`) in its `bb.host` entry. The
-user chooses with `BB_INFERENCE` / `BB_TRANSCRIPTION` = `<serviceId>/<model>`;
-core calls the registered plugin on the primary host and applies its own
-retry/fallback policy to the `{ ok: false, code }` results. The codex plugin
-serves `codex` from the codex CLI's own credentials; there is no daemon-bundled
-client. Ids the server serves itself (`openai` transcription, the builtin
-inference providers) are reserved: they route server-direct before the
-registry and `register` refuses them; a cross-plugin id collision fails the
-later plugin's load at the `register` call. See `docs/api_to_audit.md` for the
-audit items.
+bb's helper tasks (thread titles, commit messages, voice transcripts) are
+plugin-served too. A plugin registers
+`bb.experimental_aiServices.register({ id, displayName, complete, transcribe, status })`
+from its server entry: `complete(prompt) → Promise<string>` and
+`transcribe(audio) → Promise<string>`, each with an abort signal. The user picks
+a service per task in Settings → AI services; Automatic tries bb cloud first,
+then all other compatible registered services by plugin id and service id in
+lexicographic order, including third-party plugins. The codex
+plugin serves `codex` by calling its own `bb.host` entry for the Codex CLI
+login on the primary machine. See `docs/api_to_audit.md` for the audit items.

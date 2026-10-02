@@ -96,30 +96,39 @@ describe("public project attachments", () => {
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
+      const retinaScreenshot = await upload(
+        harness.app,
+        project.id,
+        new File([new Uint8Array(30 * 1024 * 1024)], "screenshot.png", {
+          type: "image/png",
+        }),
+      );
+      expect(retinaScreenshot.status).toBe(201);
+
       const oversized = await upload(
         harness.app,
         project.id,
-        new File([new Uint8Array(10 * 1024 * 1024 + 1)], "huge.png", {
+        new File([new Uint8Array(36 * 1024 * 1024)], "huge.png", {
           type: "image/png",
         }),
       );
       expect(oversized.status).toBe(400);
       await expect(readJson(oversized)).resolves.toEqual({
         code: "invalid_request",
-        message: "Attachment exceeds 10MB limit",
+        message: "huge.png is 36MB, over the 35MB attachment limit",
       });
 
       const oversizedFile = await upload(
         harness.app,
         project.id,
-        new File([new Uint8Array(25 * 1024 * 1024 + 1)], "huge-archive.bin", {
+        new File([new Uint8Array(35 * 1024 * 1024 + 512 * 1024)], "huge-archive.bin", {
           type: "application/octet-stream",
         }),
       );
       expect(oversizedFile.status).toBe(400);
       await expect(readJson(oversizedFile)).resolves.toEqual({
         code: "invalid_request",
-        message: "Attachment exceeds 25MB limit",
+        message: "huge-archive.bin is 35.5MB, over the 35MB attachment limit",
       });
 
       const ambiguous = await upload(

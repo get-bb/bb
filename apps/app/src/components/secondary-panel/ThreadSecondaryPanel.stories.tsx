@@ -753,7 +753,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="thread"
-        hint="tab strip shows Info + Diff (Diff is exercised in the right-panel/Diff story)"
+        hint="tab strip shows Info + Diff (Diff is exercised in the right-panel/Diff File Card story)"
       >
         <ShellRow initialPanel="thread-info" />
       </StoryRow>

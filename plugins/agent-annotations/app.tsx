@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chrome-style-tokens";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import {
   definePluginApp,
   useComposer,
+  experimental_usePluginId,
+  type ComposerDraftSnapshot,
   useRpc,
   type ExperimentalPluginBrowserPage,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -63,15 +65,50 @@ async function readReactComponents(
   }
 }
 
+function withoutAnnotation(
+  draft: ComposerDraftSnapshot,
+  pluginId: string,
+  id: string,
+): ComposerDraftSnapshot {
+  const removed = draft.mentions
+    .filter(
+      (mention) =>
+        mention.kind === "plugin" &&
+        mention.pluginId === pluginId &&
+        mention.provider === ANNOTATION_MENTION_PROVIDER_ID &&
+        mention.id === id,
+    )
+    .sort((a, b) => b.from - a.from);
+  let next = draft;
+  for (const match of removed) {
+    const length = match.to - match.from;
+    next = {
+      ...next,
+      text: next.text.slice(0, match.from) + next.text.slice(match.to),
+      mentions: next.mentions
+        .filter((mention) => mention !== match)
+        .map((mention) =>
+          mention.from >= match.to
+            ? {
+                ...mention,
+                from: mention.from - length,
+                to: mention.to - length,
+              }
+            : mention,
+        ),
+    };
+  }
+  return next;
+}
+
 export function AnnotateAction({
   url,
   experimental_page: page,
 }: ExperimentalPluginBrowserToolbarActionProps) {
   const composer = useComposer();
+  const pluginId = experimental_usePluginId();
   const rpc = useRpc<typeof agentAnnotationsRpcContract>();
-  const composerRef = useRef(composer);
   const pendingSaves = useRef(Promise.resolve());
-  composerRef.current = composer;
   const [state, setState] = useState<PageState>(INACTIVE_STATE);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,13 +124,21 @@ export function AnnotateAction({
       }
       const components = await readReactComponents(page, annotation.id);
       const saved = await rpc.call("save", { ...annotation, components });
-      composerRef.current.insertMention({
-        provider: ANNOTATION_MENTION_PROVIDER_ID,
-        id: saved.id,
-        label: annotationMentionLabel(annotation),
-      });
+      composer.insert(
+        [
+          composer.text.length === 0 || /\s$/.test(composer.text) ? "" : " ",
+          {
+            provider: ANNOTATION_MENTION_PROVIDER_ID,
+            id: saved.id,
+            label: annotationMentionLabel(annotation),
+          },
+          " ",
+        ],
+        { at: "end" },
+      );
+      composer.focus();
     },
-    [page, rpc],
+    [composer, page, rpc],
   );
 
   useEffect(() => {
@@ -113,10 +158,9 @@ export function AnnotateAction({
       pendingSaves.current = pendingSaves.current
         .then(async () => {
           if (message.type === "annotation-delete") {
-            composerRef.current.experimental_removeMention({
-              provider: ANNOTATION_MENTION_PROVIDER_ID,
-              id: message.id,
-            });
+            composer.replace((draft) =>
+              withoutAnnotation(draft, pluginId, message.id),
+            );
           } else if (message.type === "annotation-update") {
             await rpc.call("update", {
               id: message.id,
@@ -131,7 +175,7 @@ export function AnnotateAction({
           setError(errorMessage(cause));
         });
     });
-  }, [addToPrompt, page, rpc]);
+  }, [addToPrompt, composer, page, pluginId, rpc]);
 
   useEffect(() => {
     if (page === null) {
@@ -153,7 +197,7 @@ export function AnnotateAction({
 
   useEffect(
     () =>
-      composer.experimental_onSubmitted(() => {
+      composer.onSubmitted(() => {
         pendingSaves.current = pendingSaves.current
           .then(async () => {
             if (page !== null)
@@ -163,7 +207,7 @@ export function AnnotateAction({
           })
           .catch((cause: unknown) => setError(errorMessage(cause)));
       }),
-    [composer.experimental_onSubmitted, page, applyState],
+    [composer, page, applyState],
   );
 
   const toggle = useCallback(() => {

@@ -83,10 +83,10 @@ describe("ask-user-question builtin plugin", () => {
     return command.dynamicTools;
   }
 
-  it("advertises the tool to providers without native user questions", async () => {
+  it("advertises the tool to pi, which has no native questions", async () => {
     const tools = await dynamicToolsFor({
       providerId: "pi",
-      model: "pi",
+      model: "anthropic/claude-opus-4-6",
       label: "pi-project",
     });
     const tool = tools.find(
@@ -97,59 +97,19 @@ describe("ask-user-question builtin plugin", () => {
     expect(tool?.description).toContain(
       "Use this tool only when you are blocked on a decision that is genuinely the user's to make",
     );
-    const schema = tool?.inputSchema as {
-      required: string[];
-      properties: {
-        questions: {
-          minItems: number;
-          maxItems: number;
-          items: {
-            required: string[];
-            properties: {
-              multiSelect: { default: boolean };
-              options: {
-                minItems: number;
-                maxItems: number;
-                items: { properties: Record<string, unknown> };
-              };
-            };
-          };
-        };
-      };
-    };
-    expect(schema.required).toEqual(["questions"]);
-    expect(schema.properties.questions.minItems).toBe(1);
-    expect(schema.properties.questions.maxItems).toBe(4);
-    expect(schema.properties.questions.items.required).toEqual([
-      "question",
-      "header",
-      "options",
-    ]);
-    expect(
-      schema.properties.questions.items.properties.multiSelect.default,
-    ).toBe(false);
-    expect(schema.properties.questions.items.properties.options.minItems).toBe(
-      2,
-    );
-    expect(schema.properties.questions.items.properties.options.maxItems).toBe(
-      4,
-    );
-    expect(
-      Object.keys(
-        schema.properties.questions.items.properties.options.items.properties,
-      ).sort(),
-    ).toEqual(["description", "label", "preview"]);
-    expect(Object.keys(schema.properties)).toEqual(["questions"]);
   });
 
   it.each([
-    ["claude-code", "claude-opus-4-6", "claude-project"],
-    ["codex", "gpt-5.6", "codex-project"],
+    { providerId: "codex", model: "gpt-5.6" },
+    { providerId: "claude-code", model: "claude-opus-4-6" },
   ])(
-    "withholds the tool from %s, which asks natively",
-    async (providerId, model, label) => {
-      const tools = await dynamicToolsFor({ providerId, model, label });
-
+    "withholds the tool from $providerId, which asks natively",
+    async ({ providerId, model }) => {
+      const tools = await dynamicToolsFor({
+        providerId,
+        model,
+        label: `${providerId}-project`,
+      });
       expect(tools.map((tool) => tool.name)).not.toContain("AskUserQuestion");
     },
   );

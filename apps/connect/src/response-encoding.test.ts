@@ -60,11 +60,15 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
   });
 }
 
+const TRANSPORTS = ["object-held", "worker-held"] as const;
+type Transport = (typeof TRANSPORTS)[number];
+
 async function get(
   path: string,
+  transport: Transport = "object-held",
 ): Promise<{ status: number; encoding: string | null; body: Buffer }> {
   const res = await mf.dispatchFetch(`https://relay.test${path}`, {
-    headers: { "accept-encoding": "gzip" },
+    headers: { "accept-encoding": "gzip", "x-fixture-transport": transport },
   });
   return {
     status: res.status,
@@ -111,12 +115,15 @@ afterAll(async () => {
 });
 
 describe("relaying a gzip-encoded origin response", () => {
-  it("hands the visitor a body that decodes back to the origin's HTML", async () => {
-    const res = await get("/index.html");
+  it.each(TRANSPORTS)(
+    "hands the visitor a body that decodes back to the origin's HTML (%s response)",
+    async (transport) => {
+      const res = await get(`/${transport}/index.html`, transport);
 
-    expect(res.status).toBe(200);
-    expect(res.body.toString("utf8")).toBe(HTML);
-  });
+      expect(res.status).toBe(200);
+      expect(res.body.toString("utf8")).toBe(HTML);
+    },
+  );
 
   it("would corrupt the response if it were rebuilt with workerd's default encoding", async () => {
     const res = await get("/legacy-relay");
@@ -129,14 +136,25 @@ describe("relaying a gzip-encoded origin response", () => {
 });
 
 describe("edge cache", () => {
-  it("keeps the body decodable on both the miss and the hit", async () => {
-    const miss = await get("/asset.js?cacheable=1");
-    expect(miss.body.toString("utf8")).toBe(HTML);
+  it.each(TRANSPORTS)(
+    "keeps the body decodable on both the miss and the hit (%s response)",
+    async (transport) => {
+      const path = `/${transport}/asset.js?cacheable=1`;
+      const miss = await get(path, transport);
+      expect(miss.body.toString("utf8")).toBe(HTML);
 
-    const hit = await get("/asset.js?cacheable=1");
-    expect(hit.status).toBe(200);
-    expect(hit.body.toString("utf8")).toBe(HTML);
-  });
+      for (const reader of TRANSPORTS) {
+        const hit = await get(path, reader);
+        expect(hit.status).toBe(200);
+        expect(hit.body.toString("utf8")).toBe(HTML);
+      }
+      const marker = await mf.dispatchFetch(`https://relay.test${path}`, {
+        headers: { "x-fixture-transport": transport },
+      });
+      expect(marker.headers.get("x-bb-cache")).toBe("hit");
+      await marker.arrayBuffer();
+    },
+  );
 
   it("content-decodes a relayed body as the gate reads it", async () => {
     const res = await mf.dispatchFetch("https://relay.test/subrequest-bytes");

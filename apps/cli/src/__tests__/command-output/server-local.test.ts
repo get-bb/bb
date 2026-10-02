@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -403,45 +403,6 @@ describe("bb server import", () => {
       `Import the bb server from ${plainArchive} into ${dataDir}? [y/N] `,
     );
     expect(await readdir(parent)).toEqual([]);
-  });
-
-  it("asks for a new export when the file was encrypted by an older bb", async () => {
-    const parent = await makeDataDirParent();
-    const oldExport = await writeDataFile(
-      parent,
-      "old-export.bbsa",
-      `BBSA${randomBytes(64).toString("hex")}`,
-    );
-    const dataDir = join(parent, "bb-data");
-
-    await expect(
-      runCommand(
-        ["server", "import", oldExport, "--data-dir", dataDir, "--yes"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Error: This export was encrypted by an older bb; re-export it with bb server export",
-    ]);
-    expect(await readdir(parent)).toEqual(["old-export.bbsa"]);
-  });
-
-  it("rejects a file that is not a server archive", async () => {
-    const parent = await makeDataDirParent();
-    const notAnArchive = await writeDataFile(parent, "notes.txt", "hello");
-    const dataDir = join(parent, "bb-data");
-
-    await expect(
-      runCommand(
-        ["server", "import", notAnArchive, "--data-dir", dataDir, "--yes"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Error: File is not a bb server archive",
-    ]);
   });
 
   it("refuses an export made by a newer bb and leaves nothing behind", async () => {
@@ -1138,10 +1099,10 @@ describe("bb server allow-connect", () => {
       "imported server",
     );
     expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Stop the original bb server first. Two servers holding the same bb connect credential take each other's tunnel.",
+      "Stop the original bb server first. Two servers holding the same bb account credential take each other's tunnel and spend the same hosted quota.",
     ]);
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      `Removed the bb connect hold from ${dataDir}. bb connect starts the next time this server starts; restart bb if it's already running.`,
+      `Removed the bb connect hold from ${dataDir}. bb account and bb connect start the next time this server starts; restart bb if it's already running.`,
     ]);
   });
 

@@ -14,6 +14,8 @@ function rawPullRequest(
     baseRefName: "main",
     headRefName: "bb/add-pr-section",
     updatedAt: "2026-06-16T12:30:00Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: [],
     reviewDecision: null,
     reviewRequestCount: 0,
@@ -24,6 +26,102 @@ function rawPullRequest(
 }
 
 describe("assembleThreadPullRequest", () => {
+  it.each([
+    [
+      "pending checks",
+      null,
+      [
+        {
+          name: "ci",
+          status: "in_progress",
+          conclusion: null,
+          url: null,
+          startedAt: null,
+        },
+      ],
+      "checks_pending",
+    ],
+    ["required review", "REVIEW_REQUIRED", [], "review_requested"],
+  ] as const)(
+    "shows %s instead of generic branch protection",
+    (_name, reviewDecision, checks, attention) => {
+      expect(
+        assembleThreadPullRequest(
+          rawPullRequest({
+            mergeStateStatus: "BLOCKED",
+            reviewDecision,
+            checks: [...checks],
+          }),
+        ).attention,
+      ).toBe(attention);
+    },
+  );
+
+  it.each([
+    { name: "queued", overrides: { inMergeQueue: true }, attention: "queued" },
+    {
+      name: "queued with failed checks",
+      overrides: {
+        inMergeQueue: true,
+        checks: [
+          {
+            name: "ci",
+            status: "completed",
+            conclusion: "failure",
+            url: null,
+            startedAt: null,
+          },
+        ],
+      },
+      attention: "checks_failed",
+    },
+    {
+      name: "auto-merge with changes requested",
+      overrides: { autoMerge: true, reviewDecision: "CHANGES_REQUESTED" },
+      attention: "changes_requested",
+    },
+    {
+      name: "queued with conflicts",
+      overrides: { inMergeQueue: true, mergeable: "CONFLICTING" },
+      attention: "conflicts",
+    },
+    {
+      name: "draft with conflicts",
+      overrides: { isDraft: true, mergeable: "CONFLICTING" },
+      attention: "conflicts",
+    },
+    {
+      name: "draft",
+      overrides: { isDraft: true, inMergeQueue: true },
+      attention: "draft",
+    },
+    {
+      name: "merged",
+      overrides: { state: "MERGED", inMergeQueue: true },
+      attention: "merged",
+    },
+    {
+      name: "closed",
+      overrides: { state: "CLOSED", autoMerge: true },
+      attention: "closed",
+    },
+    {
+      name: "unknown queue",
+      overrides: { inMergeQueue: null },
+      attention: "blocked",
+    },
+  ] satisfies {
+    name: string;
+    overrides: Partial<GitHostPullRequest>;
+    attention: string;
+  }[])("keeps $name precedence", ({ overrides, attention }) => {
+    expect(
+      assembleThreadPullRequest(
+        rawPullRequest({ mergeStateStatus: "BLOCKED", ...overrides }),
+      ).attention,
+    ).toBe(attention);
+  });
+
   it("maps an open non-draft PR to 'open' and carries number/title/url", () => {
     expect(assembleThreadPullRequest(rawPullRequest())).toEqual({
       number: 42,
@@ -33,6 +131,8 @@ describe("assembleThreadPullRequest", () => {
       baseRefName: "main",
       headRefName: "bb/add-pr-section",
       updatedAt: "2026-06-16T12:30:00Z",
+      autoMerge: false,
+      inMergeQueue: false,
       checks: {
         state: "no_checks",
         totalCount: 0,
@@ -51,12 +151,6 @@ describe("assembleThreadPullRequest", () => {
       },
       attention: "none",
     });
-  });
-
-  it("folds isDraft on an open PR into 'draft'", () => {
-    expect(
-      assembleThreadPullRequest(rawPullRequest({ isDraft: true }))?.state,
-    ).toBe("draft");
   });
 
   it("maps MERGED to 'merged' regardless of isDraft", () => {

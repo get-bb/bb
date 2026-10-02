@@ -24,12 +24,19 @@ describe("redeemEnrollment", () => {
       }),
     );
     const result = await redeemEnrollment(
-      { apexUrl: "https://getbb.app", code: "ABCD-EFGH" },
+      {
+        apexUrl: "https://getbb.app",
+        code: "ABCD-EFGH",
+        deviceName: "Pixel 9 Pro",
+      },
       fetchImpl,
     );
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://getbb.app/api/connect/redeem-machine",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ code: "ABCD-EFGH", deviceName: "Pixel 9 Pro" }),
+      }),
     );
     expect(result.profile).toEqual({
       mode: "connect",
@@ -48,10 +55,17 @@ describe("redeemEnrollment", () => {
         jsonResponse(409, { error: "machine-limit" }),
       );
     await expect(
-      redeemEnrollment({ apexUrl: "https://getbb.app", code: "X-1" }, limit),
+      redeemEnrollment(
+        {
+          apexUrl: "https://getbb.app",
+          code: "X-1",
+          deviceName: "Pixel 9 Pro",
+        },
+        limit,
+      ),
     ).rejects.toBeInstanceOf(ConnectMachineRedeemError);
     const failure = await redeemEnrollment(
-      { apexUrl: "https://getbb.app", code: "X-1" },
+      { apexUrl: "https://getbb.app", code: "X-1", deviceName: "Pixel 9 Pro" },
       limit,
     ).catch((error: unknown) => describeEnrollmentError(error));
     expect(failure).toMatchObject({ code: "machine_limit" });
@@ -63,7 +77,11 @@ describe("redeemEnrollment", () => {
       [409, "already-used", "already_used"],
     ] as const) {
       const failed = await redeemEnrollment(
-        { apexUrl: "https://getbb.app", code: "X-1" },
+        {
+          apexUrl: "https://getbb.app",
+          code: "X-1",
+          deviceName: "Pixel 9 Pro",
+        },
         vi
           .fn<typeof fetch>()
           .mockResolvedValue(jsonResponse(status, { error: wire })),

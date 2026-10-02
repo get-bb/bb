@@ -531,9 +531,7 @@ class MemoryStore {
     const memory = parseMemoryRow(row);
     if (touch) {
       this.db
-        .prepare(
-          "UPDATE memories SET last_accessed_at = ?, access_count = access_count + 1 WHERE id = ?",
-        )
+        .prepare("UPDATE memories SET last_accessed_at = ? WHERE id = ?")
         .run(Date.now(), memory.id);
     }
     return memory;

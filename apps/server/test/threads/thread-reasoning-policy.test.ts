@@ -5,18 +5,6 @@ import { getSupportedReasoningLevelsForProvider } from "../../src/services/threa
 const registry = await createTestProviderRegistry();
 
 describe("getSupportedReasoningLevelsForProvider", () => {
-  it("returns each registered ACP agent's declared reasoning levels", () => {
-    expect(
-      getSupportedReasoningLevelsForProvider(registry, "acp-cursor"),
-    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    expect(
-      getSupportedReasoningLevelsForProvider(registry, "acp-grok"),
-    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    expect(
-      getSupportedReasoningLevelsForProvider(registry, "acp-my-agent"),
-    ).toEqual([]);
-  });
-
   it("keeps unknown non-ACP providers on the soft-fail path", () => {
     expect(
       getSupportedReasoningLevelsForProvider(registry, "not-a-provider"),

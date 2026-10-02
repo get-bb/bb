@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "empty-state",
+  "type": "registry:ui",
+  "title": "empty-state",
+  "description": "BB ui \"empty-state\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/empty-state.tsx",
+      "content": "import type { HTMLAttributes } from \"react\";\nimport { cn } from \"../../lib/utils\";\nimport { Icon, type IconName } from \"./icon\";\n\nexport interface EmptyStateProps {\n  message: string;\n  icon?: IconName;\n  className?: string;\n  iconClassName?: string;\n  messageClassName?: string;\n}\n\nexport function EmptyState({\n  message,\n  icon,\n  className,\n  iconClassName,\n  messageClassName,\n}: EmptyStateProps) {\n  return (\n    <div className={cn(\"flex items-center gap-2\", className)}>\n      {icon ? (\n        <Icon\n          name={icon}\n          aria-hidden=\"true\"\n          className={cn(\n            \"size-4 shrink-0 text-subtle-foreground\",\n            iconClassName,\n          )}\n        />\n      ) : null}\n      <p\n        className={cn(\n          \"text-xs leading-5 text-muted-foreground\",\n          messageClassName,\n        )}\n      >\n        {message}\n      </p>\n    </div>\n  );\n}\n\ntype EmptyStatePanelProps = HTMLAttributes<HTMLDivElement>;\n\nexport function EmptyStatePanel({\n  className,\n  children,\n  ...props\n}: EmptyStatePanelProps) {\n  return (\n    <div\n      className={cn(\n        \"rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground\",\n        className,\n      )}\n      {...props}\n    >\n      {children}\n    </div>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/empty-state.tsx"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { events, getThread, threads } from "@bb/db";
+import type { AppendStoredThreadEventArgs } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
   threadScope,
@@ -130,57 +131,44 @@ describe("thread event appends", () => {
     }
   });
 
-  it("rejects direct turn-scoped appends before turn/started is stored", async () => {
-    const { environment, harness, thread } =
-      await createThreadEventTestContext();
-    try {
-      expect(() =>
-        appendThreadEvent(harness.deps, {
+  it.each(["direct", "singular transactional", "batched"])(
+    "rejects %s turn-scoped appends before turn/started is stored",
+    async (wrapper) => {
+      const { environment, harness, thread } =
+        await createThreadEventTestContext();
+      try {
+        const args: AppendStoredThreadEventArgs<"system/error"> = {
           threadId: thread.id,
           environmentId: environment.id,
           type: "system/error",
           scope: turnScope("turn-missing"),
           data: { message: "Late failure" },
-        }),
-      ).toThrow("before turn/started is stored");
-      expect(
-        harness.db
-          .select()
-          .from(events)
-          .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toHaveLength(0);
-    } finally {
-      await harness.cleanup();
-    }
-  });
-
-  it("rejects singular transactional turn-scoped appends before turn/started is stored", async () => {
-    const { environment, harness, thread } =
-      await createThreadEventTestContext();
-    try {
-      expect(() =>
-        harness.db.transaction((tx) =>
-          appendThreadEventInTransaction(tx, {
-            threadId: thread.id,
-            environmentId: environment.id,
-            type: "system/error",
-            scope: turnScope("turn-missing-transaction"),
-            data: { message: "Transactional late failure" },
-          }),
-        ),
-      ).toThrow("before turn/started is stored");
-      expect(
-        harness.db
-          .select()
-          .from(events)
-          .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toHaveLength(0);
-    } finally {
-      await harness.cleanup();
-    }
-  });
+        };
+        expect(() => {
+          if (wrapper === "direct") {
+            appendThreadEvent(harness.deps, args);
+          } else if (wrapper === "singular transactional") {
+            harness.db.transaction((tx) =>
+              appendThreadEventInTransaction(tx, args),
+            );
+          } else {
+            harness.db.transaction((tx) =>
+              appendThreadEventsInTransaction(tx, [args]),
+            );
+          }
+        }).toThrow("before turn/started is stored");
+        expect(
+          harness.db
+            .select()
+            .from(events)
+            .where(eq(events.threadId, thread.id))
+            .all(),
+        ).toHaveLength(0);
+      } finally {
+        await harness.cleanup();
+      }
+    },
+  );
 
   it("accepts thread-scoped appends before turn/started is stored", async () => {
     const { environment, harness, thread } =
@@ -236,35 +224,6 @@ describe("thread event appends", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toEqual([{ turnId: "turn-a", type: "turn/started" }]);
-    } finally {
-      await harness.cleanup();
-    }
-  });
-
-  it("rejects batched turn-scoped appends when turn/started is missing", async () => {
-    const { environment, harness, thread } =
-      await createThreadEventTestContext();
-    try {
-      expect(() =>
-        harness.db.transaction((tx) =>
-          appendThreadEventsInTransaction(tx, [
-            {
-              threadId: thread.id,
-              environmentId: environment.id,
-              type: "system/error",
-              scope: turnScope("turn-missing-batch"),
-              data: { message: "Batched late failure" },
-            },
-          ]),
-        ),
-      ).toThrow("before turn/started is stored");
-      expect(
-        harness.db
-          .select()
-          .from(events)
-          .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toHaveLength(0);
     } finally {
       await harness.cleanup();
     }

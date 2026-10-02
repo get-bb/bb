@@ -9,7 +9,6 @@ import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
-  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -17,7 +16,6 @@ import {
   seedHost,
   seedHostSession,
   seedPrimaryHost,
-  seedProjectWithSource,
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -71,6 +69,68 @@ describe("public project local host routes", () => {
       expect(listPublicProjects(harness.db)).toEqual([
         expect.objectContaining({ id: project.id }),
       ]);
+    });
+  });
+
+  it("keeps one project for every spelling of a Windows folder", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-windows-project",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+
+      const create = (path: string) =>
+        harness.app.request("/api/v1/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Windows Project",
+            source: { type: "local_path", hostId: offlinePrimary.id, path },
+          }),
+        });
+
+      const projects = [];
+      for (const path of [
+        "C:\\src\\repo",
+        "c:/src/Repo/",
+        "C:\\SRC\\repo\\.",
+      ]) {
+        const response = await create(path);
+        expect(response.status).toBe(201);
+        projects.push(projectResponseSchema.parse(await readJson(response)));
+      }
+
+      expect(new Set(projects.map((project) => project.id)).size).toBe(1);
+      expect(projects[0]?.sources[0]?.path).toBe("C:\\src\\repo");
+      expect(listPublicProjects(harness.db)).toHaveLength(1);
+    });
+  });
+
+  it("refuses a Windows folder on a machine that reported a POSIX platform", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-posix-project",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+
+      const response = await harness.app.request("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Wrong Platform",
+          source: {
+            type: "local_path",
+            hostId: host.id,
+            path: "C:\\src\\repo",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        message: expect.stringContaining("This machine uses POSIX paths"),
+      });
+      expect(listPublicProjects(harness.db)).toEqual([]);
     });
   });
 
@@ -278,78 +338,6 @@ describe("public project local host routes", () => {
         },
       );
       expect(deleteSourceResponse.status).toBe(200);
-    });
-  });
-
-  it("serves project source file content from the local primary source", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-project-file-content",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/project-file-content",
-      });
-
-      const filePromise = harness.app.request(
-        `/api/v1/projects/${project.id}/files/content?path=${encodeURIComponent("src/app.ts")}`,
-      );
-      const fileCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "host.read_file" &&
-          command.path === "/tmp/project-file-content/src/app.ts",
-      );
-      expect(fileCommand.command).toMatchObject({
-        path: "/tmp/project-file-content/src/app.ts",
-        rootPath: "/tmp/project-file-content",
-      });
-      await reportQueuedCommandSuccess(harness, fileCommand, {
-        path: "/tmp/project-file-content/src/app.ts",
-        content: "console.log('ok');",
-        contentEncoding: "utf8",
-        mimeType: "application/typescript",
-        sizeBytes: 18,
-        sha256: "0".repeat(64),
-      });
-
-      const fileResponse = await filePromise;
-      expect(fileResponse.status).toBe(200);
-      expect(fileResponse.headers.get("content-type")).toContain(
-        "application/typescript",
-      );
-      expect(fileResponse.headers.get("cache-control")).toBe(
-        "private, no-cache",
-      );
-      expect(fileResponse.headers.get("etag")).toBe(`"${"0".repeat(64)}"`);
-      expect(fileResponse.headers.get("x-bb-content-encoding")).toBe("utf8");
-      await expect(fileResponse.text()).resolves.toBe("console.log('ok');");
-
-      const revalidatePromise = harness.app.request(
-        `/api/v1/projects/${project.id}/files/content?path=${encodeURIComponent("src/app.ts")}`,
-        { headers: { "if-none-match": `"${"0".repeat(64)}"` } },
-      );
-      const revalidateCommand = await waitForQueuedCommandAfter(
-        harness,
-        fileCommand.row.cursor,
-        ({ command }) =>
-          command.type === "host.read_file" &&
-          command.path === "/tmp/project-file-content/src/app.ts",
-      );
-      await reportQueuedCommandSuccess(harness, revalidateCommand, {
-        path: "/tmp/project-file-content/src/app.ts",
-        content: "console.log('ok');",
-        contentEncoding: "utf8",
-        mimeType: "application/typescript",
-        sizeBytes: 18,
-        sha256: "0".repeat(64),
-      });
-      const revalidated = await revalidatePromise;
-      expect(revalidated.status).toBe(304);
-      expect(revalidated.headers.get("etag")).toBe(`"${"0".repeat(64)}"`);
-      expect(revalidated.headers.get("x-bb-content-encoding")).toBe("utf8");
-      expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
     });
   });
 });

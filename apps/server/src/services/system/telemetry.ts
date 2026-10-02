@@ -11,6 +11,7 @@ const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
 export type TelemetryEvent =
   | { name: "app_started" }
+  | { name: "telemetry_disabled" }
   | {
       name: "thread_created";
       properties: {

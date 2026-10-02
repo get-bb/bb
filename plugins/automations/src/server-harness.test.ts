@@ -530,27 +530,8 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
-  it("rejects unknown commands, unknown options, and stray arguments", async () => {
+  it("rejects a positional argument to list", async () => {
     const { harness } = await bootAutomationsPlugin();
-
-    const unknownCommand = await harness.runCli([
-      "lst",
-      "--project",
-      PROJECT_ID,
-    ]);
-    expect(unknownCommand.exitCode).toBe(1);
-    expect(unknownCommand.stderr).toContain("unknown command 'lst'");
-    expect(unknownCommand.stderr).toContain("Did you mean list?");
-
-    const unknownOption = await harness.runCli([
-      "list",
-      "--project",
-      PROJECT_ID,
-      "--limits",
-      "5",
-    ]);
-    expect(unknownOption.exitCode).toBe(1);
-    expect(unknownOption.stderr).toContain("unknown option '--limits'");
 
     const strayArgument = await harness.runCli([
       "list",

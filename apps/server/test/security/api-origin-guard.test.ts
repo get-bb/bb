@@ -95,12 +95,14 @@ describe("/api/v1 browser origin guard", () => {
   it("rejects a sandboxed iframe's opaque origin", async () => {
     server = await startTestServer();
 
-    expect(
-      await statusFor(server.baseUrl, {
-        method: "POST",
-        headers: { origin: "null", "content-type": "text/plain" },
-      }),
-    ).toBe(403);
+    for (const method of ["GET", "POST"]) {
+      expect(
+        await statusFor(server.baseUrl, {
+          method,
+          headers: { origin: "null", "content-type": "text/plain" },
+        }),
+      ).toBe(403);
+    }
   });
 
   it("accepts the app's own origin and the request host", async () => {

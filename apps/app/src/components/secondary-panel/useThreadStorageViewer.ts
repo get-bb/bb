@@ -1,6 +1,4 @@
-import { useCallback } from "react";
 import type { FixedPanelTab } from "@/lib/fixed-panel-tabs-state";
-import { sdk } from "@/lib/sdk";
 import { DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS } from "@/lib/thread-storage-files";
 import { useThreadStorageFiles } from "../../hooks/queries/thread-queries";
 
@@ -18,7 +16,6 @@ export function useThreadStorageViewer({
     data: threadStorageFiles,
     isLoading: isThreadStorageFilesLoading,
     error: threadStorageFilesError,
-    refetch: refetchThreadStorageFiles,
   } = useThreadStorageFiles(
     threadId ?? "",
     DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -26,26 +23,10 @@ export function useThreadStorageViewer({
       enabled: hasThread && fileListEnabled,
     },
   );
-  const checkThreadStorageFileExists = useCallback(
-    async (path: string): Promise<boolean> => {
-      if (!threadId) return false;
-      const result = await sdk.threads.storageFiles({
-        limit: "1",
-        query: path,
-        threadId,
-      });
-      return result.files.some((file) => file.path === path);
-    },
-    [threadId],
-  );
-
   return {
-    checkThreadStorageFileExists,
     isThreadStorageFilesLoading,
     threadStorageFilesError,
     threadStorageFiles,
-    threadStorageRootPath: threadStorageFiles?.storageRootPath ?? null,
-    refetchThreadStorageFiles,
   };
 }
 

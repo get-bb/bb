@@ -48,10 +48,10 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
   unauthenticated, the same trust model as the browser PWA on a LAN; iOS
   allows plain `http://` only for LAN IPs and `.local` names, so Tailscale
   hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
-  machine (QR / code from Settings → Remote access or
-  `bb connect machine-code`, both behind the `mobileApp` experiment during
-  early access), keeps the credential in the device keychain, and mints
-  short-lived sessions; see [multiple-devices.md](multiple-devices.md).
+  machine (QR / code from Settings → Mobile or
+  `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
+  seven-day rolling sessions that end when the device is revoked; see
+  [multiple-devices.md](multiple-devices.md).
 - Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
   runtime) today; TestFlight / Play builds go through EAS once the Expo
   account exists (see `apps/mobile/README.md`). No store release yet.
@@ -120,8 +120,25 @@ Not available on the phone (use the web app or desktop for these):
   the WSL filesystem, but they are a tradeoff:
   slower filesystem I/O and weaker file-watching behavior than the WSL
   filesystem.
-- Native Windows drive-letter and UNC paths are rejected at the app/server
-  boundary so unsupported input fails clearly.
+- A machine that reported macOS, Linux, or WSL refuses Windows drive-letter
+  paths at the app/server boundary so unsupported input fails clearly. Use the
+  `/mnt/c/...` form from inside WSL2.
+
+### Windows drive-letter paths
+
+Native Windows hosts are not a supported product path yet, but the path model
+accepts their project and workspace paths:
+
+- A drive-letter path such as `C:\Users\me\repo` is stored in one spelling:
+  upper-case drive letter, backslash separators, and no trailing separator.
+  `c:/Users/me/repo/` names the same project.
+- Windows paths are compared without regard to case, so `C:\src\Repo` and
+  `C:\src\repo` are one project source and one environment. POSIX paths stay
+  case-sensitive.
+- UNC network paths (`\\server\share\repo`) are refused; map the share to a
+  drive letter.
+- Paths relative to a workspace stay `/`-separated in the API on every
+  platform.
 
 ### Maintainer-only or best-effort surfaces
 
@@ -175,6 +192,10 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The supported setup hook is POSIX `.bb-env-setup.sh`.
 - The supported teardown hook is POSIX `.bb-env-teardown.sh`.
 - The same shell-based hook contract is used across macOS, Linux, and WSL2.
+- On native Windows bb runs the same scripts with the bash that Git for Windows
+  installs, found through `git var GIT_SHELL_PATH`, with that directory first on
+  `PATH` so the script's standard tools resolve. Without Git for Windows the
+  hook fails with a message naming it.
 - No parallel `.bb-env-setup.ts` product-path mechanism is supported.
 - The `.worktreeinclude` copy step runs no shell. It works on every platform,
   including native Windows.
@@ -206,7 +227,7 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
   the Linux runtime path inside WSL2 rather than a separate native Windows
   product path.
 - `apps/mobile` typecheck, lint, and unit tests run inside the Ubuntu
-  `Checks` and `Tests (packages)` jobs like every other workspace package. The
+  `Checks` and the `Tests (packages-*)` jobs like every other workspace package. The
   iOS simulator Maestro flows run in `Mobile E2E`
   (`.github/workflows/mobile-e2e.yml`) on the macOS runner only when a pull
   request carries the `mobile-e2e` label, nightly on `main`, or on manual

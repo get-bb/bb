@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { AvailableModel } from "@bb/domain";
 import type {
   SystemExecutionOptionsResponse,
@@ -8,10 +8,7 @@ import type {
 } from "@bb/server-contract";
 import type { ProviderInfo } from "@bb/domain";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
-import type {
-  ProviderCliStatusResponse,
-  ProviderUsageResponse,
-} from "@bb/host-daemon-contract";
+import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -26,7 +23,6 @@ import {
   useHostProviderCliStatus,
   useSystemExecutionOptions,
   useSystemProviderInfo,
-  useSystemProviderUsageLimits,
   useSystemProviders,
   useSystemProviderStates,
 } from "./system-queries";
@@ -39,7 +35,6 @@ vi.mock("@/lib/sdk", () => ({
     system: {
       executionOptions: vi.fn(),
       providerStates: vi.fn(),
-      usageLimits: vi.fn(),
     },
   },
 }));
@@ -165,19 +160,6 @@ describe("useSystemProviderInfo", () => {
 });
 
 describe("useSystemProviders", () => {
-  it("routes provider metadata through the selected host", async () => {
-    vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS);
-    const { wrapper } = createQueryClientTestHarness();
-
-    renderHook(() => useSystemProviders({ hostId: "host-a" }), { wrapper });
-
-    await waitFor(() => {
-      expect(sdk.providers.list).toHaveBeenCalledWith(
-        expect.objectContaining({ hostId: "host-a" }),
-      );
-    });
-  });
-
   it("requests a usage-only provider roster", async () => {
     vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS);
     const { wrapper } = createQueryClientTestHarness();
@@ -238,21 +220,6 @@ describe("useSystemProviders", () => {
 });
 
 describe("useSystemExecutionOptions", () => {
-  it("waits for the first probe on a cold cache instead of replaying a vendored roster", () => {
-    vi.mocked(sdk.system.executionOptions).mockImplementation(
-      () => new Promise(() => undefined),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-
-    const { result } = renderHook(
-      () => useSystemExecutionOptions({ providerId: "codex" }),
-      { wrapper },
-    );
-
-    expect(result.current.isPlaceholderData).toBe(false);
-    expect(result.current.data).toBeUndefined();
-  });
-
   it("keeps dynamic providers visible while another provider's models load", async () => {
     const providers: ProviderInfo[] = [
       makeProviderInfo({
@@ -499,7 +466,7 @@ describe("useSystemExecutionOptions", () => {
   it("does not preload a catalog that came from a failed probe", async () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValue({
       ...CODEX_CATALOG,
-      modelLoadError: { providerId: "codex", code: "failed" },
+      modelLoadError: { providerId: "codex", code: "failed", detail: null },
     });
     const first = createQueryClientTestHarness();
     const warm = renderHook(
@@ -740,61 +707,6 @@ describe("useSystemProviderStates", () => {
         hostId: undefined,
         signal: expect.any(AbortSignal),
       });
-    });
-  });
-});
-
-describe("useSystemProviderUsageLimits", () => {
-  it("publishes each provider as soon as its request settles", async () => {
-    let resolveCodex: (value: ProviderUsageResponse) => void = () => {};
-    let resolveClaude: (value: ProviderUsageResponse) => void = () => {};
-    vi.mocked(sdk.system.usageLimits).mockImplementation((args) => {
-      if (args?.providerId === "codex") {
-        return new Promise((resolve) => {
-          resolveCodex = resolve;
-        });
-      }
-      return new Promise((resolve) => {
-        resolveClaude = resolve;
-      });
-    });
-    const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () =>
-        useSystemProviderUsageLimits({
-          hostId: "host-1",
-          providerIds: ["codex", "claude-code"],
-        }),
-      { wrapper },
-    );
-
-    await waitFor(() => {
-      expect(sdk.system.usageLimits).toHaveBeenCalledTimes(2);
-    });
-    expect(result.current.providerStates).toEqual({
-      codex: { isError: false, isLoading: true },
-      "claude-code": { isError: false, isLoading: true },
-    });
-
-    await act(async () => {
-      resolveCodex({ codex: { status: "unauthenticated" } });
-    });
-    await waitFor(() => {
-      expect(result.current.usage.codex).toEqual({
-        status: "unauthenticated",
-      });
-    });
-    expect(result.current.usage["claude-code"]).toBeUndefined();
-    expect(result.current.providerStates).toEqual({
-      codex: { isError: false, isLoading: false },
-      "claude-code": { isError: false, isLoading: true },
-    });
-
-    await act(async () => {
-      resolveClaude({ "claude-code": { status: "unauthenticated" } });
-    });
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
     });
   });
 });

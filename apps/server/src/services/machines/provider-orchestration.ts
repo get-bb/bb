@@ -2,7 +2,12 @@ import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { isServerMachineHost } from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
 import { and, desc, eq } from "drizzle-orm";
-import { createHostId, hostDaemonSessions, hosts } from "@bb/db";
+import {
+  createHostId,
+  hostDaemonSessions,
+  hosts,
+  environments as environmentRows,
+} from "@bb/db";
 import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { maintainMachine } from "./lifecycle.js";
@@ -49,7 +54,9 @@ import {
 import { hasPendingProjectSourceSetupOnHost } from "../projects/project-source-setup.js";
 import { machineProviderUnavailableReason } from "./provider-availability.js";
 import { errorMessage } from "../lib/error-log-fields.js";
+import { toHostWithStatus } from "../lib/entity-lookup.js";
 import { perDbRegistry } from "../lib/per-db-registry.js";
+import { emitPluginHostDeleted } from "../plugins/plugin-thread-events.js";
 
 type Deps = ThreadProvisioningDeps;
 type MachineLifecycleDeps = Pick<Deps, "db" | "hub" | "logger">;
@@ -404,13 +411,10 @@ export async function parseMachineProviderInputs(
   return parsed.data;
 }
 
-export async function prepareMachineProviderSelection(
-  deps: Deps,
-  args: {
-    machineProviderId: string;
-    inputs: JsonValue | null;
-  },
-): Promise<{ record: PluginMachineProviderRecord; inputs: JsonValue | null }> {
+export async function prepareMachineProviderSelection(args: {
+  machineProviderId: string;
+  inputs: JsonValue | null;
+}): Promise<{ record: PluginMachineProviderRecord; inputs: JsonValue | null }> {
   const record = getMachineProvider(args.machineProviderId);
   if (record === undefined) {
     throw new ApiError(
@@ -560,7 +564,7 @@ export function askMachineLaunch(
   } else {
     return {
       action: "ready",
-      host: machineHostResponse(row, deps),
+      host: toHostWithStatus(deps, row),
       log: takeCreateLog(deps, row),
     };
   }
@@ -580,37 +584,6 @@ function takeCreateLog(deps: Deps, row: MachineHostRow): string {
   return log;
 }
 
-function machineHostResponse(
-  row: NonNullable<ReturnType<typeof getHost>>,
-  deps: Deps,
-): Host {
-  return {
-    id: row.id,
-    name: row.name,
-    type: row.type,
-    status: deps.hub.hasDaemonForHost(row.id) ? "connected" : "disconnected",
-    machineProviderId: row.machineProviderId,
-    lifecycle: {
-      phase: row.phase,
-      suspendedAt: row.suspendedAt,
-      message: row.statusMessage,
-      pendingLog: row.pendingLog,
-      teardown:
-        row.teardownStatus === null
-          ? null
-          : {
-              status: row.teardownStatus,
-              attempt: row.teardownAttempt,
-            },
-    },
-    maxPermissionMode: row.maxPermissionMode,
-    lastSeenAt: row.lastSeenAt,
-    lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
 export async function submitMachine(
   deps: Deps,
   args: {
@@ -620,7 +593,7 @@ export async function submitMachine(
   },
 ): Promise<Host> {
   const key = args.key ?? `machine-${randomUUID()}`;
-  const prepared = await prepareMachineProviderSelection(deps, args);
+  const prepared = await prepareMachineProviderSelection(args);
   const decision = askMachineLaunch(deps, {
     key,
     lifetime: "standalone",
@@ -632,7 +605,7 @@ export async function submitMachine(
   const host = getNonDestroyedHostByLaunchKey(deps.db, key);
   if (host === null)
     throw new ApiError(409, "machine_provider_rejected", "Machine was removed");
-  return machineHostResponse(host, deps);
+  return toHostWithStatus(deps, host);
 }
 
 export async function removeCreatingMachine(
@@ -1089,8 +1062,6 @@ export function requestMachineRemoval(deps: Deps, hostId: string): boolean {
   const row = getHost(deps.db, hostId);
   if (row === null || row.destroyedAt !== null) return false;
   if (row.machineProviderId === null) return false;
-  if (row.phase !== "creating" && machineHasLiveThreads(deps.db, hostId))
-    return false;
   updateHost(deps.db, deps.hub, hostId, {
     phase: "removing",
     machineOperationId:
@@ -1149,7 +1120,25 @@ export async function retryMachineCleanup(
       "Cleanup can only be retried after machine teardown fails",
     );
   }
-  updateHost(deps.db, deps.hub, hostId, { removeRetryAt: Date.now() });
+  for (const environment of deps.db
+    .update(environmentRows)
+    .set({ retireAt: Date.now() })
+    .where(
+      and(
+        eq(environmentRows.hostId, hostId),
+        eq(environmentRows.teardownStatus, "failed"),
+      ),
+    )
+    .returning({ id: environmentRows.id })
+    .all()) {
+    deps.hub.notifyEnvironment(environment.id, ["metadata-changed"]);
+  }
+  updateHost(deps.db, deps.hub, hostId, {
+    removeRetryAt: Date.now(),
+    teardownStatus: "running",
+    statusMessage: null,
+  });
+  deps.hub.notifyHost(hostId, ["host-disconnected"]);
   await sweepProviderMachine(deps, hostId);
 }
 
@@ -1237,7 +1226,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
         const latest = getHost(deps.db, hostId);
         if (!lifecycleOwns(latest, record.provider.id, operationId, "removing"))
           return;
-        updateHost(deps.db, deps.hub, hostId, {
+        const destroyed = updateHost(deps.db, deps.hub, hostId, {
           destroyedAt: Date.now(),
           phase: "destroyed",
           resource: null,
@@ -1248,6 +1237,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
         });
         deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
+        if (destroyed !== null) emitPluginHostDeleted(destroyed);
       } catch (error) {
         const current = getHost(deps.db, hostId);
         if (
@@ -1259,6 +1249,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
           statusMessage: errorMessage(error),
           removeRetryAt: Date.now() + 60_000,
         });
+        deps.hub.notifyHost(hostId, ["host-disconnected"]);
       }
     },
   });
@@ -1369,7 +1360,28 @@ export async function sweepProviderMachine(
       });
       if (current.length > 0) pendingEnvironment = true;
     }
-    if (pendingEnvironment) return;
+    if (pendingEnvironment) {
+      const failed = deps.db
+        .select()
+        .from(environmentRows)
+        .where(
+          and(
+            eq(environmentRows.hostId, hostId),
+            eq(environmentRows.teardownStatus, "failed"),
+          ),
+        )
+        .limit(1)
+        .get();
+      if (failed) {
+        updateHost(deps.db, deps.hub, hostId, {
+          teardownStatus: "failed",
+          statusMessage: failed.teardownMessage ?? "Environment cleanup failed",
+          removeRetryAt: failed.retireAt ?? Date.now() + 60_000,
+        });
+        deps.hub.notifyHost(hostId, ["host-disconnected"]);
+      }
+      return;
+    }
   }
   if (
     row.teardownStatus === "failed" &&

@@ -44,6 +44,17 @@ owning project also deletes cross-project dependents, while deleting only a
 dependent project leaves its external owner intact. Explicit Stop
 continues to stop only the requested turn/runtime.
 
+Archiving owes a thread `ARCHIVE_UNDO_GRACE_MS` before its teardown runs, so Undo
+on the archive toast costs nothing. Inside that window an archived thread keeps
+its open terminal sessions, and one that was mid-turn keeps running. The periodic
+thread sweep closes the terminals and stops the run once the grace expires;
+unarchiving inside the window cancels both, because both are derived from
+`archivedAt`. An archived thread whose status is `active` or `stopping` already
+counts as live for environment and machine retirement, so neither is torn down
+under a run the grace is protecting. A thread start still in flight is not
+covered: it is stopped as soon as it is archived, which is what keeps an
+unsettled start from leaking a session.
+
 Ownership cannot be updated or cleared. Assigning only at creation to an existing
 live thread prevents cycles, self-ownership and reassignment during deletion. The
 server validates the owner and inserts the dependent in one immediate database

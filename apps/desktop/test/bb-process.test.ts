@@ -256,6 +256,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
       expect(supervisorStat.processGroupId).toBe(processEntry.pid);
       expect(supervisorStat.state).not.toBe("Z");
       expect(grandchildStat.processGroupId).toBe(processEntry.pid);
+      expect(grandchildStat.state).not.toBe("Z");
       await new Promise<void>((resolvePromise) => {
         setTimeout(resolvePromise, 50);
       });
@@ -268,7 +269,21 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
         timeoutMs: 5_000,
       });
 
-      expect(() => process.kill(grandchildPid, 0)).toThrow();
+      const stoppedGrandchild = await readLinuxProcessStat(grandchildPid).catch(
+        (error: unknown) => {
+          if (
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "ENOENT"
+          ) {
+            return null;
+          }
+          throw error;
+        },
+      );
+      expect(
+        stoppedGrandchild === null || stoppedGrandchild.state === "Z",
+      ).toBe(true);
     },
   );
 

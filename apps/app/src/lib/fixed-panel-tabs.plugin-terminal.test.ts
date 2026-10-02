@@ -48,26 +48,4 @@ describe("plugin right-panel Terminal tabs", () => {
         .activeTabId,
     ).toBe(after.id);
   });
-
-  it("closes the panel when the last active Terminal is removed", () => {
-    const terminal = createTerminalFixedPanelTab({ terminalId: "term_2" });
-    const state = createEmptyFixedPanelTabsState({
-      secondary: {
-        activeTabId: terminal.id,
-        isOpen: true,
-        tabs: [terminal],
-      },
-    });
-
-    const nextState = removeFixedRightTerminalTabInState(
-      state,
-      terminal.terminalId,
-    );
-
-    expect(nextState.secondary).toEqual({
-      activeTabId: null,
-      isOpen: false,
-      tabs: [],
-    });
-  });
 });

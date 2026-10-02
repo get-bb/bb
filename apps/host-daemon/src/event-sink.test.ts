@@ -43,22 +43,6 @@ function systemErrorEvent(threadId: string) {
 }
 
 describe("event sink", () => {
-  it("posts emitted events", async () => {
-    const postEvents = acceptingPostEvents();
-    const sink = createEventSink({
-      isSessionOpen: () => true,
-      logger: createLogger(),
-      postEvents,
-    });
-
-    sink.emit({ threadId: "thr_1", event: systemErrorEvent("thr_1") });
-    await sink.flush();
-
-    expect(postEvents).toHaveBeenCalledWith([
-      { threadId: "thr_1", event: systemErrorEvent("thr_1") },
-    ]);
-  });
-
   it("drains successfully skipped diffs without requiring allocated sequences", async () => {
     const postEvents = vi.fn<CreateEventSinkOptions["postEvents"]>(
       async () => ({
@@ -92,7 +76,7 @@ describe("event sink", () => {
     ]);
   });
 
-  it("holds events while the session is closed and delivers them once it reopens", async () => {
+  it("holds events while the session is closed, reports their threads, and delivers them once it reopens", async () => {
     let sessionOpen = false;
     const postEvents = acceptingPostEvents();
     const sink = createEventSink({
@@ -102,8 +86,11 @@ describe("event sink", () => {
     });
 
     sink.emit({ threadId: "thr_1", event: systemErrorEvent("thr_1") });
+    sink.emit({ threadId: "thr_2", event: systemErrorEvent("thr_2") });
+    sink.emit({ threadId: "thr_1", event: systemErrorEvent("thr_1") });
     await sink.flush();
     expect(postEvents).not.toHaveBeenCalled();
+    expect(sink.listUndeliveredThreadIds()).toEqual(["thr_1", "thr_2"]);
 
     sessionOpen = true;
     await sink.flush();
@@ -111,7 +98,10 @@ describe("event sink", () => {
     expect(postEvents).toHaveBeenCalledTimes(1);
     expect(postEvents).toHaveBeenCalledWith([
       { threadId: "thr_1", event: systemErrorEvent("thr_1") },
+      { threadId: "thr_2", event: systemErrorEvent("thr_2") },
+      { threadId: "thr_1", event: systemErrorEvent("thr_1") },
     ]);
+    expect(sink.listUndeliveredThreadIds()).toEqual([]);
   });
 
   it("keeps events queued after a post failure and redelivers them on the next flush", async () => {

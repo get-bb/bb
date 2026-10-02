@@ -69,7 +69,7 @@ environment settings.
 | `tokenId`, `tokenSecret` | Required Modal token, entered in secret settings.         |
 | `appName`                | Modal app, default `bb-sandboxes`.                        |
 | `idleMinutes`            | Pause after idle, default 15; 0 disables idle suspension. |
-| Sandbox size presets     | Named CPU and memory reservations for new machines.       |
+| Sandbox size presets     | Named CPU and memory reservations; default 1 CPU, 2 GiB.  |
 | Images                   | Named Dockerfiles or existing Modal image IDs.            |
 
 Use `bb modal account inspect --json` to validate credentials

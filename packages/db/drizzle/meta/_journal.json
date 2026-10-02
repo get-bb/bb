@@ -918,6 +918,55 @@
       "when": 1790016310646,
       "tag": "0130_busy_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "6",
+      "when": 1790230932025,
+      "tag": "0131_environment_retention_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "6",
+      "when": 1790322211064,
+      "tag": "0132_thread_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "6",
+      "when": 1790613729994,
+      "tag": "0133_remove_thread_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "6",
+      "when": 1790738477751,
+      "tag": "0134_preserve_pane_focus_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "6",
+      "when": 1790794077074,
+      "tag": "0135_rename_provider_usage_plugin_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "6",
+      "when": 1790889888606,
+      "tag": "0136_plugin_enabled_follows_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "6",
+      "when": 1790900209592,
+      "tag": "0137_stiff_prism",
+      "breakpoints": true
     }
   ]
 }

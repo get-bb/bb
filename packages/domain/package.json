@@ -63,6 +63,11 @@
       "source": "./src/plugin-interaction-limits.ts",
       "types": "./src/plugin-interaction-limits.ts",
       "default": "./src/plugin-interaction-limits.ts"
+    },
+    "./prompt-attachment-limits": {
+      "source": "./src/prompt-attachment-limits.ts",
+      "types": "./src/prompt-attachment-limits.ts",
+      "default": "./src/prompt-attachment-limits.ts"
     }
   },
   "types": "./src/index.ts",

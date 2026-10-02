@@ -42,7 +42,3 @@ export const interactionRequestParamsSchema = z
     providerNativeIds: z.boolean().optional(),
   })
   .passthrough();
-
-export type InteractionRequestParams = z.infer<
-  typeof interactionRequestParamsSchema
->;

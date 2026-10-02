@@ -113,10 +113,12 @@ describe("GET /api/v1/system/usage-limits", () => {
         ),
       ).toBe(false);
       expect(
-        responder.requests.some(
-          (request) => request.command.type === "provider.health",
+        responder.requests.flatMap((request) =>
+          request.command.type === "provider.health"
+            ? [request.command.providerId]
+            : [],
         ),
-      ).toBe(false);
+      ).toEqual(["acp-opencode"]);
     });
   });
 
@@ -148,30 +150,6 @@ describe("GET /api/v1/system/usage-limits", () => {
           (request) => request.command.type === "provider.health",
         ),
       ).toBe(false);
-    });
-  });
-
-  it("continues to use the primary machine when no host is selected", async () => {
-    await withTestHarness(async (harness) => {
-      const primary = seedHostSession(harness.deps, { id: "host-primary" });
-      seedPrimaryHost(harness.deps, primary.host.id);
-      const responder = registerHostRpcResponder(harness, {
-        hostId: primary.host.id,
-        sessionId: primary.session.id,
-        handle: handleUsageRequest,
-      });
-
-      const response = await harness.app.request("/api/v1/system/usage-limits");
-
-      expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual(USAGE_RESPONSE);
-      expect(
-        responder.requests.flatMap((request) =>
-          request.command.type === "provider.usage"
-            ? [request.command.providerId]
-            : [],
-        ),
-      ).toEqual(["codex", "claude-code", "acp-cursor"]);
     });
   });
 

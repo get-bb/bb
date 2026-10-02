@@ -71,7 +71,6 @@ function run(calls: WorkflowCallInspection[]): WorkflowRunInspection {
     error: null,
     phase: "Empty Current",
     replaySafetyVersion: 1,
-    replayBarrierIndex: null,
     notificationSent: false,
     notificationOutcome: "pending",
     notificationAttemptCount: 0,

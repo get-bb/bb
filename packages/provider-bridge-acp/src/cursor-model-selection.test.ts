@@ -3,10 +3,7 @@ import {
   buildAgentModelCatalog,
   parseAgentModelLines,
 } from "./bridge/model-catalog.js";
-import {
-  buildCursorParameterizedModelCatalog,
-  cursorParameterizedSelection,
-} from "./cursor-model-selection.js";
+import { buildCursorParameterizedModelCatalog } from "./cursor-model-selection.js";
 
 describe("Cursor parameterized model selection", () => {
   it("keeps bare ACP ids while preserving CLI reasoning variants", () => {
@@ -69,9 +66,34 @@ describe("Cursor parameterized model selection", () => {
     ).toEqual(["low", "medium", "high"]);
   });
 
-  it("normalizes a legacy variant before session selection", () => {
+  it("keeps the fast tier when any merged family lists a -fast variant", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "auto - Auto (default)",
+          "cursor-grok-4.6-high - Grok 4.6",
+          "cursor-grok-4.6-high-fast - Grok 4.6 Fast",
+          "gpt-5.1-codex-max-high - Codex 5.1 Max High",
+          "gpt-5.1-high - GPT-5.1 High",
+          "gpt-5.1-high-fast - GPT-5.1 High Fast",
+          "gemini-3.8-flash-high - Gemini 3.8 Flash",
+        ].join("\n"),
+      ),
+    );
+    if (catalog === null) {
+      throw new Error("expected Cursor model catalog");
+    }
+
+    const models = buildCursorParameterizedModelCatalog(catalog.models);
     expect(
-      cursorParameterizedSelection("cursor-grok-4.6-medium", "high"),
-    ).toEqual({ modelId: "grok-4.6", reasoningLevel: "high" });
+      Object.fromEntries(
+        models.map((model) => [model.id, model.supportedServiceTiers]),
+      ),
+    ).toEqual({
+      default: [],
+      "grok-4.6": [{ id: "fast" }],
+      "gpt-5.1": [{ id: "fast" }],
+      "gemini-3.8-flash": [],
+    });
   });
 });

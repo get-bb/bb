@@ -107,6 +107,7 @@ export function decryptChromiumValue(
         : null)
     );
   }
+  if (/^v\d\d$/.test(prefix)) return null;
   return (
     stripDomainBinding(buffer, domain, schemaVersion)?.toString("utf8") ?? null
   );
@@ -198,11 +199,18 @@ export async function readChromiumCookies(
   source: ChromiumCookieSource,
   run: SecretCommandRunner = runSecretCommand,
 ): Promise<CookieReadResult> {
-  const keys = await resolveChromiumKeys(source, run);
   try {
     return await withCookieDatabaseSnapshot(
       source.cookieDatabasePath,
-      (database) => readChromiumCookieDatabase(database, keys),
+      async (database) => {
+        const encrypted = database
+          .prepare(
+            "select 1 from cookies where substr(encrypted_value, 1, 3) in (x'763130', x'763131') limit 1",
+          )
+          .get();
+        const keys = encrypted ? await resolveChromiumKeys(source, run) : {};
+        return readChromiumCookieDatabase(database, keys);
+      },
     );
   } catch (error) {
     if (error instanceof BrowserImportError) throw error;

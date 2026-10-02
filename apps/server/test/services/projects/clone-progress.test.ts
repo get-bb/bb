@@ -1,7 +1,10 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createCloneProgressReporter } from "../../../src/services/projects/clone-progress.js";
 
+afterEach(() => vi.useRealTimers());
+
 it("coalesces bursts, skips duplicates, and flushes the final update on disposal", async () => {
+  vi.useFakeTimers();
   const log = vi.fn();
   const progress = createCloneProgressReporter({ log, step: log });
   try {
@@ -9,7 +12,9 @@ it("coalesces bursts, skips duplicates, and flushes the final update on disposal
     for (let i = 0; i < 1000; i++)
       progress.report.log(`Receiving objects: ${i}`);
     expect(log).toHaveBeenCalledTimes(1);
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(log).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
     expect(log).toHaveBeenCalledTimes(2);
     expect(log).toHaveBeenLastCalledWith("Receiving objects: 999");
     progress.report.log("Receiving objects: 999");
@@ -25,4 +30,5 @@ it("coalesces bursts, skips duplicates, and flushes the final update on disposal
   expect(log).toHaveBeenLastCalledWith("done");
   final.report.log("late");
   expect(log).toHaveBeenLastCalledWith("done");
+  expect(vi.getTimerCount()).toBe(0);
 });

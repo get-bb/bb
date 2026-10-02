@@ -36,6 +36,7 @@ vi.mock("@/lib/sdk", () => ({
       delete: vi.fn(),
       list: vi.fn(),
       experimental_listProviders: vi.fn(),
+      experimental_reconnect: vi.fn(),
       experimental_resume: vi.fn(),
       experimental_retryCleanup: vi.fn(),
       retryUpdate: vi.fn(),
@@ -43,6 +44,10 @@ vi.mock("@/lib/sdk", () => ({
       update: vi.fn(),
     },
     system: { config: vi.fn() },
+    threads: {
+      count: vi.fn(async () => ({ total: 0 })),
+      list: vi.fn(async () => []),
+    },
   },
 }));
 
@@ -392,14 +397,6 @@ describe("MachinesSettingsSection", () => {
     const removeItem = await screen.findByRole("menuitem", {
       name: "Remove machine",
     });
-    const menu = screen.getByRole("menu");
-    expect(menu.className).toContain("w-max");
-    expect(menu.className).toContain("min-w-0");
-    for (const item of [renameItem, retryItem, removeItem]) {
-      expect(item.className).toContain("min-h-9");
-      expect(item.className).toContain("px-2.5");
-      expect(item.className).toContain("py-2");
-    }
     expect(renameItem.querySelector('[data-icon="Edit"]')).not.toBeNull();
     expect(
       retryItem.querySelector(`[data-icon="${RETRY_ACTION_ICON}"]`),
@@ -555,22 +552,6 @@ describe("MachinesSettingsSection", () => {
     });
   });
 
-  it("keeps the row menu open without navigating when its trigger is clicked", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
-    stubSidebarBootstrapFetch();
-
-    renderSection();
-
-    await screen.findByText("dev-vm");
-    await openHostMenu("dev-vm");
-
-    expect(
-      await screen.findByRole("menuitem", { name: "Rename" }),
-    ).toBeDefined();
-    expect(screen.getByTestId("location").textContent).toBe("/");
-  });
-
   it("stays on the machines list when a row menu item is selected", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
@@ -578,8 +559,12 @@ describe("MachinesSettingsSection", () => {
 
     renderSection();
 
-    await screen.findByText("dev-vm");
-    await openHostMenu("dev-vm");
+    const trigger = await screen.findByRole("button", {
+      name: "dev-vm actions",
+    });
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("location").textContent).toBe("/");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
     expect(await screen.findByLabelText("Machine name")).toBeDefined();
@@ -768,6 +753,112 @@ describe("MachinesSettingsSection", () => {
     expect(
       screen.queryByRole("menuitem", { name: "Move server here" }),
     ).toBeNull();
+  });
+
+  it("offers Reconnect only on offline, active machines", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      primaryHost,
+      offlineHost,
+      host({
+        id: "host_paused",
+        name: "paused-vm",
+        status: "disconnected",
+        machineProviderId: "modal-sandbox",
+        lifecycle: {
+          phase: "suspended",
+          suspendedAt: NOW - 60_000,
+          message: null,
+          pendingLog: "",
+          teardown: null,
+        },
+      }),
+    ]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("dev-vm");
+
+    await openHostMenu("dev-vm");
+    expect(
+      await screen.findByRole("menuitem", { name: "Reconnect" }),
+    ).toBeDefined();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    for (const name of ["MacBook Pro", "paused-vm"]) {
+      await openHostMenu(name);
+      await screen.findByRole("menuitem", { name: "Rename" });
+      expect(screen.queryByRole("menuitem", { name: "Reconnect" })).toBeNull();
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      await waitFor(() => {
+        expect(screen.queryByRole("menu")).toBeNull();
+      });
+    }
+  });
+
+  it("keeps a dialog chosen from the row menu with the keyboard open", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    vi.mocked(sdk.hosts.experimental_reconnect).mockReturnValue(
+      new Promise(() => {}),
+    );
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    for (const [itemName, dialogName] of [
+      ["Remove machine", "Remove dev-vm?"],
+      ["Reconnect", "Reconnect machine"],
+    ]) {
+      const trigger = await screen.findByRole("button", {
+        name: "dev-vm actions",
+      });
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      const item = await screen.findByRole("menuitem", { name: itemName });
+      item.focus();
+      fireEvent.keyDown(item, { key: "Enter" });
+
+      const dialog = await screen.findByRole("dialog", { name: dialogName });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(dialog.isConnected).toBe(true);
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+      });
+    }
+  });
+
+  it("requests a reconnect command and shows it for the chosen machine", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    vi.mocked(sdk.hosts.experimental_reconnect).mockResolvedValue({
+      command:
+        "curl -fsSL -H 'X-BB-Enrollment: bbde_test' 'https://bb.example.com/install.sh' | sh",
+      expiresAt: NOW + 15 * 60 * 1000,
+      hostId: offlineHost.id,
+    });
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("dev-vm");
+    await openHostMenu("dev-vm");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Reconnect" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(sdk.hosts.experimental_reconnect)).toHaveBeenCalledWith({
+        hostId: offlineHost.id,
+      });
+    });
+    expect(await screen.findByText(/X-BB-Enrollment: bbde_test/)).toBeDefined();
+    expect(
+      await screen.findByText("Waiting for the machine to reconnect…"),
+    ).toBeDefined();
   });
 
   it("hides Move server here while a move is underway", async () => {

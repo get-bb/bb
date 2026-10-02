@@ -119,12 +119,6 @@ export function takeEventLoopWorkWindowSnapshot(): EventLoopWorkSnapshot {
   return snapshot;
 }
 
-export function hasCompletedEventLoopWorkForTests(label: string): boolean {
-  return completedInWindow.some(
-    (completed) => completed.blocksEventLoop && completed.label === label,
-  );
-}
-
 export function runEventLoopWorkSync<T>(label: string, work: () => T): T {
   const id = enterEventLoopWork(label, true);
   return currentFrameId.run(id, () => {

@@ -3,7 +3,12 @@ import {
   defaultAppTheme,
   defaultExperiments,
   defaultFeatureFlags,
+  getUiPreferenceDefault,
+  isUiPreferenceKey,
+  parseUiPreferenceValue,
+  type UiPreferenceEntries,
   type PromptInput,
+  type UiPreferenceKey,
   type ThreadChangedMessage,
   type ThreadQueuedMessage,
 } from "@bb/domain";
@@ -14,12 +19,16 @@ import {
   sendQueuedMessageRequestSchema,
   systemConfigResponseSchema,
   updateThreadTabsRequestSchema,
+  updateUiPreferenceRequestSchema,
   type SendQueuedMessageResponse,
   type SystemConfigResponse,
   type ThreadChildSummaryResponse,
   type ThreadPendingInteractionsResponse,
   type ThreadQueuedMessageListResponse,
   type ThreadTabsResponse,
+  type SystemAppUpdateStatus,
+  type ServerMoveStatusResponse,
+  type UiPreferencesResponse,
   type ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { z } from "zod";
@@ -51,7 +60,7 @@ import {
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
   generalSettings: defaultAppSettings,
-  experiments: { ...defaultExperiments, mobileApp: true },
+  experiments: { ...defaultExperiments },
   appearance: defaultAppTheme,
   featureFlags: defaultFeatureFlags,
   serverUrl: "https://demo.invalid",
@@ -68,12 +77,6 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
         availability: null,
       },
     ],
-  },
-  aiServices: {
-    inference: "codex/gpt-5.5",
-    inferenceFallback: "codex/gpt-5.5",
-    transcription: "openai/gpt-4o-transcribe",
-    services: [],
   },
 });
 
@@ -148,7 +151,54 @@ function promptText(input: readonly PromptInput[]): string {
     .slice(0, MAX_MESSAGE_CHARS);
 }
 
+function uiPreferenceEntry<Key extends UiPreferenceKey>(key: Key) {
+  return { revision: 0, value: getUiPreferenceDefault(key) };
+}
+
+function createUiPreferences(): UiPreferenceEntries {
+  return {
+    "sidebar.organizationMode": uiPreferenceEntry("sidebar.organizationMode"),
+    "sidebar.threadGrouping.environment": uiPreferenceEntry(
+      "sidebar.threadGrouping.environment",
+    ),
+    "sidebar.chronologicalSort": uiPreferenceEntry("sidebar.chronologicalSort"),
+    "sidebar.sortDirection": uiPreferenceEntry("sidebar.sortDirection"),
+    "sidebar.sectionOrder": uiPreferenceEntry("sidebar.sectionOrder"),
+    "sidebar.manualSectionOrder": uiPreferenceEntry(
+      "sidebar.manualSectionOrder",
+    ),
+    "sidebar.machineSectionOrder": uiPreferenceEntry(
+      "sidebar.machineSectionOrder",
+    ),
+    "sidebar.hiddenGroups": uiPreferenceEntry("sidebar.hiddenGroups"),
+    "sidebar.collapsedSections": uiPreferenceEntry("sidebar.collapsedSections"),
+    "sidebar.collapsedProjects": uiPreferenceEntry("sidebar.collapsedProjects"),
+    "sidebar.collapsedThreads": uiPreferenceEntry("sidebar.collapsedThreads"),
+    "sidebar.collapsedEnvironments": uiPreferenceEntry(
+      "sidebar.collapsedEnvironments",
+    ),
+    "sidebar.collapsedThreadSections": uiPreferenceEntry(
+      "sidebar.collapsedThreadSections",
+    ),
+    "sidebar.collapsedMachines": uiPreferenceEntry("sidebar.collapsedMachines"),
+    "sidebar.footerOrder": uiPreferenceEntry("sidebar.footerOrder"),
+    "sidebar.hiddenFooterItems": uiPreferenceEntry("sidebar.hiddenFooterItems"),
+    "sidebar.pluginPanelOrder": uiPreferenceEntry("sidebar.pluginPanelOrder"),
+    "sidebar.visiblePluginPanels": uiPreferenceEntry(
+      "sidebar.visiblePluginPanels",
+    ),
+    "sidebar.navigationProvider": uiPreferenceEntry(
+      "sidebar.navigationProvider",
+    ),
+    "sidebar.headerProvider": uiPreferenceEntry("sidebar.headerProvider"),
+    "sidebar.threadListProvider": uiPreferenceEntry(
+      "sidebar.threadListProvider",
+    ),
+  };
+}
+
 export class DemoWorld {
+  private uiPreferences = createUiPreferences();
   private readonly now: () => number;
   private readonly schedule: (fn: () => void, ms: number) => void;
   private readonly threads = new Map<string, ThreadState>(
@@ -203,6 +253,27 @@ export class DemoWorld {
       switch (api) {
         case "/system/config":
           return json(this.systemConfig(origin));
+        case "/preferences/ui":
+          return json({
+            preferences: this.uiPreferences,
+          } satisfies UiPreferencesResponse);
+        case "/plugins/safe-mode":
+          return json({ enabled: false });
+        case "/server/move":
+          return json({
+            move: null,
+            lastMove: null,
+          } satisfies ServerMoveStatusResponse);
+        case "/system/app-update":
+          return json({
+            activity: { phase: "idle" },
+            available: null,
+            blocked: null,
+            current: { commit: null, version: SYSTEM_VERSION.currentVersion },
+            lastResult: null,
+            runningThreadCount: 0,
+            support: { kind: "unsupported", reason: "unmanaged" },
+          } satisfies SystemAppUpdateStatus);
         case "/system/version":
           return json(SYSTEM_VERSION);
         case "/system/execution-options":
@@ -224,6 +295,20 @@ export class DemoWorld {
       }
     }
 
+    const preference = /^\/preferences\/ui\/([^/]+)$/u.exec(api);
+    if (preference && request.method === "PUT") {
+      const key = preference[1];
+      if (!isUiPreferenceKey(key)) return notImplemented(request.method, api);
+      return this.updateUiPreference(request, key);
+    }
+
+    if (
+      request.method === "POST" &&
+      api === "/plugins/thread-list/rpc/listPreferences"
+    ) {
+      return json({ ok: true, result: { preferences: {} } });
+    }
+
     const match = THREAD_PATH.exec(api);
     if (!match) return null;
     const [, threadId, sub = ""] = match;
@@ -236,6 +321,39 @@ export class DemoWorld {
     if (request.method === "PUT" && sub === "tabs")
       return this.handleUpdateTabs(request);
     return null;
+  }
+
+  private async updateUiPreference<Key extends UiPreferenceKey>(
+    request: Request,
+    key: Key,
+  ): Promise<Response> {
+    const body = updateUiPreferenceRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!body.success) return badRequest(body.error);
+    const value = parseUiPreferenceValue(key, body.data.value);
+    if (!value.success) {
+      return json(
+        { error: { code: "invalid_request", message: value.message } },
+        400,
+      );
+    }
+    const current = this.uiPreferences[key];
+    if (current.revision !== body.data.expectedRevision) {
+      return json(
+        {
+          error: {
+            code: "ui_preference_conflict",
+            message: "UI preference changed on another client",
+            details: { currentRevision: current.revision },
+          },
+        },
+        409,
+      );
+    }
+    const entry = { revision: current.revision + 1, value: value.value };
+    this.uiPreferences = { ...this.uiPreferences, [key]: entry };
+    return json({ key, ...entry });
   }
 
   private handleThreadGet(
@@ -264,6 +382,7 @@ export class DemoWorld {
       case "child-summary":
         return json({
           nonDeletedChildCount: 0,
+          unarchivedDescendantCount: 0,
         } satisfies ThreadChildSummaryResponse);
       default:
         return null;

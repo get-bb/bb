@@ -1,14 +1,9 @@
 import { useState } from "react";
-import {
-  definePluginApp,
-  useComposer,
-  useComposerView,
-} from "@get-bb/plugin-sdk/app";
+import { definePluginApp, useComposer } from "@get-bb/plugin-sdk/app";
 import "./app.css";
 
 function ComposerAction() {
   const composer = useComposer();
-  const view = useComposerView();
   const [busy, setBusy] = useState(false);
 
   function toggleBusy() {
@@ -24,7 +19,7 @@ function ComposerAction() {
     <button
       aria-pressed={busy}
       className="composer-reference-action"
-      disabled={view.run.isSubmitting}
+      disabled={composer.isSubmitting}
       onClick={toggleBusy}
       title={busy ? "Unlock draft" : "Lock and animate draft"}
       type="button"
@@ -35,12 +30,16 @@ function ComposerAction() {
 }
 
 function ComposerBanner() {
-  const view = useComposerView();
+  const composer = useComposer();
+  const mentionCount = composer.draft.mentions.length;
   return (
     <div className="composer-reference-banner">
-      {view.draft.isEmpty
+      {composer.isEmpty
         ? "Start typing to see the rich-text rule."
-        : `${view.draft.text.length} draft characters in ${view.scope.kind}.`}
+        : `${composer.text.length} draft characters and ${mentionCount} mentions in ${composer.scope.kind}.`}
+      {composer.isSubmittingBlocked && composer.submittingBlockedReason
+        ? ` ${composer.submittingBlockedReason}`
+        : null}
     </div>
   );
 }
@@ -55,12 +54,12 @@ export default definePluginApp((app) => {
         label: "Append review checklist",
         icon: "ListChecks",
         description: "Add a short review checklist to the current draft.",
-        disabled: (view) => view.run.isSubmitting,
+        disabled: (composer) => composer.isSubmitting,
         run: ({ composer }) => {
-          composer.updateText(
-            (current) =>
-              `${current}${current ? "\n\n" : ""}- Verify behavior\n- Run checks`,
-          );
+          composer.insert("- Verify behavior\n- Run checks", {
+            at: "end",
+            block: true,
+          });
           composer.focus();
         },
       },
@@ -81,13 +80,6 @@ export default definePluginApp((app) => {
           },
         },
       ],
-      onDraftChange(draft, view) {
-        console.debug("composer draft changed", {
-          scope: view.scope.kind,
-          text: draft.text,
-          mentions: draft.mentions,
-        });
-      },
     },
   });
 });

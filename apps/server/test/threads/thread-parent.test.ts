@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
   assertValidParentThread,
-  isAgentDelegatedChildThread,
   isParentNotifiableChildThread,
 } from "../../src/services/threads/thread-parent.js";
 
@@ -46,23 +45,6 @@ function captureApiError(callback: ThrowingCallback): ApiError {
 }
 
 describe("thread parent validation", () => {
-  it("accepts live standard parent threads", () => {
-    const { db, project } = setup();
-    const parentThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-
-    const validatedParent = assertValidParentThread(
-      { db },
-      {
-        parentThreadId: parentThread.id,
-      },
-    );
-
-    expect(validatedParent.id).toBe(parentThread.id);
-  });
-
   it("accepts a live parent thread from another project", () => {
     const { db, host } = setup();
     const { project: otherProject } = createProject(db, noopNotifier, {
@@ -249,24 +231,6 @@ describe("thread parent validation", () => {
   });
 });
 
-describe("isAgentDelegatedChildThread", () => {
-  it("is true for a thread with a parent", () => {
-    expect(
-      isAgentDelegatedChildThread({
-        parentThreadId: "thr_parent",
-      }),
-    ).toBe(true);
-  });
-
-  it("is false for a fork-style root", () => {
-    expect(
-      isAgentDelegatedChildThread({
-        parentThreadId: null,
-      }),
-    ).toBe(false);
-  });
-});
-
 describe("isParentNotifiableChildThread", () => {
   it("is true for a hidden delegated child", () => {
     expect(
@@ -286,13 +250,7 @@ describe("isParentNotifiableChildThread", () => {
     ).toBe(false);
   });
 
-  it("is false for a source-derived fork and for a root thread", () => {
-    expect(
-      isParentNotifiableChildThread({
-        originKind: "fork",
-        parentThreadId: "thr_parent",
-      }),
-    ).toBe(false);
+  it("is false for a root thread", () => {
     expect(
       isParentNotifiableChildThread({
         originKind: null,

@@ -211,27 +211,6 @@ describe("custom agents that report usage", () => {
 });
 
 describe("acpProviderDeclaration", () => {
-  it("declares a configured agent's native skill roots", () => {
-    const [agent] = parseCustomAcpAgents({
-      entries: [
-        {
-          id: "amp",
-          displayName: "Amp",
-          command: "amp",
-          nativeSkillRoots: { user: [".amp/skills"], project: [".amp"] },
-        },
-      ],
-      reservedProviderIds: reserved,
-    }).agents;
-    if (agent === undefined) throw new Error("expected the agent to parse");
-
-    const declaration = acpProviderDeclaration(customAcpAgentDefinition(agent));
-    expect(declaration.experimental_nativeSkillRoots).toEqual({
-      user: [".amp/skills"],
-      project: [".amp"],
-    });
-  });
-
   it("declares no skill roots for an agent that names none", () => {
     for (const agent of KNOWN_ACP_AGENTS) {
       if (agent.launch.nativeSkillRoots !== undefined) continue;
@@ -299,6 +278,11 @@ describe("acpProviderDeclaration", () => {
     ).not.toHaveProperty("reasoningCli");
     expect(byId.get("acp-opencode")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "opencode",
+    });
+    expect(byId.get("acp-opencode")?.maintenance).toEqual({
+      health: true,
+      usage: true,
+      installation: false,
     });
     expect(
       byId.get("acp-opencode")?.capabilities.supportsManualCompaction,

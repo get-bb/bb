@@ -162,11 +162,6 @@ describe("parseOperationMessage operation titles", () => {
         "Provisioning thread interrupted",
       );
     });
-
-    it("does not depend on whether the thread is named", () => {
-      expect(provisioningTitle("active", "")).toBe("Provisioning thread");
-      expect(provisioningTitle("completed", "")).toBe("Provisioned thread");
-    });
   });
 
   describe("thread-interrupted", () => {
@@ -283,4 +278,8 @@ describe("parseOperationMessage operation titles", () => {
       expect(message.title).toBe("Provisioning thread failed");
     });
   });
+});
+
+it("explains an intentional machine removal without suggesting a daemon failure", () => {
+  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe("Stopped because the machine was removed");
 });

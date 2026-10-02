@@ -452,53 +452,6 @@ describe("buildTimelineRowTitle", () => {
     ]);
   });
 
-  it("keeps elapsed duration visible on interrupted command rows", () => {
-    const title = buildTimelineRowTitle(
-      {
-        ...commandRow(),
-        status: "interrupted",
-        exitCode: null,
-        completedAt: 3_001,
-      },
-      DEFAULT_OPTIONS,
-    );
-
-    expect(title.plain).toBe(
-      "Ran pnpm exec turbo run test --filter=@bb/app (3s, interrupted)",
-    );
-    expect(title.decorations).toEqual([
-      {
-        kind: "status",
-        status: "interrupted",
-        durationMs: 3_000,
-        emphasis: false,
-      },
-    ]);
-  });
-
-  it("keeps elapsed duration visible on interrupted tool rows", () => {
-    const title = buildTimelineRowTitle(
-      {
-        ...toolRow(),
-        status: "interrupted",
-        completedAt: 3_001,
-      },
-      DEFAULT_OPTIONS,
-    );
-
-    expect(title.plain).toBe(
-      "Ran tool LookupTool { query: select:TodoWrite } (3s, interrupted)",
-    );
-    expect(title.decorations).toEqual([
-      {
-        kind: "status",
-        status: "interrupted",
-        durationMs: 3_000,
-        emphasis: false,
-      },
-    ]);
-  });
-
   it("titles a generic tool row from its name and arguments, not from a label table", () => {
     expect(
       buildTimelineRowTitle(
@@ -651,28 +604,18 @@ describe("buildTimelineRowTitle", () => {
     },
   );
 
-  it.each([
-    {
-      expectedPlain:
-        "Permission grant interrupted: Bash (Thread stopped by user request)",
-      lifecycle: "interrupted",
-    },
-  ] satisfies Array<{
-    expectedPlain: string;
-    lifecycle: Extract<PermissionGrantApprovalLifecycle, "interrupted">;
-  }>)(
-    "renders permission grant $lifecycle status reason",
-    ({ expectedPlain, lifecycle }) => {
-      const statusReason = "Thread stopped by user request";
-      const title = buildTimelineRowTitle(
-        permissionGrantApprovalRow({ lifecycle, statusReason }),
-        DEFAULT_OPTIONS,
-      );
+  it("renders permission grant interrupted status reason", () => {
+    const statusReason = "Thread stopped by user request";
+    const title = buildTimelineRowTitle(
+      permissionGrantApprovalRow({ lifecycle: "interrupted", statusReason }),
+      DEFAULT_OPTIONS,
+    );
 
-      expect(title.plain).toBe(expectedPlain);
-      expect(title.segments.map((s) => s.text)).toContain(`(${statusReason})`);
-    },
-  );
+    expect(title.plain).toBe(
+      "Permission grant interrupted: Bash (Thread stopped by user request)",
+    );
+    expect(title.segments.map((s) => s.text)).toContain(`(${statusReason})`);
+  });
 
   it("uses a permissions fallback for grant requests without a tool name", () => {
     const title = buildTimelineRowTitle(
@@ -1308,6 +1251,25 @@ describe("buildTimelineRowTitle", () => {
   it.each([
     {
       row: {
+        ...commandRow(),
+        status: "interrupted",
+        exitCode: null,
+        completedAt: 3_001,
+      } satisfies TimelineCommandWorkRow,
+      expectedPlain:
+        "Ran pnpm exec turbo run test --filter=@bb/app (3s, interrupted)",
+    },
+    {
+      row: {
+        ...toolRow(),
+        status: "interrupted",
+        completedAt: 3_001,
+      } satisfies TimelineToolWorkRow,
+      expectedPlain:
+        "Ran tool LookupTool { query: select:TodoWrite } (3s, interrupted)",
+    },
+    {
+      row: {
         ...webSearchRow(),
         status: "interrupted",
         completedAt: 3_001,
@@ -1523,31 +1485,6 @@ describe("buildTimelineRowTitle", () => {
     });
 
     expect(title.plain).toBe("Exploring 1 file, running 1 command");
-    expect(title.segments.some((s) => s.shimmer)).toBe(true);
-  });
-
-  it("uses active wording for tool-only bundle summaries", () => {
-    const row = {
-      ...workSummaryRow(
-        [
-          {
-            ...toolRow(),
-            toolName: "UnknownTool",
-            toolArgs: null,
-            status: "pending",
-          },
-        ],
-        "bundle-summary",
-      ),
-      status: "pending",
-    } satisfies TimelineWorkSummaryRow;
-    const title = buildTimelineRowTitle(row, {
-      summaryStyle: "bundle",
-      workStyle: "default",
-      isActiveLatestBundle: true,
-    });
-
-    expect(title.plain).toBe("Running 1 tool");
     expect(title.segments.some((s) => s.shimmer)).toBe(true);
   });
 

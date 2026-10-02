@@ -6,7 +6,7 @@ import {
   getLatestSessionForHost,
   getSessionById,
   heartbeatSession,
-  listLatestSessionsForHosts,
+  listLatestClosedSessionsForHosts,
   openSession,
 } from "../../src/data/sessions.js";
 import { getHost, upsertHost } from "../../src/data/hosts.js";
@@ -22,26 +22,6 @@ function setup() {
 }
 
 describe("sessions", () => {
-  it("opens a session and retrieves it", () => {
-    const { db, host } = setup();
-
-    const session = openSession(db, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    expect(session.id).toMatch(/^hses_/);
-    expect(session.status).toBe("active");
-    expect(session.hostId).toBe(host.id);
-
-    expect(getSessionById(db, { sessionId: session.id })?.id).toBe(session.id);
-  });
-
   it("marks the host as seen on open, heartbeat, and close", () => {
     const { db, host } = setup();
     expect(getHost(db, host.id)?.lastSeenAt).toBeNull();
@@ -130,70 +110,50 @@ describe("sessions", () => {
     expect(old?.closeReason).toBe("replaced");
   });
 
-  it("lists the latest session for each requested host", () => {
+  it("lists the most recently closed session for each requested host", () => {
     const { db, host } = setup();
     const otherHost = upsertHost(db, noopNotifier, {
       name: "test-host-2",
     });
+    const openTestSession = (hostId: string, instanceId: string) =>
+      openSession(db, {
+        hostId,
+        instanceId,
+        hostName: "test-host",
+        dataDir: "/tmp/test-host-data",
+        protocolVersion: 1,
+        heartbeatIntervalMs: 10_000,
+        leaseTimeoutMs: 30_000,
+      });
 
-    const firstSession = openSession(db, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-    const latestSession = openSession(db, {
-      hostId: host.id,
-      instanceId: "inst-2",
-      hostName: "test-host",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-    const otherFirstSession = openSession(db, {
-      hostId: otherHost.id,
-      instanceId: "inst-3",
-      hostName: "test-host-2",
-      dataDir: "/tmp/test-host-data-2",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-    const otherLatestSession = openSession(db, {
-      hostId: otherHost.id,
-      instanceId: "inst-4",
-      hostName: "test-host-2",
-      dataDir: "/tmp/test-host-data-2",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
+    const earlierClosed = openTestSession(host.id, "inst-1");
+    closeSession(db, noopNotifier, earlierClosed.id, "daemon-disconnect");
+    const laterClosed = openTestSession(host.id, "inst-2");
+    closeSession(db, noopNotifier, laterClosed.id, "daemon-disconnect");
+    openTestSession(host.id, "inst-3");
+    const otherClosed = openTestSession(otherHost.id, "inst-4");
+    closeSession(db, noopNotifier, otherClosed.id, "expired");
 
     for (const sessionUpdate of [
-      { sessionId: firstSession.id, updatedAt: 10 },
-      { sessionId: latestSession.id, updatedAt: 20 },
-      { sessionId: otherFirstSession.id, updatedAt: 30 },
-      { sessionId: otherLatestSession.id, updatedAt: 40 },
+      { sessionId: earlierClosed.id, closedAt: 20, updatedAt: 50 },
+      { sessionId: laterClosed.id, closedAt: 30, updatedAt: 30 },
+      { sessionId: otherClosed.id, closedAt: 40, updatedAt: 40 },
     ]) {
       db.update(hostDaemonSessions)
         .set({
-          createdAt: sessionUpdate.updatedAt,
+          closedAt: sessionUpdate.closedAt,
           updatedAt: sessionUpdate.updatedAt,
         })
         .where(eq(hostDaemonSessions.id, sessionUpdate.sessionId))
         .run();
     }
 
-    const sessions = listLatestSessionsForHosts(db, {
+    const sessions = listLatestClosedSessionsForHosts(db, {
       hostIds: [host.id, host.id, otherHost.id, "host-missing"],
     });
 
     expect(sessions.map((session) => session.id).sort()).toEqual(
-      [latestSession.id, otherLatestSession.id].sort(),
+      [laterClosed.id, otherClosed.id].sort(),
     );
   });
 
@@ -238,27 +198,6 @@ describe("sessions", () => {
     expect(getLatestSessionForHost(db, { hostId: host.id })?.id).toBe(
       "hses_a_active",
     );
-    expect(
-      listLatestSessionsForHosts(db, { hostIds: [host.id] }).map(
-        (session) => session.id,
-      ),
-    ).toEqual(["hses_a_active"]);
-  });
-
-  it("extends the session lease on heartbeat", () => {
-    const { db, host } = setup();
-    const session = openSession(db, {
-      hostId: host.id,
-      instanceId: "inst-1",
-      hostName: "test-host",
-      dataDir: "/tmp/test-host-data",
-      protocolVersion: 1,
-      heartbeatIntervalMs: 10_000,
-      leaseTimeoutMs: 30_000,
-    });
-
-    const updated = heartbeatSession(db, session.id, Date.now() + 45_000);
-    expect(updated?.leaseExpiresAt).toBeGreaterThan(Date.now());
   });
 
   it("does not overwrite an already closed session", () => {

@@ -1,10 +1,15 @@
 import { useEffect } from "react";
-import { useAtomValue } from "jotai";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { useAtomValue, useStore } from "jotai";
+import {
+  experimental_usePluginId,
+  useRealtime,
+  useRpc,
+} from "@get-bb/plugin-sdk/app";
 import type { threadListRpcContract } from "../../server.js";
 import { PREFERENCES_CHANGED_CHANNEL } from "../../shared/preferences.js";
 import {
   applyRemotePreferenceSignal,
+  attachPreferencesStore,
   hydratePreferences,
   hydratePreferencesFromMirror,
   preferencesReadyAtom,
@@ -16,16 +21,19 @@ export function usePreferencesReady(): boolean {
 
 export function PreferencesSync() {
   const rpc = useRpc<typeof threadListRpcContract>();
+  const store = useStore();
+  const pluginId = experimental_usePluginId();
   useEffect(() => {
+    attachPreferencesStore(store, pluginId);
     hydratePreferencesFromMirror();
     void hydratePreferences(rpc).catch((error: unknown) => {
       console.warn(
-        `thread-list: loading preferences failed: ${
+        `${pluginId}: loading preferences failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
     });
-  }, [rpc]);
+  }, [pluginId, rpc, store]);
   useRealtime(PREFERENCES_CHANGED_CHANNEL, applyRemotePreferenceSignal);
   return null;
 }

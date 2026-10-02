@@ -1,4 +1,4 @@
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "@/lib/utils";
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 
 const INLINE_PATTERN =

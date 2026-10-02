@@ -266,29 +266,13 @@ describe("push subscription RPC and CLI", () => {
     }
   });
 
-  it("renders help, refuses unknown flags, and reports errors as JSON", async () => {
+  it("documents limits in help, validates options, and reports errors as JSON", async () => {
     const host = await setup();
     try {
-      for (const argv of [["--help"], ["-h"], ["add", "--help"]]) {
-        const help = await host.harness.behavior.runCli(argv);
-        expect(help.exitCode, argv.join(" ")).toBe(0);
-        expect(help.stderr).toBe("");
-        expect(help.stdout).toContain("bb push-notifications");
-      }
-      expect(
-        (await host.harness.behavior.runCli(["add", "--help"])).stdout,
-      ).toContain("at most 512 characters");
-
-      const unknownFlag = await host.harness.behavior.runCli(["list", "--jso"]);
-      expect(unknownFlag.exitCode).toBe(1);
-      expect(unknownFlag.stderr).toContain("unknown option '--jso'");
-      expect(unknownFlag.stderr).toContain("(Did you mean --json?)");
-
-      const missing = await host.harness.behavior.runCli(["add"]);
-      expect(missing.exitCode).toBe(1);
-      expect(missing.stderr).toContain(
-        "missing required options: --token, --platform, --label",
-      );
+      const help = (await host.harness.behavior.runCli(["add", "--help"]))
+        .stdout;
+      expect(help).toContain("bb push-notifications add");
+      expect(help).toContain("at most 512 characters");
 
       const badPlatform = await host.harness.behavior.runCli([
         "add",
@@ -372,7 +356,7 @@ describe("push sender", () => {
           threadId: thread.id,
         },
         sound: "default",
-        channelId: "default",
+        channelId: "threads",
         priority: "high",
       });
       expect(host.expo.requests[0]?.[0]?.data).not.toHaveProperty("serverUrl");
@@ -464,6 +448,7 @@ describe("push sender", () => {
       now += 2;
       await waitForCoalesce();
       expect(host.expo.requests).toEqual([]);
+      expect(host.harness.realtimeSignals).toEqual([]);
     } finally {
       await host.cleanup();
     }
@@ -631,27 +616,6 @@ describe("web and desktop delivery", () => {
       });
       await waitForCoalesce();
       expect(host.harness.realtimeSignals).toHaveLength(2);
-    } finally {
-      await host.cleanup();
-    }
-  });
-
-  it("does not broadcast read, archived, or resumed threads", async () => {
-    const host = await setup();
-    try {
-      for (const overrides of [
-        { lastReadAt: Date.now() + 60_000 },
-        { archivedAt: 100 },
-        { status: "active" as const },
-      ]) {
-        const thread = host.setThread(overrides);
-        await host.harness.behavior.emitThreadEvent("thread.idle", {
-          thread,
-          lastAssistantText: "Stale",
-        });
-      }
-      await waitForCoalesce();
-      expect(host.harness.realtimeSignals).toHaveLength(0);
     } finally {
       await host.cleanup();
     }

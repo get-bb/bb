@@ -4,12 +4,11 @@ import type {
   ProjectExecutionDefaults,
   RecordedPermissionMode,
   ReasoningLevel,
-  ServiceTier,
   Thread,
 } from "@bb/domain";
 import { getEnvironment } from "@bb/db";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { DEFAULT_SERVICE_TIER, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentArgs,
   ProviderEnvironmentArgs,
@@ -28,7 +27,6 @@ import {
 } from "./thread-environment-placement.js";
 import { isLiveParentThread, type ParentThread } from "./thread-parent.js";
 
-export const DEFAULT_SERVICE_TIER: ServiceTier = "default";
 export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
 
 const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
@@ -36,9 +34,13 @@ const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
 function listDefaultProviderIdCandidates(
   registry: ProviderRegistryService,
 ): string[] {
+  const disabled = registry.disabledProviderIds();
   const available = registry
     .list()
-    .filter((registration) => registration.info.available)
+    .filter(
+      (registration) =>
+        registration.info.available && !disabled.has(registration.info.id),
+    )
     .map((registration) => registration.info.id);
   const preferred = registry.getUserDefaultProviderId();
   if (preferred !== null && available.includes(preferred)) {
@@ -53,7 +55,7 @@ function requireDefaultProviderId(registry: ProviderRegistryService): string {
     throw new ApiError(
       409,
       "no_provider_available",
-      "No agent provider is enabled. Enable an agent provider plugin in Settings → Plugins to start a thread.",
+      "No agent provider is enabled. Enable an agent provider in Settings → Providers to start a thread.",
     );
   }
   return providerId;
@@ -183,16 +185,28 @@ export function resolveCreateThreadExecutionDefaults(
   registry: ProviderRegistryService,
   args: ResolveCreateThreadExecutionDefaultsArgs,
 ): CreateThreadExecutionDefaultsResolved {
+  const disabled = registry.disabledProviderIds();
+  const storedProviderId =
+    args.storedDefaults !== null &&
+    !disabled.has(args.storedDefaults.providerId)
+      ? args.storedDefaults.providerId
+      : undefined;
   const isProductDefault =
-    args.requestedProviderId === undefined &&
-    args.storedDefaults?.providerId === undefined;
+    args.requestedProviderId === undefined && storedProviderId === undefined;
   const defaultCandidates = isProductDefault
     ? listDefaultProviderIdCandidates(registry)
     : [];
   const providerId =
     args.requestedProviderId ??
-    args.storedDefaults?.providerId ??
+    storedProviderId ??
     requireDefaultProviderId(registry);
+  if (disabled.has(providerId)) {
+    throw new ApiError(
+      409,
+      "provider_disabled",
+      `Provider "${providerId}" is disabled. Enable it in Settings → Providers.`,
+    );
+  }
   const registration = registry.get(providerId);
   if (registration !== null && !registration.info.available) {
     throw new ApiError(

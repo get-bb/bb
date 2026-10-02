@@ -92,10 +92,10 @@ export interface ProviderListingBudget {
 }
 
 export function createProviderListingBudget(
-  options: { totalMs?: number; now?: () => number } = {},
+  options: { now?: () => number } = {},
 ): ProviderListingBudget {
   const now = options.now ?? Date.now;
-  const deadline = now() + (options.totalMs ?? COMMAND_TIMEOUT_MS);
+  const deadline = now() + COMMAND_TIMEOUT_MS;
   return {
     remainingMs() {
       const remaining = deadline - now();

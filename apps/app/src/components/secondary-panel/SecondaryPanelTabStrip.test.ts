@@ -12,7 +12,6 @@ import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
 import {
   SecondaryPanelTabStrip,
-  SECONDARY_PANEL_TAB_STRIP_FADE_TONE,
   secondaryPanelTabsToClose,
   type SecondaryPanelTabStripProps,
 } from "./SecondaryPanelTabStrip";
@@ -23,10 +22,6 @@ afterEach(() => {
 });
 
 describe("secondary panel tab-strip edge fades", () => {
-  it("uses the themed edge fade", () => {
-    expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("sidebar");
-  });
-
   it("keeps the desktop tab viewport outside the window drag region", () => {
     vi.stubGlobal(
       "ResizeObserver",

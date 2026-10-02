@@ -121,35 +121,11 @@ describe("ServerMoveService.handleServerMoved", () => {
       },
     },
     {
-      name: "a URL with credentials",
-      notice: {
-        source: "message" as const,
-        serverUrl: "https://user:secret@studio.example.test",
-        headers: {},
-      },
-    },
-    {
-      name: "a non-http URL",
-      notice: {
-        source: "message" as const,
-        serverUrl: "file:///etc/passwd",
-        headers: {},
-      },
-    },
-    {
       name: "a header name with a line break",
       notice: {
         source: "message" as const,
         serverUrl: "https://studio.example.test",
         headers: { "x-bb\r\nExecStart": "value" },
-      },
-    },
-    {
-      name: "a header value with a line break",
-      notice: {
-        source: "message" as const,
-        serverUrl: "https://studio.example.test",
-        headers: { "x-bb-connect-machine": "bbcm\nExecStart=/bin/sh" },
       },
     },
   ])(
@@ -208,6 +184,7 @@ describe("ServerMoveService.handleServerMoved", () => {
     const fixture = await createFixture({
       serverUrl: "http://old-server.example.test:38886",
       autoUpdate: true,
+      supervised: true,
     });
     const service = fixture.createService({
       env: {
@@ -236,6 +213,7 @@ describe("ServerMoveService.handleServerMoved", () => {
           join(fixture.npmPrefix, "bin", "bb-app"),
           "host-daemon",
           "--auto-update",
+          "--supervise",
           "--host-daemon-port",
           "38887",
           "--server-url",

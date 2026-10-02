@@ -1,5 +1,4 @@
-import { execFile, type ExecFileException } from "node:child_process";
-import { promisify } from "node:util";
+import type { ExecFileException } from "node:child_process";
 import {
   type GitHostPullRequest,
   type GitHostPullRequestCheck,
@@ -10,10 +9,11 @@ import {
   type GitHostPullRequestReviewDecision,
   gitHostPullRequestSchema,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  execPortableFile,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import { runGit, type GitCommandResult, WorkspaceError } from "./git.js";
-
-const execFileAsync = promisify(execFile);
 
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
 const GIT_UPSTREAM_LOOKUP_TIMEOUT_MS = 10_000;
@@ -28,6 +28,7 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "state",
   "url",
   "isDraft",
+  "autoMergeRequest",
   "baseRefName",
   "headRefName",
   "updatedAt",
@@ -272,6 +273,8 @@ function normalizeGitHubPullRequestView(
     state: normalizeUppercase(object.state),
     url: getString(object, "url"),
     isDraft: getBoolean(object, "isDraft"),
+    autoMerge: asObject(object.autoMergeRequest) !== null,
+    inMergeQueue: null,
     baseRefName: getString(object, "baseRefName"),
     headRefName: getString(object, "headRefName"),
     updatedAt: getString(object, "updatedAt"),
@@ -589,9 +592,8 @@ export async function getPullRequestForCurrentBranch(
   ];
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync("gh", ghArgs, {
+    ({ stdout } = await execPortableFile("gh", ghArgs, {
       cwd: args.cwd,
-      encoding: "utf8",
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,
         ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
@@ -609,6 +611,44 @@ export async function getPullRequestForCurrentBranch(
       message: "gh pr view returned unparseable output",
     };
   }
+  if (pullRequest.state === "OPEN" && !pullRequest.isDraft) {
+    try {
+      const { stdout: queueOutput } = await execPortableFile(
+        "gh",
+        [
+          "api",
+          "graphql",
+          "--hostname",
+          new URL(pullRequest.url).hostname,
+          "-f",
+          "query=query($url: URI!) { resource(url: $url) { ... on PullRequest { isInMergeQueue } } }",
+          "-f",
+          `url=${pullRequest.url}`,
+        ],
+        {
+          cwd: args.cwd,
+          env: sanitizeInheritedChildProcessEnv({
+            env: process.env,
+            ...(args.shellPath !== undefined
+              ? { shellPath: args.shellPath }
+              : {}),
+          }),
+          timeout: GH_PR_VIEW_TIMEOUT_MS,
+          maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
+        },
+      );
+      const response = asObject(JSON.parse(queueOutput));
+      const data = asObject(response?.data);
+      const resource = asObject(data?.resource);
+      pullRequest.inMergeQueue = resource
+        ? getBoolean(resource, "isInMergeQueue")
+        : null;
+    } catch {
+      pullRequest.inMergeQueue = null;
+    }
+  } else {
+    pullRequest.inMergeQueue = false;
+  }
   return { outcome: "found", pullRequest };
 }
 
@@ -624,9 +664,8 @@ export async function runPullRequestActionForCurrentBranch(
     target.outcome === "upstream-branch" ? target.selector : null,
   );
   try {
-    await execFileAsync("gh", ghArgs, {
+    await execPortableFile("gh", ghArgs, {
       cwd: args.cwd,
-      encoding: "utf8",
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,
         ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),

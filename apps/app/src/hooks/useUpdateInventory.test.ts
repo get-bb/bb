@@ -4,8 +4,13 @@ import type {
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
+import type {
+  SystemAppUpdateStatus,
+  SystemVersionResponse,
+} from "@bb/server-contract";
 import {
   buildUpdateInventoryProviderIssues,
+  resolveAppUpdateAvailable,
   updateInventoryHosts,
 } from "./useUpdateInventory";
 
@@ -67,5 +72,83 @@ describe("updateInventoryHosts", () => {
       persistent,
       manual,
     ]);
+  });
+});
+
+describe("resolveAppUpdateAvailable", () => {
+  const npmVersion: SystemVersionResponse = {
+    currentVersion: "1.0.0",
+    isDevelopment: false,
+    latestVersion: "1.1.0",
+    source: "npm",
+    updateAvailable: true,
+    upgradeCommand: "npx bb-app@latest",
+  };
+
+  function status(
+    overrides: Partial<SystemAppUpdateStatus>,
+  ): SystemAppUpdateStatus {
+    return {
+      activity: { phase: "idle" },
+      available: {
+        channel: "latest",
+        commit: null,
+        commitCount: null,
+        subjects: [],
+        version: "1.1.0",
+      },
+      blocked: null,
+      current: { commit: null, version: "1.0.0" },
+      lastResult: null,
+      runningThreadCount: 0,
+      support: { kind: "supported", mode: "npm" },
+      ...overrides,
+    };
+  }
+
+  it("counts an in-app server update even inside the desktop app", () => {
+    expect(
+      resolveAppUpdateAvailable({
+        appUpdate: status({}),
+        isDesktop: true,
+        systemVersion: npmVersion,
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves a desktop-owned server to the desktop's own update badge", () => {
+    expect(
+      resolveAppUpdateAvailable({
+        appUpdate: status({
+          available: null,
+          support: { kind: "unsupported", reason: "desktop" },
+        }),
+        isDesktop: true,
+        systemVersion: npmVersion,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not badge every new main commit on a source checkout", () => {
+    expect(
+      resolveAppUpdateAvailable({
+        appUpdate: status({ support: { kind: "supported", mode: "source" } }),
+        isDesktop: true,
+        systemVersion: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps the npm version badge for web installs without the launcher shim", () => {
+    expect(
+      resolveAppUpdateAvailable({
+        appUpdate: status({
+          available: null,
+          support: { kind: "unsupported", reason: "unmanaged" },
+        }),
+        isDesktop: false,
+        systemVersion: npmVersion,
+      }),
+    ).toBe(true);
   });
 });

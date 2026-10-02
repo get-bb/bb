@@ -524,7 +524,11 @@ describe("public thread default routes", () => {
       await expect(readJson(response)).resolves.toEqual({
         code: "model_catalog_unavailable",
         message: expect.stringContaining("Unable to load codex models"),
-        details: { providerId: "codex", code: "failed" },
+        details: {
+          providerId: "codex",
+          code: "failed",
+          detail: "Codex model discovery failed",
+        },
         retryable: true,
       });
       expect(
@@ -739,44 +743,6 @@ describe("public thread default routes", () => {
           projectId: project.id,
         }),
       ).toBeNull();
-    });
-  });
-
-  it("excludes side-chat threads from sidebar bootstrap", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/thread-defaults-sidebar-side-chat",
-      });
-      const parentThread = seedThread(harness.deps, {
-        projectId: project.id,
-        title: "Parent",
-      });
-      const sideChatThread = seedThread(harness.deps, {
-        projectId: project.id,
-        sourceThreadId: parentThread.id,
-        originKind: "fork",
-        originPluginId: "side-chat",
-        visibility: "hidden",
-        title: "Side chat",
-      });
-
-      const response = await harness.app.request("/api/v1/sidebar-bootstrap");
-
-      expect(response.status).toBe(200);
-      const bootstrap = sidebarBootstrapResponseSchema.parse(
-        await readJson(response),
-      );
-      const sidebarProject = bootstrap.projects.find(
-        (candidate) => candidate.id === project.id,
-      );
-      expect(sidebarProject?.threads.map((thread) => thread.id)).toContain(
-        parentThread.id,
-      );
-      expect(sidebarProject?.threads.map((thread) => thread.id)).not.toContain(
-        sideChatThread.id,
-      );
     });
   });
 

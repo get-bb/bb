@@ -258,15 +258,3 @@ export function moreInMarketplaceCategory(
 export function formatInstalls(value: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
 }
-
-export function formatMarketplaceDate(
-  value: string | undefined,
-): string | null {
-  if (value === undefined) return null;
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(value));
-}

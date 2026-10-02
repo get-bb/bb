@@ -1,0 +1,49 @@
+name: Cache workspace
+description: Restore optional pnpm and Turbo caches and save them after successful jobs.
+inputs:
+  node-version:
+    required: true
+    description: Node version used in Turbo cache keys
+  cache-prefix:
+    required: true
+    description: Job-specific Turbo cache prefix
+  turbo-cache:
+    default: "true"
+    description: Whether to cache Turbo outputs
+  turbo-cache-max-size-mb:
+    default: "1024"
+    description: Maximum saved Turbo cache size in MB
+runs:
+  using: composite
+  steps:
+    - name: Locate pnpm store
+      id: store
+      shell: bash
+      run: |
+        echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+        echo "arch=$(node -p process.arch)" >> "$GITHUB_OUTPUT"
+    - name: Cache pnpm store
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: node-cache-${{ runner.os }}-${{ steps.store.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          node-cache-${{ runner.os }}-${{ steps.store.outputs.arch }}-pnpm-
+    - name: Cache Turbo task outputs
+      if: inputs.turbo-cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: .turbo/cache
+        key: ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.cache-prefix }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.cache-prefix }}-
+          ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
+          ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-
+    - name: Prune restored Turbo cache
+      if: inputs.turbo-cache == 'true'
+      shell: bash
+      run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb "${{ inputs.turbo-cache-max-size-mb }}"

@@ -5,6 +5,7 @@ import {
   count,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNotNull,
@@ -37,10 +38,12 @@ import {
   environments,
   pendingInteractions,
   projects,
+  terminalSessions,
   threadSearchSegments,
   threads,
 } from "../schema.js";
 import { createThreadId } from "../ids.js";
+import { NON_TERMINAL_SESSION_STATUSES } from "./terminal-sessions.js";
 import { createOrderKeyBetween } from "./order-keys.js";
 import { insertThreadPluginMetadata } from "./thread-plugin-metadata.js";
 
@@ -261,6 +264,7 @@ export interface CreateThreadInput {
   title?: string | null;
   titleFallback?: string | null;
   sectionId?: string | null;
+  pinned?: boolean;
   status?: ThreadStatus;
   parentThreadId?: string | null;
   lifecycleOwnerThreadId?: string | null;
@@ -268,6 +272,7 @@ export interface CreateThreadInput {
   originKind?: ThreadOriginKind | null;
   originPluginId?: string | null;
   pluginMetadata?: { pluginId: string; metadata: JsonObject } | null;
+  startupContext?: string;
   visibility?: ThreadVisibility;
 }
 
@@ -317,7 +322,15 @@ export function createThread(
           title: input.title ?? null,
           titleFallback: input.titleFallback ?? null,
           sectionId: input.sectionId ?? null,
+          pinnedAt: input.pinned ? now : null,
+          pinSortKey: input.pinned
+            ? createOrderKeyBetween({
+                previousKey: null,
+                nextKey: getFirstPinnedThread(tx)?.pinSortKey ?? null,
+              })
+            : null,
           status: input.status ?? "starting",
+          startupContext: input.startupContext ?? null,
           parentThreadId:
             originKind === null ? (input.parentThreadId ?? null) : null,
           sourceThreadId:
@@ -412,6 +425,7 @@ export function listThreadMentionRowsByIds(
 export interface ListThreadsOptions {
   projectId?: string;
   environmentId?: string;
+  hostId?: string;
   archived?: boolean;
   sectionId?: string;
   unsectioned?: boolean;
@@ -682,6 +696,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.environmentId
       ? eq(threads.environmentId, options.environmentId)
       : undefined,
+    options.hostId ? eq(environments.hostId, options.hostId) : undefined,
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
     nonDeletedThreads(),
@@ -1310,7 +1325,7 @@ export interface RunningThreadRow {
  * projection of the threads table.
  *
  * Archived and deleted rows are excluded because neither runs: archival stops
- * a thread, and a soft-deleted row is gone. Hidden threads are NOT excluded —
+ * a thread once its undo grace expires, and a soft-deleted row is gone. Hidden threads are NOT excluded —
  * visibility is a UI fact and a hidden thread burns a slot like any other, so
  * hiding it here would under-report real occupancy.
  *
@@ -1335,6 +1350,57 @@ export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
     .orderBy(asc(threads.id))
     .all()
     .map((row) => ({ ...row, hostId: row.hostId ?? null }));
+}
+
+const ARCHIVED_TEARDOWN_THREAD_STATUSES: readonly ThreadStatus[] = [
+  "pending",
+  "starting",
+  "active",
+  "stopping",
+];
+
+export interface ArchivedTeardownThreadRow {
+  archivedAt: number | null;
+  environmentId: string | null;
+  id: string;
+  status: ThreadStatus;
+}
+
+export function listArchivedThreadsPendingTeardown(
+  db: DbQueryConnection,
+): ArchivedTeardownThreadRow[] {
+  return db
+    .select({
+      archivedAt: threads.archivedAt,
+      environmentId: threads.environmentId,
+      id: threads.id,
+      status: threads.status,
+    })
+    .from(threads)
+    .where(
+      and(
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        or(
+          inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES]),
+          exists(
+            db
+              .select({ id: terminalSessions.id })
+              .from(terminalSessions)
+              .where(
+                and(
+                  eq(terminalSessions.threadId, threads.id),
+                  inArray(
+                    terminalSessions.status,
+                    NON_TERMINAL_SESSION_STATUSES,
+                  ),
+                ),
+              ),
+          ),
+        ),
+      ),
+    )
+    .all();
 }
 
 export function listThreadsWithPendingInteractionState(
@@ -1490,6 +1556,21 @@ export function listThreadEnvironmentAssignmentsOnHost(
       ),
     )
     .all();
+}
+
+export function listExistingThreadIds(
+  db: DbQueryConnection,
+  threadIds: string[],
+): string[] {
+  if (threadIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(inArray(threads.id, threadIds))
+    .all()
+    .map((row) => row.id);
 }
 
 export function listHostThreadIds(
@@ -1954,12 +2035,12 @@ export function markThreadDeleted(
 
 export function markThreadStorageDeleted(
   db: ThreadWriteConnection,
-  args: { threadId: string; deletedAt?: number },
+  args: { threadId: string },
 ) {
   return (
     db
       .update(threads)
-      .set({ storageDeletedAt: args.deletedAt ?? Date.now() })
+      .set({ storageDeletedAt: Date.now() })
       .where(eq(threads.id, args.threadId))
       .returning()
       .get() ?? null
@@ -2011,7 +2092,7 @@ export function unarchiveThread(
       return tx
         .update(threads)
         .set({ archivedAt: null, updatedAt: now })
-        .where(eq(threads.id, id))
+        .where(and(eq(threads.id, id), isNotNull(threads.archivedAt)))
         .returning()
         .get();
     },

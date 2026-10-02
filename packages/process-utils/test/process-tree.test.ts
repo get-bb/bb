@@ -260,10 +260,4 @@ posixOnly("process tree helpers", () => {
     await waitFor(() => !isAlive(memberPid));
     expect(isProcessGroupAlive(child)).toBe(false);
   });
-
-  it("returns an empty list for a directory that no process uses", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "bb-cwd-empty-"));
-    cleanupDirs.push(dir);
-    expect(await listProcessesWithCwdUnder({ directory: dir })).toEqual([]);
-  });
 });

@@ -39,6 +39,7 @@ describe("persisted git source intent", () => {
       rootDir: "/cache/repo/abcdef1234567",
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     expect(gitSelectorForRow(row)).toEqual({

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AppCommandProvider,
@@ -107,13 +113,9 @@ function renderPanel(args: {
   );
 }
 
-function renderFixedTabSplit({
-  keyboardKey,
-}: {
-  keyboardKey?: "Enter" | " ";
-} = {}) {
+function renderFixedTabSplit() {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
-  const panelStateId = `fixed-tab-remove-split-${keyboardKey ?? "pointer"}`;
+  const panelStateId = "fixed-tab-remove-split";
   const initial = createSidebarSplitState(
     [infoFixedTab.id, diffFixedTab.id],
     diffFixedTab.id,
@@ -596,34 +598,29 @@ describe("ThreadSecondaryPanel remove-split control", () => {
     ).toBe(true);
   });
 
-  it.each(["Enter", " "] as const)(
-    "keeps Info and Diff open when removing their split with %j",
-    (key) => {
-      renderFixedTabSplit({ keyboardKey: key });
+  it("keeps Info and Diff open when removing their split from the focused control", () => {
+    renderFixedTabSplit();
 
-      const removeControl = screen.getAllByRole("button", {
-        name: "Remove split",
-      })[1];
-      expect(removeControl).toBeInstanceOf(HTMLButtonElement);
-      if (!(removeControl instanceof HTMLButtonElement)) return;
-      removeControl.focus();
-      expect(document.activeElement).toBe(removeControl);
-      expect(removeControl.tabIndex).toBe(0);
+    const removeControl = screen.getAllByRole("button", {
+      name: "Remove split",
+    })[1];
+    expect(removeControl).toBeInstanceOf(HTMLButtonElement);
+    if (!(removeControl instanceof HTMLButtonElement)) return;
+    removeControl.focus();
+    expect(document.activeElement).toBe(removeControl);
+    expect(removeControl.tabIndex).toBe(0);
 
-      fireEvent.keyDown(removeControl, { key });
-      fireEvent.keyUp(removeControl, { key });
-      fireEvent.click(removeControl, { detail: 0 });
+    fireEvent.click(removeControl, { detail: 0 });
 
-      expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(0);
-      expect(screen.queryByRole("button", { name: "Remove split" })).toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Show thread info panel" }),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole("button", { name: "Show diff panel" }),
-      ).toBeTruthy();
-    },
-  );
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Remove split" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Show thread info panel" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Show diff panel" }),
+    ).toBeTruthy();
+  });
 });
 
 describe("ThreadSecondaryPanel Diff eligibility", () => {
@@ -714,16 +711,6 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
         .classList.contains("pl-12"),
     ).toBe(false);
   });
-
-  it("shows the side-panel glyph on a wide viewport", () => {
-    const view = renderPanel({
-      isConversationCollapsed: false,
-      onToggleConversationCollapse: noop,
-    });
-
-    const hideControl = view.getByRole("button", { name: "Hide right panel" });
-    expect(hideControl.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
-  });
 });
 
 describe("ThreadSecondaryPanel resize boundary", () => {
@@ -772,6 +759,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
 
     const control = view.getByRole("button", { name: "Full Screen" });
     expect(control.getAttribute("aria-pressed")).toBe("false");
+    expect(control.querySelector('[data-icon="Maximize2"]')).not.toBeNull();
 
     fireEvent.click(control);
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
@@ -786,6 +774,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
 
     const control = view.getByRole("button", { name: "Exit Full Screen" });
     expect(control.getAttribute("aria-pressed")).toBe("true");
+    expect(control.querySelector('[data-icon="Minimize2"]')).not.toBeNull();
     expect(document.querySelector("aside")?.style.width).toBe("100%");
 
     fireEvent.click(control);

@@ -12,6 +12,9 @@ import { GeneralSettingsSection, PrivacySettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  confirmThreadArchive?: boolean;
+  onConfirmThreadArchiveChange?: (enabled: boolean) => void;
+  desktopBrowserAvailable?: boolean;
   telemetryEnabled?: boolean;
   onTelemetryEnabledChange?: (enabled: boolean) => void;
   managedBranchPrefix?: string;
@@ -20,7 +23,11 @@ function renderSection(overrides?: {
   return render(
     <>
       <GeneralSettingsSection
-        desktopBrowserAvailable={false}
+        confirmThreadArchive={overrides?.confirmThreadArchive ?? true}
+        onConfirmThreadArchiveChange={
+          overrides?.onConfirmThreadArchiveChange ?? vi.fn()
+        }
+        desktopBrowserAvailable={overrides?.desktopBrowserAvailable ?? false}
         generalSettingsDisabled={false}
         managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
         navigateToThreadAfterCreate={false}
@@ -112,6 +119,20 @@ describe("new branch prefix setting", () => {
   });
 });
 
+describe("localhost link rewrite setting", () => {
+  it("hides the ineffective setting on localhost", () => {
+    renderSection();
+    expect(screen.queryByText("Rewrite localhost links")).toBeNull();
+    expect(screen.queryByText("Links")).toBeNull();
+  });
+
+  it("keeps the Links section for the in-app browser setting", () => {
+    renderSection({ desktopBrowserAvailable: true });
+    expect(screen.getByText("Links")).not.toBeNull();
+    expect(screen.queryByText("Rewrite localhost links")).toBeNull();
+  });
+});
+
 it("shows the saved telemetry preference and allows opting out", () => {
   const onChange = vi.fn();
   renderSection({ onTelemetryEnabledChange: onChange });
@@ -126,6 +147,24 @@ it("shows the saved telemetry preference and allows opting out", () => {
   expect(
     screen
       .getByRole("switch", { name: "Share anonymous usage data" })
+      .getAttribute("aria-checked"),
+  ).toBe("false");
+});
+
+it("allows disabling archive confirmation and shows the saved preference", () => {
+  const onChange = vi.fn();
+  renderSection({ onConfirmThreadArchiveChange: onChange });
+  const toggle = screen.getByRole("switch", {
+    name: "Thread archive confirmation",
+  });
+  expect(toggle.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(toggle);
+  expect(onChange).toHaveBeenCalledWith(false);
+  cleanup();
+  renderSection({ confirmThreadArchive: false });
+  expect(
+    screen
+      .getByRole("switch", { name: "Thread archive confirmation" })
       .getAttribute("aria-checked"),
   ).toBe("false");
 });

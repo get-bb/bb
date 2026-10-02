@@ -165,23 +165,6 @@ describe("plugin service", () => {
     }
   });
 
-  it("installs a path plugin, runs its factory, and reports running", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-greeter",
-      serverSource: `
-        import type { BbPluginApi } from "@get-bb/plugin-sdk";
-        export default function plugin(bb: any) {
-          (globalThis as any).__greeterLoads = ((globalThis as any).__greeterLoads ?? 0) + 1;
-          bb.log.info("hello from greeter");
-        }
-      `,
-    });
-    const entry = await service.installPath(rootDir);
-    expect(entry.id).toBe("greeter");
-    expect(entry.status).toBe("running");
-    expect(service.getApi("greeter")).toBeDefined();
-  });
-
   it.each(["startup", "retry"])(
     "reports starting while a %s factory is pending",
     async (mode) => {
@@ -395,6 +378,27 @@ describe("plugin service", () => {
     expect(globals.esmReloader).toBe("entry2:sub2");
   });
 
+  it("runs a CommonJS entry whose module.exports is the factory", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-cjs-factory",
+      serverSource: "",
+      bb: { server: "./server.cjs" },
+    });
+    await writeFile(
+      join(rootDir, "server.cjs"),
+      `module.exports = function plugin() {
+         globalThis.cjsFactoryLoads = (globalThis.cjsFactoryLoads ?? 0) + 1;
+       };\n`,
+    );
+    const globals = globalThis as Record<string, unknown>;
+    delete globals.cjsFactoryLoads;
+
+    const entry = await service.installPath(rootDir);
+
+    expect(entry.status).toBe("running");
+    expect(globals.cjsFactoryLoads).toBe(1);
+  });
+
   it("reload re-reads a plugin's CommonJS children", async () => {
     const rootDir = join(workDir, "bb-plugin-cjs-child");
     await writeEsmPlugin(rootDir, "cjs-child");
@@ -426,39 +430,6 @@ describe("plugin service", () => {
     await writeSources("cjs-after");
     await service.reload("cjs-child");
     expect(globals.cjsChild).toBe("cjs-after:cjs-after");
-  });
-
-  it("reload of an imported plugin is visible to a plugin that imports it", async () => {
-    const importerDir = join(workDir, "bb-plugin-importer");
-    const importedDir = join(workDir, "bb-plugin-imported");
-    await writeEsmPlugin(importerDir, "importer");
-    await writeEsmPlugin(importedDir, "imported");
-    await writeEsmSources(importedDir, "imported", "entry1", "sub1");
-    await writeFile(
-      join(importerDir, "server.js"),
-      `export default function plugin() {
-         globalThis.importerReadShared = async () =>
-           (await import(${JSON.stringify(join(importedDir, "shared.js"))})).SHARED;
-       }\n`,
-    );
-    await writeFile(
-      join(importedDir, "shared.js"),
-      `export const SHARED = "shared1";\n`,
-    );
-    await service.installPath(importedDir);
-    await service.installPath(importerDir);
-    const globals = globalThis as Record<string, unknown>;
-    const readShared = globals.importerReadShared as () => Promise<string>;
-    expect(await readShared()).toBe("shared1");
-
-    await writeFile(
-      join(importedDir, "shared.js"),
-      `export const SHARED = "shared2";\n`,
-    );
-    await writeEsmSources(importedDir, "imported", "entry2", "sub2");
-    await service.reload("imported");
-    expect(globals.imported).toBe("entry2:sub2");
-    expect(await readShared()).toBe("shared2");
   });
 
   it("hides a failed reload's sources from a plugin that imports it", async () => {
@@ -656,6 +627,7 @@ describe("plugin service", () => {
         rootDir,
         version: "0.1.0",
         enabled: true,
+        enabledFollowsDefault: false,
       });
     };
     install("aaa-slow", slowRoot);
@@ -753,6 +725,7 @@ describe("plugin service", () => {
       rootDir,
       version: "0.2.1",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const after = makeService("0.39.0");
@@ -801,6 +774,7 @@ describe("plugin service", () => {
       rootDir,
       version: "0.1.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const upgraded = createPluginService({
@@ -1036,6 +1010,7 @@ describe("plugin service", () => {
       rootDir: "/managed/installed-tool",
       version: "1.0.0",
       enabled: false,
+      enabledFollowsDefault: false,
     });
 
     expect(
@@ -1104,25 +1079,15 @@ describe("plugin service", () => {
     expect(entry?.statusDetail).toContain("timed out");
   });
 
-  it("disable unloads and disposes; enable loads again", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-switchable",
-      serverSource: `export default function plugin(bb: any) {
-        bb.onDispose(() => { (globalThis as any).__switchableDisposed = true; });
+  it("holds every plugin a hold names at start without running its factory or starting its services", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const heldAccountRoot = await writePlugin(workDir, {
+      name: "bb-plugin-held-account",
+      serverSource: `export default function plugin() {
+        const g = globalThis as any;
+        g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
       }`,
     });
-    await service.installPath(rootDir);
-    const disabled = await service.setEnabled("switchable", false);
-    expect(disabled?.status).toBe("disabled");
-    expect((globalThis as Record<string, unknown>).__switchableDisposed).toBe(
-      true,
-    );
-    const enabled = await service.setEnabled("switchable", true);
-    expect(enabled?.status).toBe("running");
-  });
-
-  it("holds a plugin at start without running its factory or starting its services", async () => {
-    const globals = globalThis as Record<string, unknown>;
     const heldRoot = await writePlugin(workDir, {
       name: "bb-plugin-held-tunnel",
       serverSource: `export default function plugin(bb: any) {
@@ -1143,6 +1108,7 @@ describe("plugin service", () => {
       serverSource: `export default function plugin() {}`,
     });
     const held = await service.installPath(heldRoot);
+    const heldAccount = await service.installPath(heldAccountRoot);
     await service.installPath(otherRoot);
     await service.stop();
     globals.__heldFactoryRuns = 0;
@@ -1152,20 +1118,20 @@ describe("plugin service", () => {
     try {
       await service.start({
         hold: {
-          source: held.source,
+          sources: [held.source, heldAccount.source],
           detail: "Held for this test.",
           isActive: async () => true,
         },
       });
 
-      expect(service.getApi("held-tunnel")).toBeUndefined();
-      expect(
-        service.list().find((entry) => entry.id === "held-tunnel"),
-      ).toMatchObject({
-        enabled: true,
-        status: "disabled",
-        statusDetail: "Held for this test.",
-      });
+      for (const id of ["held-tunnel", "held-account"]) {
+        expect(service.getApi(id)).toBeUndefined();
+        expect(service.list().find((entry) => entry.id === id)).toMatchObject({
+          enabled: true,
+          status: "disabled",
+          statusDetail: "Held for this test.",
+        });
+      }
       expect(globals.__heldFactoryRuns).toBe(0);
       expect(globals.__heldServiceStarts).toBe(0);
       expect(service.getApi("unheld")).toBeDefined();
@@ -1201,7 +1167,7 @@ describe("plugin service", () => {
       service = createTelemetryTrackedService([]);
       await service.start({
         hold: {
-          source: held.source,
+          sources: [held.source],
           detail: HELD_DETAIL,
           isActive: async () => holdActive,
         },

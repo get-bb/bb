@@ -12,7 +12,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { PluginComposerPlusMenuEntry } from "@/components/plugin/PluginComposerActions";
-import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
+import { useResolvedComposerSendMenuItems } from "@/components/plugin/composer-slot-hooks";
 import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
 
 export function ComposerSendMenu({
@@ -34,23 +34,16 @@ export function ComposerSendMenu({
 }) {
   const isCompactViewport = useIsCompactViewport();
   const view = useOptionalPluginComposerView();
-  const contributions = useResolvedComposerPlusMenuItems(
+  const contributions = useResolvedComposerSendMenuItems(
     includePluginContributions ? (view?.scope.kind ?? null) : null,
-  ).filter(
-    ({ pluginId, customizationId, item }) =>
-      (pluginId === "drafts" &&
-        customizationId === "drafts" &&
-        item.id === "drafts") ||
-      (pluginId === "scheduled-send" &&
-        customizationId === "send-later" &&
-        item.id === "send-later"),
   );
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (!canSubmit) setOpen(false);
   }, [canSubmit]);
-  const handleOpenChange = (nextOpen: boolean) => setOpen(nextOpen && canSubmit);
+  const handleOpenChange = (nextOpen: boolean) =>
+    setOpen(nextOpen && canSubmit);
 
   if (!onSubmit && contributions.length === 0) return children;
 
@@ -69,6 +62,7 @@ export function ComposerSendMenu({
         <PluginComposerPlusMenuEntry
           key={contribution.key}
           contribution={contribution}
+          slotKind="composerSendMenuItem"
         />
       ))}
     </>
@@ -100,14 +94,13 @@ export function ComposerSendMenu({
     <div
       data-promptbox-send-menu=""
       className={cn(
-        "ml-1 inline-flex items-center rounded-md [&_button]:border-0 [&_button]:!bg-transparent [&_button]:!text-inherit [&_button]:!opacity-100 [&_button]:transition-none [&_[data-promptbox-submit-action]]:ml-0 [&_[data-promptbox-submit-action]]:rounded-r-none",
+        "group/send ml-1 inline-flex items-center rounded-md [&_[data-promptbox-submit-action]]:ml-0",
         CONTROL_HOVER_TRANSITION,
-        hasInput
-          ? [
-              "bg-foreground text-background",
-              canSubmit ? "hover:bg-foreground/90" : "opacity-50",
-            ]
-          : "text-muted-foreground/50 ring-1 ring-inset ring-border",
+        "bg-foreground text-background [&_button]:!bg-transparent [&_button]:!text-inherit [&_button]:!opacity-100",
+        hasInput && "[&_[data-promptbox-submit-action]]:rounded-r-none",
+        canSubmit
+          ? "[&_button:hover]:!bg-background/15 [&_button[data-state=open]]:!bg-background/15"
+          : "opacity-50",
       )}
     >
       {children}
@@ -119,14 +112,16 @@ export function ComposerSendMenu({
             variant="ghost"
             aria-label="Send options"
             disabled={!canSubmit}
+            aria-hidden={hasInput ? undefined : true}
             className={cn(
-              "relative w-7 rounded-l-none px-0 before:absolute before:left-0 before:top-1/2 before:h-3 before:w-px before:-translate-y-1/2 [&_[data-icon-root]]:size-2.5",
-              hasInput
-                ? "before:bg-background/25"
-                : "before:bg-border",
+              "min-w-0 overflow-hidden rounded-l-none px-0 transition-[width] duration-150 ease-out motion-reduce:transition-none",
+              hasInput ? "w-6" : "w-0",
             )}
           >
-            <Icon name="ChevronDown" className="opacity-80" />
+            <Icon
+              name="ChevronDown"
+              className="opacity-50 transition-opacity duration-150 group-hover/send:opacity-100 group-focus-within/send:opacity-100 motion-reduce:transition-none"
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" mobileTitle="Send options">

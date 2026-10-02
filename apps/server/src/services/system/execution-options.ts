@@ -28,6 +28,7 @@ import {
 } from "../providers/native-roots.js";
 import {
   toProviderModelCatalogFailureCode,
+  toProviderModelCatalogFailureDetail,
   type ProviderModelCatalogAccess,
 } from "../providers/provider-model-catalog-store.js";
 import type {
@@ -61,7 +62,7 @@ function unavailableProviderModelResult(providerId: string): ModelListResult {
   return {
     models: [],
     selectedOnlyModels: [],
-    modelLoadError: { providerId, code: "provider_unavailable" },
+    modelLoadError: { providerId, code: "provider_unavailable", detail: null },
   };
 }
 
@@ -85,7 +86,13 @@ type ListSystemProviderInfosRequest = Omit<
   "capability"
 > & {
   capability?: ProviderCapabilityFilter;
+  onlyProviderId?: string;
 };
+
+interface ProviderFilter {
+  capability?: ProviderCapabilityFilter;
+  providerId?: string;
+}
 
 interface ResolveSystemProviderInfosPlanResult {
   hostId: string | null;
@@ -93,10 +100,11 @@ interface ResolveSystemProviderInfosPlanResult {
   providersPromise: Promise<ProviderInfo[]>;
 }
 
-function providerMatchesCapability(
+function providerMatchesFilter(
   provider: ProviderInfo,
-  capability: ProviderCapabilityFilter | undefined,
+  { capability, providerId }: ProviderFilter,
 ): boolean {
+  if (providerId !== undefined && provider.id !== providerId) return false;
   switch (capability) {
     case "installation":
       return provider.maintenance.installation;
@@ -109,14 +117,16 @@ function providerMatchesCapability(
 
 function listConfiguredSystemProviderInfos(
   deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
-  capability?: ProviderCapabilityFilter,
+  filter: ProviderFilter = {},
 ): ProviderInfo[] {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   return deps.providerRegistry
     .list()
     .filter(
       (entry) =>
+        !disabled.has(entry.info.id) &&
         entry.visibility === "always" &&
-        providerMatchesCapability(entry.info, capability),
+        providerMatchesFilter(entry.info, filter),
     )
     .map((entry) => entry.info);
 }
@@ -133,7 +143,10 @@ function includeRequestedRegisteredProvider(
     return providers;
   }
   const registration = deps.providerRegistry.get(providerId);
-  return registration === null ? providers : [...providers, registration.info];
+  return registration === null ||
+    deps.providerRegistry.disabledProviderIds().has(providerId)
+    ? providers
+    : [...providers, registration.info];
 }
 
 function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
@@ -145,14 +158,16 @@ function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
 async function listInstalledPluginProviderInfos(
   deps: LoggedWorkSessionDeps,
   hostId: string,
-  capability?: ProviderCapabilityFilter,
+  filter: ProviderFilter,
 ): Promise<ProviderInfo[]> {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   const registrations = deps.providerRegistry
     .list()
     .filter(
       (registration) =>
+        !disabled.has(registration.info.id) &&
         registration.visibility === "installed" &&
-        providerMatchesCapability(registration.info, capability),
+        providerMatchesFilter(registration.info, filter),
     );
   const budget = createProviderListingBudget();
   const results = await mapProviderMaintenanceRequests(
@@ -217,13 +232,13 @@ async function listInstalledPluginProviderInfos(
 export async function listSystemProviderInfosForHost(
   deps: LoggedWorkSessionDeps,
   hostId: string,
-  capability?: ProviderCapabilityFilter,
+  filter: ProviderFilter = {},
 ): Promise<ProviderInfo[]> {
-  const configured = listConfiguredSystemProviderInfos(deps, capability);
+  const configured = listConfiguredSystemProviderInfos(deps, filter);
   const installed = await listInstalledPluginProviderInfos(
     deps,
     hostId,
-    capability,
+    filter,
   );
   const visibleIds = new Set([
     ...configured.map((provider) => provider.id),
@@ -245,11 +260,10 @@ function resolveSystemProviderInfosPlan(
     return {
       hostId,
       hostLookupError: null,
-      providersPromise: listSystemProviderInfosForHost(
-        deps,
-        hostId,
-        query.capability,
-      ),
+      providersPromise: listSystemProviderInfosForHost(deps, hostId, {
+        capability: query.capability,
+        providerId: query.onlyProviderId,
+      }),
     };
   } catch (error) {
     if (!canOmitProviderDiscoveryForError(error)) {
@@ -265,7 +279,10 @@ function resolveSystemProviderInfosPlan(
       hostId: null,
       hostLookupError: error,
       providersPromise: Promise.resolve(
-        listConfiguredSystemProviderInfos(deps, query.capability),
+        listConfiguredSystemProviderInfos(deps, {
+          capability: query.capability,
+          providerId: query.onlyProviderId,
+        }),
       ),
     };
   }
@@ -460,7 +477,9 @@ async function resolveExecutionOptions(
   const modelsProvider =
     earlyModelResultPromise !== null
       ? configuredRequestedProvider
-      : (requestedProvider ?? providers[0]);
+      : query.providerId === undefined
+        ? providers[0]
+        : requestedProvider;
 
   const permissionCeiling = getHostPermissionCeiling(deps, hostId);
 
@@ -565,7 +584,11 @@ async function loadSystemProviderModels(
       providerId: args.provider.id,
     }),
     selectedOnlyModels: [],
-    modelLoadError: { providerId: args.provider.id, code: result.code },
+    modelLoadError: {
+      providerId: args.provider.id,
+      code: result.code,
+      detail: result.detail,
+    },
   };
 }
 
@@ -598,5 +621,6 @@ function buildModelLoadError({
   return {
     providerId: provider.id,
     code: toProviderModelCatalogFailureCode(error),
+    detail: toProviderModelCatalogFailureDetail(error),
   };
 }

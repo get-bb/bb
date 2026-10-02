@@ -28,7 +28,7 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 
 const manifest = JSON.parse(
   readFileSync(
-    resolve(REPO_ROOT, "packages/plugin-api-map/src/anatomy-manifest.json"),
+    resolve(REPO_ROOT, "plugins/plugin-api-docs/src/anatomy-manifest.json"),
     "utf8",
   ),
 ) as {
@@ -171,6 +171,22 @@ describe("docs anatomy manifest", () => {
         }
       }
     }
+  });
+
+  it("keeps the Info tab before the Diff tab, as the Plugin Guide's right-panel fixture draws them", () => {
+    const source = readFileSync(
+      resolve(
+        import.meta.dirname,
+        "../../views/thread-detail/ThreadDetailView.tsx",
+      ),
+      "utf8",
+    );
+    const info = source.indexOf("createThreadInfoFixedPanelTab()");
+    const diff = source.indexOf("createGitDiffFixedPanelTab()");
+
+    expect(info).toBeGreaterThan(-1);
+    expect(diff).toBeGreaterThan(-1);
+    expect(info).toBeLessThan(diff);
   });
 
   it("matches AppSidebar's section order", () => {

@@ -7,6 +7,26 @@ editingNotes: Keep flags accurate against the CLI implementation.
 ---
 Provider commands
 
+Manage agents in Settings → Providers. Enabled providers can be reordered, made
+default or disabled through the row menu; disabled providers stay listed at the
+bottom. Install provider plugins in Settings → Plugins.
+
+  bb provider disable <id>
+  bb provider enable <id>
+  bb provider list --all
+
+Disable hides one provider from pickers and the ordinary list and rejects new
+sessions and turns. It preserves its CLI, plugin, siblings and thread history;
+in-flight turns can finish. Enable also enables its supplying plugin if needed,
+while preserving other providers' individual opt-outs. list --all shows the global
+catalog including disabled plugins, without machine/environment selectors.
+SDK: providers.catalog() and providers.setEnabled({ providerId, enabled }).
+Enable restores automatic discovery, so installed-only agents again appear only
+where their CLI is installed. Disabling the default clears its selection; new
+threads use the next enabled provider in saved order, including in projects whose
+last-used provider is disabled. Explicit or existing-thread choices never
+silently switch.
+
 Providers are agent backends (e.g., codex, claude-code). Each supports different models.
 
   bb provider list [--machine <id-or-name> | --environment <id>]
@@ -15,6 +35,15 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
                                           List models for a provider
 
 Use these before spawning threads if you are unsure which provider or model to use.
+
+Service tiers are provider-defined ids. `bb provider list --json` reports each
+provider's `serviceTiers` ({id, label, description?}); `default` always means
+the provider's standard tier. A model may narrow that list: `bb provider
+models` shows a Service tiers column, and `--json` reports
+`supportedServiceTiers` per model (absent when the provider does not report
+tiers per model, in which case the model accepts every tier the provider
+lists). Pass a tier id to `--service-tier`; a tier the provider does not list
+is rejected.
 `--host` is an alias for `--machine`. Machine and environment selectors are
 mutually exclusive because an environment already selects its machine. When no
 selector is supplied, both commands intentionally inspect the server machine.
@@ -27,6 +56,11 @@ catalog model when none is marked).
 Model lists answer from the machine's last stored list while a background
 refresh runs, so a list can be hours old. A provider whose refresh keeps
 failing or timing out keeps answering from its last stored list.
+
+When no list can be served, bb provider models prints the failing provider,
+the failure code, and the underlying host message on stderr, then reports the
+empty catalog on stdout. The model pickers show the same underlying message
+beneath their summary line.
 
 Provider-native memory can be controlled on the separate Settings → Providers
 → Codex and Settings → Providers → Claude Code pages. Codex memory controls
@@ -82,11 +116,24 @@ Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.
 
+Claude Code's **Disable 1M context** provider setting (`disable1MContext`)
+defaults to `false`. Enable it with
+`bb plugin config provider-claude-code set disable1MContext true`.
+bb sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` when enabled and `0` when off.
+Changes restart the thread's Claude process before its next turn, preserving
+conversation context.
+
 Claude Code runs without its Claude in Chrome browser tools under bb by
 default. Enable them with
 `bb plugin config provider-claude-code set chromeEnabled true`. The host needs
 the Chrome extension and a claude.ai login. A change restarts the thread's
 Claude process before its next turn and keeps the conversation.
+
+Claude Code runs Bash commands in its sandbox under bb in Accept Edits and
+Approve for me modes. Disable it with
+`bb plugin config provider-claude-code set sandboxEnabled false` to use Claude
+Code's own command approvals and sandbox settings. A change restarts the
+thread's Claude process before its next turn and keeps the conversation.
 
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
@@ -102,6 +149,12 @@ Enabled provider plugins also contribute skills to the selected provider's `/`
 command menu. `bb skill list` shows native skills for Claude Code, Codex, and
 Cursor.
 
+BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
+`OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
+values. Native questions have no ACP interaction handler in BB; agents use the
+ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
+custom agents with `dialect: "opencode"` and does not change OpenCode config files.
+
 ACP providers discover models from the agent itself. For acp-opencode, the
 list mirrors the OpenCode catalog, so a custom model from the OpenCode config
 appears automatically. Discover and select one with:
@@ -110,6 +163,18 @@ appears automatically. Discover and select one with:
   bb thread spawn --provider acp-opencode --model <provider/model>
 
 bb applies the selected model to the ACP session before the first prompt.
+
+OpenCode Go quotas appear in Provider usage for the selected machine after
+signing in to Go in OpenCode on that machine. Inspect the same five-hour,
+weekly, and monthly windows with bb settings usage --machine <id-or-name> --json
+or bb.sdk.system.usageLimits({ hostId, providerId: "acp-opencode" }).
+The collector uses OPENCODE_API_KEY, the active Console account in OpenCode's
+opencode.db, or OPENCODE_AUTH_CONTENT/auth.json under XDG_DATA_HOME (default
+~/.local/share), including custom launch env overrides. Console account storage
+is read only; OpenCode owns refreshing expired sessions.
+Custom OpenCode wrappers need dialect: "opencode" and providerUsage: true.
+This reports the Go subscription, not usage for other OpenCode providers or
+Zen pay-as-you-go spending.
 
 An OpenCode model and an OpenCode agent are different selections. An OpenCode
 agent (build, plan, or a custom primary agent such as an orchestrator) is a
@@ -147,12 +212,6 @@ if the agent accepts an explicit compaction request; it defaults to false, and
 bb hides the /compact command for agents that do not declare it. The plugin
 re-registers its providers as soon as the setting changes, so no restart or
 config refresh is needed.
-
-The old customAcpAgents array in the app data-dir config.json is deprecated. bb
-still reads it and logs a warning for each agent it finds, until 0.41. Move each
-entry into the customAgents setting. The shapes match except for logo, which the
-setting does not accept: bb drops that field when it reads the old array, and a
-configured agent shows the generic tool glyph.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots

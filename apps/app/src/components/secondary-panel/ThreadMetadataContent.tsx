@@ -33,7 +33,8 @@ import {
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
-import { MachineLabel } from "@/components/machines/MachineLabel";
+import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
+import { MachineIcon } from "@/components/machines/MachineLabel";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -46,6 +47,7 @@ import {
   DetailCard,
   DetailRow,
   DetailRowIconLabel,
+  DETAIL_ROW_ICON_CLASS,
 } from "@/components/ui/detail-card.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
@@ -68,13 +70,11 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
-  PULL_REQUEST_STATE_DISPLAY,
+  getPullRequestStateDisplay,
   getPullRequestAttentionDisplay,
-  getPullRequestChecksDisplay,
   getPullRequestGithubCheckStatus,
-  getPullRequestMergeabilityDisplay,
-  getPullRequestReviewDisplay,
 } from "@/lib/pull-request-display";
 import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
@@ -152,11 +152,14 @@ export function ParentSelectorRow({
               threadId: parentThreadId,
             })}
             className={cn(
-              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+              "block min-w-0 text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
           >
-            {selectedParentOptionLabel ?? "Parent thread"}
+            <ThreadTitle
+              title={selectedParentOptionLabel ?? "Parent thread"}
+              tooltip
+            />
           </Link>
           <Button
             type="button"
@@ -216,10 +219,9 @@ function ForksRow({ thread, projectId }: ForksRowProps) {
         renderItem={(fork) => (
           <Link
             to={getThreadRoutePath({ projectId, threadId: fork.id })}
-            className="block min-w-0 truncate text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
-            title={getThreadDisplayTitle(fork)}
+            className="block min-w-0 text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
           >
-            {getThreadDisplayTitle(fork)}
+            <ThreadTitle title={getThreadDisplayTitle(fork)} tooltip />
           </Link>
         )}
       />
@@ -242,6 +244,7 @@ export function EnvironmentRow({
     projectId: thread.projectId,
     environmentId: environment?.id ?? "",
     sectionId: thread.sectionId,
+    pinned: thread.pinnedAt !== null,
   });
   const { providers } = useSystemEnvironmentProviders();
   const { providers: machineProviders } = useSystemMachineProviders();
@@ -265,8 +268,8 @@ export function EnvironmentRow({
   const infoDisplay = getEnvironmentWorkspaceInfoDisplay({
     display,
     providerLookup,
-    environmentName: environment.name,
     hostName: environmentDisplayHost.identity?.name ?? null,
+    locality: environmentDisplayHost.locality,
   });
   const displayHost = environmentHost ?? {
     name:
@@ -274,65 +277,100 @@ export function EnvironmentRow({
     type: "persistent" as const,
     machineProviderId: null,
   };
-  const showCreateThreadButton = isReusableEnvironment(environment);
+  const showCreateThreadButton =
+    environment.hostLifecycle === "active" &&
+    isReusableEnvironment(environment);
+  const machineIdentity =
+    infoDisplay.machineName !== null ? environmentDisplayHost.identity : null;
   return (
-    <DetailRow
-      label={
-        providerLookup.status === "loaded" &&
-        providerLookup.provider !== null ? (
-          <span className="flex items-center gap-1.5">
-            <EnvironmentProviderIcon
-              provider={providerLookup.provider}
-              className="size-3.5 shrink-0 text-muted-foreground"
-            />
-            <span className="min-w-0 truncate">Environment</span>
+    <>
+      <DetailRow
+        label={
+          providerLookup.status === "loaded" &&
+          providerLookup.provider !== null ? (
+            <span className="flex items-center gap-1.5">
+              <EnvironmentProviderIcon
+                provider={providerLookup.provider}
+                className={DETAIL_ROW_ICON_CLASS}
+              />
+              <span className="min-w-0 truncate">Environment</span>
+            </span>
+          ) : (
+            <DetailRowIconLabel icon={infoDisplay.icon}>
+              Environment
+            </DetailRowIconLabel>
+          )
+        }
+        valueClassName="min-w-0"
+      >
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 truncate" title={infoDisplay.label}>
+            {infoDisplay.label}
           </span>
-        ) : (
-          <DetailRowIconLabel icon={infoDisplay.icon}>
-            Environment
-          </DetailRowIconLabel>
-        )
-      }
-      valueClassName="min-w-0"
-    >
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 truncate" title={infoDisplay.label}>
-          {infoDisplay.label}
+          {showCreateThreadButton ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="New thread in this environment"
+                  onClick={createThreadInEnvironment}
+                  className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                >
+                  <Icon name="MessageSquarePlus" className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>New thread in this environment</TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
-        {infoDisplay.machineName !== null && environmentDisplayHost.identity ? (
+      </DetailRow>
+      {machineIdentity ? (
+        <DetailRow
+          label={
+            <span className="flex items-center gap-1.5">
+              <MachineIcon
+                host={displayHost}
+                machineProvider={machineProvider}
+                className={DETAIL_ROW_ICON_CLASS}
+              />
+              <span className="min-w-0 truncate">Machine</span>
+            </span>
+          }
+          valueClassName="min-w-0"
+        >
           <span
-            className="inline-flex min-w-0 shrink-0 items-center gap-1.5 text-muted-foreground"
-            title={`On ${environmentDisplayHost.identity.name} (${
-              environmentDisplayHost.identity.connected
-                ? "connected"
-                : "offline"
+            className="flex min-w-0 items-center gap-1"
+            title={`${machineIdentity.name} (${
+              environment.hostLifecycle !== "active"
+                ? "unavailable"
+                : machineIdentity.connected
+                  ? "connected"
+                  : "offline"
             })`}
           >
-            <span>·</span>
-            <MachineLabel
-              host={displayHost}
-              machineProvider={machineProvider}
-            />
-            {environmentDisplayHost.identity.connected ? null : (
-              <span>(offline)</span>
+            <span className="min-w-0 truncate">{displayHost.name}</span>
+            {machineIdentity.connected ||
+            environment.hostLifecycle !== "active" ? null : (
+              <span className="shrink-0 text-muted-foreground">(offline)</span>
             )}
           </span>
-        ) : null}
-        {showCreateThreadButton ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="New thread in this environment"
-                onClick={createThreadInEnvironment}
-                className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-              >
-                <Icon name="MessageSquarePlus" className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>New thread in this environment</TooltipContent>
-          </Tooltip>
-        ) : null}
+        </DetailRow>
+      ) : null}
+    </>
+  );
+}
+
+export function ProjectRow({ projectId }: { projectId: string }) {
+  const projectName = useProjectDisplayName(projectId);
+  if (!projectName) return null;
+
+  return (
+    <DetailRow
+      label={<DetailRowIconLabel icon="Folder">Project</DetailRowIconLabel>}
+      valueClassName="min-w-0"
+    >
+      <span className="block min-w-0 truncate" title={projectName}>
+        {projectName}
       </span>
     </DetailRow>
   );
@@ -376,7 +414,9 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
 
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="Folder">Directory</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="FolderOpen">Directory</DetailRowIconLabel>
+      }
       valueClassName="min-w-0"
     >
       <CopyableInlineLabel
@@ -436,32 +476,11 @@ interface PullRequestRowProps {
 export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const handlePullRequestClick = useUrlAnchorClickHandler(pullRequest?.url);
   if (!pullRequest) return null;
-  const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
+  const stateDisplay = getPullRequestStateDisplay(pullRequest);
   const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
-  const checksDisplay = getPullRequestChecksDisplay(pullRequest);
   const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
   const statusDisplay =
-    pullRequest.attention === "changes_requested" ||
-    pullRequest.attention === "review_requested"
-      ? getPullRequestReviewDisplay(pullRequest)
-      : pullRequest.attention === "conflicts" ||
-          pullRequest.attention === "blocked"
-        ? getPullRequestMergeabilityDisplay(pullRequest)
-        : attentionDisplay.label !== stateDisplay.label
-          ? attentionDisplay
-          : checkStatus !== null
-            ? checksDisplay
-            : null;
-  const useNeutralStatusText =
-    pullRequest.attention === "ready_to_merge" ||
-    pullRequest.attention === "checks_pending" ||
-    ((pullRequest.state === "open" || pullRequest.state === "draft") &&
-      (pullRequest.checks.state === "passing" ||
-        pullRequest.checks.state === "pending") &&
-      (pullRequest.attention === "none" || pullRequest.attention === "draft"));
-  const statusTextClassName = useNeutralStatusText
-    ? "text-foreground"
-    : statusDisplay?.className;
+    attentionDisplay.label !== stateDisplay.label ? attentionDisplay : null;
   return (
     <DetailRow
       label={
@@ -485,13 +504,13 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         </span>
         <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-1.5 text-muted-foreground">
           <PullRequestStateIcon
-            state={pullRequest.state}
+            pullRequest={pullRequest}
             className="size-3.5"
           />
           <span>{stateDisplay.label}</span>
         </span>
         {statusDisplay ? (
-          <span className={cn("min-w-0 truncate", statusTextClassName)}>
+          <span className={cn("min-w-0 truncate", statusDisplay.className)}>
             {statusDisplay.label}
           </span>
         ) : null}
@@ -987,7 +1006,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   return (
     <DetailCard
       appearance="flat"
-      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3 max-md:gap-0 max-md:py-1 max-md:[--detail-label-width:7.5rem] max-md:[&>div]:min-h-10 max-md:[&>div:not(.items-center)]:pt-2.5"
       onScroll={handleScroll}
     >
       {children}
@@ -1048,6 +1067,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onRetryParentThreads={onRetryParentThreads}
       />
       <ForksRow thread={thread} projectId={projectId} />
+      <ProjectRow projectId={projectId} />
       <EnvironmentRow
         thread={thread}
         environment={environment}
@@ -1057,36 +1077,46 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         failed={environmentProvisioningFailure}
       />
       <WorkspacePathRow environment={environment} />
-      <BranchRow workspaceStatus={workspaceStatus} />
-      <MergeBaseRow
-        workspaceStatus={workspaceStatus}
-        selectedMergeBaseBranch={selectedMergeBaseBranch}
-        mergeBaseBranchRef={mergeBaseBranchRef}
-        mergeBaseBranchOptions={mergeBaseBranchOptions}
-        mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
-        isLoadingMergeBaseBranchOptions={isLoadingMergeBaseBranchOptions}
-        onMergeBaseBranchChange={onMergeBaseBranchChange}
-        onMergeBasePickerOpenChange={onMergeBasePickerOpenChange}
-        onMergeBaseBranchSearchQueryChange={onMergeBaseBranchSearchQueryChange}
-      />
-      <GitStatusRow
-        thread={thread}
-        environment={environment}
-        workspaceStatus={workspaceStatus}
-        workspaceStatusError={workspaceStatusError}
-        workspaceUnavailable={workspaceUnavailable}
-        selectedMergeBaseBranch={selectedMergeBaseBranch}
-      />
+      {environment !== null && environment.hostLifecycle !== "active" ? null : (
+        <>
+          <BranchRow workspaceStatus={workspaceStatus} />
+          <MergeBaseRow
+            workspaceStatus={workspaceStatus}
+            selectedMergeBaseBranch={selectedMergeBaseBranch}
+            mergeBaseBranchRef={mergeBaseBranchRef}
+            mergeBaseBranchOptions={mergeBaseBranchOptions}
+            mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
+            isLoadingMergeBaseBranchOptions={isLoadingMergeBaseBranchOptions}
+            onMergeBaseBranchChange={onMergeBaseBranchChange}
+            onMergeBasePickerOpenChange={onMergeBasePickerOpenChange}
+            onMergeBaseBranchSearchQueryChange={
+              onMergeBaseBranchSearchQueryChange
+            }
+          />
+          <GitStatusRow
+            thread={thread}
+            environment={environment}
+            workspaceStatus={workspaceStatus}
+            workspaceStatusError={workspaceStatusError}
+            workspaceUnavailable={workspaceUnavailable}
+            selectedMergeBaseBranch={selectedMergeBaseBranch}
+          />
+        </>
+      )}
       <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
-      <ThreadCommitsRow
-        workspaceStatus={workspaceStatus}
-        onCommitClick={onCommitClick}
-      />
-      <ChangedFilesRow
-        workspaceStatus={workspaceStatus}
-        onChangedFileClick={onChangedFileClick}
-      />
+      {environment !== null && environment.hostLifecycle !== "active" ? null : (
+        <>
+          <ThreadCommitsRow
+            workspaceStatus={workspaceStatus}
+            onCommitClick={onCommitClick}
+          />
+          <ChangedFilesRow
+            workspaceStatus={workspaceStatus}
+            onChangedFileClick={onChangedFileClick}
+          />
+        </>
+      )}
       {storage ? <ThreadStorageRow {...storage} /> : null}
     </ThreadMetadataCard>
   );

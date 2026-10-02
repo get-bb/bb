@@ -340,9 +340,15 @@ describe("AppCommandProvider", () => {
     vi.useRealTimers();
   });
 
-  it("cancels keyboard hints when the modifier becomes part of a shortcut chord", () => {
+  it("cancels pending hints but preserves revealed hints through shortcut dispatch", () => {
     vi.useFakeTimers();
-    renderProvider(<ModifierState />);
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    renderProvider(
+      <>
+        <ModifierState />
+        <Handler command="thread.jump.1" name="thread" result={true} />
+      </>,
+    );
 
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
     act(() => vi.advanceTimersByTime(699));
@@ -358,7 +364,35 @@ describe("AppCommandProvider", () => {
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
     act(() => vi.advanceTimersByTime(700));
     expect(screen.getByText("held")).toBeDefined();
-    fireEvent.keyDown(window, { key: "3", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "1", ctrlKey: true });
+    expect(testState.calls).toEqual(["thread"]);
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(window, { key: "1", ctrlKey: true });
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(window, { key: "Control" });
+    expect(screen.getByText("released")).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it("tracks modifier holds and releases from controls that stop propagation", () => {
+    vi.useFakeTimers();
+    renderProvider(
+      <>
+        <ModifierState />
+        <button
+          onKeyDown={(event) => event.stopPropagation()}
+          onKeyUp={(event) => event.stopPropagation()}
+        >
+          Collapse section
+        </button>
+      </>,
+    );
+    const button = screen.getByRole("button", { name: "Collapse section" });
+    button.focus();
+    fireEvent.keyDown(button, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(700));
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(button, { key: "Control" });
     expect(screen.getByText("released")).toBeDefined();
     vi.useRealTimers();
   });
@@ -400,7 +434,7 @@ describe("AppCommandProvider", () => {
     );
 
     expect(screen.getByText("Ctrl + Shift + O")).toBeDefined();
-    expect(screen.getByText("Ctrl + Shift + ArrowUp")).toBeDefined();
+    expect(screen.getByText("Ctrl + Shift + ↑")).toBeDefined();
     expect(screen.getByText("Ctrl + Shift + 1")).toBeDefined();
   });
 

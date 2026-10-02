@@ -48,3 +48,7 @@ export function machineStatusLabel({
   }
   return parts.join(" · ");
 }
+
+export function canReconnectMachine(host: Host): boolean {
+  return host.status !== "connected" && host.lifecycle.phase === "active";
+}

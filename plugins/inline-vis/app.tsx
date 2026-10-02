@@ -1,6 +1,18 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Icon } from "@bb/shared-ui/icon";
-import { Skeleton } from "@bb/shared-ui/skeleton";
+import {
+  useEffect,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
+import { Icon } from "@/components/ui/icon";
+import {
+  CONTEXT_CARD_CLASS,
+  CONTEXT_CARD_INSET_CLASS,
+  CONTEXT_CARD_SEGMENT_CLASS,
+  CONTEXT_CARD_CHEVRON_CLASS,
+} from "@/components/ui/chrome-style-tokens";
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   definePluginApp,
   Markdown,
@@ -17,11 +29,6 @@ type PreviewTarget = NonNullable<
   MarkdownProps["experimental_document"]
 >["target"];
 
-const PREVIEW_ROUTE = {
-  workspace: "worktree/files",
-  "thread-storage": "thread-storage/files",
-} as const satisfies Record<PreviewSource, string>;
-
 type LoadState =
   | { status: "missing-file" }
   | { status: "invalid-height"; message: string }
@@ -32,6 +39,7 @@ type LoadState =
       file: string;
       source: PreviewSource;
       target: PreviewTarget;
+      url: string;
     }
   | {
       status: "ready";
@@ -47,17 +55,25 @@ type LoadState =
 const DEFAULT_HEIGHT_PX = 224;
 const MIN_HEIGHT_PX = 120;
 const MAX_HEIGHT_PX = 1_200;
+const COLLAPSED_STORAGE_KEY = "bb.inline-vis.collapsed";
 
-function encodePathSegments(file: string): string {
-  return file.split("/").map(encodeURIComponent).join("/");
+function readCollapsedPreference(): boolean {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
 }
 
-function buildPreviewUrl(
-  threadId: string,
-  file: string,
-  source: PreviewSource,
-): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/${PREVIEW_ROUTE[source]}/${encodePathSegments(file)}`;
+function writeCollapsedPreference(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
+  } catch {
+    return;
+  }
 }
 
 function parsePreviewHeight(value: string | undefined): number | null {
@@ -75,23 +91,119 @@ function parsePreviewHeight(value: string | undefined): number | null {
 function PreviewCard({
   file,
   action,
+  collapsed,
+  onCollapsedChange,
   children,
 }: {
   file: string;
   action: ReactNode;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   children: ReactNode;
 }) {
   return (
-    <div className="my-2 overflow-hidden rounded-lg border border-border bg-background">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="shrink-0 font-semibold">inline-vis</span>
-          <span className="truncate opacity-70">{file}</span>
+    <div className={cn("my-2 overflow-hidden", CONTEXT_CARD_CLASS)}>
+      <div
+        className={cn(
+          "flex items-stretch text-xs text-muted-foreground",
+          !collapsed && "border-b border-border",
+        )}
+      >
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} visualization ${file}`}
+          title={collapsed ? "Expand preview here" : "Collapse preview"}
+          className={cn(
+            "flex cursor-pointer items-center text-xs",
+            CONTEXT_CARD_SEGMENT_CLASS,
+            "min-w-0 flex-1 gap-1.5 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+            collapsed ? "text-muted-foreground" : "text-foreground",
+          )}
+          onClick={() => onCollapsedChange(!collapsed)}
+        >
+          <span className="shrink-0">inline-vis</span>
+          <span className="truncate">{file}</span>
+          <Icon
+            name="ChevronDown"
+            aria-hidden
+            className={cn(
+              CONTEXT_CARD_CHEVRON_CLASS,
+              !collapsed && "rotate-180",
+            )}
+          />
+        </button>
+        <div
+          className={cn("flex shrink-0 items-center", CONTEXT_CARD_INSET_CLASS)}
+        >
+          {action}
         </div>
-        {action}
       </div>
-      {children}
+      {collapsed ? null : children}
     </div>
+  );
+}
+
+const OPEN_ACTION_CLASS = cn(
+  "flex cursor-pointer items-center text-xs",
+  CONTEXT_CARD_SEGMENT_CLASS,
+  "shrink-0 justify-center text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+);
+
+function isModifiedClick(event: ReactMouseEvent<HTMLAnchorElement>): boolean {
+  return (
+    event.button !== 0 ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  );
+}
+
+function newPageClickHint(): string {
+  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
+  return /Mac|iPhone|iPad/.test(platform) ? "⌘-click" : "Ctrl-click";
+}
+
+function OpenPreviewAction({
+  file,
+  pageUrl,
+  onOpenPreview,
+}: {
+  file: string;
+  pageUrl: string | null;
+  onOpenPreview: () => void;
+}) {
+  const icon = <Icon name="ExternalLink" aria-hidden className="size-3" />;
+  if (pageUrl === null) {
+    return (
+      <button
+        type="button"
+        aria-label={`Open ${file} in sidebar`}
+        title="Open in sidebar"
+        className={OPEN_ACTION_CLASS}
+        onClick={onOpenPreview}
+      >
+        {icon}
+      </button>
+    );
+  }
+  return (
+    <a
+      href={pageUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Open ${file} in sidebar`}
+      title={`Open in sidebar\n${newPageClickHint()} to open in the browser`}
+      className={OPEN_ACTION_CLASS}
+      onClick={(event) => {
+        if (event.defaultPrevented || isModifiedClick(event)) return;
+        event.preventDefault();
+        onOpenPreview();
+      }}
+    >
+      {icon}
+    </a>
   );
 }
 
@@ -117,6 +229,12 @@ function InlineVisDirective({
         ? { status: "loading", file: fileAttr }
         : { status: "missing-file" },
   );
+  const [collapsed, setCollapsed] = useState(readCollapsedPreference);
+
+  const handleCollapsedChange = (nextCollapsed: boolean) => {
+    setCollapsed(nextCollapsed);
+    writeCollapsedPreference(nextCollapsed);
+  };
 
   useEffect(() => {
     if (heightError) {
@@ -183,7 +301,9 @@ function InlineVisDirective({
     return (
       <PreviewCard
         file={state.file}
-        action={<span aria-hidden className="size-5 shrink-0" />}
+        action={<span aria-hidden className="h-6 w-7 shrink-0" />}
+        collapsed={collapsed}
+        onCollapsedChange={handleCollapsedChange}
       >
         <div
           role="status"
@@ -213,21 +333,19 @@ function InlineVisDirective({
   return (
     <PreviewCard
       file={state.file}
+      collapsed={collapsed}
+      onCollapsedChange={handleCollapsedChange}
       action={
-        <button
-          type="button"
-          aria-label={`Open ${state.file} in sidebar`}
-          title="Open in sidebar"
-          className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          onClick={() => {
+        <OpenPreviewAction
+          file={state.file}
+          pageUrl={state.kind === "html" ? state.url : null}
+          onOpenPreview={() => {
             navigate.experimental_openFilePreview({
               target: state.target,
               location: null,
             });
           }}
-        >
-          <Icon name="ExternalLink" aria-hidden className="size-3" />
-        </button>
+        />
       }
     >
       {state.kind === "markdown" ? (
@@ -247,7 +365,7 @@ function InlineVisDirective({
       ) : (
         <iframe
           title={`inline-vis: ${state.file}`}
-          src={buildPreviewUrl(message.threadId, state.file, state.source)}
+          src={state.url}
           sandbox="allow-scripts"
           style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
           className="block w-full border-0 bg-background"

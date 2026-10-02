@@ -29,13 +29,13 @@ import {
   useSavedDocument,
   type DocumentIO,
 } from "./document-session.js";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon } from "@/components/ui/icon";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+} from "@/components/ui/tooltip";
 import type { docsRpcContract } from "./server.js";
 import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
@@ -73,8 +73,8 @@ import HtmlFile01Icon from "@hugeicons/core-free-icons/HtmlFile01Icon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { Button } from "@/components/ui/button";
+import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
   Dialog,
   DialogContent,
@@ -82,18 +82,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@bb/shared-ui/dialog";
-import { Input } from "@bb/shared-ui/input";
-import { Skeleton } from "@bb/shared-ui/skeleton";
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@bb/shared-ui/select";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { usePortalScopeProps } from "@bb/shared-ui/lib/portal-scope";
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 
 interface Vault {
   id: string;
@@ -563,6 +563,7 @@ function TiptapEditor(props: {
       editor.destroy();
       editorRef.current = null;
     };
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [initialValue, notePath, previewBaseUrl, inline]);
 
   useEffect(() => {
@@ -589,6 +590,7 @@ function TiptapEditor(props: {
   }, [value, notePath, previewBaseUrl]);
   useEffect(() => {
     if (editorRef.current) setBase(editorRef.current);
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [baseMarkdown]);
   useEffect(() => {
     editorRef.current?.setEditable(!disabled, false);
@@ -912,14 +914,18 @@ function InlineDocument({
     setAskError(null);
     try {
       await session.flush();
-      composer.updateText(
-        (current) => `${current}${current.trim() ? "\n\n" : ""}Update `,
+      composer.insert(
+        [
+          "Update ",
+          {
+            provider: "note",
+            id: `${document.vaultId}:${document.path}`,
+            label: document.title,
+          },
+          " ",
+        ],
+        { at: "end", block: true },
       );
-      composer.insertMention({
-        provider: "note",
-        id: `${document.vaultId}:${document.path}`,
-        label: document.title,
-      });
       composer.focus();
     } catch (error) {
       setAskError(errorMessage(error));

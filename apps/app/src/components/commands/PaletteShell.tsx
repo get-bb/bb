@@ -9,6 +9,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
+import { PALETTE_INPUT_CLASS, PaletteInputBand } from "./PaletteInputBand";
 
 export const PALETTE_SECTION_LABEL_CLASS =
   "px-2 py-1 text-xs font-normal leading-5 text-subtle-foreground";
@@ -81,35 +82,30 @@ export function PaletteShell({
 
   return (
     <TooltipProvider>
-      <div
-        className="rounded-t-[inherit] border-b border-border bg-background px-3 py-1"
-        data-palette-input-band
-      >
-        <div className="flex h-10 items-center gap-2" data-palette-input-frame>
-          {modeChip === undefined ? null : <PaletteModeChip {...modeChip} />}
-          <input
-            ref={inputRef}
-            autoFocus
-            role="combobox"
-            aria-expanded
-            aria-controls={listId}
-            aria-activedescendant={activeDescendantId}
-            aria-describedby={inputDescriptionId}
-            aria-label={inputLabel}
-            autoComplete="off"
-            spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-subtle-foreground placeholder:font-light placeholder:opacity-70"
-            placeholder={placeholder}
-            value={value}
-            onChange={(event) => onInputChange(event.target.value)}
-            onKeyDown={onInputKeyDown}
-          />
-          <span id={inputDescriptionId} className="sr-only">
-            {inputDescription}
-          </span>
-          {inputAccessory}
-        </div>
-      </div>
+      <PaletteInputBand>
+        {modeChip === undefined ? null : <PaletteModeChip {...modeChip} />}
+        <input
+          ref={inputRef}
+          autoFocus
+          role="combobox"
+          aria-expanded
+          aria-controls={listId}
+          aria-activedescendant={activeDescendantId}
+          aria-describedby={inputDescriptionId}
+          aria-label={inputLabel}
+          autoComplete="off"
+          spellCheck={false}
+          className={PALETTE_INPUT_CLASS}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onInputChange(event.target.value)}
+          onKeyDown={onInputKeyDown}
+        />
+        <span id={inputDescriptionId} className="sr-only">
+          {inputDescription}
+        </span>
+        {inputAccessory}
+      </PaletteInputBand>
       <div
         className="relative min-h-0 overflow-hidden rounded-b-[inherit] bg-background"
         data-palette-results-clip

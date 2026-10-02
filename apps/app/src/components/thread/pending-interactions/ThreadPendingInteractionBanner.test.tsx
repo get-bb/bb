@@ -300,7 +300,11 @@ describe("ThreadPendingInteractionBanner request family", () => {
 
   it("renders a plugin request through the plugin's pendingInteraction slot, keyed by <pluginId>/<kind>", () => {
     function SecretForm({ interaction }: PluginPendingInteractionProps) {
-      return <div data-testid="secret-form">{interaction.title}</div>;
+      return (
+        <div data-testid="secret-form">
+          {interaction.title}:{JSON.stringify(interaction.payload)}
+        </div>
+      );
     }
     setPluginSlotRegistrations(
       "secrets",
@@ -313,7 +317,9 @@ describe("ThreadPendingInteractionBanner request family", () => {
     expect(banner.getAttribute("data-request-kind")).toBe(
       "secrets/secret-request",
     );
-    expect(screen.getByTestId("secret-form").textContent).toBe("Add secrets");
+    expect(screen.getByTestId("secret-form").textContent).toBe(
+      'Add secrets:{"fields":["KEY"]}',
+    );
   });
 
   it("renders a provider's plugin-defined request through the same slot, with the form's data", () => {

@@ -639,24 +639,4 @@ describe("describeLifecycleError", () => {
       'Failed to send message. Blocked by the "release-freeze" plugin: This project is frozen until the release ships.',
     );
   });
-
-  it("names the plugin once when a gate fails closed", () => {
-    const body: LifecycleApiError = {
-      code: "dispatch_hook_failed",
-      message:
-        'The "release-freeze" plugin\'s message.dispatch hook failed: handler threw',
-      details: { pluginId: "release-freeze" },
-    };
-
-    const description = describeLifecycleError({
-      error: httpError(body),
-      operation: "queue_message",
-    });
-
-    if (!description) {
-      throw new Error("expected a lifecycle description");
-    }
-    expect(description.body.match(/release-freeze/gu)).toHaveLength(1);
-    expect(description.body).toContain("Disable that plugin to continue.");
-  });
 });

@@ -42,6 +42,7 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
     managed: false,
     workspaceProvisionType: null,
     createdAt: 1,
@@ -106,6 +107,40 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("pages prompt history with an opaque cursor", async () => {
+    const response = {
+      entries: [
+        {
+          id: "phist_1",
+          createdAt: 10,
+          input: [{ type: "text", text: "Fix auth", mentions: [] }],
+          projectId: "proj_1",
+          threadId: "thr_1",
+        },
+      ],
+      nextCursor: "next",
+    };
+    const queue = createFetchQueue([{ body: response }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.experimental_promptHistory.list({ cursor: "abc", limit: "25" }),
+    ).resolves.toEqual(response);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/prompt-history?cursor=abc&limit=25",
+      },
+    ]);
+  });
+
   it("creates a DigitalOcean machine through the SDK without a project", async () => {
     const host = {
       id: "host_do",
@@ -252,20 +287,6 @@ describe("@bb/sdk", () => {
         url: "http://bb.test/api/v1/threads/thr_test/pane-action",
       },
     ]);
-  });
-
-  it("keeps realtime subscriptions distinct under subscribe", () => {
-    const queue = createFetchQueue([]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-
-    expect(typeof sdk.subscribe).toBe("function");
-    expect("on" in sdk).toBe(false);
   });
 
   it("maps thread event filters and reverse pagination onto the public query", async () => {
@@ -598,7 +619,7 @@ describe("@bb/sdk", () => {
           jsonResponse({
             body: {
               code: "invalid_request",
-              message: "Attachment exceeds 10MB limit",
+              message: "huge.png is 36MB, over the 35MB attachment limit",
             },
             status: 400,
           }),
@@ -615,7 +636,7 @@ describe("@bb/sdk", () => {
       }),
     ).rejects.toMatchObject({
       code: "invalid_request",
-      message: "HTTP 400: Attachment exceeds 10MB limit",
+      message: "HTTP 400: huge.png is 36MB, over the 35MB attachment limit",
       status: 400,
     });
   });
@@ -647,16 +668,10 @@ describe("@bb/sdk", () => {
         },
       }),
       new Response("remote text", {
-        headers: {
-          "content-type": "text/plain",
-          "x-bb-content-encoding": "utf8",
-        },
+        headers: { "content-type": "text/plain" },
       }),
       new Response(new Uint8Array([0, 1, 254, 255]), {
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-bb-content-encoding": "base64",
-        },
+        headers: { "content-type": "application/octet-stream" },
       }),
     ];
     const fetch: FetchImplementation = async (input, init) => {
@@ -710,9 +725,16 @@ describe("@bb/sdk", () => {
 
     expect(requests.map((request) => request.url)).toEqual([
       "http://bb.test/api/v1/projects/proj_remote/files?hostId=host_remote",
-      "http://bb.test/api/v1/projects/proj_remote/files/content?environmentId=env_remote&path=remote.txt",
-      "http://bb.test/api/v1/projects/proj_remote/files/content?hostId=host_remote&path=image.bin",
+      "http://bb.test/api/v1/environments/env_remote/files/remote.txt",
+      "http://bb.test/api/v1/projects/proj_remote/hosts/host_remote/files/image.bin",
     ]);
+
+    for (const path of ["../../hosts", "docs/./a.md", "/etc/hosts", "a\\b"]) {
+      await expect(
+        sdk.projects.fileContent({ projectId: "proj_remote", path }),
+      ).rejects.toThrow(`Invalid file path: ${path}`);
+    }
+    expect(requests).toHaveLength(3);
   });
 
   it("routes provider list and model discovery through portable host selectors", async () => {
@@ -1655,6 +1677,29 @@ describe("@bb/sdk", () => {
     expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/running");
   });
 
+  it("lists thread sections without fetching sidebar projects", async () => {
+    const sections = [
+      { id: "sec_123", name: "Review", createdAt: 1, updatedAt: 2 },
+    ];
+    const queue = createFetchQueue([{ body: sections }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threadSections.list()).resolves.toEqual(sections);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/thread-sections",
+      },
+    ]);
+  });
+
   it("exposes thread section mutations", async () => {
     const queue = createFetchQueue([
       {
@@ -1805,6 +1850,7 @@ describe("@bb/sdk", () => {
               official: false,
               author: { name: "Acme", url: null },
               installed: true,
+              conflictingInstallSource: null,
               compatible: true,
               incompatibleReason: null,
             },

@@ -1,9 +1,11 @@
 import type { WorkspaceCommitSummary } from "@bb/domain";
+import type { DiffFileEntry } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildGitDiffSelectionOptions,
   buildGitDiffTarget,
   COMMITTED_GIT_DIFF_SELECTION,
+  filterDiffFilesByPath,
   shouldResetSelectedGitDiffSelection,
   UNCOMMITTED_GIT_DIFF_SELECTION,
 } from "./gitDiffPanelHelpers";
@@ -18,6 +20,22 @@ function makeCommit(
     shortSha: "abc123",
     subject: "Initial change",
     ...overrides,
+  };
+}
+
+function makeDiffFile(
+  path: string,
+  previousPath: string | null = null,
+): DiffFileEntry {
+  return {
+    path,
+    previousPath,
+    changeKind: previousPath ? "renamed" : "modified",
+    additions: 1,
+    deletions: 0,
+    binary: false,
+    origin: "tracked",
+    loadMode: "auto",
   };
 }
 
@@ -109,5 +127,82 @@ describe("gitDiffPanelHelpers", () => {
         hasUncommittedChanges: false,
       }),
     ).toBe(true);
+  });
+
+  describe("filterDiffFilesByPath", () => {
+    const files = [
+      makeDiffFile("apps/app/src/Panel.tsx"),
+      makeDiffFile("apps/app/src/Panel.test.tsx"),
+      makeDiffFile("apps/server/src/routes/diff.ts"),
+      makeDiffFile("README.md"),
+      makeDiffFile("docs/api.mdx"),
+      makeDiffFile("docs/new-name.md", "docs/Old-Name.txt"),
+    ];
+    const paths = (query: string) =>
+      filterDiffFilesByPath(files, query).map((file) => file.path);
+
+    it("returns every file for a blank query", () => {
+      expect(filterDiffFilesByPath(files, " , ")).toBe(files);
+    });
+
+    it("matches plain text as a case-insensitive path substring", () => {
+      expect(paths("PANEL")).toEqual([
+        "apps/app/src/Panel.tsx",
+        "apps/app/src/Panel.test.tsx",
+      ]);
+    });
+
+    it("matches a slashless glob against the file name at any depth", () => {
+      expect(paths("*.md")).toEqual(["README.md", "docs/new-name.md"]);
+    });
+
+    it("matches a glob containing a slash against the full path", () => {
+      expect(paths("apps/*/src/**")).toEqual([
+        "apps/app/src/Panel.tsx",
+        "apps/app/src/Panel.test.tsx",
+        "apps/server/src/routes/diff.ts",
+      ]);
+    });
+
+    it("keeps narrowing while a glob is still being typed", () => {
+      expect(paths("*.")).toHaveLength(files.length);
+      expect(paths("*.m")).toEqual([
+        "README.md",
+        "docs/api.mdx",
+        "docs/new-name.md",
+      ]);
+      expect(paths("*.md")).toEqual(["README.md", "docs/new-name.md"]);
+      expect(paths("apps/*/s")).toEqual([
+        "apps/app/src/Panel.tsx",
+        "apps/app/src/Panel.test.tsx",
+        "apps/server/src/routes/diff.ts",
+      ]);
+      expect(paths("*.py")).toEqual([]);
+    });
+
+    it("unions comma-separated patterns and removes negated ones", () => {
+      expect(paths("*.md, routes")).toEqual([
+        "apps/server/src/routes/diff.ts",
+        "README.md",
+        "docs/new-name.md",
+      ]);
+      expect(paths("*.tsx, !*.test.tsx")).toEqual(["apps/app/src/Panel.tsx"]);
+      expect(paths("!apps/**")).toEqual([
+        "README.md",
+        "docs/api.mdx",
+        "docs/new-name.md",
+      ]);
+    });
+
+    it("ignores an exclusion that would hide every remaining file", () => {
+      expect(paths("*.tsx, !*")).toEqual([
+        "apps/app/src/Panel.tsx",
+        "apps/app/src/Panel.test.tsx",
+      ]);
+    });
+
+    it("matches a renamed file by its previous path", () => {
+      expect(paths("*.txt")).toEqual(["docs/new-name.md"]);
+    });
   });
 });

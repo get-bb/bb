@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
-import { LazyThreadSecondaryPanel } from "./lazySecondaryPanelComponents";
+import {
+  LazyBrowserTabDeck,
+  LazyThreadSecondaryPanel,
+} from "./lazySecondaryPanelComponents";
 
 vi.mock("./ThreadSecondaryPanel", () => new Promise(() => {}));
+vi.mock("./BrowserTabDeck", () => {
+  throw new Error("chunk request failed");
+});
 
 afterEach(cleanup);
 
@@ -65,5 +72,42 @@ describe("LazyThreadSecondaryPanel", () => {
     expect(
       screen.getByTestId("thread-secondary-panel-placeholder").className,
     ).not.toContain("border-l");
+  });
+});
+
+describe("LazyBrowserTabDeck", () => {
+  const browserTab: BrowserFixedPanelTab = {
+    environmentId: "env-1",
+    id: "tab-a",
+    kind: "browser",
+    title: null,
+    url: "https://example.com",
+  };
+
+  function renderDeck(activeBrowserTabId: string | null) {
+    return (
+      <LazyBrowserTabDeck
+        activeBrowserTabId={activeBrowserTabId}
+        browserTabs={[browserTab]}
+        canShowNativeBrowserView={false}
+        environmentId="env-1"
+        onUpdate={noop}
+        threadId="thread-1"
+      />
+    );
+  }
+
+  it("reports a failed download only while a browser tab is showing", async () => {
+    const view = render(renderDeck(browserTab.id));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not load.",
+    );
+
+    view.rerender(renderDeck(null));
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    view.rerender(renderDeck(browserTab.id));
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 });

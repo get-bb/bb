@@ -86,41 +86,56 @@ describe("host file routes", () => {
     });
   });
 
-  it("revalidates preview files while keeping sandboxed HTML uncached", async () => {
+  it("streams preview files, revalidating media while keeping sandboxed HTML uncached", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       seedPrimaryHost(harness.deps, host.id);
-      const commands: unknown[] = [];
+      const revision = "d".repeat(64);
+      const files = new Map([
+        [
+          "/notes/chart.png",
+          {
+            bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+            mimeType: "image/png",
+          },
+        ],
+        [
+          "/notes/report.html",
+          {
+            bytes: Buffer.from("<!doctype html><h1>Report</h1>"),
+            mimeType: "text/html",
+          },
+        ],
+        [
+          "/notes/archive.zip",
+          {
+            bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 1, 2, 3]),
+            mimeType: "application/zip",
+          },
+        ],
+      ]);
+      const rootPaths: string[] = [];
       registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        handle: (request) => {
-          commands.push(request.command);
-          if (
-            request.command.type === "host.read_file" &&
-            request.command.path.endsWith(".png")
-          ) {
-            return {
-              ok: true,
-              result: {
-                path: "/notes/chart.png",
-                contentEncoding: "base64",
-                mimeType: "image/png",
-                sha256: "d".repeat(64),
-                sizeBytes: 4,
-                notModified: true,
-              },
-            };
-          }
+        handle: ({ command }) => {
+          if (command.type !== "host.read_file_chunk")
+            throw new Error("Unexpected command");
+          rootPaths.push(command.rootPath);
+          const file = files.get(command.path);
+          if (!file) throw new Error(`Unexpected path ${command.path}`);
           return {
             ok: true,
             result: {
-              path: "/notes/report.html",
-              content: "<!doctype html><h1>Report</h1>",
-              contentEncoding: "utf8",
-              mimeType: "text/html",
-              sha256: "c".repeat(64),
-              sizeBytes: 31,
+              path: command.path,
+              content: file.bytes
+                .subarray(command.offset, command.offset + command.length)
+                .toString("base64"),
+              offset: command.offset,
+              mimeType: file.mimeType,
+              modifiedAtMs: 1234,
+              sizeBytes: file.bytes.length,
+              revision,
             },
           };
         },
@@ -144,16 +159,14 @@ describe("host file routes", () => {
       }
 
       const image = await harness.app.request(`${lease.baseUrl}/chart.png`, {
-        headers: { "if-none-match": `"${"d".repeat(64)}"` },
+        headers: { "if-none-match": `W/"file-${revision}"` },
       });
       expect(image.status).toBe(304);
       expect(image.headers.get("cache-control")).toBe("private, no-cache");
 
       const content = await harness.app.request(
         `${lease.baseUrl}/report.html`,
-        {
-          headers: { "if-none-match": `"${"c".repeat(64)}"` },
-        },
+        { headers: { "if-none-match": `W/"file-${revision}"` } },
       );
       expect(content.status).toBe(200);
       expect(content.headers.get("cache-control")).toBe("no-store");
@@ -162,22 +175,17 @@ describe("host file routes", () => {
       );
       expect(content.headers.get("x-content-type-options")).toBe("nosniff");
       await expect(content.text()).resolves.toContain("<h1>Report</h1>");
-      expect(commands).toEqual([
-        {
-          type: "host.read_file",
-          path: "/notes/chart.png",
-          rootPath: "/notes",
-          ifNoneMatch: {
-            kind: "sha256",
-            values: ["d".repeat(64)],
-          },
-        },
-        {
-          type: "host.read_file",
-          path: "/notes/report.html",
-          rootPath: "/notes",
-        },
-      ]);
+
+      const archive = await harness.app.request(
+        `${lease.baseUrl}/archive.zip`,
+        { headers: { Range: "bytes=0-3" } },
+      );
+      expect(archive.status).toBe(206);
+      expect(archive.headers.get("content-range")).toBe("bytes 0-3/8");
+      expect(Buffer.from(await archive.arrayBuffer())).toEqual(
+        Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      );
+      expect(new Set(rootPaths)).toEqual(new Set(["/notes"]));
     });
   });
 
@@ -404,48 +412,6 @@ describe("host file routes", () => {
         }),
       );
       expect(missingResponse.status).toBe(404);
-    });
-  });
-
-  it("allows a non-primary host target", async () => {
-    await withTestHarness(async (harness) => {
-      const { host: primary, session: primarySession } = seedHostSession(
-        harness.deps,
-        { id: "host-file-primary" },
-      );
-      seedPrimaryHost(harness.deps, primary.id);
-      const { host: secondary, session: secondarySession } = seedHostSession(
-        harness.deps,
-        { id: "host-file-secondary" },
-      );
-
-      registerHostRpcResponder(harness, {
-        hostId: primary.id,
-        sessionId: primarySession.id,
-        handle: () => ({ ok: true, result: WRITTEN_RESULT }),
-      });
-      const primaryOk = await harness.app.request(
-        ...postJson("/api/v1/files/write", {
-          hostId: primary.id,
-          path: "/home/me/notes/note.md",
-          content: "hello",
-        }),
-      );
-      expect(primaryOk.status).toBe(200);
-
-      registerHostRpcResponder(harness, {
-        hostId: secondary.id,
-        sessionId: secondarySession.id,
-        handle: () => ({ ok: true, result: WRITTEN_RESULT }),
-      });
-      const secondaryOk = await harness.app.request(
-        ...postJson("/api/v1/files/write", {
-          hostId: secondary.id,
-          path: "/home/me/notes/note.md",
-          content: "hello",
-        }),
-      );
-      expect(secondaryOk.status).toBe(200);
     });
   });
 });

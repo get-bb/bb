@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ThreadEvent } from "@bb/domain";
 import { readBoundedLines } from "../bridge-kit/bounded-line-reader.js";
 import type { BridgeRecordingEntry } from "../bridge-kit/bridge-recorder.js";
@@ -354,7 +354,7 @@ export async function replayRecording(
     [
       "#!/usr/bin/env node",
       `process.argv.splice(2, 0, ${JSON.stringify(replayCommand.slice(2)).slice(1, -1)});`,
-      `await import(${JSON.stringify(REPLAY_CHILD_PATH)});`,
+      `await import(${JSON.stringify(pathToFileURL(REPLAY_CHILD_PATH).href)});`,
       "",
     ].join("\n"),
     { mode: 0o755 },

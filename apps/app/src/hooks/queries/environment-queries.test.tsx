@@ -8,14 +8,14 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { environmentPullRequestQueryKey } from "./query-keys";
 import {
-  buildEnvironmentFilePreview,
   getEnvironmentPullRequestRefetchInterval,
   getEnvironmentPullRequestStaleTime,
+  useEnvironmentMergeBaseBranches,
   useEnvironmentPullRequest,
 } from "./environment-queries";
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { environments: { pullRequest: vi.fn() } },
+  sdk: { environments: { pullRequest: vi.fn(), diffBranches: vi.fn() } },
 }));
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
@@ -35,6 +35,8 @@ const pullRequestFixture: ThreadPullRequest = {
   baseRefName: "main",
   headRefName: "bb/pr-refresh",
   updatedAt: "2026-06-16T12:30:00Z",
+  autoMerge: false,
+  inMergeQueue: false,
   checks: {
     state: "passing",
     totalCount: 1,
@@ -135,6 +137,26 @@ describe("useEnvironmentPullRequest", () => {
     ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
   });
 
+  it.each([
+    { autoMerge: true, inMergeQueue: false },
+    { autoMerge: false, inMergeQueue: true },
+  ])("keeps polling automated merges after checks pass: %j", (automation) => {
+    expect(
+      getEnvironmentPullRequestRefetchInterval({
+        ...pullRequestFixture,
+        ...automation,
+      }),
+    ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
+    expect(
+      getEnvironmentPullRequestRefetchInterval({
+        ...pullRequestFixture,
+        ...automation,
+        state: "merged",
+        attention: "merged",
+      }),
+    ).toBe(false);
+  });
+
   it("does not poll draft or settled pull requests", () => {
     expect(
       getEnvironmentPullRequestRefetchInterval({
@@ -164,7 +186,7 @@ describe("useEnvironmentPullRequest", () => {
     ).toBe(false);
   });
 
-  it("refetches stale pull request data on mount and on window focus", async () => {
+  it("refetches on mount and refreshes stale data on window focus", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     vi.mocked(sdk.environments.pullRequest).mockResolvedValue(
       pullRequestResponse(pullRequestFixture),
@@ -182,53 +204,70 @@ describe("useEnvironmentPullRequest", () => {
 
     expect(query?.options).toEqual(
       expect.objectContaining({
-        refetchOnMount: true,
+        refetchOnMount: "always",
         refetchOnWindowFocus: true,
         refetchInterval: expect.any(Function),
         staleTime: expect.any(Function),
       }),
     );
   });
+
+  it("refreshes a cached closed PR when its row returns after missing a realtime update", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const closed = pullRequestResponse({
+      ...pullRequestFixture,
+      state: "closed",
+    });
+    const reopened = pullRequestResponse(pullRequestFixture);
+    vi.mocked(sdk.environments.pullRequest)
+      .mockResolvedValueOnce(closed)
+      .mockResolvedValueOnce(reopened);
+
+    const first = renderHook(() => useEnvironmentPullRequest(ENVIRONMENT_ID), {
+      wrapper,
+    });
+    await waitFor(() => expect(first.result.current.data).toEqual(closed));
+    expect(first.result.current.isStale).toBe(false);
+    first.unmount();
+
+    const returned = renderHook(
+      () => useEnvironmentPullRequest(ENVIRONMENT_ID),
+      { wrapper },
+    );
+    await waitFor(() => expect(returned.result.current.data).toEqual(reopened));
+    expect(sdk.environments.pullRequest).toHaveBeenCalledTimes(2);
+  });
 });
 
-describe("buildEnvironmentFilePreview", () => {
-  const CONTENT_URL = "/api/v1/environments/env-1/diff/file?path=src%2Fa.ts";
-
-  it("keeps text previews on the route URL instead of a base64 data URL", () => {
-    const content = "export const marker = true;\n".repeat(64);
-    const preview = buildEnvironmentFilePreview({
-      contentUrl: CONTENT_URL,
-      path: "src/a.ts",
-      response: {
-        path: "src/a.ts",
-        content,
-        contentEncoding: "utf8",
-        mimeType: "text/typescript",
-        sizeBytes: content.length,
-      },
+describe("useEnvironmentMergeBaseBranches", () => {
+  it("only requests the query a typist settles on", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    vi.mocked(sdk.environments.diffBranches).mockResolvedValue({
+      branches: ["main"],
+      branchesTruncated: false,
+      remoteBranches: [],
+      remoteBranchesTruncated: false,
+      selectedBranch: null,
     });
+    const { rerender } = renderHook(
+      ({ query }: { query: string }) =>
+        useEnvironmentMergeBaseBranches(ENVIRONMENT_ID, { query }),
+      { wrapper, initialProps: { query: "" } },
+    );
+    await waitFor(() =>
+      expect(sdk.environments.diffBranches).toHaveBeenCalledTimes(1),
+    );
 
-    expect(preview.kind).toBe("text");
-    expect(preview.url).toBe(CONTENT_URL);
-    expect(preview.url.startsWith("data:")).toBe(false);
-  });
+    for (const query of ["m", "ma", "mai"]) {
+      rerender({ query });
+    }
+    rerender({ query: "main" });
 
-  it("builds a data URL only for previews that render through a media element", () => {
-    const pngBase64 =
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/Qo3AAAAAElFTkSuQmCC";
-    const preview = buildEnvironmentFilePreview({
-      contentUrl: CONTENT_URL,
-      path: "assets/logo.png",
-      response: {
-        path: "assets/logo.png",
-        content: pngBase64,
-        contentEncoding: "base64",
-        mimeType: "image/png",
-        sizeBytes: 68,
-      },
-    });
-
-    expect(preview.kind).toBe("image");
-    expect(preview.url).toBe(`data:image/png;base64,${pngBase64}`);
+    await waitFor(() =>
+      expect(sdk.environments.diffBranches).toHaveBeenCalledWith(
+        expect.objectContaining({ query: "main" }),
+      ),
+    );
+    expect(sdk.environments.diffBranches).toHaveBeenCalledTimes(2);
   });
 });

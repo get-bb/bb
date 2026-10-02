@@ -18,10 +18,7 @@ import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
 import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
-import {
-  resolvePermissionEscalation,
-  resolveThreadRuntimeCommandConfig,
-} from "../../src/services/threads/thread-runtime-config.js";
+import { resolveThreadRuntimeCommandConfig } from "../../src/services/threads/thread-runtime-config.js";
 import {
   buildExecutionOptions,
   buildThreadStartCommand,
@@ -910,8 +907,10 @@ describe("thread runtime config", () => {
       const claudeCode = await build("claude-code");
       expect(claudeCode.options.providerOptions).toEqual({
         chromeEnabled: false,
+        disable1MContext: false,
         memoryEnabled: true,
         providerSubagentsEnabled: true,
+        sandboxEnabled: true,
         workflowsEnabled: true,
       });
 
@@ -1145,11 +1144,6 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("derives ask escalation only for user-initiated work", () => {
-    expect(resolvePermissionEscalation({ initiator: "user" })).toBe("ask");
-    expect(resolvePermissionEscalation({ initiator: "system" })).toBe("deny");
-  });
-
   it("resolves the workspace, storage path, and environment directory dynamic tool", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-runtime";
@@ -1229,62 +1223,6 @@ describe("thread runtime config", () => {
       );
       expect(pluginContexts[0]?.environment.workspaceProvisionType).toBe(
         "unmanaged",
-      );
-    });
-  });
-
-  it("keeps local-host workspace .bb/AGENTS.md instructions unchanged", async () => {
-    await withTestHarness(async (harness) => {
-      const hostId = "host-runtime-agents-md";
-      seedHostSession(harness.deps, { id: hostId });
-      seedPrimaryHost(harness.deps, hostId);
-      const workspacePath = path.join(
-        harness.config.dataDir,
-        "agents-md-workspace",
-      );
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId,
-        path: workspacePath,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId,
-        projectId: project.id,
-        path: workspacePath,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-      });
-      await writeWorkspaceAgentInstructions({
-        content:
-          "# Project Rules\n\nAlways run the smoke test before pushing.\n",
-        workspacePath,
-      });
-
-      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
-        harness.deps,
-        {
-          thread,
-          model: "test-model",
-          environment: {
-            hostId: environment.hostId,
-            id: environment.id,
-            path: environment.path,
-            status: environment.status,
-          },
-        },
-      );
-
-      expect(runtimeConfig.instructionMode).toBe("append");
-      expect(runtimeConfig.instructions).not.toContain(
-        "You are working inside bb, an agentic IDE",
-      );
-      expect(runtimeConfig.instructions).toContain(
-        "The following workspace instructions come from .bb/AGENTS.md:",
-      );
-      expect(runtimeConfig.instructions).toContain(
-        "Always run the smoke test before pushing.",
       );
     });
   });
@@ -1597,6 +1535,7 @@ describe("thread runtime config", () => {
         },
       );
 
+      expect(runtimeConfig.instructionMode).toBe("append");
       const userSource =
         "The following user instructions come from <dataDir>/AGENTS.md:";
       const workspaceSource =

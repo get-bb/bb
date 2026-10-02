@@ -1,7 +1,16 @@
+import {
+  RESOURCE_GRID_PAGE_SIZE,
+  ResourceInfiniteScrollSentinel,
+  useResourceInfiniteItems,
+} from "@bb/shared-ui/resource-pagination";
 import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCard, PluginCardGrid, PluginCardAuthor } from "./PluginCard";
+import {
+  catalogEntryDetailKey,
+  catalogEntryInstallBlocker,
+} from "./installed-plugin-catalog";
 import {
   CatalogEntryIconChip,
   pluginInstallCountPresentation,
@@ -9,67 +18,68 @@ import {
 
 export function PluginCatalogGrid({
   entries,
-  showCategory = true,
+  resetKey,
   onInstall,
   onUninstall,
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
-  showCategory?: boolean;
+  resetKey: string;
   onInstall: (initial: AddPluginInitial) => void;
   onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
+  const list = useResourceInfiniteItems(entries, {
+    pageSize: RESOURCE_GRID_PAGE_SIZE,
+    resetKey,
+  });
   return (
-    <PluginCardGrid>
-      {entries.map((entry) => (
-        <PluginCatalogCard
-          key={`${entry.marketplace}/${entry.entryId}`}
-          entry={entry}
-          showCategory={showCategory}
-          onInstall={onInstall}
-          onUninstall={onUninstall}
-          onOpenPlugin={onOpenPlugin}
-        />
-      ))}
-    </PluginCardGrid>
+    <>
+      <PluginCardGrid>
+        {list.items.map((entry) => (
+          <PluginCatalogCard
+            key={`${entry.marketplace}/${entry.entryId}`}
+            entry={entry}
+            onInstall={onInstall}
+            onUninstall={onUninstall}
+            onOpenPlugin={onOpenPlugin}
+          />
+        ))}
+      </PluginCardGrid>
+      <ResourceInfiniteScrollSentinel
+        itemCount={list.items.length}
+        hasMore={list.hasMore}
+        onLoadMore={list.loadMore}
+      />
+    </>
   );
 }
 
 export function PluginCatalogCard({
   entry,
-  showCategory,
   onInstall,
   onUninstall,
   onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
-  showCategory: boolean;
   onInstall: (initial: AddPluginInitial) => void;
   onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const count = pluginInstallCountPresentation(entry.installs);
+  const installBlocker = catalogEntryInstallBlocker(entry);
   return (
     <PluginCard
       leading={<CatalogEntryIconChip entry={entry} compact />}
       title={entry.displayName}
       description={entry.description || undefined}
       byline={<PluginCardAuthor entry={entry} />}
-      badge={
-        showCategory && entry.category !== undefined
-          ? {
-              kind: "category",
-              categoryId: entry.categoryId,
-              label: entry.category,
-            }
-          : null
-      }
-      headerAction={
+      footerAction={
         entry.installed ? (
           <PluginCatalogInstallControl
             displayName={entry.displayName}
             installed
+            subtle
             included={entry.source.startsWith("builtin:")}
             count={count}
             onUninstall={
@@ -80,14 +90,16 @@ export function PluginCatalogCard({
           <PluginCatalogInstallControl
             displayName={entry.displayName}
             installed={false}
-            disabled={!entry.compatible}
+            subtle
+            disabled={installBlocker !== null}
+            unavailableReason={installBlocker}
             count={count}
             onInstall={() => onInstall(entry)}
           />
         )
       }
       openLabel={`Open ${entry.displayName} details`}
-      onOpen={(trigger) => onOpenPlugin(entry.pluginId, trigger)}
+      onOpen={(trigger) => onOpenPlugin(catalogEntryDetailKey(entry), trigger)}
     />
   );
 }

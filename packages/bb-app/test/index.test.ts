@@ -36,8 +36,10 @@ import {
   resolveBbAppStartContext,
   resolveBbAppCommand,
   resolveServerListenerUrl,
+  resolveBundledCliLaunch,
   resolveWorktreeRuntimePolicy,
   runBbApp,
+  shouldRunSourceAppUpdateShim,
   runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
@@ -126,21 +128,13 @@ interface FakeSupervisor {
 }
 
 const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
-  {
-    expectedError: /BB_INFERENCE must use provider\/model format/u,
-    key: "BB_INFERENCE",
-    value: "gpt-4o-mini",
-  },
-  {
-    expectedError: /BB_INFERENCE_FALLBACK must use provider\/model format/u,
-    key: "BB_INFERENCE_FALLBACK",
-    value: "gpt-5.4-mini",
-  },
-  {
-    expectedError: /BB_TRANSCRIPTION must use provider\/model format/u,
-    key: "BB_TRANSCRIPTION",
-    value: "gpt-4o-mini-transcribe",
-  },
+  ...["BB_INFERENCE", "BB_INFERENCE_FALLBACK", "BB_TRANSCRIPTION"].map(
+    (key) => ({
+      expectedError: /were removed\. Choose AI services in Settings/u,
+      key,
+      value: "codex/gpt-5.6-luna",
+    }),
+  ),
   {
     expectedError: /BB_APP_URL must be a valid URL/u,
     key: "BB_APP_URL",
@@ -167,11 +161,6 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_FF_PLACEHOLDER", value: "true" },
   { key: "BB_FF_TIMELINE_WINDOW_EVENT_BUDGET", value: "2000" },
   { key: "BB_HOST_DAEMON_PORT", value: "48887" },
-  { key: "BB_INFERENCE", value: "codex/test-inference" },
-  {
-    key: "BB_INFERENCE_FALLBACK",
-    value: "codex/test-inference-fallback",
-  },
   { key: "BB_INHERITED_SKILLS_ROOTS", value: "/tmp/bb-skills" },
   { key: "BB_LOG_LEVEL", value: "debug" },
   { key: "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD", value: "1" },
@@ -179,7 +168,6 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_SERVER_BIND_HOST", value: "127.0.0.1" },
   { key: "BB_SERVER_PORT", value: "48886" },
   { key: "BB_TELEMETRY", value: "false" },
-  { key: "BB_TRANSCRIPTION", value: "codex/test-transcription" },
 ];
 
 const packageMetadataSchema = z.object({
@@ -700,39 +688,6 @@ describe("bb-app launcher", () => {
     });
   });
 
-  it("resolves config commands", () => {
-    expect(
-      resolveBbAppCommand(["config", "set", "BB_APP_URL", "https://bb.test"]),
-    ).toEqual({
-      args: ["set", "BB_APP_URL", "https://bb.test"],
-      kind: "config",
-    });
-  });
-
-  it("resolves env commands", () => {
-    expect(
-      resolveBbAppCommand(["env", "set", "OPENAI_API_KEY", "test-key"]),
-    ).toEqual({
-      args: ["set", "OPENAI_API_KEY", "test-key"],
-      kind: "env",
-    });
-  });
-
-  it("resolves client commands", () => {
-    expect(
-      resolveBbAppCommand([
-        "client",
-        "ssh-target",
-        "set",
-        "https://bb.example.test",
-        "devbox",
-      ]),
-    ).toEqual({
-      args: ["ssh-target", "set", "https://bb.example.test", "devbox"],
-      kind: "client",
-    });
-  });
-
   it("prints help for help requests", () => {
     expect(resolveBbAppCommand(["--help"])).toEqual({ kind: "help" });
     expect(resolveBbAppCommand(["help"])).toEqual({ kind: "help" });
@@ -768,6 +723,17 @@ describe("bb-app launcher", () => {
       },
       positionals: ["host-daemon", "join"],
     });
+  });
+
+  it("runs the source update shim only for a start with --in-app-updates", () => {
+    expect(shouldRunSourceAppUpdateShim(["--in-app-updates"])).toBe(true);
+    expect(shouldRunSourceAppUpdateShim(["start", "--in-app-updates"])).toBe(
+      true,
+    );
+    expect(shouldRunSourceAppUpdateShim(["start"])).toBe(false);
+    expect(shouldRunSourceAppUpdateShim(["stop", "--in-app-updates"])).toBe(
+      false,
+    );
   });
 
   it("reports the server bind host separately from the loopback connection URL", async () => {
@@ -850,6 +816,26 @@ describe("bb-app launcher", () => {
     await expect(
       runBbApp(["--data-dir", dataDir, "--server-bind-host", "localhost"]),
     ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+  });
+
+  it("tells the bundled CLI where the server's machine installer is", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-installer-"));
+    const outputPath = join(dataDir, "installer-path.txt");
+
+    const exitCode = await runBundledCliCommand({
+      args: [
+        "-e",
+        "require('node:fs').writeFileSync(process.argv[1], process.env.BB_MACHINE_INSTALLER ?? 'missing')",
+        outputPath,
+      ],
+      context: { ...createTestStartContext(), dataDir },
+      env: { BB_CLI: process.execPath },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(outputPath, "utf8")).toBe(
+      "/tmp/bb-app-test/server/dist/assets/install-machine.sh",
+    );
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
@@ -1108,16 +1094,8 @@ describe("bb-app launcher", () => {
       dataDir,
       "config",
       "set",
-      "BB_INFERENCE",
-      "anthropic/claude-sonnet-4-5",
-    ]);
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_INFERENCE_FALLBACK",
-      "codex/gpt-5.4-mini",
+      "BB_LOG_LEVEL",
+      "debug",
     ]);
     await runBbApp([
       "--data-dir",
@@ -1133,8 +1111,7 @@ describe("bb-app launcher", () => {
     ).toEqual({
       config: {
         BB_APP_URL: "https://bb.example.test",
-        BB_INFERENCE: "anthropic/claude-sonnet-4-5",
-        BB_INFERENCE_FALLBACK: "codex/gpt-5.4-mini",
+        BB_LOG_LEVEL: "debug",
       },
     });
     expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(
@@ -1253,171 +1230,34 @@ describe("bb-app launcher", () => {
     }
   });
 
-  it("preserves customModels across managed config writes", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-custom-"));
-    const customModels = [
-      {
-        providerId: "claude-code",
-        model: "claude-example-preview[1m]",
-        displayName: "Example Preview (1M)",
-      },
-    ];
-    writeFileSync(
-      join(dataDir, "config.json"),
-      `${JSON.stringify({ customModels })}\n`,
-      "utf8",
-    );
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_APP_URL",
-      "https://bb.example.test",
-    ]);
-
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      config: {
-        BB_APP_URL: "https://bb.example.test",
-      },
-      customModels,
-    });
-  });
-
-  it("preserves invalid customModels across managed config set writes", async () => {
-    const dataDir = mkdtempSync(
-      join(tmpdir(), "bb-app-config-invalid-custom-models-set-"),
-    );
-    const customModels = [
-      { providerId: "acp-opencode", model: "my-proxy/custom-model" },
-      { providerId: "not-a-provider", model: "typo-model" },
-    ];
-    writeFileSync(
-      join(dataDir, "config.json"),
-      `${JSON.stringify({ customModels })}\n`,
-      "utf8",
-    );
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_APP_URL",
-      "https://bb.example.test",
-    ]);
-
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      config: {
-        BB_APP_URL: "https://bb.example.test",
-      },
-      customModels,
-    });
-  });
-
-  it("preserves customAcpAgents across managed config writes", async () => {
+  it("loads a config that still carries the removed customAcpAgents array and drops it on the next write", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-custom-acp-"));
-    const customAcpAgents = [
-      {
-        id: "my-agent",
-        displayName: "My Agent",
-        command: "my-agent",
-        args: ["acp"],
-        env: { MY_AGENT_HOME: "/tmp/my-agent" },
-      },
-    ];
-    writeFileSync(
-      join(dataDir, "config.json"),
-      `${JSON.stringify({ customAcpAgents })}\n`,
-      "utf8",
-    );
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_APP_URL",
-      "https://bb.example.test",
-    ]);
-
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      config: {
-        BB_APP_URL: "https://bb.example.test",
-      },
-      customAcpAgents,
-    });
-  });
-
-  it("preserves invalid customAcpAgents across managed config set writes", async () => {
-    const dataDir = mkdtempSync(
-      join(tmpdir(), "bb-app-config-invalid-custom-acp-set-"),
-    );
-    const customAcpAgents = [
-      {
-        id: "bad agent",
-        displayName: "Bad Agent",
-        command: "bad-agent",
-      },
-    ];
-    writeFileSync(
-      join(dataDir, "config.json"),
-      `${JSON.stringify({ customAcpAgents })}\n`,
-      "utf8",
-    );
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_APP_URL",
-      "https://bb.example.test",
-    ]);
-
-    expect(
-      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      config: {
-        BB_APP_URL: "https://bb.example.test",
-      },
-      customAcpAgents,
-    });
-  });
-
-  it("preserves invalid customAcpAgents across managed config unset writes", async () => {
-    const dataDir = mkdtempSync(
-      join(tmpdir(), "bb-app-config-invalid-custom-acp-unset-"),
-    );
-    const customAcpAgents = [
-      {
-        id: "bad agent",
-        displayName: "Bad Agent",
-        command: "bad-agent",
-      },
-    ];
     writeFileSync(
       join(dataDir, "config.json"),
       `${JSON.stringify({
-        config: { BB_APP_URL: "https://bb.example.test" },
-        customAcpAgents,
+        customAcpAgents: [
+          { id: "my-agent", displayName: "My Agent", command: "my-agent" },
+          { id: "bad agent" },
+        ],
       })}\n`,
       "utf8",
     );
 
-    await runBbApp(["--data-dir", dataDir, "config", "unset", "BB_APP_URL"]);
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "config",
+      "set",
+      "BB_APP_URL",
+      "https://bb.example.test",
+    ]);
 
     expect(
       JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
     ).toEqual({
-      customAcpAgents,
+      config: {
+        BB_APP_URL: "https://bb.example.test",
+      },
     });
   });
 
@@ -1434,28 +1274,6 @@ describe("bb-app launcher", () => {
         "test-openai-key",
       ]),
     ).rejects.toThrow(/bb-app env set OPENAI_API_KEY/u);
-  });
-
-  it("stores managed env values from the env command", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-env-command-"));
-
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "env",
-      "set",
-      "ANTHROPIC_API_KEY",
-      "test-anthropic-key",
-    ]);
-
-    expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(
-      {
-        env: {
-          ANTHROPIC_API_KEY: "test-anthropic-key",
-        },
-      },
-    );
-    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
   });
 
   it("rejects invalid server bind hosts before writing managed env", async () => {
@@ -1559,25 +1377,6 @@ describe("bb-app launcher", () => {
     });
 
     expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
-  });
-
-  it("unsets managed env values", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-env-unset-"));
-    writeFileSync(
-      join(dataDir, "env.json"),
-      JSON.stringify({
-        env: {
-          OPENAI_API_KEY: "test-openai-key",
-        },
-      }),
-      "utf8",
-    );
-
-    await runBbApp(["--data-dir", dataDir, "env", "unset", "OPENAI_API_KEY"]);
-
-    expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(
-      {},
-    );
   });
 
   it("rejects invalid managed config values before writing or reloading", async () => {
@@ -1803,52 +1602,6 @@ describe("bb-app launcher", () => {
       expect(output).toContain(
         "Startup-only settings currently configured (BB_FF_PLACEHOLDER, BB_LOG_LEVEL, BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY) apply on the next full bb-app restart.",
       );
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("asks a running local server to reload after config writes", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-reload-"));
-    const server = await startConfigReloadTestServer();
-
-    try {
-      await runBbApp([
-        "--data-dir",
-        dataDir,
-        "--server-port",
-        String(server.port),
-        "config",
-        "set",
-        "BB_APP_URL",
-        "https://bb.example.test",
-      ]);
-
-      expect(server.reloadRequests()).toEqual([
-        expectedConfigReloadRequest(server),
-      ]);
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("supports explicitly refreshing running server config", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-refresh-"));
-    const server = await startConfigReloadTestServer();
-
-    try {
-      await runBbApp([
-        "--data-dir",
-        dataDir,
-        "--server-port",
-        String(server.port),
-        "config",
-        "refresh",
-      ]);
-
-      expect(server.reloadRequests()).toEqual([
-        expectedConfigReloadRequest(server),
-      ]);
     } finally {
       await server.close();
     }
@@ -2160,6 +1913,36 @@ describe("bb-app launcher", () => {
     );
   });
 
+  it("runs the extensionless bundled CLI through Node on Windows", () => {
+    expect(
+      resolveBundledCliLaunch({
+        args: ["status"],
+        cliPath: "C:\\bb\\host-daemon\\dist\\bb",
+        nodePath: "C:\\node\\node.exe",
+        platform: "win32",
+      }),
+    ).toEqual({
+      command: "C:\\node\\node.exe",
+      args: ["C:\\bb\\host-daemon\\dist\\bb", "status"],
+    });
+    expect(
+      resolveBundledCliLaunch({
+        args: ["status"],
+        cliPath: "C:\\tools\\bb.exe",
+        nodePath: "C:\\node\\node.exe",
+        platform: "win32",
+      }),
+    ).toEqual({ command: "C:\\tools\\bb.exe", args: ["status"] });
+    expect(
+      resolveBundledCliLaunch({
+        args: ["status"],
+        cliPath: "/opt/bb/host-daemon/dist/bb",
+        nodePath: "/usr/bin/node",
+        platform: "linux",
+      }),
+    ).toEqual({ command: "/opt/bb/host-daemon/dist/bb", args: ["status"] });
+  });
+
   it("limits npm package metadata to documented runtimes", () => {
     const metadata = readPackageMetadata();
 
@@ -2168,6 +1951,7 @@ describe("bb-app launcher", () => {
       "host-daemon/dist/bb-plugin-host-worker.mjs",
     );
     expect(metadata.files).toContain("host-daemon/dist/bb");
+    expect(metadata.files).toContain("host-daemon/dist/bb.cmd");
     expect(metadata.files).toContain("host-daemon/dist/bb-chunks");
     expect(metadata.os).toEqual(["darwin", "linux"]);
   });

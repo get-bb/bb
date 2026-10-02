@@ -226,31 +226,40 @@ export function ResourceSourceShelf({
 }) {
   return (
     <section className="w-full max-w-full space-y-[var(--resource-source-shelf-section-gap)] text-popover-foreground">
-      <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)] px-[var(--resource-source-shelf-inset)] text-xs text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)]">
-          {leading}
-          <ResourceSectionTitle className="truncate">
-            {label}
-          </ResourceSectionTitle>
+      <div className="flex min-w-0 items-end gap-[var(--resource-source-shelf-label-gap)] px-[var(--resource-source-shelf-header-inset,var(--resource-source-shelf-inset))] text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "min-w-0 flex-1",
+            hideDescriptionOnMobile
+              ? "sm:space-y-[var(--resource-source-shelf-section-gap)]"
+              : "space-y-[var(--resource-source-shelf-section-gap)]",
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-[var(--resource-source-shelf-label-gap)]">
+            {leading}
+            <ResourceSectionTitle className="truncate">
+              {label}
+            </ResourceSectionTitle>
+          </div>
+          {description === undefined ? null : (
+            <div
+              className={cn(
+                "min-w-0 items-center gap-3",
+                hideDescriptionOnMobile ? "hidden sm:flex" : "flex",
+              )}
+            >
+              <p className="min-w-0 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                {description}
+              </p>
+            </div>
+          )}
         </div>
         {browseAction ? (
-          <div className="ml-auto shrink-0 text-xs text-muted-foreground">
+          <div className="shrink-0 text-xs text-muted-foreground">
             {browseAction}
           </div>
         ) : null}
       </div>
-      {description === undefined ? null : (
-        <div
-          className={cn(
-            "min-w-0 items-center gap-3 px-[var(--resource-source-shelf-inset)]",
-            hideDescriptionOnMobile ? "hidden sm:flex" : "flex",
-          )}
-        >
-          <p className="min-w-0 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-            {description}
-          </p>
-        </div>
-      )}
       <div className="px-[var(--resource-source-shelf-inset)]">{children}</div>
     </section>
   );
@@ -265,7 +274,7 @@ export function ResourceShelfAction({
       variant="ghost"
       size="sm"
       className={cn(
-        "h-auto shrink-0 rounded-md px-[var(--resource-source-shelf-action-inline)] py-[var(--resource-source-shelf-action-block)] text-xs font-normal text-muted-foreground hover:bg-state-hover hover:text-foreground",
+        "-my-[var(--resource-source-shelf-action-block)] h-auto shrink-0 rounded-md px-[var(--resource-source-shelf-action-inline)] py-[var(--resource-source-shelf-action-block)] text-xs font-normal leading-relaxed text-muted-foreground hover:bg-state-hover hover:text-foreground",
         className,
       )}
       {...props}
@@ -294,6 +303,7 @@ type ResourceBrowseCardProps = {
   byline?: ReactNode;
   headerAction?: ReactNode;
   footerMeta?: ReactNode;
+  footer?: ReactNode;
   pointerOnlyOpen?: boolean;
 } & (
   | { openLabel: string; onOpen: (trigger: HTMLButtonElement) => void }
@@ -310,6 +320,7 @@ export function ResourceBrowseCard({
   byline,
   headerAction,
   footerMeta,
+  footer,
   pointerOnlyOpen = false,
   openLabel,
   onOpen,
@@ -380,6 +391,11 @@ export function ResourceBrowseCard({
         <span className="pointer-events-none relative col-start-2 row-start-3 mt-1.5 flex min-h-4 min-w-0 items-center justify-end text-right">
           {footerMeta}
         </span>
+      ) : null}
+      {footer ? (
+        <div className="pointer-events-none relative col-span-2 row-start-3 min-w-0">
+          {footer}
+        </div>
       ) : null}
     </div>
   );
