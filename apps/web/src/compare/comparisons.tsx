@@ -325,21 +325,6 @@ const BB_VS_SUPERSET: Comparison = {
             </p>
           ),
         },
-        {
-          question: "How is bb different from Conductor?",
-          answer: (
-            <p>
-              Both run agents in parallel worktrees. Conductor is a Mac app with
-              its mobile app and cloud workspaces on paid plans. bb is free and
-              open source, runs on Linux and Windows through WSL2, and lets
-              agents hand work to each other.{" "}
-              <a href="/compare/conductor-alternatives">
-                Compare Conductor alternatives
-              </a>
-              .
-            </p>
-          ),
-        },
       ],
     },
     {
