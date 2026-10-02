@@ -63,7 +63,24 @@ const largeFileTotalsSchema = z.object({
 });
 export type LargeFileTotals = z.infer<typeof largeFileTotalsSchema>;
 const minBytesSchema = z.number().int().min(1);
+export const developerEntryInspectionSchema = z.object({
+  name: z.string(),
+  sourcePath: z.string().nullable(),
+  sourcePathState: z.enum(["exists", "missing", "unknown"]),
+});
+
 export const hostStorageContract = defineRpcContract({
+  inspectDeveloperEntries: {
+    input: z
+      .object({
+        rootPath: z.string().min(1),
+        names: z.array(z.string().min(1)).max(500),
+        candidatePaths: z.array(z.string().min(1)),
+      })
+      .strict(),
+    output: z.object({ entries: z.array(developerEntryInspectionSchema) }),
+  },
+  homeDirectory: { input: z.null(), output: z.string().min(1) },
   discardLargeFiles: {
     input: z
       .object({

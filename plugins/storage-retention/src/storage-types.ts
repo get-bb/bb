@@ -11,6 +11,7 @@ export const hostStorageThreadSchema = z.object({
   archivedAt: z.number().nullable(),
   updatedAt: z.number(),
   running: z.boolean(),
+  hidden: z.boolean(),
   sizeBytes: byteCountSchema,
 });
 export type HostStorageThread = z.infer<typeof hostStorageThreadSchema>;
@@ -26,6 +27,31 @@ export type HostStorageLeftoverWorktree = z.infer<
   typeof hostStorageLeftoverWorktreeSchema
 >;
 
+const developerEntrySchema = z.object({
+  name: z.string(),
+  sizeBytes: byteCountSchema,
+  sourcePath: z.string().nullable().default(null),
+  sourcePathState: z.enum(["exists", "missing", "unknown"]).default("unknown"),
+});
+export const developerStorageScanSchema = z.object({
+  path: z.string(),
+  sizeBytes: byteCountSchema,
+  entries: z.array(developerEntrySchema),
+});
+export const developerStorageSchema = developerStorageScanSchema.extend({
+  entries: z.array(
+    developerEntrySchema.extend({
+      threads: z.array(
+        z.object({
+          threadId: z.string(),
+          title: z.string(),
+          archived: z.boolean(),
+        }),
+      ),
+    }),
+  ),
+});
+
 export const hostStorageReportSchema = z.object({
   hostId: z.string(),
   scannedAt: z.number(),
@@ -39,6 +65,12 @@ export const hostStorageReportSchema = z.object({
   threadsWithStorageCount: z.number().int().nonnegative(),
   archivedThreadCount: z.number().int().nonnegative(),
   orphanCount: z.number().int().nonnegative(),
+  hiddenThreads: z.object({
+    activeCount: z.number().int().nonnegative(),
+    activeBytes: byteCountSchema,
+    archivedCount: z.number().int().nonnegative(),
+    archivedBytes: byteCountSchema,
+  }),
   archivedFiles: z.object({
     threadCount: z.number().int().nonnegative(),
     bytes: byteCountSchema,
@@ -52,6 +84,15 @@ export const hostStorageReportSchema = z.object({
     .array(hostStorageThreadSchema)
     .max(HOST_STORAGE_LARGEST_THREADS_LIMIT),
   leftoverWorktrees: z.array(hostStorageLeftoverWorktreeSchema),
+  projectWorktrees: z.array(
+    z.object({
+      projectId: z.string(),
+      projectName: z.string(),
+      worktreeCount: z.number().int().nonnegative(),
+      cleanupPendingCount: z.number().int().nonnegative(),
+    }),
+  ),
+  developerStorage: developerStorageSchema.nullable(),
 });
 export type HostStorageReport = z.infer<typeof hostStorageReportSchema>;
 

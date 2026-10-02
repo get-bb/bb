@@ -8,6 +8,7 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
+import { resolveDevInstanceConfig } from "../../../packages/config/src/runtime.js";
 import hostEntry from "./host.js";
 import plugin from "./server.js";
 import { hostStorageContract } from "./host-contract.js";
@@ -42,6 +43,7 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
       if (call.method === "capacity")
         return { totalBytes: 10000, freeBytes: 5000 };
       if (call.method === "measure")
@@ -74,6 +76,7 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
       throw new Error("Unexpected host method");
     },
     sdk: {
+      projects: { list: async () => [] },
       hosts: {
         get: async () => ({
           ...makeHostResponse({ id: "host_test", status: "connected" }),
@@ -155,9 +158,27 @@ it.each([false, true])(
   "scans through the host entry, preserves live storage, cleans orphans and clears only stopped threads (detached: %s)",
   async (detached) => {
     const root = await directory();
+    const fakeHome = await directory();
+    if (!detached) {
+      await fs.mkdir(path.join(fakeHome, ".bb-dev", "checkout-a"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(fakeHome, ".bb-dev", "checkout-a", "bb.db"),
+        Buffer.alloc(32768),
+      );
+    }
+    if (!detached)
+      await fs.writeFile(
+        path.join(fakeHome, ".bb-dev", "checkout-a", "bb-dev-instance.json"),
+        JSON.stringify({
+          repoRoot: path.join(fakeHome, "worktrees", "thr_live-1", "bb"),
+        }),
+      );
     const size = 11 * 1024 * 1024;
     await fs.mkdir(path.join(root, "thr_live"));
     await fs.writeFile(path.join(root, "thr_live", "data"), Buffer.alloc(size));
+    await fs.writeFile(path.join(root, "thr_live", "small.txt"), "keep me");
     await fs.mkdir(path.join(root, ".bb-trash-orphan"));
     await fs.writeFile(
       path.join(root, ".bb-trash-orphan", "data"),
@@ -169,6 +190,12 @@ it.each([false, true])(
       pluginId: "storage-retention",
       experimental_hostEntry: true,
       experimental_callHostRpc: async (call) => {
+        if (call.method === "homeDirectory") return fakeHome;
+        if (call.method === "inspectDeveloperEntries")
+          return worker.experimental_call(
+            "inspectDeveloperEntries",
+            hostStorageContract.inspectDeveloperEntries.input.parse(call.input),
+          );
         if (call.method === "measure")
           return worker.experimental_call(
             "measure",
@@ -192,6 +219,7 @@ it.each([false, true])(
         throw new Error("Unexpected host method");
       },
       sdk: {
+        projects: { list: async () => [] },
         hosts: {
           get: async () => ({
             ...makeHostResponse({ id: "host_test", status: "connected" }),
@@ -205,6 +233,7 @@ it.each([false, true])(
               id: "thr_live",
               status: active ? "active" : "idle",
               archivedAt: 1,
+              visibility: "hidden",
             }),
           ],
           get: async () =>
@@ -260,7 +289,29 @@ it.each([false, true])(
       expect(scanned.report).toMatchObject({
         threadsWithStorageCount: 1,
         orphanCount: 1,
+        hiddenThreads: { activeCount: 0, archivedCount: 1 },
+        largestThreads: [{ threadId: "thr_live", hidden: true }],
       });
+      if (detached) expect(scanned.report!.developerStorage).toBeNull();
+      else {
+        expect(scanned.report!.developerStorage).toMatchObject({
+          path: path.join(fakeHome, ".bb-dev"),
+          entries: [
+            {
+              name: "checkout-a",
+              sourcePath: path.join(fakeHome, "worktrees", "thr_live-1", "bb"),
+              sourcePathState: "missing",
+              threads: [{ threadId: "thr_live", archived: true }],
+            },
+          ],
+        });
+        expect(
+          scanned.report!.developerStorage!.sizeBytes,
+        ).toBeGreaterThanOrEqual(32768);
+        expect(
+          scanned.report!.developerStorage!.entries[0]!.sizeBytes,
+        ).toBeGreaterThanOrEqual(32768);
+      }
       expect(scanned.report!.orphanBytes).toBeGreaterThanOrEqual(32768);
       expect(scanned.report!.disk!.totalBytes).toBeGreaterThan(
         scanned.report!.disk!.freeBytes,
@@ -331,6 +382,7 @@ it("deletes only large files from archived threads on scanned online machines, k
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
       if (call.method === "measure")
         return worker.experimental_call(
           "measure",
@@ -358,6 +410,7 @@ it("deletes only large files from archived threads on scanned online machines, k
       throw new Error("Unexpected host method");
     },
     sdk: {
+      projects: { list: async () => [] },
       hosts: {
         list: async () => [
           makeHostResponse({ id: "host_test", status: "connected" }),
@@ -578,6 +631,7 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
       await blocked;
       if (fail) throw new Error("machine disconnected");
       if (call.method === "capacity")
@@ -585,6 +639,7 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
       return { targets: [], largeFiles: [] };
     },
     sdk: {
+      projects: { list: async () => [] },
       hosts: {
         get: async () => ({
           ...makeHostResponse({ id: "host_test", status: "connected" }),
@@ -636,5 +691,216 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
   } finally {
     release();
     await host.harness.dispose();
+  }
+});
+
+it("counts distinct live managed worktrees for machine projects, including empty projects and pending cleanup", async () => {
+  type Environment = Awaited<
+    ReturnType<
+      import("@get-bb/plugin-sdk").BbPluginApi["sdk"]["environments"]["list"]
+    >
+  >[number];
+  const base: Environment = {
+    id: "env_live",
+    name: null,
+    projectId: "proj_work",
+    hostId: "host_test",
+    path: "/work/live",
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: "feature",
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: "main",
+    status: "ready",
+    environmentProviderId: "bb--environment-git-worktree",
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
+    managed: true,
+    workspaceProvisionType: "managed-worktree",
+    createdAt: 0,
+    updatedAt: 0,
+  };
+  const environments: Environment[] = [
+    base,
+    { ...base, id: "env_duplicate" },
+    {
+      ...base,
+      id: "env_pending",
+      path: "/work/pending",
+      lifecycle: {
+        phase: "teardown",
+        retireAt: 1,
+        teardown: {
+          status: "failed",
+          attempt: 1,
+          message: "Permission denied",
+        },
+      },
+    },
+    {
+      ...base,
+      id: "env_destroyed",
+      path: "/work/destroyed",
+      status: "destroyed",
+    },
+    {
+      ...base,
+      id: "env_removed",
+      path: "/work/removed",
+      lifecycle: {
+        phase: "destroyed",
+        retireAt: 1,
+        teardown: { status: "removed", attempt: 1 },
+      },
+    },
+    { ...base, id: "env_checkout", path: "/work/checkout", isWorktree: false },
+    { ...base, id: "env_unmanaged", path: "/work/unmanaged", managed: false },
+  ];
+  const projects = ["work", "empty", "other"].map((name) => ({
+    id: `proj_${name}`,
+    name,
+    kind: "standard" as const,
+    gitRemoteUrl: null,
+    createdAt: 0,
+    updatedAt: 0,
+    sources: [
+      {
+        id: `src_${name}`,
+        projectId: `proj_${name}`,
+        type: "local_path" as const,
+        hostId: name === "other" ? "host_other" : "host_test",
+        path: `/projects/${name}`,
+        isDefault: true,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ],
+  }));
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "capacity")
+        return { totalBytes: 2048, freeBytes: 1024 };
+      return { targets: [], largeFiles: [] };
+    },
+    sdk: {
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: "/storage",
+        }),
+      },
+      threads: { list: async () => [] },
+      projects: { list: async () => projects },
+      environments: { list: async () => environments },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).report?.projectWorktrees,
+      )
+      .toEqual([
+        {
+          projectId: "proj_work",
+          projectName: "work",
+          worktreeCount: 2,
+          cleanupPendingCount: 1,
+        },
+        {
+          projectId: "proj_empty",
+          projectName: "empty",
+          worktreeCount: 0,
+          cleanupPendingCount: 0,
+        },
+      ]);
+  } finally {
+    await host.harness.dispose();
+  }
+});
+
+it("recovers developer checkout paths from launch records, old runtime records, known paths and verified managed names", async () => {
+  const homeDir = await directory();
+  const rootPath = path.join(homeDir, ".bb-dev");
+  const managed = path.join(
+    homeDir,
+    ".bb",
+    "plugins",
+    "environment-git-worktree",
+    "host-data",
+    "worktrees",
+    "thr_gone-1",
+    "bb",
+  );
+  const known = path.join(homeDir, "Mixed Case", "bb");
+  const existing = path.join(homeDir, "checkout");
+  await fs.mkdir(existing);
+  await fs.mkdir(known, { recursive: true });
+  const managedName = resolveDevInstanceConfig({
+    homeDir,
+    repoRoot: managed,
+  }).instanceId;
+  const knownName = resolveDevInstanceConfig({
+    homeDir,
+    repoRoot: known,
+  }).instanceId;
+  const names = [
+    "launch",
+    "runtime",
+    managedName,
+    knownName,
+    "unidentified",
+    managedName.replace(/.$/, "z"),
+  ];
+  for (const name of names)
+    await fs.mkdir(path.join(rootPath, name), { recursive: true });
+  await fs.writeFile(
+    path.join(rootPath, "launch", "bb-dev-instance.json"),
+    JSON.stringify({ repoRoot: existing }),
+  );
+  await fs.writeFile(
+    path.join(rootPath, "runtime", "bb-app-runtime.json"),
+    JSON.stringify({
+      entryPath: path.join(existing, "scripts", "start-bb.mjs"),
+    }),
+  );
+  await fs.writeFile(
+    path.join(rootPath, "unidentified", "bb-dev-instance.json"),
+    "{bad json",
+  );
+  const worker = experimental_createHostEntryHarness(hostEntry);
+  try {
+    const result = await worker.experimental_call("inspectDeveloperEntries", {
+      rootPath,
+      names,
+      candidatePaths: [known],
+    });
+    expect(result.entries).toEqual([
+      { name: "launch", sourcePath: existing, sourcePathState: "exists" },
+      { name: "runtime", sourcePath: existing, sourcePathState: "exists" },
+      { name: managedName, sourcePath: managed, sourcePathState: "missing" },
+      { name: knownName, sourcePath: known, sourcePathState: "exists" },
+      { name: "unidentified", sourcePath: null, sourcePathState: "unknown" },
+      { name: names[5], sourcePath: null, sourcePathState: "unknown" },
+    ]);
+    await expect(
+      worker.experimental_call("inspectDeveloperEntries", {
+        rootPath,
+        names: ["../checkout"],
+        candidatePaths: [],
+      }),
+    ).rejects.toThrow("Invalid developer storage path");
+  } finally {
+    await worker.experimental_dispose();
   }
 });

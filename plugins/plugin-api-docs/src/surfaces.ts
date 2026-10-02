@@ -1283,7 +1283,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Push notifications",
           "Secrets",
           "Side chat",
-          "Storage & retention",
+          "Storage & retention [Experimental]",
           "Tasks",
           "Theme Preview",
           "Thread list",

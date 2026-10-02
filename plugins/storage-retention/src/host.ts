@@ -1,6 +1,8 @@
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
+import { inspectDeveloperEntries } from "./developer-storage.js";
 import { randomUUID } from "node:crypto";
 import { hostStorageContract } from "./host-contract.js";
 import { measureDiskUsage } from "./disk-usage.js";
@@ -23,6 +25,9 @@ function assertStorageEntry(rootPath: string, name: string) {
 export default experimental_defineHostEntry({
   contract: hostStorageContract,
   handlers: {
+    inspectDeveloperEntries: (input, context) =>
+      inspectDeveloperEntries(input, context.signal),
+    homeDirectory: () => os.homedir(),
     measure: (input, context) =>
       measureDiskUsage(input, undefined, context.signal),
     async discardLargeFiles({ rootPath, names, minBytes }, context) {

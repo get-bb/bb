@@ -7,6 +7,7 @@ import {
 } from "./host-contract.js";
 import { readThreads } from "./sdk-data.js";
 import { LARGE_FILE_MIN_BYTES } from "./rules.js";
+import { developerStorageScanSchema } from "./storage-types.js";
 import type {
   HostStorageReport,
   HostStorageResponse,
@@ -20,6 +21,7 @@ type Environment = Awaited<
 >[number];
 const cachedScanSchema = z.object({
   scannedAt: z.number(),
+  developerStorage: developerStorageScanSchema.nullable().default(null),
   disk: diskCapacitySchema.nullable().default(null),
   largeFiles: z
     .array(
@@ -127,7 +129,7 @@ export function createStorage(bb: BbPluginApi) {
       }
     };
   }
-  async function leftovers(hostId: string, threads: Thread[]) {
+  async function readEnvironments(hostId: string) {
     const environments: Environment[] = [];
     for (let offset = 0; ; offset += 500) {
       const page = await bb.sdk.environments.list({
@@ -139,6 +141,12 @@ export function createStorage(bb: BbPluginApi) {
       environments.push(...page);
       if (page.length < 500) break;
     }
+    return environments;
+  }
+  function leftoverEnvironments(
+    environments: Environment[],
+    threads: Thread[],
+  ) {
     const occupied = new Set(
       threads
         .filter(
@@ -165,11 +173,39 @@ export function createStorage(bb: BbPluginApi) {
     hostId: string,
     scan: Scan,
   ): Promise<HostStorageReport> {
-    const threads = await readThreads(bb, lifecycle.signal);
+    const [threads, allEnvironments, projects] = await Promise.all([
+      readThreads(bb, lifecycle.signal),
+      readEnvironments(hostId),
+      bb.sdk.projects.list({ signal: lifecycle.signal }),
+    ]);
     const byId = new Map(threads.map((thread) => [thread.id, thread]));
     const environments = new Map(
-      (await leftovers(hostId, threads)).map((env) => [env.id, env]),
+      leftoverEnvironments(allEnvironments, threads).map((env) => [
+        env.id,
+        env,
+      ]),
     );
+    const projectCounts = new Map<
+      string,
+      { paths: Set<string>; pendingPaths: Set<string> }
+    >();
+    for (const env of allEnvironments) {
+      if (
+        !env.managed ||
+        !env.isWorktree ||
+        env.path === null ||
+        env.status === "destroyed" ||
+        env.lifecycle.teardown?.status === "removed"
+      )
+        continue;
+      const counts = projectCounts.get(env.projectId) ?? {
+        paths: new Set<string>(),
+        pendingPaths: new Set<string>(),
+      };
+      counts.paths.add(env.path);
+      if (environments.has(env.id)) counts.pendingPaths.add(env.path);
+      projectCounts.set(env.projectId, counts);
+    }
     const owned = scan.entries.flatMap((entry) => {
       const thread = byId.get(entry.name);
       return thread ? [{ ...entry, thread }] : [];
@@ -190,6 +226,14 @@ export function createStorage(bb: BbPluginApi) {
     const sum = (entries: { sizeBytes: number }[]) =>
       entries.reduce((total, entry) => total + entry.sizeBytes, 0);
     const archived = owned.filter((entry) => entry.thread.archivedAt !== null);
+    const hiddenActive = owned.filter(
+      (entry) =>
+        entry.thread.visibility === "hidden" &&
+        entry.thread.archivedAt === null,
+    );
+    const hiddenArchived = archived.filter(
+      (entry) => entry.thread.visibility === "hidden",
+    );
     const clearable = scan.largeFiles.filter((entry) => {
       const thread = byId.get(entry.name);
       return thread !== undefined && clearableArchived(thread);
@@ -207,6 +251,12 @@ export function createStorage(bb: BbPluginApi) {
       threadsWithStorageCount: owned.length,
       archivedThreadCount: archived.length,
       orphanCount: orphans.length,
+      hiddenThreads: {
+        activeCount: hiddenActive.length,
+        activeBytes: sum(hiddenActive),
+        archivedCount: hiddenArchived.length,
+        archivedBytes: sum(hiddenArchived),
+      },
       archivedFiles: {
         threadCount: owned.filter((entry) => clearableArchived(entry.thread))
           .length,
@@ -226,10 +276,66 @@ export function createStorage(bb: BbPluginApi) {
           title: thread.title ?? thread.titleFallback ?? thread.id,
           archivedAt: thread.archivedAt,
           updatedAt: thread.updatedAt,
+          hidden: thread.visibility === "hidden",
           running: ["starting", "active", "stopping"].includes(thread.status),
           sizeBytes,
         })),
       leftoverWorktrees: worktrees,
+      projectWorktrees: projects
+        .filter(
+          (project) =>
+            project.sources.some((source) => source.hostId === hostId) ||
+            projectCounts.has(project.id),
+        )
+        .map((project) => ({
+          projectId: project.id,
+          projectName: project.name,
+          worktreeCount: projectCounts.get(project.id)?.paths.size ?? 0,
+          cleanupPendingCount:
+            projectCounts.get(project.id)?.pendingPaths.size ?? 0,
+        }))
+        .sort(
+          (a, b) =>
+            b.worktreeCount - a.worktreeCount ||
+            a.projectName.localeCompare(b.projectName),
+        ),
+      developerStorage: scan.developerStorage
+        ? {
+            ...scan.developerStorage,
+            entries: scan.developerStorage.entries.map((entry) => {
+              const sourcePath = entry.sourcePath
+                ?.replaceAll("\\", "/")
+                .replace(/\/$/, "");
+              const environmentIds = new Set(
+                allEnvironments
+                  .filter(
+                    (env) =>
+                      sourcePath !== undefined &&
+                      env.path?.replaceAll("\\", "/").replace(/\/$/, "") ===
+                        sourcePath,
+                  )
+                  .map((env) => env.id),
+              );
+              const encodedThreadId = sourcePath?.match(
+                /\/(?:worktrees|thread-storage)\/(thr_[a-zA-Z0-9]+)(?:-[^/]*)?\//,
+              )?.[1];
+              const linked = threads.filter(
+                (thread) =>
+                  (thread.environmentId !== null &&
+                    environmentIds.has(thread.environmentId)) ||
+                  thread.id === encodedThreadId,
+              );
+              return {
+                ...entry,
+                threads: linked.map((thread) => ({
+                  threadId: thread.id,
+                  title: thread.title ?? thread.titleFallback ?? thread.id,
+                  archived: thread.archivedAt !== null,
+                })),
+              };
+            }),
+          }
+        : null,
     };
   }
   async function host({
@@ -265,11 +371,19 @@ export function createStorage(bb: BbPluginApi) {
     changed();
     const job = (async () => {
       try {
-        const [rootPath, threads] = await Promise.all([
-          storageRoot(hostId),
-          readThreads(bb, lifecycle.signal),
-        ]);
-        const environments = await leftovers(hostId, threads);
+        const [rootPath, threads, allEnvironments, projects] =
+          await Promise.all([
+            storageRoot(hostId),
+            readThreads(bb, lifecycle.signal),
+            readEnvironments(hostId),
+            bb.sdk.projects.list({ signal: lifecycle.signal }),
+          ]);
+        const environments = leftoverEnvironments(allEnvironments, threads);
+        const homeDirectory = await worker.call("homeDirectory", null, {
+          hostId,
+          signal: lifecycle.signal,
+        });
+        const developerRoot = `${homeDirectory.replace(/[\\/]$/, "")}/.bb-dev`;
         const disk = await worker.call(
           "capacity",
           { path: rootPath },
@@ -289,6 +403,10 @@ export function createStorage(bb: BbPluginApi) {
             largeFileMinBytes: LARGE_FILE_MIN_BYTES,
           },
         ];
+        batches.push({
+          targets: [{ path: developerRoot, perChild: true }],
+          largeFileMinBytes: null,
+        });
         const worktreeTargets = environments.flatMap((env) =>
           env.path === null ? [] : [{ path: env.path, perChild: false }],
         );
@@ -321,9 +439,59 @@ export function createStorage(bb: BbPluginApi) {
           }
         }
         const root = measured.get(rootPath);
+        const developer = measured.get(developerRoot);
+        const developerEntries =
+          developer?.outcome === "measured" ? (developer.children ?? []) : [];
+        const inspected = new Map<
+          string,
+          z.infer<
+            typeof hostStorageContract.inspectDeveloperEntries.output
+          >["entries"][number]
+        >();
+        const candidatePaths = [
+          ...new Set([
+            ...allEnvironments.flatMap((env) =>
+              env.path === null ? [] : [env.path],
+            ),
+            ...projects.flatMap((project) =>
+              project.sources
+                .filter((source) => source.hostId === hostId)
+                .map((source) => source.path),
+            ),
+          ]),
+        ];
+        for (let offset = 0; offset < developerEntries.length; offset += 500) {
+          const result = await worker.call(
+            "inspectDeveloperEntries",
+            {
+              rootPath: developerRoot,
+              names: developerEntries
+                .slice(offset, offset + 500)
+                .map((entry) => entry.name),
+              candidatePaths,
+            },
+            { hostId, signal: lifecycle.signal },
+          );
+          for (const entry of result.entries) inspected.set(entry.name, entry);
+        }
         scans.delete(hostId);
         store(hostId, {
           scannedAt: Date.now(),
+          developerStorage:
+            developer?.outcome === "measured"
+              ? {
+                  path: developer.path,
+                  sizeBytes: developer.sizeBytes,
+                  entries: developerEntries
+                    .map((entry) => ({
+                      ...entry,
+                      sourcePath: inspected.get(entry.name)?.sourcePath ?? null,
+                      sourcePathState:
+                        inspected.get(entry.name)?.sourcePathState ?? "unknown",
+                    }))
+                    .sort((a, b) => b.sizeBytes - a.sizeBytes),
+                }
+              : null,
           disk,
           largeFiles: [...largeFiles].map(([name, total]) => ({
             name,
@@ -633,10 +801,11 @@ export function createStorage(bb: BbPluginApi) {
   }
   async function retryWorktreeCleanup({ hostId }: { hostId: string }) {
     await requireHost(hostId);
-    const environments = await leftovers(
-      hostId,
-      await readThreads(bb, lifecycle.signal),
-    );
+    const [allEnvironments, threads] = await Promise.all([
+      readEnvironments(hostId),
+      readThreads(bb, lifecycle.signal),
+    ]);
+    const environments = leftoverEnvironments(allEnvironments, threads);
     let retriedCount = 0;
     for (const env of environments) {
       lifecycle.signal.throwIfAborted();

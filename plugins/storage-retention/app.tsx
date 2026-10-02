@@ -11,6 +11,13 @@ import {
 import { DatabaseRestoreIcon } from "./icons/database-restore.js";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import {
   Select,
@@ -535,7 +542,9 @@ function StoragePage({
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="text-sm font-medium">Thread storage</p>
                     <p className="text-lg font-semibold tabular-nums">
-                      {bytes(threadStorageBytes(report))}
+                      {bytes(
+                        report.activeThreadBytes + report.archivedThreadBytes,
+                      )}
                     </p>
                   </div>
                   <StorageBreakdown report={report} />
@@ -550,17 +559,16 @@ function StoragePage({
                     {scanNotice}
                   </div>
                 </section>
+                <ProjectWorktrees report={report} />
                 <section className="space-y-3">
                   <h2 className="text-sm font-semibold">Clean up</h2>
                   <div className="divide-y divide-border rounded-lg border border-border bg-card">
                     <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm">
                             All files in archived threads{" "}
-                            <span className="ml-2 whitespace-nowrap text-muted-foreground">
-                              {bytes(report.archivedFiles.bytes)}
-                            </span>
+                            <StorageSize value={report.archivedFiles.bytes} />
                           </p>
                           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
                             Clear stored files of any size from{" "}
@@ -602,13 +610,13 @@ function StoragePage({
                       {cleanup?.key === "archived-files" && cleanupConfirmation}
                     </div>
                     <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-normal">
                             Large files in archived threads{" "}
-                            <span className="ml-2 whitespace-nowrap font-normal text-muted-foreground">
-                              {bytes(report.archivedLargeFiles.bytes)}
-                            </span>
+                            <StorageSize
+                              value={report.archivedLargeFiles.bytes}
+                            />
                           </p>
                           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
                             {report.archivedLargeFiles.fileCount
@@ -640,18 +648,15 @@ function StoragePage({
                       {cleanupStatus}
                     </div>
                     <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-normal">
                             Orphaned storage{" "}
-                            <span className="ml-2 whitespace-nowrap font-normal text-muted-foreground">
-                              {bytes(report.orphanBytes)}
-                            </span>
+                            <StorageSize value={report.orphanBytes} />
                           </p>
                           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            {report.orphanCount
-                              ? `${report.orphanCount} ${report.orphanCount === 1 ? "directory" : "directories"} no longer attached to existing threads.`
-                              : "No orphaned files found in the last scan."}
+                            Files left behind by deleted threads. BB cleans
+                            these up automatically while idle.
                           </p>
                         </div>
                         <Button
@@ -685,18 +690,15 @@ function StoragePage({
                       {cleanup?.key === "orphans" && cleanupConfirmation}
                     </div>
                     <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-normal">
                             Leftover worktrees{" "}
-                            <span className="ml-2 whitespace-nowrap font-normal text-muted-foreground">
-                              {bytes(report.leftoverWorktreeBytes)}
-                            </span>
+                            <StorageSize value={report.leftoverWorktreeBytes} />
                           </p>
                           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            {report.leftoverWorktrees.length
-                              ? "Unused worktrees waiting for cleanup."
-                              : "No worktrees waiting for cleanup."}
+                            Checkouts BB could not remove after their threads
+                            were archived. BB retries automatically.
                           </p>
                         </div>
                         <Button
@@ -720,19 +722,32 @@ function StoragePage({
                           Retry cleanup
                         </Button>
                       </div>
-                      {report.leftoverWorktrees.map((worktree) => (
-                        <div
-                          key={worktree.environmentId}
-                          className="rounded-lg bg-muted/40 p-3 text-xs"
-                        >
-                          <p className="break-all">{worktree.path}</p>
-                          <p className="mt-1 text-muted-foreground">
-                            {bytes(worktree.sizeBytes)}
-                            {worktree.teardownMessage &&
-                              ` · ${worktree.teardownMessage}`}
-                          </p>
-                        </div>
-                      ))}
+                      {report.leftoverWorktrees.length > 0 && (
+                        <details className="text-xs text-muted-foreground">
+                          <summary className="cursor-pointer">
+                            {plural(
+                              report.leftoverWorktrees.length,
+                              "checkout",
+                            )}{" "}
+                            awaiting removal
+                          </summary>
+                          <div className="mt-2 space-y-2">
+                            {report.leftoverWorktrees.map((worktree) => (
+                              <div
+                                key={worktree.environmentId}
+                                className="space-y-1 border-l border-border pl-3"
+                              >
+                                <p className="break-all">{worktree.path}</p>
+                                <p className="mt-1 text-muted-foreground">
+                                  {bytes(worktree.sizeBytes)}
+                                  {worktree.teardownMessage &&
+                                    ` · ${worktree.teardownMessage}`}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -765,6 +780,7 @@ function StoragePage({
                               >
                                 {thread.title}
                               </button>
+                              {thread.hidden && <Pill>hidden</Pill>}
                               {thread.running ? (
                                 <Pill>running</Pill>
                               ) : thread.archivedAt !== null ? (
@@ -816,6 +832,9 @@ function StoragePage({
                     })}
                   </div>
                 </section>
+                {report.developerStorage && (
+                  <DeveloperStorage storage={report.developerStorage} />
+                )}
               </>
             )}
           </div>
@@ -1157,6 +1176,15 @@ function SectionHeading({
   );
 }
 
+function StorageSize({ value }: { value: number }) {
+  if (value === 0) return null;
+  return (
+    <span className="ml-2 inline-flex rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-normal tabular-nums text-muted-foreground">
+      {bytes(value)}
+    </span>
+  );
+}
+
 function MachineStatus({ machine }: { machine: Machine }) {
   const online = machine.status === "connected";
   return (
@@ -1325,6 +1353,349 @@ function RetentionField({
     </div>
   );
 }
+function ProjectWorktrees({
+  report,
+}: {
+  report: NonNullable<HostReport["report"]>;
+}) {
+  return (
+    <section className="space-y-3">
+      <SectionHeading
+        title="Worktrees by project"
+        description="Managed worktrees BB tracks on this machine. Projects with a source here are included even when they have no worktrees. These counts are separate from thread files."
+      />
+      <div className="rounded-lg border border-border bg-card px-4 py-2">
+        {report.projectWorktrees.length === 0 ? (
+          <p className="py-3 text-xs text-muted-foreground">
+            No projects with sources or managed worktrees on this machine.
+          </p>
+        ) : (
+          <table className="w-full text-xs">
+            <caption className="sr-only">
+              Project worktree counts on this machine
+            </caption>
+            <thead>
+              <tr className="text-muted-foreground">
+                <th scope="col" className="py-2 text-left font-normal">
+                  Project
+                </th>
+                <th scope="col" className="py-2 pl-3 text-right font-normal">
+                  Worktrees
+                </th>
+                <th scope="col" className="py-2 pl-3 text-right font-normal">
+                  Awaiting cleanup
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {report.projectWorktrees.map((project) => (
+                <tr key={project.projectId}>
+                  <th scope="row" className="py-3 text-left font-normal">
+                    {project.projectName}
+                  </th>
+                  <td className="py-3 pl-3 text-right font-normal tabular-nums">
+                    {project.worktreeCount.toLocaleString()}
+                  </td>
+                  <td className="py-3 pl-3 text-right tabular-nums text-muted-foreground">
+                    {project.cleanupPendingCount.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  );
+}
+
+type DeveloperEntry = NonNullable<
+  NonNullable<HostReport["report"]>["developerStorage"]
+>["entries"][number];
+
+function developerEntryLabel(entry: DeveloperEntry) {
+  const parts = entry.sourcePath?.split(/[\\/]/).filter(Boolean);
+  if (parts?.length)
+    return parts.at(-1) === "bb" ? (parts.at(-2) ?? "bb") : parts.at(-1)!;
+  return (
+    entry.name.match(/thr_[a-zA-Z0-9]+(?:-\d+)?/)?.[0] ??
+    entry.name.replace(/-[a-f0-9]{12}$/, "")
+  );
+}
+
+function DeveloperStorage({
+  storage,
+}: {
+  storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
+}) {
+  const navigate = useBbNavigate();
+  const [expanded, setExpanded] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const [copyStatus, setCopyStatus] = useState<{
+    text: string;
+    failed: boolean;
+  } | null>(null);
+  const missing = storage.entries.filter(
+    (entry) => entry.sourcePathState === "missing",
+  );
+  const unlinked = storage.entries.filter(
+    (entry) => entry.sourcePath !== null && entry.threads.length === 0,
+  );
+  const unresolved = storage.entries.filter(
+    (entry) => entry.sourcePath === null,
+  );
+  const filtered =
+    filter === "missing"
+      ? missing
+      : filter === "unlinked"
+        ? unlinked
+        : filter === "unresolved"
+          ? unresolved
+          : storage.entries;
+  const entries = expanded ? filtered : filtered.slice(0, 5);
+  const groups = [
+    {
+      title: "Linked threads",
+      all: filtered.filter((entry) => entry.threads.length > 0),
+      entries: entries.filter((entry) => entry.threads.length > 0),
+    },
+    {
+      title: "Other instances",
+      all: filtered.filter(
+        (entry) => entry.sourcePath !== null && entry.threads.length === 0,
+      ),
+      entries: entries.filter(
+        (entry) => entry.sourcePath !== null && entry.threads.length === 0,
+      ),
+    },
+    {
+      title: "Unidentified sources",
+      all: filtered.filter((entry) => entry.sourcePath === null),
+      entries: entries.filter((entry) => entry.sourcePath === null),
+    },
+  ];
+  const copyPath = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyStatus({ text: `${label} copied`, failed: false });
+    } catch {
+      setCopyStatus({
+        text: `Could not copy ${label.toLowerCase()}`,
+        failed: true,
+      });
+    }
+  };
+  return (
+    <section className="space-y-3">
+      <SectionHeading
+        title="BB development storage"
+        description="Databases, logs, and thread files from local development instances in ~/.bb-dev."
+      />
+      <div className="space-y-3 rounded-lg border border-border bg-card px-4 py-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-lg font-medium tabular-nums">
+            {bytes(storage.sizeBytes)}
+          </p>
+          <Select
+            value={filter}
+            onValueChange={(value) => {
+              setFilter(value);
+              setExpanded(false);
+              setCopyStatus(null);
+            }}
+          >
+            <SelectTrigger
+              aria-label="Filter development storage"
+              className="h-8 w-56"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="all">
+                All entries ({storage.entries.length})
+              </SelectItem>
+              <SelectItem value="missing">
+                Missing checkouts ({missing.length})
+              </SelectItem>
+              <SelectItem value="unlinked">
+                Other instances ({unlinked.length})
+              </SelectItem>
+              <SelectItem value="unresolved">
+                Unidentified source ({unresolved.length})
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {missing.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {bytes(
+              missing.reduce((total, entry) => total + entry.sizeBytes, 0),
+            )}{" "}
+            in {missing.length.toLocaleString()}{" "}
+            {missing.length === 1 ? "entry" : "entries"} whose source checkout
+            no longer exists.
+          </p>
+        )}
+        <div className="divide-y divide-border border-t border-border">
+          {groups
+            .filter((group) => group.entries.length > 0)
+            .map((group) => (
+              <div key={group.title} className="py-3">
+                <h3 className="text-xs font-medium text-muted-foreground">
+                  {group.title}{" "}
+                  <span className="ml-1 font-normal tabular-nums text-muted-foreground">
+                    ({group.all.length.toLocaleString()})
+                  </span>
+                </h3>
+                <div className="mt-2 space-y-3">
+                  {group.entries.map((entry) => {
+                    const label =
+                      entry.threads[0]?.title ?? developerEntryLabel(entry);
+                    return (
+                      <div
+                        key={entry.name}
+                        className="flex items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          {entry.threads.length > 0 ? (
+                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                              {entry.threads.map((thread) => (
+                                <button
+                                  key={thread.threadId}
+                                  className="text-left text-sm hover:underline"
+                                  onClick={() =>
+                                    navigate.toThread(thread.threadId)
+                                  }
+                                >
+                                  {thread.title}
+                                  {thread.archived && (
+                                    <span className="ml-1.5 text-xs text-muted-foreground">
+                                      archived
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="truncate text-sm">{label}</p>
+                          )}
+                          {entry.sourcePathState === "missing" && (
+                            <p className="text-xs text-muted-foreground">
+                              Checkout no longer exists
+                            </p>
+                          )}
+                          {entry.sourcePath !== null &&
+                            entry.sourcePathState === "unknown" && (
+                              <p className="text-xs text-muted-foreground">
+                                Could not check whether the checkout exists
+                              </p>
+                            )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                            {bytes(entry.sizeBytes)}
+                          </span>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="-my-1.5 size-7"
+                                aria-label={`Actions for ${label}`}
+                              >
+                                <Icon
+                                  name="MoreHorizontal"
+                                  className="size-4"
+                                />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {entry.threads.map((thread) => (
+                                <DropdownMenuItem
+                                  key={thread.threadId}
+                                  onSelect={() =>
+                                    navigate.toThread(thread.threadId)
+                                  }
+                                >
+                                  Open thread
+                                  {entry.threads.length > 1
+                                    ? `: ${thread.title}`
+                                    : ""}
+                                </DropdownMenuItem>
+                              ))}
+                              {entry.threads.length > 0 && (
+                                <DropdownMenuSeparator />
+                              )}
+                              {entry.sourcePath !== null && (
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    void copyPath(
+                                      entry.sourcePath!,
+                                      "Source checkout path",
+                                    )
+                                  }
+                                >
+                                  Copy source checkout path
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                onSelect={() =>
+                                  void copyPath(
+                                    `${storage.path}/${entry.name}`,
+                                    "Dev data path",
+                                  )
+                                }
+                              >
+                                Copy dev data path
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+        </div>
+        {entries.length === 0 && (
+          <p className="py-4 text-xs text-muted-foreground">
+            No entries in this category.
+          </p>
+        )}
+        {filtered.length > 5 && (
+          <div>
+            <button
+              className="rounded-sm text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded
+                ? "Show fewer entries"
+                : `Show all ${filtered.length.toLocaleString()} entries`}
+            </button>
+          </div>
+        )}
+        {copyStatus && (
+          <p
+            role={copyStatus.failed ? "alert" : "status"}
+            className={cn(
+              "text-xs",
+              copyStatus.failed ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {copyStatus.text}
+          </p>
+        )}
+        <p className="border-t border-border pt-3 text-xs leading-snug text-subtle-foreground/75">
+          Other instances have no matching thread in this BB. Missing checkouts
+          are candidates for cleanup. Stop the development server before
+          removing its data.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function threadStorageBytes(report: NonNullable<HostReport["report"]>) {
   return (
     report.activeThreadBytes + report.archivedThreadBytes + report.orphanBytes
@@ -1333,22 +1704,18 @@ function threadStorageBytes(report: NonNullable<HostReport["report"]>) {
 function categories(report: NonNullable<HostReport["report"]>) {
   return [
     {
-      label: "Active threads",
+      label: "Active",
       value: report.activeThreadBytes,
       count: report.threadsWithStorageCount - report.archivedThreadCount,
     },
     {
-      label: "Archived threads",
+      label: "Archived",
       value: report.archivedThreadBytes,
       count: report.archivedThreadCount,
     },
-    {
-      label: "Orphaned files",
-      value: report.orphanBytes,
-      count: report.orphanCount,
-    },
   ];
 }
+
 function StorageBreakdown({
   report,
 }: {
