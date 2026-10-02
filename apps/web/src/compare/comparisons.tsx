@@ -38,12 +38,7 @@ export type Comparison = {
   slug: string;
   title: string;
   description: string;
-  competitor: {
-    name: string;
-    logo: BrandLogo;
-    paidPlan: string;
-    monthlyPrice: number;
-  };
+  competitor: { name: string; logo: BrandLogo };
   headline: string;
   sub: string;
   switchGuide: { label: string; href: string };
@@ -66,12 +61,7 @@ const BB_VS_SUPERSET: Comparison = {
   title: "bb vs Superset: The Free, Open-Source Alternative",
   description:
     "bb is a free, open-source Superset alternative. Run Claude Code and Codex in parallel, let agents hand off work, and approve from your phone. No Pro plan.",
-  competitor: {
-    name: "Superset",
-    logo: SUPERSET_LOGO,
-    paidPlan: "Superset Pro",
-    monthlyPrice: 20,
-  },
+  competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The Superset alternative with no Pro plan",
   sub: "Run Claude Code, Codex, and other agents in parallel, let them hand work to each other, and approve it all from your phone. bb is free and MIT-licensed, with nothing behind a paywall.",
   switchGuide: {
@@ -79,6 +69,27 @@ const BB_VS_SUPERSET: Comparison = {
     href: "/guides/move-from-superset-to-bb",
   },
   highlights: [
+    {
+      title: "Nothing behind a paywall",
+      visual: (
+        <TeamCost
+          plan="Superset Pro"
+          logo={SUPERSET_LOGO}
+          yearlyPerSeatMonthly={15}
+          included={["Phone access", "Automations", "Remote access", "Plugins"]}
+        />
+      ),
+      body: (
+        <>
+          <p>
+            bb is free and MIT-licensed, with no paid tier. Phone access,
+            automations, remote access to your machine, and plugins are all
+            included.
+          </p>
+          <p>You pay only for the agent subscriptions you already have.</p>
+        </>
+      ),
+    },
     {
       title: "Agents that hand off to each other",
       visual: <SpawnSidebar />,
@@ -106,27 +117,6 @@ const BB_VS_SUPERSET: Comparison = {
             browser. For push alerts, add the bb iOS app, in beta on TestFlight.
           </p>
           <p>Superset keeps its phone app behind Pro.</p>
-        </>
-      ),
-    },
-    {
-      title: "Nothing behind a paywall",
-      visual: (
-        <TeamCost
-          plan="Superset Pro"
-          logo={SUPERSET_LOGO}
-          yearlyPerSeatMonthly={15}
-          included={["Phone access", "Automations", "Remote access", "Plugins"]}
-        />
-      ),
-      body: (
-        <>
-          <p>
-            bb is free and MIT-licensed, with no paid tier. Phone access,
-            automations, remote access to your machine, and plugins are all
-            included.
-          </p>
-          <p>You pay only for the agent subscriptions you already have.</p>
         </>
       ),
     },

@@ -14,12 +14,7 @@ import {
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import type { CompareCell, Comparison, Mark } from "./comparisons";
-import {
-  BrandMark,
-  HandoffThread,
-  PriceAnchor,
-  type BrandLogo,
-} from "./compare-visuals";
+import { BrandMark, HandoffThread, type BrandLogo } from "./compare-visuals";
 import compareCss from "./compare.css?url";
 
 export function compareHead(comparison: Comparison) {
@@ -146,11 +141,17 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       <SiteNav />
 
       <header className="hero cmp-hero">
-        <PriceAnchor
-          plan={competitor.paidPlan}
-          logo={competitor.logo}
-          monthly={competitor.monthlyPrice}
-        />
+        <div className="cmp-logos">
+          <span className="cmp-logo-item">
+            <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
+            bb
+          </span>
+          <span className="cmp-vs">vs</span>
+          <span className="cmp-logo-item">
+            <BrandMark logo={competitor.logo} className="cmp-logo" />
+            {competitor.name}
+          </span>
+        </div>
         <h1>{comparison.headline}</h1>
         <p className="sub">{comparison.sub}</p>
         <InstallOptions placement="hero" />

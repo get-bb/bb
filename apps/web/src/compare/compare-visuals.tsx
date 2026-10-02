@@ -21,36 +21,6 @@ export function BrandMark({
   return <img src={logo.src} alt="" className={className} />;
 }
 
-export function PriceAnchor({
-  plan,
-  logo,
-  monthly,
-}: {
-  plan: string;
-  logo: BrandLogo;
-  monthly: number;
-}) {
-  return (
-    <div className="cmp-anchor">
-      <div className="cmp-anchor-cell cmp-anchor-bb">
-        <BrandMark logo={{ kind: "bb" }} className="cmp-anchor-logo" />
-        <span className="cmp-anchor-name">bb</span>
-        <span className="cmp-anchor-price">
-          $0<span className="cmp-anchor-period">forever</span>
-        </span>
-      </div>
-      <div className="cmp-anchor-cell">
-        <BrandMark logo={logo} className="cmp-anchor-logo" />
-        <span className="cmp-anchor-name">{plan}</span>
-        <span className="cmp-anchor-price">
-          ${monthly}
-          <span className="cmp-anchor-period">/user/mo</span>
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export function HandoffThread() {
   return (
     <div
