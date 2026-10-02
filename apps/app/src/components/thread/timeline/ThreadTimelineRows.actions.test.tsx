@@ -1086,54 +1086,61 @@ describe("ThreadTimelineRows actions", () => {
     });
   });
 
-  it("cancels the follow-up search reveals when the rows unmount", () => {
-    vi.useFakeTimers();
-    try {
-      vi.spyOn(window, "requestAnimationFrame").mockImplementation(
-        (callback) => {
-          callback(performance.now());
-          return 1;
+  it("cancels a queued search reveal when the rows unmount", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const view = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "match",
+            role: "assistant",
+            text: "Answer containing the search result.",
+            sourceSeqStart: 12,
+            sourceSeqEnd: 12,
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
         },
-      );
-      vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-        configurable: true,
-        value: vi.fn(),
-      });
+      ],
+    );
+    expect(frames.size).toBeGreaterThan(0);
+    act(() => {
+      const pending = [...frames.values()];
+      frames.clear();
+      for (const callback of pending) callback(performance.now());
+    });
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(frames.size).toBeGreaterThan(0);
+    view.unmount();
 
-      const view = renderWithRouter(
-        <ThreadTimelineRows
-          threadId="thr_main"
-          timelineRows={[
-            conversationRow({
-              id: "match",
-              role: "assistant",
-              text: "Answer containing the search result.",
-              sourceSeqStart: 12,
-              sourceSeqEnd: 12,
-              threadId: "thr_main",
-            }),
-          ]}
-          threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
-        />,
-        [
-          {
-            pathname: "/thread",
-            state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
-          },
-        ],
-      );
-      view.unmount();
-
-      const querySelector = vi.spyOn(document, "querySelector");
-      act(() => {
-        vi.advanceTimersByTime(1000);
-      });
-      expect(querySelector).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    const querySelector = vi.spyOn(document, "querySelector");
+    act(() => {
+      const pending = [...frames.values()];
+      frames.clear();
+      for (const callback of pending) callback(performance.now());
+    });
+    expect(querySelector).not.toHaveBeenCalled();
   });
 
   it("keeps the initial timeline hidden until an older linked message is positioned and stable", async () => {
