@@ -35,9 +35,6 @@ removes history and thread storage. Preview first and save only when authorized.
 Scans run in the background; rerun usage to read completion, progress, or failure.
 `--rescan` without `--machine` scans every online machine that is not already busy.
 A completed report includes `disk` (total and free bytes of the volume holding thread storage).
-
-Reports rank threads by total folder size, including small files. Each ranked thread includes large-file count and bytes plus up to ten largest relative file paths and sizes. Older scans return null file details until rescanned.
-
 Reads never start scans. Remove-orphans requires a completed scan and only removes
 storage the plugin identifies as orphaned from current SDK thread rows. Clear-large-files deletes
 individual files of 10 MB or more from the thread storage of archived threads found in the last scan,

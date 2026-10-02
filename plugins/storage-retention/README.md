@@ -10,11 +10,6 @@ Core supplies ordinary thread lifecycle actions, machine storage paths, and
 environment cleanup retry. The existing core idle orphan sweep is unchanged.
 Disabling the plugin stops retention; it does not stop core orphan maintenance.
 
-Reports show labeled storage totals and counts for each category. Thread rows rank
-whole folders by size and expand to show up to ten largest files of 10 MB or more,
-with relative paths, sizes, and complete large-file totals. Older reports require
-a rescan to populate file names.
-
 Cached reports are snapshots; rescan to see external filesystem changes. Plugin
 maintenance is serialized per machine; concurrent core cleanup tolerates missing
 entries. No core storage tables, scan routes, or daemon commands are added.

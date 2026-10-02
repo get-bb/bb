@@ -1,13 +1,8 @@
 import { z } from "zod";
 
 export const HOST_STORAGE_LARGEST_THREADS_LIMIT = 20;
-export const HOST_STORAGE_FILE_DETAILS_LIMIT = 10;
 
 const byteCountSchema = z.number().int().nonnegative();
-export const storageFileSchema = z.object({
-  path: z.string(),
-  sizeBytes: byteCountSchema,
-});
 
 export const hostStorageThreadSchema = z.object({
   threadId: z.string(),
@@ -17,14 +12,6 @@ export const hostStorageThreadSchema = z.object({
   updatedAt: z.number(),
   running: z.boolean(),
   sizeBytes: byteCountSchema,
-  largeFiles: z.object({
-    count: z.number().int().nonnegative(),
-    bytes: byteCountSchema,
-    files: z
-      .array(storageFileSchema)
-      .max(HOST_STORAGE_FILE_DETAILS_LIMIT)
-      .nullable(),
-  }),
 });
 export type HostStorageThread = z.infer<typeof hostStorageThreadSchema>;
 

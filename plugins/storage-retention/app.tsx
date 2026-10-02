@@ -397,9 +397,9 @@ function StoragePage({
                   aria-label="Storage breakdown"
                 >
                   <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-sm font-medium">Tracked storage</p>
+                    <p className="text-sm font-medium">Thread storage</p>
                     <p className="text-lg font-semibold tabular-nums">
-                      {bytes(totalBytes(report))}
+                      {bytes(threadStorageBytes(report))}
                     </p>
                   </div>
                   <StorageBreakdown report={report} />
@@ -607,47 +607,6 @@ function StoragePage({
                             Clear all files
                           </Button>
                         </div>
-                        <details className="pb-2 text-xs">
-                          <summary className="cursor-pointer text-muted-foreground">
-                            {thread.largeFiles.count
-                              ? `${plural(thread.largeFiles.count, "large file")} · ${bytes(thread.largeFiles.bytes)}`
-                              : `No files of ${bytes(LARGE_FILE_MIN_BYTES)} or more`}
-                          </summary>
-                          {thread.largeFiles.files === null ? (
-                            <p className="mt-2 text-muted-foreground">
-                              Rescan this machine to see file names and sizes.
-                            </p>
-                          ) : thread.largeFiles.count === 0 ? (
-                            <p className="mt-2 text-muted-foreground">
-                              This folder’s storage is spread across smaller
-                              files.
-                            </p>
-                          ) : (
-                            <div className="mt-2 space-y-2">
-                              {thread.largeFiles.files.map((file) => (
-                                <div
-                                  key={file.path}
-                                  className="flex items-start justify-between gap-3"
-                                >
-                                  <span className="min-w-0 break-all text-muted-foreground">
-                                    {file.path}
-                                  </span>
-                                  <span className="shrink-0 tabular-nums">
-                                    {bytes(file.sizeBytes)}
-                                  </span>
-                                </div>
-                              ))}
-                              {thread.largeFiles.count >
-                                thread.largeFiles.files.length && (
-                                <p className="text-muted-foreground">
-                                  Showing the {thread.largeFiles.files.length}{" "}
-                                  largest files of{" "}
-                                  {thread.largeFiles.count.toLocaleString()}.
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </details>
                         {cleanup?.key === thread.threadId &&
                           cleanupConfirmation}
                       </div>
@@ -1060,7 +1019,7 @@ function MachineRow({
       {report && (
         <span className="shrink-0 text-right">
           <span className="block text-sm font-normal tabular-nums">
-            {bytes(totalBytes(report))}
+            {bytes(threadStorageBytes(report))}
           </span>
           {report.disk && (
             <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
@@ -1137,12 +1096,11 @@ function RetentionField({
     </div>
   );
 }
-function totalBytes(report: NonNullable<HostReport["report"]>) {
+function threadStorageBytes(report: NonNullable<HostReport["report"]>) {
   return (
     report.activeThreadBytes +
     report.archivedThreadBytes +
-    report.orphanBytes +
-    report.leftoverWorktreeBytes
+    report.orphanBytes
   );
 }
 function categories(report: NonNullable<HostReport["report"]>) {
@@ -1162,11 +1120,6 @@ function categories(report: NonNullable<HostReport["report"]>) {
       value: report.orphanBytes,
       count: report.orphanCount,
     },
-    {
-      label: "Leftover worktrees",
-      value: report.leftoverWorktreeBytes,
-      count: report.leftoverWorktrees.length,
-    },
   ];
 }
 function StorageBreakdown({
@@ -1176,7 +1129,7 @@ function StorageBreakdown({
 }) {
   return (
     <table className="w-full text-xs">
-      <caption className="sr-only">Tracked storage by category</caption>
+      <caption className="sr-only">Thread storage by category</caption>
       <thead>
         <tr className="text-muted-foreground">
           <th scope="col" className="pb-2 text-left font-normal">
