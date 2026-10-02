@@ -136,6 +136,11 @@ it.each([false, true])(
         orphanCount: 1,
       });
       expect(scanned.report!.orphanBytes).toBeGreaterThanOrEqual(32768);
+      expect(scanned.report!.largestThreads[0]?.largeFiles).toEqual({
+        count: 1,
+        bytes: size,
+        files: [{ path: "data", sizeBytes: size }],
+      });
       expect(scanned.report!.disk!.totalBytes).toBeGreaterThan(
         scanned.report!.disk!.freeBytes,
       );
@@ -378,6 +383,84 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
       .toBe("idle");
   } finally {
     release();
+    await host.harness.dispose();
+  }
+});
+
+it("keeps the ten largest file paths while retaining complete totals and reads older scans without file details", async () => {
+  const files = Array.from({ length: 13 }, (_, index) => ({
+    path: `/storage/thr_old/file-${index}.db`,
+    sizeBytes: (index + 11) * 1024 * 1024,
+  }));
+  const bytes = files.reduce((total, file) => total + file.sizeBytes, 0);
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "capacity")
+        return { totalBytes: bytes * 2, freeBytes: bytes };
+      if (call.method === "measure")
+        return {
+          targets: [
+            {
+              outcome: "measured",
+              path: "/storage",
+              sizeBytes: bytes,
+              children: [{ name: "thr_old", sizeBytes: bytes }],
+            },
+          ],
+          largeFiles: files,
+        };
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: "/storage",
+        }),
+      },
+      threads: {
+        list: async () => [
+          makeThreadResponse({ id: "thr_old", status: "idle", archivedAt: 1 }),
+        ],
+      },
+      environments: { list: async () => [] },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).report?.largestThreads[0]?.largeFiles,
+      )
+      .toEqual({
+        count: 13,
+        bytes,
+        files: files
+          .slice(3)
+          .reverse()
+          .map((file) => ({
+            path: file.path.slice("/storage/thr_old/".length),
+            sizeBytes: file.sizeBytes,
+          })),
+      });
+    host.bb.storage
+      .database()
+      .prepare(
+        "UPDATE scans SET result_json = json_remove(result_json, '$.largeFiles[0].files') WHERE host_id = ?",
+      )
+      .run("host_test");
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).report?.largestThreads[0]?.largeFiles,
+    ).toEqual({ count: 13, bytes, files: null });
+  } finally {
     await host.harness.dispose();
   }
 });

@@ -7,6 +7,10 @@ import {
 } from "./host-contract.js";
 import { readThreads } from "./sdk-data.js";
 import { LARGE_FILE_MIN_BYTES } from "./rules.js";
+import {
+  HOST_STORAGE_FILE_DETAILS_LIMIT,
+  storageFileSchema,
+} from "./storage-types.js";
 import type {
   HostStorageReport,
   HostStorageResponse,
@@ -26,6 +30,11 @@ const cachedScanSchema = z.object({
         name: z.string(),
         sizeBytes: z.number().int().nonnegative(),
         count: z.number().int().nonnegative(),
+        files: z
+          .array(storageFileSchema)
+          .max(HOST_STORAGE_FILE_DETAILS_LIMIT)
+          .nullable()
+          .default(null),
       }),
     )
     .default([]),
@@ -191,15 +200,25 @@ export function createStorage(bb: BbPluginApi) {
       largestThreads: owned
         .sort((a, b) => b.sizeBytes - a.sizeBytes)
         .slice(0, 20)
-        .map(({ thread, sizeBytes }) => ({
-          threadId: thread.id,
-          projectId: thread.projectId,
-          title: thread.title ?? thread.titleFallback ?? thread.id,
-          archivedAt: thread.archivedAt,
-          updatedAt: thread.updatedAt,
-          running: ["starting", "active", "stopping"].includes(thread.status),
-          sizeBytes,
-        })),
+        .map(({ thread, sizeBytes }) => {
+          const large = scan.largeFiles.find(
+            (entry) => entry.name === thread.id,
+          );
+          return {
+            threadId: thread.id,
+            projectId: thread.projectId,
+            title: thread.title ?? thread.titleFallback ?? thread.id,
+            archivedAt: thread.archivedAt,
+            updatedAt: thread.updatedAt,
+            running: ["starting", "active", "stopping"].includes(thread.status),
+            sizeBytes,
+            largeFiles: {
+              count: large?.count ?? 0,
+              bytes: large?.sizeBytes ?? 0,
+              files: large ? large.files : [],
+            },
+          };
+        }),
       leftoverWorktrees: worktrees,
     };
   }
@@ -248,7 +267,11 @@ export function createStorage(bb: BbPluginApi) {
         const measured = new Map<string, MeasuredTarget>();
         const largeFiles = new Map<
           string,
-          { sizeBytes: number; count: number }
+          {
+            sizeBytes: number;
+            count: number;
+            files: z.infer<typeof storageFileSchema>[];
+          }
         >();
         const batches: {
           targets: { path: string; perChild: boolean }[];
@@ -284,9 +307,22 @@ export function createStorage(bb: BbPluginApi) {
               !isStorageEntry(name)
             )
               continue;
-            const total = largeFiles.get(name) ?? { sizeBytes: 0, count: 0 };
+            const total = largeFiles.get(name) ?? {
+              sizeBytes: 0,
+              count: 0,
+              files: [],
+            };
             total.sizeBytes += file.sizeBytes;
             total.count++;
+            total.files.push({
+              path: file.path.slice(rootPath.length + name.length + 2),
+              sizeBytes: file.sizeBytes,
+            });
+            total.files.sort((a, b) => b.sizeBytes - a.sizeBytes);
+            total.files.length = Math.min(
+              total.files.length,
+              HOST_STORAGE_FILE_DETAILS_LIMIT,
+            );
             largeFiles.set(name, total);
           }
         }
@@ -427,7 +463,10 @@ export function createStorage(bb: BbPluginApi) {
         );
         cached.entries = cached.entries.map((entry) => ({
           ...entry,
-          sizeBytes: Math.max(0, entry.sizeBytes - (freed.get(entry.name) ?? 0)),
+          sizeBytes: Math.max(
+            0,
+            entry.sizeBytes - (freed.get(entry.name) ?? 0),
+          ),
         }));
         cached.largeFiles = cached.largeFiles.filter(
           (entry) => !freed.has(entry.name),

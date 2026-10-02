@@ -195,10 +195,7 @@ function StoragePage({
     policy !== null &&
     (policy.archiveAfterDays !== state.policy.archiveAfterDays ||
       policy.deleteAfterDays !== state.policy.deleteAfterDays);
-  function largeFilesCleanup(
-    target: string | null,
-    totals: LargeFileTotals,
-  ) {
+  function largeFilesCleanup(target: string | null, totals: LargeFileTotals) {
     return {
       key: "large-files",
       title: `Delete ${totals.fileCount.toLocaleString()} large ${totals.fileCount === 1 ? "file" : "files"} (${bytes(totals.bytes)})?`,
@@ -286,7 +283,7 @@ function StoragePage({
     <div className="h-full w-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-10 px-4 pb-10 pt-4 md:px-5 md:pt-5">
         {hostId && state && (
-          <header className="space-y-4">
+          <header className="space-y-3">
             <button
               className="inline-flex items-center gap-1.5 text-xs leading-snug text-subtle-foreground/75 hover:text-foreground"
               onClick={() => navigate.toPluginPanel(PANEL)}
@@ -296,16 +293,16 @@ function StoragePage({
             </button>
             <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
               <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <h1 className="min-w-0 break-words text-base font-semibold">
                     {machine?.name ?? "Machine storage"}
                   </h1>
-                  <div className="flex shrink-0 items-center gap-3">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     {hostId === primaryHostId && <Pill>server</Pill>}
                     {machine && <MachineStatus machine={machine} />}
                   </div>
                 </div>
-                <p className="mt-2 text-xs leading-snug text-subtle-foreground/75">
+                <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
                   Review stored files and free up space on this machine.
                 </p>
               </div>
@@ -366,7 +363,10 @@ function StoragePage({
               </div>
             )}
             {scanning && (
-              <p role="status" className="text-xs leading-snug text-subtle-foreground/75">
+              <p
+                role="status"
+                className="text-xs leading-snug text-subtle-foreground/75"
+              >
                 Scanning in the background. Large directories may take a few
                 minutes.
               </p>
@@ -396,29 +396,22 @@ function StoragePage({
                   className="space-y-4 rounded-lg border border-border bg-card px-4 py-3.5"
                   aria-label="Storage breakdown"
                 >
-                  <div className="flex flex-wrap items-end justify-between gap-2">
-                    <div>
-                      <p className="text-xs leading-snug text-subtle-foreground/75">
-                        Tracked storage
-                      </p>
-                      <p className="mt-1 text-lg font-semibold tabular-nums">
-                        {bytes(totalBytes(report))}
-                      </p>
-                    </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      {report.disk && (
-                        <p className="tabular-nums">
-                          {bytes(report.disk.freeBytes)} free of{" "}
-                          {bytes(report.disk.totalBytes)}
-                        </p>
-                      )}
-                      <p>
-                        Scanned{" "}
-                        {new Date(report.scannedAt).toLocaleString()}
-                      </p>
-                    </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-sm font-medium">Tracked storage</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bytes(totalBytes(report))}
+                    </p>
                   </div>
                   <StorageBreakdown report={report} />
+                  <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+                    {report.disk && (
+                      <p className="tabular-nums">
+                        Disk space: {bytes(report.disk.freeBytes)} free of{" "}
+                        {bytes(report.disk.totalBytes)}
+                      </p>
+                    )}
+                    <p>Scanned {new Date(report.scannedAt).toLocaleString()}</p>
+                  </div>
                 </section>
                 <section className="space-y-3">
                   <h2 className="text-sm font-semibold">Clean up</h2>
@@ -526,11 +519,15 @@ function StoragePage({
                             locked || report.leftoverWorktrees.length === 0
                           }
                           onClick={() =>
-                            void perform(async () => {
-                              await rpc.call("retryWorktreeCleanup", {
-                                hostId,
-                              });
-                            }, () => "Cleanup requested. Rescan after it finishes to update usage.")
+                            void perform(
+                              async () => {
+                                await rpc.call("retryWorktreeCleanup", {
+                                  hostId,
+                                });
+                              },
+                              () =>
+                                "Cleanup requested. Rescan after it finishes to update usage.",
+                            )
                           }
                         >
                           Retry cleanup
@@ -554,8 +551,8 @@ function StoragePage({
                 </section>
                 <section className="space-y-3">
                   <SectionHeading
-                    title="Largest threads"
-                    description="Clear files from stopped threads without deleting their conversation history."
+                    title="Threads using the most storage"
+                    description="Total folder sizes, including small files. Clear stopped threads without deleting their conversation history."
                   />
                   <div className="divide-y divide-border rounded-lg border border-border bg-card">
                     {report.largestThreads.length === 0 && (
@@ -564,7 +561,10 @@ function StoragePage({
                       </p>
                     )}
                     {report.largestThreads.map((thread) => (
-                      <div key={thread.threadId} className="space-y-3 px-4 py-1.5">
+                      <div
+                        key={thread.threadId}
+                        className="space-y-3 px-4 py-1.5"
+                      >
                         <div className="flex items-center gap-3">
                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                             <button
@@ -581,7 +581,7 @@ function StoragePage({
                             ) : null}
                           </div>
                           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                            {bytes(thread.sizeBytes)}
+                            {bytes(thread.sizeBytes)} total
                           </span>
                           <Button
                             variant="ghost"
@@ -604,9 +604,50 @@ function StoragePage({
                               })
                             }
                           >
-                            Clear
+                            Clear all files
                           </Button>
                         </div>
+                        <details className="pb-2 text-xs">
+                          <summary className="cursor-pointer text-muted-foreground">
+                            {thread.largeFiles.count
+                              ? `${plural(thread.largeFiles.count, "large file")} · ${bytes(thread.largeFiles.bytes)}`
+                              : `No files of ${bytes(LARGE_FILE_MIN_BYTES)} or more`}
+                          </summary>
+                          {thread.largeFiles.files === null ? (
+                            <p className="mt-2 text-muted-foreground">
+                              Rescan this machine to see file names and sizes.
+                            </p>
+                          ) : thread.largeFiles.count === 0 ? (
+                            <p className="mt-2 text-muted-foreground">
+                              This folder’s storage is spread across smaller
+                              files.
+                            </p>
+                          ) : (
+                            <div className="mt-2 space-y-2">
+                              {thread.largeFiles.files.map((file) => (
+                                <div
+                                  key={file.path}
+                                  className="flex items-start justify-between gap-3"
+                                >
+                                  <span className="min-w-0 break-all text-muted-foreground">
+                                    {file.path}
+                                  </span>
+                                  <span className="shrink-0 tabular-nums">
+                                    {bytes(file.sizeBytes)}
+                                  </span>
+                                </div>
+                              ))}
+                              {thread.largeFiles.count >
+                                thread.largeFiles.files.length && (
+                                <p className="text-muted-foreground">
+                                  Showing the {thread.largeFiles.files.length}{" "}
+                                  largest files of{" "}
+                                  {thread.largeFiles.count.toLocaleString()}.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </details>
                         {cleanup?.key === thread.threadId &&
                           cleanupConfirmation}
                       </div>
@@ -655,7 +696,9 @@ function StoragePage({
                     variant="outline"
                     size="sm"
                     disabled={busy || scannable.length === 0}
-                    onClick={() => void perform(() => rpc.call("scanAll", null))}
+                    onClick={() =>
+                      void perform(() => rpc.call("scanAll", null))
+                    }
                   >
                     <Icon name="RotateCcw" />
                     Scan all
@@ -819,11 +862,14 @@ function StoragePage({
                       size="sm"
                       disabled={busy}
                       onClick={() =>
-                        void perform(async () => {
-                          await rpc.call("configure", confirmation.policy);
-                          setDraft(null);
-                          setConfirmation(null);
-                        }, () => "Retention policy saved.")
+                        void perform(
+                          async () => {
+                            await rpc.call("configure", confirmation.policy);
+                            setDraft(null);
+                            setConfirmation(null);
+                          },
+                          () => "Retention policy saved.",
+                        )
                       }
                     >
                       Save policy
@@ -1010,7 +1056,6 @@ function MachineRow({
             </span>
           ))}
         </span>
-        {report && <UsageBar report={report} className="mt-2" />}
       </span>
       {report && (
         <span className="shrink-0 text-right">
@@ -1106,53 +1151,23 @@ function categories(report: NonNullable<HostReport["report"]>) {
       label: "Active threads",
       value: report.activeThreadBytes,
       count: report.threadsWithStorageCount - report.archivedThreadCount,
-      color: "bg-foreground/70",
     },
     {
       label: "Archived threads",
       value: report.archivedThreadBytes,
       count: report.archivedThreadCount,
-      color: "bg-foreground/40",
     },
     {
       label: "Orphaned files",
       value: report.orphanBytes,
       count: report.orphanCount,
-      color: "bg-foreground/20",
     },
     {
       label: "Leftover worktrees",
       value: report.leftoverWorktreeBytes,
       count: report.leftoverWorktrees.length,
-      color: "bg-foreground/10",
     },
   ];
-}
-function UsageBar({
-  report,
-  className,
-}: {
-  report: NonNullable<HostReport["report"]>;
-  className?: string;
-}) {
-  const total = totalBytes(report);
-  return (
-    <span
-      className={cn(
-        "flex h-1.5 overflow-hidden rounded-full bg-muted",
-        className,
-      )}
-      aria-hidden="true"
-    >
-      {categories(report).map((category) => (
-        <span
-          key={category.label}
-          className={category.color}
-          style={{ width: `${total ? (category.value / total) * 100 : 0}%` }}
-        />
-      ))}
-    </span>
-  );
 }
 function StorageBreakdown({
   report,
@@ -1160,27 +1175,37 @@ function StorageBreakdown({
   report: NonNullable<HostReport["report"]>;
 }) {
   return (
-    <>
-      <UsageBar report={report} />
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
+    <table className="w-full text-xs">
+      <caption className="sr-only">Tracked storage by category</caption>
+      <thead>
+        <tr className="text-muted-foreground">
+          <th scope="col" className="pb-2 text-left font-normal">
+            Category
+          </th>
+          <th scope="col" className="pb-2 pl-3 text-right font-normal">
+            Count
+          </th>
+          <th scope="col" className="pb-2 pl-3 text-right font-normal">
+            Size
+          </th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
         {categories(report).map((category) => (
-          <div key={category.label}>
-            <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span
-                className={`size-2 shrink-0 rounded-sm ${category.color}`}
-              />
+          <tr key={category.label}>
+            <th scope="row" className="py-2 text-left font-normal">
               {category.label}
-            </dt>
-            <dd className="mt-1.5 text-sm font-normal tabular-nums">
+            </th>
+            <td className="py-2 pl-3 text-right tabular-nums text-muted-foreground">
+              {category.count.toLocaleString()}
+            </td>
+            <td className="whitespace-nowrap py-2 pl-3 text-right tabular-nums">
               {bytes(category.value)}
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                {category.count.toLocaleString()}
-              </span>
-            </dd>
-          </div>
+            </td>
+          </tr>
         ))}
-      </dl>
-    </>
+      </tbody>
+    </table>
   );
 }
 
