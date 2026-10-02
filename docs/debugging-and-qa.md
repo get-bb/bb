@@ -35,7 +35,9 @@ a new migration after `0133`.
 and `unarchivedDescendantCount` for archive confirmation. The latter follows
 the same hierarchy, lifecycle-owner, and hidden source-fork edges as
 `archive-all`, deduplicates threads, traverses archived intermediaries, and
-excludes already archived or deleted candidates and the requested root.
+excludes hidden, already archived, or deleted candidates and the requested root.
+Hidden threads still participate in the archive cascade, and visible descendants
+beneath hidden threads still count toward confirmation.
 The UI adds the root to the displayed total and skips confirmation when no
 unarchived descendants remain or the General setting `confirmThreadArchive`
 is disabled. The summary is a preview; concurrent changes
