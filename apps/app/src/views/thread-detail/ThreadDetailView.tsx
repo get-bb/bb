@@ -1,4 +1,6 @@
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { useSplitPreload } from "@/lib/define-split";
+import { idleSplitDownload } from "@/lib/split-prefetch";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   useCallback,
@@ -506,7 +508,10 @@ function RoutedThreadDetailView() {
   );
 }
 
+const queuedMessagesDownload = idleSplitDownload("queued-messages-list");
+
 export function ThreadDetailView(props: ThreadDetailViewProps) {
+  useSplitPreload(queuedMessagesDownload);
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
   }
