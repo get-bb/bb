@@ -80,7 +80,11 @@ function pruneResolvedItemCandidates(
     }
     if (probe.probePhase === 0) {
       return db.all<Support>(sql`SELECT id, sequence, type, item_kind AS itemKind, item_id AS itemId, parent_tool_call_id AS parentToolCallId,
-          CASE WHEN json_valid(data) THEN json_type(data, '$.item.aggregatedOutput') IS NOT NULL ELSE 0 END AS hasOutput
+          ${
+            candidate.type === "item/commandExecution/outputDelta"
+              ? sql`CASE WHEN json_valid(data) THEN json_type(data, '$.item.aggregatedOutput') IS NOT NULL ELSE 0 END`
+              : sql`1`
+          } AS hasOutput
         FROM events INDEXED BY events_thread_turn_type_item_sequence_idx WHERE thread_id = ${args.threadId} AND turn_id = ${candidate.turnId}
           AND type = 'item/completed' AND item_id = ${candidate.itemId}
           AND sequence > ${probe.probeSequence} ORDER BY sequence LIMIT ${limit}`);

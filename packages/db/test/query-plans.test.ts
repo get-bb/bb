@@ -1389,88 +1389,109 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("bounds delta support probes with the consolidated scope index", () => {
-    const { db, logger, thread } = setup();
-    const turnId = "turn_resolved_delta_query_plan";
-    const itemId = "call_resolved_delta_query_plan";
-    insertEvents(db, noopNotifier, [
-      {
-        data: JSON.stringify({ output: "first", parentToolCallId: "parent" }),
-        itemId,
-        itemKind: null,
-        parentToolCallId: "parent",
-        scope: turnScope(turnId),
-        sequence: 1,
-        threadId: thread.id,
-        type: "item/commandExecution/outputDelta",
-      },
-      {
-        data: JSON.stringify({ output: "second", parentToolCallId: "parent" }),
-        itemId,
-        itemKind: null,
-        parentToolCallId: "parent",
-        scope: turnScope(turnId),
-        sequence: 2,
-        threadId: thread.id,
-        type: "item/commandExecution/outputDelta",
-      },
-      {
-        data: JSON.stringify({
-          item: {
-            aggregatedOutput: "firstsecond",
-            id: itemId,
+  it.each([
+    ["commandExecution", "item/commandExecution/outputDelta"],
+    ["agentMessage", "item/agentMessage/delta"],
+    ["reasoning", "item/reasoning/textDelta"],
+  ] as const)(
+    "bounds %s support probes and only parses command output payloads",
+    (itemKind, deltaType) => {
+      const { db, logger, thread } = setup();
+      const turnId = "turn_resolved_delta_query_plan";
+      const itemId = "call_resolved_delta_query_plan";
+      insertEvents(db, noopNotifier, [
+        {
+          data: JSON.stringify({ output: "first", parentToolCallId: "parent" }),
+          itemId,
+          itemKind: null,
+          parentToolCallId: "parent",
+          scope: turnScope(turnId),
+          sequence: 1,
+          threadId: thread.id,
+          type: deltaType,
+        },
+        {
+          data: JSON.stringify({
+            output: "second",
             parentToolCallId: "parent",
-            type: "commandExecution",
-          },
-        }),
-        itemId,
-        itemKind: "commandExecution",
-        parentToolCallId: "parent",
-        scope: turnScope(turnId),
-        sequence: 3,
-        threadId: thread.id,
-        type: "item/completed",
-      },
-    ]);
-    logger.clear();
+          }),
+          itemId,
+          itemKind: null,
+          parentToolCallId: "parent",
+          scope: turnScope(turnId),
+          sequence: 2,
+          threadId: thread.id,
+          type: deltaType,
+        },
+        {
+          data: JSON.stringify({
+            item: {
+              aggregatedOutput: "firstsecond",
+              id: itemId,
+              parentToolCallId: "parent",
+              type: itemKind,
+            },
+          }),
+          itemId,
+          itemKind,
+          parentToolCallId: "parent",
+          scope: turnScope(turnId),
+          sequence: 3,
+          threadId: thread.id,
+          type: "item/completed",
+        },
+      ]);
+      logger.clear();
 
-    const statements = captureStatements(db, () => {
-      expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
-    });
-    const discovery = statements.find((statement) =>
-      statement.sql.includes("WITH candidate_ids AS MATERIALIZED"),
-    );
-    if (!discovery) throw new Error("Missing typed delta candidate discovery");
-    const discoveryPlan = queryPlanDetails({ db, ...discovery });
-    expect(
-      discoveryPlan.match(/USING INDEX events_thread_type_sequence_idx/gu),
-    ).toHaveLength(4);
-    expect(discoveryPlan).toContain("USING INDEX sqlite_autoindex_events_1");
-    expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
-    const supportQueries = statements.filter((statement) =>
-      statement.sql.includes(
-        "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
-      ),
-    );
-    expect(supportQueries.length).toBeGreaterThan(0);
-    for (const statement of supportQueries) {
-      expect(queryPlanDetails({ db, ...statement })).toContain(
-        "USING INDEX events_thread_turn_type_item_sequence_idx",
+      const statements = captureStatements(db, () => {
+        expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
+      });
+      const discovery = statements.find((statement) =>
+        statement.sql.includes("WITH candidate_ids AS MATERIALIZED"),
       );
-      expect(statement.sql).toContain("LIMIT ?");
-    }
-    const pruneQuery = findOnlyDebugLog({
-      logger,
-      predicate: (fields) =>
-        fields.operation === "run" &&
-        fields.sql.startsWith("DELETE FROM events"),
-    });
-    expect(pruneQuery.fields.sql).toContain("WHERE id IN");
-    expect(pruneQuery.fields.bindingArgumentCount).toBeLessThanOrEqual(500);
-    expect(pruneQuery.fields.sql).not.toContain("json_extract");
+      if (!discovery)
+        throw new Error("Missing typed delta candidate discovery");
+      const discoveryPlan = queryPlanDetails({ db, ...discovery });
+      expect(
+        discoveryPlan.match(/USING INDEX events_thread_type_sequence_idx/gu),
+      ).toHaveLength(4);
+      expect(discoveryPlan).toContain("USING INDEX sqlite_autoindex_events_1");
+      expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
+      const supportQueries = statements.filter((statement) =>
+        statement.sql.includes(
+          "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+        ),
+      );
+      expect(supportQueries.length).toBeGreaterThan(0);
+      for (const statement of supportQueries) {
+        expect(queryPlanDetails({ db, ...statement })).toContain(
+          "USING INDEX events_thread_turn_type_item_sequence_idx",
+        );
+        expect(statement.sql).toContain("LIMIT ?");
+        if (itemKind !== "commandExecution") {
+          const instructions = db.$client
+            .prepare<SqliteParameter[], { opcode: string; p4: string | null }>(
+              `EXPLAIN ${statement.sql}`,
+            )
+            .all(...statement.params);
+          expect(instructions.some((row) => row.p4?.startsWith("json_"))).toBe(
+            false,
+          );
+        }
+      }
+      const pruneQuery = findOnlyDebugLog({
+        logger,
+        predicate: (fields) =>
+          fields.operation === "run" &&
+          fields.sql.startsWith("DELETE FROM events"),
+      });
+      expect(pruneQuery.fields.sql).toContain("WHERE id IN");
+      expect(pruneQuery.fields.bindingArgumentCount).toBeLessThanOrEqual(500);
+      expect(pruneQuery.fields.sql).not.toContain("json_extract");
 
-    db.$client.close();
-  });
+      db.$client.close();
+    },
+  );
 
   it("pins the latest-thread-state lookup to the partial index with no temp sort", () => {
     const { db, thread } = setup();
