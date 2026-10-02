@@ -34,6 +34,7 @@ interface LinuxProcessStat {
 const tempScripts: TempScript[] = [];
 const processes: BbAppProcess[] = [];
 const execFileAsync = promisify(execFile);
+const posixIt = process.platform === "win32" ? it.skip : it;
 
 async function readLinuxProcessStat(pid: number): Promise<LinuxProcessStat> {
   const stat = await readFile(`/proc/${String(pid)}/stat`, "utf8");
@@ -177,7 +178,7 @@ describe("bb app process", () => {
     });
   });
 
-  it("imports the bridge from the child AppImage mount", async () => {
+  posixIt("imports the bridge from the child AppImage mount", async () => {
     const desktopMountScript = await createTempScript({
       contents: 'process.stdout.write("desktop mount\\n");\n',
     });
@@ -328,7 +329,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
     });
   });
 
-  it("escalates to SIGKILL when the bridge ignores SIGTERM", async () => {
+  posixIt("escalates to SIGKILL when the bridge ignores SIGTERM", async () => {
     const script = await createTempScript({
       contents: `
 process.on("SIGTERM", () => {
