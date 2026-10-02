@@ -154,6 +154,25 @@ export function listPluginArtifactsAtOrUnderPath(
     .all();
 }
 
+export function listInstalledPluginIdsAtOrUnderPath(
+  db: DbConnection,
+  directory: string,
+  separator: string,
+): string[] {
+  const pattern = directoryContentsPattern(directory, separator);
+  return db
+    .select({ id: installedPlugins.id })
+    .from(installedPlugins)
+    .where(
+      or(
+        eq(installedPlugins.rootDir, directory),
+        sql`${installedPlugins.rootDir} LIKE ${pattern} ESCAPE '\\'`,
+      ),
+    )
+    .all()
+    .map((row) => row.id);
+}
+
 export function listPluginArtifactsInGitCheckout(
   db: DbConnection,
   checkoutRoot: string,

@@ -21,6 +21,8 @@ import {
   pluginInstallJobListResponseSchema,
   pluginInstallJobResponseSchema,
   pluginInstallJobStartResponseSchema,
+  pluginCachePruneRequestSchema,
+  pluginCachePruneResponseSchema,
   pluginInstallRequestSchema,
   pluginRemoveResponseSchema,
   pluginSafeModeRequestSchema,
@@ -43,6 +45,7 @@ import {
   type PluginCatalogStatus as PluginCatalogStatusContract,
   type PluginInstallJob as PluginInstallJobContract,
   type PluginApplyUpdateResult as PluginApplyUpdateContract,
+  type PluginCachePruneResponse,
   type PluginListResponse,
   type PluginReloadResponse,
   type PluginRemoveResponse,
@@ -207,6 +210,11 @@ export interface PluginSetSafeModeArgs {
   enabled: boolean;
 }
 
+export interface PluginPruneCacheArgs {
+  dryRun?: boolean;
+  signal?: AbortSignal;
+}
+
 export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
 export type PluginGetSettingsResult = PluginSettingsResponse;
@@ -217,6 +225,7 @@ export type PluginReloadResult = PluginReloadResponse;
 export type PluginRemoveResult = PluginRemoveResponse;
 export type PluginSafeModeResult = PluginSafeModeResponse;
 export type PluginSetSafeModeResult = PluginSafeModeUpdateResponse;
+export type PluginPruneCacheResult = PluginCachePruneResponse;
 export type PluginTokenResult = PluginTokenResponse;
 export type PluginUpdateSettingsResult = PluginSettingsResponse;
 export type PluginGetSourceResult = PluginSourceDetail;
@@ -272,6 +281,9 @@ export interface PluginsArea {
   experimental_setSafeMode(
     args: PluginSetSafeModeArgs,
   ): Promise<PluginSetSafeModeResult>;
+  experimental_pruneCache(
+    args?: PluginPruneCacheArgs,
+  ): Promise<PluginPruneCacheResult>;
   applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
@@ -568,6 +580,16 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         "/api/v1/plugins/safe-mode",
         pluginSafeModeUpdateResponseSchema,
         jsonInit("PUT", body),
+      );
+    },
+    async experimental_pruneCache(input = {}) {
+      const body = pluginCachePruneRequestSchema.parse({
+        dryRun: input.dryRun ?? false,
+      });
+      return requestParsed(
+        "/api/v1/plugins/cache/prune",
+        pluginCachePruneResponseSchema,
+        { ...jsonInit("POST", body), signal: input.signal },
       );
     },
     catalog,

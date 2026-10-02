@@ -39,6 +39,7 @@ import {
 } from "./plugin-image-response.js";
 import {
   pluginApplyUpdateRequestSchema,
+  pluginCachePruneRequestSchema,
   pluginRpcDiscoveryQuerySchema,
   pluginInstallRequestSchema,
   pluginSafeModeRequestSchema,
@@ -671,6 +672,15 @@ export function registerPluginRoutes(
         422,
       );
     }
+  });
+
+  app.post("/plugins/cache/prune", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginCachePruneRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: 'expected { "dryRun"?: boolean }' }, 400);
+    }
+    return context.json(await plugins.pruneCache({ dryRun: body.data.dryRun }));
   });
 
   app.post("/plugins/:id/update", async (context) => {
