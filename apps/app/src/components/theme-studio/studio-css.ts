@@ -1,4 +1,8 @@
-import type { PreviewMode, StudioTokenName, ThemeStudioTokens } from "./studio-tokens";
+import type {
+  PreviewMode,
+  StudioTokenName,
+  ThemeStudioTokens,
+} from "./studio-tokens";
 
 interface CssBlock {
   selector: string;
@@ -56,7 +60,11 @@ function tokenVariable(token: StudioTokenName): string {
   return `--${token.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)}`;
 }
 
-export function readToken(css: string, mode: PreviewMode, token: StudioTokenName): string | null {
+export function readToken(
+  css: string,
+  mode: PreviewMode,
+  token: StudioTokenName,
+): string | null {
   const block = findBlock(css, mode);
   if (!block) return null;
   const pattern = new RegExp(`(${tokenVariable(token)}\\s*:)([^;]*);`);
@@ -102,10 +110,7 @@ export interface ExtractedTokens {
   missing: readonly StudioTokenName[];
 }
 
-export function extractTokens(
-  css: string,
-  mode: PreviewMode,
-): ExtractedTokens {
+export function extractTokens(css: string, mode: PreviewMode): ExtractedTokens {
   const tokens: Partial<ThemeStudioTokens> = {};
   const missing: StudioTokenName[] = [];
   for (const token of ALL_TOKENS) {

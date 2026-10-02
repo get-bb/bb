@@ -71,7 +71,9 @@ describe("studio token css", () => {
     const css = buildPreviewCss(LIGHT, "light");
     expect(css).toContain("--secondary: color-mix(in oklch, var(--ink) 8%");
     expect(css).toContain("--border: color-mix(in oklch, var(--ink) 14%");
-    expect(css).toContain("--muted-foreground: color-mix(in oklch, var(--ink) 70%");
+    expect(css).toContain(
+      "--muted-foreground: color-mix(in oklch, var(--ink) 70%",
+    );
   });
 
   it("mixes translucent state tokens in oklab, not oklch", () => {
@@ -129,9 +131,7 @@ describe("custom theme names accepted by the studio", () => {
 describe("theme studio dialog", () => {
   it("renders the guided controls and hides advanced ones until asked", async () => {
     const { ThemeStudioDialog } = await import("./ThemeStudioDialog");
-    render(
-      <ThemeStudioDialog open onOpenChange={vi.fn()} onSave={vi.fn()} />,
-    );
+    render(<ThemeStudioDialog open onOpenChange={vi.fn()} onSave={vi.fn()} />);
 
     expect(screen.getByLabelText("Canvas color")).toBeTruthy();
     expect(screen.getByLabelText("Primary color")).toBeTruthy();
@@ -159,7 +159,9 @@ describe("theme studio dialog", () => {
         onOpenChange={vi.fn()}
         onSave={onSave}
         sources={[{ id: "nord", name: "Nord", kind: "builtin" }]}
-        loadThemeCss={async () => ":root, .light {\n  --canvas: #eceff4;\n}\n.dark {\n  --canvas: #2e3440;\n}"}
+        loadThemeCss={async () =>
+          ":root, .light {\n  --canvas: #eceff4;\n}\n.dark {\n  --canvas: #2e3440;\n}"
+        }
       />,
     );
 
@@ -215,8 +217,13 @@ describe("theme studio dialog", () => {
       (screen.getByLabelText("Canvas color") as HTMLElement).textContent,
     ).toContain("#eceff4");
 
-    fireEvent.click(screen.getByRole("button", { name: /overwrite and apply/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /^overwrite$/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /overwrite and apply/i }),
+    );
+    const confirm = await screen.findByRole("dialog", {
+      name: /replace mine/i,
+    });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Overwrite" }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     const payload = onSave.mock.calls[0][0];
@@ -247,7 +254,9 @@ describe("theme studio dialog", () => {
     const remove = await screen.findByRole("button", { name: /^delete$/i });
     fireEvent.click(remove);
 
-    const dialog = await screen.findByRole("dialog", { name: /delete mine\?/i });
+    const dialog = await screen.findByRole("dialog", {
+      name: /delete mine\?/i,
+    });
     expect(dialog).toBeTruthy();
     fireEvent.click(
       within(dialog).getByRole("button", { name: /delete theme/i }),
@@ -255,7 +264,47 @@ describe("theme studio dialog", () => {
 
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith("mine"));
     rerender(
-      <ThemeStudioDialog open onOpenChange={vi.fn()} onSave={vi.fn()} onDelete={onDelete} />,
+      <ThemeStudioDialog
+        open
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+  });
+
+  it("renames a loaded custom theme through its own dialog", async () => {
+    const { ThemeStudioDialog } = await import("./ThemeStudioDialog");
+    const onRename = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ThemeStudioDialog
+        open
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onRename={onRename}
+        sources={[{ id: "mine", name: "mine", kind: "custom" }]}
+        loadThemeCss={async () => ".dark { --canvas: #000; }"}
+      />,
+    );
+
+    await openSourceMenu(/new theme/i);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "mine" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: /^rename$/i }));
+    const dialog = await screen.findByRole("dialog", { name: /rename/i });
+    const field = within(dialog).getByLabelText("New name") as HTMLInputElement;
+    expect(field.value).toBe("mine-copy");
+
+    fireEvent.change(field, { target: { value: "../escape" } });
+    const confirm = within(dialog).getByRole("button", { name: "Rename" });
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(field, { target: { value: "renamed" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+
+    await waitFor(() =>
+      expect(onRename).toHaveBeenCalledWith("mine", "renamed"),
     );
   });
 
@@ -278,29 +327,24 @@ describe("theme studio dialog", () => {
     expect(document.body.style.pointerEvents).not.toBe("none");
   });
 
-  it("exposes a five-step rule strictness control with both extremes labelled", async () => {
+  it("exposes a five-step rule strictness control with its current level named", async () => {
     const { ThemeStudioDialog } = await import("./ThemeStudioDialog");
-    render(
-      <ThemeStudioDialog open onOpenChange={vi.fn()} onSave={vi.fn()} />,
-    );
+    render(<ThemeStudioDialog open onOpenChange={vi.fn()} onSave={vi.fn()} />);
 
-    const slider = screen.getByLabelText(
-      "Rule strictness",
-    ) as HTMLInputElement;
+    const slider = screen.getByLabelText("Rule strictness") as HTMLInputElement;
     expect(slider.type).toBe("range");
     expect(slider.min).toBe("1");
     expect(slider.max).toBe("5");
     expect(slider.step).toBe("1");
-    expect(screen.getByText("Unfiltered")).toBeTruthy();
-    expect(screen.getByText("Structured")).toBeTruthy();
+    expect(slider.value).toBe("3");
     expect(screen.getByText("Expressive")).toBeTruthy();
+    expect(screen.queryByText("Unfiltered")).toBeNull();
+    expect(screen.queryByText("Structured")).toBeNull();
   });
 
   it("keeps save disabled until a valid name is entered", async () => {
     const { ThemeStudioDialog } = await import("./ThemeStudioDialog");
-    render(
-      <ThemeStudioDialog open onOpenChange={vi.fn()} onSave={vi.fn()} />,
-    );
+    render(<ThemeStudioDialog open onOpenChange={vi.fn()} onSave={vi.fn()} />);
 
     const save = screen.getByRole("button", { name: /save and apply/i });
     expect((save as HTMLButtonElement).disabled).toBe(true);
@@ -309,9 +353,7 @@ describe("theme studio dialog", () => {
   it("saves the generated css under the entered name", async () => {
     const { ThemeStudioDialog } = await import("./ThemeStudioDialog");
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ThemeStudioDialog open onOpenChange={vi.fn()} onSave={onSave} />,
-    );
+    render(<ThemeStudioDialog open onOpenChange={vi.fn()} onSave={onSave} />);
 
     fireEvent.change(screen.getByLabelText("Save as"), {
       target: { value: "my-theme" },
@@ -331,9 +373,7 @@ describe("theme studio dialog", () => {
   it("rejects a name the theme folder rules disallow", async () => {
     const { ThemeStudioDialog } = await import("./ThemeStudioDialog");
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ThemeStudioDialog open onOpenChange={vi.fn()} onSave={onSave} />,
-    );
+    render(<ThemeStudioDialog open onOpenChange={vi.fn()} onSave={onSave} />);
 
     fireEvent.change(screen.getByLabelText("Save as"), {
       target: { value: "../escape" },

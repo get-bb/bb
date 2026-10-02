@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   customThemeNameSchema,
   generatePalette,
@@ -124,6 +131,7 @@ export interface ThemeStudioDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (input: { name: string; css: string }) => Promise<void>;
   onDelete?: (name: string) => Promise<void>;
+  onRename?: (from: string, to: string) => Promise<void>;
   loadThemeCss?: (source: StudioSource) => Promise<string | null>;
   sources?: readonly StudioSource[];
   activeThemeId?: string;
@@ -131,6 +139,23 @@ export interface ThemeStudioDialogProps {
   pending?: boolean;
   saveError?: string | null;
   deleteError?: string | null;
+  renameError?: string | null;
+}
+
+function ConfirmDialog({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>{open ? children : null}</DialogContent>
+    </Dialog>
+  );
 }
 
 export function ThemeStudioDialog(props: ThemeStudioDialogProps) {
@@ -145,6 +170,7 @@ function ThemeStudioDialogBody({
   onOpenChange,
   onSave,
   onDelete,
+  onRename,
   loadThemeCss,
   sources = [],
   activeThemeId,
@@ -152,6 +178,7 @@ function ThemeStudioDialogBody({
   pending = false,
   saveError = null,
   deleteError = null,
+  renameError = null,
 }: ThemeStudioDialogProps) {
   const [mode, setMode] = useState<PreviewMode>("dark");
   const [name, setName] = useState(initialName);
@@ -162,8 +189,11 @@ function ThemeStudioDialogBody({
   const [constraintLevel, setConstraintLevel] = useState<ConstraintLevel>(3);
   const [loaded, setLoaded] = useState<Loaded>({ kind: "new" });
   const [loading, setLoading] = useState(false);
-  const [confirm, setConfirm] = useState<"overwrite" | "delete" | null>(null);
+  const [confirm, setConfirm] = useState<
+    "overwrite" | "delete" | "rename" | null
+  >(null);
   const [saveAsNew, setSaveAsNew] = useState(false);
+  const [renameTarget, setRenameTarget] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const constraintProfile = getConstraintProfile(constraintLevel);
   const undoRef = useRef<Record<PreviewMode, ThemeStudioTokens>[]>([]);
@@ -307,6 +337,11 @@ function ThemeStudioDialogBody({
       ? null
       : customThemeNameSchema.safeParse(targetName);
 
+  const renameCheck =
+    renameTarget.trim().length === 0
+      ? null
+      : customThemeNameSchema.safeParse(renameTarget.trim());
+
   const handleSave = useCallback(async () => {
     if (nameCheck && !nameCheck.success) return;
     if (loaded.kind === "custom" && !saveAsNew) {
@@ -384,6 +419,45 @@ function ThemeStudioDialogBody({
             {loading ? (
               <span className="text-2xs text-muted-foreground">Loading…</span>
             ) : null}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto"
+              onClick={undo}
+            >
+              Undo
+            </Button>
+            <Button size="sm" variant="ghost" onClick={reset}>
+              Reset
+            </Button>
+            {loaded.kind === "custom" && onDelete ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive-text"
+                onClick={() => setConfirm("delete")}
+              >
+                Delete
+              </Button>
+            ) : null}
+            {loaded.kind === "custom" && onRename ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setRenameTarget(`${loaded.id}-copy`);
+                  setConfirm("rename");
+                }}
+              >
+                Rename
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={randomize}>
+              Randomize
+            </Button>
             <div className="flex rounded-md border p-0.5">
               {(["light", "dark"] as const).map((value) => (
                 <button
@@ -399,58 +473,34 @@ function ThemeStudioDialogBody({
                 </button>
               ))}
             </div>
-            <Button size="sm" variant="outline" onClick={randomize}>
-              Randomize
-            </Button>
-            <Button size="sm" variant="ghost" onClick={undo}>
-              Undo
-            </Button>
-            <Button size="sm" variant="ghost" onClick={reset}>
-              Reset
-            </Button>
-            {loaded.kind === "custom" && onDelete ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto text-destructive-text"
-                onClick={() => setConfirm("delete")}
-              >
-                Delete
-              </Button>
-            ) : null}
-          </div>
-
-          <div className="space-y-1 rounded-md border px-2 py-1.5">
-            <div className="flex items-baseline justify-between gap-2">
+            <div
+              className="flex min-w-0 flex-1 items-center gap-2"
+              title={constraintProfile.description}
+            >
               <label
                 htmlFor="theme-studio-constraint"
-                className="text-2xs text-muted-foreground"
+                className="shrink-0 text-2xs text-muted-foreground"
               >
                 Rule strictness
               </label>
-              <span className="text-2xs">{constraintProfile.label}</span>
+              <input
+                id="theme-studio-constraint"
+                type="range"
+                min={MIN_CONSTRAINT_LEVEL}
+                max={MAX_CONSTRAINT_LEVEL}
+                step={1}
+                value={constraintLevel}
+                className="min-w-0 flex-1"
+                onChange={(event) =>
+                  setConstraintLevel(
+                    Number(event.target.value) as ConstraintLevel,
+                  )
+                }
+              />
+              <span className="shrink-0 text-2xs">
+                {constraintProfile.label}
+              </span>
             </div>
-            <input
-              id="theme-studio-constraint"
-              type="range"
-              min={MIN_CONSTRAINT_LEVEL}
-              max={MAX_CONSTRAINT_LEVEL}
-              step={1}
-              value={constraintLevel}
-              className="w-full"
-              onChange={(event) =>
-                setConstraintLevel(
-                  Number(event.target.value) as ConstraintLevel,
-                )
-              }
-            />
-            <div className="flex justify-between text-2xs text-subtle-foreground">
-              <span>Unfiltered</span>
-              <span>Structured</span>
-            </div>
-            <p className="text-2xs text-muted-foreground">
-              {constraintProfile.description}
-            </p>
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden rounded-md border bg-background">
@@ -565,34 +615,91 @@ function ThemeStudioDialogBody({
         </div>
       </div>
 
-      {confirm === "overwrite" ? (
-        <div className="space-y-3 rounded-md border border-destructive/40 bg-surface-destructive p-3">
-          <p className="text-xs">
+      <ConfirmDialog
+        open={confirm === "overwrite"}
+        onOpenChange={(next) => setConfirm(next ? "overwrite" : null)}
+      >
+        <DialogHeader>
+          <DialogTitle>
             Replace{" "}
             <code className="font-mono">
-              {loaded.kind === "custom" ? loaded.id : ""}
+              {loaded.kind === "custom" ? loaded.id : targetName}
             </code>{" "}
             on disk?
-          </p>
-          <p className="text-2xs text-muted-foreground">
-            The existing <code className="font-mono">theme.css</code> is
-            rewritten in place and the change applies immediately. This cannot
-            be undone.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setConfirm(null)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => void commitSave(targetName)}
-            >
-              Overwrite
-            </Button>
-          </div>
+          </DialogTitle>
+          <DialogDescription>
+            Its existing <code className="font-mono">theme.css</code> is
+            rewritten in place and the change applies immediately. Only the
+            tokens you changed are touched. This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setConfirm(null)}>
+            Cancel
+          </Button>
+          <Button onClick={() => void commitSave(targetName)}>Overwrite</Button>
+        </DialogFooter>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirm === "rename"}
+        onOpenChange={(next) => setConfirm(next ? "rename" : null)}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            Rename{" "}
+            <code className="font-mono">
+              {loaded.kind === "custom" ? loaded.id : ""}
+            </code>
+          </DialogTitle>
+          <DialogDescription>
+            The theme folder is moved, so files beside theme.css travel with it
+            and nothing is rewritten. The folder name is the theme id.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <label
+            htmlFor="theme-studio-rename"
+            className="text-2xs text-muted-foreground"
+          >
+            New name
+          </label>
+          <Input
+            id="theme-studio-rename"
+            value={renameTarget}
+            placeholder="my-theme"
+            onChange={(event) => setRenameTarget(event.target.value)}
+          />
+          {renameError ? (
+            <p className="text-2xs text-destructive-text">{renameError}</p>
+          ) : renameCheck && !renameCheck.success ? (
+            <p className="text-2xs text-destructive-text">
+              {renameCheck.error.issues[0]?.message ?? "Invalid theme name."}
+            </p>
+          ) : null}
         </div>
-      ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setConfirm(null)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={
+              renameTarget.trim().length === 0 ||
+              (renameCheck !== null && !renameCheck.success)
+            }
+            onClick={() => {
+              if (!onRename || loaded.kind !== "custom") return;
+              void onRename(loaded.id, renameTarget.trim()).then(() => {
+                setConfirm(null);
+                startNew();
+                onOpenChange(false);
+              });
+            }}
+          >
+            Rename
+          </Button>
+        </DialogFooter>
+      </ConfirmDialog>
 
       <ConfirmDeleteDialog
         open={confirm === "delete"}

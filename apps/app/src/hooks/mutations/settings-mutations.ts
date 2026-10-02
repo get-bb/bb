@@ -4,6 +4,7 @@ import {
   type AppSettings,
   type AppThemeSelection,
   type CustomThemeWrite,
+  type CustomThemeRenameBody,
   type ExperimentUpdates,
 } from "@bb/domain";
 import type { SystemInstallCliSkillsRequest } from "@bb/server-contract";
@@ -137,6 +138,24 @@ export function useDeleteCustomTheme() {
     },
     mutationFn: (themeId: string) => sdk.theme.remove(themeId),
     onSuccess: () => {
+      invalidateSystemConfig({ queryClient });
+    },
+  });
+}
+
+export function useRenameCustomTheme() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to rename the custom theme.",
+    },
+    mutationFn: (input: CustomThemeRenameBody & { from: string }) =>
+      sdk.theme.rename({ themeId: input.from, to: input.to }),
+    onSuccess: (_result, variables) => {
+      queryClient.removeQueries({
+        queryKey: systemThemeQueryKey(variables.from),
+      });
       invalidateSystemConfig({ queryClient });
     },
   });

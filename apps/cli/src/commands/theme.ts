@@ -35,7 +35,7 @@ async function readThemeCssInput(css: string | undefined): Promise<string> {
   const piped = Buffer.concat(chunks).toString("utf8");
   if (piped.trim().length === 0) {
     throw new Error(
-      "No theme CSS supplied. Pass --css \"...\" or pipe CSS on stdin.",
+      'No theme CSS supplied. Pass --css "..." or pipe CSS on stdin.',
     );
   }
   return piped;
@@ -186,6 +186,28 @@ export function registerThemeCommands(
         const catalog = await sdk.theme.remove(name);
         if (outputJson(opts, catalog)) return;
         console.log(`Deleted custom theme '${name}'`);
+        console.log(`Active: ${describeTheme(catalog.active)}`);
+      }),
+    );
+
+  theme
+    .command("rename <from> <to>")
+    .description(
+      "Rename a custom theme by moving its folder, so files beside theme.css travel with it",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (from: string, to: string, opts: JsonOutputOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const parsed = customThemeNameSchema.safeParse(to);
+        if (!parsed.success) {
+          throw new Error(
+            `Invalid theme name '${to}'. ${parsed.error.issues[0]?.message ?? ""}`,
+          );
+        }
+        const catalog = await sdk.theme.rename({ themeId: from, to });
+        if (outputJson(opts, catalog)) return;
+        console.log(`Renamed custom theme '${from}' to '${to}'`);
         console.log(`Active: ${describeTheme(catalog.active)}`);
       }),
     );

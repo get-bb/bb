@@ -12,6 +12,7 @@ export type ThemeSetResult = AppTheme;
 export type ThemeResolveResult = AppTheme;
 export type ThemeWriteInput = CustomThemeWrite;
 export type ThemeWriteResult = CustomThemeWriteResult;
+export type ThemeRenameInput = ThemeRenameArgs;
 
 export interface ThemeCatalogArgs {
   signal?: AbortSignal;
@@ -26,6 +27,11 @@ export interface ThemeResolveArgs {
   signal?: AbortSignal;
 }
 
+export interface ThemeRenameArgs {
+  themeId: string;
+  to: string;
+}
+
 export interface ThemeArea {
   get(args?: ThemeGetArgs): Promise<ThemeGetResult>;
   catalog(args?: ThemeCatalogArgs): Promise<ThemeCatalogResult>;
@@ -35,6 +41,7 @@ export interface ThemeArea {
   create(input: ThemeWriteInput): Promise<ThemeWriteResult>;
   update(input: ThemeWriteInput): Promise<ThemeWriteResult>;
   remove(themeId: string): Promise<ThemeCatalogResult>;
+  rename(input: ThemeRenameInput): Promise<ThemeCatalogResult>;
 }
 
 export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
@@ -97,6 +104,14 @@ export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
       return transport.readJson(
         transport.api.v1.settings.themes[":id"].$delete({
           param: { id: themeId },
+        }),
+      );
+    },
+    async rename(input) {
+      return transport.readJson(
+        transport.api.v1.settings.themes[":id"].$patch({
+          param: { id: input.themeId },
+          json: { to: input.to },
         }),
       );
     },

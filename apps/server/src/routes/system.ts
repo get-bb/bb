@@ -81,7 +81,9 @@ import {
   resolveAppTheme,
   resolveCustomThemeCssPath,
   resolveThemeRootPath,
+  customThemeExists,
   deleteCustomTheme,
+  renameCustomTheme,
   writeCustomThemeCss,
 } from "../services/system/custom-themes.js";
 import {
@@ -153,7 +155,7 @@ export function registerSystemRoutes(
   deps: ServerAppDeps,
   pluginService: PluginService,
 ): void {
-  const { get, post, put, del } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, put, del, patch } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.system;
@@ -388,6 +390,39 @@ export function registerSystemRoutes(
     if (getStoredThemeId(deps.db) === themeId) {
       setStoredAppearance(deps.db, {
         themeId: defaultAppTheme.themeId,
+        faviconColor: getStoredFaviconColor(deps.db),
+      });
+    }
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json({
+      dir: themeRoot,
+      custom: listCustomThemeNames(themeRoot),
+      plugins: pluginService.listThemes(),
+      active: await resolveSelectedTheme(
+        getStoredThemeId(deps.db),
+        getStoredFaviconColor(deps.db),
+      ),
+    });
+  });
+
+  patch(routes.renameCustomTheme, async (context, payload) => {
+    const themeId = context.req.param("id");
+    const { to } = payload;
+    await requireKnownTheme(themeId);
+    if (isBuiltInThemeId(to) || themeId === to) {
+      throw new ApiError(400, "invalid_request", `Cannot rename to '${to}'.`);
+    }
+    if (customThemeExists(themeRoot, to)) {
+      throw new ApiError(
+        409,
+        "theme_exists",
+        `Custom theme '${to}' already exists.`,
+      );
+    }
+    renameCustomTheme(themeRoot, themeId, to);
+    if (getStoredThemeId(deps.db) === themeId) {
+      setStoredAppearance(deps.db, {
+        themeId: to,
         faviconColor: getStoredFaviconColor(deps.db),
       });
     }

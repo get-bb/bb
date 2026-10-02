@@ -60,7 +60,9 @@ describe("surgical writes", () => {
   it("leaves derivations, fonts, radius, comments and the import intact", () => {
     const next = writeToken(HAND_WRITTEN, "light", "primary", "#ff0000");
     expect(next).toContain("/* a hand-authored theme */");
-    expect(next).toContain('@import url("https://fonts.googleapis.com/css2?family=Inter");');
+    expect(next).toContain(
+      '@import url("https://fonts.googleapis.com/css2?family=Inter");',
+    );
     expect(next).toContain(
       "--muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));",
     );
@@ -141,7 +143,11 @@ describe("applying a whole token set", () => {
     expect(extracted.missing).toHaveLength(0);
     expect(extracted.tokens.canvas).toBe("#f7f8fa");
 
-    const next = applyTokens(generated, { ...extracted.tokens, primary: "#aa0000" }, {});
+    const next = applyTokens(
+      generated,
+      { ...extracted.tokens, primary: "#aa0000" },
+      {},
+    );
     expect(next).toContain("--primary: #aa0000;");
     expect(next).toContain("--canvas: #16181d;");
   });

@@ -63,12 +63,14 @@ import type {
   ThreadEventRow,
   ThreadQueuedMessage,
   CustomThemeWrite,
+  CustomThemeRenameBody,
 } from "@bb/domain";
 import {
   appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
   customThemeWriteSchema,
+  customThemeRenameBodySchema,
   experimentUpdatesSchema,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
@@ -1921,6 +1923,19 @@ export const publicApiRoutes = {
       path: "/settings/themes/:id",
       method: "delete",
       request: noRequest<PathId>(),
+      response: jsonResponse<ThemeCatalogResponse>(),
+    }),
+    /**
+     * Rename a custom theme by moving its folder on disk, so any files beside
+     * theme.css travel with it and no content is rewritten. An active theme
+     * that is renamed follows the new id.
+     */
+    renameCustomTheme: defineRoute({
+      path: "/settings/themes/:id",
+      method: "patch",
+      request: jsonRequest<PathId, CustomThemeRenameBody>(
+        customThemeRenameBodySchema,
+      ),
       response: jsonResponse<ThemeCatalogResponse>(),
     }),
     reloadConfig: defineRoute({

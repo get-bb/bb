@@ -2,11 +2,7 @@ import { MobileAppSection } from "@/components/settings/MobileAppSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  Navigate,
-  useLocation,
-  matchPath,
-} from "react-router-dom";
+import { Navigate, useLocation, matchPath } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import {
   builtInThemes,
@@ -81,6 +77,7 @@ import {
   useUpdateExperiments,
   useWriteCustomTheme,
   useDeleteCustomTheme,
+  useRenameCustomTheme,
 } from "@/hooks/mutations/settings-mutations";
 import { ThemeStudioDialog } from "@/components/theme-studio/ThemeStudioDialog";
 import type { StudioSource } from "@/components/theme-studio/ThemeStudioDialog";
@@ -1146,6 +1143,7 @@ export function SettingsView() {
   const [themeStudioOpen, setThemeStudioOpen] = useState(false);
   const writeCustomThemeMutation = useWriteCustomTheme();
   const deleteCustomThemeMutation = useDeleteCustomTheme();
+  const renameCustomThemeMutation = useRenameCustomTheme();
 
   const studioThemeSources = useMemo<StudioSource[]>(() => {
     const custom = (systemConfigQuery.data?.customThemes ?? []).map((id) => ({
@@ -1158,11 +1156,13 @@ export function SettingsView() {
       name: entry.name,
       kind: "builtin" as const,
     }));
-    const plugin = (systemConfigQuery.data?.pluginThemes ?? []).map((theme) => ({
-      id: theme.id,
-      name: theme.name,
-      kind: "plugin" as const,
-    }));
+    const plugin = (systemConfigQuery.data?.pluginThemes ?? []).map(
+      (theme) => ({
+        id: theme.id,
+        name: theme.name,
+        kind: "plugin" as const,
+      }),
+    );
     return [...custom, ...builtin, ...plugin];
   }, [systemConfigQuery.data]);
 
@@ -1259,6 +1259,10 @@ export function SettingsView() {
             pending={writeCustomThemeMutation.isPending}
             saveError={writeCustomThemeMutation.error?.message ?? null}
             deleteError={deleteCustomThemeMutation.error?.message ?? null}
+            renameError={renameCustomThemeMutation.error?.message ?? null}
+            onRename={async (from, to) => {
+              await renameCustomThemeMutation.mutateAsync({ from, to });
+            }}
             sources={studioThemeSources}
             activeThemeId={appearance.themeId}
             loadThemeCss={loadStudioThemeCss}

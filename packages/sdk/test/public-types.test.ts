@@ -389,6 +389,7 @@ type ExpectedThemeKey =
   | "create"
   | "get"
   | "remove"
+  | "rename"
   | "resolve"
   | "set"
   | "update";

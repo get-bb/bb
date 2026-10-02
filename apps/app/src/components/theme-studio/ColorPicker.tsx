@@ -41,7 +41,11 @@ function SaturationField({ color, lightness, onChange }: SaturationFieldProps) {
     [color.hueDegrees, lightness, onChange],
   );
 
-  const base = oklchToHex({ lightness, chroma: 0, hueDegrees: color.hueDegrees });
+  const base = oklchToHex({
+    lightness,
+    chroma: 0,
+    hueDegrees: color.hueDegrees,
+  });
   const vivid = oklchToHex({
     lightness,
     chroma: 0.37,
@@ -171,7 +175,11 @@ export function ColorPicker({ label, value, onChange }: ColorPickerProps) {
                           : "transparent",
                     }}
                     onClick={() =>
-                      emit({ ...color, hueDegrees: hue, lightness: lightnessDraft })
+                      emit({
+                        ...color,
+                        hueDegrees: hue,
+                        lightness: lightnessDraft,
+                      })
                     }
                   />
                 );

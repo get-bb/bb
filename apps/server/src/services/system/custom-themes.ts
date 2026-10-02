@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -77,6 +78,21 @@ export function writeCustomThemeCss(
 
 export function deleteCustomTheme(themeRoot: string, name: string): void {
   rmSync(join(themeRoot, name), { recursive: true, force: true });
+}
+
+export function renameCustomTheme(
+  themeRoot: string,
+  from: string,
+  to: string,
+): void {
+  const source = join(themeRoot, from);
+  if (!existsSync(source)) {
+    throw new Error(`Custom theme '${from}' not found.`);
+  }
+  if (existsSync(join(themeRoot, to))) {
+    throw new Error(`Custom theme '${to}' already exists.`);
+  }
+  renameSync(source, join(themeRoot, to));
 }
 
 export function resolveAppTheme(

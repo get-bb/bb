@@ -31,6 +31,10 @@
     theme naming rules (letters, digits, `.`, `_`, `-`; no leading `.`).
   - `bb theme delete <name>` — delete a custom theme folder. When the deleted
     theme was active, the app falls back to `default`.
+  - `bb theme rename <from> <to>` — rename a custom theme by moving its folder
+    on disk, so anything beside `theme.css` (`pierre-dark.json`, `theme.json`)
+    travels with it and no content is rewritten. The folder name is the theme
+    id, so renaming changes it. An active theme follows the new id.
   - `bb theme reset` — back to `default` while preserving the favicon color.
   - `bb theme favicon set <color>` — set the favicon color while preserving the
     active theme. Colors: `default`, `red`, `orange`, `yellow`, `green`, `teal`,
