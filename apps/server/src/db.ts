@@ -26,18 +26,23 @@ export function initDb(
   const db = createConnection(databasePath, {
     slowQueryLogger: options.logger,
   });
-  if (options.dataDir !== undefined && options.logger !== undefined) {
-    exportLegacyAutomationsForPluginImport({
-      dataDir: options.dataDir,
-      db,
-      logger: options.logger,
-    });
-  } else if (hasLegacyAutomationsToExport(db)) {
-    throw new Error(
-      "Cannot migrate legacy automations without dataDir and logger; refusing to drop kernel automation rows before exporting them for the automations plugin",
-    );
+  try {
+    if (options.dataDir !== undefined && options.logger !== undefined) {
+      exportLegacyAutomationsForPluginImport({
+        dataDir: options.dataDir,
+        db,
+        logger: options.logger,
+      });
+    } else if (hasLegacyAutomationsToExport(db)) {
+      throw new Error(
+        "Cannot migrate legacy automations without dataDir and logger; refusing to drop kernel automation rows before exporting them for the automations plugin",
+      );
+    }
+    migrate(db, { logger: options.logger });
+    ensurePersonalProject(db);
+  } catch (error) {
+    db.$client.close();
+    throw error;
   }
-  migrate(db, { logger: options.logger });
-  ensurePersonalProject(db);
   return db;
 }
