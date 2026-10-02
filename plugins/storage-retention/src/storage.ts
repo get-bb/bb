@@ -480,22 +480,40 @@ export function createStorage(bb: BbPluginApi) {
     const thread = await bb.sdk.threads.get({ threadId });
     if (["starting", "active", "stopping"].includes(thread.status))
       throw new Error("Stop the thread before clearing its storage");
-    const location = await bb.sdk.threads.storageLocation({ threadId });
-    await requireHost(location.hostId, true);
-    const release = acquire(location.hostId);
+    let hostId: string;
+    if (thread.environmentId !== null) {
+      hostId = (await bb.sdk.threads.storageLocation({ threadId })).hostId;
+    } else {
+      const matches = db
+        .prepare<[string], { host_id: string }>(
+          "SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)",
+        )
+        .all(threadId);
+      const match = matches[0];
+      if (matches.length !== 1 || match === undefined)
+        throw new Error(
+          "Scan the machine to identify a unique storage location for this thread",
+        );
+      hostId = match.host_id;
+    }
+    await requireHost(hostId, true);
+    const release = acquire(hostId);
     try {
-      const rootPath = await storageRoot(location.hostId);
+      const rootPath = await storageRoot(hostId);
       await worker.call(
         "discard",
         { rootPath, names: [threadId], recreate: true },
-        { hostId: location.hostId, signal: lifecycle.signal },
+        { hostId, signal: lifecycle.signal },
       );
-      const cached = read(location.hostId);
+      const cached = read(hostId);
       if (cached) {
         cached.entries = cached.entries.filter(
           (entry) => entry.name !== threadId,
         );
-        store(location.hostId, cached);
+        cached.largeFiles = cached.largeFiles.filter(
+          (entry) => entry.name !== threadId,
+        );
+        store(hostId, cached);
       }
       return { ok: true as const };
     } finally {

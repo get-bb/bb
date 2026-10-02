@@ -29,123 +29,146 @@ async function directory() {
   return dir;
 }
 
-it("scans through the host entry, preserves live storage, cleans orphans and clears only stopped threads", async () => {
-  const root = await directory();
-  await fs.mkdir(path.join(root, "thr_live"));
-  await fs.writeFile(path.join(root, "thr_live", "data"), Buffer.alloc(16384));
-  await fs.mkdir(path.join(root, ".bb-trash-orphan"));
-  await fs.writeFile(
-    path.join(root, ".bb-trash-orphan", "data"),
-    Buffer.alloc(32768),
-  );
-  const worker = experimental_createHostEntryHarness(hostEntry);
-  let active = true;
-  const host = createFakePluginHost({
-    pluginId: "storage-retention",
-    experimental_hostEntry: true,
-    experimental_callHostRpc: async (call) => {
-      if (call.method === "measure")
-        return worker.experimental_call(
-          "measure",
-          hostStorageContract.measure.input.parse(call.input),
-        );
-      if (call.method === "capacity")
-        return worker.experimental_call(
-          "capacity",
-          hostStorageContract.capacity.input.parse(call.input),
-        );
-      if (call.method === "discardLargeFiles")
-        return worker.experimental_call(
-          "discardLargeFiles",
-          hostStorageContract.discardLargeFiles.input.parse(call.input),
-        );
-      if (call.method === "discard")
-        return worker.experimental_call(
-          "discard",
-          hostStorageContract.discard.input.parse(call.input),
-        );
-      throw new Error("Unexpected host method");
-    },
-    sdk: {
-      hosts: {
-        get: async () => ({
-          ...makeHostResponse({ id: "host_test", status: "connected" }),
-          threadStorageRootPath: root,
-        }),
-      },
-      environments: { list: async () => [] },
-      threads: {
-        list: async () => [
-          makeThreadResponse({
-            id: "thr_live",
-            status: active ? "active" : "idle",
-          }),
-        ],
-        get: async () =>
-          makeThreadResponse({
-            id: "thr_live",
-            status: active ? "active" : "idle",
-          }),
-        storageLocation: async () => ({
-          hostId: "host_test",
-          storageRootPath: path.join(root, "thr_live"),
-        }),
-      },
-    },
-  });
-  try {
-    plugin(host.bb);
-    expect(await host.harness.callRpc("host", { hostId: "host_test" })).toEqual(
-      { report: null, scan: { state: "idle" } },
+it.each([false, true])(
+  "scans through the host entry, preserves live storage, cleans orphans and clears only stopped threads (detached: %s)",
+  async (detached) => {
+    const root = await directory();
+    const size = 11 * 1024 * 1024;
+    await fs.mkdir(path.join(root, "thr_live"));
+    await fs.writeFile(path.join(root, "thr_live", "data"), Buffer.alloc(size));
+    await fs.mkdir(path.join(root, ".bb-trash-orphan"));
+    await fs.writeFile(
+      path.join(root, ".bb-trash-orphan", "data"),
+      Buffer.alloc(32768),
     );
-    await expect(
-      host.harness.callRpc("clearThread", { threadId: "thr_live" }),
-    ).rejects.toThrow("Stop the thread");
-    await host.harness.callRpc("scanHost", { hostId: "host_test" });
-    await expect
-      .poll(
-        async () =>
-          hostStorageResponseSchema.parse(
-            await host.harness.callRpc("host", { hostId: "host_test" }),
-          ).scan.state,
-      )
-      .toBe("idle");
-    const scanned = hostStorageResponseSchema.parse(
-      await host.harness.callRpc("host", { hostId: "host_test" }),
-    );
-    expect(scanned.report).toMatchObject({
-      threadsWithStorageCount: 1,
-      orphanCount: 1,
+    const worker = experimental_createHostEntryHarness(hostEntry);
+    let active = true;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      experimental_hostEntry: true,
+      experimental_callHostRpc: async (call) => {
+        if (call.method === "measure")
+          return worker.experimental_call(
+            "measure",
+            hostStorageContract.measure.input.parse(call.input),
+          );
+        if (call.method === "capacity")
+          return worker.experimental_call(
+            "capacity",
+            hostStorageContract.capacity.input.parse(call.input),
+          );
+        if (call.method === "discardLargeFiles")
+          return worker.experimental_call(
+            "discardLargeFiles",
+            hostStorageContract.discardLargeFiles.input.parse(call.input),
+          );
+        if (call.method === "discard")
+          return worker.experimental_call(
+            "discard",
+            hostStorageContract.discard.input.parse(call.input),
+          );
+        throw new Error("Unexpected host method");
+      },
+      sdk: {
+        hosts: {
+          get: async () => ({
+            ...makeHostResponse({ id: "host_test", status: "connected" }),
+            threadStorageRootPath: root,
+          }),
+        },
+        environments: { list: async () => [] },
+        threads: {
+          list: async () => [
+            makeThreadResponse({
+              id: "thr_live",
+              status: active ? "active" : "idle",
+              archivedAt: 1,
+            }),
+          ],
+          get: async () =>
+            makeThreadResponse({
+              id: "thr_live",
+              status: active ? "active" : "idle",
+              environmentId: detached ? null : "env_test",
+            }),
+          storageLocation: async () => {
+            if (detached) throw new Error("Thread environment is unavailable");
+            return {
+              hostId: "host_test",
+              storageRootPath: path.join(root, "thr_live"),
+            };
+          },
+        },
+      },
     });
-    expect(scanned.report!.orphanBytes).toBeGreaterThanOrEqual(32768);
-    expect(scanned.report!.disk!.totalBytes).toBeGreaterThan(
-      scanned.report!.disk!.freeBytes,
-    );
-    await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
-    await expect
-      .poll(async () =>
-        fs.stat(path.join(root, ".bb-trash-orphan")).catch(() => null),
-      )
-      .toBeNull();
-    expect((await fs.stat(path.join(root, "thr_live", "data"))).size).toBe(
-      16384,
-    );
-    active = false;
-    await host.harness.callRpc("clearThread", { threadId: "thr_live" });
-    expect(await fs.readdir(path.join(root, "thr_live"))).toEqual([]);
-    expect(
-      hostStorageResponseSchema.parse(
+    try {
+      plugin(host.bb);
+      expect(
         await host.harness.callRpc("host", { hostId: "host_test" }),
-      ).report,
-    ).toMatchObject({ orphanCount: 0, threadsWithStorageCount: 0 });
-    await expect
-      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
-      .toBe(0);
-  } finally {
-    await host.harness.dispose();
-    await worker.experimental_dispose();
-  }
-});
+      ).toEqual({ report: null, scan: { state: "idle" } });
+      await expect(
+        host.harness.callRpc("clearThread", { threadId: "thr_live" }),
+      ).rejects.toThrow("Stop the thread");
+      if (detached) {
+        active = false;
+        await expect(
+          host.harness.callRpc("clearThread", { threadId: "thr_live" }),
+        ).rejects.toThrow("Scan the machine");
+        expect((await fs.stat(path.join(root, "thr_live", "data"))).size).toBe(
+          size,
+        );
+        active = true;
+      }
+      await host.harness.callRpc("scanHost", { hostId: "host_test" });
+      await expect
+        .poll(
+          async () =>
+            hostStorageResponseSchema.parse(
+              await host.harness.callRpc("host", { hostId: "host_test" }),
+            ).scan.state,
+        )
+        .toBe("idle");
+      const scanned = hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      );
+      expect(scanned.report).toMatchObject({
+        threadsWithStorageCount: 1,
+        orphanCount: 1,
+      });
+      expect(scanned.report!.orphanBytes).toBeGreaterThanOrEqual(32768);
+      expect(scanned.report!.disk!.totalBytes).toBeGreaterThan(
+        scanned.report!.disk!.freeBytes,
+      );
+      await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
+      await expect
+        .poll(async () =>
+          fs.stat(path.join(root, ".bb-trash-orphan")).catch(() => null),
+        )
+        .toBeNull();
+      expect((await fs.stat(path.join(root, "thr_live", "data"))).size).toBe(
+        size,
+      );
+      active = false;
+      await host.harness.callRpc("clearThread", { threadId: "thr_live" });
+      expect(await fs.readdir(path.join(root, "thr_live"))).toEqual([]);
+      expect(
+        hostStorageResponseSchema.parse(
+          await host.harness.callRpc("host", { hostId: "host_test" }),
+        ).report,
+      ).toMatchObject({
+        orphanCount: 0,
+        threadsWithStorageCount: 0,
+        archivedLargeFiles: { threadCount: 0, fileCount: 0, bytes: 0 },
+      });
+      await expect
+        .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+        .toBe(0);
+    } finally {
+      await host.harness.dispose();
+      await worker.experimental_dispose();
+    }
+  },
+);
 
 it("deletes only large files from archived threads on scanned online machines, keeping small files, pinned and live threads", async () => {
   const root = await directory();
@@ -300,7 +323,8 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
     experimental_callHostRpc: async (call) => {
       await blocked;
       if (fail) throw new Error("machine disconnected");
-      if (call.method === "capacity") return { totalBytes: 2048, freeBytes: 1024 };
+      if (call.method === "capacity")
+        return { totalBytes: 2048, freeBytes: 1024 };
       return { targets: [], largeFiles: [] };
     },
     sdk: {

@@ -248,6 +248,11 @@ function StoragePage({
       <p className="text-xs leading-snug text-subtle-foreground/75">
         Files are permanently removed. This cannot be undone. {cleanup.detail}
       </p>
+      {actionError && (
+        <p role="alert" className="text-sm text-destructive">
+          {actionError}
+        </p>
+      )}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           variant="outline"
@@ -281,7 +286,7 @@ function StoragePage({
     <div className="h-full w-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-10 px-4 pb-10 pt-4 md:px-5 md:pt-5">
         {hostId && state && (
-          <header className="space-y-3">
+          <header className="space-y-4">
             <button
               className="inline-flex items-center gap-1.5 text-xs leading-snug text-subtle-foreground/75 hover:text-foreground"
               onClick={() => navigate.toPluginPanel(PANEL)}
@@ -289,22 +294,25 @@ function StoragePage({
               <Icon name="ArrowLeft" className="size-4" />
               All machines
             </button>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-                  <h1 className="break-words text-base font-semibold">
+            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                  <h1 className="min-w-0 break-words text-base font-semibold">
                     {machine?.name ?? "Machine storage"}
                   </h1>
-                  {hostId === primaryHostId && <Pill>server</Pill>}
-                  {machine && <MachineStatus machine={machine} />}
+                  <div className="flex shrink-0 items-center gap-3">
+                    {hostId === primaryHostId && <Pill>server</Pill>}
+                    {machine && <MachineStatus machine={machine} />}
+                  </div>
                 </div>
-                <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                <p className="mt-2 text-xs leading-snug text-subtle-foreground/75">
                   Review stored files and free up space on this machine.
                 </p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 disabled={locked || !detail}
                 onClick={() =>
                   void perform(() => rpc.call("scanHost", { hostId }))
@@ -323,7 +331,7 @@ function StoragePage({
             </div>
           </header>
         )}
-        {error && (
+        {error && !(cleanup && actionError) && (
           <div
             role="alert"
             className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
