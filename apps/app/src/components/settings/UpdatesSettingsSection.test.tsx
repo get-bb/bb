@@ -903,7 +903,7 @@ The canonical release summary.
       screen.getByText("bb daemon").closest("[data-resource-row]")?.className,
     ).not.toContain("bg-surface-destructive");
     expect(screen.queryByText(/^Up to date/)).toBeNull();
-    expect(screen.getByRole("alert").textContent).toBe("Update didn't finish");
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(
       screen.getByRole("img", { name: "Update didn't finish" }).className,
     ).toContain("text-destructive");
@@ -1279,9 +1279,6 @@ The canonical release summary.
 
     renderSection();
 
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Couldn't check for updates",
-    );
     expect(
       screen.getByRole("img", { name: "Couldn't check for updates" }).className,
     ).toContain("text-destructive");
@@ -1407,9 +1404,9 @@ The canonical release summary.
 
     renderSection();
 
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Connection lost during update",
-    );
+    expect(
+      screen.getByText("Connection lost during update").className,
+    ).toContain("sr-only");
     expect(screen.queryByText("Command exited with code 1")).toBeNull();
     expect(
       screen.getByRole("button", {
@@ -1792,9 +1789,7 @@ The canonical release summary.
 
     renderSection();
 
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Last update failed",
-    );
+    expect(await screen.findByText("Last update failed")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "View the failed bb update" }),
     ).toBeDefined();
@@ -1803,6 +1798,33 @@ The canonical release summary.
         name: "Failed · Download the update and restart bb",
       }),
     ).toBeDefined();
+  });
+
+  it("marks a failed update once when no retry is available", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        available: null,
+        lastResult: {
+          acknowledged: false,
+          finishedAt: "2026-09-23T00:00:00.000Z",
+          from: { commit: null, version: "0.0.5" },
+          id: "update-1",
+          logTail: ["npm error code E404"],
+          message: "npm install failed",
+          outcome: "failed",
+          phase: "install",
+          to: { commit: null, version: "0.0.6" },
+        },
+      }),
+    );
+
+    renderSection();
+
+    expect(
+      await screen.findByRole("button", { name: "View the failed bb update" }),
+    ).toBeDefined();
+    expect(document.querySelector('[data-update-state="failed"]')).toBeNull();
   });
 
   it("explains why a source checkout cannot update instead of offering a button", async () => {

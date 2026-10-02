@@ -33,6 +33,14 @@ interface ProviderCliInstallJob {
 
 export type ProviderCliInstallFailureKind = "command" | "interrupted";
 
+export const PROVIDER_CLI_FAILURE_SUMMARIES: Record<
+  ProviderCliInstallFailureKind,
+  string
+> = {
+  command: "Update failed",
+  interrupted: "Connection lost during update",
+};
+
 export interface ProviderCliInstallFailure {
   issueFingerprint: string;
   kind: ProviderCliInstallFailureKind;
@@ -153,7 +161,10 @@ function describeInstallRequestFailure(error: unknown): {
       ? error instanceof TypeError || error instanceof BbRequestTimeoutError
       : CONNECTION_LOST_HTTP_STATUSES.has(httpError.status);
   if (connectionLost) {
-    return { kind: "interrupted", message: "Connection lost during update" };
+    return {
+      kind: "interrupted",
+      message: PROVIDER_CLI_FAILURE_SUMMARIES.interrupted,
+    };
   }
   const message =
     (httpError === null ? null : getHttpErrorMessage(httpError)) ??

@@ -46,6 +46,7 @@ import {
 } from "@/components/provider-cli/provider-cli-install";
 import {
   openProviderCliInstallLog,
+  PROVIDER_CLI_FAILURE_SUMMARIES,
   providerCliJobKey,
   type ProviderCliInstallFailure,
 } from "@/components/provider-cli/provider-cli-install-store";
@@ -222,14 +223,6 @@ const ROW_GRID =
 
 const ROW_SPACING = "py-2 first:pt-0 last:pb-0";
 
-const PROVIDER_CLI_FAILURE_DESCRIPTIONS: Record<
-  ProviderCliInstallFailure["kind"],
-  string
-> = {
-  command: "Update failed",
-  interrupted: "Connection lost during update",
-};
-
 function UpdatesRow({
   leading,
   children,
@@ -336,9 +329,7 @@ function FailureIndicator({
       data-row-action
       className="-my-1 flex shrink-0 items-center self-center"
     >
-      <span role="alert" className="sr-only">
-        {reason}
-      </span>
+      {onOpen === undefined ? null : <span className="sr-only">{reason}</span>}
       <TooltipProvider delayDuration={250}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1021,7 +1012,7 @@ function InAppUpdateRow({
   if (failure !== null) {
     return row(
       name,
-      updateButton ?? <RowStateControl state="failed" />,
+      updateButton,
       onShowResult === null ? (
         <FailureIndicator reason="Last update failed" />
       ) : (
@@ -1298,7 +1289,7 @@ export function MachineUpdatesRows({
         titleAside={
           failure === null ? null : (
             <FailureIndicator
-              reason={PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
+              reason={PROVIDER_CLI_FAILURE_SUMMARIES[failure.kind]}
               openLabel={`View ${status.displayName} update log`}
               openTooltip="View log"
               onOpen={() => openProviderCliInstallLog(failure.logDialogState)}
