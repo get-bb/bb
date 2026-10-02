@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -21,6 +27,7 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body";
 
 const mocks = vi.hoisted(() => ({
   resolveMutateAsync: vi.fn(async () => ({})),
@@ -383,6 +390,76 @@ describe("ThreadPendingInteractionBanner presentation detail images", () => {
 });
 
 describe("ThreadPendingInteractionBanner collapsed strip", () => {
+  it("fits native and plugin interaction shells in the remaining footer space", () => {
+    const observers: Array<() => void> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          observers.push(callback);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const scrollElement = document.createElement("div");
+      Object.defineProperty(scrollElement, "clientHeight", { value: 600 });
+      const question: PendingInteraction = {
+        ...planReview,
+        id: "pint_height_question",
+        payload: {
+          kind: "user_question",
+          questions: [
+            {
+              id: "path",
+              prompt: "Which path?",
+              multiSelect: false,
+              allowFreeText: true,
+              options: [],
+            },
+          ],
+        },
+      };
+      const { container } = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <BottomAnchorContext.Provider
+              value={{
+                getScrollElement: () => scrollElement,
+                isAtBottom: true,
+                scrollToBottom: () => {},
+                scrollElementIntoView: () => {},
+                scrollElementIntoViewClampedToMaxScroll: () => {},
+                captureScrollAnchor: () => {},
+              }}
+            >
+              <div data-scroll-footer="">
+                {bannerElement(question)}
+                {bannerElement(pluginRequest)}
+              </div>
+            </BottomAnchorContext.Provider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      const native = screen.getByTestId("user-question-banner");
+      const plugin = screen.getByTestId("plugin-interaction-shell");
+      const footer = container.querySelector("[data-scroll-footer]");
+      if (!footer) throw new Error("Missing footer");
+      Object.defineProperty(footer, "offsetHeight", { value: 1000 });
+      for (const shell of [native, plugin]) {
+        Object.defineProperty(shell, "offsetHeight", { value: 400 });
+      }
+      act(() => {
+        for (const observer of observers) observer();
+      });
+      expect(native.style.maxHeight).toBe("200px");
+      expect(plugin.style.maxHeight).toBe("200px");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("arrives collapsed with only the label and exposes decisions after expansion", () => {
     renderBanner(commandApproval);
     const banner = screen.getByTestId("approval-banner");
