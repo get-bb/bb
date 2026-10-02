@@ -1443,9 +1443,11 @@ describe("slow query index plans", () => {
     if (!discovery) throw new Error("Missing typed delta candidate discovery");
     const discoveryPlan = queryPlanDetails({ db, ...discovery });
     expect(
-      discoveryPlan.match(/USING INDEX events_thread_type_sequence_idx/gu),
+      discoveryPlan.match(
+        /USING COVERING INDEX events_thread_type_sequence_idx/gu,
+      ),
     ).toHaveLength(4);
-    expect(discoveryPlan).toContain("USING INDEX sqlite_autoindex_events_1");
+    expect(discoveryPlan).toContain("USING INTEGER PRIMARY KEY (rowid=?)");
     expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
     const supportQueries = statements.filter((statement) =>
       statement.sql.includes(

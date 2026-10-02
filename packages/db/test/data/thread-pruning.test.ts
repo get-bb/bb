@@ -22,6 +22,7 @@ import {
   getLatestStoredRateLimitsEvent,
   listThreadTurnInterruptionEventStates,
 } from "../../src/data/events.js";
+import { advanceLiveEventPruning } from "../../src/data/resolved-item-pruning.js";
 import { getThreadEventRewriteGeneration } from "../../src/data/event-rewrite-generation.js";
 import { THREAD_CONTEXT_CLEAR_OPERATION, turnScope } from "@bb/domain";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
@@ -742,6 +743,57 @@ describe("thread pruning", () => {
       expect(sequences(f)).toEqual([
         1, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208,
       ]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("preserves the first delta of each type across batches with reversed storage order", () => {
+    const f = setup();
+    try {
+      const types = [
+        "item/agentMessage/delta",
+        "item/commandExecution/outputDelta",
+        "item/reasoning/summaryTextDelta",
+        "item/reasoning/textDelta",
+      ] as const;
+      for (const [index, itemKind] of (
+        ["agentMessage", "commandExecution", "reasoning"] as const
+      ).entries()) {
+        seed(f, 13 + index, {
+          type: "item/completed",
+          itemId: "item",
+          itemKind,
+          data: '{"item":{"aggregatedOutput":"complete"}}',
+        });
+      }
+      for (let sequence = 12; sequence > 0; sequence--) {
+        seed(f, sequence, {
+          type: types[(sequence - 1) % types.length],
+          itemId: "item",
+        });
+      }
+      seed(f, 16, { type: "turn/completed" });
+      let complete = false;
+      let removed = 0;
+      for (let i = 0; i < 30; i++) {
+        const batch = f.db.transaction((tx) =>
+          advanceLiveEventPruning(tx, {
+            threadId: f.thread.id,
+            kind: "deltas",
+            limit: 5,
+          }),
+        );
+        expect(batch.scanned).toBeLessThanOrEqual(5);
+        removed += batch.removed;
+        if (batch.complete) {
+          complete = true;
+          break;
+        }
+      }
+      expect(complete).toBe(true);
+      expect(removed).toBe(8);
+      expect(sequences(f)).toEqual([1, 2, 3, 4, 13, 14, 15, 16]);
     } finally {
       f.db.$client.close();
     }
