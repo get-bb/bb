@@ -277,6 +277,26 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Side chat"],
       },
       {
+        id: "message-metadata",
+        title: "Message metadata",
+        summary:
+          "Mounts a React component above or below realized conversation messages. With this, a plugin can:",
+        bullets: [
+          "Receive message identity, exact createdAt, nullable turnId, and user-message initiator without message text",
+          "Use plugin hooks, shared query caches, and React state for asynchronous metadata",
+          "Mount only for realized messages, including overscan; clean up effects when unmounted",
+          "Inspect message.role and return null to skip a message",
+          "Place timestamps above messages or status and statistics below with placement; omitted means below",
+          "Rely on bb for default typography, alignment, ordering, plugin context, CSS, error containment, and an empty suspense fallback",
+        ],
+        apiSymbols: [
+          "ExperimentalMessageMetadataRegistration",
+          "ExperimentalMessageMetadataContext",
+          "ExperimentalMessageMetadataProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "pending-interaction",
         title: "In-thread forms",
         summary:

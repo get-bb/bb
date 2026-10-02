@@ -1400,6 +1400,51 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
   });
 
+  it("validates message metadata components and placement", async () => {
+    const component = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_messageMetadata({
+          id: "timestamp",
+          placement: "above",
+          component,
+        });
+      }),
+    );
+    expect(captured.messageMetadata[0]?.placement).toBe("above");
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad-placement",
+            placement: "outside" as never,
+            component,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"placement" must be "above" or "below"');
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad",
+            component: undefined as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"component" must be a React component');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_messageMetadata: duplicate id "dup"');
+  });
+
   it("collects separate provider kinds and the legacy all-kinds registration", async () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {

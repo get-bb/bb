@@ -127,7 +127,9 @@ import {
   getPluginSlotSnapshot,
   subscribePluginSlots,
   type PluginMessageActionSlot,
+  type PluginMessageMetadataSlot,
 } from "@/lib/plugin-slots.js";
+import { MessageMetadata } from "./MessageMetadata.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
 import {
   usePluginComposerHost,
@@ -184,6 +186,7 @@ interface TimelineRendererStaticContextValue {
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
   pluginMessageActions: readonly PluginMessageActionSlot[];
+  pluginMessageMetadata: readonly PluginMessageMetadataSlot[];
   consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
   reportProseSelection:
     | ((
@@ -856,6 +859,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     onMessageAddToChat,
     onSelectionAddToChat,
     pluginMessageActions,
+    pluginMessageMetadata,
     consumerMessageActions,
     reportProseSelection,
     onOpenLink,
@@ -959,36 +963,57 @@ const ConversationRowContent = memo(function ConversationRowContent({
         }
       : undefined;
     return (
-      <ConversationMessageContent
-        attachments={row.attachments}
-        initiator={row.initiator}
-        mentions={row.mentions}
-        mobileActionDisplay={mobileActionDisplay}
-        onAddToChat={onSelectionAddToChat}
-        onCopyLink={onCopyLink}
-        onEdit={onEdit}
-        onOpenLink={onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
-        projectId={projectId}
-        resolveMentionLink={resolveMentionLink}
-        resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
-        role="user"
-        onTitleAction={onTitleAction}
-        senderThreadId={row.senderThreadId}
-        senderThreadProjectId={senderThreadMetadata?.projectId}
-        senderThreadTitle={senderThreadMetadata?.title ?? null}
-        senderIsPluginSideChat={isPluginSideChatSenderThread(
-          senderThreadMetadata,
-        )}
-        systemMessageKind={row.systemMessageKind}
-        systemMessageSubject={row.systemMessageSubject}
-        pluginActions={rowPluginActions}
-        text={row.text}
-        timestamp={row.startedAt}
-        threadId={row.threadId}
-        turnRequest={row.turnRequest}
-        workspaceRootPath={workspaceRootPath}
-      />
+      <>
+        <MessageMetadata
+          placement="above"
+          slots={pluginMessageMetadata}
+          id={row.id}
+          threadId={row.threadId}
+          role={row.role}
+          createdAt={row.createdAt}
+          turnId={row.turnId}
+          initiator={row.initiator}
+        />
+        <ConversationMessageContent
+          attachments={row.attachments}
+          initiator={row.initiator}
+          mentions={row.mentions}
+          mobileActionDisplay={mobileActionDisplay}
+          onAddToChat={onSelectionAddToChat}
+          onCopyLink={onCopyLink}
+          onEdit={onEdit}
+          onOpenLink={onOpenLink}
+          onOpenLocalFileLink={onOpenLocalFileLink}
+          projectId={projectId}
+          resolveMentionLink={resolveMentionLink}
+          resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
+          role="user"
+          onTitleAction={onTitleAction}
+          senderThreadId={row.senderThreadId}
+          senderThreadProjectId={senderThreadMetadata?.projectId}
+          senderThreadTitle={senderThreadMetadata?.title ?? null}
+          senderIsPluginSideChat={isPluginSideChatSenderThread(
+            senderThreadMetadata,
+          )}
+          systemMessageKind={row.systemMessageKind}
+          systemMessageSubject={row.systemMessageSubject}
+          pluginActions={rowPluginActions}
+          text={row.text}
+          timestamp={row.startedAt}
+          threadId={row.threadId}
+          turnRequest={row.turnRequest}
+          workspaceRootPath={workspaceRootPath}
+        />
+        <MessageMetadata
+          slots={pluginMessageMetadata}
+          id={row.id}
+          threadId={row.threadId}
+          role={row.role}
+          createdAt={row.createdAt}
+          turnId={row.turnId}
+          initiator={row.initiator}
+        />
+      </>
     );
   }
   const onFork =
@@ -1007,30 +1032,49 @@ const ConversationRowContent = memo(function ConversationRowContent({
             messageReference,
           );
   return (
-    <ConversationMessageContent
-      attachments={row.attachments}
-      id={row.id}
-      onAddToChat={onMessageAddToChat}
-      onCopyLink={onCopyLink}
-      onFork={onFork}
-      forkDisabled={!canSpawnChild}
-      onSelectProse={onSelectProse}
-      onOpenLink={onOpenLink}
-      onOpenLocalFileLink={onOpenLocalFileLink}
-      onOpenPluginPanel={onOpenPluginPanel}
-      pluginActions={rowPluginActions}
-      projectId={projectId}
-      resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
-      role="assistant"
-      showActions={showAssistantMessageActions}
-      mobileActionDisplay={mobileActionDisplay}
-      streaming={streaming}
-      text={row.text}
-      timestamp={row.startedAt}
-      threadId={row.threadId}
-      turnId={row.turnId}
-      workspaceRootPath={workspaceRootPath}
-    />
+    <>
+      <MessageMetadata
+        placement="above"
+        slots={pluginMessageMetadata}
+        id={row.id}
+        threadId={row.threadId}
+        role={row.role}
+        createdAt={row.createdAt}
+        turnId={row.turnId}
+      />
+      <ConversationMessageContent
+        attachments={row.attachments}
+        id={row.id}
+        onAddToChat={onMessageAddToChat}
+        onCopyLink={onCopyLink}
+        onFork={onFork}
+        forkDisabled={!canSpawnChild}
+        onSelectProse={onSelectProse}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+        onOpenPluginPanel={onOpenPluginPanel}
+        pluginActions={rowPluginActions}
+        projectId={projectId}
+        resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
+        role="assistant"
+        showActions={showAssistantMessageActions}
+        mobileActionDisplay={mobileActionDisplay}
+        streaming={streaming}
+        text={row.text}
+        timestamp={row.startedAt}
+        threadId={row.threadId}
+        turnId={row.turnId}
+        workspaceRootPath={workspaceRootPath}
+      />
+      <MessageMetadata
+        slots={pluginMessageMetadata}
+        id={row.id}
+        threadId={row.threadId}
+        role={row.role}
+        createdAt={row.createdAt}
+        turnId={row.turnId}
+      />
+    </>
   );
 });
 
@@ -1988,6 +2032,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => getPluginSlotSnapshot().messageActions,
     () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions,
   );
+  const messageMetadataSlots = useSyncExternalStore(
+    subscribePluginSlots,
+    () => getPluginSlotSnapshot().messageMetadata,
+    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageMetadata,
+  );
   const messageDirectiveRegistry = useMemo(
     () => buildMessageDirectiveRegistry(messageDirectiveSlots),
     [messageDirectiveSlots],
@@ -2088,6 +2137,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         props.includePluginMessageActions === false
           ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions
           : messageActionSlots,
+      pluginMessageMetadata: messageMetadataSlots,
       consumerMessageActions:
         props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
@@ -2111,6 +2161,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onMessageAddToChat,
       selectionAddToChatHandler,
       messageActionSlots,
+      messageMetadataSlots,
       props.includePluginMessageActions,
       props.consumerMessageActions,
       reportProseSelection,

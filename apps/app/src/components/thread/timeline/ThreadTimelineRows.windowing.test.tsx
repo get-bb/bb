@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { ExperimentalMessageMetadataProps } from "@get-bb/plugin-sdk";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -15,6 +16,11 @@ import {
   delegationRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectSearchedMessageAncestorRowIds } from "./useScrollToSearchedMessage";
 
 function rect(top: number, height: number): DOMRect {
@@ -82,6 +88,42 @@ function renderDelegation() {
   );
 }
 
+function renderTopLevelMessages(count: number, compact: boolean) {
+  const scrollElement = document.createElement("div");
+  scrollElement.setAttribute("data-test-main-scroll", "");
+  const bottomAnchor: BottomAnchorContextValue = {
+    captureScrollAnchor: vi.fn(),
+    getScrollElement: () => scrollElement,
+    isAtBottom: false,
+    scrollElementIntoView: vi.fn(),
+    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+    scrollToBottom: vi.fn(),
+  };
+  const rows = Array.from({ length: count }, (_, index) =>
+    conversationRow({
+      id: `window-message-${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      seq: index + 1,
+      text: `Window message ${index}\n\n${"A paragraph of detailed output.\n\n".repeat(15)}`,
+    }),
+  );
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <BottomAnchorContext.Provider value={bottomAnchor}>
+          <CompactViewportOverrideProvider isCompactViewport={compact}>
+            <ThreadTimelineRows
+              timelineRows={rows}
+              threadRuntimeDisplayStatus="idle"
+              workspaceRootPath={undefined}
+            />
+          </CompactViewportOverrideProvider>
+        </BottomAnchorContext.Provider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
+
 beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
@@ -133,6 +175,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -170,39 +213,7 @@ describe("ThreadTimelineRows windowing", () => {
   ])(
     "bounds mounted content for $count top-level rows (compact: $compact)",
     async ({ count, compact }) => {
-      const scrollElement = document.createElement("div");
-      scrollElement.setAttribute("data-test-main-scroll", "");
-      const bottomAnchor: BottomAnchorContextValue = {
-        captureScrollAnchor: vi.fn(),
-        getScrollElement: () => scrollElement,
-        isAtBottom: false,
-        scrollElementIntoView: vi.fn(),
-        scrollElementIntoViewClampedToMaxScroll: vi.fn(),
-        scrollToBottom: vi.fn(),
-      };
-      const rows = Array.from({ length: count }, (_, index) =>
-        conversationRow({
-          id: `window-message-${index}`,
-          role: index % 2 === 0 ? "user" : "assistant",
-          seq: index + 1,
-          text: `Window message ${index}\n\n${"A paragraph of detailed output.\n\n".repeat(15)}`,
-        }),
-      );
-      const view = render(
-        <MemoryRouter>
-          <QueryClientProvider client={new QueryClient()}>
-            <BottomAnchorContext.Provider value={bottomAnchor}>
-              <CompactViewportOverrideProvider isCompactViewport={compact}>
-                <ThreadTimelineRows
-                  timelineRows={rows}
-                  threadRuntimeDisplayStatus="idle"
-                  workspaceRootPath={undefined}
-                />
-              </CompactViewportOverrideProvider>
-            </BottomAnchorContext.Provider>
-          </QueryClientProvider>
-        </MemoryRouter>,
-      );
+      const view = renderTopLevelMessages(count, compact);
 
       await waitFor(() => {
         const mountedRows = view.container.querySelectorAll(
@@ -277,6 +288,29 @@ describe("ThreadTimelineRows windowing", () => {
         options: { block: "center" },
       }),
     );
+  });
+
+  it("mounts metadata only for realized rows", async () => {
+    const component = vi.fn(({ message }: ExperimentalMessageMetadataProps) => (
+      <span>{message.id}</span>
+    ));
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({
+        messageMetadata: [{ id: "identity", component }],
+      }),
+    );
+    const view = renderTopLevelMessages(100, false);
+    await waitFor(() => {
+      expect(view.container.textContent).toContain("Window message 99");
+      expect(view.container.textContent).not.toContain("Window message 50");
+    });
+    const resolvedIds = new Set(
+      component.mock.calls.map(([{ message }]) => message.id),
+    );
+    expect(resolvedIds.has("window-message-50")).toBe(false);
+    expect(resolvedIds.has("window-message-99")).toBe(true);
+    expect(resolvedIds.size).toBeLessThan(30);
   });
 
   it("keeps offscreen search and outline targets realized", async () => {
