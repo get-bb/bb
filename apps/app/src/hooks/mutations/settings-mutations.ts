@@ -3,6 +3,7 @@ import {
   type AppKeybindingOverrides,
   type AppSettings,
   type AppThemeSelection,
+  type CustomThemeWrite,
   type ExperimentUpdates,
 } from "@bb/domain";
 import type { SystemInstallCliSkillsRequest } from "@bb/server-contract";
@@ -19,6 +20,7 @@ import {
   readCachedStreamerMode,
   rollbackKeyboardSettingsCacheTransaction,
 } from "../cache-owners/system-config-cache-owner";
+import { systemThemeQueryKey } from "@/hooks/queries/query-keys";
 
 export function useUpdateExperiments() {
   const queryClient = useQueryClient();
@@ -105,6 +107,35 @@ export function useUpdateAppearance() {
       errorMessage: "Failed to update appearance.",
     },
     mutationFn: (selection: AppThemeSelection) => sdk.theme.set(selection),
+    onSuccess: () => {
+      invalidateSystemConfig({ queryClient });
+    },
+  });
+}
+
+export function useWriteCustomTheme() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to save the custom theme.",
+    },
+    mutationFn: (input: CustomThemeWrite) => sdk.theme.create(input),
+    onSuccess: (result) => {
+      queryClient.removeQueries({ queryKey: systemThemeQueryKey(result.name) });
+      invalidateSystemConfig({ queryClient });
+    },
+  });
+}
+
+export function useDeleteCustomTheme() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to delete the custom theme.",
+    },
+    mutationFn: (themeId: string) => sdk.theme.remove(themeId),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

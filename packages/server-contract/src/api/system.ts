@@ -257,6 +257,15 @@ export const themeCatalogResponseSchema = z.object({
 });
 export type ThemeCatalogResponse = z.infer<typeof themeCatalogResponseSchema>;
 
+export const customThemeWriteResultSchema = z.object({
+  name: z.string(),
+  dir: z.string(),
+  active: appThemeSchema,
+});
+export type CustomThemeWriteResult = z.infer<
+  typeof customThemeWriteResultSchema
+>;
+
 export const systemVersionResponseSchema = z.object({
   currentVersion: z.string(),
   latestVersion: z.string().nullable(),

@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import {
   builtInThemes,
+  customThemeNameSchema,
   defaultAppTheme,
   defaultFaviconColor,
   faviconColorPreferenceSchema,
@@ -19,6 +20,25 @@ interface ThemeShowCommandOptions extends JsonOutputOptions {
 
 interface ThemeSetCommandOptions extends JsonOutputOptions {
   faviconColor?: string;
+}
+
+interface ThemeCreateCommandOptions extends JsonOutputOptions {
+  css?: string;
+}
+
+async function readThemeCssInput(css: string | undefined): Promise<string> {
+  if (css !== undefined) return css;
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const piped = Buffer.concat(chunks).toString("utf8");
+  if (piped.trim().length === 0) {
+    throw new Error(
+      "No theme CSS supplied. Pass --css \"...\" or pipe CSS on stdin.",
+    );
+  }
+  return piped;
 }
 
 function parseFaviconColor(value: string): FaviconColorPreference {
@@ -129,6 +149,44 @@ export function registerThemeCommands(
               });
         if (outputJson(opts, updated)) return;
         console.log(`Theme set to ${describeTheme(updated)}`);
+      }),
+    );
+
+  theme
+    .command("create <name>")
+    .description(
+      "Write a custom theme stylesheet from --css or stdin and activate it",
+    )
+    .option("--css <css>", "Theme CSS text; omit to read stdin")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (name: string, opts: ThemeCreateCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const css = await readThemeCssInput(opts.css);
+        const parsed = customThemeNameSchema.safeParse(name);
+        if (!parsed.success) {
+          throw new Error(
+            `Invalid theme name '${name}'. ${parsed.error.issues[0]?.message ?? ""}`,
+          );
+        }
+        const result = await sdk.theme.create({ name, css });
+        if (outputJson(opts, result)) return;
+        console.log(`Custom theme '${result.name}' written to ${result.dir}`);
+        console.log(`Active: ${describeTheme(result.active)}`);
+      }),
+    );
+
+  theme
+    .command("delete <name>")
+    .description("Delete a custom theme, resetting to Default if it was active")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (name: string, opts: JsonOutputOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const catalog = await sdk.theme.remove(name);
+        if (outputJson(opts, catalog)) return;
+        console.log(`Deleted custom theme '${name}'`);
+        console.log(`Active: ${describeTheme(catalog.active)}`);
       }),
     );
 

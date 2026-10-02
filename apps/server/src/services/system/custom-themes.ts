@@ -1,4 +1,11 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
@@ -53,6 +60,23 @@ export function readCustomThemeCss(
   }
   if (css.length > CUSTOM_THEME_CSS_MAX_LENGTH) return null;
   return css;
+}
+
+export function customThemeExists(themeRoot: string, name: string): boolean {
+  return existsSync(resolveCustomThemeCssPath(themeRoot, name));
+}
+
+export function writeCustomThemeCss(
+  themeRoot: string,
+  name: string,
+  css: string,
+): void {
+  mkdirSync(join(themeRoot, name), { recursive: true });
+  writeFileSync(resolveCustomThemeCssPath(themeRoot, name), css, "utf8");
+}
+
+export function deleteCustomTheme(themeRoot: string, name: string): void {
+  rmSync(join(themeRoot, name), { recursive: true, force: true });
 }
 
 export function resolveAppTheme(

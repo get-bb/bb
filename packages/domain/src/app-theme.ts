@@ -113,6 +113,12 @@ export const appThemeSelectionSchema = z.object({
 });
 export type AppThemeSelection = z.infer<typeof appThemeSelectionSchema>;
 
+export const customThemeWriteSchema = z.object({
+  name: customThemeNameSchema,
+  css: z.string().min(1).max(CUSTOM_THEME_CSS_MAX_LENGTH),
+});
+export type CustomThemeWrite = z.infer<typeof customThemeWriteSchema>;
+
 export const defaultAppTheme: AppTheme = {
   themeId: "default",
   customCss: null,

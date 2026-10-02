@@ -1,10 +1,9 @@
 import { MobileAppSection } from "@/components/settings/MobileAppSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Navigate,
-  useNavigate,
   useLocation,
   matchPath,
 } from "react-router-dom";
@@ -17,6 +16,7 @@ import {
   experimentKeys,
   managedBranchPrefixSchema,
   type AppTheme,
+  type BuiltInThemeId,
   type ExperimentKey,
   type Experiments,
   type FaviconColorPreference,
@@ -79,7 +79,13 @@ import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
   useUpdateExperiments,
+  useWriteCustomTheme,
+  useDeleteCustomTheme,
 } from "@/hooks/mutations/settings-mutations";
+import { ThemeStudioDialog } from "@/components/theme-studio/ThemeStudioDialog";
+import type { StudioSource } from "@/components/theme-studio/ThemeStudioDialog";
+import { builtInThemeCss } from "@/lib/themes";
+import { sdk } from "@/lib/sdk";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
@@ -91,10 +97,7 @@ import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-pr
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
 import { localhostLinkRewriteDescription } from "@/lib/localhost-link-rewrite-description";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
-import {
-  SETTINGS_ROUTE_PATH,
-  getRootComposeRoutePath,
-} from "@/lib/route-paths";
+import { SETTINGS_ROUTE_PATH } from "@/lib/route-paths";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -162,6 +165,7 @@ interface AppearanceSettingsSectionProps {
   onAppearanceThemePrefetch: (themeIds: readonly string[]) => void;
   onAppearanceThemePreview: (themeId: string | null) => void;
   onCreatePalette: () => void;
+  themeStudio?: ReactNode;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
   themePreference: ThemePreference;
@@ -255,10 +259,8 @@ const SETTINGS_DROPDOWN_TRIGGER_CLASS =
 const SETTINGS_DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 
-const CREATE_CUSTOM_PALETTE_PROMPT =
-  "Create a custom bb palette. First run `bb theme dir` to find the custom theme directory. Ask me for the palette name and visual direction, then create `<theme-dir>/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
 const PALETTE_SETTING_DESCRIPTION =
-  "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one from a prompt.";
+  "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one in the studio.";
 
 interface PaletteMenuItemProps {
   active: boolean;
@@ -686,6 +688,7 @@ export function AppearanceSettingsSection({
   onAppearanceThemePreview,
   onFaviconColorChange,
   onCreatePalette,
+  themeStudio,
   onThemePreferenceChange,
   themePreference,
 }: AppearanceSettingsSectionProps) {
@@ -823,10 +826,11 @@ export function AppearanceSettingsSection({
                     name="Plus"
                     className={COARSE_POINTER_ICON_SIZE_CLASS}
                   />
-                  Create
+                  Create/Edit
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {themeStudio}
           </SettingsWithControl>
 
           <FaviconColorSettingsControl
@@ -1112,7 +1116,6 @@ export function ExperimentsSettingsSection({
 }
 
 export function SettingsView() {
-  const navigate = useNavigate();
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
   const { hasDaemon } = useHostDaemon();
@@ -1140,6 +1143,43 @@ export function SettingsView() {
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
   const appThemePreview = useAppThemePreview();
+  const [themeStudioOpen, setThemeStudioOpen] = useState(false);
+  const writeCustomThemeMutation = useWriteCustomTheme();
+  const deleteCustomThemeMutation = useDeleteCustomTheme();
+
+  const studioThemeSources = useMemo<StudioSource[]>(() => {
+    const custom = (systemConfigQuery.data?.customThemes ?? []).map((id) => ({
+      id,
+      name: id,
+      kind: "custom" as const,
+    }));
+    const builtin = builtInThemes.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      kind: "builtin" as const,
+    }));
+    const plugin = (systemConfigQuery.data?.pluginThemes ?? []).map((theme) => ({
+      id: theme.id,
+      name: theme.name,
+      kind: "plugin" as const,
+    }));
+    return [...custom, ...builtin, ...plugin];
+  }, [systemConfigQuery.data]);
+
+  const loadStudioThemeCss = useCallback(
+    async (source: StudioSource): Promise<string | null> => {
+      if (source.kind === "builtin") {
+        return builtInThemeCss[source.id as BuiltInThemeId] ?? null;
+      }
+      try {
+        const resolved = await sdk.theme.resolve({ themeId: source.id });
+        return resolved.customCss;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
   const location = useLocation();
   const { activePluginId, activeSection, hasUnknownSection } =
     useSettingsNavState();
@@ -1204,14 +1244,7 @@ export function SettingsView() {
         }
         onAppearanceThemePrefetch={appThemePreview.prefetchThemes}
         onAppearanceThemePreview={appThemePreview.previewTheme}
-        onCreatePalette={() =>
-          navigate(getRootComposeRoutePath(), {
-            state: {
-              focusPrompt: true,
-              initialPrompt: CREATE_CUSTOM_PALETTE_PROMPT,
-            },
-          })
-        }
+        onCreatePalette={() => setThemeStudioOpen(true)}
         onFaviconColorChange={(faviconColor) =>
           updateAppearanceMutation.mutate({
             themeId: appearance.themeId,
@@ -1219,6 +1252,28 @@ export function SettingsView() {
           })
         }
         onThemePreferenceChange={setPreferredTheme}
+        themeStudio={
+          <ThemeStudioDialog
+            open={themeStudioOpen}
+            onOpenChange={setThemeStudioOpen}
+            pending={writeCustomThemeMutation.isPending}
+            saveError={writeCustomThemeMutation.error?.message ?? null}
+            deleteError={deleteCustomThemeMutation.error?.message ?? null}
+            sources={studioThemeSources}
+            activeThemeId={appearance.themeId}
+            loadThemeCss={loadStudioThemeCss}
+            onDelete={async (themeName) => {
+              await deleteCustomThemeMutation.mutateAsync(themeName);
+            }}
+            onSave={async ({ name: themeName, css }) => {
+              await writeCustomThemeMutation.mutateAsync({
+                name: themeName,
+                css,
+              });
+              setThemeStudioOpen(false);
+            }}
+          />
+        }
       />
     );
   } else if (activeSection === "keyboard") {

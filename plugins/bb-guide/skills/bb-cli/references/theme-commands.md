@@ -24,6 +24,13 @@
     or plugin theme, `--css` prints its CSS. For a built-in theme, it reports
     that BB bundles the CSS. Settings → Appearance previews a palette live on
     hover without saving; this command is the CLI counterpart.
+  - `bb theme create <name> [--css <css>]` — write a custom theme stylesheet and
+    activate it. Reads the CSS from `--css`, or from stdin when the flag is
+    omitted. Overwrites an existing `<name>/theme.css` in place, so it is also
+    how you edit a theme you already created. The name must match the custom
+    theme naming rules (letters, digits, `.`, `_`, `-`; no leading `.`).
+  - `bb theme delete <name>` — delete a custom theme folder. When the deleted
+    theme was active, the app falls back to `default`.
   - `bb theme reset` — back to `default` while preserving the favicon color.
   - `bb theme favicon set <color>` — set the favicon color while preserving the
     active theme. Colors: `default`, `red`, `orange`, `yellow`, `green`, `teal`,
@@ -35,6 +42,24 @@
 
 This is the BB habit: custom app-theme work belongs in
 `<bb-data-dir>/theme/<name>/theme.css` — never a stray `.css` file elsewhere.
+
+Write it with one command:
+
+```bash
+bb theme create my-theme --css "$(cat <<'CSS'
+:root, .light { --canvas: #eceff4; --ink: #2e3440; }
+.dark { --canvas: #2e3440; --ink: #d8dee9; }
+CSS
+)"
+```
+
+`bb theme create` writes `<name>/theme.css`, activates the theme, and overwrites
+an existing theme of the same name, so it doubles as the edit command. Pipe CSS
+on stdin instead of `--css` for long stylesheets. Settings → Appearance → Palette
+→ Create/Edit does the same thing through a visual studio, which can
+also load an existing theme and patch only the tokens you change.
+
+To place or hand-edit the file directly instead:
 
 1. Find the directory: `bb theme dir` (e.g. `~/.bb/theme`).
 2. Write the stylesheet to `<that-dir>/<name>/theme.css` (create the folder). Use

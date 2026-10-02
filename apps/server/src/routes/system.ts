@@ -25,6 +25,7 @@ import {
   applyAppKeybindingOverrides,
   appSettingsSchema,
   customThemeNameSchema,
+  defaultAppTheme,
   isBuiltInThemeId,
   PERSONAL_PROJECT_ID,
   resolveCodeTheme,
@@ -80,6 +81,8 @@ import {
   resolveAppTheme,
   resolveCustomThemeCssPath,
   resolveThemeRootPath,
+  deleteCustomTheme,
+  writeCustomThemeCss,
 } from "../services/system/custom-themes.js";
 import {
   installGlobalCliSkills,
@@ -363,6 +366,41 @@ export function registerSystemRoutes(
     setStoredAppearance(deps.db, { themeId, faviconColor });
     deps.hub.notifySystem(["config-changed"]);
     return context.json(await resolveSelectedTheme(themeId, faviconColor));
+  });
+
+  post(routes.writeCustomTheme, async (context, payload) => {
+    const { name, css } = payload;
+    writeCustomThemeCss(themeRoot, name, css);
+    const faviconColor = getStoredFaviconColor(deps.db);
+    setStoredAppearance(deps.db, { themeId: name, faviconColor });
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json({
+      name,
+      dir: resolveCustomThemeCssPath(themeRoot, name),
+      active: await resolveSelectedTheme(name, faviconColor),
+    });
+  });
+
+  del(routes.deleteCustomTheme, async (context) => {
+    const themeId = context.req.param("id");
+    await requireKnownTheme(themeId);
+    deleteCustomTheme(themeRoot, themeId);
+    if (getStoredThemeId(deps.db) === themeId) {
+      setStoredAppearance(deps.db, {
+        themeId: defaultAppTheme.themeId,
+        faviconColor: getStoredFaviconColor(deps.db),
+      });
+    }
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json({
+      dir: themeRoot,
+      custom: listCustomThemeNames(themeRoot),
+      plugins: pluginService.listThemes(),
+      active: await resolveSelectedTheme(
+        getStoredThemeId(deps.db),
+        getStoredFaviconColor(deps.db),
+      ),
+    });
   });
 
   get(routes.resolveTheme, async (context) => {

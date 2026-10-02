@@ -258,6 +258,8 @@ move and downloads the new server's bb-app package for its service.
 - `bb theme`
 - `bb theme list`
 - `bb theme set`
+- `bb theme create`
+- `bb theme delete`
 - `bb theme dir`
 - `bb theme favicon`
 - `bb theme favicon set`

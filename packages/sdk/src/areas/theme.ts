@@ -1,5 +1,8 @@
-import type { AppTheme, AppThemeSelection } from "@bb/domain";
-import type { ThemeCatalogResponse } from "@bb/server-contract";
+import type { AppTheme, AppThemeSelection, CustomThemeWrite } from "@bb/domain";
+import type {
+  CustomThemeWriteResult,
+  ThemeCatalogResponse,
+} from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export type ThemeGetResult = AppTheme;
@@ -7,6 +10,8 @@ export type ThemeCatalogResult = ThemeCatalogResponse;
 export type ThemeSetInput = AppThemeSelection;
 export type ThemeSetResult = AppTheme;
 export type ThemeResolveResult = AppTheme;
+export type ThemeWriteInput = CustomThemeWrite;
+export type ThemeWriteResult = CustomThemeWriteResult;
 
 export interface ThemeCatalogArgs {
   signal?: AbortSignal;
@@ -27,6 +32,9 @@ export interface ThemeArea {
   resolve(args: ThemeResolveArgs): Promise<ThemeResolveResult>;
   set(selection: ThemeSetInput): Promise<ThemeSetResult>;
   set(themeId: string): Promise<ThemeSetResult>;
+  create(input: ThemeWriteInput): Promise<ThemeWriteResult>;
+  update(input: ThemeWriteInput): Promise<ThemeWriteResult>;
+  remove(themeId: string): Promise<ThemeCatalogResult>;
 }
 
 export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
@@ -73,6 +81,23 @@ export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
       }
       return transport.readJson(
         transport.api.v1.settings.appearance.$put({ json: input }),
+      );
+    },
+    async create(input) {
+      return transport.readJson(
+        transport.api.v1.settings.themes.$post({ json: input }),
+      );
+    },
+    async update(input) {
+      return transport.readJson(
+        transport.api.v1.settings.themes.$post({ json: input }),
+      );
+    },
+    async remove(themeId) {
+      return transport.readJson(
+        transport.api.v1.settings.themes[":id"].$delete({
+          param: { id: themeId },
+        }),
       );
     },
   };

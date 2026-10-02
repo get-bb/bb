@@ -384,7 +384,14 @@ type ExpectedSystemKey =
 
 type ExpectedSystemUiPreferencesKey = "list" | "reset" | "set";
 
-type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
+type ExpectedThemeKey =
+  | "catalog"
+  | "create"
+  | "get"
+  | "remove"
+  | "resolve"
+  | "set"
+  | "update";
 
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 

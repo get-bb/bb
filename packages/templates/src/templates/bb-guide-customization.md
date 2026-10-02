@@ -21,17 +21,27 @@ app uses ~/.bb/theme/…). The folder name is the theme id.
   bb theme set <id> [--favicon-color <color>]
                                  Activate a theme, preserving the favicon color
                                  unless the flag supplies the complete selection
+  bb theme create <name> [--css <css>]
+                                 Write a custom stylesheet and activate it; reads
+                                 stdin when --css is omitted. Overwrites an
+                                 existing theme of the same name, so it also
+                                 edits one
+  bb theme delete <name>         Delete a custom theme; resets to default if active
   bb theme show [id] [--css]     Print the active palette, or resolve <id> without
                                  activating it; --css dumps the CSS
   bb theme reset                 Back to the default theme; preserve favicon color
   bb theme favicon set <color>   Set favicon color; preserve the active theme
   bb theme favicon reset         Reset favicon color; preserve the active theme
 
-To author a custom theme, run `bb theme dir`, write <that-dir>/<name>/theme.css,
-then `bb theme set <name>`. Optional `pierre-dark.json` / `pierre-light.json`
-(or a `theme.json` `codeTheme` field) ship the matching code colors. Built-in
-palettes use the matching Shiki pair. The full design-token reference is in
-the bb-cli skill (references/theming.md).
+Settings → Appearance → Palette → Create/Edit opens a visual studio that writes the
+same file, so prefer it over hand-writing CSS. From the CLI, author with
+`bb theme create <name> --css "..."` (or pipe CSS on stdin); it activates the
+theme on write. To place the file by hand instead, run `bb theme dir`, write
+<that-dir>/<name>/theme.css, then `bb theme set <name>`. Optional
+`pierre-dark.json` / `pierre-light.json` (or a `theme.json` `codeTheme` field)
+ship the matching code colors. Built-in palettes use the matching Shiki pair.
+The full design-token reference is in the bb-cli skill
+(references/theming.md).
 
 Theme CSS can override typography as well as colors. `--font-terminal` controls
 the integrated terminal's font family independently of `--font-mono`; set it in

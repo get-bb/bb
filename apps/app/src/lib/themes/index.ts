@@ -12,7 +12,7 @@ import { solarizedThemeCss } from "./solarized";
 const APP_THEME_STYLE_ELEMENT_ID = "bb-app-theme";
 export const APP_THEME_CSS_STORAGE_KEY = "bb.appThemeCss";
 
-const builtInThemeCss: Record<BuiltInThemeId, string> = {
+export const builtInThemeCss: Record<BuiltInThemeId, string> = {
   default: "",
   nord: nordThemeCss,
   dracula: draculaThemeCss,

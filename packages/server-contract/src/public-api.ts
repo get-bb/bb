@@ -62,11 +62,13 @@ import type {
   ResolvedThreadExecutionOptions,
   ThreadEventRow,
   ThreadQueuedMessage,
+  CustomThemeWrite,
 } from "@bb/domain";
 import {
   appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
+  customThemeWriteSchema,
   experimentUpdatesSchema,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
@@ -225,6 +227,7 @@ import type {
   SystemVoiceTranscriptionResponse,
   TerminalListResponse,
   ThemeCatalogResponse,
+  CustomThemeWriteResult,
   TerminalSession,
   TerminalInputRequest,
   TerminalListQuery,
@@ -1900,6 +1903,25 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<AppTheme>(),
+    }),
+    /**
+     * Create or overwrite a custom theme stylesheet and activate it. The
+     * custom-theme studio in Settings and `bb theme create` write through
+     * here; the theme id is the folder name under `<dataDir>/theme/<id>`.
+     */
+    writeCustomTheme: defineRoute({
+      path: "/settings/themes",
+      method: "post",
+      request: jsonRequest<EmptyInput, CustomThemeWrite>(
+        customThemeWriteSchema,
+      ),
+      response: jsonResponse<CustomThemeWriteResult>(),
+    }),
+    deleteCustomTheme: defineRoute({
+      path: "/settings/themes/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThemeCatalogResponse>(),
     }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",
