@@ -4,6 +4,7 @@ const TYPEAHEAD_MENU_MAX_HEIGHT_PROPERTY = "--promptbox-typeahead-max-height";
 const APP_CONTENT_SHELL_SELECTOR = "[data-app-content-shell]";
 
 const TYPEAHEAD_MENU_EDGE_GAP_PX = 8;
+const TYPEAHEAD_MENU_MIN_HEIGHT = "5rem";
 
 function clipsOverflow(element: Element): boolean {
   const style = getComputedStyle(element);
@@ -48,7 +49,9 @@ function measureMaxHeight(menu: HTMLElement): string | null {
       `calc(${menuBottom - shellContentTop - TYPEAHEAD_MENU_EDGE_GAP_PX}px - var(--bb-app-chrome-row-height))`,
     );
   }
-  return limits.length === 0 ? null : `max(0px, min(${limits.join(", ")}))`;
+  return limits.length === 0
+    ? null
+    : `max(${TYPEAHEAD_MENU_MIN_HEIGHT}, min(${limits.join(", ")}))`;
 }
 
 export function useTypeaheadMenuMaxHeight(
