@@ -18,10 +18,7 @@ import {
 } from "@/components/ui/markdown-local-file-link.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { computeMutedPrefixLength } from "@bb/client-core";
-import type {
-  TimelineTitleActionResolver,
-  TimelineTitleLinkResolver,
-} from "./TimelineTitleView.js";
+import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {
   ThreadTimelineAddToChatHandler,
   ThreadTimelineLinkHandler,
@@ -93,7 +90,6 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onEdit?: () => void;
   resolveMentionLink?: PromptMentionLinkResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
@@ -160,7 +156,6 @@ interface UserConversationMessageProps {
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadProjectId: string | null;
@@ -198,7 +193,6 @@ interface CollapsibleMessageTextProps {
   linkRouting?: MarkdownLinkRouting;
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   text: string;
   mutePrefixLength?: number;
 }
@@ -207,7 +201,6 @@ function CollapsibleMessageText({
   linkRouting,
   mentions,
   resolveMentionLink,
-  resolveSegmentLinkHref,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -239,10 +232,9 @@ function CollapsibleMessageText({
   const promptMentions = useMemo<MarkdownPromptMentions>(
     () => ({
       mentions: body.mentions,
-      resolveLinkHref: resolveSegmentLinkHref,
       resolveMentionLink,
     }),
-    [body.mentions, resolveSegmentLinkHref, resolveMentionLink],
+    [body.mentions, resolveMentionLink],
   );
   const rawThreadMentions = useMemo<MarkdownThreadMentions>(
     () => ({
@@ -341,7 +333,6 @@ function UserConversationMessage({
   pluginActions = [],
   projectId,
   resolveMentionLink,
-  resolveSegmentLinkHref,
   onTitleAction,
   senderThreadId,
   senderThreadProjectId,
@@ -402,7 +393,6 @@ function UserConversationMessage({
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
-        resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
@@ -435,7 +425,6 @@ function UserConversationMessage({
               <CollapsibleMessageText
                 mentions={mentions}
                 resolveMentionLink={resolveMentionLink}
-                resolveSegmentLinkHref={resolveSegmentLinkHref}
                 linkRouting={linkRouting}
                 text={text}
                 mutePrefixLength={mutePrefixLength || undefined}
@@ -664,7 +653,6 @@ export function ConversationMessageContent(
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
-        resolveSegmentLinkHref={props.resolveSegmentLinkHref}
         onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
         senderThreadProjectId={props.senderThreadProjectId ?? null}

@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   isRawThreadId,
+  PERSONAL_PROJECT_ID,
   RAW_THREAD_ID_PATTERN_SOURCE,
   type PromptMentionResource,
   type PromptTextMention,
@@ -26,6 +27,7 @@ import { PromptMentionPill } from "@/components/thread/timeline/ConversationMess
 import { useThread } from "@/hooks/queries/thread-queries";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -51,6 +53,19 @@ const ThreadTitleMentionResourcesContext =
 
 export function useThreadTitleMentionResources(): ThreadTitleMentionResources {
   return useContext(ThreadTitleMentionResourcesContext);
+}
+
+export function useThreadRoutePath(): (
+  threadId: string,
+  projectId: string | undefined,
+) => string {
+  const { threadById } = useThreadTitleMentionResources();
+  return (threadId, projectId) =>
+    getThreadRoutePath({
+      projectId:
+        projectId ?? threadById.get(threadId)?.projectId ?? PERSONAL_PROJECT_ID,
+      threadId,
+    });
 }
 
 function areStringMapsEqual(

@@ -407,11 +407,6 @@ describe("ConversationMessageContent user thread mentions", () => {
               originKind={null}
               initiator="user"
               mentions={[]}
-              resolveSegmentLinkHref={(link) =>
-                link.kind === "thread"
-                  ? `/projects/proj_current/threads/${link.threadId}`
-                  : null
-              }
               senderThreadId={null}
               senderThreadTitle={null}
               senderIsPluginSideChat={false}

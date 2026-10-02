@@ -102,7 +102,6 @@ import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquot
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
 import {
   rewriteLocalhostLinkHref,
@@ -136,7 +135,6 @@ type MarkdownImagePolicy = "alt-text" | "render";
 export interface MarkdownThreadMentions {
   mentions: readonly PromptTextMention[];
   preserveSoftBreaks: boolean;
-  resolveLinkHref?: TimelineTitleLinkResolver;
 }
 
 interface MarkdownAnchorProps
@@ -163,7 +161,6 @@ interface BuildMarkdownComponentsArgs {
 
 interface ResolvedPromptMentions {
   mentions: readonly IndexedPromptMention[];
-  resolveLinkHref?: TimelineTitleLinkResolver;
   resolveMentionLink?: PromptMentionLinkResolver;
 }
 
@@ -391,8 +388,7 @@ function areMarkdownThreadMentionsEqual({
   if (previous === undefined || next === undefined) return false;
   return (
     previous.mentions === next.mentions &&
-    previous.preserveSoftBreaks === next.preserveSoftBreaks &&
-    previous.resolveLinkHref === next.resolveLinkHref
+    previous.preserveSoftBreaks === next.preserveSoftBreaks
   );
 }
 
@@ -404,7 +400,6 @@ function areMarkdownPromptMentionsEqual({
   if (previous === undefined || next === undefined) return false;
   return (
     previous.mentions === next.mentions &&
-    previous.resolveLinkHref === next.resolveLinkHref &&
     previous.resolveMentionLink === next.resolveMentionLink
   );
 }
@@ -1412,14 +1407,12 @@ function buildMarkdownComponents({
   if (threadMentions !== undefined) {
     components["bb-thread-mention"] = buildThreadMentionComponent({
       mentions: threadMentions.mentions,
-      resolveSegmentLinkHref: threadMentions.resolveLinkHref,
     });
   }
 
   if (promptMentions !== undefined) {
     components["bb-prompt-mention"] = buildPromptMentionComponent({
       mentions: promptMentions.mentions,
-      resolveLinkHref: promptMentions.resolveLinkHref,
       resolveMentionLink: promptMentions.resolveMentionLink,
     });
   }
@@ -1743,7 +1736,6 @@ function MarkdownPreviewComponent({
       promptMentions && promptMentionSubstitution
         ? {
             mentions: promptMentionSubstitution.mentions,
-            resolveLinkHref: promptMentions.resolveLinkHref,
             resolveMentionLink: promptMentions.resolveMentionLink,
           }
         : undefined,

@@ -5,7 +5,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { setPreferredTheme } from "@/hooks/useTheme";
@@ -20,12 +19,6 @@ function markdownTree(node: ReactNode) {
 
 function renderMarkdown(node: ReactNode) {
   return render(markdownTree(node));
-}
-
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
 }
 
 const THREAD_RESOURCE: PromptMentionResource = {
@@ -78,7 +71,6 @@ describe("MarkdownPreview prompt mentions", () => {
         content={text}
         promptMentions={{
           mentions: [mentionAt(text, "@thread:thr_child", THREAD_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
     );
@@ -97,7 +89,6 @@ describe("MarkdownPreview prompt mentions", () => {
         content={text}
         promptMentions={{
           mentions: [mentionAt(text, "@src/foo_bar.ts", PATH_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
           resolveMentionLink: () => () => {},
         }}
       />,
@@ -115,7 +106,6 @@ describe("MarkdownPreview prompt mentions", () => {
         content={text}
         promptMentions={{
           mentions: [mentionAt(text, "/deploy", COMMAND_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
     );
@@ -127,7 +117,7 @@ describe("MarkdownPreview prompt mentions", () => {
     const { container } = renderMarkdown(
       <MarkdownPreview
         content={"first line\nsecond line"}
-        promptMentions={{ mentions: [], resolveLinkHref: resolveThreadLink }}
+        promptMentions={{ mentions: [] }}
       />,
     );
 

@@ -7,7 +7,6 @@ import {
   type TimelineTitle,
   type TimelineTitleAction,
   type TimelineTitleDecoration,
-  type TimelineTitleLink,
   type TimelineTitleSegment,
   type TimelineTitleSegmentAccent,
   type TimelineTitleTone,
@@ -20,6 +19,7 @@ import { LiveDurationText } from "./LiveDurationText.js";
 import {
   ThreadTitleMentions,
   useResolveThreadTitle,
+  useThreadRoutePath,
 } from "@/components/thread/ThreadTitleMentions";
 import {
   ConversationMessageOverflowToggle,
@@ -30,14 +30,9 @@ export type TimelineTitleActionResolver = (
   action: TimelineTitleAction,
 ) => (() => void) | null;
 
-export type TimelineTitleLinkResolver = (
-  link: TimelineTitleLink,
-) => string | null;
-
 interface TimelineTitleViewProps {
   title: TimelineTitle;
   onTitleAction?: TimelineTitleActionResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   wrap?: boolean;
 }
 
@@ -322,12 +317,12 @@ function renderDecoration(
 export function TimelineTitleView({
   title,
   onTitleAction,
-  resolveSegmentLinkHref,
   wrap = false,
 }: TimelineTitleViewProps) {
   const onClick =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
   const resolveTitle = useResolveThreadTitle();
+  const threadRoutePath = useThreadRoutePath();
   const plainTitle = title.segments.some((segment) => segment.link)
     ? resolveTitle(title.plain)
     : title.plain;
@@ -343,10 +338,9 @@ export function TimelineTitleView({
       title={plainTitle}
     >
       {title.segments.map((segment, index) => {
-        const linkHref =
-          segment.link && resolveSegmentLinkHref
-            ? resolveSegmentLinkHref(segment.link)
-            : null;
+        const linkHref = segment.link
+          ? threadRoutePath(segment.link.threadId, undefined)
+          : null;
         return (
           <Fragment key={`segment-${index}`}>
             {index > 0 ? " " : null}
