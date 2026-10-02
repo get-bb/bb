@@ -18,8 +18,8 @@ import {
 } from "@/components/ui/markdown-local-file-link.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
-  automationDueBodyOffset,
   computeMutedPrefixLength,
+  parseAutomationDueMessage,
 } from "@bb/client-core";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {
@@ -362,8 +362,8 @@ function UserConversationMessage({
       }),
     [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
   );
-  const automationBodyOffset =
-    initiator === "user" ? automationDueBodyOffset(text) : null;
+  const automationDue =
+    initiator === "user" ? parseAutomationDueMessage(text) : null;
   const generatedSource =
     initiator === "agent" && senderThreadId !== null
       ? {
@@ -385,7 +385,7 @@ function UserConversationMessage({
             sourceIsPluginSideChat: false,
             originKind: null,
           }
-        : automationBodyOffset !== null
+        : automationDue !== null
           ? {
               sourceKind: "automation" as const,
               sourceName: "Automation",
@@ -397,11 +397,11 @@ function UserConversationMessage({
           : null;
   if (generatedSource !== null) {
     const body =
-      automationBodyOffset === null
+      automationDue === null
         ? generatedConversationBodySlice({ initiator, text })
         : {
-            startOffset: automationBodyOffset,
-            text: text.slice(automationBodyOffset),
+            startOffset: automationDue.bodyOffset,
+            text: text.slice(automationDue.bodyOffset),
           };
     const bodyMentions = shiftMentionsToTextRange({
       mentions,
@@ -412,6 +412,15 @@ function UserConversationMessage({
       <GeneratedConversationMessage
         {...generatedSource}
         attachmentItems={attachmentItems}
+        automationLink={
+          automationDue === null || projectId === undefined
+            ? null
+            : {
+                kind: "automation",
+                projectId,
+                automationId: automationDue.automationId,
+              }
+        }
         mentions={bodyMentions}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}

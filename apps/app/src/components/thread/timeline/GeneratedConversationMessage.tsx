@@ -6,7 +6,11 @@ import type {
   SystemMessageSubject,
   ThreadOriginKind,
 } from "@bb/domain";
-import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
+import type {
+  TimelineTitle,
+  TimelineTitleLink,
+  TimelineTitleSegment,
+} from "@bb/thread-view";
 import { type IconName } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -41,8 +45,11 @@ import {
   GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
 } from "@bb/client-core";
 
+type AutomationTitleLink = Extract<TimelineTitleLink, { kind: "automation" }>;
+
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  automationLink: AutomationTitleLink | null;
   originKind: ThreadOriginKind | null;
   mentions: readonly PromptTextMention[];
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -91,6 +98,7 @@ interface TimelineTitleSegmentArgs {
 }
 
 interface GeneratedConversationTitleArgs {
+  automationLink: AutomationTitleLink | null;
   originKind: ThreadOriginKind | null;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
@@ -246,6 +254,7 @@ function systemMessageTitleSegments(
 }
 
 export function generatedConversationTitle({
+  automationLink,
   originKind,
   sourceKind,
   sourceName,
@@ -286,7 +295,15 @@ export function generatedConversationTitle({
           }),
         ]
       : sourceKind === "automation"
-        ? [verbSegment("Automation")]
+        ? [
+            timelineTitleSegment({
+              em: false,
+              link: automationLink,
+              shimmer: false,
+              text: "Automation",
+              truncate: false,
+            }),
+          ]
         : systemMessageTitleSegments(systemMessageKind, systemMessageSubject);
 
   return {
@@ -431,6 +448,7 @@ const COLLAPSED_MARKDOWN_PREVIEW_CLASS = cn(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
+    automationLink,
     originKind,
     mentions,
     onOpenLink,
@@ -480,6 +498,7 @@ export const GeneratedConversationMessage = memo(
     const sourceTitle = useMemo(
       () =>
         generatedConversationTitle({
+          automationLink,
           originKind,
           sourceKind,
           sourceName,
@@ -489,6 +508,7 @@ export const GeneratedConversationMessage = memo(
           systemMessageSubject,
         }),
       [
+        automationLink,
         originKind,
         sourceKind,
         sourceName,

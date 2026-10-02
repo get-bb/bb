@@ -459,6 +459,7 @@ describe("ConversationMessageContent automation messages", () => {
             text={
               "[bb automation due:auto_zto0dtbcxme]\n\nWeekday unread digest.\n\nSearch Gmail for AUTOMATION_PROMPT_TAIL."
             }
+            projectId="proj_automation"
             timestamp={0}
             threadId="thr_automation"
             turnRequest={{
@@ -472,6 +473,9 @@ describe("ConversationMessageContent automation messages", () => {
     );
 
     expect(container.textContent).not.toContain("[bb automation due:");
+    expect(
+      screen.getByRole("link", { name: "Automation" }).getAttribute("href"),
+    ).toBe("/plugins/automations/automations/proj_automation/auto_zto0dtbcxme");
     expect(screen.getByText("Weekday unread digest.")).toBeTruthy();
     expect(container.textContent).not.toContain("AUTOMATION_PROMPT_TAIL");
 

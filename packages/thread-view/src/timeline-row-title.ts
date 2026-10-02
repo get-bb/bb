@@ -61,7 +61,9 @@ import {
 export type TimelineTitleTone = "default" | "summary";
 type TimelineStatusDecorationStatus = "denied" | "error" | "interrupted";
 
-export type TimelineTitleLink = { kind: "thread"; threadId: string };
+export type TimelineTitleLink =
+  | { kind: "thread"; threadId: string }
+  | { kind: "automation"; projectId: string; automationId: string };
 
 export type TimelineTitleSegmentAccent = "muted" | "subtle" | "file";
 
