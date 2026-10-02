@@ -118,6 +118,20 @@ describe("common config", () => {
     ).toBe(path.join(os.homedir(), "custom-bb"));
   });
 
+  it.runIf(process.platform === "win32")(
+    "expands a home-directory override written with a backslash on Windows",
+    () => {
+      expect(
+        loadCommonConfig({
+          env: {
+            BB_DATA_DIR: "~\\custom-bb",
+            NODE_ENV: "production",
+          },
+        }).BB_DATA_DIR,
+      ).toBe(path.join(os.homedir(), "custom-bb"));
+    },
+  );
+
   it("rejects whitespace-only BB_DATA_DIR overrides", () => {
     expect(() =>
       loadCommonConfig({
