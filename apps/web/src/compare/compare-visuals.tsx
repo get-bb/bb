@@ -1,3 +1,7 @@
+import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
+import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import Rocket01Icon from "@hugeicons/core-free-icons/Rocket01Icon";
 import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
@@ -162,12 +166,28 @@ export function AgentSplit() {
   );
 }
 
-export function PhoneApproval() {
+function PhoneStatus({ status }: { status: "running" | "done" | "waiting" }) {
+  return (
+    <span className="tstatus" aria-hidden="true">
+      {status === "running" ? (
+        <HugeiconsIcon icon={Loading03Icon} className="trun" />
+      ) : null}
+      {status === "done" ? (
+        <HugeiconsIcon icon={CheckmarkCircle02Icon} className="tdone" />
+      ) : null}
+      {status === "waiting" ? (
+        <HugeiconsIcon icon={MessageQuestionIcon} className="twait" />
+      ) : null}
+    </span>
+  );
+}
+
+export function PhoneApp() {
   return (
     <div
       className="cmp-phone"
       role="img"
-      aria-label="A phone showing a bb push notification and the thread open to approve a command"
+      aria-label="bb on a phone: a push notification over the threads list, with running, finished, and waiting threads"
     >
       <div className="cmp-phone-screen">
         <div className="cmp-status" aria-hidden="true">
@@ -186,37 +206,60 @@ export function PhoneApproval() {
         <div className="cmp-push">
           <span aria-hidden="true" className="bb-mark cmp-push-mark" />
           <span className="cmp-push-body">
-            <span className="cmp-push-title">Add rate limiting to uploads</span>
-            <span className="cmp-push-text">Approve command: pnpm test</span>
+            <span className="cmp-push-title">Review the rate limiter</span>
+            <span className="cmp-push-text">Finished and waiting for you</span>
           </span>
           <span className="cmp-push-time">now</span>
         </div>
         <div className="cmp-app-bar">
-          <span aria-hidden="true" className="bb-mark cmp-app-mark" />
-          Threads
+          <HugeiconsIcon icon={SidebarLeftIcon} className="cmp-app-ic" />
+          <span className="cmp-app-title">Threads</span>
+          <HugeiconsIcon icon={BubbleChatAddIcon} className="cmp-app-ic" />
         </div>
-        <div className="cmp-screen">
-          <div className="cmp-thread cmp-thread-waiting">
-            <ClaudeIcon className="cmp-prov" />
-            <span className="cmp-thread-title">
-              Add rate limiting to uploads
-            </span>
-            <span className="cmp-thread-dot" />
+        <div className="cmp-phone-side">
+          <div className="side-act">
+            <HugeiconsIcon icon={BubbleChatAddIcon} className="sa-ic" />
+            New thread
           </div>
-          <div className="cmp-thread cmp-thread-child">
-            <OpenAiIcon className="cmp-prov" />
-            <span className="cmp-thread-title">Review the rate limiter</span>
-            <span className="cmp-thread-done">done</span>
+          <div className="side-act">
+            <HugeiconsIcon icon={Clock01Icon} className="sa-ic" />
+            Automations
           </div>
-          <div className="cmp-approval">
-            <span className="cmp-approval-label">Approval needed</span>
-            <code className="cmp-approval-cmd">pnpm test</code>
-            <div className="cmp-approval-actions">
-              <span className="cmp-chip cmp-chip-primary">Allow once</span>
-              <span className="cmp-chip">Deny</span>
-              <span className="cmp-chip">Allow for session</span>
-            </div>
-          </div>
+          <div className="side-label">All Threads</div>
+          <ul className="threads">
+            <li>
+              <span className="trow active">
+                <span className="trow-title">Add rate limiting to uploads</span>
+                <PhoneStatus status="running" />
+              </span>
+              <ul className="threads thread-kids">
+                <li className="kid-li">
+                  <span className="trow trow-kid">
+                    <span className="trow-title">Review the rate limiter</span>
+                    <PhoneStatus status="done" />
+                  </span>
+                </li>
+                <li className="kid-li">
+                  <span className="trow trow-kid">
+                    <span className="trow-title">Write release notes</span>
+                    <PhoneStatus status="waiting" />
+                  </span>
+                </li>
+              </ul>
+            </li>
+            <li>
+              <span className="trow">
+                <span className="trow-title">Triage new issues</span>
+                <PhoneStatus status="done" />
+              </span>
+            </li>
+            <li>
+              <span className="trow">
+                <span className="trow-title">Add a dark mode toggle</span>
+                <PhoneStatus status="running" />
+              </span>
+            </li>
+          </ul>
         </div>
         <span className="cmp-home" aria-hidden="true" />
       </div>

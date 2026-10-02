@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import supersetIcon from "../assets/competitors/superset.png";
 import {
   AgentSplit,
-  PhoneApproval,
+  PhoneApp,
   PluginsPanel,
   TeamCost,
   type BrandLogo,
@@ -114,16 +114,17 @@ const BB_VS_SUPERSET: Comparison = {
       ),
     },
     {
-      title: "Approve from your phone, free",
+      title: "Your whole bb, on your phone",
       wide: false,
-      visual: <PhoneApproval />,
+      visual: <PhoneApp />,
       body: (
         <>
           <p>
-            Approve a command, answer a question, or start a task from any phone
-            browser. For push alerts, add the bb iOS app, in beta on TestFlight.
+            Start a task, check on every agent, reply, and review their work
+            from anywhere. Open bb in any phone browser, or get push
+            notifications with the bb iOS app, in beta on TestFlight.
           </p>
-          <p>Superset keeps its phone app behind Pro.</p>
+          <p>It’s free. Superset keeps its phone app behind Pro.</p>
         </>
       ),
     },
