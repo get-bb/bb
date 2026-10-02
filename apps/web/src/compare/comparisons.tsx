@@ -102,14 +102,14 @@ const BB_VS_SUPERSET: Comparison = {
       body: (
         <>
           <p>
-            Have Claude Code build a feature, Codex review it, and Cursor write
-            the release notes, with no copying between terminals. Any agent can
-            hand work to Claude Code, Codex, Cursor, Pi, OpenCode, or any ACP
-            agent, then pick up the result.
+            Work across Claude Code, Codex, Cursor, Pi, OpenCode, and more. Add
+            Devin or any other ACP agent in bb’s settings, or build a plugin for
+            a new provider.
           </p>
           <p>
-            Each handoff opens as its own thread. View it side by side with the
-            original, read its instructions, and step in anytime.
+            Have Claude Code build a feature, Codex review it, and Cursor write
+            the release notes. Each handoff opens as its own thread you can view
+            side by side, so you can step in anytime.
           </p>
         </>
       ),
