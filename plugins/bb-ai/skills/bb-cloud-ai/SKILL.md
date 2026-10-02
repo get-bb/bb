@@ -33,8 +33,8 @@ Automatic skips it, and nothing is sent to getbb.app. It has no settings page.
   ready. `bb voice transcribe <file> [--type <mime>]` transcribes a recording.
   bb cloud takes WebM, Ogg, MP4/M4A, MP3, WAV, FLAC, and AAC up to 10 MB; it
   reads the format from the MIME type, then the file extension, and refuses
-  anything else before contacting getbb.app. A transcription must finish within
-  10 seconds.
+  anything else before contacting getbb.app. Each transcription model gets 30
+  seconds, and a model that times out or fails falls back to the next one.
 - When an account's daily limit is used up, bb cloud reports not ready for
   that account until the reset and Automatic moves on; a task set to `bb`
   falls back to the prompt text for titles and `bb: automated commit` for

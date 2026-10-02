@@ -324,41 +324,58 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         const promptContext = promptContextRef.current;
         promptContextRef.current = undefined;
 
-        setState("transcribing");
-        const abortController = new AbortController();
-        transcriptionAbortRef.current = abortController;
-        try {
-          const transcript = await options.onTranscribe({
-            file: audioFile,
-            promptContext,
-            signal: abortController.signal,
-          });
-          if (abortController.signal.aborted) return;
-          const normalized = normalizeTranscript(transcript);
-          if (normalized.length === 0) {
-            throw new Error("Voice transcription returned an empty result.");
-          }
-          await options.onTranscript(normalized);
-          setState("idle");
-        } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") {
+        const transcribeRecording = async () => {
+          setState("transcribing");
+          const abortController = new AbortController();
+          transcriptionAbortRef.current = abortController;
+          try {
+            const transcript = await options.onTranscribe({
+              file: audioFile,
+              promptContext,
+              signal: abortController.signal,
+            });
+            if (abortController.signal.aborted) return;
+            const normalized = normalizeTranscript(transcript);
+            if (normalized.length === 0) {
+              throw new Error("Voice transcription returned an empty result.");
+            }
+            await options.onTranscript(normalized);
             setState("idle");
-            return;
+          } catch (error) {
+            if (error instanceof DOMException && error.name === "AbortError") {
+              setState("idle");
+              return;
+            }
+            setState("error");
+            appToast.error("Voice input failed", {
+              description: resolveRecordingErrorMessage(error),
+              duration: Infinity,
+              action: {
+                label: "Retry",
+                onClick: (event) => {
+                  if (
+                    transcriptionAbortRef.current !== null ||
+                    mediaRecorderRef.current?.state === "recording"
+                  ) {
+                    event.preventDefault();
+                    return;
+                  }
+                  void transcribeRecording();
+                },
+              },
+              cancel: {
+                label: "Download recording",
+                onClick: () => downloadBlob(audioFile, audioFile.name),
+              },
+            });
+          } finally {
+            if (transcriptionAbortRef.current === abortController) {
+              transcriptionAbortRef.current = null;
+            }
           }
-          setState("error");
-          appToast.error("Voice input failed", {
-            description: resolveRecordingErrorMessage(error),
-            duration: Infinity,
-            action: {
-              label: "Download recording",
-              onClick: () => downloadBlob(audioFile, audioFile.name),
-            },
-          });
-        } finally {
-          if (transcriptionAbortRef.current === abortController) {
-            transcriptionAbortRef.current = null;
-          }
-        }
+        };
+
+        await transcribeRecording();
       };
 
       recorder.start(CHUNK_TIMESLICE_MS);
