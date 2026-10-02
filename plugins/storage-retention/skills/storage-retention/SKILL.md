@@ -42,7 +42,7 @@ keeping smaller files and skipping pinned and running threads; reports show the 
 `archivedLargeFiles`. Without `--machine` it covers every online machine with a completed scan.
 Conversation history is never affected. The Storage page suggests it once archived threads hold 1 GB
 or more of large files.
-Clear-thread requires a stopped thread and an online machine. When the thread no longer has an environment, a completed scan must identify its storage on exactly one machine. The plugin serializes its scans and cleanup per machine. Reports are cached
+Clear-thread requires a stopped thread and an online machine. When the thread no longer has an environment, a completed scan must identify its storage on exactly one machine. Different threads can clear concurrently; duplicate clears for one thread are rejected. Scans and bulk cleanup remain exclusive per machine. Reports are cached
 snapshots; rescan to see external filesystem changes.
 
 Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, deleteAfterDays})`,

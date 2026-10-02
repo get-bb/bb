@@ -58,6 +58,10 @@ export function createStorage(bb: BbPluginApi) {
   });
   const lifecycle = new AbortController();
   const busy = new Set<string>();
+  const threadClears = new Map<
+    string,
+    { threads: Set<string>; release: () => void }
+  >();
   const scans = new Map<string, HostStorageScanStatus>();
   const jobs = new Set<Promise<void>>();
   bb.onDispose(async () => {
@@ -101,6 +105,24 @@ export function createStorage(bb: BbPluginApi) {
     busy.add(hostId);
     return () => {
       busy.delete(hostId);
+    };
+  }
+  function acquireThreadClear(hostId: string, threadId: string) {
+    let group = threadClears.get(hostId);
+    if (group === undefined) {
+      group = { threads: new Set(), release: acquire(hostId) };
+      threadClears.set(hostId, group);
+    }
+    if (group.threads.has(threadId))
+      throw new Error("This thread’s files are already being cleared");
+    group.threads.add(threadId);
+    const active = group;
+    return () => {
+      active.threads.delete(threadId);
+      if (active.threads.size === 0) {
+        threadClears.delete(hostId);
+        active.release();
+      }
     };
   }
   async function leftovers(hostId: string, threads: Thread[]) {
@@ -427,7 +449,10 @@ export function createStorage(bb: BbPluginApi) {
         );
         cached.entries = cached.entries.map((entry) => ({
           ...entry,
-          sizeBytes: Math.max(0, entry.sizeBytes - (freed.get(entry.name) ?? 0)),
+          sizeBytes: Math.max(
+            0,
+            entry.sizeBytes - (freed.get(entry.name) ?? 0),
+          ),
         }));
         cached.largeFiles = cached.largeFiles.filter(
           (entry) => !freed.has(entry.name),
@@ -497,7 +522,7 @@ export function createStorage(bb: BbPluginApi) {
       hostId = match.host_id;
     }
     await requireHost(hostId, true);
-    const release = acquire(hostId);
+    const release = acquireThreadClear(hostId, threadId);
     try {
       const rootPath = await storageRoot(hostId);
       await worker.call(

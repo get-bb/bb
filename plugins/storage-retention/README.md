@@ -11,8 +11,11 @@ environment cleanup retry. The existing core idle orphan sweep is unchanged.
 Disabling the plugin stops retention; it does not stop core orphan maintenance.
 
 Cached reports are snapshots; rescan to see external filesystem changes. Plugin
-maintenance is serialized per machine; concurrent core cleanup tolerates missing
-entries. No core storage tables, scan routes, or daemon commands are added.
+scans and bulk cleanup run exclusively per machine. Different stopped threads
+can clear concurrently, while duplicate clears for one thread are rejected.
+The UI starts a clear immediately, shows progress and retry errors on that row,
+and keeps other thread actions available. Concurrent core cleanup tolerates
+missing entries. No core storage tables, scan routes, or daemon commands are added.
 
 The first version pages all nondeleted threads before acting. It intentionally
 accepts changes between reading eligibility and applying an action. The UI and

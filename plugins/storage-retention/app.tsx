@@ -147,6 +147,9 @@ function StoragePage({
   const [actionError, setError] = useState<string | null>(null);
   const error = actionError ?? loadError;
   const [busy, setBusy] = useState(false);
+  const [threadClears, setThreadClears] = useState<
+    Record<string, { state: "clearing" } | { state: "failed"; message: string }>
+  >({});
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState<Policy | null>(null);
   const policy = draft ?? state?.policy ?? null;
@@ -184,6 +187,27 @@ function StoragePage({
       setConfirmation({ policy, preview: await rpc.call("preview", policy) });
     });
   }
+  async function clearThread(threadId: string) {
+    if (threadClears[threadId]?.state === "clearing") return;
+    setThreadClears((current) => ({
+      ...current,
+      [threadId]: { state: "clearing" },
+    }));
+    try {
+      await rpc.call("clearThread", { threadId });
+      await refresh();
+      setThreadClears((current) => {
+        const next = { ...current };
+        delete next[threadId];
+        return next;
+      });
+    } catch (error) {
+      setThreadClears((current) => ({
+        ...current,
+        [threadId]: { state: "failed", message: message(error) },
+      }));
+    }
+  }
   const retentionOn =
     state !== null &&
     (state.policy.archiveAfterDays !== null ||
@@ -192,7 +216,10 @@ function StoragePage({
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
-  const locked = busy || scanning || offline;
+  const clearingThreads = Object.values(threadClears).some(
+    (clear) => clear.state === "clearing",
+  );
+  const locked = busy || scanning || offline || clearingThreads;
   const changed =
     state !== null &&
     policy !== null &&
@@ -290,7 +317,10 @@ function StoragePage({
       aria-label="What is thread storage?"
       className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
     >
-      <Icon name="Info" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <Icon
+        name="Info"
+        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+      />
       <div className="min-w-0 space-y-1">
         <h2 className="text-sm font-medium">What is thread storage?</h2>
         <p className="text-xs leading-snug text-subtle-foreground/75">
@@ -582,7 +612,7 @@ function StoragePage({
                 <section className="space-y-3">
                   <SectionHeading
                     title="Threads using the most storage"
-                    description="Total folder sizes, including small files. Clear stopped threads without deleting their conversation history."
+                    description="Clear files permanently removes a stopped thread’s stored files, including small files. Conversation history is kept."
                   />
                   <div className="divide-y divide-border rounded-lg border border-border bg-card">
                     {report.largestThreads.length === 0 && (
@@ -590,61 +620,73 @@ function StoragePage({
                         No thread files found in the last scan.
                       </p>
                     )}
-                    {report.largestThreads.map((thread) => (
-                      <div
-                        key={thread.threadId}
-                        className={cn(
-                          "flex flex-col gap-2 px-4 py-2",
-                          cleanup?.key === thread.threadId && "pb-4",
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                            <button
-                              className="min-w-0 truncate text-left text-sm font-normal hover:underline"
-                              title={thread.title}
-                              onClick={() => navigate.toThread(thread.threadId)}
+                    {report.largestThreads.map((thread) => {
+                      const clear = threadClears[thread.threadId];
+                      return (
+                        <div
+                          key={thread.threadId}
+                          className="flex flex-col gap-2 px-4 py-2"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                              <button
+                                className="min-w-0 truncate text-left text-sm font-normal hover:underline"
+                                title={thread.title}
+                                onClick={() =>
+                                  navigate.toThread(thread.threadId)
+                                }
+                              >
+                                {thread.title}
+                              </button>
+                              {thread.running ? (
+                                <Pill>running</Pill>
+                              ) : thread.archivedAt !== null ? (
+                                <Pill>archived</Pill>
+                              ) : null}
+                            </div>
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {bytes(thread.sizeBytes)}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="shrink-0"
+                              disabled={
+                                busy ||
+                                scanning ||
+                                offline ||
+                                thread.running ||
+                                cleanup !== null ||
+                                clear?.state === "clearing"
+                              }
+                              onClick={() => void clearThread(thread.threadId)}
                             >
-                              {thread.title}
-                            </button>
-                            {thread.running ? (
-                              <Pill>running</Pill>
-                            ) : thread.archivedAt !== null ? (
-                              <Pill>archived</Pill>
-                            ) : null}
+                              {clear?.state === "clearing" ? (
+                                <>
+                                  <Icon
+                                    name="Spinner"
+                                    className="size-4 animate-spin"
+                                  />
+                                  Clearing…
+                                </>
+                              ) : clear?.state === "failed" ? (
+                                "Retry"
+                              ) : (
+                                "Clear files"
+                              )}
+                            </Button>
                           </div>
-                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                            {bytes(thread.sizeBytes)}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="shrink-0"
-                            disabled={
-                              locked || thread.running || cleanup !== null
-                            }
-                            onClick={() =>
-                              setCleanup({
-                                key: thread.threadId,
-                                action: "Clear files",
-                                title: "Clear this thread’s files?",
-                                detail: `Delete ${bytes(thread.sizeBytes)} of stored files from this thread. Conversation history will be kept. This can’t be undone.`,
-                                run: async () => {
-                                  await rpc.call("clearThread", {
-                                    threadId: thread.threadId,
-                                  });
-                                  return `Cleared ${bytes(thread.sizeBytes)}.`;
-                                },
-                              })
-                            }
-                          >
-                            Clear files
-                          </Button>
+                          {clear?.state === "failed" && (
+                            <p
+                              role="alert"
+                              className="pb-2 text-xs text-destructive"
+                            >
+                              {clear?.message}
+                            </p>
+                          )}
                         </div>
-                        {cleanup?.key === thread.threadId &&
-                          cleanupConfirmation}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               </>
@@ -1132,9 +1174,7 @@ function RetentionField({
 }
 function threadStorageBytes(report: NonNullable<HostReport["report"]>) {
   return (
-    report.activeThreadBytes +
-    report.archivedThreadBytes +
-    report.orphanBytes
+    report.activeThreadBytes + report.archivedThreadBytes + report.orphanBytes
   );
 }
 function categories(report: NonNullable<HostReport["report"]>) {

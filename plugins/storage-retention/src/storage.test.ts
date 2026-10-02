@@ -29,6 +29,128 @@ async function directory() {
   return dir;
 }
 
+it("clears different threads concurrently, excludes overlapping maintenance and releases locks after success or failure", async () => {
+  const threads = ["thr_one", "thr_two"].map((id) =>
+    makeThreadResponse({ id, status: "idle", environmentId: "env_test" }),
+  );
+  const pending = new Map<
+    string,
+    { resolve: () => void; reject: () => void }
+  >();
+  let hold = true;
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "capacity")
+        return { totalBytes: 10000, freeBytes: 5000 };
+      if (call.method === "measure")
+        return {
+          targets: [
+            {
+              outcome: "measured",
+              path: "/storage",
+              sizeBytes: 2000,
+              children: threads.map((thread) => ({
+                name: thread.id,
+                sizeBytes: 1000,
+              })),
+            },
+          ],
+          largeFiles: [],
+        };
+      if (call.method === "discard") {
+        const { names } = hostStorageContract.discard.input.parse(call.input);
+        const name = names[0]!;
+        if (hold)
+          await new Promise<void>((resolve, reject) =>
+            pending.set(name, {
+              resolve,
+              reject: () => reject(new Error("host disconnected")),
+            }),
+          );
+        return { removed: names };
+      }
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: "/storage",
+        }),
+      },
+      threads: {
+        list: async () => threads,
+        get: async ({ threadId }) =>
+          makeThreadResponse({
+            id: threadId,
+            status: "idle",
+            environmentId: "env_test",
+          }),
+        storageLocation: async ({ threadId }) => ({
+          hostId: "host_test",
+          storageRootPath: `/storage/${threadId}`,
+        }),
+      },
+      environments: { list: async () => [] },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).report?.threadsWithStorageCount,
+      )
+      .toBe(2);
+    const first = host.harness.callRpc("clearThread", { threadId: "thr_one" });
+    const second = host.harness.callRpc("clearThread", { threadId: "thr_two" });
+    const secondFailure = expect(second).rejects.toThrow("host disconnected");
+    await expect.poll(() => pending.size).toBe(2);
+    await expect(
+      host.harness.callRpc("clearThread", { threadId: "thr_one" }),
+    ).rejects.toThrow("already being cleared");
+    await expect(
+      host.harness.callRpc("removeOrphans", { hostId: "host_test" }),
+    ).rejects.toThrow("already running");
+    pending.get("thr_one")!.resolve();
+    await first;
+    await expect(
+      host.harness.callRpc("scanHost", { hostId: "host_test" }),
+    ).rejects.toThrow("already running");
+    expect(
+      hostStorageResponseSchema
+        .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
+        .report?.largestThreads.map((thread) => thread.threadId),
+    ).toEqual(["thr_two"]);
+    pending.get("thr_two")!.reject();
+    await secondFailure;
+    hold = false;
+    await host.harness.callRpc("clearThread", { threadId: "thr_two" });
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).report?.threadsWithStorageCount,
+    ).toBe(0);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).scan.state,
+      )
+      .toBe("idle");
+  } finally {
+    for (const work of pending.values()) work.resolve();
+    await host.harness.dispose();
+  }
+});
+
 it.each([false, true])(
   "scans through the host entry, preserves live storage, cleans orphans and clears only stopped threads (detached: %s)",
   async (detached) => {
