@@ -628,9 +628,6 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
 const MESSAGE_ACTION_RENDERERS: Record<string, () => ReactNode> = {
   copy: () => <MiniIcon icon="Copy" className="size-3.5" />,
   edit: () => <MiniIcon icon="Edit" className="size-3.5" />,
-  "send-to-main-thread": () => (
-    <MiniIcon icon="ArrowTurnBackward" className="size-3.5" />
-  ),
   "plugin-actions": () => <PluginGlyph className="size-3.5" />,
   "message-menu": () => <MiniIcon icon="MoreHorizontal" className="size-3.5" />,
 };

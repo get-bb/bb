@@ -55,19 +55,12 @@ interface MessageActionBarProps {
   onCopyLink?: () => void;
   onEdit?: () => void;
   onFork?: () => void;
-  onSendToMain?: () => void;
   disabled?: boolean;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
 }
 
 interface MessageOverflowAction {
-  icon:
-    | "Copy"
-    | "Link"
-    | "Edit"
-    | "MessageSquarePlus"
-    | "Fork"
-    | "ArrowTurnBackward";
+  icon: "Copy" | "Link" | "Edit" | "MessageSquarePlus" | "Fork";
   plugin?: { pluginId: string | null; icon: string | null };
   key?: string;
   label: string;
@@ -322,7 +315,6 @@ export function MessageActionBar({
   onCopyLink,
   onEdit,
   onFork,
-  onSendToMain,
   disabled,
   pluginActions = [],
 }: MessageActionBarProps) {
@@ -382,15 +374,6 @@ export function MessageActionBar({
             icon: "Edit" as const,
             label: "Edit message",
             onSelect: onEdit,
-          },
-        ]
-      : []),
-    ...(onSendToMain
-      ? [
-          {
-            icon: "ArrowTurnBackward" as const,
-            label: "Send to main thread",
-            onSelect: onSendToMain,
           },
         ]
       : []),
