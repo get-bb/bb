@@ -7,6 +7,7 @@
 - macOS persistent host
 - Linux persistent host
 - Windows via Ubuntu on WSL2
+- Windows 11 x64 native host (alpha)
 
 Minimum runtime: Node.js 22.19. Pi no longer sets the floor: its bridge is a
 plugin and the `pi` CLI is user-installed like `codex` and `claude`, so the
@@ -24,14 +25,24 @@ floor only, so a release line we have not tested yet still installs rather than
 failing hard on the day it ships. The `bb-app` npm `engines` field lists the
 tested lines, which npm surfaces as a warning rather than an install failure.
 
-Windows support means the Linux stack runs entirely inside WSL2:
+Windows has two host paths. Inside WSL2 the Linux stack runs unchanged:
 
 - all `bb` processes run inside the same Ubuntu WSL2 distro
 - Node.js, Git, provider CLIs, and pnpm for source-development flows are
   installed inside WSL2
 - local project paths use Linux-style absolute paths from inside WSL2
-- native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
-  supported product paths
+
+The native Windows host is alpha. It runs from the Windows desktop installer or
+`npx bb-app` in PowerShell or CMD:
+
+- Git for Windows is required; bb uses its Git and its bash for environment
+  setup and teardown scripts
+- project paths are drive-letter paths such as `C:\Users\me\repo`; UNC paths
+  are refused
+- terminals run PowerShell 7 when installed, otherwise Windows PowerShell
+- a Windows machine can be added to another server from Settings → Machines
+  with the PowerShell command; its daemon runs in the signed-in user's session
+- the server cannot be moved to a Windows machine
 
 ## Mobile app
 
@@ -127,8 +138,7 @@ Not available on the phone (use the web app or desktop for these):
 
 ### Windows drive-letter paths
 
-Native Windows hosts are not a supported product path yet, but the path model
-accepts their project and workspace paths:
+Native Windows hosts use drive-letter paths for projects and workspaces:
 
 - A drive-letter path such as `C:\Users\me\repo` is stored in one spelling:
   upper-case drive letter, backslash separators, and no trailing separator.
@@ -145,7 +155,7 @@ accepts their project and workspace paths:
 
 - workspace-owned QA helpers under [`tests/qa/`](../tests/qa/)
 - dev restart internals that are not part of the shipped product path
-- native Windows PowerShell, CMD, and host-daemon runtime flows
+- source-development flows (`pnpm dev`, `pnpm bb:dev`) on native Windows
 
 ## Dependency Policy
 
@@ -206,8 +216,8 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The repository enforces LF checkout for supported text files via
   [.gitattributes](../.gitattributes).
 - Supported Linux and WSL2 flows must work with those repository rules applied.
-- Native Windows checkouts are outside the support contract unless we later
-  choose to support a native Windows product path.
+- A native Windows checkout of this repository must keep those LF rules; the
+  Windows CI jobs build and package from such a checkout.
 
 ## CI And Validation
 
@@ -224,9 +234,10 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
   `Package Smoke (macos-latest, Node 22.x)`. The Node.js 24 and 26 compatibility
   smoke jobs do not run on pull requests and should not be configured as
   required PR checks.
-- Native Windows CI is intentionally not required because Windows support uses
-  the Linux runtime path inside WSL2 rather than a separate native Windows
-  product path.
+- Native Windows CI runs two jobs on every pull request, described in
+  [windows-ci.md](windows-ci.md): the host package tests, and an app smoke that
+  boots `bb-app`, runs the `bb-app` tarball smoke, packages the desktop app, and
+  smoke tests the packaged app. The full test suite does not run on Windows.
 - `apps/mobile` typecheck, lint, and unit tests run inside the Ubuntu
   `Checks` and the `Tests (packages-*)` jobs like every other workspace package. The
   iOS simulator Maestro flows run in `Mobile E2E`

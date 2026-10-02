@@ -99,6 +99,9 @@ jobs:
         shell: bash
         run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
+      - name: Smoke test the bb-app tarball
+        run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+
       - name: Package the desktop app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"

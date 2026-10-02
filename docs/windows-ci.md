@@ -145,6 +145,15 @@ pnpm install --frozen-lockfile --ignore-scripts
 pnpm exec turbo run smoke:boot --filter=bb-app --output-logs=new-only
 ```
 
+The same job then runs `packages/bb-app/scripts/smoke-tarball.mjs`, which packs
+`bb-app`, runs it through `npx --package`, installs the tarball, runs each
+installed command through the `.cmd` shim npm creates, and starts the full
+stack and a joined daemon from the installed package:
+
+```powershell
+pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+```
+
 The daemon bundle ships `bb.cmd` beside the extensionless `bb` script so
 PowerShell and `cmd.exe` find `bb` on the PATH that bb gives agent shells. The
 launcher and the CLI re-exec run the extensionless script through Node on
@@ -152,10 +161,11 @@ Windows, because Windows cannot execute a file by its shebang.
 
 ## Remaining Windows work
 
-The package checks and the boot smoke establish that bb starts on Windows, not a
-supported Windows product. Provider integration tests use controlled agent
-fixtures and recorded traffic; real installed providers still need end-to-end
-verification.
+The package checks and the smokes establish that bb starts, installs from npm,
+and packages on Windows. Native Windows is an alpha host (see
+[platform-support.md](platform-support.md)). Provider integration tests use
+controlled agent fixtures and recorded traffic; real installed providers are
+verified by hand, not in CI.
 
 Windows stop operations use forced tree termination while the leader is alive.
 They do not provide POSIX signal delivery or graceful signal handlers. Descendant
@@ -164,9 +174,10 @@ and synchronous process-group helpers remain follow-up work. Existing tests for
 Unix signals, filenames, symlinks, and Linux inotify counters remain
 platform-specific.
 
-Windows project paths, interactive terminals and node-pty, service installation,
-provider installation commands, and desktop packaging/updates remain subsequent
-slices. Electron runtime and packaging behavior are unchanged.
+A Windows machine enrolled in another server runs its daemon from the user's
+`Run` registry key, not a Windows service, so it stops when the user signs out.
+No CI job covers that installer; it is verified by hand. The full test suite does not run on Windows: most remaining
+failures are tests that assume `/` paths, POSIX file modes, or a Bourne shell.
 
 Add packages to the install and Turbo filters as their real Windows tests pass.
 Keep the Linux suite running to protect existing behavior. Windows Server CI must

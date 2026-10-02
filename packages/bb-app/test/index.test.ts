@@ -1960,7 +1960,7 @@ describe("bb-app launcher", () => {
     expect(metadata.files).toContain("host-daemon/dist/bb");
     expect(metadata.files).toContain("host-daemon/dist/bb.cmd");
     expect(metadata.files).toContain("host-daemon/dist/bb-chunks");
-    expect(metadata.os).toEqual(["darwin", "linux"]);
+    expect(metadata.os).toEqual(["darwin", "linux", "win32"]);
   });
 
   it("requires the bundled CLI's chunk directory next to host-daemon/dist/bb", () => {

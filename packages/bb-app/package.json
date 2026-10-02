@@ -34,7 +34,8 @@
   "types": "./dist/index.d.ts",
   "os": [
     "darwin",
-    "linux"
+    "linux",
+    "win32"
   ],
   "bin": {
     "bb-app": "dist/bb-app.js",
