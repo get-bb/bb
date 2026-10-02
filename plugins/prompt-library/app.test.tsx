@@ -48,7 +48,7 @@ beforeEach(() => {
 });
 
 const app = await loadPluginApp(() => import("./app"));
-const popup = app.composerCustomizations[0]!.experimental_popup!;
+const popup = app.composerCustomizations[0]!.experimental_popups![0]!;
 
 function draft(value: string) {
   return { text: value, mentions: [] };

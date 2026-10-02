@@ -585,7 +585,9 @@ function PromptLibraryPopup() {
 export default definePluginApp((app) => {
   app.composer.customize({
     id: POPUP_ID,
-    experimental_popup: { label: "Prompts…", component: PromptLibraryPopup },
+    experimental_popups: [
+      { id: POPUP_ID, label: "Prompts…", component: PromptLibraryPopup },
+    ],
     plusMenu: [
       {
         id: "open",
