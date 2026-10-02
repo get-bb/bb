@@ -294,10 +294,10 @@ function StoragePage({
       <div className="min-w-0 space-y-1">
         <h2 className="text-sm font-medium">What is thread storage?</h2>
         <p className="text-xs leading-snug text-subtle-foreground/75">
-          Files saved for a thread, such as attachments, screenshots, reports,
-          and temporary working files. They’re stored on the machine separately
-          from conversation history. Clearing files keeps the conversation, but
-          permanently removes those files.
+          A folder on this machine for files the agent saves while working on a
+          thread, such as reports and temporary working files. Clearing it
+          permanently deletes those files. Conversation history and uploaded
+          attachments are stored separately.
         </p>
       </div>
     </aside>
