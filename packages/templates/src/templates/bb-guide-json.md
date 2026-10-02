@@ -64,6 +64,9 @@ Fields beyond those shown exist; these are the ones scripts use.
   bb thread search <query> --json
     {active: {total, results}, archived: {total, results}}
 
+  bb history list --json
+    {entries: [{id, createdAt, input, projectId, threadId}], nextCursor: string | null}
+
   bb thread section list --json
     [{id, name, createdAt, updatedAt}]
 

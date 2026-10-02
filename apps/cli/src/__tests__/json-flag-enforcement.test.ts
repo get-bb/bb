@@ -3,6 +3,7 @@ import { Command } from "commander";
 
 import { registerStatusCommand } from "../commands/status.js";
 import { registerProjectCommands } from "../commands/project.js";
+import { registerHistoryCommands } from "../commands/history.js";
 import { registerProviderCommands } from "../commands/provider.js";
 import { registerMachineCommands } from "../commands/machine.js";
 import { registerServerCommands } from "../commands/server.js";
@@ -33,6 +34,7 @@ describe("CLI --json flag enforcement", () => {
 
     registerStatusCommand(program, getUrl);
     registerProjectCommands(program, getUrl);
+    registerHistoryCommands(program, getUrl);
     registerProviderCommands(program, getUrl);
     registerMachineCommands(program, getUrl);
     registerServerCommands(program, getUrl);

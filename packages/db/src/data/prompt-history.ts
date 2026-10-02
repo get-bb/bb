@@ -1,6 +1,6 @@
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import { projectAttachmentPaths } from "@bb/domain";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
   type PromptHistoryScope,
@@ -14,6 +14,7 @@ export interface StoredPromptHistoryEntryRow {
   createdAt: number;
   id: string;
   input: string;
+  projectId: string;
   requestSequence: number;
   threadId: string;
 }
@@ -39,6 +40,17 @@ export interface ListStoredProjectPromptHistoryArgs
 export interface ListStoredThreadPromptHistoryArgs
   extends ListStoredPromptHistoryArgs {
   threadId: string;
+}
+
+export interface PromptHistoryPosition {
+  createdAt: number;
+  requestSequence: number;
+  id: string;
+}
+
+export interface ListPromptHistoryPageArgs {
+  before: PromptHistoryPosition | null;
+  limit: number;
 }
 
 function rawPromptHistoryRowLimit(limit: number): number {
@@ -75,6 +87,7 @@ export function createPromptHistoryEntry(
           createdAt: promptHistoryEntries.createdAt,
           id: promptHistoryEntries.id,
           input: promptHistoryEntries.input,
+          projectId: promptHistoryEntries.projectId,
           requestSequence: promptHistoryEntries.requestSequence,
           threadId: promptHistoryEntries.threadId,
         })
@@ -93,6 +106,7 @@ export function listStoredProjectPromptHistoryRows(
       createdAt: promptHistoryEntries.createdAt,
       id: promptHistoryEntries.id,
       input: promptHistoryEntries.input,
+      projectId: promptHistoryEntries.projectId,
       requestSequence: promptHistoryEntries.requestSequence,
       threadId: promptHistoryEntries.threadId,
     })
@@ -123,6 +137,7 @@ export function listStoredThreadPromptHistoryRows(
       createdAt: promptHistoryEntries.createdAt,
       id: promptHistoryEntries.id,
       input: promptHistoryEntries.input,
+      projectId: promptHistoryEntries.projectId,
       requestSequence: promptHistoryEntries.requestSequence,
       threadId: promptHistoryEntries.threadId,
     })
@@ -139,5 +154,34 @@ export function listStoredThreadPromptHistoryRows(
       desc(promptHistoryEntries.id),
     )
     .limit(rawPromptHistoryRowLimit(args.limit))
+    .all();
+}
+
+export function listPromptHistoryPage(
+  db: DbQueryConnection,
+  args: ListPromptHistoryPageArgs,
+): StoredPromptHistoryEntryRow[] {
+  const before = args.before;
+  return db
+    .select({
+      createdAt: promptHistoryEntries.createdAt,
+      id: promptHistoryEntries.id,
+      input: promptHistoryEntries.input,
+      projectId: promptHistoryEntries.projectId,
+      requestSequence: promptHistoryEntries.requestSequence,
+      threadId: promptHistoryEntries.threadId,
+    })
+    .from(promptHistoryEntries)
+    .where(
+      before === null
+        ? undefined
+        : sql`(${promptHistoryEntries.createdAt}, ${promptHistoryEntries.requestSequence}, ${promptHistoryEntries.id}) < (${before.createdAt}, ${before.requestSequence}, ${before.id})`,
+    )
+    .orderBy(
+      desc(promptHistoryEntries.createdAt),
+      desc(promptHistoryEntries.requestSequence),
+      desc(promptHistoryEntries.id),
+    )
+    .limit(args.limit)
     .all();
 }

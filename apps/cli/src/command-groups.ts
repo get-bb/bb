@@ -47,6 +47,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program, deps) => m.registerProjectCommands(program, deps.getUrl),
   ),
   group(
+    "history",
+    () => import("./commands/history.js"),
+    (m) => (program, deps) => m.registerHistoryCommands(program, deps.getUrl),
+  ),
+  group(
     "provider",
     () => import("./commands/provider.js"),
     (m) => (program, deps) => m.registerProviderCommands(program, deps.getUrl),

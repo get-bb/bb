@@ -959,6 +959,11 @@ export const promptHistoryEntries = sqliteTable(
       table.requestSequence,
       table.id,
     ),
+    index("prompt_history_entries_created_idx").on(
+      table.createdAt,
+      table.requestSequence,
+      table.id,
+    ),
     index("prompt_history_entries_thread_scope_created_idx").on(
       table.threadId,
       table.scope,
