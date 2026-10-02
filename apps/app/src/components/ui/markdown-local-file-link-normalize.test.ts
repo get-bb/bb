@@ -131,6 +131,16 @@ describe("normalizeLocalFileMarkdownLinks", () => {
     );
   });
 
+  it("keeps parentheses that follow a Windows path separator in the destination", () => {
+    expect(
+      normalizeLocalFileMarkdownLinks(
+        "[draft](C:\\docs\\(draft).md) then [old]( C:\\docs\\(old)\\notes.md) end",
+      ),
+    ).toBe(
+      "[draft](<C:/docs/(draft).md>) then [old]( <C:/docs/(old)/notes.md>) end",
+    );
+  });
+
   it("wraps Windows drive destinations that contain spaces", () => {
     expect(
       normalizeLocalFileMarkdownLinks(
