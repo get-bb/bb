@@ -645,6 +645,27 @@ describe("PromptBoxInternal composer popups", () => {
         >
           Insert saved prompt
         </button>
+        <button
+          type="button"
+          onClick={() => composer.experimental_openPopup("recent-files")}
+        >
+          Open recent files
+        </button>
+      </div>
+    );
+  }
+
+  function RecentFiles() {
+    const composer = useComposer();
+    return (
+      <div>
+        <input aria-label="Search recent files" />
+        <button
+          type="button"
+          onClick={() => composer.experimental_openPopup("saved-prompts")}
+        >
+          Open saved prompts
+        </button>
       </div>
     );
   }
@@ -659,16 +680,24 @@ describe("PromptBoxInternal composer popups", () => {
         {
           id: "library",
           scopes,
-          experimental_popup: {
-            label: "Saved prompts",
-            component: SavedPrompts,
-          },
+          experimental_popups: [
+            {
+              id: "saved-prompts",
+              label: "Saved prompts",
+              component: SavedPrompts,
+            },
+            {
+              id: "recent-files",
+              label: "Recent files",
+              component: RecentFiles,
+            },
+          ],
           plusMenu: [
             {
               id: "open",
               label: "Saved prompts",
               run: ({ composer }) => {
-                composer.experimental_openPopup("library");
+                composer.experimental_openPopup("saved-prompts");
               },
             },
           ],
@@ -731,6 +760,27 @@ describe("PromptBoxInternal composer popups", () => {
     },
   );
 
+  it("switches between popups in one customization by popup id", async () => {
+    registerPopup();
+    renderPromptBox("draft");
+    await waitForPromptFocus();
+    await openPopupFromMenu();
+    const saved = await screen.findByRole("dialog", { name: "Saved prompts" });
+    fireEvent.click(
+      within(saved).getByRole("button", { name: "Open recent files" }),
+    );
+    const recent = await screen.findByRole("dialog", { name: "Recent files" });
+    expect(screen.queryByRole("dialog", { name: "Saved prompts" })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(recent).getByRole("textbox")),
+    );
+    fireEvent.click(
+      within(recent).getByRole("button", { name: "Open saved prompts" }),
+    );
+    await screen.findByRole("dialog", { name: "Saved prompts" });
+    expect(screen.queryByRole("dialog", { name: "Recent files" })).toBeNull();
+  });
+
   it("replaces suggestions and keeps their trigger dismissed through popup focus transfer", async () => {
     registerPopup();
     renderPromptBox("@");
@@ -764,7 +814,9 @@ describe("PromptBoxInternal composer popups", () => {
       return (
         <button
           type="button"
-          onClick={() => openResult(composer.experimental_openPopup("library"))}
+          onClick={() =>
+            openResult(composer.experimental_openPopup("saved-prompts"))
+          }
         >
           Open scoped popup
         </button>
@@ -815,7 +867,7 @@ describe("PromptBoxInternal composer popups", () => {
       return (
         <button
           type="button"
-          onClick={() => composer.experimental_openPopup("library")}
+          onClick={() => composer.experimental_openPopup("saved-prompts")}
         >
           Open popup
         </button>

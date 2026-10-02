@@ -351,14 +351,11 @@ export function resolveComposerPopups(
   scopeKind: PluginComposerScope["kind"],
 ) {
   return customizations.flatMap((customization) =>
-    composerCustomizationApplies(customization, scopeKind) &&
-    customization.experimental_popup
-      ? [
-          {
-            ...resolvedComposerContribution(customization, "popup"),
-            popup: customization.experimental_popup,
-          },
-        ]
+    composerCustomizationApplies(customization, scopeKind)
+      ? (customization.experimental_popups ?? []).map((popup) => ({
+          ...resolvedComposerContribution(customization, popup.id),
+          popup,
+        }))
       : [],
   );
 }

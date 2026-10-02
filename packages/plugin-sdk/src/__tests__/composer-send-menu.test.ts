@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { collectPluginAppRegistrations } from "../internal/plugin-app-collector.js";
 import { collectComposerCustomization } from "../internal/composer-customization-validation.js";
 
 describe("composer plus-menu upgrade from SDK 0.4.108", () => {
@@ -25,22 +26,50 @@ describe("composer plus-menu upgrade from SDK 0.4.108", () => {
 });
 
 describe("composer popup registration", () => {
-  it("isolates malformed popup content while retaining other composer contributions", () => {
+  it("isolates malformed and duplicate popups across customizations while retaining valid contributions", () => {
+    const component = () => null;
+    const saved = { id: "saved", label: "Saved prompts", component };
+    const recent = { id: "recent", label: "Recent files", component };
     const run = vi.fn();
     const rejected = vi.fn();
-    const registration = collectComposerCustomization(
+    const collected = collectPluginAppRegistrations(
       {
-        id: "library",
-        experimental_popup: { label: "Saved prompts", component: "invalid" },
-        plusMenu: [{ id: "open", label: "Saved prompts", run }],
+        __bbPluginApp: true,
+        setup(app) {
+          app.composer.customize({
+            id: "library",
+            experimental_popups: [
+              // @ts-expect-error Invalid runtime registration
+              { id: "broken", label: "Broken", component: "invalid" },
+              saved,
+              saved,
+              recent,
+            ],
+            plusMenu: [{ id: "open", label: "Saved prompts", run }],
+          });
+          app.composer.customize({
+            id: "other",
+            experimental_popups: [
+              recent,
+              { id: "broken", label: "Repaired", component },
+            ],
+          });
+        },
       },
-      new Set(),
       rejected,
     );
-    expect(registration?.experimental_popup).toBeUndefined();
-    expect(registration?.plusMenu?.[0]?.run).toBe(run);
-    expect(rejected).toHaveBeenCalledWith(
+    expect(collected.composerCustomizations[0]?.experimental_popups).toEqual([
+      saved,
+      recent,
+    ]);
+    expect(collected.composerCustomizations[0]?.plusMenu?.[0]?.run).toBe(run);
+    expect(collected.composerCustomizations[1]?.experimental_popups).toEqual([
+      { id: "broken", label: "Repaired", component },
+    ]);
+    expect(rejected.mock.calls.flat()).toEqual([
       expect.stringContaining("must be a React component function"),
-    );
+      expect.stringContaining('duplicate id "saved"'),
+      expect.stringContaining('duplicate id "recent"'),
+    ]);
   });
 });

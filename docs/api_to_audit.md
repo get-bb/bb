@@ -2,12 +2,13 @@
 
 ## Composer popups
 
-`ComposerCustomization.experimental_popup` registers one component and accessible
-label under the customization's id, honoring its composer scopes.
+`ComposerCustomization.experimental_popups` registers an array of
+`{ id, label, component }` popups, honoring the customization's composer scopes.
 `PluginComposerApi.experimental_openPopup(id)` opens that plugin's popup in
 that mounted composer. It returns false for missing, suppressed or out-of-scope
-registrations. Registration ids remain unique within a plugin; there is no
-second popup-id namespace.
+registrations. Popup ids are unique across all composer customizations within a plugin,
+independently of customization ids. Duplicate and malformed entries are rejected
+without dropping valid popups or other contributions.
 
 Core mentions, commands and plugin popups share one composer-menu state,
 Escape/dismissal lifecycle, `ComposerPopupHost`, and above/below placement.
@@ -24,8 +25,8 @@ is added; existing actions and plus-menu rows can call
 
 Before stabilization, verify multiple composers, selection retention, plugin
 reload and crash recovery, scope suppression, and compact Safari
-keyboard/drawer behavior. Audit whether the single-popup-per-customization
-shape remains sufficient for other plugins.
+keyboard/drawer behavior. Verify multiple popups in one customization and popup-id uniqueness across
+customizations.
 
 ## `settingsSection.experimental_page`
 

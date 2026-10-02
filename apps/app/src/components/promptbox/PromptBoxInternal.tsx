@@ -2444,11 +2444,9 @@ export function PromptBoxInternal({
   );
 
   const openPopupForPlugin = useCallback(
-    (pluginId: string, customizationId: string) => {
+    (pluginId: string, popupId: string) => {
       const contribution = popups.find(
-        (popup) =>
-          popup.pluginId === pluginId &&
-          popup.customizationId === customizationId,
+        (popup) => popup.pluginId === pluginId && popup.popup.id === popupId,
       );
       if (!contribution) return false;
       dismissComposerMenu();

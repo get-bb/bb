@@ -14,7 +14,7 @@ export interface ComposerEditorBridge {
   pluginCustomizable: boolean;
   state: ComposerEditorState;
   insertAtCursor(value: ComposerEditorInsertValue, block: boolean): boolean;
-  openPopup(pluginId: string, customizationId: string): boolean;
+  openPopup(pluginId: string, popupId: string): boolean;
   closePopup(pluginId: string): boolean;
   isPopupOpen(): boolean;
 }

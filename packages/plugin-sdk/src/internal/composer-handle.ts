@@ -45,7 +45,7 @@ export interface ComposerHandleTarget {
   insertAtCursor(value: ComposerDraft, block: boolean): boolean;
   isAvailable(): boolean;
   focus(): void;
-  openPopup?(pluginId: string, customizationId: string): boolean;
+  openPopup?(pluginId: string, popupId: string): boolean;
   closePopup?(pluginId: string): boolean;
   submit?(
     options: ComposerSubmitOptions,

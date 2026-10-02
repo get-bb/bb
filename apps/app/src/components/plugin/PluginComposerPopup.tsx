@@ -8,13 +8,13 @@ export function PluginComposerPopup({
   contribution: ResolvedComposerPopup;
   onClose(): void;
 }) {
-  const { pluginId, customizationId, popup } = contribution;
+  const { pluginId, popup } = contribution;
   return (
     <div className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
       <PluginSlotMount
         pluginId={pluginId}
         slotKind="composerPopup"
-        slotId={customizationId}
+        slotId={popup.id}
         crashFallback={
           <button type="button" onClick={onClose}>
             Close popup

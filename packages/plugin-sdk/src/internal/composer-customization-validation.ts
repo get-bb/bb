@@ -183,13 +183,13 @@ function parseContributionArray<T extends { id: string }>(
   value: unknown,
   onRejected: RejectionReporter,
   parse: (entryKind: string, value: unknown) => T,
+  seenIds = new Set<string>(),
 ): readonly T[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
     onRejected(`${kind}: must be an array when set`);
     return undefined;
   }
-  const seenIds = new Set<string>();
   const parsed: T[] = [];
   for (const [index, entry] of value.entries()) {
     const entryKind = `${kind}[${index}]`;
@@ -241,6 +241,7 @@ function parseRegions(
   kind: string,
   registration: Record<string, unknown>,
   onRejected: RejectionReporter,
+  seenPopupIds: Set<string>,
 ): Pick<
   ComposerCustomization,
   | "actions"
@@ -248,7 +249,7 @@ function parseRegions(
   | "plusMenu"
   | "sendMenu"
   | "richText"
-  | "experimental_popup"
+  | "experimental_popups"
 > {
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
@@ -289,28 +290,22 @@ function parseRegions(
     parseMenuItem,
   );
 
-  let popup: ComposerCustomization["experimental_popup"];
-  if (registration.experimental_popup !== undefined) {
-    try {
-      const raw = registration.experimental_popup as Record<
-        string,
-        unknown
-      > | null;
-      popup = {
-        label: requireNonEmptyString(
-          `${kind}.experimental_popup`,
-          "label",
-          raw?.label,
-        ),
-        component: requireComponent(
-          `${kind}.experimental_popup`,
-          raw?.component,
-        ),
+  const popups = parseContributionArray<
+    NonNullable<ComposerCustomization["experimental_popups"]>[number]
+  >(
+    `${kind}.experimental_popups`,
+    registration.experimental_popups,
+    onRejected,
+    (entryKind, value) => {
+      const entry = value as Record<string, unknown> | null;
+      return {
+        id: requireSlotId(entryKind, entry?.id),
+        label: requireNonEmptyString(entryKind, "label", entry?.label),
+        component: requireComponent(entryKind, entry?.component),
       };
-    } catch (error) {
-      onRejected(error instanceof Error ? error.message : String(error));
-    }
-  }
+    },
+    seenPopupIds,
+  );
 
   let richText: ComposerCustomization["richText"];
   if (registration.richText !== undefined) {
@@ -368,7 +363,7 @@ function parseRegions(
     ...(plusMenu !== undefined ? { plusMenu } : {}),
     ...(sendMenu !== undefined ? { sendMenu } : {}),
     ...(richText !== undefined ? { richText } : {}),
-    ...(popup !== undefined ? { experimental_popup: popup } : {}),
+    ...(popups !== undefined ? { experimental_popups: popups } : {}),
   };
 }
 
@@ -380,6 +375,7 @@ export function collectComposerCustomization(
   registration: unknown,
   seenIds: Set<string>,
   onRejected: RejectionReporter,
+  seenPopupIds = new Set<string>(),
 ): ComposerCustomization | null {
   const kind = "composer.customize";
   try {
@@ -414,7 +410,7 @@ export function collectComposerCustomization(
             ),
           }
         : {}),
-      ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected),
+      ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected, seenPopupIds),
     };
   } catch (error) {
     onRejected(error instanceof Error ? error.message : String(error));

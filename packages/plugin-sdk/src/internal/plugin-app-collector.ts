@@ -500,6 +500,7 @@ export function collectPluginAppRegistrations(
     threadPanelAction: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
+    composerPopup: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
     sidebarNavigation: new Set<string>(),
@@ -938,6 +939,7 @@ export function collectPluginAppRegistrations(
           registration,
           seenIds.composerCustomization,
           onComposerCustomizationRejected,
+          seenIds.composerPopup,
         );
         if (customization !== null) {
           collected.composerCustomizations.push(customization);

@@ -603,7 +603,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginComposerApi.insert",
           "ComposerInsertPart",
           "ComposerInsertOptions",
-          "ComposerCustomization.experimental_popup",
+          "ComposerCustomization.experimental_popups",
           "ExperimentalComposerPopupRegistration",
           "PluginComposerApi.experimental_openPopup",
           "PluginComposerApi.experimental_closePopup",
