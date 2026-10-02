@@ -520,8 +520,6 @@ describe("ConversationMessageContent undelivered automation messages", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.getByRole("button", { name: /Automation Steer failed/u }),
-    ).toBeTruthy();
+    expect(screen.getByText("Steer failed")).toBeTruthy();
   });
 });
