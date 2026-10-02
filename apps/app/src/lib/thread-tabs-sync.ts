@@ -147,6 +147,18 @@ function isThreadTabsConflict(error: unknown): boolean {
   );
 }
 
+function withServerDesktopTarget(
+  local: PersistedThreadFixedPanelTab,
+  server: PersistedThreadFixedPanelTab,
+): PersistedThreadFixedPanelTab {
+  if (local.kind !== "browser" || server.kind !== "browser") return local;
+  if (local.desktopTarget === server.desktopTarget) return local;
+  const { desktopTarget: _localTarget, ...rest } = local;
+  return server.desktopTarget === undefined
+    ? rest
+    : { ...rest, desktopTarget: server.desktopTarget };
+}
+
 export function mergeThreadTabChanges(
   serverTabs: readonly ThreadTab[],
   previousTabs: readonly FixedPanelTab[],
@@ -163,7 +175,7 @@ export function mergeThreadTabChanges(
       const after = nextById.get(tab.id);
       return after !== undefined &&
         (before === undefined || !areFixedPanelTabsEquivalent(before, after))
-        ? after
+        ? withServerDesktopTarget(after, tab)
         : tab;
     });
   for (const [index, tab] of next.entries()) {

@@ -1,5 +1,8 @@
 import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
-import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
+import {
+  adoptOrphanedDesktopBrowserTabs,
+  syncDesktopBrowserTabs,
+} from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
 import {
   hasHostDaemonWebSocketProtocol,
@@ -11,6 +14,7 @@ import { verifyAuthenticatedDaemon } from "../internal/auth.js";
 import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
+  WorkSessionDeps,
 } from "../types.js";
 import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import {
@@ -140,10 +144,7 @@ export function onDaemonSocketOpen(
 }
 
 export function onDaemonSocketMessage(
-  deps: Pick<
-    AppDeps,
-    "config" | "db" | "hub" | "logger" | "sharedPorts" | "terminalSessions"
-  >,
+  deps: WorkSessionDeps & Pick<AppDeps, "sharedPorts" | "terminalSessions">,
   args: DaemonSocketMessageArgs,
   plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
@@ -251,9 +252,7 @@ export function onDaemonSocketMessage(
           generation: message.generation,
           threadId: message.threadId,
         };
-        try {
-          syncDesktopBrowserTabs(deps, scope, message.tabs);
-        } catch (error) {
+        const logDropped = (error: unknown) => {
           deps.logger.warn(
             {
               sessionId: args.sessionId,
@@ -262,6 +261,21 @@ export function onDaemonSocketMessage(
             },
             "Dropping desktop browser snapshot the server cannot apply",
           );
+        };
+        try {
+          const { claimedByOtherWindow } = syncDesktopBrowserTabs(
+            deps,
+            scope,
+            message.tabs,
+          );
+          if (claimedByOtherWindow)
+            void adoptOrphanedDesktopBrowserTabs(
+              deps,
+              scope,
+              message.tabs,
+            ).catch(logDropped);
+        } catch (error) {
+          logDropped(error);
         }
         return;
       }

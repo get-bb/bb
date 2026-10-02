@@ -494,13 +494,14 @@ export function syncDesktopBrowserTabs(
   deps: Pick<WorkSessionDeps, "db" | "hub">,
   scope: ExperimentalDesktopBrowserScope,
   nativeTabs: DesktopBrowserTab[],
-) {
+): { claimedByOtherWindow: boolean } {
   requirePublicThread(deps.db, scope.threadId);
   const { stored, tabs } = readStoredTabs(deps.db, scope.threadId);
   const ids = new Set(nativeTabs.map((tab) => tab.tabId));
   const next = tabs.filter(
     (tab) => !(sameDesktopTarget(tab, scope) && !ids.has(tab.id)),
   );
+  let claimedByOtherWindow = false;
   for (const tab of nativeTabs) {
     if (tab.threadId !== scope.threadId || tab.url.length > 4096) continue;
     const index = next.findIndex((value) => value.id === tab.tabId);
@@ -511,8 +512,14 @@ export function syncDesktopBrowserTabs(
         (previous.desktopTarget &&
           (previous.desktopTarget.hostId !== scope.hostId ||
             previous.desktopTarget.instanceId !== scope.instanceId)))
-    )
+    ) {
+      if (
+        previous.kind === "browser" &&
+        previous.desktopTarget?.hostId === scope.hostId
+      )
+        claimedByOtherWindow = true;
       continue;
+    }
     const value = toStoredBrowserTab(scope, tab);
     if (index === -1) next.push(value);
     else next[index] = value;
@@ -526,4 +533,40 @@ export function syncDesktopBrowserTabs(
     });
     deps.hub.notifyThread(scope.threadId, ["tabs-changed"]);
   }
+  return { claimedByOtherWindow };
+}
+
+export async function adoptOrphanedDesktopBrowserTabs(
+  deps: WorkSessionDeps,
+  scope: ExperimentalDesktopBrowserScope,
+  nativeTabs: DesktopBrowserTab[],
+) {
+  const { instances } = await listDesktopBrowserInstances(deps, scope.hostId);
+  const live = new Set(instances.map((instance) => instance.instanceId));
+  if (!live.has(scope.instanceId)) return;
+  requirePublicThread(deps.db, scope.threadId);
+  const { stored, tabs } = readStoredTabs(deps.db, scope.threadId);
+  if (!stored) return;
+  let adopted = false;
+  const next = tabs.map((previous) => {
+    const tab = nativeTabs.find((value) => value.tabId === previous.id);
+    if (
+      tab === undefined ||
+      tab.threadId !== scope.threadId ||
+      tab.url.length > 4096 ||
+      previous.kind !== "browser" ||
+      previous.desktopTarget?.hostId !== scope.hostId ||
+      live.has(previous.desktopTarget.instanceId)
+    )
+      return previous;
+    adopted = true;
+    return toStoredBrowserTab(scope, tab);
+  });
+  if (!adopted) return;
+  replaceStoredThreadTabs(deps.db, {
+    threadId: scope.threadId,
+    expectedRevision: stored.revision,
+    tabsJson: JSON.stringify(threadTabsSchema.parse(next)),
+  });
+  deps.hub.notifyThread(scope.threadId, ["tabs-changed"]);
 }

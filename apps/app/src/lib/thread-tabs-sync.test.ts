@@ -55,6 +55,32 @@ describe("thread tab synchronization", () => {
     ).toEqual([terminal, neighbor]);
   });
 
+  it("keeps the server's desktop window when saving a local page update", () => {
+    const closedWindow = {
+      hostId: "host-1",
+      instanceId: "closed-window",
+      generation: "g1",
+    };
+    const liveWindow = {
+      hostId: "host-1",
+      instanceId: "live-window",
+      generation: "g2",
+    };
+    const local = {
+      ...browserTab("native", "Before"),
+      id: "native-tab",
+      desktopTarget: closedWindow,
+    };
+    const adopted = { ...local, desktopTarget: liveWindow };
+    expect(
+      mergeThreadTabChanges(
+        [adopted],
+        [local],
+        [{ ...local, title: "Reopened" }],
+      ),
+    ).toEqual([{ ...adopted, title: "Reopened" }]);
+  });
+
   it("keeps remote ordering unless the local operation reorders tabs", () => {
     const a = browserTab("a", "A");
     const b = browserTab("b", "B");
