@@ -46,8 +46,8 @@ row's actions menu has Customize row actions, which previews the row's three
 action slots; each slot picks an action or Hide, and filled slots drag to reorder.
 
 Organize → Rows → Provider icons toggles the icon before each thread title.
-`showProviderIcons` defaults to `false`; use
-`bb thread-list prefs set showProviderIcons true` to show them. Unknown
+`showProviderIcons` defaults to `true`; use
+`bb thread-list prefs set showProviderIcons false` to hide them. Unknown
 provider ids have no icon.
 
 Organize → Groups → By read status lists threads that show the unread dot above

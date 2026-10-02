@@ -247,11 +247,10 @@ afterEach(() => {
   vi.restoreAllMocks();
   resetSidebarTitleDoubleClickForTest();
   resetPreferencesSyncForTest();
-  getDefaultStore().set(sidebarShowProviderIconsAtom, false);
 });
 
 describe("ThreadRow", () => {
-  it("keeps the registered provider icon visible during inline rename when enabled", async () => {
+  it("shows the registered provider icon by default and keeps it visible during inline rename", async () => {
     const provider: PluginProvidersState["providers"][number] = {
       id: "provider-test",
       pluginId: "provider-test",
@@ -273,11 +272,6 @@ describe("ThreadRow", () => {
       completedTurnDisplay: "collapse",
     };
     const slot = renderThreadRow({ providers: [provider] });
-    expect(
-      slot.container.querySelector("[data-sidebar-thread-provider]"),
-    ).toBeNull();
-
-    act(() => getDefaultStore().set(sidebarShowProviderIconsAtom, true));
     expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
     expect(
       slot.container.querySelector('[data-provider-logo="/provider-test.svg"]'),
