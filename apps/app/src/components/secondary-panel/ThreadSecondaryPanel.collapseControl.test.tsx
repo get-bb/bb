@@ -8,12 +8,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppKeybindings } from "@bb/domain";
 import {
   AppCommandProvider,
   useAppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
-import { browserPlatform, presentAppShortcut } from "@/lib/app-keybindings";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -37,22 +36,23 @@ import {
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 
-const commandBindings = vi.hoisted(() => ({
-  keybindings: [] as AppKeybindings,
+const fullScreenShortcut = vi.hoisted(() => ({
+  current: null as AppShortcutPresentation | null,
 }));
 
-vi.mock("@/hooks/usePluginCommandBindings", () => ({
-  usePluginCommandBindings: () => ({
-    keybindings: commandBindings.keybindings,
-    defaults: commandBindings.keybindings,
-  }),
+vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/commands/AppCommandProvider")
+  >()),
+  useAppCommandShortcut: (command: string) =>
+    command === "panel.fullScreen.toggle" ? fullScreenShortcut.current : null,
 }));
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
-  commandBindings.keybindings = [];
+  fullScreenShortcut.current = null;
 });
 
 const noop = () => {};
@@ -106,27 +106,25 @@ function renderPanel(args: {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
     <Wrapper>
-      <AppCommandProvider>
-        <TooltipProvider>
-          <PanelGroup direction="horizontal">
-            <ThreadSecondaryPanel
-              activeTab={createThreadInfoFixedPanelTab()}
-              canUseGitUi={false}
-              fixedTabs={infoFixedTabs}
-              tabs={[]}
-              isOpen
-              metadataContent={null}
-              onClose={noop}
-              onCollapse={noop}
-              onTabReorder={noop}
-              onOpenNewTab={noop}
-              onPanelFocus={noop}
-              renderAsDrawer={false}
-              {...args}
-            />
-          </PanelGroup>
-        </TooltipProvider>
-      </AppCommandProvider>
+      <TooltipProvider>
+        <PanelGroup direction="horizontal">
+          <ThreadSecondaryPanel
+            activeTab={createThreadInfoFixedPanelTab()}
+            canUseGitUi={false}
+            fixedTabs={infoFixedTabs}
+            tabs={[]}
+            isOpen
+            metadataContent={null}
+            onClose={noop}
+            onCollapse={noop}
+            onTabReorder={noop}
+            onOpenNewTab={noop}
+            onPanelFocus={noop}
+            renderAsDrawer={false}
+            {...args}
+          />
+        </PanelGroup>
+      </TooltipProvider>
     </Wrapper>,
   );
 }
@@ -1041,31 +1039,13 @@ describe("ThreadSecondaryPanel full-screen control", () => {
 });
 
 describe("ThreadSecondaryPanel full-screen shortcut", () => {
-  const shortcut = {
-    key: "f",
-    mod: true,
-    meta: false,
-    control: false,
-    alt: false,
-    shift: true,
-  };
-  const presented = presentAppShortcut(shortcut, browserPlatform());
-  const bindFullScreenCommand = () => {
-    commandBindings.keybindings = [
-      {
-        command: "panel.fullScreen.toggle",
-        desktopOnly: false,
-        shortcut,
-        when: { all: ["mainSurface"], none: ["modalOpen"] },
-      },
-    ];
-  };
+  const shortcut = { label: "⌘⇧F", ariaKeyshortcuts: "Meta+Shift+F" };
 
   it.each([
     ["Full Screen", undefined],
     ["Maximize pane", "full-screen-shortcut-split"],
   ])("advertises the bound command on the %s control", (label, splitId) => {
-    bindFullScreenCommand();
+    fullScreenShortcut.current = shortcut;
     renderPanel({
       isConversationCollapsed: false,
       onToggleConversationCollapse: noop,
@@ -1074,15 +1054,15 @@ describe("ThreadSecondaryPanel full-screen shortcut", () => {
     });
 
     const control = screen.getByRole("button", {
-      name: `${label} (${presented.label})`,
+      name: `${label} (${shortcut.label})`,
     });
     expect(control.getAttribute("aria-keyshortcuts")).toBe(
-      presented.ariaKeyshortcuts,
+      shortcut.ariaKeyshortcuts,
     );
   });
 
   it("keeps the shortcut off hosts that do not handle the command", () => {
-    bindFullScreenCommand();
+    fullScreenShortcut.current = shortcut;
     renderPanel({
       isConversationCollapsed: false,
       onToggleConversationCollapse: noop,
