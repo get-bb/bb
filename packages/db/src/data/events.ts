@@ -2926,9 +2926,14 @@ export function getFirstParentedTimelineBoundarySequence(
   args: { threadId: string; sequenceStart: number; maxSeq: number },
 ): number | null {
   const result = db.get<{ sequence: number | null }>(sql`
-    WITH parents AS MATERIALIZED (
+    WITH nested_history AS MATERIALIZED (
+      SELECT 1
+      FROM events INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+      WHERE thread_id = ${args.threadId} AND parent_tool_call_id IS NOT NULL
+      LIMIT 1
+    ), parents AS MATERIALIZED (
       SELECT item_id, turn_id, min(sequence) AS start
-      FROM events INDEXED BY events_delegating_item_lookup_idx
+      FROM nested_history CROSS JOIN events INDEXED BY events_delegating_item_lookup_idx
       WHERE thread_id = ${args.threadId}
         AND item_kind IN ('toolCall', 'delegation')
         AND parent_tool_call_id IS NULL

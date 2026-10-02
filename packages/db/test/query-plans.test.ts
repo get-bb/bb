@@ -669,6 +669,13 @@ describe("slow query index plans", () => {
       /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
     );
     expect(details).toMatch(
+      /SEARCH events USING COVERING INDEX events_parent_tool_call_thread_parent_sequence_idx \(thread_id=\? AND parent_tool_call_id>\?\)/u,
+    );
+    expect(details.indexOf("SCAN nested_history")).toBeGreaterThanOrEqual(0);
+    expect(details.indexOf("SCAN nested_history")).toBeLessThan(
+      details.indexOf("INDEX events_delegating_item_lookup_idx"),
+    );
+    expect(details).toMatch(
       /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
     );
 
