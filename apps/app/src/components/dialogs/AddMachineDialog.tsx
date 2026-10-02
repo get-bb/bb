@@ -140,6 +140,7 @@ export function MachineAccessGate({
 
 export interface EnrollmentCommand {
   value: string;
+  windowsValue: string;
   expiresAt: number;
   unavailable: boolean;
 }
@@ -213,6 +214,7 @@ export function ManualMachineSetup({
             enrollment = currentEnrollment;
             setCommand({
               value: currentEnrollment.command,
+              windowsValue: currentEnrollment.windowsCommand,
               expiresAt: currentEnrollment.expiresAt,
               unavailable: false,
             });
@@ -223,6 +225,7 @@ export function ManualMachineSetup({
                 ? previous
                 : {
                     value: usedEnrollment.command,
+                    windowsValue: usedEnrollment.windowsCommand,
                     expiresAt: usedEnrollment.expiresAt,
                     unavailable: true,
                   },
@@ -317,6 +320,7 @@ export function ManualMachineSetupView({
         <MachineLaunchCommand
           key={command.value}
           command={command.value}
+          windowsCommand={command.windowsValue}
           expiresAt={command.expiresAt}
           unavailable={command.unavailable}
           onRegenerate={onRegenerate}
@@ -379,18 +383,32 @@ function formatCountdown(remainingMs: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+type MachineLaunchPlatform = "posix" | "windows";
+
+const MACHINE_LAUNCH_PLATFORMS: readonly {
+  id: MachineLaunchPlatform;
+  label: string;
+}[] = [
+  { id: "posix", label: "macOS or Linux" },
+  { id: "windows", label: "Windows" },
+];
+
 export function MachineLaunchCommand({
   command,
+  windowsCommand,
   expiresAt,
   unavailable = false,
   onRegenerate,
 }: {
   command: string;
+  windowsCommand: string;
   expiresAt: number;
   unavailable?: boolean;
   onRegenerate: () => void;
 }) {
-  const { copied, copy } = useClipboardCopy({ text: command });
+  const [platform, setPlatform] = useState<MachineLaunchPlatform>("posix");
+  const shownCommand = platform === "windows" ? windowsCommand : command;
+  const { copied, copy } = useClipboardCopy({ text: shownCommand });
   const [remaining, setRemaining] = useState(() => expiresAt - Date.now());
   useEffect(() => {
     const timer = setInterval(
@@ -402,8 +420,32 @@ export function MachineLaunchCommand({
   const expired = remaining <= 0;
   return (
     <div className="overflow-hidden rounded-md border border-border bg-muted/30">
+      <div
+        role="group"
+        aria-label="Machine operating system"
+        className="flex items-center gap-1 border-b border-border px-2 py-1.5"
+      >
+        {MACHINE_LAUNCH_PLATFORMS.map((option) => (
+          <Button
+            key={option.id}
+            type="button"
+            size="sm"
+            variant={platform === option.id ? "secondary" : "ghost"}
+            aria-pressed={platform === option.id}
+            className="h-6 px-2 text-xs"
+            onClick={() => setPlatform(option.id)}
+          >
+            {option.label}
+          </Button>
+        ))}
+        {platform === "windows" ? (
+          <span className="ml-auto text-xs text-subtle-foreground">
+            Run in PowerShell
+          </span>
+        ) : null}
+      </div>
       <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
-        {command}
+        {shownCommand}
       </pre>
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
         {unavailable ? (

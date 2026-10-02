@@ -111,7 +111,7 @@ await writeFile(
       version: sourcePackageJson.version,
       description: "bb enrolled host runtime",
       type: "module",
-      os: sourcePackageJson.os,
+      os: [...new Set([...sourcePackageJson.os, "win32"])],
       bin: {
         bb: "dist/bb.js",
         "bb-app": "dist/bb-app.js",

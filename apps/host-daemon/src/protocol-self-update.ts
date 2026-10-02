@@ -4,6 +4,7 @@ import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { execPortableFile } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
@@ -142,11 +143,21 @@ function responseArtifactDigest(response: Response): string | null {
     : null;
 }
 
+const SELF_UPDATE_PROCESS_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
 export const defaultRunProcess: SelfUpdateProcessRunner = async (
   command,
   args,
   options,
 ) => {
+  if (process.platform === "win32") {
+    await execPortableFile(command, args, {
+      cwd: process.cwd(),
+      env: options.env,
+      maxBuffer: SELF_UPDATE_PROCESS_MAX_BUFFER_BYTES,
+    });
+    return;
+  }
   await execFileAsync(command, args, options);
 };
 
