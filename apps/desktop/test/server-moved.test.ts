@@ -552,16 +552,22 @@ describe("createServerMovedWatcher", () => {
     const harness = await createHarness({ confirmMove: async () => false });
     await writeServerMovedFile(harness.dataDir, movedFile());
     harness.watcher.start();
-    await harness.timers.flush();
+    try {
+      await harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.confirmMove).toHaveBeenCalledOnce();
+      });
+      expect(harness.onMove).not.toHaveBeenCalled();
 
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
-    expect(harness.onMove).not.toHaveBeenCalled();
-
-    harness.confirmMove.mockImplementation(async () => true);
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-    harness.watcher.stop();
+      harness.confirmMove.mockImplementation(async () => true);
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      await harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("checks again when the lock changes during a confirmation", async () => {

@@ -23,7 +23,6 @@ import type {
   PermissionMode,
   ReasoningLevel,
   ResolvedCreateAutomationInput,
-  ServiceTier,
   UpdateAutomationInput,
 } from "./rpc-types.js";
 import {
@@ -41,7 +40,6 @@ import {
   automationScriptInterpreterSchema,
   permissionModeSchema,
   reasoningLevelSchema,
-  serviceTierSchema,
 } from "./rpc-types.js";
 import { interpreterForPath } from "./script-files.js";
 
@@ -132,9 +130,14 @@ const AGENT_OPTIONS = {
     description: "Reasoning level; new automations default to medium",
   },
   "service-tier": {
-    type: "enum",
-    values: [...serviceTierSchema.options, "none"],
-    description: "Service tier; none leaves the automation without one",
+    type: "string",
+    placeholder: "tier",
+    description:
+      "Service tier id the provider lists for the model, such as default or fast",
+  },
+  "clear-service-tier": {
+    type: "boolean",
+    description: "Leave the automation without a service tier",
   },
   "permission-mode": {
     type: "enum",
@@ -222,7 +225,8 @@ interface AgentOptionValues {
   provider: string | undefined;
   model: string | undefined;
   reasoning: ReasoningLevel | undefined;
-  "service-tier": ServiceTier | "none" | undefined;
+  "service-tier": string | undefined;
+  "clear-service-tier": boolean | undefined;
   "permission-mode": PermissionMode | undefined;
   "target-thread": string | undefined;
   environment: string | undefined;
@@ -381,6 +385,12 @@ function parseScriptWorkingDirectory(
 }
 
 function validateAgentTargetOptions(options: AgentOptionValues): void {
+  if (options["clear-service-tier"] && options["service-tier"] !== undefined) {
+    throw cliError(
+      "Cannot combine --service-tier and --clear-service-tier.",
+      "unexpected_argument",
+    );
+  }
   const targetThread = options["target-thread"];
   const environment = options.environment;
   const newEnvironment = options["new-environment"];
@@ -644,9 +654,7 @@ async function buildExecution(
         providerId: provider,
         model,
         reasoningLevel: options.reasoning ?? "medium",
-        ...(serviceTier === undefined || serviceTier === "none"
-          ? {}
-          : { serviceTier }),
+        ...(serviceTier === undefined ? {} : { serviceTier }),
         permissionMode: await resolvePermissionMode(
           bb,
           provider,
@@ -665,6 +673,7 @@ async function buildExecution(
     options.model !== undefined ||
     options.reasoning !== undefined ||
     options["service-tier"] !== undefined ||
+    options["clear-service-tier"] === true ||
     options["permission-mode"] !== undefined ||
     options["target-thread"] !== undefined ||
     options.environment !== undefined ||
@@ -727,6 +736,7 @@ async function buildAgentExecutionUpdate(
     options.model,
     options.reasoning,
     options["service-tier"],
+    options["clear-service-tier"] || undefined,
     options["permission-mode"],
     options["target-thread"],
     options.environment,
@@ -750,8 +760,10 @@ async function buildAgentExecutionUpdate(
     update.reasoningLevel = options.reasoning;
   }
   const serviceTier = options["service-tier"];
-  if (serviceTier !== undefined) {
-    update.serviceTier = serviceTier === "none" ? null : serviceTier;
+  if (options["clear-service-tier"]) {
+    update.serviceTier = null;
+  } else if (serviceTier !== undefined) {
+    update.serviceTier = serviceTier;
   }
   if (options["permission-mode"] !== undefined) {
     update.permissionMode = options["permission-mode"];

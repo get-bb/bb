@@ -13,6 +13,7 @@ import {
 } from "../attachments";
 import { deliverCommentToLatestAgent } from "../steer";
 import { displayName } from "../shared/display-name";
+import { errorMessage } from "../shared/errors";
 import { isSideChatShapedThread } from "../shared/side-chat";
 import {
   tasksRpcContract,
@@ -409,6 +410,7 @@ interface CreateCommentInput {
   threadId: string | null;
   body: string;
   notify: boolean;
+  awaitDelivery: boolean;
 }
 
 export async function createComment(
@@ -416,7 +418,7 @@ export async function createComment(
   store: TasksApiStore,
   input: CreateCommentInput,
 ): Promise<StoredComment> {
-  let comment = store.transaction(() =>
+  const comment = store.transaction(() =>
     store.tasks.createComment({
       taskId: input.taskId,
       kind: input.kind,
@@ -427,19 +429,29 @@ export async function createComment(
     }),
   );
 
-  if (input.notify) {
+  publishCommentsChanged(bb, input.taskId);
+  if (!input.notify) return comment;
+
+  const deliver = async (): Promise<StoredComment> => {
     const notifiedCount = await deliverCommentToLatestAgent(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
       body: comment.body,
       authorName: comment.authorName,
     });
-    comment = store.transaction(() =>
+    const updated = store.transaction(() =>
       store.tasks.updateComment(comment.id, { notifiedCount }),
     );
-  }
+    publishCommentsChanged(bb, input.taskId);
+    return updated;
+  };
 
-  publishCommentsChanged(bb, input.taskId);
+  if (input.awaitDelivery) return deliver();
+  void deliver().catch((error) => {
+    bb.log.warn(
+      `failed to update comment notification ${comment.id}: ${errorMessage(error)}`,
+    );
+  });
   return comment;
 }
 
@@ -861,6 +873,7 @@ export function registerHandlers(
         threadId: null,
         body: input.body,
         notify: input.notify,
+        awaitDelivery: false,
       });
       return { comment };
     },

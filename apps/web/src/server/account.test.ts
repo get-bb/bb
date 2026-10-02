@@ -58,6 +58,7 @@ beforeEach(() => {
     appUrl: "https://getbb.app",
     serverUrlTemplate: "https://{label}.getbb.app",
     closeTunnel,
+    tunnelConnected: null,
   };
 });
 

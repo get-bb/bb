@@ -839,6 +839,8 @@ describe("MachinesSettingsSection", () => {
     vi.mocked(sdk.hosts.experimental_reconnect).mockResolvedValue({
       command:
         "curl -fsSL -H 'X-BB-Enrollment: bbde_test' 'https://bb.example.com/install.sh' | sh",
+      windowsCommand:
+        "irm -Headers @{ 'X-BB-Enrollment' = 'bbde_test' } 'https://bb.example.com/install.ps1' | iex",
       expiresAt: NOW + 15 * 60 * 1000,
       hostId: offlineHost.id,
     });

@@ -82,6 +82,12 @@ describe("looksLikePath", () => {
     expect(looksLikePath("worktree")).toBe(false);
     expect(looksLikePath("docker")).toBe(false);
   });
+
+  it("recognizes Windows drive paths in either separator style", () => {
+    expect(looksLikePath("C:\\src\\repo")).toBe(true);
+    expect(looksLikePath("c:/src/repo")).toBe(true);
+    expect(looksLikePath("src\\repo")).toBe(true);
+  });
 });
 
 describe("requireHostId", () => {
@@ -283,8 +289,10 @@ describe("parseThreadWaitPollIntervalMs", () => {
 });
 
 describe("parseServiceTier", () => {
-  it("throws for invalid tier", () => {
-    expect(() => parseServiceTier("turbo")).toThrow("Invalid service tier");
+  it("passes any provider tier id through and rejects an empty one", () => {
+    expect(parseServiceTier("ultrafast")).toBe("ultrafast");
+    expect(parseServiceTier(undefined)).toBeUndefined();
+    expect(() => parseServiceTier("")).toThrow("Invalid service tier");
   });
 });
 

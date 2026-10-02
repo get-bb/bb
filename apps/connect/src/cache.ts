@@ -1,3 +1,4 @@
+import { isWorkerHeldResponse } from "./relay.js";
 import { rebuiltResponse } from "./response-encoding.js";
 
 const CACHE_HOST = "https://bb-connect-asset-cache.internal";
@@ -44,7 +45,20 @@ function isRevalidatableShell(resp: Response): boolean {
   return /\bno-cache\b/i.test(cc);
 }
 
+function workerHeldCopy(resp: Response): Response {
+  return new Response(resp.clone().body, resp);
+}
+
+function assetCopyForStorage(resp: Response): Response {
+  return isWorkerHeldResponse(resp) ? workerHeldCopy(resp) : resp.clone();
+}
+
 function shellCopyForStorage(resp: Response): Response {
+  if (isWorkerHeldResponse(resp)) {
+    const copy = workerHeldCopy(resp);
+    copy.headers.set("cache-control", SHELL_STORE_CACHE_CONTROL);
+    return copy;
+  }
   const headers = new Headers(resp.headers);
   headers.set("cache-control", SHELL_STORE_CACHE_CONTROL);
   headers.delete("content-encoding");
@@ -148,7 +162,7 @@ export async function serveWithCache(
     return storeShellAndServe(resp, namespace, url, ctx);
   }
   if (isCacheable(resp)) {
-    ctx.waitUntil(cache.put(key, resp.clone()));
+    ctx.waitUntil(cache.put(key, assetCopyForStorage(resp)));
     const r = new Response(resp.body, resp);
     r.headers.set("x-bb-cache", "miss");
     return { cacheable: true, response: r };

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import {
   createWorkspaceOpenTargetRuntime,
   listWorkspaceOpenTargetsWithRuntime,
@@ -64,6 +65,10 @@ type TerminalOpenExpectation =
   | { file: "open"; args: string[] }
   | { file: "osascript"; fragments: string[] };
 
+function inAppleScriptString(value: string): string {
+  return value.replaceAll("\\", "\\\\");
+}
+
 interface TerminalOpenCase {
   name: string;
   targetId: OpenPathInTargetArgs["targetId"];
@@ -92,7 +97,7 @@ function createRuntime(
     execFile:
       args.execFile ??
       (async (file) => {
-        if (file === "which") {
+        if (file === "which" || file === "where.exe") {
           throw new Error("Executable not found");
         }
         return { stdout: "" };
@@ -174,7 +179,7 @@ function createAvailableExecFile(
       };
     }
 
-    if (file === "which") {
+    if (file === "which" || file === "where.exe") {
       const executable = commandArgs[0];
       if (executable && availableExecutables.includes(executable)) {
         return {
@@ -1991,7 +1996,7 @@ describe("workspace open targets", () => {
         file: "osascript",
         fragments: [
           'tell application "Terminal" to do script',
-          `cd '${workspacePath}'`,
+          inAppleScriptString(`cd '${workspacePath}'`),
         ],
       }),
     },
@@ -2008,7 +2013,7 @@ describe("workspace open targets", () => {
         fragments: [
           'tell application "iTerm" to create window with default profile',
           'tell application "iTerm" to tell current session of current window to write text',
-          `cd '${workspacePath}'`,
+          inAppleScriptString(`cd '${workspacePath}'`),
         ],
       }),
     },
@@ -2024,7 +2029,9 @@ describe("workspace open targets", () => {
         file: "osascript",
         fragments: [
           'tell application "Terminal" to do script',
-          `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
+          inAppleScriptString(
+            `cd '${path.dirname(filePath)}' && 'vim' '+call cursor(22,4)' '${filePath}'`,
+          ),
         ],
       }),
     },
@@ -2041,7 +2048,7 @@ describe("workspace open targets", () => {
         fragments: [
           'tell application "iTerm" to create window with default profile',
           'tell application "iTerm" to tell current session of current window to write text',
-          `cd '${workspacePath}' && 'vim' '${filePath}'`,
+          inAppleScriptString(`cd '${workspacePath}' && 'vim' '${filePath}'`),
         ],
       }),
     },
@@ -2057,7 +2064,7 @@ describe("workspace open targets", () => {
         file: "osascript",
         fragments: [
           'tell application "Terminal" to do script',
-          `cd '${workspacePath}'`,
+          inAppleScriptString(`cd '${workspacePath}'`),
         ],
       }),
     },
@@ -2199,7 +2206,9 @@ describe("workspace open targets", () => {
       expect(osascriptCall).toBeDefined();
       const script = osascriptCall?.args.join("\n") ?? "";
       expect(script).toContain(
-        `cd '${path.dirname(filePath)}' && 'vim' '--clean' '+call cursor(22,4)' '--' '${filePath}'`,
+        inAppleScriptString(
+          `cd '${path.dirname(filePath)}' && 'vim' '--clean' '+call cursor(22,4)' '--' '${filePath}'`,
+        ),
       );
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
@@ -2330,6 +2339,141 @@ describe("workspace open targets", () => {
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
+  });
+
+  it("discovers Windows platform targets and editor CLIs from PATH", async () => {
+    const calls: ExecFileCall[] = [];
+    const targets = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile({
+          availableExecutables: ["code", "wt"],
+          calls,
+        }),
+        platform: "win32",
+      }),
+    );
+
+    expect(targets.map((target) => [target.id, target.label])).toEqual([
+      ["vscode", "VS Code"],
+      ["default-app", "Default App"],
+      ["file-manager", "File Explorer"],
+      ["terminal", "Windows Terminal"],
+    ]);
+    expect(calls.every((call) => call.file === "where.exe")).toBe(true);
+  });
+
+  it("offers PowerShell as the Windows terminal when Windows Terminal is absent", async () => {
+    const targets = await listWorkspaceOpenTargetsWithRuntime(
+      createRuntime({
+        execFile: createAvailableExecFile(),
+        platform: "win32",
+      }),
+    );
+
+    expect(targets.map((target) => [target.id, target.label])).toEqual([
+      ["default-app", "Default App"],
+      ["file-manager", "File Explorer"],
+      ["terminal", "PowerShell"],
+    ]);
+  });
+
+  it("opens Windows paths without putting them on a command line", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+    const filePath = path.join(workspacePath, "it's & notes.md");
+    await writeFile(filePath, "notes");
+    const calls: ExecFileCall[] = [];
+    const runtime = createRuntime({
+      env: { SystemRoot: "C:\\Windows", PATH: "C:\\bin" },
+      execFile: createAvailableExecFile({
+        availableExecutables: ["code", "wt"],
+        calls,
+      }),
+      platform: "win32",
+    });
+    const open = async (
+      targetId: OpenPathInTargetArgs["targetId"],
+      target: string,
+      lineNumber: number | null,
+    ): Promise<ExecFileCall | undefined> => {
+      calls.length = 0;
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber,
+          path: target,
+          targetId,
+        },
+        runtime,
+      );
+      return calls.filter((call) => call.file !== "where.exe").at(-1);
+    };
+    const powershell =
+      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    const powershellArgs = (script: string): string[] => [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      script,
+    ];
+
+    try {
+      const defaultOpen = await open("default-app", filePath, null);
+      expect(
+        sanitizeInheritedChildProcessEnv({ env: defaultOpen?.env ?? {} }),
+      ).toMatchObject({ WORKSPACE_OPEN_TARGET_PATH: filePath });
+      expect(defaultOpen).toMatchObject({
+        file: powershell,
+        args: powershellArgs(
+          "Invoke-Item -LiteralPath $env:WORKSPACE_OPEN_TARGET_PATH",
+        ),
+        env: { WORKSPACE_OPEN_TARGET_PATH: filePath, PATH: "C:\\bin" },
+      });
+      expect(await open("file-manager", filePath, null)).toMatchObject({
+        file: powershell,
+        args: powershellArgs(
+          "Start-Process -FilePath explorer.exe -ArgumentList ('/select,\"' + $env:WORKSPACE_OPEN_TARGET_PATH + '\"')",
+        ),
+        env: { WORKSPACE_OPEN_TARGET_PATH: filePath },
+      });
+      expect(await open("file-manager", workspacePath, null)).toMatchObject({
+        args: powershellArgs(
+          "Invoke-Item -LiteralPath $env:WORKSPACE_OPEN_TARGET_PATH",
+        ),
+        env: { WORKSPACE_OPEN_TARGET_PATH: workspacePath },
+      });
+      expect(await open("terminal", filePath, null)).toMatchObject({
+        file: powershell,
+        args: powershellArgs(
+          "Start-Process -FilePath wt.exe -ArgumentList '-d','.' -WorkingDirectory $env:WORKSPACE_OPEN_TARGET_PATH",
+        ),
+        env: { WORKSPACE_OPEN_TARGET_PATH: workspacePath },
+      });
+      expect(await open("vscode", filePath, 12)).toMatchObject({
+        file: "code",
+        args: ["-g", `${filePath}:12`],
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
+  });
+
+  it("does not open a Windows terminal for a remote SSH path", async () => {
+    await expect(
+      openPathInTargetWithRuntime(
+        {
+          context: { kind: "remote-ssh", sshAuthority: "dev@example.test" },
+          columnNumber: null,
+          lineNumber: null,
+          path: "/srv/app",
+          targetId: "terminal",
+        },
+        createRuntime({
+          execFile: createAvailableExecFile({ availableExecutables: ["ssh"] }),
+          platform: "win32",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "target_unavailable" });
   });
 
   it("rejects workspace opening on unsupported platforms", async () => {

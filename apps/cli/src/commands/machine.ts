@@ -285,7 +285,10 @@ export function registerMachineCommands(
                 signal: controller.signal,
               });
             if (enrollmentCommand !== null) {
+              console.error("On macOS or Linux, run:");
               console.error(enrollmentCommand.command);
+              console.error("On Windows, run in PowerShell:");
+              console.error(enrollmentCommand.windowsCommand);
               console.error(
                 enrollmentExpiryNotice(enrollmentCommand.expiresAt),
               );

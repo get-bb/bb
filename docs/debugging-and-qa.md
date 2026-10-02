@@ -12,6 +12,58 @@
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+## ACP Steer Cancellation Failures
+
+ACP steering cancels the active prompt before submitting the follow-up. If that
+prompt returns an error during cancellation, BB marks the session for rebuilding
+before the next turn. The replacement process attempts `session/load`; providers
+without working session restoration start fresh and report the loss of in-agent
+history. The failed turn stays failed, and an unsent steer is not acknowledged as
+accepted.
+
+Older Hermes adapters can throw `NoneType.startswith` during cancellation and
+leave their internal session marked running. Update Hermes to include
+[the null-response fix](https://github.com/NousResearch/hermes-agent/commit/8f0322da5b82029f3bc4d16fbaa2c986299abfc6)
+and [the running-state cleanup](https://github.com/NousResearch/hermes-agent/commit/bccd45618c16b605822dd179cd0399abdecaf698),
+then restart its retained process with `bb thread stop <thread-id>` before sending
+a new message. BB's recovery prevents reuse after a cancellation error; it does
+not repair the older adapter's failing turn.
+
+## Machine Authentication Cache
+
+Successful verification of an unlimited daemon host key is cached in server
+memory for 30 seconds, capped at the key's expiry. The cache holds at most
+1,024 entries and retains only token hashes. Hits neither read nor write the
+authentication database and do not extend the cache lifetime. The next request
+after expiry uses the existing verifier and updates usage timestamps, so
+`lastRequest` and `updatedAt` describe the last full verification rather than
+every request. A burst of concurrent cold requests can still perform separate
+verifications before the first result is cached.
+
+Revocation and reenrollment invalidate that host's cached keys and prevent
+already-running verifications from returning or caching invalidated credentials.
+Restarting the server discards the cache. Enrollment keys and keys with quotas,
+refills, or enabled rate limiting always use the existing verifier. Direct edits
+to authentication rows outside the machine-auth service are observed when the
+cache expires; QA that changes a warmed key's database fields must account for
+that window. Expiry known when caching is enforced on every hit.
+
+## Slow Database Operations
+
+The server logs `Slow DB query` when a prepared statement, `exec` batch, or
+complete transaction takes at least 100 ms. `durationMs` measures elapsed time;
+`cpuDurationMs` measures CPU time on the calling thread. A large gap indicates
+waiting or descheduling, not necessarily inefficient SQL. It does not by itself
+distinguish filesystem I/O, lock waits, and scheduler contention.
+
+`operation: "transaction"` includes the callback, commit, and rollback; its SQL
+label identifies the transaction mode rather than containing callback SQL.
+Statements inside it may also log, so do not add their durations to the
+transaction duration. Commit timing matters because SQLite's automatic WAL
+checkpoint can perform filesystem writes and synchronization on the server
+thread. `operation: "exec"` also covers maintenance batches. SQL string
+literals are redacted and parameter values are never logged.
+
 ## Native Draft Rollback
 
 Migration `0132_thread_drafts` now only adds the temporary `threads.draft`
@@ -35,7 +87,9 @@ a new migration after `0133`.
 and `unarchivedDescendantCount` for archive confirmation. The latter follows
 the same hierarchy, lifecycle-owner, and hidden source-fork edges as
 `archive-all`, deduplicates threads, traverses archived intermediaries, and
-excludes already archived or deleted candidates and the requested root.
+excludes hidden, already archived, or deleted candidates and the requested root.
+Hidden threads still participate in the archive cascade, and visible descendants
+beneath hidden threads still count toward confirmation.
 The UI adds the root to the displayed total and skips confirmation when no
 unarchived descendants remain or the General setting `confirmThreadArchive`
 is disabled. The summary is a preview; concurrent changes
@@ -568,6 +622,11 @@ interception to review loading and failure states and verify cold-download
 behavior. Keep temporary review stories and fixtures out of the final diff.
 
 ## Pull Request Status And Daemon Compatibility
+
+Host-daemon protocol 226 opens the service tier: `serviceTier` in execution
+options is any non-empty tier id instead of `fast` or `default`, and
+`model/list` entries may carry `supportedServiceTiers`. A daemon on 225 rejects
+tier ids other than `fast` and `default`.
 
 Host-daemon protocol 224 removes wire members that neither side used: the
 `host.file_metadata` command, the `disallowedTools` runtime-context field, the

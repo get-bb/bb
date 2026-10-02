@@ -249,8 +249,10 @@ async function createPackageRoot(root: string): Promise<string> {
 
 export const launcherProcessOps: ServerMoveServiceOptions["processOps"] = {
   isRunning: (pid) => pid === process.pid,
-  readCommand: async (pid) =>
-    pid === process.pid ? `node ${LAUNCHER_ENTRY_PATH} start` : null,
+  readIdentity: async (pid) =>
+    pid === process.pid
+      ? { command: `node ${LAUNCHER_ENTRY_PATH} start`, startedAt: null }
+      : null,
 };
 
 export async function writeLauncherMovedMode(args: {
@@ -311,7 +313,7 @@ export async function writeSystemdUnit(args: {
       "[Service]",
       `ExecStart=${args.execStart}`,
       'Environment="BB_APP_NPM_PREFIX=/opt/npm"',
-      `Environment="BB_DATA_DIR=${args.dataDir}"`,
+      `Environment="BB_DATA_DIR=${args.dataDir.replaceAll("\\", "\\\\")}"`,
       "Restart=always",
       "",
     ].join("\n"),

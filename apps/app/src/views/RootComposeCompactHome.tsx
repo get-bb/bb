@@ -110,6 +110,7 @@ export function RootComposeCompactHome({
       <div
         ref={scrollViewportRef}
         data-testid="root-compose-compact-scroll-viewport"
+        data-page-scroll-viewport=""
         className="absolute inset-x-0 bottom-0 overflow-y-auto overscroll-contain"
         style={{ top: COMPACT_HOME_CHROME_OFFSET_PX }}
       >

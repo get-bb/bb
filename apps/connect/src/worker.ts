@@ -7,7 +7,10 @@ import {
   schema,
   sha256Hex,
 } from "@bb/connect-db";
-import { refreshAccountSessionCookies } from "./account-session.js";
+import {
+  getSetCookies,
+  refreshAccountSessionCookies,
+} from "./account-session.js";
 import {
   TUNNEL_OFFLINE_HEADER,
   TUNNEL_RESTART_REASON,
@@ -46,8 +49,17 @@ import {
   GATE_AUTH_HEADER,
   GATE_MACHINE_ID_HEADER,
   MACHINE_CREDENTIAL_HEADER,
+  RELAY_CONTENT_LENGTH_HEADER,
+  RELAY_HAS_BODY_HEADER,
+  RELAY_HEADER,
+  RELAY_METHOD_HEADER,
   TUNNEL_TARGET_HEADER,
 } from "./protocol-headers.js";
+import {
+  fetchThroughRelay,
+  isWorkerHeldResponse,
+  workerHeldResponsesEnabled,
+} from "./relay.js";
 
 export { TunnelDO };
 
@@ -58,16 +70,75 @@ function text(body: string, status: number): Response {
   });
 }
 
-function withSetCookies(
+function isPlatformCookie(name: string): boolean {
+  return (
+    name.startsWith("__Secure-better-auth.") ||
+    name.startsWith("better-auth.") ||
+    name.startsWith("__Secure-bb-connect.") ||
+    name.startsWith("bb-connect.")
+  );
+}
+
+function stripPlatformCookies(headers: Headers): void {
+  const cookie = headers.get("cookie");
+  if (cookie === null) return;
+  const tenantCookies = cookie
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => {
+      const separator = part.indexOf("=");
+      return (
+        separator > 0 && !isPlatformCookie(part.slice(0, separator).trim())
+      );
+    });
+  if (tenantCookies.length === 0) headers.delete("cookie");
+  else headers.set("cookie", tenantCookies.join("; "));
+}
+
+export function responseForVisitor(
   response: Response,
-  setCookies: readonly string[],
+  installerPath: string | null,
+  platformSetCookies: readonly string[],
 ): Response {
+  const setCookies = getSetCookies(response.headers);
+  const tenantSetCookies = setCookies.filter((cookie) => {
+    const separator = cookie.indexOf("=");
+    return (
+      separator > 0 &&
+      !isPlatformCookie(cookie.slice(0, separator).trim()) &&
+      !/;\s*domain\s*(?:=|;|$)/iu.test(cookie) &&
+      !/,(?=\s*[^;,=\s]+\s*=)/u.test(cookie)
+    );
+  });
+  if (
+    installerPath === null &&
+    tenantSetCookies.length === setCookies.length &&
+    platformSetCookies.length === 0
+  ) {
+    return response;
+  }
   const headers = new Headers(response.headers);
-  for (const setCookie of setCookies) headers.append("set-cookie", setCookie);
+  headers.delete("set-cookie");
+  for (const cookie of [...tenantSetCookies, ...platformSetCookies]) {
+    headers.append("set-cookie", cookie);
+  }
+  if (installerPath !== null) {
+    headers.set("x-content-type-options", "nosniff");
+    headers.set("content-security-policy", "sandbox");
+    if (installerPath === "/install/bb-app.tgz") {
+      headers.set("content-type", "application/octet-stream");
+      headers.set("content-disposition", 'attachment; filename="bb-app.tgz"');
+    } else {
+      headers.set("content-type", "text/plain; charset=utf-8");
+      headers.delete("content-disposition");
+    }
+  }
   return new Response(response.body, {
     headers,
     status: response.status,
     statusText: response.statusText,
+    webSocket: response.webSocket,
+    encodeBody: isWorkerHeldResponse(response) ? "manual" : "automatic",
   });
 }
 
@@ -220,14 +291,23 @@ function isRetryableTunnelDoError(error: unknown): boolean {
 }
 
 async function fetchTunnelDo(
-  env: Pick<Env, "TUNNEL_DO">,
+  env: Pick<Env, "TUNNEL_DO" | "WORKER_HELD_RESPONSES">,
   routingKey: string,
   request: Request,
+  transport: "direct" | "relay-when-enabled",
 ): Promise<Response> {
   const replayable = REPLAYABLE_TUNNEL_METHODS.has(request.method);
+  const relay =
+    transport === "relay-when-enabled" &&
+    workerHeldResponsesEnabled(env) &&
+    request.headers.get("upgrade")?.toLowerCase() !== "websocket";
   for (let attempt = 0; ; attempt += 1) {
     const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
     try {
+      if (relay) {
+        const relayed = await fetchThroughRelay(stub, request);
+        if (relayed !== null) return relayed;
+      }
       return await stub.fetch(replayable ? new Request(request) : request);
     } catch (error) {
       const delayMs = TUNNEL_DO_RETRY_DELAYS_MS[attempt];
@@ -250,10 +330,15 @@ export function requestForTunnelDo(
   machineId?: string,
 ): Request {
   const headers = new Headers(request.headers);
+  stripPlatformCookies(headers);
   headers.delete(TUNNEL_TARGET_HEADER);
   headers.delete(MACHINE_CREDENTIAL_HEADER);
   headers.delete(GATE_AUTH_HEADER);
   headers.delete(GATE_MACHINE_ID_HEADER);
+  headers.delete(RELAY_HEADER);
+  headers.delete(RELAY_METHOD_HEADER);
+  headers.delete(RELAY_HAS_BODY_HEADER);
+  headers.delete(RELAY_CONTENT_LENGTH_HEADER);
   stripCloudDevHeader(headers);
   if (target !== null) {
     headers.set(TUNNEL_TARGET_HEADER, target);
@@ -362,7 +447,7 @@ const gate = {
     const routingKey =
       resolved.kind === "machine" ? resolved.routingKey : label;
     const tunnelDo = (doRequest: Request) =>
-      fetchTunnelDo(env, routingKey, doRequest);
+      fetchTunnelDo(env, routingKey, doRequest, "relay-when-enabled");
 
     if (isTunnelDial) {
       if (target !== null) return text("bb connect: not found\n", 404);
@@ -391,7 +476,13 @@ const gate = {
       }
       const headers = new Headers(request.headers);
       stripCloudDevHeader(headers);
-      return tunnelDo(new Request(new Request(forward, request), { headers }));
+      stripPlatformCookies(headers);
+      return fetchTunnelDo(
+        env,
+        routingKey,
+        new Request(new Request(forward, request), { headers }),
+        "direct",
+      );
     }
 
     if (url.pathname.startsWith("/__"))
@@ -403,11 +494,16 @@ const gate = {
 
     const isPublicInstallPath =
       url.pathname === "/install.sh" ||
+      url.pathname === "/install.ps1" ||
       url.pathname === "/install/version" ||
       url.pathname === "/install/bb-app.tgz";
     if (request.method === "GET" && isPublicInstallPath) {
       if (target !== null) return text("bb connect: not found\n", 404);
-      return tunnelDo(requestForTunnelDo(request, null));
+      return responseForVisitor(
+        await tunnelDo(requestForTunnelDo(request, null)),
+        url.pathname,
+        [],
+      );
     }
 
     const isMachinePath =
@@ -433,8 +529,12 @@ const gate = {
         return text("bb connect: machine cannot manage hosts\n", 403);
       }
       ctx.waitUntil(markMachineSeen(verified.machineId, db));
-      return tunnelDo(
-        requestForTunnelDo(request, null, "machine", verified.machineId),
+      return responseForVisitor(
+        await tunnelDo(
+          requestForTunnelDo(request, null, "machine", verified.machineId),
+        ),
+        null,
+        [],
       );
     }
     if (url.pathname.startsWith("/internal")) {
@@ -474,7 +574,7 @@ const gate = {
 
     const doRequest = requestForTunnelDo(request, target, "session");
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      return tunnelDo(doRequest);
+      return responseForVisitor(await tunnelDo(doRequest), null, []);
     }
     const cached = await serveWithCache(
       request,
@@ -501,7 +601,7 @@ const gate = {
       );
     }
 
-    if (cached.cacheable) return response;
+    if (cached.cacheable) return responseForVisitor(response, null, []);
 
     const setCookies: string[] = [];
     const desktopRefreshGrant = verifiedDesktop?.refreshGrant ?? null;
@@ -531,9 +631,7 @@ const gate = {
       );
       if (refreshed !== null) setCookies.push(...refreshed);
     }
-    return setCookies.length === 0
-      ? response
-      : withSetCookies(response, setCookies);
+    return responseForVisitor(response, null, setCookies);
   },
 };
 

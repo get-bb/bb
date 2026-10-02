@@ -14,7 +14,7 @@ import {
   type PluginComposerPlusMenuSelection,
 } from "@/components/plugin/PluginComposerActions";
 import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
-import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
+import { useOptionalPluginComposerStaticView } from "@/components/plugin/plugin-composer-host";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -38,7 +38,7 @@ interface PromptBoxActionsMenuProps {
 export function ComposerPlusMenuSlot(
   props: Omit<PromptBoxActionsMenuProps, "pluginItems">,
 ) {
-  const view = useOptionalPluginComposerView();
+  const view = useOptionalPluginComposerStaticView();
   const pluginItems = useResolvedComposerPlusMenuItems(
     view?.scope.kind ?? null,
   );

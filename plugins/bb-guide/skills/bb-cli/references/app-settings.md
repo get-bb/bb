@@ -141,7 +141,9 @@ so they carry over between navigation plugins.
   `bb settings general allowFastServiceTier <true|false|on|off>` or use the
   switch in Settings → Providers.
 - When disabled, new turns use the default tier even if a request, project
-  default, automation, or queued message selected fast. The app hides Fast mode.
+  default, automation, or queued message selected another tier (`fast`, Codex
+  `ultrafast`, or any other tier a provider lists). The app hides the service
+  tier control.
   Turn it on to choose fast again; project defaults saved while it was off
   retain the default tier.
 
@@ -203,14 +205,6 @@ so they carry over between navigation plugins.
 - The `changelogPreview` experiment defaults to false.
 - Enable it with `bb settings experiment changelogPreview true` to show the
   latest release notes on Settings → Updates.
-
-## Legacy plugin loader
-
-- The `legacyJitiPluginLoader` experiment defaults to false.
-- Enable it with `bb settings experiment legacyJitiPluginLoader true`.
-- Running plugins are unchanged when it is toggled. The selected loader applies
-  the next time a plugin is installed, reloaded, enabled, updated, or loaded
-  after a server restart.
 
 ## Timeline windowing
 

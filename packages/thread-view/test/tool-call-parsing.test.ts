@@ -30,6 +30,34 @@ describe("tool-call shell parsing", () => {
     );
   });
 
+  it.each([
+    "rg value src && cat > output.txt <<'EOF'\nvalue\nEOF",
+    "cat src.ts | tee output.txt; rg value src",
+    "rg value src || sed -i s/a/b/ src.ts",
+    "rg value src\ncat src.ts &>> output.txt",
+    "rg value src; cat src.ts 1>| output.txt",
+    "rg value src; cat <> output.txt",
+  ])("lets a later write disqualify an earlier read: %s", (command) => {
+    expect(parseShellCommandIntents(command)).toEqual([]);
+  });
+
+  it.each([
+    "rg value src; cat '<' '>' '&&' '|'",
+    "rg value src && cat < input.txt 2> errors.txt",
+    "rg value src; cat > /dev/null",
+    "rg value src; cat <<< 'words'",
+    "rg value src; cat <(printf words)",
+    "rg value src; printf '%s' '$(cat > output.txt)'",
+    'rg value src; printf "%s" "`cat > output.txt`"',
+    "rg value src; cat \\> \\|",
+    "rg value src; cat 'line one\nline two'",
+    "rg value src; cat unfinished\\",
+  ])("retains the first intent through non-writing suffixes: %s", (command) => {
+    expect(parseShellCommandIntents(command)).toEqual([
+      { type: "search", cmd: command, query: "value", path: "src" },
+    ]);
+  });
+
   it("unwraps known shell wrappers before intent parsing", () => {
     const command = extractShellCommandFromString(
       '/bin/zsh -lc "grep \\"a|b\\" src/app.ts"',

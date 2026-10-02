@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
   platform: { OS: "android" },
+  autoRegistration: vi.fn(async () => undefined),
+  unregister: vi.fn(async () => undefined),
   channel: vi.fn(async () => undefined),
   permission: vi.fn(async () => ({ granted: true })),
   token: vi.fn(async () => ({ data: "ExponentPushToken[test]" })),
@@ -10,6 +12,8 @@ const native = vi.hoisted(() => ({
 vi.mock("react-native", () => ({ Platform: native.platform }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: {} } }));
 vi.mock("expo-notifications", () => ({
+  setAutoServerRegistrationEnabledAsync: native.autoRegistration,
+  unregisterForNotificationsAsync: native.unregister,
   AndroidImportance: { MAX: 5 },
   IosAuthorizationStatus: { PROVISIONAL: 3 },
   setNotificationChannelAsync: native.channel,
@@ -25,6 +29,14 @@ beforeEach(() => {
 });
 
 describe("Android notification permission", () => {
+  it("stops Expo token recreation before deleting the Android token", async () => {
+    await createExpoPushModule().unregisterDevicePushToken();
+    expect(native.autoRegistration).toHaveBeenCalledWith(false);
+    expect(native.autoRegistration.mock.invocationCallOrder[0]).toBeLessThan(
+      native.unregister.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it("creates the channel before asking permission, even before a token exists", async () => {
     const notifications = createExpoPushModule();
     expect(await notifications.requestPermission()).toBe("granted");
@@ -43,6 +55,8 @@ describe("Android notification permission", () => {
   it("does not call the Android channel API on iOS", async () => {
     native.platform.OS = "ios";
     await createExpoPushModule().requestPermission();
+    await createExpoPushModule().unregisterDevicePushToken();
+    expect(native.unregister).not.toHaveBeenCalled();
     expect(native.channel).not.toHaveBeenCalled();
     expect(native.permission).toHaveBeenCalledOnce();
   });

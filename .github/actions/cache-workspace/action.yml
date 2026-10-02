@@ -10,6 +10,9 @@ inputs:
   turbo-cache:
     default: "true"
     description: Whether to cache Turbo outputs
+  turbo-cache-max-size-mb:
+    default: "1024"
+    description: Maximum saved Turbo cache size in MB
 runs:
   using: composite
   steps:
@@ -43,4 +46,4 @@ runs:
     - name: Prune restored Turbo cache
       if: inputs.turbo-cache == 'true'
       shell: bash
-      run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
+      run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb "${{ inputs.turbo-cache-max-size-mb }}"

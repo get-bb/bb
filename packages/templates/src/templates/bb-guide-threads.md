@@ -45,7 +45,8 @@ Spawning:
                                    none). Required when the provider declares inputs,
                                    refused when it does not
     --machine <id-or-name>         Run on a machine (--host is an alias)
-    --service-tier <tier>          Service tier: fast, default
+    --service-tier <tier>          Service tier id the provider lists for the model, such as
+                                   default or fast (see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section

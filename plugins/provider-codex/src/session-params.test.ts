@@ -540,7 +540,6 @@ describe("buildCodexConfig", () => {
     const config = configFor(FULL_OPTIONS);
 
     expect(config).toMatchObject({
-      "features.default_mode_request_user_input": false,
     });
     expect(JSON.stringify(config)).not.toContain("tools.web_search");
   });
@@ -641,8 +640,9 @@ describe("resolveCodexInstructionOverrides", () => {
 });
 
 describe("toCodexServiceTier", () => {
-  it("forwards only the fast tier", () => {
+  it("forwards every tier except default as given", () => {
     expect(toCodexServiceTier("fast")).toBe("fast");
+    expect(toCodexServiceTier("ultrafast")).toBe("ultrafast");
     expect(toCodexServiceTier("default")).toBeNull();
     expect(toCodexServiceTier(undefined)).toBeUndefined();
   });

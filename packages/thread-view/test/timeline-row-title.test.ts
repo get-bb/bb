@@ -1067,6 +1067,41 @@ describe("buildTimelineRowTitle", () => {
 
   it.each([
     {
+      status: "pending" as const,
+      output: "",
+      expectedPlain: "Running skill code-review",
+    },
+    {
+      status: "completed" as const,
+      output: 'Skill "code-review" completed (forked execution).',
+      expectedPlain: "Ran skill code-review (45s)",
+    },
+  ])(
+    "titles a $status tool call promoted to a delegation by its presentation title",
+    ({ status, output, expectedPlain }) => {
+      const row = {
+        ...delegationRow(),
+        status,
+        completedAt: status === "pending" ? null : 45_001,
+        toolName: "Skill",
+        subagentType: null,
+        description: null,
+        output,
+        presentation: {
+          label: { pending: "Running skill", completed: "Ran skill" },
+          icon: { glyph: "Zap" },
+          title: "code-review",
+        },
+      } satisfies TimelineViewDelegationWorkRow;
+
+      const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
+
+      expect(title.plain).toBe(expectedPlain);
+    },
+  );
+
+  it.each([
+    {
       status: "error" as const,
       expectedPlain:
         "Failed subagent: Review correctness + plan adherence (general-purpose-review-agent-with-a-long-name) (45s)",

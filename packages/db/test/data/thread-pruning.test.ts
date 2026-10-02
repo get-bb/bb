@@ -22,6 +22,7 @@ import {
   getLatestStoredRateLimitsEvent,
   listThreadTurnInterruptionEventStates,
 } from "../../src/data/events.js";
+import { advanceLiveEventPruning } from "../../src/data/resolved-item-pruning.js";
 import { getThreadEventRewriteGeneration } from "../../src/data/event-rewrite-generation.js";
 import { THREAD_CONTEXT_CLEAR_OPERATION, turnScope } from "@bb/domain";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
@@ -83,6 +84,45 @@ function sequences(f: Fixture) {
 }
 
 describe("thread pruning", () => {
+  it("requires output presence only when pruning command output deltas", () => {
+    const f = setup();
+    try {
+      let sequence = 0;
+      const retained: number[] = [];
+      for (const [itemKind, type] of [
+        ["agentMessage", "item/agentMessage/delta"],
+        ["reasoning", "item/reasoning/textDelta"],
+        ["commandExecution", "item/commandExecution/outputDelta"],
+      ] as const) {
+        for (const [data, hasOutput] of [
+          ["malformed", false],
+          ["{}", false],
+          ['{"item":{"aggregatedOutput":null}}', true],
+          ['{"item":{"aggregatedOutput":42}}', true],
+          ['{"item":{"aggregatedOutput":"done"}}', true],
+        ] as const) {
+          const itemId = `item-${sequence}`;
+          seed(f, ++sequence, { type, itemId });
+          retained.push(sequence);
+          seed(f, ++sequence, { type, itemId });
+          if (itemKind === "commandExecution" && !hasOutput)
+            retained.push(sequence);
+          seed(f, ++sequence, {
+            type: "item/completed",
+            itemKind,
+            itemId,
+            data,
+          });
+          retained.push(sequence);
+        }
+      }
+      cycle(f, "resolved-items");
+      expect(sequences(f)).toEqual(retained);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("rotates scoped live policies durably and drains active usage without global idle cleanup", () => {
     let f = setup();
     try {
@@ -747,6 +787,57 @@ describe("thread pruning", () => {
     }
   });
 
+  it("preserves the first delta of each type across batches with reversed storage order", () => {
+    const f = setup();
+    try {
+      const types = [
+        "item/agentMessage/delta",
+        "item/commandExecution/outputDelta",
+        "item/reasoning/summaryTextDelta",
+        "item/reasoning/textDelta",
+      ] as const;
+      for (const [index, itemKind] of (
+        ["agentMessage", "commandExecution", "reasoning"] as const
+      ).entries()) {
+        seed(f, 13 + index, {
+          type: "item/completed",
+          itemId: "item",
+          itemKind,
+          data: '{"item":{"aggregatedOutput":"complete"}}',
+        });
+      }
+      for (let sequence = 12; sequence > 0; sequence--) {
+        seed(f, sequence, {
+          type: types[(sequence - 1) % types.length],
+          itemId: "item",
+        });
+      }
+      seed(f, 16, { type: "turn/completed" });
+      let complete = false;
+      let removed = 0;
+      for (let i = 0; i < 30; i++) {
+        const batch = f.db.transaction((tx) =>
+          advanceLiveEventPruning(tx, {
+            threadId: f.thread.id,
+            kind: "deltas",
+            limit: 5,
+          }),
+        );
+        expect(batch.scanned).toBeLessThanOrEqual(5);
+        removed += batch.removed;
+        if (batch.complete) {
+          complete = true;
+          break;
+        }
+      }
+      expect(complete).toBe(true);
+      expect(removed).toBe(8);
+      expect(sequences(f)).toEqual([1, 2, 3, 4, 13, 14, 15, 16]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("rechecks archive status and the latest-event safeguard between rate batches", () => {
     const f = setup();
     try {
@@ -831,6 +922,93 @@ describe("thread pruning", () => {
       }
     },
   );
+
+  it("retains the latest context snapshot boundary through pruning between estimates", () => {
+    const f = setup();
+    try {
+      const usage = (sequence: number, values: object) =>
+        seed(f, sequence, {
+          type: "thread/contextWindowUsage/updated",
+          data: JSON.stringify({
+            contextWindowUsage: { estimated: true, ...values },
+          }),
+        });
+      usage(1, {
+        usedTokens: 128000,
+        modelContextWindow: 256000,
+        snapshot: {
+          contextWindowTokens: 256000,
+          autoCompactAtTokens: 223000,
+        },
+      });
+      usage(2, { usedTokens: 140000, modelContextWindow: 1000000 });
+      usage(3, { usedTokens: 150000, modelContextWindow: 1000000 });
+      cycle(f, "usage");
+      expect(sequences(f)).toEqual([1, 3]);
+      usage(4, { usedTokens: null, modelContextWindow: null });
+      usage(5, { usedTokens: 160000, modelContextWindow: 1000000 });
+      cycle(f, "usage");
+      expect(sequences(f)).toEqual([4, 5]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("reports exact removed UTF-8 bytes while retaining usage keepers", () => {
+    const f = setup();
+    try {
+      const context = (modelContextWindow: number | null) =>
+        JSON.stringify({
+          contextWindowUsage: { modelContextWindow },
+          text: "é🙂",
+        });
+      const payloads = [
+        context(200000),
+        context(null),
+        context(null),
+        "",
+        "é🙂\0x",
+        "{}",
+        "malformed",
+      ];
+      for (const [index, data] of payloads.entries())
+        seed(f, index + 1, {
+          type:
+            index < 3
+              ? "thread/contextWindowUsage/updated"
+              : "thread/tokenUsage/updated",
+          data,
+        });
+      seed(f, 8, {
+        type: "turn/started",
+        turnId: "nested",
+        parentToolCallId: "tool",
+      });
+      seed(f, 9, {
+        type: "thread/tokenUsage/updated",
+        turnId: "nested",
+        data: "{}",
+      });
+      seed(f, 10, { type: "turn/completed" });
+      const results = cycle(f, "usage");
+      expect(sequences(f)).toEqual([1, 3, 7, 8, 10]);
+      expect(results.reduce((total, result) => total + result.removed, 0)).toBe(
+        5,
+      );
+      expect(
+        results.reduce((total, result) => total + result.removedBytes, 0),
+      ).toBe(
+        Buffer.byteLength(context(null)) + Buffer.byteLength("é🙂\0x") + 4,
+      );
+      expect(
+        results
+          .filter((result) => result.removed === 0)
+          .every((result) => result.removedBytes === 0),
+      ).toBe(true);
+    } finally {
+      f.db.$client.close();
+    }
+  });
 
   it("restarts usage keeper discovery after a keeper disappears during a visit", () => {
     const f = setup();

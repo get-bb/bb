@@ -1865,7 +1865,9 @@ describe("dispatchCommand", () => {
         createInstallationGatedThreadStart("thread-3"),
         options,
       );
-      expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+      await vi.waitFor(() => {
+        expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+      });
     } finally {
       now.mockRestore();
     }

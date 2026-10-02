@@ -33,7 +33,11 @@ function run(script: string, env: Record<string, string>) {
   });
 }
 
-it("keeps trusted automation pull requests open", () => {
+it("keeps trusted automation pull requests open", ({ skip }) => {
+  skip(
+    process.platform === "win32",
+    "this workflow step runs in bash on Linux runners",
+  );
   const script = `gh() { printf '%s\\n' "$*"; }\n${stepScript("pr-gate.yml", "Check approval and close unapproved PRs")}`;
   const gate = (author: string) =>
     run(script, {
@@ -51,7 +55,11 @@ it("keeps trusted automation pull requests open", () => {
   expect(gate("untrusted-automation[bot]").stdout).toContain("pr close");
 });
 
-it("parses only complete GitHub user and bot approval commands", () => {
+it("parses only complete GitHub user and bot approval commands", ({ skip }) => {
+  skip(
+    process.platform === "win32",
+    "this workflow step runs in bash on Linux runners",
+  );
   const workflow = stepScript("approve-contributor.yml", "Add name and push");
   const parser = `${workflow.slice(0, workflow.indexOf("list_path="))}printf '%s' "$target"`;
   for (const [comment, target] of [

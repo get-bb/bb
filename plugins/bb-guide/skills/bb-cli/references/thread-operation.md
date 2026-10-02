@@ -180,6 +180,13 @@ For review or fix pipelines, get the environment ID from
   explicit host ID; terminal commands never silently fall back to the server machine.
 - Start a server with
   `bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"`.
+- A terminal runs the machine's own shell: `$SHELL` (then zsh, bash, sh) on
+  macOS and Linux; PowerShell 7, then Windows PowerShell, then cmd on Windows.
+  `--command` text is parsed by that shell, so write it in that shell's syntax.
+  When the target may be Windows, pass the program and its arguments after `--`
+  instead (`bb terminal create --thread <id> -- pnpm test "my file.ts"`); the
+  machine quotes each argument for its shell. The terminal's exit code is the
+  command's exit code on every shell.
 - `bb terminal start` is an alias for create. `bb terminal stop` is an alias
   for close.
 - Use `bb terminal show`, `attach`, and `resize` for session inspection,
@@ -195,7 +202,8 @@ For review or fix pipelines, get the environment ID from
   continue with `--since-seq <nextSeq>` when polling. The response carries
   `status`, `exitCode`, and `closeReason`. Output stays readable for 30 minutes
   after the command exits, until the machine's daemon restarts. Use
-  `bb terminal send <terminal-id> --text "..." --enter` for interactive input,
+  `bb terminal send <terminal-id> --text "..." --enter` for interactive input
+  (`--enter` presses Enter),
   `bb terminal rename <terminal-id> <title>` to rename, and
   `bb terminal close <terminal-id>` when the process is no longer needed.
 - `bb terminal restart <terminal-id>` replaces the session with a shell in the

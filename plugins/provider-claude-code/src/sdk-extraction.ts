@@ -63,7 +63,6 @@ interface ClaudeCommandExecutionOutputArgs {
 const CLAUDE_EMPTY_BASH_OUTPUT_PLACEHOLDERS = [
   "(Bash completed with no output)",
 ] as const;
-const DEFAULT_CLAUDE_CONTEXT_WINDOW = 200_000;
 const LARGE_CLAUDE_CONTEXT_WINDOW = 1_000_000;
 const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
   "best",
@@ -362,8 +361,5 @@ export function resolveClaudeModelContextWindowHint(
   ) {
     return LARGE_CLAUDE_CONTEXT_WINDOW;
   }
-  if (selectedModel === "default") {
-    return null;
-  }
-  return DEFAULT_CLAUDE_CONTEXT_WINDOW;
+  return null;
 }

@@ -30,6 +30,7 @@ const HOST_DEPENDENCIES = [
 ] as const;
 const HOST_DAEMON_FILES = [
   "bb",
+  "bb.cmd",
   "bb-parcel-watcher-child.mjs",
   "bb-plugin-host-worker.mjs",
   "bb-provider-bridge-worker.mjs",
@@ -172,7 +173,7 @@ function hostPackageJson(packageJson: BbAppPackageJson): object {
     version: packageJson.version,
     description: "bb enrolled host runtime",
     type: "module",
-    os: packageJson.os,
+    os: [...new Set([...packageJson.os, "win32"])],
     bin: {
       bb: "dist/bb.js",
       "bb-app": "dist/bb-app.js",

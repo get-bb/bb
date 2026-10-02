@@ -3,13 +3,19 @@ import type {
   CommandOf,
 } from "../command-dispatch-support.js";
 import {
+  LifecycleScriptTerminationUnverifiedError,
   runSetupScript,
   runTeardownScript,
 } from "../environment-lifecycle-script.js";
 
+interface HookOutcome {
+  terminationUnverified: boolean;
+}
+
 interface HookOperation {
   controller: AbortController;
   done: Promise<Record<string, never>>;
+  outcome: HookOutcome;
   path: string;
   kind: "setup" | "teardown";
 }
@@ -45,6 +51,7 @@ export async function runEnvironmentHook(
   if (command.resumeOnly)
     throw new Error("Environment hook outcome is unknown after daemon restart");
   const controller = new AbortController();
+  const outcome: HookOutcome = { terminationUnverified: false };
   const done = Promise.resolve().then(
     async (): Promise<Record<string, never>> => {
       const run = command.kind === "setup" ? runSetupScript : runTeardownScript;
@@ -68,6 +75,9 @@ export async function runEnvironmentHook(
             }),
         });
       } catch (error) {
+        if (error instanceof LifecycleScriptTerminationUnverifiedError) {
+          outcome.terminationUnverified = true;
+        }
         throw new Error(error instanceof Error ? error.message : String(error));
       }
       return {};
@@ -76,6 +86,7 @@ export async function runEnvironmentHook(
   active.set(command.operationId, {
     controller,
     done,
+    outcome,
     path: command.path,
     kind: command.kind,
   });
@@ -94,5 +105,7 @@ export async function cancelEnvironmentHook(
   }
   operation.controller.abort();
   await operation.done.catch(() => undefined);
-  return { status: "terminated" };
+  return {
+    status: operation.outcome.terminationUnverified ? "unknown" : "terminated",
+  };
 }

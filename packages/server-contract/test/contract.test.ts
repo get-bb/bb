@@ -1466,12 +1466,19 @@ describe("server-contract canonical schemas", () => {
       }),
     ).toThrow("Project path must be an absolute path.");
 
+    expect(
+      contract.updateProjectSourceRequestSchema.parse({
+        type: "local_path",
+        path: " c:/Users/michael/bb/ ",
+      }),
+    ).toMatchObject({ path: "C:\\Users\\michael\\bb" });
+
     expect(() =>
       contract.updateProjectSourceRequestSchema.parse({
         type: "local_path",
-        path: " C:\\Users\\michael\\bb\\ ",
+        path: "\\\\server\\share\\bb",
       }),
-    ).toThrow("Native Windows paths are not supported");
+    ).toThrow("Windows network paths are not supported");
 
     expect(() =>
       contract.updateProjectSourceRequestSchema.parse({

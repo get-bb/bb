@@ -1408,6 +1408,65 @@ describe("events", () => {
     ).toEqual([2, 5]);
   });
 
+  it("includes the latest snapshot or invalidation in bounded context reads", () => {
+    const { db, thread } = setup();
+    const appendUsage = (sequence: number, contextWindowUsage: object) => {
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence,
+          type: "thread/contextWindowUsage/updated",
+          ...threadEventFields,
+          data: JSON.stringify({ contextWindowUsage }),
+        },
+      ]);
+    };
+    const readSequences = (sequenceStart = 0) =>
+      listContextWindowUsageRows(db, {
+        threadId: thread.id,
+        sequenceStart,
+      }).map((row) => row.sequence);
+    appendUsage(1, {
+      usedTokens: 128_000,
+      modelContextWindow: 256_000,
+      estimated: true,
+      snapshot: {
+        capturedAt: "2026-09-11T12:00:00.000Z",
+        providerSessionId: "session-1",
+        providerTurnId: null,
+        model: "claude-test",
+        usedTokens: 128_000,
+        contextWindowTokens: 256_000,
+        autoCompactAtTokens: 230_000,
+        estimated: true,
+        categories: [],
+      },
+    });
+    appendUsage(2, {
+      usedTokens: 140_000,
+      modelContextWindow: 1_000_000,
+      estimated: true,
+    });
+    appendUsage(3, {
+      usedTokens: 150_000,
+      modelContextWindow: 1_000_000,
+      estimated: true,
+    });
+    expect(readSequences()).toEqual([1, 3]);
+    expect(readSequences(2)).toEqual([3]);
+    appendUsage(4, {
+      usedTokens: null,
+      modelContextWindow: null,
+      estimated: true,
+    });
+    appendUsage(5, {
+      usedTokens: 160_000,
+      modelContextWindow: 1_000_000,
+      estimated: true,
+    });
+    expect(readSequences()).toEqual([4, 5]);
+  });
+
   it("lists bounded request-position hints without interpreting input", () => {
     const { db, thread } = setup();
 
@@ -1825,6 +1884,63 @@ describe("events", () => {
       ).toBe(expected);
     },
   );
+
+  it("updates the parented boundary when nested history appears or is removed", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "root" }),
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        ...createTurnEventFields({ turnId: "root" }),
+        itemId: "parent",
+        itemKind: "toolCall",
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: JSON.stringify({
+          initiator: "user",
+          input: textInput("next request"),
+          target: { kind: "new-turn" },
+        }),
+      },
+    ]);
+    const read = (maxSeq: number) =>
+      getFirstParentedTimelineBoundarySequence(db, {
+        threadId: thread.id,
+        sequenceStart: 0,
+        maxSeq,
+      });
+    expect(read(3)).toBeNull();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "child" }),
+        parentToolCallId: "parent",
+        data: JSON.stringify({ parentToolCallId: "parent" }),
+      },
+    ]);
+    expect(read(3)).toBeNull();
+    expect(read(4)).toBe(3);
+    db.$client
+      .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = 4")
+      .run(thread.id);
+    expect(read(4)).toBeNull();
+    db.$client.close();
+  });
 
   it("loads timeline event windows with sequence bounds and exclusions", () => {
     const { db, thread } = setup();

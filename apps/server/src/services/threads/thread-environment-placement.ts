@@ -42,6 +42,8 @@ import { getProjectSourceByHost, type EnvironmentRow } from "@bb/db";
 import { z } from "zod";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
 import {
+  canonicalizeHostPath,
+  isAbsoluteHostPath,
   jsonValueSchema,
   PERSONAL_PROJECT_ID,
   isLocalPathProjectSource,
@@ -1290,7 +1292,7 @@ async function providerPlacement(
     const parsed = z
       .string()
       .min(1)
-      .startsWith("/")
+      .refine(isAbsoluteHostPath)
       .refine((path) => !path.includes("\0"))
       .nullable()
       .safeParse(invocation.value);
@@ -1302,7 +1304,7 @@ async function providerPlacement(
       );
     }
     if (parsed.data !== null) {
-      const path = parsed.data.replace(/\/+$/u, "") || "/";
+      const path = canonicalizeHostPath(parsed.data);
       const hostId = selection.machine.hostId;
       const refusal = foreignProjectOwnedPathRefusal(deps.db, {
         projectId,

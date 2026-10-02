@@ -100,13 +100,20 @@ async function initSshRemoteRepo() {
   const sshScriptPath = path.join(repoPath, "recording-ssh.sh");
   await fs.writeFile(
     sshScriptPath,
-    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(sshLogPath)}\nprintf 'GIT_TERMINAL_PROMPT=%s\\n' "\${GIT_TERMINAL_PROMPT-unset}" >> ${JSON.stringify(sshLogPath)}\nexit 255\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(sshLogPath.replaceAll("\\", "/"))}\nprintf 'GIT_TERMINAL_PROMPT=%s\\n' "\${GIT_TERMINAL_PROMPT-unset}" >> ${JSON.stringify(sshLogPath.replaceAll("\\", "/"))}\nexit 255\n`,
     { encoding: "utf8", mode: 0o755 },
   );
   await runGit(["remote", "add", "origin", "ssh://git.invalid/repo.git"], {
     cwd: repoPath,
   });
-  await runGit(["config", "core.sshCommand", sshScriptPath], { cwd: repoPath });
+  await runGit(
+    [
+      "config",
+      "core.sshCommand",
+      "'" + sshScriptPath.replaceAll("\\", "/").replaceAll("'", "'\\''") + "'",
+    ],
+    { cwd: repoPath },
+  );
   return { repoPath, sshLogPath };
 }
 
@@ -210,25 +217,28 @@ describe("runGitWithNullRecordLimit", () => {
     });
   });
 
-  it("does not confuse a regular numstat path ending in a tab with a rename", async () => {
-    const repoPath = await initReadGitBlobRepo();
-    const unusualPath = "trailing-tab\t";
-    await fs.writeFile(path.join(repoPath, unusualPath), "one\n");
-    await runGit(["add", unusualPath], { cwd: repoPath });
+  it.skipIf(process.platform === "win32")(
+    "does not confuse a regular numstat path ending in a tab with a rename",
+    async () => {
+      const repoPath = await initReadGitBlobRepo();
+      const unusualPath = "trailing-tab\t";
+      await fs.writeFile(path.join(repoPath, unusualPath), "one\n");
+      await runGit(["add", unusualPath], { cwd: repoPath });
 
-    const result = await runGitWithNullRecordLimit(
-      ["diff", "--cached", "--numstat", "-z", "HEAD"],
-      { cwd: repoPath },
-      "numstat",
-      1,
-    );
+      const result = await runGitWithNullRecordLimit(
+        ["diff", "--cached", "--numstat", "-z", "HEAD"],
+        { cwd: repoPath },
+        "numstat",
+        1,
+      );
 
-    expect(result.recordLimitReached).toBe(true);
-    expect(result.recordCount).toBe(1);
-    expect(parseNumstatEntriesZ(result.stdout)).toEqual([
-      { path: unusualPath, insertions: 1, deletions: 0 },
-    ]);
-  });
+      expect(result.recordLimitReached).toBe(true);
+      expect(result.recordCount).toBe(1);
+      expect(parseNumstatEntriesZ(result.stdout)).toEqual([
+        { path: unusualPath, insertions: 1, deletions: 0 },
+      ]);
+    },
+  );
 });
 
 describe("detectGitRepoKind", () => {
@@ -413,11 +423,12 @@ describe("command timeouts", () => {
   it("classifies git command timeouts as hard failures when allowFailure is true", async () => {
     const repoPath = await initEmptyRepo();
 
+    await fs.writeFile(path.join(repoPath, ".git", "packed-refs.lock"), "");
     await expect(
-      runGit(["-c", "alias.bb-sleep=!sleep 5", "bb-sleep"], {
+      runGit(["-c", "core.packedRefsTimeout=10000", "pack-refs", "--all"], {
         cwd: repoPath,
         allowFailure: true,
-        timeoutMs: 10,
+        timeoutMs: 500,
       }),
     ).rejects.toMatchObject({
       code: "git_command_timeout",
@@ -429,10 +440,10 @@ describe("command timeouts", () => {
     const repoPath = await initEmptyRepo();
 
     await expect(
-      runShellPipeline("sleep 5", [], {
+      runShellPipeline("while :; do :; done", [], {
         cwd: repoPath,
         allowFailure: true,
-        timeoutMs: 10,
+        timeoutMs: 500,
       }),
     ).rejects.toMatchObject({
       code: "shell_pipeline_timeout",
@@ -476,19 +487,44 @@ describe("user-shell Git resolution", () => {
       path.join(os.tmpdir(), "bb-git-shell-path-bin-"),
     );
     tempDirs.push(workspacePath, binPath);
-    const gitPath = path.join(binPath, "git");
-    await fs.writeFile(gitPath, "#!/bin/sh\nprintf 'user-shell-git\\n'\n");
-    await fs.chmod(gitPath, 0o755);
+    const shell =
+      process.platform === "win32"
+        ? (
+            await runGit(["var", "GIT_SHELL_PATH"], { cwd: workspacePath })
+          ).stdout.trim()
+        : "/bin/sh";
+    const gitPath = path.join(
+      binPath,
+      process.platform === "win32" ? "git.cmd" : "git",
+    );
+    await fs.writeFile(
+      gitPath,
+      process.platform === "win32"
+        ? `@echo off\r\nif "%~1"=="var" (echo ${shell}) else (echo user-shell-git)\r\n`
+        : "#!/bin/sh\nprintf 'user-shell-git\\n'\n",
+      { mode: 0o755 },
+    );
+    if (process.platform === "win32") {
+      await fs.writeFile(
+        path.join(binPath, "git"),
+        "#!/bin/sh\nprintf 'user-shell-git\\n'\n",
+        { mode: 0o755 },
+      );
+    }
 
     await expect(
       runGit(["--version"], { cwd: workspacePath, shellPath: binPath }),
-    ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
+    ).resolves.toMatchObject({
+      stdout: expect.stringMatching(/^user-shell-git\r?\n$/),
+    });
     await expect(
       runShellPipeline("git --version", [], {
         cwd: workspacePath,
         shellPath: binPath,
       }),
-    ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
+    ).resolves.toMatchObject({
+      stdout: expect.stringMatching(/^user-shell-git\r?\n$/),
+    });
   });
 });
 

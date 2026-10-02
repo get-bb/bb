@@ -88,7 +88,7 @@ describe("builtin host artifacts", () => {
 
     expect(result).toEqual({
       enabled: false,
-      supported: process.platform === "darwin",
+      supported: process.platform === "darwin" || process.platform === "win32",
     });
   }, 20_000);
 

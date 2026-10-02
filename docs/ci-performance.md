@@ -1,7 +1,8 @@
 # CI performance
 
-The main CI workflow keeps build/typecheck/lint, server tests, three app test
-shards, integration tests, package tests, plugin tests, fork checks, and package
+The main CI workflow keeps build/typecheck/lint, two server test shards, three app test
+shards, integration tests, three package test groups, plugin tests, three fork
+check shards, and package
 smokes independent. Node 24/26 compatibility smokes run on main and manual runs.
 
 ## Fork checks
@@ -17,11 +18,17 @@ Use `node scripts/check-plugin-forks.mjs --changed-from=<sha> --list` to inspect
 the selection without installing or building anything. Remove `--list` to run
 it. Explicit plugin directories and `--changed-from` are mutually exclusive.
 
+CI partitions the selected plugins over three runners using `--shard=1/3`,
+`--shard=2/3`, and `--shard=3/3`. Each plugin runs exactly once. Selection happens
+before partitioning, so small plugin-only changes leave unused shards empty;
+those shards skip setup. Each runner retains at most four concurrent plugin
+checks. `--list` reports the same shard selection used for execution.
+
 ## Setup budgets
 
 CI installs Node and the checksum-verified pnpm executable before restoring
 caches. Optional pnpm and Turbo restores share a one-minute step budget. A
-timeout falls back to a cold install after removing partial restores. Individual
+timeout falls back to a cold install using fresh cache directories. Individual
 download segments also have a one-minute limit. Bun downloads directly instead
 of waiting for its executable cache.
 
@@ -35,14 +42,40 @@ the CI workflow's outer step budgets.
 pnpm can restore the most recent store for the same OS and architecture when a
 lockfile changes. The frozen install still resolves the exact lockfile contents
 and verifies store integrity. Turbo caches are pruned after restoration and
-before successful CI jobs save them. macOS smoke jobs still omit Turbo caching.
+before successful CI jobs save them. Windows restores the pnpm store for both
+jobs and Turbo build outputs for app smoke, capped at 256 MB to bound transfer
+and storage costs. Windows installs retain `--ignore-scripts`; foundation tests
+still run with `--force`. macOS smoke jobs still omit Turbo caching.
+
+PR runs cancel superseded work. Main concurrency groups include the commit SHA,
+so different main commits can run concurrently and each successful job saves its
+cache. The old shared main group delayed job creation by up to three minutes in
+the October 1 sample. Runner provisioning and fleet capacity remain external
+limits; removing workflow serialization does not guarantee immediate starts.
 
 ## Test balancing and measurement
 
-The former catch-all packages job is split into `bb-plugin-*` tests and all
-remaining tests outside app/server/integration. Negative filters make new
-packages enter one of these jobs automatically. Both retain four concurrent
-Turbo tasks. Only the non-plugin job installs Electron's runtime libraries.
+Server tests split by file into two Vitest shards. Turbo hashes the shard
+arguments, preventing one shard's result from satisfying the other.
+
+Package tests split by package, because some packages use Bun or Node test
+runners that do not accept Vitest's shard arguments:
+
+- `packages-host`: host daemon, CLI, agent runtime, provider parity, and database.
+- `packages-build`: templates, bb-app, demo server, desktop, and plugin build.
+- `packages-other`: every remaining non-plugin package outside app, server, and
+  integration. Negative filters automatically include new packages.
+
+The `plugins` group runs `bb-plugin-*`. All groups retain four concurrent Turbo
+tasks. Only `packages-build` needs Electron's runtime libraries and Xvfb.
+
+The October 1 investigation sampled 35 completed runs. The 26 successful runs
+without retries finished in a median 3m48s. Windows smoke finished last in 15 of
+20 runs containing it, with median install/build/package steps of 53s/71s/38s.
+Fork checking took a median 2m46s inside its main step; packages and server test
+steps took about 2m16s and 2m07s. These are baseline measurements, not projected
+improvements. After merge, compare cold and warm runs separately and check that
+additional runners do not increase capacity waits or cache eviction.
 
 The September 29, 2026 cold run [36597970177](https://github.com/get-bb/bb/actions/runs/36597970177)
 spent five minutes in the original catch-all test step. Its logged Vitest

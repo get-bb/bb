@@ -51,7 +51,7 @@
         "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/plugins/plugin-api-docs/src/anatomy-manifest.json",
         "$TURBO_ROOT$/plugins/theme-preview/taxonomy.ts",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     "@bb/demo-server#test": {
@@ -137,7 +137,7 @@
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/scripts/*.mjs",
         "$TURBO_ROOT$/turbo.json",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     "@bb/server#build": {
@@ -269,6 +269,12 @@
       "outputs": ["release/**"],
       "passThroughEnv": ["*"]
     },
+    "@bb/desktop#desktop:build:win": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
     "@bb/desktop#smoke:packaged": {
       "cache": false,
       "outputs": [],
@@ -286,6 +292,12 @@
       "passThroughEnv": ["*"]
     },
     "@bb/desktop#package:linux": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#package:win": {
       "dependsOn": ["bb-app#build", "@bb/desktop#build"],
       "cache": false,
       "outputs": ["release/**"],
@@ -321,7 +333,7 @@
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/vitest.shared.ts",
+        "$TURBO_ROOT$/vitest*.ts",
         "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
         "$TURBO_ROOT$/apps/app/src/lib/themes/**"
       ]
@@ -523,7 +535,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/plugins/bb-guide/skills/bb-cli/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     // Integration tests typecheck without the `source` condition, so
@@ -539,7 +551,7 @@
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     // The source-wrapper test invokes the root `pnpm bb` script, which builds
@@ -566,7 +578,7 @@
         "$TURBO_ROOT$/plugins/plugin-api-docs/src/first-party-plugins.json",
         "$TURBO_ROOT$/packages/bundled-plugins/package.json",
         "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     "@bb/provider-parity#test": {
@@ -587,13 +599,13 @@
         "$TURBO_ROOT$/plugins/provider-pi/package.json",
         "$TURBO_ROOT$/plugins/provider-pi/src/**",
         "$TURBO_ROOT$/plugins/provider-pi/tsconfig.json",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ],
       "passThroughEnv": ["UPDATE_PARITY_ROW_COUNTS"]
     },
     "test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
       // Re-pin knobs a suite reads to rewrite its own committed baseline.
       // Turbo strips undeclared variables, so a documented re-pin command
       // (`UPDATE_PARITY_ROW_COUNTS=1 pnpm exec turbo run test …`) silently
@@ -605,7 +617,7 @@
     },
     "@bb/desktop#test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
       "passThroughEnv": ["DISPLAY"]
     },
     // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
@@ -617,7 +629,7 @@
         "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"]
     },
     // Installs first-party provider plugins, which makes the plugin runtime
     // build their host artifacts. esbuild resolves the plugin sources'
@@ -641,7 +653,7 @@
         "$TURBO_ROOT$/examples/plugins/echo-provider/*.ts",
         "$TURBO_ROOT$/examples/plugins/echo-provider/package.json",
         "$TURBO_ROOT$/examples/plugins/echo-provider/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     // The thread.stop race suite builds the scripted echo bridge artifact and
@@ -657,7 +669,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     // The provider-corpus gates read a private corpus through
@@ -689,7 +701,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/vitest.shared.ts",
+        "$TURBO_ROOT$/vitest*.ts",
         "$TURBO_ROOT$/plugins/*/icons/**",
         "$TURBO_ROOT$/examples/plugins/*/icons/**"
       ]
@@ -719,7 +731,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     // The live-CLI suite's global setup rebuilds every first-party provider
@@ -730,13 +742,18 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
       // The live-CLI suites spawn real provider CLIs. Turbo strips undeclared
       // variables, so without these they start unauthenticated.
       "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
     "smoke:tarball": {
       "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "smoke:boot": {
+      "dependsOn": ["build", "//#ensure-native-modules"],
       "cache": false,
       "outputs": []
     },
@@ -759,7 +776,7 @@
         "$TURBO_ROOT$/packages/templates/src/**",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     "@bb/integration-tests#e2e:mobile-backend": {
@@ -779,7 +796,7 @@
     },
     "test:integration": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
       // The live-CLI suites spawn real provider CLIs. Turbo strips undeclared
       // variables, so without these they start unauthenticated.
       "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
@@ -799,7 +816,7 @@
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
+        "$TURBO_ROOT$/vitest*.ts"
       ],
       "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
     },
@@ -835,7 +852,7 @@
         "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"]
     },
     "@get-bb/plugin-sdk#build:runtime": {
       "inputs": [

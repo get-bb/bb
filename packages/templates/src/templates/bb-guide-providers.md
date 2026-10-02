@@ -35,6 +35,15 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
                                           List models for a provider
 
 Use these before spawning threads if you are unsure which provider or model to use.
+
+Service tiers are provider-defined ids. `bb provider list --json` reports each
+provider's `serviceTiers` ({id, label, description?}); `default` always means
+the provider's standard tier. A model may narrow that list: `bb provider
+models` shows a Service tiers column, and `--json` reports
+`supportedServiceTiers` per model (absent when the provider does not report
+tiers per model, in which case the model accepts every tier the provider
+lists). Pass a tier id to `--service-tier`; a tier the provider does not list
+is rejected.
 `--host` is an alias for `--machine`. Machine and environment selectors are
 mutually exclusive because an environment already selects its machine. When no
 selector is supplied, both commands intentionally inspect the server machine.
@@ -140,6 +149,12 @@ Enabled provider plugins also contribute skills to the selected provider's `/`
 command menu. `bb skill list` shows native skills for Claude Code, Codex, and
 Cursor.
 
+BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
+`OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
+values. Native questions have no ACP interaction handler in BB; agents use the
+ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
+custom agents with `dialect: "opencode"` and does not change OpenCode config files.
+
 ACP providers discover models from the agent itself. For acp-opencode, the
 list mirrors the OpenCode catalog, so a custom model from the OpenCode config
 appears automatically. Discover and select one with:
@@ -154,9 +169,11 @@ signing in to Go in OpenCode on that machine. Inspect the same five-hour,
 weekly, and monthly windows with bb settings usage --machine <id-or-name> --json
 or bb.sdk.system.usageLimits({ hostId, providerId: "acp-opencode" }).
 The collector uses OPENCODE_API_KEY, the active Console account in OpenCode's
-opencode.db, or OPENCODE_AUTH_CONTENT/auth.json under XDG_DATA_HOME (default
-~/.local/share), including custom launch env overrides. Console account storage
-is read only; OpenCode owns refreshing expired sessions.
+opencode.db, active v2 credential-table API keys or official Console OAuth credentials
+(opencode-go before opencode),
+then OPENCODE_AUTH_CONTENT/auth.json under XDG_DATA_HOME (default
+~/.local/share), including custom launch env overrides. Database storage is read
+only; OpenCode owns refreshing expired sessions.
 Custom OpenCode wrappers need dialect: "opencode" and providerUsage: true.
 This reports the Go subscription, not usage for other OpenCode providers or
 Zen pay-as-you-go spending.

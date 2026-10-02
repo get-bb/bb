@@ -10,18 +10,42 @@ import {
 } from "@bb/host-daemon-contract";
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
 
+export function isTrustedBrokerDescriptorFile(args: {
+  isFile: boolean;
+  mode: number;
+  ownerUid: number;
+  platform: NodeJS.Platform;
+  processUid: number | undefined;
+  size: number;
+}): boolean {
+  if (!args.isFile || args.size > 16384) {
+    return false;
+  }
+  if (args.platform === "win32") {
+    return true;
+  }
+  return (
+    (args.mode & 0o077) === 0 &&
+    (args.processUid === undefined || args.ownerUid === args.processUid)
+  );
+}
+
 async function readBrokerDescriptor(dataDir: string) {
   const file = await open(
     join(dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
-    constants.O_RDONLY | constants.O_NOFOLLOW,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
   );
   try {
     const stat = await file.stat();
     if (
-      !stat.isFile() ||
-      stat.size > 16384 ||
-      (stat.mode & 0o077) !== 0 ||
-      (process.getuid !== undefined && stat.uid !== process.getuid())
+      !isTrustedBrokerDescriptorFile({
+        isFile: stat.isFile(),
+        mode: stat.mode,
+        ownerUid: stat.uid,
+        platform: process.platform,
+        processUid: process.getuid?.(),
+        size: stat.size,
+      })
     )
       throw new Error("Invalid desktop broker descriptor permissions");
     return desktopBrowserBrokerDescriptorSchema.parse(

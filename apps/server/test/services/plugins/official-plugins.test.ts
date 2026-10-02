@@ -184,6 +184,7 @@ describe("store-installed official plugins", () => {
         rootDir: fixtureRoot,
         version: "0.1.0",
         enabled: true,
+        enabledFollowsDefault: false,
       });
       service = createService({
         db,

@@ -334,22 +334,14 @@ describe("bb settings commands", () => {
 
   it("enables the changelog preview experiment", async () => {
     const put = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.experiments.$put": put,
-    });
+    stubServerApi({ "v1.settings.experiments.$put": put });
 
     await runCommand(
       ["settings", "experiment", "changelogPreview", "true"],
       register,
     );
 
-    expect(put).toHaveBeenCalledWith({
-      json: { ...defaultExperiments, changelogPreview: true },
-    });
+    expect(put).toHaveBeenCalledWith({ json: { changelogPreview: true } });
   });
 
   it("reads usage from a selected machine", async () => {

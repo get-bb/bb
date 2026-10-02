@@ -35,7 +35,7 @@ import type {
   BridgeToolCallContent,
   BridgeToolCallImage,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import { execFile } from "node:child_process";
+import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
@@ -177,6 +177,7 @@ interface AcpThreadSession {
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
   cancelRequested: boolean;
+  restartAfterCancelError: boolean;
   loading: boolean;
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
@@ -762,35 +763,33 @@ async function authenticateAcpAgent(args: {
 async function loadAgentModelCatalog(
   listCommand: AcpAgentCommandParam,
 ): Promise<AgentModelCatalog | null> {
-  const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
-    execFile(
-      listCommand.command,
-      listCommand.args,
-      {
-        ...(listCommand.cwd !== undefined ? { cwd: listCommand.cwd } : {}),
-        env: {
-          ...withoutBridgeRuntimeEnv(process.env),
-          ...(listCommand.envVars ?? {}),
-        },
-        timeout: MODEL_LIST_TIMEOUT_MS,
-      },
-      (error, out, stderr) => {
-        if (!error) {
-          resolveExec(out);
-          return;
-        }
-        if (isMissingExecutableError(error)) {
-          rejectExec(error);
-          return;
-        }
-        if (isAuthRequiredModelListError(error, out, stderr)) {
-          rejectExec(new AcpModelListAuthRequiredError());
-          return;
-        }
-        resolveExec(null);
-      },
-    );
-  });
+  const stdout = await execPortableFile(listCommand.command, listCommand.args, {
+    cwd: listCommand.cwd ?? process.cwd(),
+    env: {
+      ...withoutBridgeRuntimeEnv(process.env),
+      ...(listCommand.envVars ?? {}),
+    },
+    maxBuffer: 1024 * 1024,
+    timeout: MODEL_LIST_TIMEOUT_MS,
+  }).then(
+    ({ stdout }) => stdout,
+    (error: unknown) => {
+      if (isMissingExecutableError(error)) throw error;
+      const output = z
+        .object({ stdout: z.string(), stderr: z.string() })
+        .safeParse(error);
+      if (
+        isAuthRequiredModelListError(
+          error,
+          output.success ? output.data.stdout : "",
+          output.success ? output.data.stderr : "",
+        )
+      ) {
+        throw new AcpModelListAuthRequiredError();
+      }
+      return null;
+    },
+  );
   const key = JSON.stringify(listCommand);
   if (stdout === null) {
     process.stderr.write(
@@ -924,7 +923,7 @@ async function loadSessionDiscoveredModels(
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
-    connection.kill();
+    await connection.kill();
   }
 }
 
@@ -1713,6 +1712,9 @@ async function startAgentSession(
   const childEnv = {
     ...withoutBridgeRuntimeEnv(process.env),
     ...params.envVars,
+    ...(dialect.id === "opencode"
+      ? { OPENCODE_CLIENT: "acp", OPENCODE_ENABLE_QUESTION_TOOL: "false" }
+      : {}),
   };
   const connection = createAcpAgentConnection({
     command: params.agent.command,
@@ -1760,6 +1762,7 @@ async function startAgentSession(
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
+    restartAfterCancelError: false,
     loading: false,
     loadingSessionId: undefined,
     pendingLoadUsageUpdate: undefined,
@@ -1941,7 +1944,7 @@ async function startAgentSession(
   } catch (error) {
     session.stopping = true;
     session.deferStartEmit = undefined;
-    connection.kill();
+    await connection.kill();
     removeSession(session);
     await releaseCursorMcpApproval(session);
     throw error;
@@ -1974,7 +1977,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
   }
   settleInterruptedPrompt(session);
 
-  session.connection.kill();
+  await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
 }
@@ -2002,7 +2005,7 @@ async function releaseSession(session: AcpThreadSession): Promise<void> {
     "ACP session released before the steer was sent",
   );
   cancelPendingPermissions(session);
-  session.connection.kill();
+  await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
 }
@@ -2116,6 +2119,7 @@ function runTurn(
           emitGrokContextWindow(session, grokUsage.used);
         }
       } catch (error) {
+        session.restartAfterCancelError = session.cancelRequested;
         session.promptRequestPending = false;
         dropTurnInput(pending, "ACP turn failed before the prompt was sent");
         dropQueuedTurnInputs(
@@ -2635,26 +2639,32 @@ async function handleRequest(
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
-      if (Object.keys(params.options.envVars ?? {}).length > 0) {
-        const envVars = {
-          ...(decodeLaunchSpec(params.options.providerOptions)?.env ?? {}),
-          ...params.options.envVars,
-        };
-        if (!isDeepStrictEqual(envVars, session.construction.envVars ?? {})) {
-          const previousProviderThreadId = session.providerThreadId;
-          session = await startAgentSession({
-            kind: "resume",
-            params: { ...session.construction, envVars },
-            resumeProviderThreadId: previousProviderThreadId,
-          });
-          sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
-            threadId: params.threadId,
-            providerThreadId: session.providerThreadId,
-            reason:
-              "Execution settings changed; the ACP session was rebuilt to apply them.",
-            contextLost: session.providerThreadId !== previousProviderThreadId,
-          });
-        }
+      const envVars =
+        Object.keys(params.options.envVars ?? {}).length > 0
+          ? {
+              ...(decodeLaunchSpec(params.options.providerOptions)?.env ?? {}),
+              ...params.options.envVars,
+            }
+          : session.construction.envVars;
+      if (
+        session.restartAfterCancelError ||
+        !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {})
+      ) {
+        const previousProviderThreadId = session.providerThreadId;
+        const reason = session.restartAfterCancelError
+          ? "The ACP agent failed during cancellation; its session was rebuilt before continuing."
+          : "Execution settings changed; the ACP session was rebuilt to apply them.";
+        session = await startAgentSession({
+          kind: "resume",
+          params: { ...session.construction, envVars },
+          resumeProviderThreadId: previousProviderThreadId,
+        });
+        sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+          threadId: params.threadId,
+          providerThreadId: session.providerThreadId,
+          reason,
+          contextLost: session.providerThreadId !== previousProviderThreadId,
+        });
       }
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,

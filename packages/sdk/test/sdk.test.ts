@@ -107,6 +107,40 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("pages prompt history with an opaque cursor", async () => {
+    const response = {
+      entries: [
+        {
+          id: "phist_1",
+          createdAt: 10,
+          input: [{ type: "text", text: "Fix auth", mentions: [] }],
+          projectId: "proj_1",
+          threadId: "thr_1",
+        },
+      ],
+      nextCursor: "next",
+    };
+    const queue = createFetchQueue([{ body: response }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.experimental_promptHistory.list({ cursor: "abc", limit: "25" }),
+    ).resolves.toEqual(response);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/prompt-history?cursor=abc&limit=25",
+      },
+    ]);
+  });
+
   it("creates a DigitalOcean machine through the SDK without a project", async () => {
     const host = {
       id: "host_do",

@@ -461,6 +461,98 @@ describe("decodeCodexInteractiveRequest", () => {
       },
     });
   });
+
+  it("maps blocking Codex user input into a durable user-question interaction", () => {
+    expect(
+      decodeCodexInteractiveRequest({
+        id: 12,
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "t1",
+          turnId: "turn-user-input",
+          itemId: "item-user-input",
+          questions: [
+            {
+              id: "deployment",
+              header: "Deployment",
+              question:
+                "Which deployment path should we use? Include the context before deciding.",
+              isOther: true,
+              isSecret: false,
+              options: [
+                {
+                  label: "Staging",
+                  description: "Validate before production.",
+                },
+                {
+                  label: "Production",
+                  description: "Run the approved release.",
+                },
+              ],
+            },
+          ],
+          isBlocking: true,
+          autoResolutionMs: null,
+        },
+      }),
+    ).toEqual({
+      requestId: 12,
+      method: "item/tool/requestUserInput",
+      providerThreadId: "t1",
+      turnId: "turn-user-input",
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "deployment",
+            prompt:
+              "Which deployment path should we use? Include the context before deciding.",
+            shortLabel: "Deployment",
+            multiSelect: false,
+            options: [
+              {
+                value: "deployment:option-1",
+                label: "Staging",
+                description: "Validate before production.",
+              },
+              {
+                value: "deployment:option-2",
+                label: "Production",
+                description: "Run the approved release.",
+              },
+            ],
+            allowFreeText: true,
+          },
+        ],
+      },
+    });
+  });
+
+  it("rejects secret Codex user input instead of rendering it in the BB form", () => {
+    expect(() =>
+      decodeCodexInteractiveRequest({
+        id: 13,
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "t1",
+          turnId: "turn-secret-input",
+          itemId: "item-secret-input",
+          questions: [
+            {
+              id: "token",
+              header: "Token",
+              question: "Enter the token",
+              isOther: true,
+              isSecret: true,
+              options: null,
+            },
+          ],
+          isBlocking: true,
+          autoResolutionMs: 300_000,
+        },
+      }),
+    ).toThrowError(ProviderRequestDecodeError);
+  });
 });
 
 describe("buildCodexInteractiveResponse", () => {
@@ -579,6 +671,52 @@ describe("buildCodexInteractiveResponse", () => {
         },
       },
       scope: "session",
+    });
+  });
+
+  it("maps a user-question answer back to Codex option labels and free text", () => {
+    expect(
+      buildCodexInteractiveResponse({
+        payload: {
+          kind: "user_question",
+          questions: [
+            {
+              id: "deployment",
+              prompt: "Which deployment path should we use?",
+              shortLabel: "Deployment",
+              multiSelect: true,
+              options: [
+                {
+                  value: "deployment:option-1",
+                  label: "Staging",
+                  description: "Validate before production.",
+                },
+                {
+                  value: "deployment:option-2",
+                  label: "Production",
+                  description: "Run the approved release.",
+                },
+              ],
+              allowFreeText: true,
+            },
+          ],
+        },
+        resolution: {
+          kind: "user_answer",
+          answers: {
+            deployment: {
+              selected: ["deployment:option-2"],
+              freeText: "Use the audited release window.",
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      answers: {
+        deployment: {
+          answers: ["Production", "Use the audited release window."],
+        },
+      },
     });
   });
 });

@@ -23,7 +23,8 @@ describe("@bb/templates", () => {
     expect(guide).toContain("Partial updates to an existing");
     expect(guide).toContain("--env-json");
     expect(guide).toContain("--reasoning <none|low|medium|high");
-    expect(guide).toContain("--service-tier default|fast|none");
+    expect(guide).toContain("--service-tier <tier>");
+    expect(guide).toContain("--clear-service-tier");
     expect(guide).toContain("--permission-mode <accept-edits|auto|full>");
     expect(guide).not.toContain("workspace-write|readonly");
   });

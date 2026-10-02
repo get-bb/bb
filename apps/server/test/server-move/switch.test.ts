@@ -55,13 +55,17 @@ describe("old server daemon config", () => {
       serverUrl: "https://laptop.getbb.test",
       serverHeaders: { "x-bb-connect-machine": "bbcm_laptop" },
     });
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    }
 
     await restoreOldServerDaemonConfig(backup);
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual(
       JSON.parse(original),
     );
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("omits empty headers and removes a config it created", async () => {

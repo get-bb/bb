@@ -53,6 +53,7 @@ import type {
   AppSettingsUpdate,
   AppKeybindingOverrides,
   Environment,
+  ExperimentUpdates,
   Experiments,
   Host,
   PendingInteraction,
@@ -66,7 +67,7 @@ import {
   appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
-  experimentsSchema,
+  experimentUpdatesSchema,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
@@ -180,6 +181,8 @@ import type {
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
+  PromptHistoryListQuery,
+  PromptHistoryListResponse,
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
@@ -344,6 +347,7 @@ import {
   projectSkillFilesQuerySchema,
   updateSkillRequestSchema,
   promptHistoryQuerySchema,
+  promptHistoryListQuerySchema,
   reorderPinnedThreadRequestSchema,
   reorderProjectRequestSchema,
   reorderQueuedMessageRequestSchema,
@@ -409,6 +413,16 @@ type PathThreadInteractionId = {
 };
 
 export const publicApiRoutes = {
+  promptHistory: {
+    list: defineRoute({
+      path: "/prompt-history",
+      method: "get",
+      request: queryRequest<EmptyInput, PromptHistoryListQuery>(
+        promptHistoryListQuerySchema,
+      ),
+      response: jsonResponse<PromptHistoryListResponse>(),
+    }),
+  },
   projects: {
     machineEnvironment: defineRoute({
       path: "/projects/:id/machine-environment",
@@ -1829,7 +1843,9 @@ export const publicApiRoutes = {
     experiments: defineRoute({
       path: "/settings/experiments",
       method: "put",
-      request: jsonRequest<EmptyInput, Experiments>(experimentsSchema),
+      request: jsonRequest<EmptyInput, ExperimentUpdates>(
+        experimentUpdatesSchema,
+      ),
       response: jsonResponse<Experiments>(),
     }),
     appearance: defineRoute({

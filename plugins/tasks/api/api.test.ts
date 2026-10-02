@@ -11,6 +11,134 @@ import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
+  it.each(["get", "send"])(
+    "returns and publishes a persisted comment while notification %s is blocked",
+    async (blockedOperation) => {
+      let releaseDelivery = () => {};
+      const deliveryGate = new Promise<void>((resolve) => {
+        releaseDelivery = resolve;
+      });
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "tasks",
+        sdk: {
+          threads: {
+            get: async ({ threadId }) => {
+              if (blockedOperation === "get") await deliveryGate;
+              return makeThreadResponse({ id: threadId, status: "active" });
+            },
+            send: async () => {
+              if (blockedOperation === "send") await deliveryGate;
+            },
+          },
+        },
+      });
+      const store = createStore(bb);
+      registerTasksApi(bb, store);
+      const project = store.tasks.createProject({
+        name: "Delivery gate",
+        prefix: "GATE",
+        color: "blue",
+      });
+      const task = store.tasks.createTask({
+        projectId: project.id,
+        title: "Persist before delivery",
+      });
+      store.tasks.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Worker",
+        threadId: "thr_delivery_gate",
+        body: "Prior reply",
+      });
+      let responseReturned = false;
+      const response = harness
+        .callRpc("createComment", {
+          taskId: task.id,
+          body: "New context",
+          notify: true,
+        })
+        .then((result) => {
+          responseReturned = true;
+          return tasksRpcContract.createComment.output.parse(result);
+        });
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(store.tasks.listComments(task.id)).toHaveLength(2);
+        expect(responseReturned).toBe(true);
+        const { comment } = await response;
+        expect(comment.notifiedCount).toBe(0);
+        expect(harness.realtimeSignals).toEqual([
+          { channel: "comments:changed", payload: { taskId: task.id } },
+        ]);
+        releaseDelivery();
+        await expect
+          .poll(() => store.tasks.getComment(comment.id)?.notifiedCount)
+          .toBe(1);
+        expect(harness.realtimeSignals).toEqual([
+          { channel: "comments:changed", payload: { taskId: task.id } },
+          { channel: "comments:changed", payload: { taskId: task.id } },
+        ]);
+      } finally {
+        releaseDelivery();
+        await response;
+        await harness.dispose();
+      }
+    },
+  );
+
+  it("keeps a saved comment when background notification fails", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }) => makeThreadResponse({ id: threadId }),
+          send: async () => {
+            throw new Error("Delivery unavailable");
+          },
+        },
+      },
+    });
+    try {
+      const store = createStore(bb);
+      registerTasksApi(bb, store);
+      const project = store.tasks.createProject({
+        name: "Failed delivery",
+        prefix: "FAIL",
+        color: "blue",
+      });
+      const task = store.tasks.createTask({
+        projectId: project.id,
+        title: "Keep the comment",
+      });
+      store.tasks.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Worker",
+        threadId: "thr_failed_delivery",
+        body: "Prior reply",
+      });
+      const { comment } = tasksRpcContract.createComment.output.parse(
+        await harness.callRpc("createComment", {
+          taskId: task.id,
+          body: "New context",
+          notify: true,
+        }),
+      );
+      expect(comment.notifiedCount).toBe(0);
+      await expect.poll(() => harness.realtimeSignals.length).toBe(2);
+      expect(store.tasks.getComment(comment.id)).toMatchObject({
+        body: "New context",
+        notifiedCount: 0,
+      });
+      expect(harness.logEntries).toContainEqual({
+        level: "warn",
+        message: expect.stringContaining("Delivery unavailable"),
+      });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("deletes through the typed RPC policy and rejects saved-description references", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);
@@ -134,8 +262,10 @@ describe("Tasks RPC domain API", () => {
       }),
     );
 
-    expect(result.comment.notifiedCount).toBe(1);
-    expect(store.tasks.getComment(result.comment.id)?.notifiedCount).toBe(1);
+    expect(result.comment.notifiedCount).toBe(0);
+    await expect
+      .poll(() => store.tasks.getComment(result.comment.id)?.notifiedCount)
+      .toBe(1);
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [expect.objectContaining({ threadId: "thr_two" })],
     ]);
@@ -561,6 +691,7 @@ describe("Tasks RPC domain API", () => {
       threadId: "thr_worker",
       body: "Reporting progress.",
       notify: true,
+      awaitDelivery: true,
     });
 
     expect(quietResult.comment.notifiedCount).toBe(0);

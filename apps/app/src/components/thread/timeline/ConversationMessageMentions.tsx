@@ -2,10 +2,7 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
-import {
-  getProjectComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
+import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_MENTION_PILL_CLASS,
@@ -14,13 +11,13 @@ import {
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { useThreadRoutePath } from "@/components/thread/ThreadTitleMentions";
 
 interface PromptMentionPillProps {
   interactive?: boolean;
   resource: PromptMentionResource;
   resolveMentionLink?: PromptMentionLinkResolver;
   serializedText: string;
-  linkHref?: string;
   onActivate?: () => void;
 }
 
@@ -97,9 +94,9 @@ export function PromptMentionPill({
   resource,
   resolveMentionLink,
   serializedText,
-  linkHref,
   onActivate,
 }: PromptMentionPillProps) {
+  const threadRoutePath = useThreadRoutePath();
   const title = promptMentionTooltipLabel(resource);
   const clipboardAttributes = promptMentionClipboardDataAttributes({
     resource,
@@ -150,32 +147,16 @@ export function PromptMentionPill({
     );
   }
 
-  if (resource.kind === "thread" && linkHref) {
+  if (resource.kind === "thread") {
     return (
       <RouteAnchor
         className={mentionPillClassName(true)}
         {...clipboardAttributes}
-        href={linkHref}
+        href={threadRoutePath(resource.threadId, resource.projectId)}
         title={title}
       >
         {labelNode}
       </RouteAnchor>
-    );
-  }
-
-  if (resource.kind === "thread" && resource.projectId) {
-    return (
-      <Link
-        className={mentionPillClassName(true)}
-        {...clipboardAttributes}
-        to={getThreadRoutePath({
-          projectId: resource.projectId,
-          threadId: resource.threadId,
-        })}
-        title={title}
-      >
-        {labelNode}
-      </Link>
     );
   }
 

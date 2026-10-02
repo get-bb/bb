@@ -164,14 +164,19 @@ export function onDaemonSocketMessage(
         hostId: args.hostId,
         sessionId: args.sessionId,
       });
-      heartbeatSession(
-        deps.db,
-        session.id,
-        Math.max(
-          Date.now() + session.leaseTimeoutMs,
-          session.leaseExpiresAt + 1,
-        ),
-      );
+      const now = Date.now();
+      if (
+        message.type === "heartbeat" ||
+        now < session.updatedAt ||
+        now - session.updatedAt >= session.heartbeatIntervalMs ||
+        session.leaseExpiresAt <= now + session.heartbeatIntervalMs
+      ) {
+        heartbeatSession(
+          deps.db,
+          session.id,
+          Math.max(now + session.leaseTimeoutMs, session.leaseExpiresAt + 1),
+        );
+      }
       if (
         isServerMoveSnapshotFenced(deps.db) &&
         SERVER_MOVE_FENCED_DAEMON_MESSAGE_TYPES.has(message.type)

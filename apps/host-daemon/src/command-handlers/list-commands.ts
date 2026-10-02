@@ -331,7 +331,7 @@ async function resolvedScanRoots(args: {
           providerId: args.providerId,
           recursive: root.recursive,
           skipIfManifest: root.skipIfManifest,
-          relativePath: path.relative(workspace.cwd, root.path),
+          relativePath: toPosixRelativePath(workspace.cwd, root.path),
           side: args.side,
           workspace,
         })),

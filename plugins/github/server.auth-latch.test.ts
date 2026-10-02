@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -11,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
+import { installFakeGh } from "./testing/fake-gh";
 
 let binDir: string;
 let offlineFlag: string;
@@ -19,7 +19,7 @@ let badSecondaryFlag: string;
 let apiDownFlag: string;
 let slowStatusFlag: string;
 let callLog: string;
-const originalPath = process.env.PATH;
+let restoreEnv: () => void;
 
 function ghCalls(): string[] {
   if (!existsSync(callLog)) return [];
@@ -37,48 +37,49 @@ beforeEach(() => {
   apiDownFlag = join(binDir, "gh-api-down");
   slowStatusFlag = join(binDir, "gh-slow-status");
   callLog = join(binDir, "gh-calls.log");
-  writeFileSync(
-    join(binDir, "gh"),
-    `#!/usr/bin/env bash
-echo "$*" >> "${callLog}"
-case "$1 $2" in
-  "--version ") echo "gh version 2.96.0 (fake)"; exit 0;;
-  "auth token")
-    if [ -e "${noTokenFlag}" ]; then echo "no oauth token found for github.com" >&2; exit 1; fi
-    echo "gho_fake_token_is_configured_locally"; exit 0;;
-  "auth status")
-    [ -e "${slowStatusFlag}" ] && sleep 0.3
-    if [ -e "${noTokenFlag}" ]; then
-      echo "You are not logged into any GitHub hosts. To log in, run: gh auth login" >&2; exit 1
-    fi
-    if [ -e "${offlineFlag}" ]; then
-      echo "github.com" >&2
-      echo "  X Failed to log in to github.com account someone (keyring)" >&2
-      echo "  - The token in keyring is invalid." >&2
-      exit 1
-    fi
-    if [ -e "${badSecondaryFlag}" ]; then
-      case " $* " in *" --active "*) ;; *)
-        echo "github.com" >&2
-        echo "  X Failed to log in to github.com account other (keyring)" >&2
-        echo "  - The token in keyring is invalid." >&2
-        exit 1;;
-      esac
-    fi
-    echo "github.com"; echo "  ✓ Logged in to github.com account someone (keyring)"; exit 0;;
-  "api graphql")
-    if [ -e "${apiDownFlag}" ]; then echo "error connecting to api.github.com" >&2; exit 1; fi
-    echo '{"data":{"repository":{"hasIssuesEnabled":true,"openIssues":{"nodes":[]},"closedIssues":{"nodes":[]},"openPrs":{"nodes":[]},"closedPrs":{"nodes":[]}}}}'; exit 0;;
-  *) echo "[]"; exit 0;;
-esac
-`,
+  restoreEnv = installFakeGh(
+    binDir,
+    `const callLog = ${JSON.stringify(callLog)};
+const exists = (file) => fs.existsSync(file);
+fs.appendFileSync(callLog, args.join(" ") + "\\n");
+const [first, second] = args;
+if (first === "--version" && second === undefined) {
+  out("gh version 2.96.0 (fake)\\n");
+} else if (first === "auth" && second === "token") {
+  if (exists(${JSON.stringify(noTokenFlag)})) {
+    err("no oauth token found for github.com\\n");
+    process.exit(1);
+  }
+  out("gho_fake_token_is_configured_locally\\n");
+} else if (first === "auth" && second === "status") {
+  if (exists(${JSON.stringify(slowStatusFlag)})) sleepMs(300);
+  if (exists(${JSON.stringify(noTokenFlag)})) {
+    err("You are not logged into any GitHub hosts. To log in, run: gh auth login\\n");
+    process.exit(1);
+  }
+  if (exists(${JSON.stringify(offlineFlag)})) {
+    err("github.com\\n  X Failed to log in to github.com account someone (keyring)\\n  - The token in keyring is invalid.\\n");
+    process.exit(1);
+  }
+  if (exists(${JSON.stringify(badSecondaryFlag)}) && !args.includes("--active")) {
+    err("github.com\\n  X Failed to log in to github.com account other (keyring)\\n  - The token in keyring is invalid.\\n");
+    process.exit(1);
+  }
+  out("github.com\\n  ✓ Logged in to github.com account someone (keyring)\\n");
+} else if (first === "api" && second === "graphql") {
+  if (exists(${JSON.stringify(apiDownFlag)})) {
+    err("error connecting to api.github.com\\n");
+    process.exit(1);
+  }
+  out('{"data":{"repository":{"hasIssuesEnabled":true,"openIssues":{"nodes":[]},"closedIssues":{"nodes":[]},"openPrs":{"nodes":[]},"closedPrs":{"nodes":[]}}}}\\n');
+} else {
+  out("[]\\n");
+}`,
   );
-  chmodSync(join(binDir, "gh"), 0o755);
-  process.env.PATH = `${binDir}:${originalPath ?? ""}`;
 });
 
 afterEach(() => {
-  process.env.PATH = originalPath;
+  restoreEnv();
   rmSync(binDir, { recursive: true, force: true });
 });
 

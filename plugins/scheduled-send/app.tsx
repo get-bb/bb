@@ -107,6 +107,53 @@ function resolveScheduleOption(
     : { ok: true, at: preset.at };
 }
 
+const SCHEDULE_SELECTION_STORAGE_KEY = "bb:scheduled-send:selection:v1";
+
+function readScheduleSelection(now: number): {
+  optionId: ScheduleOptionId;
+  custom: CustomScheduleFields;
+} {
+  const fallback = {
+    optionId: DEFAULT_SCHEDULE_PRESET_ID,
+    custom: defaultCustomSchedule(now),
+  };
+  try {
+    const stored = localStorage.getItem(SCHEDULE_SELECTION_STORAGE_KEY);
+    if (stored === null) return fallback;
+    const value: unknown = JSON.parse(stored);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("optionId" in value) ||
+      typeof value.optionId !== "string" ||
+      !isScheduleOptionId(value.optionId) ||
+      !("date" in value) ||
+      typeof value.date !== "string" ||
+      !("time" in value) ||
+      typeof value.time !== "string"
+    )
+      return fallback;
+    const custom = { date: value.date, time: value.time };
+    return resolveScheduleOption(value.optionId, custom, now).ok
+      ? { optionId: value.optionId, custom }
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function rememberScheduleSelection(
+  optionId: ScheduleOptionId,
+  custom: CustomScheduleFields,
+): void {
+  try {
+    localStorage.setItem(
+      SCHEDULE_SELECTION_STORAGE_KEY,
+      JSON.stringify({ optionId, ...custom }),
+    );
+  } catch {}
+}
+
 function SendLaterPicker() {
   const composer = useComposer();
   const isEmpty = composer.isEmpty;
@@ -128,8 +175,9 @@ function SendLaterPicker() {
     if (!isOpen) return;
     const openedAt = Date.now();
     setNow(openedAt);
-    setSelectedOption(DEFAULT_SCHEDULE_PRESET_ID);
-    setCustom(defaultCustomSchedule(openedAt));
+    const selection = readScheduleSelection(openedAt);
+    setSelectedOption(selection.optionId);
+    setCustom(selection.custom);
     setError(null);
     const interval = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(interval);
@@ -200,6 +248,7 @@ function SendLaterPicker() {
               onValueChange={(value) => {
                 if (!isScheduleOptionId(value)) return;
                 setSelectedOption(value);
+                rememberScheduleSelection(value, custom);
                 setError(null);
               }}
               value={selectedOption}
@@ -230,10 +279,9 @@ function SendLaterPicker() {
                   max={formatDateInputValue(now + MAX_SCHEDULE_AHEAD_MS)}
                   min={formatDateInputValue(now)}
                   onChange={(event) => {
-                    setCustom((current) => ({
-                      ...current,
-                      date: event.target.value,
-                    }));
+                    const next = { ...custom, date: event.target.value };
+                    setCustom(next);
+                    rememberScheduleSelection(selectedOption, next);
                     setError(null);
                   }}
                   type="date"
@@ -246,10 +294,9 @@ function SendLaterPicker() {
                   disabled={busy}
                   id={customTimeId}
                   onChange={(event) => {
-                    setCustom((current) => ({
-                      ...current,
-                      time: event.target.value,
-                    }));
+                    const next = { ...custom, time: event.target.value };
+                    setCustom(next);
+                    rememberScheduleSelection(selectedOption, next);
                     setError(null);
                   }}
                   type="time"

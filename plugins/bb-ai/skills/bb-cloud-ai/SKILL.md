@@ -26,7 +26,8 @@ Automatic skips it, and nothing is sent to getbb.app. It has no settings page.
   Automatic skips it.
 - Which service handles each task is a core setting:
   `bb settings ai-services set <thread-title|commit-message|voice> bb` picks bb
-  cloud, `automatic` tries Codex first and then bb cloud, and `off` turns the
+  cloud, `automatic` tries bb cloud first, then other compatible
+  registered services by plugin id and service id in lexicographic order, and `off` turns the
   task off. `bb settings ai-services test thread-title` runs a sample.
 - Voice input: without a Codex login, the microphone appears once bb cloud is
   ready. `bb voice transcribe <file> [--type <mime>]` transcribes a recording.

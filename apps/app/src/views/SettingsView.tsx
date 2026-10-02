@@ -1068,11 +1068,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Show the latest release notes as a compact preview on the Updates page.",
   },
-  legacyJitiPluginLoader: {
-    label: "Legacy plugin loader (JITI)",
-    description:
-      "Load plugin server code with the legacy JITI runtime. Takes effect the next time a plugin loads.",
-  },
   serverMove: {
     label: "Server move",
     description:
@@ -1274,7 +1269,7 @@ export function SettingsView() {
         }
         experiments={experiments}
         onExperimentChange={(key, enabled) =>
-          updateExperimentsMutation.mutate({ ...experiments, [key]: enabled })
+          updateExperimentsMutation.mutate({ [key]: enabled })
         }
       />
     );

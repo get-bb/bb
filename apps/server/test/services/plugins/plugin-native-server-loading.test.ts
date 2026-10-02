@@ -255,6 +255,10 @@ process.stdout.write(JSON.stringify(result));
     const importerDir = join(workDir, "bb-plugin-importer");
     await mkdir(importedDir, { recursive: true });
     await mkdir(importerDir, { recursive: true });
+    const importedSharedSpecifier =
+      process.platform === "win32"
+        ? "../bb-plugin-imported/shared.js"
+        : join(importedDir, "shared.js");
     const packageJson = (name: string) =>
       JSON.stringify({
         name,
@@ -289,7 +293,7 @@ process.stdout.write(JSON.stringify(result));
       join(importerDir, "server.js"),
       `export default function plugin() {
   globalThis.__readImportedPlugin = async () =>
-    (await import(${JSON.stringify(join(importedDir, "shared.js"))})).value;
+    (await import(${JSON.stringify(importedSharedSpecifier)})).value;
 }
 `,
     );

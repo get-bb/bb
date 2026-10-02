@@ -6,7 +6,12 @@ import {
   type RefObject,
 } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
-import type { ReasoningLevel } from "@bb/domain";
+import {
+  DEFAULT_SERVICE_TIER,
+  type ProviderOptionDescriptor,
+  type ReasoningLevel,
+  type ServiceTier,
+} from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
@@ -65,10 +70,9 @@ export interface ModelReasoningMenuProps {
   reasoningValue: ReasoningLevel | "";
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   onReasoningSelect: (level: ReasoningLevel) => void;
-  showFastModeToggle: boolean;
-  fastModeLabel: string;
-  fastModeEnabled: boolean;
-  onFastModeChange: (enabled: boolean) => void;
+  serviceTierOptions: readonly ProviderOptionDescriptor[];
+  serviceTierValue: ServiceTier | undefined;
+  onServiceTierChange: (value: ServiceTier) => void;
   onStartHandoff: (() => void) | null;
 }
 
@@ -100,15 +104,23 @@ export function ModelReasoningMenu({
   reasoningValue,
   reasoningOptions,
   onReasoningSelect,
-  showFastModeToggle,
-  fastModeLabel,
-  fastModeEnabled,
-  onFastModeChange,
+  serviceTierOptions,
+  serviceTierValue,
+  onServiceTierChange,
   onStartHandoff,
 }: ModelReasoningMenuProps) {
   const isCompactViewport = useIsCompactViewport();
   const brandPrefix = provider?.brandPrefix;
-  const fastModeText = `${fastModeLabel} mode`;
+  const singleServiceTier =
+    serviceTierOptions.length === 1 ? serviceTierOptions[0] : undefined;
+  const singleServiceTierText = singleServiceTier
+    ? `${singleServiceTier.label} mode`
+    : "";
+  const selectedServiceTier = serviceTierOptions.some(
+    (option) => option.id === serviceTierValue,
+  )
+    ? serviceTierValue
+    : DEFAULT_SERVICE_TIER;
   const openSub = useCallback(() => {
     onMoreModelsOpenChange(true);
   }, [onMoreModelsOpenChange]);
@@ -262,25 +274,73 @@ export function ModelReasoningMenu({
           </>
         ) : null}
 
-        {showFastModeToggle ? (
+        {singleServiceTier ? (
           <>
             <div className="shrink-0 border-t border-border" />
             <div className="shrink-0 p-1">
-              <div className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs">
+              <div
+                className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs"
+                title={singleServiceTier.description}
+              >
                 <span className="flex min-w-0 items-center gap-2">
                   <Icon
                     name="Zap"
                     className="size-4 fill-current text-muted-foreground"
                   />
-                  <span>{fastModeText}</span>
+                  <span>{singleServiceTierText}</span>
                 </span>
                 <Switch
-                  checked={fastModeEnabled}
-                  onCheckedChange={onFastModeChange}
-                  aria-label={fastModeText}
+                  checked={selectedServiceTier === singleServiceTier.id}
+                  onCheckedChange={(enabled) =>
+                    onServiceTierChange(
+                      enabled ? singleServiceTier.id : DEFAULT_SERVICE_TIER,
+                    )
+                  }
+                  aria-label={singleServiceTierText}
                   className={cn(LIST_HOVER_TRANSITION, "[&>span]:size-3.5")}
                 />
               </div>
+            </div>
+          </>
+        ) : serviceTierOptions.length > 1 ? (
+          <>
+            <div className="shrink-0 border-t border-border" />
+            <div className="shrink-0 px-2 py-2.5">
+              <MenuSectionLabel className="mb-2 px-1 py-0">
+                Speed
+              </MenuSectionLabel>
+              <ToggleGroup
+                type="single"
+                aria-label="Speed"
+                value={selectedServiceTier}
+                onValueChange={(value) => {
+                  if (
+                    value === DEFAULT_SERVICE_TIER ||
+                    serviceTierOptions.some((option) => option.id === value)
+                  ) {
+                    onServiceTierChange(value);
+                  }
+                }}
+                className="flex gap-1"
+              >
+                {[
+                  { id: DEFAULT_SERVICE_TIER, label: "Default" },
+                  ...serviceTierOptions,
+                ].map((option: ProviderOptionDescriptor) => (
+                  <ToggleGroupItem
+                    key={option.id}
+                    value={option.id}
+                    title={option.description}
+                    className={cn(
+                      "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
+                      isCompactViewport && "h-9 text-sm",
+                      LIST_HOVER_TRANSITION,
+                    )}
+                  >
+                    {option.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </div>
           </>
         ) : null}

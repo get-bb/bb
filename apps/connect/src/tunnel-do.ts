@@ -1,6 +1,11 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { machine, server } from "@bb/connect-db";
+import {
+  TUNNEL_STATUS_HEADER,
+  machine,
+  presenceWritesOnChange,
+  server,
+} from "@bb/connect-db";
 import {
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
@@ -8,11 +13,20 @@ import {
   TUNNEL_REPLACED_CLOSE_REASON,
   decodeFrame,
   encodeFrame,
+  peekFrame,
+  setFrameStreamId,
   type Frame,
   type HeaderPair,
 } from "@bb/tunnel-contract";
 import { relayedResponse } from "./response-encoding.js";
-import { TUNNEL_TARGET_HEADER } from "./protocol-headers.js";
+import {
+  HOP_HEADERS,
+  RELAY_CONTENT_LENGTH_HEADER,
+  RELAY_HAS_BODY_HEADER,
+  RELAY_HEADER,
+  RELAY_METHOD_HEADER,
+  TUNNEL_TARGET_HEADER,
+} from "./protocol-headers.js";
 
 export interface Env {
   TUNNEL_DO: DurableObjectNamespace;
@@ -22,6 +36,8 @@ export interface Env {
   ACCOUNT_APP_URL?: string;
   CLOUD_DEV?: string;
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
+  WORKER_HELD_RESPONSES?: string;
+  PRESENCE_WRITES?: string;
 }
 
 const TUNNEL_TAG = "tunnel";
@@ -33,7 +49,16 @@ const TUNNEL_RETURN_GRACE_MS = 15_000;
 const RESP_HEAD_TIMEOUT_MS = 30_000;
 const PRESENCE_INTERVAL_MIN_MS = 40_000;
 const PRESENCE_INTERVAL_JITTER_MS = 20_000;
+const PRESENCE_ON_CHANGE_INTERVAL_MIN_MS = 25 * 60_000;
+const PRESENCE_ON_CHANGE_INTERVAL_JITTER_MS = 10 * 60_000;
 const CLEAN_CLOSE_CODE = 1000;
+const RELAY_FAILED_CLOSE_CODE = 1011;
+const RELAY_TAG_PREFIX = "relay:";
+const RELAY_INBOUND_FRAME_TYPES: ReadonlySet<Frame["type"]> = new Set([
+  "body-chunk",
+  "body-end",
+  "close-stream",
+]);
 
 const WS_READY_STATE_OPEN = 1;
 
@@ -41,25 +66,18 @@ export const TUNNEL_OFFLINE_HEADER = "x-bb-tunnel-offline";
 export const TUNNEL_RESTART_REASON =
   "the tunnel socket disappeared without a close; restarting this object";
 
-const HOP_HEADERS = new Set([
-  "connection",
-  "keep-alive",
-  "transfer-encoding",
-  "upgrade",
-  "expect",
-  "host",
-  "sec-websocket-key",
-  "sec-websocket-version",
-  "sec-websocket-extensions",
-  TUNNEL_TARGET_HEADER,
-]);
-
 function forwardableHeaders(headers: Headers): HeaderPair[] {
   const pairs: HeaderPair[] = [];
   headers.forEach((value, name) => {
     if (!HOP_HEADERS.has(name.toLowerCase())) pairs.push([name, value]);
   });
   return pairs;
+}
+
+interface SocketAttachment {
+  streamId?: number;
+  relay?: boolean;
+  done?: boolean;
 }
 
 function readTunnelTarget(headers: Headers): string | undefined {
@@ -96,9 +114,7 @@ export class TunnelDO {
   ) {
     let maxSeen = 0;
     for (const ws of this.state.getWebSockets()) {
-      const attachment = ws.deserializeAttachment() as {
-        streamId?: number;
-      } | null;
+      const attachment = ws.deserializeAttachment() as SocketAttachment | null;
       if (attachment?.streamId && attachment.streamId > maxSeen)
         maxSeen = attachment.streamId;
     }
@@ -133,6 +149,12 @@ export class TunnelDO {
         parseClientProtocolVersion(
           url.searchParams.get(TUNNEL_PROTOCOL_QUERY_PARAM),
         ),
+      );
+    }
+    if (url.pathname === "/__control/status") {
+      return Response.json(
+        { connected: this.tunnelSocket() !== null },
+        { headers: { [TUNNEL_STATUS_HEADER]: "1" } },
       );
     }
     if (url.pathname === "/__control/close") {
@@ -172,6 +194,9 @@ export class TunnelDO {
       });
     }
 
+    if (request.headers.get(RELAY_HEADER) === "1") {
+      return this.openRelay(request, url, tunnel, target);
+    }
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
       return this.openVisitorWebSocket(request, url, tunnel, target);
     }
@@ -285,8 +310,19 @@ export class TunnelDO {
       this.clientProtocolVersion = 0;
       return;
     }
-    await this.state.storage.setAlarm(nextPresenceAlarmAt());
+    await this.state.storage.setAlarm(this.nextPresenceAlarmAt());
     await this.markPresence();
+  }
+
+  private nextPresenceAlarmAt(now: number = Date.now()): number {
+    const onChange = presenceWritesOnChange(this.env);
+    const minMs = onChange
+      ? PRESENCE_ON_CHANGE_INTERVAL_MIN_MS
+      : PRESENCE_INTERVAL_MIN_MS;
+    const jitterMs = onChange
+      ? PRESENCE_ON_CHANGE_INTERVAL_JITTER_MS
+      : PRESENCE_INTERVAL_JITTER_MS;
+    return now + minMs + Math.floor(Math.random() * jitterMs);
   }
 
   private async acceptTunnel(
@@ -311,12 +347,12 @@ export class TunnelDO {
       void this.state.storage.put("serverId", serverId);
       void this.state.storage.delete("machineId");
       void this.markPresence();
-      void this.state.storage.setAlarm(nextPresenceAlarmAt());
+      void this.state.storage.setAlarm(this.nextPresenceAlarmAt());
     } else if (machineId) {
       void this.state.storage.put("machineId", machineId);
       void this.state.storage.delete("serverId");
       void this.markPresence();
-      void this.state.storage.setAlarm(nextPresenceAlarmAt());
+      void this.state.storage.setAlarm(this.nextPresenceAlarmAt());
     }
     void this.state.storage.put(TUNNEL_OPENED_AT_KEY, Date.now());
     void this.state.storage.delete(TUNNEL_LOST_AT_KEY);
@@ -366,6 +402,102 @@ export class TunnelDO {
       webSocket: pair[0],
       headers: responseHeaders,
     });
+  }
+
+  private openRelay(
+    request: Request,
+    url: URL,
+    tunnel: WebSocket,
+    target: string | undefined,
+  ): Response {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return new Response("expected websocket", { status: 426 });
+    }
+    const streamId = this.nextStreamId++;
+    const headers = forwardableHeaders(request.headers);
+    const contentLength = request.headers.get(RELAY_CONTENT_LENGTH_HEADER);
+    if (contentLength !== null) headers.push(["content-length", contentLength]);
+    const opened = this.trySend(
+      tunnel,
+      encodeFrame({
+        type: "open-http",
+        streamId,
+        method: request.headers.get(RELAY_METHOD_HEADER) ?? "GET",
+        path: url.pathname + url.search,
+        headers,
+        hasBody: request.headers.get(RELAY_HAS_BODY_HEADER) === "1",
+        ...(target !== undefined ? { target } : {}),
+      }),
+    );
+    if (!opened) return this.offlineResponse();
+
+    const pair = new WebSocketPair();
+    const attachment: SocketAttachment = { streamId, relay: true };
+    pair[1].serializeAttachment(attachment);
+    this.state.acceptWebSocket(pair[1], [`${RELAY_TAG_PREFIX}${streamId}`]);
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
+      headers: { [RELAY_HEADER]: "1" },
+    });
+  }
+
+  private relaySocket(streamId: number): WebSocket | null {
+    return (
+      this.state.getWebSockets(`${RELAY_TAG_PREFIX}${streamId}`)[0] ?? null
+    );
+  }
+
+  private finishRelay(relay: WebSocket, code: number, reason: string): void {
+    const attachment = relay.deserializeAttachment() as SocketAttachment;
+    relay.serializeAttachment({ ...attachment, done: true });
+    try {
+      relay.close(code, reason);
+    } catch {}
+  }
+
+  private onRelayMessage(
+    relay: WebSocket,
+    attachment: SocketAttachment,
+    message: ArrayBuffer | string,
+  ): void {
+    if (typeof message === "string" || attachment.streamId === undefined) {
+      return;
+    }
+    if (!RELAY_INBOUND_FRAME_TYPES.has(peekFrame(message).type)) {
+      this.finishRelay(relay, 1008, "unexpected relay frame");
+      return;
+    }
+    const tunnel = this.tunnelSocket();
+    if (
+      !tunnel ||
+      !this.trySend(tunnel, setFrameStreamId(message, attachment.streamId))
+    ) {
+      this.finishRelay(
+        relay,
+        RELAY_FAILED_CLOSE_CODE,
+        "tunnel disconnected mid-request",
+      );
+    }
+  }
+
+  private forwardToRelay(message: ArrayBuffer): boolean {
+    const head = peekFrame(message);
+    const isResponseFrame =
+      head.type === "resp-head" ||
+      head.type === "body-chunk" ||
+      head.type === "body-end" ||
+      head.type === "close-stream";
+    if (!isResponseFrame || this.pendingHttp.has(head.streamId)) return false;
+    const relay = this.relaySocket(head.streamId);
+    if (relay === null) return false;
+    try {
+      relay.send(message);
+    } catch {}
+    if (head.type === "body-end" || head.type === "close-stream") {
+      this.finishRelay(relay, CLEAN_CLOSE_CODE, "done");
+    }
+    return true;
   }
 
   private async proxyHttp(
@@ -460,12 +592,16 @@ export class TunnelDO {
     for (const streamId of [...this.pendingHttp.keys()]) {
       this.failHttpStream(streamId, 502, httpReason);
     }
-    for (const visitor of this.state.getWebSockets()) {
-      if (!this.state.getTags(visitor).includes(TUNNEL_TAG)) {
-        try {
-          visitor.close(1001, wsReason);
-        } catch {}
+    for (const socket of this.state.getWebSockets()) {
+      const tags = this.state.getTags(socket);
+      if (tags.includes(TUNNEL_TAG)) continue;
+      if (tags.some((tag) => tag.startsWith(RELAY_TAG_PREFIX))) {
+        this.finishRelay(socket, RELAY_FAILED_CLOSE_CODE, httpReason);
+        continue;
       }
+      try {
+        socket.close(1001, wsReason);
+      } catch {}
     }
   }
 
@@ -514,10 +650,17 @@ export class TunnelDO {
     const tags = this.state.getTags(ws);
     if (tags.includes(TUNNEL_TAG)) {
       if (typeof message === "string") return;
+      if (this.forwardToRelay(message)) return;
       this.onTunnelFrame(decodeFrame(message));
       return;
     }
-    const attachment = ws.deserializeAttachment() as { streamId: number };
+    const attachment = ws.deserializeAttachment() as SocketAttachment & {
+      streamId: number;
+    };
+    if (attachment.relay === true) {
+      this.onRelayMessage(ws, attachment, message);
+      return;
+    }
     const tunnel = this.tunnelSocket();
     if (!tunnel) {
       ws.close(1011, "tunnel disconnected");
@@ -653,13 +796,22 @@ export class TunnelDO {
       } else {
         void this.state.storage.put(TUNNEL_LOST_AT_KEY, now);
       }
+      if (presenceWritesOnChange(this.env)) void this.markPresence();
       this.abandonStreams(
         "tunnel disconnected mid-request",
         "tunnel disconnected",
       );
       return;
     }
-    const attachment = ws.deserializeAttachment() as { streamId: number };
+    const attachment = ws.deserializeAttachment() as SocketAttachment & {
+      streamId: number;
+    };
+    if (attachment.relay === true && attachment.done === true) {
+      try {
+        ws.close(safeCloseCode(code), reason);
+      } catch {}
+      return;
+    }
     const tunnel = this.tunnelSocket();
     if (tunnel) {
       this.trySend(
@@ -680,14 +832,6 @@ export class TunnelDO {
   webSocketError(ws: WebSocket): void {
     this.webSocketClose(ws, 1011, "socket error");
   }
-}
-
-function nextPresenceAlarmAt(now: number = Date.now()): number {
-  return (
-    now +
-    PRESENCE_INTERVAL_MIN_MS +
-    Math.floor(Math.random() * PRESENCE_INTERVAL_JITTER_MS)
-  );
 }
 
 function safeCloseCode(code: number): number {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fastServiceTierLabel, reasoningLevelLabel } from "./reasoning-labels";
+import { reasoningLevelLabel } from "./reasoning-labels";
 import { getProviderIconTintStyle } from "./provider-icon";
 
 describe("declared provider labels", () => {
@@ -7,10 +7,6 @@ describe("declared provider labels", () => {
     reasoningLevels: [
       { id: "low", label: "Quick" },
       { id: "high", label: "Deep", description: "Slow but thorough." },
-    ],
-    serviceTiers: [
-      { id: "default", label: "Standard" },
-      { id: "fast", label: "Priority" },
     ],
     strings: {
       signInHint: "x",
@@ -25,12 +21,6 @@ describe("declared provider labels", () => {
     expect(reasoningLevelLabel("high", declared)).toBe("Deep");
     expect(reasoningLevelLabel("xhigh", declared)).toBe("Extra High");
     expect(reasoningLevelLabel("xhigh", undefined)).toBe("Extra High");
-  });
-
-  it("labels the fast tier from the declaration, else 'Fast'", () => {
-    expect(fastServiceTierLabel(declared)).toBe("Priority");
-    expect(fastServiceTierLabel({ serviceTiers: undefined })).toBe("Fast");
-    expect(fastServiceTierLabel(undefined)).toBe("Fast");
   });
 
   it("paints the declared icon tint per theme and refuses non-colour values", () => {

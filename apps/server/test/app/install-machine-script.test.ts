@@ -316,7 +316,9 @@ afterEach(() => {
   }
 });
 
-describe("machine install script", () => {
+const describeOnPosix = process.platform === "win32" ? describe.skip : describe;
+
+describeOnPosix("machine install script", { timeout: 15_000 }, () => {
   it.each([
     { uid: 0, unset: true },
     { uid: 501, unset: true },
@@ -1372,7 +1374,7 @@ setInterval(() => {}, 1000);
       "Still waiting for the host daemon (60/60 checks)",
     );
     expect(result.stderr).toContain("The bb host daemon did not connect");
-  }, 15_000);
+  });
 
   it("starts a fresh macOS launch agent once and replaces it with one new process", () => {
     const fixture = createFixture();
@@ -1620,7 +1622,7 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
     expect(result.stdout).toContain(
       "Still waiting for the launch agent (60/60 checks)",
     );
-  }, 15_000);
+  });
 
   it("restarts an active Linux systemd user unit after replacing it", () => {
     const fixture = createFixture();

@@ -34,7 +34,8 @@
   "types": "./dist/index.d.ts",
   "os": [
     "darwin",
-    "linux"
+    "linux",
+    "win32"
   ],
   "bin": {
     "bb-app": "dist/bb-app.js",
@@ -46,6 +47,7 @@
     "app/dist",
     "dist",
     "host-daemon/dist/bb",
+    "host-daemon/dist/bb.cmd",
     "host-daemon/dist/bb-chunks",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
     "host-daemon/dist/bb-plugin-host-worker.mjs",
@@ -63,6 +65,7 @@
     "build:host": "node scripts/build-host.mjs",
     "clean": "rimraf dist app host-daemon server tsconfig.tsbuildinfo",
     "prepack": "node dist/prune-bb-chunks.mjs",
+    "smoke:boot": "node scripts/smoke-boot.mjs",
     "smoke:tarball": "node scripts/smoke-tarball.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
@@ -72,7 +75,6 @@
     "better-sqlite3": "13.0.3",
     "fs-native-extensions": "1.5.0",
     "hono": "^4.7.0",
-    "jiti": "^2.6.1",
     "node-pty": "1.2.0-beta.15",
     "npm": "11.16.0",
     "picocolors": "^1.1.1",

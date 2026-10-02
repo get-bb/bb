@@ -564,6 +564,7 @@ describe("ConversationMessageContent assistant directives", () => {
               turnId="turn_a"
               showActions={false}
               text={'::inline-vis{file="a.html"}'}
+              timestamp={0}
               projectId="proj_a"
             />
           </MessageDirectiveRegistryProvider>
@@ -604,6 +605,7 @@ describe("ConversationMessageContent assistant directives", () => {
               turnId="turn_a"
               showActions={false}
               text={'::inline-vis{file="charts/demo.html"}'}
+              timestamp={0}
               projectId="proj_a"
               workspaceRootPath="/workspace/project"
               onOpenLocalFileLink={onOpenLocalFileLink}
@@ -618,6 +620,7 @@ describe("ConversationMessageContent assistant directives", () => {
     );
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       lineRange: null,
+      openTargetId: null,
       path: "/workspace/project/charts/demo.html",
     });
   });
@@ -643,6 +646,7 @@ describe("ConversationMessageContent assistant directives", () => {
               turnId="turn_a"
               showActions={false}
               text={'::inline-vis{file="plan.md"}'}
+              timestamp={0}
               projectId="proj_a"
               onOpenPluginPanel={onOpenPluginPanel}
             />
@@ -681,6 +685,7 @@ describe("ConversationMessageContent assistant directives", () => {
               turnId="turn_a"
               showActions={false}
               text={'::inline-vis{file="../secret.html"}'}
+              timestamp={0}
               workspaceRootPath="/workspace/project"
               onOpenLocalFileLink={onOpenLocalFileLink}
             />
@@ -715,6 +720,7 @@ describe("ConversationMessageContent assistant directives", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={'::inline-vis{file="user.html"}'}
+              timestamp={0}
               turnRequest={{ kind: "message", status: "accepted" }}
               projectId="proj_a"
             />

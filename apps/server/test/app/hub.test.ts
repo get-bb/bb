@@ -603,6 +603,45 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
     });
   });
 
+  it("delivers history compaction to detail subscribers and listeners but not to list-only sockets", () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub();
+    const detailSocket = createMockHubSocket();
+    const listSocket = createMockHubSocket();
+    const otherDetailSocket = createMockHubSocket();
+    const seen: string[][] = [];
+    hub.onChangedMessage((message) => {
+      seen.push([...message.changes]);
+    });
+    hub.subscribe(detailSocket, {
+      kind: "thread-detail",
+      threadId: "thread-1",
+    });
+    hub.subscribe(listSocket, { kind: "thread-list" });
+    hub.subscribe(otherDetailSocket, {
+      kind: "thread-detail",
+      threadId: "thread-2",
+    });
+
+    hub.notifyThread("thread-1", ["history-compacted"]);
+    vi.advanceTimersByTime(1_000);
+
+    expect(messagesOf(detailSocket)).toEqual([
+      {
+        type: "changed",
+        entity: "thread",
+        id: "thread-1",
+        changes: ["history-compacted"],
+      },
+    ]);
+    expect(listSocket.messages).toEqual([]);
+    expect(otherDetailSocket.messages).toEqual([]);
+    expect(seen).toEqual([["history-compacted"]]);
+
+    hub.notifyThread("thread-1", ["history-rewritten"]);
+    expect(listSocket.messages).toHaveLength(1);
+  });
+
   it("still tells changed-message listeners about coalesced frames", () => {
     vi.useFakeTimers();
     const hub = new NotificationHub();

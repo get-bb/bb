@@ -5224,7 +5224,9 @@ describe("Account Pool plugin", () => {
       accessToken: "oauth-new",
       refreshToken: "refresh-new",
     });
-    expect((await fs.stat(secretPath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await fs.stat(secretPath)).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("refreshes unrelated accounts independently", async () => {

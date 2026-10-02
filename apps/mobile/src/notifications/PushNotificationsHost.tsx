@@ -128,7 +128,11 @@ export function PushNotificationsHost() {
 
   useEffect(() => {
     if (status !== "ready") return;
-    void controller.reconcileRemovedProfiles(profiles.map((p) => p.id));
+    void controller
+      .reconcileRemovedProfiles(profiles.map((p) => p.id))
+      .catch((error) => {
+        console.warn("Could not clean up push registrations", error);
+      });
   }, [controller, status, profiles]);
 
   return (

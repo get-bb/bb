@@ -1,4 +1,5 @@
 import {
+  isWindowsDriveLocalFilePath,
   parseLocalFileHref,
   type MarkdownAbsoluteLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
@@ -161,6 +162,10 @@ function findInlineLinkDestinationEnd(
   destinationStartIndex: number,
 ): number | null {
   let nestedParentheses = 0;
+  const destinationStart = value.slice(destinationStartIndex);
+  const backslashIsPathSeparator = isWindowsDriveLocalFilePath(
+    destinationStart.slice(findMarkdownWhitespaceEnd(destinationStart)),
+  );
 
   for (let index = destinationStartIndex; index < value.length; index += 1) {
     const character = value[index];
@@ -169,7 +174,11 @@ function findInlineLinkDestinationEnd(
       return null;
     }
 
-    if (character === "\\" && index + 1 < value.length) {
+    if (
+      character === "\\" &&
+      index + 1 < value.length &&
+      !backslashIsPathSeparator
+    ) {
       index += 1;
       continue;
     }
@@ -398,6 +407,24 @@ function buildLocalFileMarkdownLinkRepair(
   );
   if (payload === null) {
     return null;
+  }
+
+  if (isWindowsDriveLocalFilePath(payload.destination)) {
+    const windowsDestination = payload.destination.replaceAll("\\", "/");
+    if (
+      windowsDestination.includes("<") ||
+      windowsDestination.includes(">") ||
+      !parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: windowsDestination,
+      })
+    ) {
+      return null;
+    }
+    return {
+      endIndex: destinationEndIndex,
+      replacement: `${payload.leadingWhitespace}<${windowsDestination}>${payload.suffix}`,
+    };
   }
 
   const destination = unescapeMarkdownEscapes(payload.destination);

@@ -41,6 +41,7 @@ describe("plugin SDK Markdown", () => {
     fireEvent.click(fileLink);
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       lineRange: null,
+      openTargetId: null,
       path: "/workspace/README.md",
     });
     expect(screen.getByRole("img", { name: "chart" }).getAttribute("src")).toBe(
@@ -166,6 +167,7 @@ describe("plugin SDK Markdown", () => {
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
       path: "/outside.md",
       lineRange: null,
+      openTargetId: null,
     });
     expect(
       screen.getByRole("img", { name: "Absolute" }).getAttribute("src"),

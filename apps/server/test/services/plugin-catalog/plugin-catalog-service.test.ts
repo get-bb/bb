@@ -180,6 +180,7 @@ describe("plugin catalog service", () => {
       rootDir: `/bundled/${args.name}`,
       version: "0.0.1",
       enabled: true,
+      enabledFollowsDefault: false,
     });
   }
 
@@ -1213,6 +1214,7 @@ describe("plugin catalog service", () => {
         rootDir: "/managed/thread-hover-cards",
         version: "0.1.0",
         enabled: true,
+        enabledFollowsDefault: false,
       });
       expect((await catalog.search("thread-hover-cards"))[0]?.installed).toBe(
         true,
@@ -1279,6 +1281,7 @@ describe("plugin catalog service", () => {
           rootDir: "/Users/me/git/thread-hover-cards",
           version: "0.1.0",
           enabled: true,
+          enabledFollowsDefault: false,
         });
         expect((await catalog.search("thread-hover-cards"))[0]).toMatchObject({
           installed,

@@ -126,6 +126,155 @@ function reasoningDelta(turnId: string): RowSpec {
 }
 
 describe("timeline grouping context cache", () => {
+  it.each([
+    {
+      name: "user text",
+      initiator: "user",
+      input: [{ type: "text", text: "hello" }],
+      boundary: 2,
+    },
+    {
+      name: "agent text",
+      initiator: "agent",
+      input: [{ type: "text", text: "hello" }],
+      boundary: null,
+    },
+    {
+      name: "system text",
+      initiator: "system",
+      input: [{ type: "text", text: "hello" }],
+      boundary: null,
+    },
+    {
+      name: "hidden user text",
+      initiator: "user",
+      input: [{ type: "text", text: "hello", visibility: "agent-only" }],
+      boundary: null,
+    },
+    {
+      name: "empty user text",
+      initiator: "user",
+      input: [{ type: "text", text: "" }],
+      boundary: null,
+    },
+    {
+      name: "user image",
+      initiator: "user",
+      input: [{ type: "image", url: "https://example.com/image.png" }],
+      boundary: 2,
+    },
+    {
+      name: "user local image",
+      initiator: "user",
+      input: [{ type: "localImage", path: "/tmp/image.png" }],
+      boundary: 2,
+    },
+    {
+      name: "user file after hidden text",
+      initiator: "user",
+      input: [
+        { type: "text", text: "hidden", visibility: "agent-only" },
+        { type: "localFile", path: "/tmp/input.txt" },
+      ],
+      boundary: 2,
+    },
+  ])(
+    "preserves request association and visibility for $name",
+    ({ initiator, input, boundary }) => {
+      withTestThread((testThread) => {
+        const maxSeq = appendRows(testThread, [
+          turnStarted("turn-1"),
+          {
+            type: "client/turn/requested",
+            data: {
+              requestId: "request-2",
+              initiator,
+              input,
+              target: { kind: "new-turn" },
+            },
+          },
+          accepted("request-2", "turn-2"),
+        ]);
+        const context = getTimelineGroupingContext(testThread.db, {
+          threadId: testThread.thread.id,
+          sequenceStart: 0,
+          maxSeq,
+        });
+        expect(context.orderingBoundarySequence).toBe(boundary);
+        expect([...context.acceptedTurnIds]).toEqual([["request-2", "turn-2"]]);
+      });
+    },
+  );
+
+  it("preserves the parented cutoff before a late accepted steer", () => {
+    withTestThread((testThread) => {
+      const steer = userRequest("steer");
+      const maxSeq = appendRows(testThread, [
+        turnStarted("turn-a"),
+        turnCompleted("turn-a"),
+        {
+          ...steer,
+          data: {
+            ...steer.data,
+            target: { kind: "steer", expectedTurnId: "turn-a" },
+          },
+        },
+        turnStarted("turn-b"),
+        userRequest("request-before-parent"),
+        turnCompleted("turn-b"),
+        rootToolCall("parent", "turn-a", "item/started"),
+        userRequest("request-inside-parent"),
+        child("parent", 1),
+        accepted("steer", "turn-a"),
+      ]);
+      expect(
+        expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+      ).toBe(8);
+      expect(
+        expectCachedEqualsCold(
+          testThread,
+          appendRows(testThread, [child("parent", 2)]),
+        ).orderingBoundarySequence,
+      ).toBe(8);
+    });
+  });
+
+  it("updates parented boundaries without rereading unchanged request and turn history", () => {
+    withTestThread((testThread) => {
+      const beforeChildren = appendRows(testThread, [
+        turnStarted("turn-1"),
+        rootToolCall("call-1", "turn-1", "item/started"),
+        child("call-1", 1),
+        turnCompleted("turn-1"),
+        userRequest("request-1"),
+      ]);
+      expect(
+        expectCachedEqualsCold(testThread, beforeChildren)
+          .orderingBoundarySequence,
+      ).toBeNull();
+      const statements = captureStatementSql(testThread.db, () => {
+        for (let index = 0; index < 20; index += 1) {
+          const maxSeq = appendRows(testThread, [
+            {
+              ...delta("nested-call-1", "child text"),
+              parentToolCallId: "call-1",
+            },
+          ]);
+          expect(
+            expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+          ).toBe(5);
+        }
+        expect(
+          expectCachedEqualsCold(testThread, beforeChildren)
+            .orderingBoundarySequence,
+        ).toBeNull();
+      });
+      expect(
+        statements.filter((source) => source.includes("'$.clientRequestId'")),
+      ).toEqual([]);
+    });
+  });
+
   it("reuses the context across appended deltas and root tool-call rows without re-reading it", () => {
     withTestThread((testThread) => {
       appendRows(testThread, [

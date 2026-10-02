@@ -36,6 +36,12 @@ const NOON = at(12);
 describe("listSchedulePresets", () => {
   it("offers relative and useful wall-clock choices", () => {
     expect(listSchedulePresets(NOON)).toEqual([
+      { id: "in-5-minutes", label: "In 5 minutes", at: NOON + 5 * 60 * 1000 },
+      {
+        id: "in-10-minutes",
+        label: "In 10 minutes",
+        at: NOON + 10 * 60 * 1000,
+      },
       {
         id: "in-30-minutes",
         label: "In 30 minutes",
@@ -63,6 +69,8 @@ describe("listSchedulePresets", () => {
   it("drops this evening once it has passed", () => {
     const lateNight = at(23, 30);
     expect(listSchedulePresets(lateNight).map((preset) => preset.id)).toEqual([
+      "in-5-minutes",
+      "in-10-minutes",
       "in-30-minutes",
       "in-1-hour",
       "in-2-hours",

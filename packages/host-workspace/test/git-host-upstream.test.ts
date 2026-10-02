@@ -101,40 +101,40 @@ async function installFakeGh(mode: "found" | "none" | "auth"): Promise<{
 }> {
   const binPath = await makeTempDir("bb-pr-upstream-bin-");
   const logPath = path.join(binPath, "gh.log");
-  const ghPath = path.join(binPath, "gh");
+  const scriptPath = path.join(binPath, "gh.cjs");
+  await fs.writeFile(
+    scriptPath,
+    `
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TEST_GH_LOG, args.join("\\t") + "\\n");
+if (process.env.TEST_GH_MODE === "auth") {
+  console.error("gh: To get started with GitHub CLI, please run: gh auth login");
+  process.exit(4);
+}
+if (args[0] === "pr" && args[1] === "view") {
+  if (process.env.TEST_GH_MODE === "none") {
+    console.error('no pull requests found for branch "' + args[2] + '"');
+    process.exit(1);
+  }
+  console.log(process.env.TEST_GH_PR_JSON);
+} else if (args[0] !== "pr" || !["ready", "merge"].includes(args[1])) {
+  console.error("unexpected gh arguments: " + args.join(" "));
+  process.exit(2);
+}
+`,
+  );
+  const ghPath = path.join(
+    binPath,
+    process.platform === "win32" ? "gh.cmd" : "gh",
+  );
   await fs.writeFile(
     ghPath,
-    [
-      "#!/bin/sh",
-      "first=1",
-      'for argument in "$@"; do',
-      '  if [ "$first" -eq 0 ]; then printf "\\t" >> "$TEST_GH_LOG"; fi',
-      '  printf "%s" "$argument" >> "$TEST_GH_LOG"',
-      "  first=0",
-      "done",
-      'printf "\\n" >> "$TEST_GH_LOG"',
-      'if [ "$TEST_GH_MODE" = "auth" ]; then',
-      '  printf "%s\\n" "gh: To get started with GitHub CLI, please run: gh auth login" >&2',
-      "  exit 4",
-      "fi",
-      'if [ "$1" = "pr" ] && [ "$2" = "view" ]; then',
-      '  if [ "$TEST_GH_MODE" = "none" ]; then',
-      '    printf "no pull requests found for branch \\"%s\\"\\n" "$3" >&2',
-      "    exit 1",
-      "  fi",
-      '  printf "%s\\n" "$TEST_GH_PR_JSON"',
-      "  exit 0",
-      "fi",
-      'if [ "$1" = "pr" ] && { [ "$2" = "ready" ] || [ "$2" = "merge" ]; }; then',
-      "  exit 0",
-      "fi",
-      'printf "unexpected gh arguments: %s\\n" "$*" >&2',
-      "exit 2",
-      "",
-    ].join("\n"),
-    "utf8",
+    process.platform === "win32"
+      ? `@echo off\r\n"${process.execPath}" "%~dp0gh.cjs" %*\r\n`
+      : `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${scriptPath.replaceAll("'", "'\\''")}' "$@"\n`,
+    { mode: 0o755 },
   );
-  await fs.chmod(ghPath, 0o755);
 
   vi.stubEnv("TEST_GH_LOG", logPath);
   vi.stubEnv("TEST_GH_MODE", mode);
@@ -315,11 +315,19 @@ describe("pull request lookup for differently named upstream branches", () => {
   it("returns unavailable when gh is not installed", async () => {
     const workspacePath = await createTrackedForkWorkspace();
     const binPath = await makeTempDir("bb-pr-upstream-no-gh-");
-    const { stdout } = await execFileAsync("which", ["git"], {
-      encoding: "utf8",
-    });
-    await fs.symlink(stdout.trim(), path.join(binPath, "git"));
-    vi.stubEnv("PATH", binPath);
+    const { stdout } = await execFileAsync(
+      process.platform === "win32" ? "where.exe" : "which",
+      ["git"],
+      {
+        encoding: "utf8",
+      },
+    );
+    if (process.platform === "win32") {
+      vi.stubEnv("PATH", path.dirname(stdout.trim().split(/\r?\n/)[0]!));
+    } else {
+      await fs.symlink(stdout.trim(), path.join(binPath, "git"));
+      vi.stubEnv("PATH", binPath);
+    }
 
     await expect(
       new Workspace(workspacePath).getPullRequest(),

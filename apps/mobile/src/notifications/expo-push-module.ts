@@ -72,6 +72,12 @@ export function createExpoPushModule(): PushNotificationsModule {
       const token = await Notifications.getExpoPushTokenAsync({ projectId });
       return token.data;
     },
+    async unregisterDevicePushToken() {
+      if (Platform.OS === "android") {
+        await Notifications.setAutoServerRegistrationEnabledAsync(false);
+        await Notifications.unregisterForNotificationsAsync();
+      }
+    },
     addTokenListener(listener) {
       const subscription = Notifications.addPushTokenListener((event) => {
         const token =

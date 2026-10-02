@@ -19,7 +19,11 @@ export const sharedViteConfig = {
     tailwindcss(),
     bundleStats(),
     fontPreload(),
-    splitPrefetch({ "markdown-html": "src/components/ui/markdown-html.tsx" }),
+    splitPrefetch({
+      "markdown-html": "src/components/ui/markdown-html.tsx",
+      "queued-messages-list":
+        "src/components/promptbox/banner/QueuedMessagesList.tsx",
+    }),
   ],
   cacheDir: "node_modules/.vite/app",
   build: {

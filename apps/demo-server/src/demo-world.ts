@@ -306,6 +306,7 @@ export class DemoWorld {
       request.method === "POST" &&
       api === "/plugins/thread-list/rpc/listPreferences"
     ) {
+      await request.arrayBuffer();
       return json({ ok: true, result: { preferences: {} } });
     }
 

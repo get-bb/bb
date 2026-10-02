@@ -179,19 +179,21 @@ export function heartbeatSession(
   sessionId: string,
   leaseExpiresAt: number,
 ) {
-  const now = Date.now();
-  const updated =
-    db
-      .update(hostDaemonSessions)
-      .set({
-        leaseExpiresAt,
-        updatedAt: now,
-      })
-      .where(eq(hostDaemonSessions.id, sessionId))
-      .returning()
-      .get() ?? null;
-  if (updated) {
-    markHostSeen(db, updated.hostId, now);
-  }
-  return updated;
+  return db.transaction((tx) => {
+    const now = Date.now();
+    const updated =
+      tx
+        .update(hostDaemonSessions)
+        .set({
+          leaseExpiresAt,
+          updatedAt: now,
+        })
+        .where(eq(hostDaemonSessions.id, sessionId))
+        .returning()
+        .get() ?? null;
+    if (updated) {
+      markHostSeen(tx, updated.hostId, now);
+    }
+    return updated;
+  });
 }

@@ -80,6 +80,10 @@ await copyFile(
   resolve(hostDaemonTarget, "bb"),
 );
 await chmod(resolve(hostDaemonTarget, "bb"), 0o755);
+await copyFile(
+  resolve(hostDaemonSource, "bb.cmd"),
+  resolve(hostDaemonTarget, "bb.cmd"),
+);
 await copyDirectory({
   from: resolve(hostDaemonSource, "bb-chunks"),
   to: resolve(hostDaemonTarget, "bb-chunks"),
@@ -107,7 +111,7 @@ await writeFile(
       version: sourcePackageJson.version,
       description: "bb enrolled host runtime",
       type: "module",
-      os: sourcePackageJson.os,
+      os: [...new Set([...sourcePackageJson.os, "win32"])],
       bin: {
         bb: "dist/bb.js",
         "bb-app": "dist/bb-app.js",

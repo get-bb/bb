@@ -152,3 +152,21 @@ subject to the existing preview and retention rules.
 Content pagination does not freeze completed turns, persist projections,
 perform a backfill, add database tables or triggers, or run work on event
 ingestion. Appended events are interpreted when a new snapshot is requested.
+
+## Conversation outline caching
+
+The conversation outline returns the full list of message previews. Exact
+revisions use an in-memory response cache and idle/error threads also persist
+their outline. When an active thread advances, a bounded per-database cache
+retains completed outline items and reprojects the tail from a safe turn
+boundary. It keeps the latest turn in the tail even after that turn completes.
+
+Checkpoints never cross an unresolved steer, an open turn, or the first
+external-user ordering boundary. Late references to retained turns or requests,
+history rewrites, context clears, metadata/display changes, and writes from
+another database connection force a rebuild. Background/delegated and parented
+events use the full projection because their effects can cross turn boundaries.
+Crossing the message-delta compaction threshold also rebuilds the prefix so
+empty completed messages keep the same fallback previews.
+The checkpoint cache retains at most 16 threads and 8 million characters of
+serialized previews and identity data; eviction only affects performance.

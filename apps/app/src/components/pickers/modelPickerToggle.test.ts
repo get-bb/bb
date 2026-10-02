@@ -13,7 +13,7 @@ const base: ModelPickerToggleInput = {
   isSplitPane: true,
   isPrimaryComposer: true,
   caretInThisComposer: true,
-  caretInOtherComposerOfPane: false,
+  caretInOtherComposer: false,
   editableOutsideComposer: false,
 };
 
@@ -56,7 +56,7 @@ describe("resolveModelPickerToggle", () => {
       resolveModelPickerToggle({
         ...base,
         caretInThisComposer: false,
-        caretInOtherComposerOfPane: true,
+        caretInOtherComposer: true,
       }),
     ).toBe("ignore");
   });
@@ -98,7 +98,7 @@ describe("ownsModelPickerCycleChord", () => {
         { caretInThisComposer: false },
         { caretInThisComposer: false, isSplitPane: false },
         { caretInThisComposer: false, isPrimaryComposer: false },
-        { caretInThisComposer: false, caretInOtherComposerOfPane: true },
+        { caretInThisComposer: false, caretInOtherComposer: true },
       ]) {
         const input = { ...base, ...overrides, open };
         expect(ownsModelPickerCycleChord(input)).toBe(

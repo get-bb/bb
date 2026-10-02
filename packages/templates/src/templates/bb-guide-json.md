@@ -64,6 +64,9 @@ Fields beyond those shown exist; these are the ones scripts use.
   bb thread search <query> --json
     {active: {total, results}, archived: {total, results}}
 
+  bb prompt-history list --json
+    {entries: [{id, createdAt, input, projectId, threadId}], nextCursor: string | null}
+
   bb thread section list --json
     [{id, name, createdAt, updatedAt}]
 
@@ -83,7 +86,7 @@ Fields beyond those shown exist; these are the ones scripts use.
     [{id, displayName, available, capabilities, reasoningLevels, serviceTiers}]    (bare array)
 
   bb provider models [providerId] --json
-    [{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, isDefault}]    (bare array)
+    [{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, supportedServiceTiers?, isDefault}]    (bare array)
 
   bb environment list --json
     [{id, name, projectId, hostId, path, branchName, status, lifecycle}]    (bare array)

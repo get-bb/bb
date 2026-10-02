@@ -25,7 +25,7 @@ const VIEW: SystemAiServicesResponse = {
       displayName: "Codex",
       pluginId: "provider-codex",
       tasks: ["thread-title", "commit-message", "voice"],
-      automaticRank: 0,
+      automaticRank: 2,
       status: { ready: false, message: "Run `codex login` to sign in" },
     },
     {
@@ -33,7 +33,7 @@ const VIEW: SystemAiServicesResponse = {
       displayName: "bb cloud",
       pluginId: "bb-ai",
       tasks: ["thread-title", "commit-message"],
-      automaticRank: 1,
+      automaticRank: 0,
       status: { ready: true },
     },
     {
@@ -41,7 +41,7 @@ const VIEW: SystemAiServicesResponse = {
       displayName: "OpenRouter",
       pluginId: "my-openrouter",
       tasks: ["thread-title", "commit-message"],
-      automaticRank: null,
+      automaticRank: 1,
       status: { ready: true },
     },
   ],
@@ -107,7 +107,7 @@ afterEach(() => {
 });
 
 describe("AiServicesSettingsSection", () => {
-  it("resolves Automatic to the first ready service bb ships", () => {
+  it("resolves Automatic to the first ready compatible service", () => {
     expect(automaticServiceFor(VIEW, "thread-title")?.id).toBe("bb");
     expect(automaticServiceFor(VIEW, "voice")).toBeNull();
   });

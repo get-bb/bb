@@ -41,7 +41,10 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   bb's composers. Provider switches wait for the target provider's verified
   catalog, then emit one coherent value with its default model and resolved
   reasoning without closing the picker; `serviceTier` is retained only when
-  that provider supports it.
+  that provider supports it. Tier ids are provider-defined strings
+  (`"default"`, `"fast"`, Codex `"ultrafast"`); the picker offers the tiers
+  the selected model reports and emits `"default"` when the value names a tier
+  that model does not offer.
   Failed or empty catalogs leave `value` unchanged. Alias it on import for JSX:
 
   ```tsx

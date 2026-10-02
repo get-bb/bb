@@ -127,6 +127,16 @@ describe("acp model catalog", () => {
     ).toBe("gpt-5.3-codex-high");
   });
 
+  it("reports the fast tier only for families that list a -fast variant", () => {
+    const catalog = catalogFromSample();
+    const tiersByModel = Object.fromEntries(
+      catalog.models.map((model) => [model.id, model.supportedServiceTiers]),
+    );
+    expect(tiersByModel["gpt-5.3-codex"]).toEqual([{ id: "fast" }]);
+    expect(tiersByModel["gpt-5.5-medium"]).toEqual([]);
+    expect(tiersByModel["auto"]).toEqual([]);
+  });
+
   it("resolves fast at the default effort when no reasoning level is given", () => {
     const catalog = buildAgentModelCatalog(
       parseAgentModelLines(

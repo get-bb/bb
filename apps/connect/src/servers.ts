@@ -2,10 +2,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   SERVER_OFFLINE_AFTER_MS,
+  isLive,
   schema,
   server,
   sha256Hex,
+  tunnelConnectedLookup,
   type ConnectDb,
+  type TunnelConnectedLookup,
 } from "@bb/connect-db";
 import {
   parseCookie,
@@ -118,6 +121,7 @@ export async function listAccountServers(
   db: ConnectDb,
   userId: string,
   now: number = Date.now(),
+  tunnelConnected: TunnelConnectedLookup | null = null,
 ): Promise<AccountServerListing[]> {
   const rows = await db
     .select({
@@ -131,18 +135,24 @@ export async function listAccountServers(
     .where(eq(server.userId, userId))
     .all();
 
-  return rows.map((row) => {
-    const handle = row.subdomain;
-    const trimmed = row.name.trim();
-    const name = trimmed.length > 0 ? trimmed : handle;
-    const connected = row.credentialHash != null && row.revokedAt == null;
-    const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
-    const live =
-      connected &&
-      lastSeenMs != null &&
-      now - lastSeenMs < SERVER_OFFLINE_AFTER_MS;
-    return { handle, name, live };
-  });
+  return Promise.all(
+    rows.map(async (row) => {
+      const handle = row.subdomain;
+      const trimmed = row.name.trim();
+      const name = trimmed.length > 0 ? trimmed : handle;
+      const connected = row.credentialHash != null && row.revokedAt == null;
+      const live =
+        connected &&
+        isLive({
+          lastSeenMs: row.lastSeenAt?.getTime() ?? null,
+          now,
+          offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+          tunnelConnected:
+            tunnelConnected === null ? null : await tunnelConnected(handle),
+        });
+      return { handle, name, live };
+    }),
+  );
 }
 
 async function resolveRequestAccount(request: Request, env: Env) {
@@ -170,7 +180,12 @@ export async function handleListAccountServers(
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
-  const servers = await listAccountServers(db, account.userId);
+  const servers = await listAccountServers(
+    db,
+    account.userId,
+    Date.now(),
+    tunnelConnectedLookup(env, env.TUNNEL_DO),
+  );
   return jsonResponse({ servers }, 200);
 }
 

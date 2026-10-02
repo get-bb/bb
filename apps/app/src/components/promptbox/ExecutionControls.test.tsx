@@ -107,6 +107,7 @@ describe("ExecutionControls", () => {
         value: "fast",
         onChange: onServiceTierChange,
         supported: true,
+        options: [{ id: "fast", label: "Fast" }],
       },
     });
 

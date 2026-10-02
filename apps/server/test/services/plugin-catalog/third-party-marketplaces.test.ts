@@ -147,7 +147,7 @@ describe("third-party marketplaces", () => {
     const configFile = join(dataDir, "gitconfig");
     await writeFile(
       configFile,
-      `[url "${repo}"]\n\tinsteadOf = ${url}\n`,
+      `[url "${repo.replaceAll("\\", "\\\\")}"]\n\tinsteadOf = ${url}\n`,
       "utf8",
     );
     const previous = process.env.GIT_CONFIG_GLOBAL;
@@ -542,6 +542,7 @@ describe("third-party marketplaces", () => {
       rootDir: "/plugins/notes",
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
 
     const removed = await catalog.removeMarketplace("acme-plugins");

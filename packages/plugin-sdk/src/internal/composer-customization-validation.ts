@@ -183,13 +183,13 @@ function parseContributionArray<T extends { id: string }>(
   value: unknown,
   onRejected: RejectionReporter,
   parse: (entryKind: string, value: unknown) => T,
+  seenIds = new Set<string>(),
 ): readonly T[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
     onRejected(`${kind}: must be an array when set`);
     return undefined;
   }
-  const seenIds = new Set<string>();
   const parsed: T[] = [];
   for (const [index, entry] of value.entries()) {
     const entryKind = `${kind}[${index}]`;
@@ -241,9 +241,15 @@ function parseRegions(
   kind: string,
   registration: Record<string, unknown>,
   onRejected: RejectionReporter,
+  seenPopupIds: Set<string>,
 ): Pick<
   ComposerCustomization,
-  "actions" | "banners" | "plusMenu" | "sendMenu" | "richText"
+  | "actions"
+  | "banners"
+  | "plusMenu"
+  | "sendMenu"
+  | "richText"
+  | "experimental_popups"
 > {
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
@@ -282,6 +288,23 @@ function parseRegions(
     registration.sendMenu,
     onRejected,
     parseMenuItem,
+  );
+
+  const popups = parseContributionArray<
+    NonNullable<ComposerCustomization["experimental_popups"]>[number]
+  >(
+    `${kind}.experimental_popups`,
+    registration.experimental_popups,
+    onRejected,
+    (entryKind, value) => {
+      const entry = value as Record<string, unknown> | null;
+      return {
+        id: requireSlotId(entryKind, entry?.id),
+        label: requireNonEmptyString(entryKind, "label", entry?.label),
+        component: requireComponent(entryKind, entry?.component),
+      };
+    },
+    seenPopupIds,
   );
 
   let richText: ComposerCustomization["richText"];
@@ -340,6 +363,7 @@ function parseRegions(
     ...(plusMenu !== undefined ? { plusMenu } : {}),
     ...(sendMenu !== undefined ? { sendMenu } : {}),
     ...(richText !== undefined ? { richText } : {}),
+    ...(popups !== undefined ? { experimental_popups: popups } : {}),
   };
 }
 
@@ -351,6 +375,7 @@ export function collectComposerCustomization(
   registration: unknown,
   seenIds: Set<string>,
   onRejected: RejectionReporter,
+  seenPopupIds = new Set<string>(),
 ): ComposerCustomization | null {
   const kind = "composer.customize";
   try {
@@ -385,7 +410,7 @@ export function collectComposerCustomization(
             ),
           }
         : {}),
-      ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected),
+      ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected, seenPopupIds),
     };
   } catch (error) {
     onRejected(error instanceof Error ? error.message : String(error));

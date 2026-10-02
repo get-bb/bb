@@ -56,6 +56,7 @@ beforeEach(() => {
     appUrl: "https://getbb.app",
     serverUrlTemplate: "https://{label}.getbb.app",
     closeTunnel,
+    tunnelConnected: null,
   };
 });
 
@@ -518,6 +519,101 @@ describe("getAccountState (adaptive single / multi)", () => {
     const stale = (await getAccountState(deps, "u1")).servers[0];
     expect(stale.connected).toBe(true);
     expect(stale.online).toBe(false);
+  });
+});
+
+describe("getAccountState with tunnel objects as the liveness source", () => {
+  it("reports servers and labelled machines online from their tunnel objects, not from last_seen_at", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    await createServer(deps, "u1", "sawyer-desktop");
+    await createServer(deps, "u1", "sawyer-unpaired");
+    const stale = new Date(Date.now() - 60 * 60 * 1000);
+    const fresh = new Date();
+    db.update(server)
+      .set({ credentialHash: "hash", revokedAt: null, lastSeenAt: stale })
+      .where(eq(server.subdomain, "sawyer"))
+      .run();
+    db.update(server)
+      .set({ credentialHash: "hash-2", revokedAt: null, lastSeenAt: fresh })
+      .where(eq(server.subdomain, "sawyer-desktop"))
+      .run();
+    db.insert(machine)
+      .values([
+        {
+          id: "machine-tunnel",
+          userId: "u1",
+          subdomain: "air",
+          credentialHash: "hash-air",
+          lastSeenAt: stale,
+          createdAt: new Date(1),
+        },
+        {
+          id: "machine-requests",
+          userId: "u1",
+          credentialHash: "hash-requests",
+          lastSeenAt: fresh,
+          createdAt: new Date(2),
+        },
+        {
+          id: "machine-gone",
+          userId: "u1",
+          subdomain: "gone",
+          credentialHash: "hash-gone",
+          lastSeenAt: stale,
+          createdAt: new Date(3),
+        },
+      ])
+      .run();
+    const machineRoutingKeys = Object.fromEntries(
+      db
+        .select()
+        .from(labelClaim)
+        .where(eq(labelClaim.kind, "machine"))
+        .all()
+        .map((claim) => [claim.label, `${claim.label}:${claim.generation}`]),
+    );
+    const airKey = machineRoutingKeys.air;
+    const goneKey = machineRoutingKeys.gone;
+    if (airKey === undefined || goneKey === undefined) {
+      throw new Error("expected label claims for both labelled machines");
+    }
+    const asked: string[] = [];
+    const answers: Record<string, boolean> = {
+      sawyer: true,
+      "sawyer-desktop": false,
+      [airKey]: true,
+      [goneKey]: false,
+    };
+
+    const state = await getAccountState(
+      {
+        ...deps,
+        tunnelConnected: async (routingKey) => {
+          asked.push(routingKey);
+          return answers[routingKey] ?? null;
+        },
+      },
+      "u1",
+    );
+
+    expect(
+      Object.fromEntries(state.servers.map((s) => [s.subdomain, s.online])),
+    ).toEqual({
+      sawyer: true,
+      "sawyer-desktop": false,
+      "sawyer-unpaired": false,
+    });
+    expect(
+      Object.fromEntries(state.machines.map((m) => [m.id, m.online])),
+    ).toEqual({
+      "machine-tunnel": true,
+      "machine-requests": true,
+      "machine-gone": false,
+    });
+    expect(asked.sort()).toEqual(
+      [airKey, goneKey, "sawyer", "sawyer-desktop"].sort(),
+    );
   });
 });
 

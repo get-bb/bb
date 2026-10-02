@@ -14,6 +14,7 @@ export interface PushNotificationsModule {
   getPermission(): Promise<PushPermissionState>;
   requestPermission(): Promise<PushPermissionState>;
   getExpoPushToken(projectId: string): Promise<string>;
+  unregisterDevicePushToken(): Promise<void>;
   addTokenListener(listener: (deviceToken: string) => void): () => void;
   setBadgeCount(count: number): Promise<void>;
 }

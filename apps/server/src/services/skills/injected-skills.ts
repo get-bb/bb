@@ -8,6 +8,7 @@ import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 import { isFsErrorWithCode } from "../lib/fs-errors.js";
+import { joinHostPathSegments } from "../lib/host-path.js";
 import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
@@ -439,7 +440,7 @@ export function resolveProjectSkillSourceFromContent(
     name: frontmatter.data.name,
     description: frontmatter.data.description,
     sourceRootPath: args.candidatePath,
-    skillFilePath: toSkillFilePath(args.candidatePath),
+    skillFilePath: joinHostPathSegments(args.candidatePath, SKILL_FILE_NAME),
   };
 }
 

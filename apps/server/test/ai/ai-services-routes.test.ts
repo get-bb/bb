@@ -42,6 +42,41 @@ function registerServices(harness: TestAppHarness) {
 }
 
 describe("AI services routes", () => {
+  it("reports Automatic ranks in the same order used by task routing", async () => {
+    await withTestHarness({}, async (harness) => {
+      registerServices(harness);
+      registerFakeAiService(harness.deps.aiServices, {
+        pluginId: "bb-ai",
+        id: "bb",
+        builtin: true,
+      });
+      const response = await harness.app.request("/api/v1/system/ai-services");
+      expect(response.status).toBe(200);
+      const view = systemAiServicesResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(
+        view.services.map(({ pluginId, id, automaticRank }) => ({
+          pluginId,
+          id,
+          automaticRank,
+        })),
+      ).toEqual([
+        { pluginId: "bb-ai", id: "bb", automaticRank: 0 },
+        { pluginId: "helper-plugin", id: "helper", automaticRank: 1 },
+        { pluginId: "listener-plugin", id: "listener", automaticRank: 2 },
+      ]);
+      const test = await postTest(harness, { task: "thread-title" });
+      expect(
+        testAiServiceResponseSchema.parse(await readJson(test)),
+      ).toMatchObject({
+        ok: true,
+        pluginId: "bb-ai",
+        serviceId: "bb",
+      });
+    });
+  });
+
   it("saves a selection for a loaded service that handles the task", async () => {
     await withTestHarness({}, async (harness) => {
       registerServices(harness);

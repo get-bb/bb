@@ -38,7 +38,11 @@ describe("secret file", () => {
     });
 
     expect(second).toBe(first);
-    expect((await stat(path.join(dataDir, "secret"))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(path.join(dataDir, "secret"))).mode & 0o777).toBe(
+        0o600,
+      );
+    }
   });
 
   it("returns the same secret to concurrent creators", async () => {

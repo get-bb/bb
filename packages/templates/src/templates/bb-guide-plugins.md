@@ -667,9 +667,6 @@ Path installs compile server.ts into a versioned bb-owned cache and load the
 result with native ESM. The cache follows source, SDK, bb, and Node versions,
 so `bb plugin dev`/reload sees edits immediately without running the source
 transformer on the server event loop.
-The Legacy plugin loader (JITI) experiment restores the previous loader on the
-next install, reload, enable, update, or server restart; running instances are
-unchanged when the experiment is toggled.
 
 `bb plugin dev` is the edit loop: it requires the directory to already be
 installed as a plugin (`bb plugin install .` first), ignores dist/,

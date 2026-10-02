@@ -4,7 +4,7 @@ Thread titles, commit messages, and voice input from bb cloud, included with you
 
 - A `bb cloud` AI service for thread titles (branch names follow the title), commit messages, and voice input.
 - On by default once you sign in. Turn it off with `bb ai off`, or disable this plugin.
-- Automatic uses it when Codex is not signed in: Settings → AI services tries Codex first, then bb cloud. Without Codex, the microphone appears once bb cloud is ready.
+- Automatic tries bb cloud first, then other compatible registered services by plugin id and service id in lexicographic order. The microphone appears once an enabled service is ready.
 - Today's usage against your daily limit with `bb ai usage`.
 
 ## How it works

@@ -16,6 +16,7 @@ export interface Env {
   RESEND_AUDIENCE_ID?: string;
   MARKETPLACE?: R2Bucket;
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
+  PRESENCE_WRITES?: string;
 }
 
 export function getEnv(): Env {

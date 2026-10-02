@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import {
   isStandaloneBuiltinCompactCommand,
   approvalInteractionOutcomeSchema,
+  userQuestionInteractionOutcomeSchema,
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
@@ -867,10 +868,16 @@ function handleChildRequest(
     providerNativeIds: true,
   })
     .then((result) => {
-      const outcome = approvalInteractionOutcomeSchema.parse({
-        payload: request.payload,
-        resolution: result,
-      });
+      const outcome =
+        request.payload.kind === "user_question"
+          ? userQuestionInteractionOutcomeSchema.parse({
+              payload: request.payload,
+              resolution: result,
+            })
+          : approvalInteractionOutcomeSchema.parse({
+              payload: request.payload,
+              resolution: result,
+            });
       responder.result(buildCodexInteractiveResponse(outcome));
     })
     .catch((error: unknown) => {

@@ -7,7 +7,14 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import type { AvailableModel, ReasoningLevel } from "@bb/domain";
+import type {
+  AvailableModel,
+  ProviderInfo,
+  ProviderOptionDescriptor,
+  ReasoningLevel,
+  ServiceTier,
+} from "@bb/domain";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import type {
   SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
@@ -131,12 +138,14 @@ function availableModel({
 function executionOptions({
   models,
   selectedOnlyModels = [],
+  providers = [],
 }: {
   models: AvailableModel[];
   selectedOnlyModels?: AvailableModel[];
+  providers?: ProviderInfo[];
 }): SystemExecutionOptionsResponse {
   return {
-    providers: [],
+    providers,
     models,
     selectedOnlyModels,
     permissionCeiling: "full",
@@ -148,6 +157,11 @@ function renderPicker({
   onSelectedProviderChange = vi.fn(),
   onModelChange = vi.fn(),
   onReasoningChange = vi.fn(),
+  onServiceTierChange = vi.fn(),
+  serviceTierValue,
+  serviceTierOptions = [],
+  serviceTierSupportByProvider,
+  alternateProvider,
   modelOptions = codexModels,
   modelValue = modelOptions[0]?.value ?? "",
   pickerReasoningOptions = reasoningOptions,
@@ -167,6 +181,11 @@ function renderPicker({
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
   onReasoningChange?: (value: ReasoningLevel) => void;
+  onServiceTierChange?: (value: ServiceTier) => void;
+  serviceTierValue?: ServiceTier;
+  serviceTierOptions?: readonly ProviderOptionDescriptor[];
+  serviceTierSupportByProvider?: Record<string, boolean>;
+  alternateProvider?: ProviderInfo;
   modelOptions?: readonly ModelPickerOption[];
   modelValue?: string;
   pickerReasoningOptions?: readonly PickerOption<ReasoningLevel>[];
@@ -198,6 +217,9 @@ function renderPicker({
           isDefault: true,
         }),
       ],
+      ...(alternateProvider === undefined
+        ? {}
+        : { providers: [alternateProvider] }),
     }),
   );
 
@@ -218,9 +240,10 @@ function renderPicker({
         reasoningValue={reasoningValue}
         reasoningOptions={pickerReasoningOptions}
         onReasoningChange={onReasoningChange}
-        fastModeEnabled={false}
-        onFastModeChange={vi.fn()}
-        showFastModeToggle={false}
+        serviceTierValue={serviceTierValue}
+        serviceTierOptions={serviceTierOptions}
+        onServiceTierChange={onServiceTierChange}
+        serviceTierSupportByProvider={serviceTierSupportByProvider}
         muted={muted}
         modal={false}
         handoff={handoff}
@@ -246,7 +269,12 @@ function renderPicker({
     { wrapper },
   );
 
-  return { onSelectedProviderChange, onModelChange, onReasoningChange };
+  return {
+    onSelectedProviderChange,
+    onModelChange,
+    onReasoningChange,
+    onServiceTierChange,
+  };
 }
 
 afterEach(() => {
@@ -1242,5 +1270,134 @@ describe("buildModelNavRows", () => {
       { kind: "model", option: primary[0] },
       { kind: "model", option: primary[1] },
     ]);
+  });
+});
+
+describe("ModelReasoningPicker service tiers", () => {
+  beforeAll(() => ModelReasoningMenu.preload());
+
+  const fast = { id: "fast", label: "Fast", description: "1.5x speed" };
+  const ultrafast = { id: "ultrafast", label: "Ultrafast" };
+
+  function openPicker(): void {
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+  }
+
+  it("offers a single tier as an on/off switch", () => {
+    const { onServiceTierChange } = renderPicker({
+      serviceTierOptions: [fast],
+      serviceTierValue: "default",
+    });
+    openPicker();
+
+    expect(screen.queryByRole("radiogroup", { name: "Speed" })).toBeNull();
+    const toggle = screen.getByRole("switch", { name: "Fast mode" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onServiceTierChange).toHaveBeenCalledExactlyOnceWith("fast");
+  });
+
+  it("turns a single selected tier back to default", () => {
+    const { onServiceTierChange } = renderPicker({
+      serviceTierOptions: [fast],
+      serviceTierValue: "fast",
+    });
+    openPicker();
+
+    const toggle = screen.getByRole("switch", { name: "Fast mode" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(onServiceTierChange).toHaveBeenCalledExactlyOnceWith("default");
+  });
+
+  it("offers several tiers as a choice that includes default", () => {
+    const { onServiceTierChange } = renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "fast",
+    });
+    openPicker();
+
+    expect(screen.queryByRole("switch")).toBeNull();
+    const speed = screen.getByRole("radiogroup", { name: "Speed" });
+    const choices = [...speed.querySelectorAll('[role="radio"]')];
+    expect(choices.map((choice) => choice.textContent)).toEqual([
+      "Default",
+      "Fast",
+      "Ultrafast",
+    ]);
+    expect(
+      choices.map((choice) => choice.getAttribute("aria-checked")),
+    ).toEqual(["false", "true", "false"]);
+    fireEvent.click(screen.getByRole("radio", { name: "Ultrafast" }));
+    expect(onServiceTierChange).toHaveBeenCalledExactlyOnceWith("ultrafast");
+  });
+
+  it("shows a tier the model no longer offers as default", () => {
+    renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "flex",
+    });
+    openPicker();
+
+    expect(
+      screen
+        .getByRole("radio", { name: "Default" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("hides the control when the model has no tiers", () => {
+    renderPicker({ serviceTierOptions: [], serviceTierValue: "fast" });
+    openPicker();
+
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Speed" })).toBeNull();
+  });
+
+  it("names the selected tier on the trigger", () => {
+    renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "ultrafast",
+    });
+
+    expect(screen.getByTitle(/\(Ultrafast mode\)$/)).toBeTruthy();
+  });
+
+  it("previews another provider with that provider's tiers for its model", async () => {
+    renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "default",
+      serviceTierSupportByProvider: { codex: true, "claude-code": true },
+      alternateProvider: makeProviderInfo({
+        id: "claude-code",
+        capabilities: { supportsServiceTier: true },
+        serviceTiers: [
+          { id: "default", label: "Default" },
+          { id: "fast", label: "Fast" },
+          { id: "turbo", label: "Turbo" },
+        ],
+      }),
+      alternateProviderModels: [
+        {
+          ...availableModel({
+            value: "claude-opus-4-7",
+            label: "Claude Opus 4.7",
+            isDefault: true,
+          }),
+          supportedServiceTiers: [{ id: "turbo" }],
+        },
+      ],
+    });
+    openPicker();
+    expect(screen.getByRole("radiogroup", { name: "Speed" })).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle("Claude Code"));
+
+    expect(
+      await screen.findByRole("switch", { name: "Turbo mode" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: "Speed" })).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import path from "node:path";
+import { joinHostPathSegments } from "../lib/host-path.js";
 import { performance } from "node:perf_hooks";
 import {
   getDatabaseMaintenanceActivity,
@@ -115,7 +115,7 @@ export async function removeOrphanedThreadStorage(
       await callHostOnlineRpc(deps, {
         command: {
           type: "host.remove_path",
-          path: path.join(queue.rootPath, threadId),
+          path: joinHostPathSegments(queue.rootPath, threadId),
           recursive: true,
           rootPath: queue.rootPath,
         },
@@ -150,7 +150,7 @@ async function listOrphanedThreadStorage(
   deps: LoggedWorkSessionDeps,
   args: { dataDir: string; hostId: string; sessionId: string },
 ): Promise<HostOrphanQueue> {
-  const rootPath = path.join(args.dataDir, "thread-storage");
+  const rootPath = joinHostPathSegments(args.dataDir, "thread-storage");
   const listing = await callHostOnlineRpc(deps, {
     command: { type: "host.browse_directory", path: rootPath },
     hostId: args.hostId,

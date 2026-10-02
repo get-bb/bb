@@ -197,6 +197,65 @@ describe("PluginProviderModelPicker", () => {
     expect(screen.getByRole("button", { name: "Agent" })).toBeDefined();
   });
 
+  it("emits a reconciled tier in the first provider change", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const tierProviders = providers.map((entry) =>
+      entry.id === "codex"
+        ? { ...entry, serviceTiers: [{ id: "ultrafast", label: "Ultrafast" }] }
+        : entry,
+    );
+    cacheCatalog(queryClient, "codex", {
+      ...executionOptions([
+        {
+          ...model("gpt-5.5", "OpenAI GPT-5.5", ["high"], true),
+          supportedServiceTiers: [{ id: "ultrafast" }],
+        },
+      ]),
+      providers: tierProviders,
+    });
+    cacheCatalog(queryClient, "cursor", {
+      ...executionOptions([
+        {
+          ...model("cursor-agent", "Cursor Agent", ["high"], true),
+          supportedServiceTiers: [{ id: "fast" }],
+        },
+      ]),
+      providers: tierProviders,
+    });
+    const onChange = vi.fn();
+    function ControlledPicker() {
+      const [value, setValue] = useState<ExperimentalProviderModelPickerValue>({
+        providerId: "codex",
+        model: "gpt-5.5",
+        reasoningLevel: "high",
+        serviceTier: "ultrafast",
+      });
+      return (
+        <PluginProviderModelPicker
+          value={value}
+          onChange={(next) => {
+            onChange(next);
+            setValue(next);
+          }}
+        />
+      );
+    }
+    render(<ControlledPicker />, { wrapper });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(screen.getByTitle("Cursor"));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith({
+        providerId: "cursor",
+        model: "cursor-agent",
+        reasoningLevel: "high",
+        serviceTier: "default",
+      }),
+    );
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
   it("reconciles model capabilities and drops unsupported service tiers", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     cacheCatalog(

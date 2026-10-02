@@ -7,6 +7,7 @@ export default {
 };
 
 const noop = () => undefined;
+const STORY_TIMESTAMP = Date.UTC(2026, 8, 30, 16, 5);
 
 function HoverRevealStage({ children }: { children: ReactNode }) {
   return (
@@ -20,9 +21,10 @@ export function Overview() {
   return (
     <>
       <StoryCard>
-        <StoryRow label="main timeline" hint="Copy + Fork">
+        <StoryRow label="main timeline" hint="Copy + menu">
           <HoverRevealStage>
             <MessageActionBar
+              timestamp={STORY_TIMESTAMP}
               messageText="An agent message you can fork or reply to."
               alignment="end"
               mobileActionDisplay="inline"
@@ -30,9 +32,10 @@ export function Overview() {
             />
           </HoverRevealStage>
         </StoryRow>
-        <StoryRow label="user message" hint="Copy + Add to chat">
+        <StoryRow label="user message" hint="Copy + menu">
           <HoverRevealStage>
             <MessageActionBar
+              timestamp={STORY_TIMESTAMP}
               messageText="A user message you can quote into the composer."
               alignment="end"
               mobileActionDisplay="overflow"
@@ -43,6 +46,7 @@ export function Overview() {
         <StoryRow label="disabled" hint="thread not forkable → greyed">
           <HoverRevealStage>
             <MessageActionBar
+              timestamp={STORY_TIMESTAMP}
               messageText="Fork/Reply greyed when the thread can't fork."
               alignment="end"
               mobileActionDisplay="inline"
@@ -57,6 +61,7 @@ export function Overview() {
         >
           <HoverRevealStage>
             <MessageActionBar
+              timestamp={STORY_TIMESTAMP}
               messageText="A side-chat reply you can hand back to the main thread."
               alignment="start"
               mobileActionDisplay="inline"

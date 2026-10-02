@@ -6,6 +6,7 @@ import {
   emptyPromptDraftState,
   isPromptDraftEmpty,
   parsePromptDraftStorage,
+  promptDraftToInput,
   serializePromptDraftStorage,
 } from "@bb/client-core";
 
@@ -240,50 +241,32 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
 }
 
-export function getPromptDraftAccessor(scope: PromptDraftScope): {
+export interface PromptDraftController {
   storageKey: string;
   getCurrent: () => PromptDraftState;
   subscribe: (listener: () => void) => () => void;
   setDraft: (draft: PromptDraftState) => void;
-} {
-  const storageKey = getPromptDraftStorageKey(scope);
+  setTextAndMentions: (
+    nextText: string,
+    nextMentions: PromptTextMention[],
+  ) => void;
+  setAttachments: (attachments: PromptDraftAttachment[]) => void;
+  addAttachment: (attachment: PromptDraftAttachment) => void;
+  removeAttachment: (path: string) => void;
+  clear: () => void;
+  clearIfCurrentMatches: (expectedDraft: PromptDraftState) => boolean;
+  restoreIfEmpty: (nextDraft: PromptDraftState) => void;
+}
+
+function createPromptDraftController(
+  storageKey: string,
+): PromptDraftController {
   return {
     storageKey,
     getCurrent: () => readPromptDraft(storageKey),
     subscribe: (listener) => subscribePromptDraft(storageKey, listener),
     setDraft: (draft) => writePromptDraft(storageKey, draft),
-  };
-}
-
-export function usePromptDraftStorage(scope: PromptDraftScope) {
-  const storageKey = getPromptDraftStorageKey(scope);
-  const draft = useSyncExternalStore(
-    useCallback(
-      (listener) => subscribePromptDraft(storageKey, listener),
-      [storageKey],
-    ),
-    useCallback(() => readPromptDraft(storageKey), [storageKey]),
-    () => EMPTY_PROMPT_DRAFT,
-  );
-
-  const setDraftAndPersist = useCallback(
-    (nextDraft: PromptDraftState) => {
-      writePromptDraft(storageKey, nextDraft);
-    },
-    [storageKey],
-  );
-
-  const getCurrent = useCallback((): PromptDraftState => {
-    return readPromptDraft(storageKey);
-  }, [storageKey]);
-
-  const subscribe = useCallback(
-    (listener: () => void) => subscribePromptDraft(storageKey, listener),
-    [storageKey],
-  );
-
-  const setTextAndMentions = useCallback(
-    (nextText: string, nextMentions: PromptTextMention[]) => {
+    setTextAndMentions: (nextText, nextMentions) => {
       writePromptDraft(
         storageKey,
         {
@@ -294,11 +277,13 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         { persist: "deferred" },
       );
     },
-    [storageKey],
-  );
-
-  const addAttachment = useCallback(
-    (attachment: PromptDraftAttachment) => {
+    setAttachments: (attachments) => {
+      writePromptDraft(storageKey, {
+        ...readPromptDraft(storageKey),
+        attachments,
+      });
+    },
+    addAttachment: (attachment) => {
       const currentDraft = readPromptDraft(storageKey);
       const alreadyExists = currentDraft.attachments.some(
         (existingAttachment) => existingAttachment.path === attachment.path,
@@ -310,11 +295,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         attachments: [...currentDraft.attachments, attachment],
       });
     },
-    [storageKey],
-  );
-
-  const removeAttachment = useCallback(
-    (path: string) => {
+    removeAttachment: (path) => {
       const currentDraft = readPromptDraft(storageKey);
       const nextAttachments = currentDraft.attachments.filter(
         (attachment) => attachment.path !== path,
@@ -328,78 +309,72 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         attachments: nextAttachments,
       });
     },
-    [storageKey],
-  );
-
-  const clear = useCallback(() => {
-    setDraftAndPersist(EMPTY_PROMPT_DRAFT);
-  }, [setDraftAndPersist]);
-
-  const clearIfCurrentMatches = useCallback(
-    (expectedDraft: PromptDraftState): boolean => {
+    clear: () => writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT),
+    clearIfCurrentMatches: (expectedDraft) => {
       if (
         !arePromptDraftStatesEqual(readPromptDraft(storageKey), expectedDraft)
       ) {
         return false;
       }
 
-      setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+      writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT);
       return true;
     },
-    [setDraftAndPersist, storageKey],
-  );
-
-  const setAttachments = useCallback(
-    (attachments: PromptDraftAttachment[]) => {
-      writePromptDraft(storageKey, {
-        ...readPromptDraft(storageKey),
-        attachments,
-      });
-    },
-    [storageKey],
-  );
-
-  const restoreIfEmpty = useCallback(
-    (nextDraft: PromptDraftState) => {
+    restoreIfEmpty: (nextDraft) => {
       restorePromptDraftIfEmpty(storageKey, nextDraft);
     },
-    [storageKey],
+  };
+}
+
+export function getPromptDraftAccessor(
+  scope: PromptDraftScope,
+): PromptDraftController {
+  return createPromptDraftController(getPromptDraftStorageKey(scope));
+}
+
+export function usePromptDraftController(
+  scope: PromptDraftScope,
+): PromptDraftController {
+  const storageKey = getPromptDraftStorageKey(scope);
+  return useMemo(() => createPromptDraftController(storageKey), [storageKey]);
+}
+
+type PromptDraftSource = Pick<
+  PromptDraftController,
+  "getCurrent" | "subscribe"
+>;
+
+export function usePromptDraftSnapshot(
+  source: PromptDraftSource,
+): PromptDraftState {
+  return useSyncExternalStore(
+    source.subscribe,
+    source.getCurrent,
+    () => EMPTY_PROMPT_DRAFT,
   );
+}
+
+export function usePromptDraftInputEmpty(source: PromptDraftSource): boolean {
+  return useSyncExternalStore(
+    source.subscribe,
+    () => promptDraftToInput(source.getCurrent()).length === 0,
+    () => true,
+  );
+}
+
+export function usePromptDraftStorage(scope: PromptDraftScope) {
+  const controller = usePromptDraftController(scope);
+  const draft = usePromptDraftSnapshot(controller);
 
   return useMemo(
     () => ({
-      storageKey,
-      getCurrent,
-      subscribe,
+      ...controller,
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
       attachments: draft.attachments,
-      setDraft: setDraftAndPersist,
-      setTextAndMentions,
-      setAttachments,
-      addAttachment,
-      removeAttachment,
-      clear,
-      clearIfCurrentMatches,
-      restoreIfEmpty,
     }),
-    [
-      addAttachment,
-      clear,
-      clearIfCurrentMatches,
-      draft.attachments,
-      draft.mentions,
-      draft.text,
-      getCurrent,
-      removeAttachment,
-      restoreIfEmpty,
-      setAttachments,
-      setDraftAndPersist,
-      setTextAndMentions,
-      storageKey,
-      subscribe,
-    ],
+    [controller, draft.attachments, draft.mentions, draft.text],
   );
 }
 

@@ -83,7 +83,8 @@ between advances. These are work budgets, not a hard latency cap: synchronous
 SQLite statements, deletes, and commits can exceed 50 ms. Slow advances emit
 warnings. A zero busy timeout prevents maintenance from waiting on a competing
 writer and is restored afterward. Committed deletions invalidate cached timelines
-and publish history-rewritten notifications; failed transactions publish nothing.
+and publish history-compacted notifications to viewers of the thread; failed
+transactions publish nothing.
 
 ## Verification
 

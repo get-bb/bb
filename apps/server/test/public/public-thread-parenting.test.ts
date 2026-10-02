@@ -340,7 +340,7 @@ describe("public thread parenting routes", () => {
       );
       expect(summary).toEqual({
         nonDeletedChildCount: 3,
-        unarchivedDescendantCount: 2,
+        unarchivedDescendantCount: 1,
       });
     });
   });
@@ -420,6 +420,13 @@ describe("public thread parenting routes", () => {
         visibility: "hidden",
       });
 
+      const summaryResponse = await harness.app.request(
+        `/api/v1/threads/${archiveParent.id}/child-summary`,
+      );
+      expect(
+        threadChildSummaryResponseSchema.parse(await readJson(summaryResponse)),
+      ).toMatchObject({ unarchivedDescendantCount: 0 });
+
       const archiveResponse = await harness.app.request(
         `/api/v1/threads/${archiveParent.id}/archive-all`,
         { method: "POST" },
@@ -469,6 +476,13 @@ describe("public thread parenting routes", () => {
         projectId: project.id,
         sourceThreadId: sourceThread.id,
       });
+
+      const summaryResponse = await harness.app.request(
+        `/api/v1/threads/${sourceThread.id}/child-summary`,
+      );
+      expect(
+        threadChildSummaryResponseSchema.parse(await readJson(summaryResponse)),
+      ).toMatchObject({ unarchivedDescendantCount: 1 });
 
       const response = await harness.app.request(
         `/api/v1/threads/${sourceThread.id}/archive-all`,
@@ -558,7 +572,7 @@ describe("public thread parenting routes", () => {
           await readJson(summaryResponse),
         );
         expect(summary.unarchivedDescendantCount).toBe(
-          archivedIntermediary ? 4 : 5,
+          archivedIntermediary ? 3 : 4,
         );
 
         const response = await harness.app.request(
@@ -570,9 +584,7 @@ describe("public thread parenting routes", () => {
         const { archivedThreadIds } = threadArchiveAllResponseSchema.parse(
           await readJson(response),
         );
-        expect(archivedThreadIds).toHaveLength(
-          summary.unarchivedDescendantCount + 1,
-        );
+        expect(archivedThreadIds).toHaveLength(archivedIntermediary ? 5 : 6);
         expect([...archivedThreadIds].sort()).toEqual(
           archived
             .filter(

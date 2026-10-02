@@ -1,5 +1,4 @@
-import { execFile, type ExecFileException } from "node:child_process";
-import { promisify } from "node:util";
+import type { ExecFileException } from "node:child_process";
 import {
   type GitHostPullRequest,
   type GitHostPullRequestCheck,
@@ -10,10 +9,11 @@ import {
   type GitHostPullRequestReviewDecision,
   gitHostPullRequestSchema,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  execPortableFile,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import { runGit, type GitCommandResult, WorkspaceError } from "./git.js";
-
-const execFileAsync = promisify(execFile);
 
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
 const GIT_UPSTREAM_LOOKUP_TIMEOUT_MS = 10_000;
@@ -592,9 +592,8 @@ export async function getPullRequestForCurrentBranch(
   ];
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync("gh", ghArgs, {
+    ({ stdout } = await execPortableFile("gh", ghArgs, {
       cwd: args.cwd,
-      encoding: "utf8",
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,
         ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
@@ -614,7 +613,7 @@ export async function getPullRequestForCurrentBranch(
   }
   if (pullRequest.state === "OPEN" && !pullRequest.isDraft) {
     try {
-      const { stdout: queueOutput } = await execFileAsync(
+      const { stdout: queueOutput } = await execPortableFile(
         "gh",
         [
           "api",
@@ -628,7 +627,6 @@ export async function getPullRequestForCurrentBranch(
         ],
         {
           cwd: args.cwd,
-          encoding: "utf8",
           env: sanitizeInheritedChildProcessEnv({
             env: process.env,
             ...(args.shellPath !== undefined
@@ -666,9 +664,8 @@ export async function runPullRequestActionForCurrentBranch(
     target.outcome === "upstream-branch" ? target.selector : null,
   );
   try {
-    await execFileAsync("gh", ghArgs, {
+    await execPortableFile("gh", ghArgs, {
       cwd: args.cwd,
-      encoding: "utf8",
       env: sanitizeInheritedChildProcessEnv({
         env: process.env,
         ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),

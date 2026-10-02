@@ -751,6 +751,95 @@ jobs:
             apps/desktop/release/desktop-version-linux.json
           if-no-files-found: error
 
+  nightly-desktop-windows:
+    name: Build bb Nightly desktop (Windows)
+    # See the macOS job for why this condition uses `!cancelled()`.
+    if: >-
+      ${{ !cancelled()
+      && needs.publish.result == 'success'
+      && (github.event_name == 'schedule'
+      || (inputs.npm_tag == 'nightly' && inputs.dry_run == false)
+      || needs.publish-nightly.result == 'success') }}
+    needs:
+      - publish
+      - publish-nightly
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.nightly_version.outputs.version }}
+    env:
+      BB_DESKTOP_RELEASE_CHANNEL: nightly
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        run: npm install --global pnpm@9.15.0 --ignore-scripts
+
+      - name: Install dependencies
+        # Native modules ship prebuilt binaries; skipping install scripts keeps
+        # the job independent of a C++ toolchain on the runner.
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Apply the nightly version
+        id: nightly_version
+        shell: bash
+        env:
+          # See the macOS job for why the version comes from either npm job.
+          NIGHTLY_VERSION: ${{ needs.publish-nightly.outputs.version || needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # One version for every platform: see the macOS job for why deriving
+          # it per job is unsafe across a partial re-run.
+          if [[ -z "$NIGHTLY_VERSION" ]]; then
+            echo "::error::The npm publish job reported no version."
+            exit 1
+          fi
+
+          node scripts/bump-version.mjs "$NIGHTLY_VERSION"
+          echo "version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Applied bb-app and desktop version ${NIGHTLY_VERSION}."
+
+      - name: Typecheck desktop and launcher
+        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+
+      - name: Package x64 nightly installer
+        # Signs when the Windows certificate secrets exist; without them the
+        # installer is unsigned and Windows SmartScreen warns before running it.
+        env:
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: pnpm exec turbo run desktop:build:win --filter=@bb/desktop --output-logs=new-only
+
+      - name: Smoke test packaged nightly desktop app
+        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Generate nightly desktop version feed
+        run: pnpm --dir apps/desktop run desktop:version-feed
+
+      - name: Upload nightly desktop workflow artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bb-nightly-desktop-windows-x64-${{ steps.nightly_version.outputs.version }}
+          retention-days: 14
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/nightly.yml
+            apps/desktop/release/desktop-version-windows.json
+          if-no-files-found: error
+
   nightly-mobile-ios:
     name: Build bb Nightly iOS (EAS)
     # Same gate as the desktop jobs: only after the npm publish succeeded on
@@ -792,10 +881,12 @@ jobs:
     if: >-
       ${{ !cancelled()
       && needs.nightly-desktop-macos.result == 'success'
-      && needs.nightly-desktop-linux.result == 'success' }}
+      && needs.nightly-desktop-linux.result == 'success'
+      && needs.nightly-desktop-windows.result == 'success' }}
     needs:
       - nightly-desktop-macos
       - nightly-desktop-linux
+      - nightly-desktop-windows
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
@@ -816,18 +907,19 @@ jobs:
         env:
           LINUX_VERSION: ${{ needs.nightly-desktop-linux.outputs.version }}
           MACOS_VERSION: ${{ needs.nightly-desktop-macos.outputs.version }}
+          WINDOWS_VERSION: ${{ needs.nightly-desktop-windows.outputs.version }}
         run: |
           set -euo pipefail
 
-          # Both jobs take the version from the npm publish job, so a mismatch
+          # Every job takes the version from the npm publish job, so a mismatch
           # means that assumption broke. Refuse rather than publish a release
-          # whose two platforms disagree about what version they are.
-          if [[ -z "$MACOS_VERSION" || "$MACOS_VERSION" != "$LINUX_VERSION" ]]; then
-            echo "::error::Platform versions disagree. macOS: '${MACOS_VERSION}'. Linux: '${LINUX_VERSION}'."
+          # whose platforms disagree about what version they are.
+          if [[ -z "$MACOS_VERSION" || "$MACOS_VERSION" != "$LINUX_VERSION" || "$MACOS_VERSION" != "$WINDOWS_VERSION" ]]; then
+            echo "::error::Platform versions disagree. macOS: '${MACOS_VERSION}'. Linux: '${LINUX_VERSION}'. Windows: '${WINDOWS_VERSION}'."
             exit 1
           fi
 
-          echo "Publishing bb Nightly ${MACOS_VERSION} for macOS and Linux."
+          echo "Publishing bb Nightly ${MACOS_VERSION} for macOS, Linux, and Windows."
 
       - name: Download macOS nightly desktop artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -841,6 +933,12 @@ jobs:
           name: bb-nightly-desktop-linux-x64-${{ needs.nightly-desktop-linux.outputs.version }}
           path: release/linux
 
+      - name: Download Windows nightly desktop artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-nightly-desktop-windows-x64-${{ needs.nightly-desktop-windows.outputs.version }}
+          path: release/windows
+
       - name: Publish moving nightly desktop release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -851,6 +949,7 @@ jobs:
           nightly_tag="desktop-nightly"
           macos_dir="release/macos"
           linux_dir="release/linux"
+          windows_dir="release/windows"
 
           release_assets=()
 
@@ -885,6 +984,10 @@ jobs:
           add_required_glob "$linux_dir"/*.AppImage
           # AppImage embeds its block map, so a sidecar file is not guaranteed.
           add_optional_glob "$linux_dir"/*.blockmap
+          add_required_glob "$windows_dir/desktop-version-windows.json"
+          add_required_glob "$windows_dir/nightly.yml"
+          add_required_glob "$windows_dir"/*.exe
+          add_required_glob "$windows_dir"/*.blockmap
 
           git tag -f "$nightly_tag" "$GITHUB_SHA"
           git push --force origin "refs/tags/${nightly_tag}"
@@ -922,9 +1025,10 @@ jobs:
             echo
             echo "- version: \`$VERSION\`"
             echo "- app identity: \`dev.bb.desktop.nightly\`"
-            echo "- platforms: macOS arm64 (signed), Linux x64 AppImage"
+            echo "- platforms: macOS arm64 (signed), Linux x64 AppImage, Windows x64 installer"
             echo "- release: https://github.com/get-bb/bb/releases/tag/desktop-nightly"
             echo "- macOS update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version.json"
             echo "- Linux update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version-linux.json"
+            echo "- Windows update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version-windows.json"
             echo "- retention for workflow artifacts: 14 days"
           } >> "$GITHUB_STEP_SUMMARY"
