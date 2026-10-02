@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import {
   definePluginApp,
   experimental_Icon as Icon,
@@ -11,36 +11,75 @@ type PreviewState =
   | { status: "ready"; frameLoaded: boolean; url: string }
   | { status: "error"; message: string };
 
-function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
+type PdfCache = Map<string, Blob>;
+const MAX_CACHED_PDF_BYTES = 32 * 1024 * 1024;
+const MAX_CACHED_PDFS = 8;
+
+function rememberPdf(cache: PdfCache, url: string, blob: Blob): void {
+  cache.delete(url);
+  cache.set(url, blob);
+  let bytes = [...cache.values()].reduce(
+    (total, value) => total + value.size,
+    0,
+  );
+  for (const [key, value] of cache) {
+    if (cache.size <= MAX_CACHED_PDFS && bytes <= MAX_CACHED_PDF_BYTES) break;
+    cache.delete(key);
+    bytes -= value.size;
+  }
+}
+
+async function samePdf(first: Blob, second: Blob): Promise<boolean> {
+  if (first.size !== second.size) return false;
+  const [left, right] = await Promise.all([
+    first.arrayBuffer(),
+    second.arrayBuffer(),
+  ]);
+  const bytes = new Uint8Array(right);
+  return new Uint8Array(left).every((value, index) => value === bytes[index]);
+}
+
+function PdfFileOpener(props: PluginFileOpenerProps & { cache: PdfCache }) {
+  const url = resolvePdfUrl(props.path, props.source);
+  return url === null ? (
+    <props.Original />
+  ) : (
+    <PdfDocument key={url} url={url} path={props.path} cache={props.cache} />
+  );
+}
+
+function PdfDocument({
+  path,
+  url,
+  cache,
+}: {
+  path: string;
+  url: string;
+  cache: PdfCache;
+}) {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [state, setState] = useState<PreviewState>({ status: "loading" });
-  const url = useMemo(
-    () => resolvePdfUrl(path, source),
-    // oxlint-disable-next-line react/exhaustive-deps
-    [
-      path,
-      source.environmentId,
-      source.kind,
-      source.projectId,
-      source.threadId,
-    ],
-  );
 
-  useEffect(() => {
-    if (url === null) return;
-
+  useLayoutEffect(() => {
     const controller = new AbortController();
-    let objectUrl: string | null = null;
-    setState({ status: "loading" });
+    const objectUrls: string[] = [];
+    const cached = cache.get(url);
+    const display = (blob: Blob) => {
+      const objectUrl = URL.createObjectURL(blob);
+      objectUrls.push(objectUrl);
+      setState({ status: "ready", frameLoaded: false, url: objectUrl });
+    };
+    if (cached) display(cached);
 
     void loadPdfBlob(url, controller.signal)
-      .then((blob) => {
+      .then(async (blob) => {
+        const unchanged = cached !== undefined && (await samePdf(cached, blob));
         if (controller.signal.aborted) return;
-        objectUrl = URL.createObjectURL(blob);
-        setState({ status: "ready", frameLoaded: false, url: objectUrl });
+        rememberPdf(cache, url, blob);
+        if (!unchanged) display(blob);
       })
       .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || cached) return;
         setState({
           status: "error",
           message: error instanceof Error ? error.message : String(error),
@@ -49,11 +88,9 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
 
     return () => {
       controller.abort();
-      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+      for (const objectUrl of objectUrls) URL.revokeObjectURL(objectUrl);
     };
-  }, [reloadNonce, url]);
-
-  if (url === null) return <Original />;
+  }, [cache, reloadNonce, url]);
 
   if (state.status === "error") {
     return (
@@ -122,10 +159,11 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
 }
 
 export default definePluginApp((app) => {
+  const cache: PdfCache = new Map();
   app.slots.fileOpener({
     id: "pdf",
     title: "PDF viewer",
     extensions: ["pdf"],
-    component: PdfFileOpener,
+    component: (props) => <PdfFileOpener {...props} cache={cache} />,
   });
 });

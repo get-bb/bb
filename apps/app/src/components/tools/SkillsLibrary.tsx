@@ -121,7 +121,7 @@ function SkillDetailPage({
       onSelectPath={setSelectedPath}
       content={contentQuery.data?.content ?? ""}
       isLoadingContent={contentQuery.isLoading}
-      isContentError={contentQuery.isError}
+      isContentError={contentQuery.isError && contentQuery.data === undefined}
       canEdit={editableScope !== null}
       canDelete={deletableScope !== null}
       canOpenInEditor={editableScope !== null && canOpenPreferredFileTarget}
@@ -535,8 +535,7 @@ export function SkillsLibrary() {
           message="Checking skill source"
           layout="detail"
         />
-      ) : selectedRegistrySkill &&
-        (registryDetailQuery.isError || registryDetail === null) ? (
+      ) : selectedRegistrySkill && registryDetail === null ? (
         <ResourceListState
           state="error"
           message="This registry skill is no longer available from its source."

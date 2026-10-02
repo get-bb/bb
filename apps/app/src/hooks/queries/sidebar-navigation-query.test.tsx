@@ -84,7 +84,7 @@ describe("useSidebarNavigation", () => {
     const { result } = renderHook(() => useSidebarNavigation(), {
       wrapper: reloadHarness.wrapper,
     });
-    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.isFetching).toBe(true);
     expect(result.current.data?.projects[0]?.name).toBe("Felt walk");
     await waitFor(() => expect(request).toHaveBeenCalled());
   });
@@ -145,7 +145,7 @@ describe("useSidebarNavigation", () => {
       const { result } = renderHook(() => useSidebarNavigation(), {
         wrapper: reloadHarness.wrapper,
       });
-      expect(result.current.isPlaceholderData).toBe(true);
+      expect(result.current.isFetching).toBe(true);
       expect(result.current.data?.projects[0]?.threads).toHaveLength(
         MAX_CACHED_SIDEBAR_THREADS_PER_PROJECT,
       );

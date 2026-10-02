@@ -22,7 +22,7 @@ export function useAccountServers(credential: ConnectCredential | null): {
   const secret = credential?.credential ?? null;
   const key =
     serverUrl !== null && handle !== null && secret !== null
-      ? `${serverUrl} ${handle} ${secret} ${nonce}`
+      ? `${serverUrl} ${handle} ${secret}`
       : null;
   const [settled, setSettled] = useState<{
     key: string;
@@ -31,7 +31,7 @@ export function useAccountServers(credential: ConnectCredential | null): {
 
   useEffect(() => {
     if (serverUrl === null || handle === null || secret === null) return;
-    const requestKey = `${serverUrl} ${handle} ${secret} ${nonce}`;
+    const requestKey = `${serverUrl} ${handle} ${secret}`;
     let cancelled = false;
     listAccountServers({ serverUrl, handle, credential: secret })
       .then((result) => {
@@ -47,10 +47,17 @@ export function useAccountServers(credential: ConnectCredential | null): {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setSettled({
-          key: requestKey,
-          state: { status: "error", failure: describeEnrollmentError(error) },
-        });
+        setSettled((previous) =>
+          previous?.key === requestKey && previous.state.status === "ready"
+            ? previous
+            : {
+                key: requestKey,
+                state: {
+                  status: "error",
+                  failure: describeEnrollmentError(error),
+                },
+              },
+        );
       });
     return () => {
       cancelled = true;

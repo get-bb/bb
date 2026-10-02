@@ -65,7 +65,7 @@ type RunLoadState =
 
 type ActiveRunsLoadState =
   | { status: "loading" }
-  | { status: "ready"; runs: WorkflowRunView[] }
+  | { status: "ready"; runs: WorkflowRunView[]; refreshFailed: boolean }
   | { status: "error" };
 
 interface SharedWorkflowView {
@@ -535,11 +535,16 @@ function useActiveWorkflowRuns(threadId: string): ActiveRunsLoadState {
     try {
       const result = await rpc.call("workflowActiveRuns", { threadId });
       if (sequence === requestSequence.current) {
-        setState({ status: "ready", runs: result.runs });
+        setState({ status: "ready", runs: result.runs, refreshFailed: false });
       }
       return true;
     } catch {
-      if (sequence === requestSequence.current) setState({ status: "error" });
+      if (sequence === requestSequence.current)
+        setState((current) =>
+          current.status === "ready"
+            ? { ...current, refreshFailed: true }
+            : { status: "error" },
+        );
       return false;
     }
   }, [rpc, threadId]);
@@ -562,7 +567,9 @@ function useActiveWorkflowRuns(threadId: string): ActiveRunsLoadState {
     }
   });
 
-  const failing = state.status === "error";
+  const failing =
+    state.status === "error" ||
+    (state.status === "ready" && state.refreshFailed);
   const shouldPoll =
     failing || (state.status === "ready" && state.runs.some(isRunActive));
   useVisibleActivePolling(load, shouldPoll, failing);

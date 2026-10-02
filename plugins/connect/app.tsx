@@ -1546,7 +1546,7 @@ function useConnectStatus() {
 
 function MobilePairingSection() {
   const { status, loadError, refetch } = useConnectStatus();
-  if (loadError !== null)
+  if (loadError !== null && status === null)
     return (
       <div className="mt-3 space-y-2 border-t border-border-seam pt-3">
         <div className="flex items-center justify-between gap-3">
@@ -1582,7 +1582,7 @@ function ConnectSettingsSection() {
     [],
   );
 
-  if (loadError !== null) {
+  if (loadError !== null && status === null) {
     return (
       <p className="text-sm text-destructive-text">
         Failed to load remote-access status: {loadError}

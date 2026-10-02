@@ -73,6 +73,7 @@ import HtmlFile01Icon from "@hugeicons/core-free-icons/HtmlFile01Icon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { htmlPreviewContent } from "@/components/ui/html-preview-content";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
@@ -129,11 +130,6 @@ interface NotesData {
   notes: NoteSummary[];
   truncated: boolean;
   error: string | null;
-}
-
-interface PreviewLease {
-  baseUrl: string;
-  expiresAtMs: number;
 }
 
 function errorMessage(error: unknown): string {
@@ -1167,37 +1163,62 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   );
 }
 
-function HtmlPreview({
+interface HtmlSnapshot {
+  baseUrl: string;
+  content: string;
+}
+const htmlSnapshots = new Map<string, HtmlSnapshot>();
+
+function HtmlPreview(props: DocumentRef & { panel?: boolean }) {
+  return (
+    <HtmlPreviewDocument
+      key={JSON.stringify([props.vaultId, props.path])}
+      {...props}
+    />
+  );
+}
+
+function HtmlPreviewDocument({
   vaultId,
   path,
   title,
   panel = false,
 }: DocumentRef & { panel?: boolean }) {
   const rpc = useRpc<typeof docsRpcContract>();
-  const [state, setState] = useState<PreviewLease | { error: string } | null>(
-    null,
+  const key = JSON.stringify([vaultId, path]);
+  const [state, setState] = useState<HtmlSnapshot | { error: string } | null>(
+    () => htmlSnapshots.get(key) ?? null,
   );
   useEffect(() => {
     let active = true;
-    setState(null);
-    rpc
-      .call("preparePreview", {
-        vaultId,
-        path,
-      })
-      .then((lease) => {
-        if (active) setState(lease);
+    void rpc
+      .call("preparePreview", { vaultId, path })
+      .then((preview) => {
+        if (!active) return;
+        if (preview.content === null)
+          throw new Error("HTML preview must be valid UTF-8 text.");
+        const snapshot = { baseUrl: preview.baseUrl, content: preview.content };
+        htmlSnapshots.delete(key);
+        htmlSnapshots.set(key, snapshot);
+        while (htmlSnapshots.size > 8) {
+          const oldest = htmlSnapshots.keys().next().value;
+          if (oldest === undefined) break;
+          htmlSnapshots.delete(oldest);
+        }
+        setState(snapshot);
       })
       .catch((error: unknown) => {
         if (active)
-          setState({
-            error: errorMessage(error),
-          });
+          setState((current) =>
+            current && "content" in current
+              ? current
+              : { error: errorMessage(error) },
+          );
       });
     return () => {
       active = false;
     };
-  }, [path, vaultId, rpc]);
+  }, [key, path, vaultId, rpc]);
   if (!state) return <DocumentSkeleton />;
   if ("error" in state)
     return (
@@ -1207,12 +1228,14 @@ function HtmlPreview({
         {state.error}
       </div>
     );
+  const url = `${state.baseUrl}/${encodePath(path)}`;
   return (
     <iframe
-      className={`${panel ? "min-h-[32rem]" : "min-h-0"} flex-1 border-0 bg-white`}
+      className={`${panel ? "min-h-[32rem]" : "min-h-0"} flex-1 border-0 bg-background`}
       sandbox="allow-scripts"
       title={title}
-      src={`${state.baseUrl}/${encodePath(path)}`}
+      src={url}
+      srcDoc={htmlPreviewContent(state.content, url)}
     />
   );
 }

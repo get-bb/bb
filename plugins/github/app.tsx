@@ -105,14 +105,26 @@ function useItems(kind: "issue" | "pr"): {
     items: null,
     error: null,
   });
+  const requestRef = useRef(0);
   const refetch = useCallback(() => {
+    const request = ++requestRef.current;
     rpc.call("listItems", { kind }).then(
-      (result) => setState({ items: result.items, error: null }),
-      (error: unknown) => setState({ items: null, error: errorText(error) }),
+      (result) => {
+        if (request === requestRef.current)
+          setState({ items: result.items, error: null });
+      },
+      (error: unknown) => {
+        if (request === requestRef.current)
+          setState((current) => ({ ...current, error: errorText(error) }));
+      },
     );
   }, [rpc, kind]);
   useEffect(() => {
+    setState({ items: null, error: null });
     refetch();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [refetch]);
   useRealtime("data-changed", refetch);
   return state;
@@ -771,7 +783,7 @@ function ItemsTable({
   const links = useLinks();
 
   let body: React.ReactNode;
-  if (error !== null) {
+  if (error !== null && items === null) {
     body = <EmptyState message={error} />;
   } else if (items === null) {
     body = <TableSkeleton />;
@@ -980,18 +992,27 @@ function IssueDetailView({
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
 
+  const requestRef = useRef(0);
   const load = useCallback(() => {
+    const request = ++requestRef.current;
     rpc.call("getIssue", { repo, number }).then(
       (result) => {
+        if (request !== requestRef.current) return;
         setDetail(result.issue);
         setError(null);
       },
-      (err: unknown) => setError(errorText(err)),
+      (err: unknown) => {
+        if (request === requestRef.current) setError(errorText(err));
+      },
     );
   }, [rpc, repo, number]);
   useEffect(() => {
     setDetail(null);
+    setError(null);
     load();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [load]);
 
   const changeState = useCallback(
@@ -1058,7 +1079,7 @@ function IssueDetailView({
       .finally(() => setPosting(false));
   }, [rpc, repo, number, comment, load]);
 
-  if (error !== null) return <EmptyState message={error} />;
+  if (error !== null && detail === null) return <EmptyState message={error} />;
   if (detail === null) {
     return <DetailSkeleton />;
   }
@@ -1617,21 +1638,30 @@ function PullDetailView({
   const [pull, setPull] = useState<PullDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const requestRef = useRef(0);
   const load = useCallback(() => {
+    const request = ++requestRef.current;
     rpc.call("getPull", { repo, number }).then(
       (result) => {
+        if (request !== requestRef.current) return;
         setPull(result.pull);
         setError(null);
       },
-      (err: unknown) => setError(errorText(err)),
+      (err: unknown) => {
+        if (request === requestRef.current) setError(errorText(err));
+      },
     );
   }, [rpc, repo, number]);
   useEffect(() => {
     setPull(null);
+    setError(null);
     load();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [load]);
 
-  if (error !== null) return <EmptyState message={error} />;
+  if (error !== null && pull === null) return <EmptyState message={error} />;
   if (pull === null) {
     return <DetailSkeleton />;
   }
@@ -1801,7 +1831,7 @@ function PullPickerList({
   onPick: (repo: string, number: number) => void;
 }) {
   const { items, error } = useItems("pr");
-  if (error !== null) return <EmptyState message={error} />;
+  if (error !== null && items === null) return <EmptyState message={error} />;
   if (items === null) {
     return (
       <DelayedLoading>
@@ -1888,6 +1918,7 @@ function PullPanelTab({ threadId }: PluginThreadPanelProps) {
   }
   return (
     <PullDetailView
+      key={`${selected.repo}#${selected.number}`}
       repo={selected.repo}
       number={selected.number}
       compact
@@ -2156,6 +2187,7 @@ function GithubPanelBody({
   if (route.view === "issue") {
     return (
       <IssueDetailView
+        key={`${route.repo}#${route.number}`}
         repo={route.repo}
         number={route.number}
         onBack={() => navigate({ view: "issues" })}
@@ -2165,6 +2197,7 @@ function GithubPanelBody({
   if (route.view === "pull") {
     return (
       <PullDetailView
+        key={`${route.repo}#${route.number}`}
         repo={route.repo}
         number={route.number}
         onBack={() => navigate({ view: "pulls" })}
@@ -2213,6 +2246,7 @@ function GithubPanelBody({
       </div>
 
       <ListView
+        key={kind}
         kind={kind}
         query={query}
         setQuery={setQuery}

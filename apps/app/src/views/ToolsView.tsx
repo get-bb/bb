@@ -312,7 +312,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
   );
 
   let detailContent: ReactNode;
-  if (listQuery.isError) {
+  if (listQuery.isError && listQuery.data === undefined) {
     detailContent = (
       <ResourceListState
         state="error"
@@ -365,7 +365,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         onOpenPlugin={handleOpenCatalogPlugin}
       />
     );
-  } else if (catalogQuery.isError) {
+  } else if (catalogQuery.isError && catalogQuery.data === undefined) {
     detailContent = (
       <ResourceListState
         state="error"

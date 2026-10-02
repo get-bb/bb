@@ -51,6 +51,7 @@ async function loadedSession(
   call.mockResolvedValueOnce(current);
   call.mockResolvedValueOnce(pending);
   call.mockResolvedValueOnce({
+    content: null,
     baseUrl: "/preview",
     expiresAtMs: Date.now() + 60_000,
   });
@@ -73,6 +74,7 @@ describe("Docs document sessions", () => {
     call.mockResolvedValueOnce(file());
     call.mockResolvedValueOnce(null);
     call.mockResolvedValueOnce({
+      content: null,
       baseUrl: "/renewed-preview",
       expiresAtMs: Date.now() + 60_000,
     });

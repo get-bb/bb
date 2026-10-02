@@ -114,6 +114,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "html-preview-content",
+      "type": "registry:ui"
+    },
+    {
       "name": "icon",
       "type": "registry:ui"
     },

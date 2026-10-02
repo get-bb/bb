@@ -135,13 +135,16 @@ function WorktreeInputsControl({
       setWorktreeResult(null);
       return;
     }
-    setWorktreeResult({
+    setWorktreeResult((current) => ({
       projectId,
       hostId,
-      worktrees: [],
+      worktrees:
+        current?.projectId === projectId && current.hostId === hostId
+          ? current.worktrees
+          : [],
       loading: true,
       error: false,
-    });
+    }));
     try {
       const result = await rpc.call("listExistingWorktrees", {
         projectId,
@@ -158,13 +161,16 @@ function WorktreeInputsControl({
       }
     } catch {
       if (request === worktreeRequest.current)
-        setWorktreeResult({
+        setWorktreeResult((current) => ({
           projectId,
           hostId,
-          worktrees: [],
+          worktrees:
+            current?.projectId === projectId && current.hostId === hostId
+              ? current.worktrees
+              : [],
           loading: false,
           error: true,
-        });
+        }));
     }
   }, [projectId, hostId, rpc]);
 

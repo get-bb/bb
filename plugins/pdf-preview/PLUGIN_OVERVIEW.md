@@ -4,10 +4,13 @@ Open a PDF from a thread and read it in place. The plugin shows the document in 
 
 - Page navigation, zoom, and text search from your browser PDF viewer.
 - A loading indicator while bb fetches the file and while the viewer renders it.
-- A clear error message and a Retry button when the file does not load.
+- A clear error message and a Retry button when the first read fails.
+- Loaded PDFs remain available through failed background reads and panel remounts.
 
 ## How it works
 
 The plugin claims the `pdf` extension in bb's file opener. It works for files in a thread workspace, files on the host machine, and files in thread storage. bb fetches the file and confirms that the response is a PDF. It then hands the file to the browser viewer inside a frame.
+
+The loaded plugin retains up to eight PDFs, bounded by 32 MiB total, in memory by source URL. Remounts display the retained PDF while fetching current bytes. Unchanged bytes keep the mounted viewer; changed bytes update it. Cache eviction or an app reload requires a fresh read.
 
 No account, external service, or separate install is required. The browser or app shell must include a PDF viewer. The bb desktop app includes one.

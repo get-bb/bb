@@ -1,3 +1,4 @@
+import { htmlPreviewContent } from "@bb/shared-ui/html-preview-content";
 import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons";
 import {
   type CSSProperties,
@@ -480,6 +481,7 @@ export function FilePreview({
       <IframeFilePreview
         key={iframeKey}
         {...iframeTarget}
+        content={state.kind === "html" ? state.file.contents : ""}
         loadState={iframeLoadState}
         onLoadStateChange={(status) =>
           setIframeLoad((current) =>
@@ -1266,15 +1268,21 @@ function FilePreviewIcon({ loading }: { loading: boolean }) {
 }
 
 function IframeFilePreview({
+  content,
   sandbox,
   title,
   url,
   loadState,
   onLoadStateChange,
 }: IframeFilePreviewTarget & {
+  content: string;
   loadState: IframeLoadState;
   onLoadStateChange: (state: IframeLoadState) => void;
 }) {
+  const srcDoc = useMemo(
+    () => htmlPreviewContent(content, url),
+    [content, url],
+  );
   if (loadState === "error") {
     return (
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -1291,6 +1299,7 @@ function IframeFilePreview({
       <iframe
         title={title}
         src={url}
+        srcDoc={srcDoc}
         sandbox={sandbox}
         style={HTML_FILE_PREVIEW_IFRAME_STYLE}
         onLoad={() => onLoadStateChange("loaded")}

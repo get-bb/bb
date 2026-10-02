@@ -471,7 +471,7 @@ export const docsRpcContract = defineRpcContract({
   },
   preparePreview: {
     input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
-    output: previewSchema,
+    output: previewSchema.extend({ content: z.string().nullable() }),
   },
   openFile: {
     input: z
@@ -1945,15 +1945,27 @@ export default async function plugin(
     async preparePreview(input) {
       const vault = getVault(input.vaultId);
       const relativePath = requireVaultPath(input.path);
-      await bb.sdk.files.read({
+      const file = await bb.sdk.files.read({
         ...hostArgs(vault),
         path: absolutePath(vault, relativePath),
         rootPath: vault.rootPath,
       });
-      return bb.sdk.files.createPreview({
+      if (
+        /\.html?$/i.test(relativePath) &&
+        (file.contentEncoding !== "utf8" || file.sizeBytes > 5 * 1024 * 1024)
+      ) {
+        throw new Error(
+          "HTML previews require valid UTF-8 text no larger than 5 MiB.",
+        );
+      }
+      const preview = await bb.sdk.files.createPreview({
         ...hostArgs(vault),
         rootPath: vault.rootPath,
       });
+      return {
+        ...preview,
+        content: file.contentEncoding === "utf8" ? file.content : null,
+      };
     },
     async openFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);

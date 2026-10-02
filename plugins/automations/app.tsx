@@ -113,7 +113,7 @@ function useOverview(): {
       }
       requestInFlightRef.current = true;
       if (showLoading) {
-        setState({ entries: null, error: null });
+        setState((current) => ({ ...current, error: null }));
       }
       rpc
         .call("automations_overview")
@@ -124,7 +124,7 @@ function useOverview(): {
           },
           (error: unknown) =>
             setState((current) =>
-              !showLoading && current.entries !== null
+              current.entries !== null
                 ? current
                 : { entries: null, error: errorText(error) },
             ),
@@ -192,7 +192,7 @@ function useAutomation(route: DetailRoute): {
       },
       (error: unknown) => {
         if (requestRef.current !== requestId) return;
-        setState({ automation: null, error: errorText(error) });
+        setState((current) => ({ ...current, error: errorText(error) }));
       },
     );
   }, [rpc, projectId, automationId]);
@@ -233,14 +233,20 @@ function useRuns(
   });
   const requestRef = useRef(0);
   const loadMoreInFlightRef = useRef(false);
+  const hasLoadedRef = useRef(false);
 
   const loadFirstPage = useCallback(() => {
     const requestId = ++requestRef.current;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    setState((prev) => ({
+      ...prev,
+      loading: !hasLoadedRef.current,
+      error: null,
+    }));
     rpc.call("automations_runs", { projectId, automationId }).then(
       (result) => {
         if (requestRef.current !== requestId) return;
         const page = result as AutomationRunListResponse;
+        hasLoadedRef.current = true;
         setState({
           runs: page.runs,
           nextCursor: page.nextCursor,
@@ -251,13 +257,12 @@ function useRuns(
       },
       (error: unknown) => {
         if (requestRef.current !== requestId) return;
-        setState({
-          runs: [],
-          nextCursor: null,
+        setState((current) => ({
+          ...current,
           loading: false,
           loadingMore: false,
-          error: errorText(error),
-        });
+          error: hasLoadedRef.current ? null : errorText(error),
+        }));
       },
     );
   }, [rpc, projectId, automationId]);
@@ -300,6 +305,9 @@ function useRuns(
 
   useEffect(() => {
     loadFirstPage();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [loadFirstPage]);
   useRealtime("automations", (payload) => {
     const signal = asSignal(payload);
@@ -588,7 +596,7 @@ function DetailView({
       .finally(() => setDeleting(false));
   }, [mutations, route, onBack]);
 
-  if (error !== null) {
+  if (error !== null && automation === null) {
     return (
       <ResourceListState
         state="error"
@@ -735,6 +743,7 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
     return (
       <AutomationsPageFrame fill={false}>
         <DetailView
+          key={`${parsedRoute.route.projectId}/${parsedRoute.route.automationId}`}
           route={parsedRoute.route}
           initialEditing={parsedRoute.editing}
           onBack={backToList}

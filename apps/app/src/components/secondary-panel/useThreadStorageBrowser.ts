@@ -25,6 +25,7 @@ export interface ThreadStorageBrowserController {
   filteredFiles: readonly WorkspaceFile[];
   isSearchOpen: boolean;
   loadedFiles: readonly WorkspaceFile[];
+  hasLoadedFiles: boolean;
   model: ThreadStorageTreeModel | null;
   openSearch: () => void;
   searchQuery: string;
@@ -171,6 +172,7 @@ export function useThreadStorageBrowser({
     filteredFiles,
     isSearchOpen,
     loadedFiles,
+    hasLoadedFiles: files !== undefined,
     model,
     openSearch,
     searchQuery,

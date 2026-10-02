@@ -164,6 +164,7 @@ function deferred<T>() {
 }
 
 const preview = {
+  content: "<h1>Metrics snapshot</h1>",
   baseUrl: "/api/v1/file-previews/lease",
   expiresAtMs: Date.now() + 60_000,
 };

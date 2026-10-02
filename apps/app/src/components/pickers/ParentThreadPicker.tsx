@@ -117,7 +117,7 @@ export function ParentThreadPicker({
               <div className="px-3 py-2 text-sm text-muted-foreground">
                 Loading threads…
               </div>
-            ) : isError ? (
+            ) : isError && options.length === 0 ? (
               <CommandGroup>
                 <CommandItem
                   forceMount
