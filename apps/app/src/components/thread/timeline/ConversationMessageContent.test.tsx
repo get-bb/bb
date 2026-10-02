@@ -481,3 +481,40 @@ describe("ConversationMessageContent automation messages", () => {
     expect(container.textContent).not.toContain("[bb automation due:");
   });
 });
+
+describe("ConversationMessageContent undelivered automation messages", () => {
+  it("names a rejected automation steer in the collapsed row", () => {
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={null}
+            initiator="user"
+            mentions={[]}
+            originKind={null}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text={
+              "[bb automation due:auto_zto0dtbcxme]\n\nWeekday unread digest."
+            }
+            timestamp={0}
+            threadId="thr_automation"
+            turnRequest={{
+              isGrouped: false,
+              kind: "steer",
+              status: "rejected",
+            }}
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Automation Steer failed/u }),
+    ).toBeTruthy();
+  });
+});

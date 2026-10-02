@@ -462,6 +462,11 @@ export const GeneratedConversationMessage = memo(
       [mentions, messageText.length, trimStartLength],
     );
     const requestLabel = turnRequestLabel(turnRequest);
+    const titleRequestLabel =
+      sourceKind === "automation" && turnRequest.status !== "accepted"
+        ? requestLabel
+        : null;
+    const bodyRequestLabel = titleRequestLabel === null ? requestLabel : null;
     const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
       () =>
         buildMarkdownMessageLinkRouting({
@@ -472,18 +477,8 @@ export const GeneratedConversationMessage = memo(
         }),
       [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
     );
-    const title = useMemo(
-      () =>
-        generatedConversationTitle({
-          originKind,
-          sourceKind,
-          sourceName,
-          sourceThreadId,
-          sourceIsPluginSideChat,
-          systemMessageKind,
-          systemMessageSubject,
-        }),
-      [
+    const title = useMemo(() => {
+      const sourceTitle = generatedConversationTitle({
         originKind,
         sourceKind,
         sourceName,
@@ -491,8 +486,24 @@ export const GeneratedConversationMessage = memo(
         sourceIsPluginSideChat,
         systemMessageKind,
         systemMessageSubject,
-      ],
-    );
+      });
+      return titleRequestLabel === null
+        ? sourceTitle
+        : {
+            ...sourceTitle,
+            plain: `${sourceTitle.plain} ${titleRequestLabel}`,
+            segments: [...sourceTitle.segments, verbSegment(titleRequestLabel)],
+          };
+    }, [
+      originKind,
+      sourceKind,
+      sourceName,
+      sourceThreadId,
+      sourceIsPluginSideChat,
+      systemMessageKind,
+      systemMessageSubject,
+      titleRequestLabel,
+    ]);
     const sourceTitleContent =
       sourceKind === "agent" ? (
         <GeneratedAgentSourceTitle
@@ -513,7 +524,7 @@ export const GeneratedConversationMessage = memo(
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
-      requestLabel !== null;
+      bodyRequestLabel !== null;
     const collapsedPreviewSource =
       generatedConversationCollapsedPreview(messageText);
     const collapsedPreviewTextRef = useRef<HTMLElement | null>(null);
@@ -623,7 +634,7 @@ export const GeneratedConversationMessage = memo(
               onOpenLocalFileLink={onOpenLocalFileLink}
               projectId={projectId}
             />
-            {requestLabel ? (
+            {bodyRequestLabel ? (
               <div className="mt-1 flex items-center justify-start gap-2">
                 <TurnRequestLabel turnRequest={turnRequest} />
               </div>
@@ -642,7 +653,7 @@ export const GeneratedConversationMessage = memo(
         resolveMentionLink,
         sourceKind,
         suppressGeneratedAgentImages,
-        requestLabel,
+        bodyRequestLabel,
         turnRequest,
       ],
     );
