@@ -122,7 +122,8 @@ Not available on the phone (use the web app or desktop for these):
   filesystem.
 - A machine that reported macOS, Linux, or WSL refuses Windows drive-letter
   paths at the app/server boundary so unsupported input fails clearly. Use the
-  `/mnt/c/...` form from inside WSL2.
+  `/mnt/c/...` form from inside WSL2. A machine that reported Windows refuses
+  POSIX paths the same way.
 
 ### Windows drive-letter paths
 

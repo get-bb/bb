@@ -306,11 +306,18 @@ function assertPathMatchesHostPlatform(
   args: { hostId: string; path: string },
 ): void {
   const platform = deps.hub.getDaemonPlatformForHost(args.hostId);
-  if (
-    platform !== null &&
-    platform !== "unknown" &&
-    isWindowsHostPath(args.path)
-  ) {
+  if (platform === null || platform === "unknown") {
+    return;
+  }
+  const isWindowsPath = isWindowsHostPath(args.path);
+  if (platform === "win32" && !isWindowsPath) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "This machine uses Windows paths. Use an absolute path like C:\\Users\\me\\repo.",
+    );
+  }
+  if (platform !== "win32" && isWindowsPath) {
     throw new ApiError(
       400,
       "invalid_request",
