@@ -42,17 +42,27 @@ afterEach(async () => {
 });
 
 describe("personal workspace host entry", () => {
-  it("kills processes still running inside a workspace before removing it", async () => {
+  it("kills processes still running inside a workspace before removing it", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "killProcessesWithCwdUnder does not enumerate process working directories on Windows",
+    );
     const dataDir = await createDataDir();
     const harness = createHarness(dataDir);
     const created = await harness.experimental_call("createWorkspace", {
       pathKey: "thr_busy",
     });
-    const child = spawn("sleep", ["300"], {
-      cwd: created.path,
-      detached: true,
-      stdio: "ignore",
-    });
+    const child = spawn(
+      process.execPath,
+      ["-e", "setTimeout(() => {}, 300_000)"],
+      {
+        cwd: created.path,
+        detached: true,
+        stdio: "ignore",
+      },
+    );
     child.unref();
 
     try {

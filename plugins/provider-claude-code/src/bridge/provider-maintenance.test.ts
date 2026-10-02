@@ -70,6 +70,17 @@ describe("Claude Code provider maintenance", () => {
       missingInstallationStatus(),
       "install",
     );
+    if (process.platform === "win32") {
+      expect(run).toMatchObject({
+        available: true,
+        command: { command: "powershell.exe" },
+        verification: { kind: "installed" },
+      });
+      expect(run.available && run.command.args.at(-1)).toContain(
+        "https://claude.ai/install.ps1",
+      );
+      return;
+    }
     expect(run).toMatchObject({
       available: true,
       command: { command: "sh" },

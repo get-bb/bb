@@ -96,7 +96,10 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
       status: "unknown",
       installedVersion: null,
       statusMessage: expect.stringMatching(
-        /^Could not determine the pi version: `.*--version` exited with 1\. Install @earendil-works\/pi-coding-agent 0\.84\.0 or newer: npm install -g @earendil-works\/pi-coding-agent@latest$/u,
+        new RegExp(
+          `^Could not determine the pi version: \`.*--version\` exited with 1\\. Install @earendil-works/pi-coding-agent 0\\.84\\.0 or newer: ${process.platform === "win32" ? "npm\\.cmd" : "npm"} install -g @earendil-works/pi-coding-agent@latest$`,
+          "u",
+        ),
       ),
     },
   });

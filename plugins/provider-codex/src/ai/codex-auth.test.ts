@@ -37,6 +37,7 @@ it("reads auth.json from CODEX_HOME when configured", async () => {
   await writeApiKeyAuth(path.join(homeDir, ".codex"), "default-api-key");
   await writeApiKeyAuth(configuredCodexHome, "configured-api-key");
   vi.stubEnv("HOME", homeDir);
+  vi.stubEnv("USERPROFILE", homeDir);
   vi.stubEnv("CODEX_HOME", configuredCodexHome);
 
   await expect(readCodexAuthCredentials()).resolves.toEqual({
@@ -49,6 +50,7 @@ it("reports a missing auth.json as codex_auth_missing and an unparsable one as c
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-codex-home-"));
   tempDirs.push(homeDir);
   vi.stubEnv("HOME", homeDir);
+  vi.stubEnv("USERPROFILE", homeDir);
   vi.stubEnv("CODEX_HOME", "");
 
   await expect(readCodexAuthCredentials()).rejects.toMatchObject({
@@ -69,6 +71,7 @@ it("reads ChatGPT credentials with the account id from the access token claims",
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-codex-home-"));
   tempDirs.push(homeDir);
   vi.stubEnv("HOME", homeDir);
+  vi.stubEnv("USERPROFILE", homeDir);
   vi.stubEnv("CODEX_HOME", "");
   const base64UrlJson = (value: object) =>
     Buffer.from(JSON.stringify(value)).toString("base64url");

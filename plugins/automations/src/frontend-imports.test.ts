@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -123,7 +123,7 @@ function collectFrontendModules(entry: string): Map<string, string[]> {
 describe("automations frontend bundle", () => {
   const reached = collectFrontendModules(FRONTEND_ENTRY);
   const reachedPaths = [...reached.keys()].map((file) =>
-    relative(PLUGIN_ROOT, file),
+    relative(PLUGIN_ROOT, file).split(sep).join("/"),
   );
 
   it("walks the real frontend graph", () => {

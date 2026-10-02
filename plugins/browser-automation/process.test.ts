@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { supervise } from "./process.js";
 
-describe("process ownership", () => {
+const describeOnPosix = process.platform === "win32" ? describe.skip : describe;
+
+describeOnPosix("process ownership", () => {
   it.each([false, true])(
     "runs the supervisor in Node mode without leaking it to external children (Electron: %s)",
     async (electron) => {

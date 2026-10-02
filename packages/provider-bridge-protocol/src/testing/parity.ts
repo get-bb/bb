@@ -31,6 +31,9 @@ import {
   type RecordedCell,
 } from "./recording.js";
 
+const REPLAY_CLEANUP_RETRIES = 20;
+const REPLAY_CLEANUP_RETRY_DELAY_MS = 100;
+
 export interface ParityAssembler {
   assembleMessage(message: {
     method?: string;
@@ -373,10 +376,12 @@ export async function replayRecording(
   });
 
   const recordedCwd = recordedWorkspaceDir(recording);
+  const jsonText = (value: string): string =>
+    JSON.stringify(value).slice(1, -1);
   const restoreRecordedWorkspace = (line: string): string =>
     recordedCwd === null || recordedCwd === workspaceDir
       ? line
-      : line.split(workspaceDir).join(recordedCwd);
+      : line.split(jsonText(workspaceDir)).join(jsonText(recordedCwd));
 
   const initializeId = PARITY_INITIALIZE_ID;
   const startedAt = Date.now();
@@ -653,8 +658,14 @@ export async function replayRecording(
       return null;
     }),
   ]);
-  rmSync(stateDir, { recursive: true, force: true });
-  rmSync(workspaceDir, { recursive: true, force: true });
+  for (const directory of [stateDir, workspaceDir]) {
+    rmSync(directory, {
+      force: true,
+      maxRetries: REPLAY_CLEANUP_RETRIES,
+      recursive: true,
+      retryDelay: REPLAY_CLEANUP_RETRY_DELAY_MS,
+    });
+  }
 
   return {
     providerId,
