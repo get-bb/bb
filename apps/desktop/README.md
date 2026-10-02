@@ -76,6 +76,10 @@ incompatible updates.
 
 ## Validation
 
+The built-in browser allows file downloads using Electron's native save dialog.
+Files are saved on the machine running the desktop app, including downloads
+initiated in desktop browser automation tabs.
+
 ```bash
 pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app
 pnpm exec turbo run build --filter=@bb/desktop

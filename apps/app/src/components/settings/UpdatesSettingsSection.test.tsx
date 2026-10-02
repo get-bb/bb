@@ -40,7 +40,10 @@ import {
   type UpdateInventory,
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
-import { UpdatesSettingsSection } from "./UpdatesSettingsSection";
+import {
+  UpdateActionButton,
+  UpdatesSettingsSection,
+} from "./UpdatesSettingsSection";
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
@@ -900,12 +903,10 @@ The canonical release summary.
       screen.getByText("bb daemon").closest("[data-resource-row]")?.className,
     ).not.toContain("bg-surface-destructive");
     expect(screen.queryByText(/^Up to date/)).toBeNull();
-    const stalledMessage = screen.getByText("Update didn't finish");
-    expect(stalledMessage.tagName).toBe("SPAN");
-    expect(stalledMessage.className).toContain("font-semibold");
-    expect(stalledMessage.className).toContain("text-destructive");
-    expect(stalledMessage.className).not.toContain("rounded");
-    expect(stalledMessage.className).not.toContain("font-mono");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByRole("img", { name: "Update didn't finish" }).className,
+    ).toContain("text-destructive");
     expect(
       screen.getAllByRole("button", { name: /^Failed · Retry on/ }),
     ).toHaveLength(1);
@@ -1245,6 +1246,24 @@ The canonical release summary.
     expect(screen.queryByText("Checking provider CLIs…")).toBeNull();
   });
 
+  it("ignores repeat Retry clicks while the retry is running", () => {
+    const onClick = vi.fn();
+    render(
+      <TooltipProvider>
+        <UpdateActionButton
+          label="Retry on homelab now"
+          icon="RotateCcw"
+          loading
+          onClick={onClick}
+        />
+      </TooltipProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry on homelab now" }));
+
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it("keeps error red on the reason and off the recovery", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
@@ -1260,26 +1279,9 @@ The canonical release summary.
 
     renderSection();
 
-    const failedStatus = screen.getByText("Couldn't check for updates");
-    expect(failedStatus.tagName).toBe("SPAN");
-    for (const className of [
-      "shrink-0",
-      "text-xs",
-      "font-semibold",
-      "text-destructive",
-    ]) {
-      expect(failedStatus.className).toContain(className);
-    }
-    for (const className of [
-      "rounded",
-      "border",
-      "px-",
-      "py-",
-      "bg-",
-      "font-mono",
-    ]) {
-      expect(failedStatus.className).not.toContain(className);
-    }
+    expect(
+      screen.getByRole("img", { name: "Couldn't check for updates" }).className,
+    ).toContain("text-destructive");
     const retry = screen.getByRole("button", {
       name: /Check workstation's CLIs again/,
     });
@@ -1388,7 +1390,11 @@ The canonical release summary.
       failuresByJobKey: new Map([
         [
           "host_1:claude-code",
-          { issueFingerprint: issue.fingerprint, logDialogState },
+          {
+            issueFingerprint: issue.fingerprint,
+            kind: "interrupted",
+            logDialogState,
+          },
         ],
       ]),
       queuedJobKeys: new Set(),
@@ -1398,10 +1404,10 @@ The canonical release summary.
 
     renderSection();
 
-    expect(screen.getByText("Failed")).toBeDefined();
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Command exited with code 1",
-    );
+    expect(
+      screen.getByText("Connection lost during update").className,
+    ).toContain("sr-only");
+    expect(screen.queryByText("Command exited with code 1")).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "Failed · Retry Claude Code on workstation",
@@ -1792,6 +1798,33 @@ The canonical release summary.
         name: "Failed · Download the update and restart bb",
       }),
     ).toBeDefined();
+  });
+
+  it("marks a failed update once when no retry is available", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        available: null,
+        lastResult: {
+          acknowledged: false,
+          finishedAt: "2026-09-23T00:00:00.000Z",
+          from: { commit: null, version: "0.0.5" },
+          id: "update-1",
+          logTail: ["npm error code E404"],
+          message: "npm install failed",
+          outcome: "failed",
+          phase: "install",
+          to: { commit: null, version: "0.0.6" },
+        },
+      }),
+    );
+
+    renderSection();
+
+    expect(
+      await screen.findByRole("button", { name: "View the failed bb update" }),
+    ).toBeDefined();
+    expect(document.querySelector('[data-update-state="failed"]')).toBeNull();
   });
 
   it("explains why a source checkout cannot update instead of offering a button", async () => {
