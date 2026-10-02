@@ -1901,6 +1901,7 @@ export function registerTasksCli(
                 threadId: ctx.threadId ?? null,
                 body,
                 notify: input.options.notify,
+                awaitDelivery: true,
               });
               return input.options.json
                 ? JSON.stringify({ comment })
