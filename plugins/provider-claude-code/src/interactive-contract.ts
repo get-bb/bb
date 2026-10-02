@@ -196,23 +196,6 @@ export function toPendingInteractionPermissionProfile(
   };
 }
 
-interface ShouldRequestClaudePermissionApprovalArgs {
-  blockedPath: string | undefined;
-  decisionReason: string | undefined;
-  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
-  toolName: string;
-}
-
-export function shouldRequestClaudePermissionApproval(
-  args: ShouldRequestClaudePermissionApprovalArgs,
-): boolean {
-  return (
-    args.blockedPath !== undefined ||
-    args.decisionReason !== undefined ||
-    (args.suggestions?.length ?? 0) > 0
-  );
-}
-
 export interface ClaudePermissionRequestApprovalParams {
   threadId: string;
   providerThreadId: string;

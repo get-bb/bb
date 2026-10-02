@@ -1826,6 +1826,148 @@ describe("bridge", () => {
     }
   });
 
+  it("forwards a permissions.ask rule prompt that carries no permission hints", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-ask-rule";
+      const toolUseID = "tool-ask-rule";
+      await startBridgeThread({ bridge, threadId });
+
+      const resultPromise = getLastCanUseTool()(
+        "Bash",
+        { command: "git push origin main" },
+        {
+          description: "Push the branch to origin",
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID,
+        },
+      );
+      await bridge.flushWork();
+
+      const permissionRequest = bridge.messages.find((message) =>
+        isApprovalInteraction(message),
+      );
+      if (permissionRequest?.id === undefined) {
+        throw new Error("Expected forwarded permission request");
+      }
+      expect(permissionRequest.params).toMatchObject({
+        threadId,
+        payload: {
+          kind: "approval",
+          availableDecisions: ["allow_once", "deny"],
+          subject: expect.objectContaining({ itemId: toolUseID }),
+        },
+      });
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: permissionRequest.id,
+          result: { decision: "allow_once", grantedPermissions: null },
+        }),
+      );
+      await expect(resultPromise).resolves.toMatchObject({
+        behavior: "allow",
+        toolUseID,
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("does not let a session grant for a folder cover a later request that names no folder", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-grant-then-escalation";
+      await startBridgeThread({ bridge, threadId });
+
+      const pathGrantPromise = getLastCanUseTool()(
+        "Read",
+        { file_path: "/tmp/outside/notes.txt" },
+        {
+          blockedPath: "/tmp/outside",
+          requestId: "control-request-path",
+          signal: new AbortController().signal,
+          toolUseID: "tool-path-grant",
+        },
+      );
+      await bridge.flushWork();
+      const pathRequest = bridge.messages.find((message) =>
+        isApprovalInteraction(message),
+      );
+      if (pathRequest?.id === undefined) {
+        throw new Error("Expected forwarded path permission request");
+      }
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: pathRequest.id,
+          result: {
+            decision: "allow_for_session",
+            grantedPermissions: {
+              network: null,
+              fileSystem: { read: ["/tmp/outside"], write: [] },
+            },
+          },
+        }),
+      );
+      await expect(pathGrantPromise).resolves.toMatchObject({
+        behavior: "allow",
+      });
+
+      const escalationPromise = getLastCanUseTool()(
+        "Read",
+        { file_path: "/tmp/outside/secrets.env" },
+        {
+          decisionReason: "Automatic review requires user escalation",
+          requestId: "control-request-escalation",
+          signal: new AbortController().signal,
+          toolUseID: "tool-escalation",
+        },
+      );
+      await bridge.flushWork();
+      const escalationRequest = bridge.messages.find(
+        (message) =>
+          isApprovalInteraction(message) && message.id !== pathRequest.id,
+      );
+      if (escalationRequest?.id === undefined) {
+        throw new Error("Expected forwarded escalation permission request");
+      }
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: escalationRequest.id,
+          result: { decision: "deny", grantedPermissions: null },
+        }),
+      );
+      await expect(escalationPromise).resolves.toMatchObject({
+        behavior: "deny",
+        toolUseID: "tool-escalation",
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("forwards AskUserQuestion through canUseTool and returns the answer payload", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
