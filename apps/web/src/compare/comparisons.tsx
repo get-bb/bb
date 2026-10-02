@@ -102,14 +102,12 @@ const BB_VS_SUPERSET: Comparison = {
       body: (
         <>
           <p>
-            Work across Claude Code, Codex, Cursor, Pi, OpenCode, and more. Add
-            Devin or any other ACP agent in bb’s settings, or build a plugin for
-            a new provider.
+            Claude Code builds, Codex reviews, Cursor writes the release notes.
+            Your agents message each other, and you watch them side by side.
           </p>
           <p>
-            Have Claude Code build a feature, Codex review it, and Cursor write
-            the release notes. Agents message each other directly, and you can
-            watch them side by side in splits and step in anytime.
+            Works with Claude Code, Codex, Cursor, Pi, OpenCode, and any ACP
+            agent, including Devin. Need another? Build a plugin for it.
           </p>
         </>
       ),
