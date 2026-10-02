@@ -195,21 +195,26 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
 
       <section className="cmp-section cmp-faq" data-reveal>
         <h2 className="sec-title">{comparison.faqTitle}</h2>
-        <div className="cmp-faq-list">
-          {comparison.faq.map((item) => (
-            <details key={item.question} className="cmp-faq-item">
-              <summary>
-                {item.question}
-                <HugeiconsIcon
-                  icon={ArrowDown01Icon}
-                  className="cmp-faq-chevron"
-                  aria-hidden="true"
-                />
-              </summary>
-              <div className="cmp-faq-answer">{item.answer}</div>
-            </details>
-          ))}
-        </div>
+        {comparison.faq.map((group) => (
+          <div key={group.title} className="cmp-faq-group">
+            <h3 className="cmp-faq-group-title">{group.title}</h3>
+            <div className="cmp-faq-list">
+              {group.items.map((item) => (
+                <details key={item.question} className="cmp-faq-item">
+                  <summary>
+                    {item.question}
+                    <HugeiconsIcon
+                      icon={ArrowDown01Icon}
+                      className="cmp-faq-chevron"
+                      aria-hidden="true"
+                    />
+                  </summary>
+                  <div className="cmp-faq-answer">{item.answer}</div>
+                </details>
+              ))}
+            </div>
+          </div>
+        ))}
       </section>
 
       <section className="closer" data-reveal>

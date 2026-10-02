@@ -570,6 +570,24 @@
   white-space: nowrap;
 }
 
+.cmp-faq-group {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.cmp-faq-group + .cmp-faq-group {
+  margin-top: 40px;
+}
+
+.cmp-faq-group-title {
+  margin-bottom: 8px;
+  font-size: var(--text-label-small);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+
 .cmp-faq-list {
   max-width: 720px;
   margin: 0 auto;
