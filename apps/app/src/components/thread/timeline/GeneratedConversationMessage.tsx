@@ -477,8 +477,18 @@ export const GeneratedConversationMessage = memo(
         }),
       [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
     );
-    const title = useMemo(() => {
-      const sourceTitle = generatedConversationTitle({
+    const sourceTitle = useMemo(
+      () =>
+        generatedConversationTitle({
+          originKind,
+          sourceKind,
+          sourceName,
+          sourceThreadId,
+          sourceIsPluginSideChat,
+          systemMessageKind,
+          systemMessageSubject,
+        }),
+      [
         originKind,
         sourceKind,
         sourceName,
@@ -486,24 +496,22 @@ export const GeneratedConversationMessage = memo(
         sourceIsPluginSideChat,
         systemMessageKind,
         systemMessageSubject,
-      });
-      return titleRequestLabel === null
-        ? sourceTitle
-        : {
-            ...sourceTitle,
-            plain: `${sourceTitle.plain} ${titleRequestLabel}`,
-            segments: [...sourceTitle.segments, verbSegment(titleRequestLabel)],
-          };
-    }, [
-      originKind,
-      sourceKind,
-      sourceName,
-      sourceThreadId,
-      sourceIsPluginSideChat,
-      systemMessageKind,
-      systemMessageSubject,
-      titleRequestLabel,
-    ]);
+      ],
+    );
+    const title = useMemo(
+      () =>
+        titleRequestLabel === null
+          ? sourceTitle
+          : {
+              ...sourceTitle,
+              plain: `${sourceTitle.plain} ${titleRequestLabel}`,
+              segments: [
+                ...sourceTitle.segments,
+                verbSegment(titleRequestLabel),
+              ],
+            },
+      [sourceTitle, titleRequestLabel],
+    );
     const sourceTitleContent =
       sourceKind === "agent" ? (
         <GeneratedAgentSourceTitle
