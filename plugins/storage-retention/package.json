@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-storage-retention",
+  "name": "bb-plugin-bb--storage-retention",
   "version": "0.1.0",
   "description": "Inspect machine storage and automatically archive or delete old threads.",
   "private": true,

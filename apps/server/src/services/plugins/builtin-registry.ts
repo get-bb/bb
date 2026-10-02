@@ -36,7 +36,7 @@ const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 export const BUILTIN_PLUGINS = [
   {
     name: "storage-retention",
-    pluginId: "storage-retention",
+    pluginId: "bb--storage-retention",
     defaultEnabled: false,
   },
   {

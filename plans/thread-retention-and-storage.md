@@ -1,6 +1,7 @@
 # Storage & retention plugin
 
-Implementation lives in `plugins/storage-retention`. The plugin owns retention
+Implementation lives in `plugins/storage-retention` (plugin id
+`bb--storage-retention`). The plugin owns retention
 policy and eligibility, hourly scheduling, previews and run history, disk
 measurement, host-worker file operations, scan caching, report assembly, UI,
 and the `bb storage` CLI. It uses public SDK thread rows and ordinary lifecycle
@@ -21,6 +22,28 @@ Both policies default to Never. Enable the plugin to use it. Cross-plugin protec
 those groups. Eligibility races are accepted. Reports are cached snapshots;
 external filesystem changes appear after a rescan. The landed #4328 core idle
 orphan sweep is unchanged and does not depend on this plugin.
+
+## Storage page and large-file rule (2026-10-01)
+
+- Page: one header (the panel title), machine rows matching Settings →
+  Machines (status, server pill, scanned active/archived counts, disk free),
+  Scan all and per-machine scans, preset retention selects, a pinned-threads
+  banner, compact largest-thread rows with archived/running pills, and a
+  delayed skeleton with data loaded once per panel.
+- Suggestions, rule 1: files of 10 MB or more (`LARGE_FILE_MIN_BYTES`) in
+  archived, unpinned, stopped threads. The page nudges once they total 1 GB
+  (`LARGE_FILE_NUDGE_MIN_BYTES`); deleting them keeps smaller files and every
+  conversation. `bb storage clear-large-files` is the CLI form. Thread counts
+  come from the scan because most archived threads no longer reference an
+  environment.
+- One disk pass: the scan runs `du -a` and streams it, recording large files
+  while summing directories; the walker fallback does the same. On a 5.5M-file
+  thread-storage root a scan takes about 114 s, the same as the previous `du -s`
+  pass.
+- Verification: plugin 43 tests, server 3,223, Plugin Guide 75, templates 47;
+  typecheck and lint for every package depending on a changed one. Live checks
+  on the owner's server covered real scans of two machines and both
+  confirmations, cancelled without deleting.
 
 ## Experiment removal verification (2026-09-28)
 

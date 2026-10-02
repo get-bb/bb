@@ -440,7 +440,7 @@ after you change it; it does not rename an existing branch or worktree. Set it
 with `bb settings general managedBranchPrefix <prefix>`.
 
 The bundled **Storage & retention** plugin is disabled by default. Enable it with
-`bb plugin enable storage-retention`, then open its sidebar panel. Both policies
+`bb plugin enable bb--storage-retention`, then open its sidebar panel. Both policies
 default to Never. The plugin stores its policy and latest run in its own storage;
 there are no general app settings for retention. Preview with
 `bb storage retention --archive-after 30 --delete-after 90`; add `--save --yes`

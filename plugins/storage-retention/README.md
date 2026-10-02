@@ -1,6 +1,6 @@
 # Storage & retention
 
-A bundled, default-disabled plugin. Enable the `storage-retention` plugin. Open Storage & retention in the sidebar.
+A bundled, default-disabled plugin. Enable the `bb--storage-retention` plugin. Open Storage & retention in the sidebar.
 Both retention policies default to Never. The plugin owns policy, previews,
 hourly scheduling, run summaries, UI, and CLI commands. It uses public SDK thread
 rows to reconstruct archive/delete relationships and ordinary lifecycle actions.

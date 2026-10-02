@@ -125,7 +125,7 @@
     "icon": "SideChat"
   },
   {
-    "id": "storage-retention",
+    "id": "bb--storage-retention",
     "name": "Storage & retention",
     "icon": "DatabaseRestore"
   },
