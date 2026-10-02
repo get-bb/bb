@@ -64,6 +64,7 @@ function renderChildCompleted(text = MARKDOWN_BODY) {
           attachments={null}
           mentions={mentions}
           text={text}
+          timestamp={0}
           threadId="thr_parent"
           turnRequest={{ kind: "message", status: "accepted" }}
           workspaceRootPath="/workspace"
@@ -177,6 +178,7 @@ function renderAgentMessage(
             attachments={null}
             mentions={mentions}
             text={text}
+            timestamp={0}
             turnRequest={{ kind: "message", status: "accepted" }}
             projectId="proj_demo"
           />
