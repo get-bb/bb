@@ -54,14 +54,40 @@ export default experimental_defineHostEntry({
             timeoutMs: 29 * 60_000,
             largeFileMinBytes: minBytes,
           },
-          undefined,
+          { duCommand: null },
           context.signal,
         );
         for (const file of largeFiles) {
           context.signal.throwIfAborted();
-          await fs.rm(file.path, { force: true });
-          sizeBytes += file.sizeBytes;
-          count++;
+          const relative = path.relative(directory, file.path);
+          if (
+            !path.isAbsolute(file.path) ||
+            relative === "" ||
+            relative === ".." ||
+            relative.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relative)
+          )
+            throw new Error("Large file must be inside its storage directory");
+          try {
+            const current = await fs.lstat(file.path);
+            if (!current.isFile()) continue;
+            const currentBytes =
+              process.platform === "win32"
+                ? current.size
+                : current.blocks * 512;
+            if (currentBytes < minBytes) continue;
+            if ((await fs.realpath(file.path)) !== file.path) continue;
+            context.signal.throwIfAborted();
+            await fs.unlink(file.path);
+            sizeBytes += currentBytes;
+            count++;
+          } catch (error) {
+            if (
+              !isFsErrorWithCode(error, "ENOENT") &&
+              !isFsErrorWithCode(error, "ENOTDIR")
+            )
+              throw error;
+          }
         }
         removed.push({ name, sizeBytes, count });
       }
@@ -77,7 +103,10 @@ export default experimental_defineHostEntry({
             freeBytes: stats.bavail * stats.bsize,
           };
         } catch (error) {
-          if (!isFsErrorWithCode(error, "ENOENT") || current === path.dirname(current))
+          if (
+            !isFsErrorWithCode(error, "ENOENT") ||
+            current === path.dirname(current)
+          )
             throw error;
         }
       }

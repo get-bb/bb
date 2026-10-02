@@ -244,7 +244,11 @@ function spawnDu(
   });
 }
 
-function noteFile(measurement: Measurement, filePath: string, sizeBytes: number) {
+function noteFile(
+  measurement: Measurement,
+  filePath: string,
+  sizeBytes: number,
+) {
   if (
     measurement.largeFileMinBytes !== null &&
     sizeBytes >= measurement.largeFileMinBytes
@@ -347,7 +351,10 @@ async function classifyChildren(
     const entry = entries[index];
     if (typeof child === "string") directories.push(child);
     else if (child !== null && entry !== undefined) {
-      nonDirectories.push({ name: entry.name, sizeBytes: allocatedBytes(child) });
+      nonDirectories.push({
+        name: entry.name,
+        sizeBytes: allocatedBytes(child),
+      });
       if (child.isFile())
         files.push({
           path: path.join(targetPath, entry.name),
@@ -573,7 +580,8 @@ async function measureTarget(
   const stats = await lstatEntry(measurement.signal, targetPath);
   if (stats === null) return { outcome: "missing", path: target.path };
   if (!stats.isDirectory()) {
-    if (stats.isFile()) noteFile(measurement, targetPath, allocatedBytes(stats));
+    if (stats.isFile())
+      noteFile(measurement, targetPath, allocatedBytes(stats));
     return {
       outcome: "measured",
       path: target.path,
@@ -602,7 +610,7 @@ async function measureTarget(
 
 export async function measureDiskUsage(
   command: DiskUsageInput,
-  options: DiskUsageOptions = DEFAULT_DISK_USAGE_OPTIONS,
+  options: Partial<DiskUsageOptions> = {},
   signal?: AbortSignal,
 ): Promise<DiskUsageOutput> {
   for (const target of command.targets) {
@@ -612,6 +620,7 @@ export async function measureDiskUsage(
   }
 
   const controller = new AbortController();
+  const settings = { ...DEFAULT_DISK_USAGE_OPTIONS, ...options };
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
@@ -624,15 +633,15 @@ export async function measureDiskUsage(
         : AbortSignal.any([controller.signal, signal]),
     largeFileMinBytes: command.largeFileMinBytes,
     largeFiles: [],
-    duCommand: options.duCommand,
-    duConcurrency: options.duConcurrency,
-    duBatchMaxEntries: options.duBatchMaxEntries,
-    walkerConcurrency: options.walkerConcurrency,
+    duCommand: settings.duCommand,
+    duConcurrency: settings.duConcurrency,
+    duBatchMaxEntries: settings.duBatchMaxEntries,
+    walkerConcurrency: settings.walkerConcurrency,
   };
   try {
     const targets = await mapWithConcurrency(
       command.targets,
-      options.duConcurrency,
+      settings.duConcurrency,
       measurement.signal,
       (target) => measureTarget(measurement, target),
     );

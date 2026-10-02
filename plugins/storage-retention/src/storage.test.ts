@@ -481,6 +481,58 @@ it("deletes only large files from archived threads on scanned online machines, k
   }
 });
 
+it.runIf(process.platform !== "win32")(
+  "clears large files with newlines and tabs without deleting truncated paths or symlink targets",
+  async () => {
+    const root = await directory();
+    const outside = await directory();
+    const target = path.join(root, "thr_test");
+    const size = 32768;
+    const names = ["large\n20480\tvictim", "tab\tfile"];
+    await fs.mkdir(target);
+    await fs.writeFile(path.join(target, "large"), "keep");
+    await fs.writeFile(path.join(outside, "data"), Buffer.alloc(size, 1));
+    await fs.symlink(outside, path.join(target, "directory-link"));
+    await fs.symlink(
+      path.join(outside, "data"),
+      path.join(target, "file-link"),
+    );
+    for (const name of names)
+      await fs.writeFile(path.join(target, name), Buffer.alloc(size, 1));
+    const worker = experimental_createHostEntryHarness(hostEntry);
+    try {
+      const result = await worker.experimental_call("discardLargeFiles", {
+        rootPath: root,
+        names: ["thr_test"],
+        minBytes: 16384,
+      });
+      expect(await fs.readFile(path.join(target, "large"), "utf8")).toBe(
+        "keep",
+      );
+      expect((await fs.stat(path.join(outside, "data"))).size).toBe(size);
+      expect(
+        (await fs.lstat(path.join(target, "file-link"))).isSymbolicLink(),
+      ).toBe(true);
+      expect(await fs.readdir(target)).toEqual([
+        "directory-link",
+        "file-link",
+        "large",
+      ]);
+      expect(result).toEqual({
+        removed: [
+          {
+            name: "thr_test",
+            sizeBytes: size * names.length,
+            count: names.length,
+          },
+        ],
+      });
+    } finally {
+      await worker.experimental_dispose();
+    }
+  },
+);
+
 it("rejects traversal and symlinks without deleting their targets", async () => {
   const root = await directory();
   const outside = await directory();
