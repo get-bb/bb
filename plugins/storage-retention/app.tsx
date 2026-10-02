@@ -329,10 +329,10 @@ function StoragePage({
       <div className="min-w-0 space-y-1">
         <h2 className="text-sm font-medium">What is thread storage?</h2>
         <p className="text-xs leading-snug text-subtle-foreground/75">
-          A folder on this machine for files the agent saves while working on a
-          thread, such as reports and temporary working files. Clearing it
-          permanently deletes those files. Conversation history and uploaded
-          attachments are stored separately.
+          A place for your agent to keep things that don’t belong in the repo,
+          like plans, reports, and scratch files you don’t want to commit.
+          Clearing it removes those files for good. Your conversation history
+          and uploaded attachments are kept separately.
         </p>
       </div>
     </aside>
