@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -124,6 +124,60 @@ it("checks both sides of plugin renames and falls back to full coverage for shar
   expect(affectedPluginForks(root, "0".repeat(40), plugins)).toEqual(plugins);
   expect(affectedPluginForks(root, undefined, plugins)).toEqual(plugins);
 });
+
+it("partitions fork checks without losing plugins and rejects invalid shards", () => {
+  const script = fileURLToPath(
+    new URL("../../../scripts/check-plugin-forks.mjs", import.meta.url),
+  );
+  const list = (...args) =>
+    JSON.parse(
+      execFileSync(process.execPath, [script, "--list", ...args], {
+        encoding: "utf8",
+      }),
+    );
+  const plugins = list();
+  for (const count of [1, 3, plugins.length + 1]) {
+    const shards = Array.from({ length: count }, (_, index) =>
+      list(`--shard=${index + 1}/${count}`),
+    );
+    const combined = shards.flat();
+    expect(combined.toSorted()).toEqual(plugins.toSorted());
+    expect(new Set(combined).size).toBe(combined.length);
+    expect(
+      Math.max(...shards.map((shard) => shard.length)) -
+        Math.min(...shards.map((shard) => shard.length)),
+    ).toBeLessThanOrEqual(1);
+  }
+  const selected = plugins.slice(0, 2);
+  expect(list(...selected, "--shard=1/3")).toEqual([selected[0]]);
+  expect(list(...selected, "--shard=2/3")).toEqual([selected[1]]);
+  expect(list(...selected, "--shard=3/3")).toEqual([]);
+  for (const shard of [
+    "0/3",
+    "4/3",
+    "1/0",
+    "1.5/3",
+    "1/3junk",
+    "1/9007199254740992",
+  ]) {
+    const result = spawnSync(
+      process.execPath,
+      [script, "--list", `--shard=${shard}`],
+      { encoding: "utf8" },
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("--shard requires an index/count");
+  }
+  const invalidPlugin = spawnSync(
+    process.execPath,
+    [script, "--list", "plugins/not-forkable", "--shard=2/3"],
+    { encoding: "utf8" },
+  );
+  expect(invalidPlugin.status).not.toBe(0);
+  expect(invalidPlugin.stderr).toContain(
+    "is not listed in scripts/forkable-plugins.json",
+  );
+}, 30_000);
 
 it("retires only old unused pnpm caches while protecting current, recent, open-PR, and unrelated caches", () => {
   const now = Date.parse("2026-09-29T00:00:00Z");

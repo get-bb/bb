@@ -227,7 +227,7 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
   the Linux runtime path inside WSL2 rather than a separate native Windows
   product path.
 - `apps/mobile` typecheck, lint, and unit tests run inside the Ubuntu
-  `Checks` and `Tests (packages)` jobs like every other workspace package. The
+  `Checks` and the `Tests (packages-*)` jobs like every other workspace package. The
   iOS simulator Maestro flows run in `Mobile E2E`
   (`.github/workflows/mobile-e2e.yml`) on the macOS runner only when a pull
   request carries the `mobile-e2e` label, nightly on `main`, or on manual
