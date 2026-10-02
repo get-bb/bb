@@ -82,6 +82,7 @@ interface ResolvedProviderPreview {
   model: string;
   reasoningLevel: ReasoningLevel;
   supportsServiceTier: boolean;
+  serviceTierOptions: readonly ProviderOptionDescriptor[];
 }
 
 export interface ModelReasoningPickerHandoffSelection {
@@ -398,30 +399,6 @@ export function ModelReasoningPicker({
   const previewModelOptions = previewSelection?.modelOptions ?? modelOptions;
   const previewMoreModelOptions =
     previewSelection?.moreModelOptions ?? moreModelOptions;
-  useEffect(() => {
-    if (
-      !previewCatalogIsVerified ||
-      !previewProviderId ||
-      !previewSelection?.selectedModel
-    ) {
-      return;
-    }
-    const provider = previewQuery.data?.providers.find(
-      (candidate) => candidate.id === previewProviderId,
-    );
-    onProviderPreviewResolved?.({
-      providerId: previewProviderId,
-      model: previewSelection.selectedModel,
-      reasoningLevel: previewSelection.reasoningLevel,
-      supportsServiceTier: provider?.capabilities.supportsServiceTier ?? false,
-    });
-  }, [
-    onProviderPreviewResolved,
-    previewCatalogIsVerified,
-    previewProviderId,
-    previewQuery.data?.providers,
-    previewSelection,
-  ]);
   const activeReasoningOptions = isPreviewing
     ? (previewSelection?.reasoningOptions ?? [])
     : reasoningOptions;
@@ -525,6 +502,32 @@ export function ModelReasoningPicker({
       serviceTierSupportByProvider,
     ],
   );
+  useEffect(() => {
+    if (
+      !previewCatalogIsVerified ||
+      !previewProviderId ||
+      !previewSelection?.selectedModel
+    ) {
+      return;
+    }
+    const provider = previewQuery.data?.providers.find(
+      (candidate) => candidate.id === previewProviderId,
+    );
+    onProviderPreviewResolved?.({
+      providerId: previewProviderId,
+      model: previewSelection.selectedModel,
+      reasoningLevel: previewSelection.reasoningLevel,
+      supportsServiceTier: provider?.capabilities.supportsServiceTier ?? false,
+      serviceTierOptions: previewServiceTierOptions,
+    });
+  }, [
+    onProviderPreviewResolved,
+    previewCatalogIsVerified,
+    previewProviderId,
+    previewQuery.data?.providers,
+    previewSelection,
+    previewServiceTierOptions,
+  ]);
   const activeServiceTierOptions =
     handoffMode || !hasActiveModelOptions
       ? EMPTY_SERVICE_TIER_OPTIONS

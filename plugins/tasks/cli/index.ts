@@ -504,9 +504,14 @@ function presetEnvironmentKind(
 
 function presetServiceTier(
   value: string | undefined,
+  clear: boolean | undefined,
 ): string | null | undefined {
-  if (value === undefined) return undefined;
-  return value === "none" ? null : value;
+  if (clear && value !== undefined) {
+    throw new CliError(
+      "Cannot combine --service-tier and --clear-service-tier.",
+    );
+  }
+  return clear ? null : value;
 }
 
 async function resolveMachineId(
@@ -2341,7 +2346,11 @@ export function registerTasksCli(
               type: "string",
               placeholder: "tier",
               description:
-                "Service tier id the provider lists for the model, such as default or fast; none clears it",
+                "Service tier id the provider lists for the model, such as default or fast",
+            },
+            "clear-service-tier": {
+              type: "boolean",
+              description: "Leave the preset without a service tier",
             },
             environment: {
               type: "enum",
@@ -2388,7 +2397,10 @@ export function registerTasksCli(
                     modelId: input.options.model,
                     reasoningLevel: input.options.reasoning,
                     serviceTier:
-                      presetServiceTier(input.options["service-tier"]) ?? null,
+                      presetServiceTier(
+                        input.options["service-tier"],
+                        input.options["clear-service-tier"],
+                      ) ?? null,
                     permissionMode: input.options.permission,
                     environmentKind,
                     baseBranch: baseBranch ?? null,
@@ -2441,7 +2453,11 @@ export function registerTasksCli(
               type: "string",
               placeholder: "tier",
               description:
-                "Service tier id the provider lists for the model, such as default or fast; none clears it",
+                "Service tier id the provider lists for the model, such as default or fast",
+            },
+            "clear-service-tier": {
+              type: "boolean",
+              description: "Leave the preset without a service tier",
             },
             environment: {
               type: "enum",
@@ -2494,6 +2510,7 @@ export function registerTasksCli(
                     reasoningLevel: input.options.reasoning,
                     serviceTier: presetServiceTier(
                       input.options["service-tier"],
+                      input.options["clear-service-tier"],
                     ),
                     permissionMode: input.options.permission,
                     environmentKind:

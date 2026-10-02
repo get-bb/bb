@@ -14,4 +14,5 @@ bb tasks preset create --name "Codex high" --provider codex \
   --permission auto
 ```
 
-`preset update` accepts the same flags; `--service-tier none` clears a tier.
+`preset update` accepts the same flags; `--clear-service-tier` clears a tier.
+Do not combine it with `--service-tier`; `none` is a literal tier id.

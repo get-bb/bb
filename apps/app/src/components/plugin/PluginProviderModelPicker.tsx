@@ -1,3 +1,7 @@
+import {
+  reconcileServiceTier,
+  type ProviderOptionDescriptor,
+} from "@bb/domain";
 import { useCallback, useEffect, useMemo } from "react";
 import type {
   ExperimentalProviderModelPickerProps,
@@ -126,13 +130,19 @@ export function PluginProviderModelPicker({
       model: string;
       reasoningLevel: ExperimentalProviderModelPickerValue["reasoningLevel"];
       supportsServiceTier: boolean;
+      serviceTierOptions: readonly ProviderOptionDescriptor[];
     }) => {
       emit({
         providerId: selection.providerId,
         model: selection.model,
         reasoningLevel: selection.reasoningLevel,
         ...(selection.supportsServiceTier && value.serviceTier !== undefined
-          ? { serviceTier: value.serviceTier }
+          ? {
+              serviceTier: reconcileServiceTier(
+                value.serviceTier,
+                selection.serviceTierOptions,
+              ),
+            }
           : {}),
       });
     },

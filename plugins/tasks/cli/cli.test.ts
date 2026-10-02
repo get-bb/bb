@@ -1039,7 +1039,7 @@ describe("bb tasks CLI", () => {
           "--reasoning",
           "high",
           "--service-tier",
-          "fast",
+          "none",
           "--permission",
           "accept-edits",
           "--environment",
@@ -1059,7 +1059,7 @@ describe("bb tasks CLI", () => {
       providerId: "codex",
       modelId: "gpt-5.6-sol",
       reasoningLevel: "high",
-      serviceTier: "fast",
+      serviceTier: "none",
       permissionMode: "accept-edits",
       environmentKind: "new-worktree",
       baseBranch: "main",
@@ -1072,7 +1072,7 @@ describe("bb tasks CLI", () => {
     expect(shown).toContain("Environment   worktree");
     expect(shown).toContain("Base branch   main");
     expect(shown).toContain("Machine       host_air");
-    expect(shown).toContain("Service tier  fast");
+    expect(shown).toContain("Service tier  none");
 
     const updated = JSON.parse(
       stdout(
@@ -1082,8 +1082,7 @@ describe("bb tasks CLI", () => {
           "CLI worker",
           "--reasoning",
           "ultra",
-          "--service-tier",
-          "none",
+          "--clear-service-tier",
           "--name",
           "CLI reviewer",
           "--environment",

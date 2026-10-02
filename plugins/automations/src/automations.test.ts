@@ -1610,6 +1610,89 @@ describe("automation CLI --script-file", () => {
     return id;
   }
 
+  it("preserves a tier named none and clears it with a separate flag", async () => {
+    const t = await setup();
+    try {
+      const created = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "tier-test",
+          "--in",
+          "30m",
+          "--prompt",
+          "Check the build",
+          "--provider",
+          "codex",
+          "--model",
+          "test-model",
+          "--permission-mode",
+          "auto",
+          "--target-thread",
+          "thr_env",
+          "--service-tier",
+          "none",
+          "--json",
+        ],
+        {},
+      );
+      expect(created.exitCode).toBe(0);
+      const automation = JSON.parse(created.stdout ?? "");
+      expect(automation.execution.serviceTier).toBe("none");
+      const conflict = await t.cli.run(
+        [
+          "update",
+          automation.id,
+          "--project",
+          "proj_test",
+          "--service-tier",
+          "none",
+          "--clear-service-tier",
+        ],
+        {},
+      );
+      expect(conflict.exitCode).not.toBe(0);
+      expect(conflict.stderr).toContain(
+        "Cannot combine --service-tier and --clear-service-tier",
+      );
+      const cleared = await t.cli.run(
+        [
+          "update",
+          automation.id,
+          "--project",
+          "proj_test",
+          "--clear-service-tier",
+          "--json",
+        ],
+        {},
+      );
+      expect(cleared.exitCode).toBe(0);
+      expect(
+        JSON.parse(cleared.stdout ?? "").execution.serviceTier,
+      ).toBeUndefined();
+      const updated = await t.cli.run(
+        [
+          "update",
+          automation.id,
+          "--project",
+          "proj_test",
+          "--service-tier",
+          "none",
+          "--json",
+        ],
+        {},
+      );
+      expect(updated.exitCode).toBe(0);
+      expect(JSON.parse(updated.stdout ?? "").execution.serviceTier).toBe(
+        "none",
+      );
+    } finally {
+      await t.cleanup();
+    }
+  });
+
   it("resolves the source against ctx.cwd and reports the stored snapshot copy", async () => {
     const t = await setup();
     const sourcePath = join(t.srcDir, "hello.sh");
