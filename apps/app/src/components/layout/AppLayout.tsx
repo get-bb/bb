@@ -84,6 +84,7 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useDataDirectoryCommand } from "@/hooks/useDataDirectoryCommand";
 import { usePluginSafeModeCommands } from "@/hooks/usePluginSafeModeCommands";
+import { usePluginCachePruneCommand } from "@/hooks/usePluginCachePruneCommand";
 import { useServerDaemonLogsCommand } from "@/hooks/useServerDaemonLogsCommand";
 import {
   getLegacyProjectComposeRoutePath,
@@ -480,6 +481,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   useServerDaemonLogsCommand();
   useDataDirectoryCommand();
   usePluginSafeModeCommands();
+  usePluginCachePruneCommand();
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;

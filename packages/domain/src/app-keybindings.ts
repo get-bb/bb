@@ -91,6 +91,7 @@ export const APP_COMMAND_IDS = [
   "notifications.open",
   "plugins.enterSafeMode",
   "plugins.exitSafeMode",
+  "plugins.pruneCache",
   ...QUESTION_SELECT_APP_COMMAND_IDS,
 ] as const;
 

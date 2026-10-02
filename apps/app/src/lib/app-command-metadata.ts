@@ -214,6 +214,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Turn off plugin safe mode",
         "Restart the plugins that were enabled before safe mode.",
       ),
+      command(
+        "plugins.pruneCache",
+        "Clean up plugin cache",
+        "Delete cached plugin versions that no installed plugin uses, such as versions left by earlier bb releases.",
+      ),
     ],
   },
   {

@@ -69,6 +69,17 @@ export function resolveNewPluginTarget(name: string): NewPluginTarget | null {
   };
 }
 
+function formatCacheBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit === 0 || value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
 function toolchainBaseDir(): string {
   const configured = process.env.BB_DATA_DIR;
   const dataDir =
@@ -1639,6 +1650,37 @@ export function registerPluginCommands(
           for (const problem of problems) console.error(problem);
         }
         if (problems.length > 0) process.exit(1);
+      }),
+    );
+
+  plugin
+    .command("prune")
+    .description(
+      "Delete cached plugin versions that no installed plugin uses, such as versions left by earlier bb releases, rolled-back updates, or interrupted operations, and unrecorded cache directories. Updates and removals already delete what they replace. Never touches a version an installed plugin runs or a local path source",
+    )
+    .option("--dry-run", "List what would be deleted without deleting it")
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions & { dryRun?: boolean }) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).plugins.experimental_pruneCache({ dryRun: opts.dryRun === true });
+        if (opts.json) {
+          outputJson(opts, result);
+          return;
+        }
+        if (result.removed.length === 0) {
+          console.log("No unused cached plugin versions.");
+          return;
+        }
+        for (const entry of result.removed) {
+          console.log(
+            `${formatCacheBytes(entry.bytes).padStart(9)}  ${entry.pluginId ?? "(unrecorded)"}@${entry.version}  ${entry.path}`,
+          );
+        }
+        console.log(
+          `${result.dryRun ? "Would free" : "Freed"} ${formatCacheBytes(result.bytes)} from ${result.removed.length} cached plugin version${result.removed.length === 1 ? "" : "s"}.`,
+        );
       }),
     );
 

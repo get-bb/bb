@@ -340,6 +340,27 @@ export type PluginSafeModeUpdateResponse = z.infer<
   typeof pluginSafeModeUpdateResponseSchema
 >;
 
+export const pluginCachePruneRequestSchema = z
+  .object({ dryRun: z.boolean().optional().default(false) })
+  .strict();
+
+export const pluginCachePruneEntrySchema = z.object({
+  pluginId: z.string().nullable(),
+  version: z.string(),
+  path: z.string(),
+  bytes: z.number().int().nonnegative(),
+});
+export type PluginCachePruneEntry = z.infer<typeof pluginCachePruneEntrySchema>;
+
+export const pluginCachePruneResponseSchema = z.object({
+  dryRun: z.boolean(),
+  removed: z.array(pluginCachePruneEntrySchema),
+  bytes: z.number().int().nonnegative(),
+});
+export type PluginCachePruneResponse = z.infer<
+  typeof pluginCachePruneResponseSchema
+>;
+
 export const pluginTokenRequestSchema = z
   .object({ rotate: z.boolean().optional().default(false) })
   .strict();

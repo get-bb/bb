@@ -366,6 +366,15 @@ added/updated/unchanged counts.
                                  secrets, and schedules (managed git:/npm:
                                  files deleted; local path sources stay on
                                  disk; builtin removals are remembered)
+  bb plugin prune [--dry-run]    Delete cached git:/npm: plugin versions no
+                                 installed plugin uses (left by earlier bb
+                                 releases, rolled-back updates, or
+                                 interrupted operations) and leftover cache
+                                 directories, and print what was freed.
+                                 Updates and removals already delete what
+                                 they replace. Never touches a running
+                                 version or a local path source. Also in the
+                                 command palette
   bb plugin new <name>           Scaffold a todo-list plugin (server.ts,
                                  app.tsx with a sidebar page, a `bb <id>` CLI
                                  command, and a skill) and install its npm

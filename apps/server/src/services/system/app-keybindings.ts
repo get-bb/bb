@@ -170,6 +170,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   unassignedBinding("notifications.open", mainWithoutModal),
   unassignedBinding("plugins.enterSafeMode", mainWithoutModal),
   unassignedBinding("plugins.exitSafeMode", mainWithoutModal),
+  unassignedBinding("plugins.pruneCache", mainWithoutModal),
   binding(
     "thread.previous",
     "[",

@@ -90,6 +90,12 @@ Before stabilization, audit schema export fidelity (especially refinements and t
 
 Before stabilization, audit whether official store plugins should count as included, whether a plugin calling `experimental_setSafeMode` should be allowed to stop itself and others, whether the toggle should run asynchronously for installs with many slow plugins, and whether startup needs an out-of-band override (env var or flag) for a plugin that breaks the server before the toggle is reachable.
 
+## Plugin cache pruning
+
+`bb.sdk.plugins.experimental_pruneCache({ dryRun? })` (`POST /plugins/cache/prune`) deletes cached git and npm plugin versions under `<data>/plugins/cache` that no installed plugin uses, and returns `{ dryRun, removed, bytes }`. Each `removed` entry has `pluginId` (`null` for a cache directory with no artifact record), `version` (git commit or npm version), `path`, and the `bytes` it freed; a shared monorepo checkout is counted once. It removes every non-active version regardless of age (for example versions left by earlier bb releases, the candidate of a rolled-back update, or an interrupted operation) and unrecorded commit or version directories. It keeps every installed plugin's active version, versions a pending or restoring rollback still needs, any directory containing an installed plugin's root (legacy and path installs), and in-flight staging directories. It runs under the plugin registration lock, so it never overlaps an install, update, or removal. `dryRun: true` reports the same entries without deleting. Removing a plugin deletes its cached versions immediately, and a successful update deletes the plugin's replaced versions once activation has stabilized; only the update's state snapshot stays for the 7-day retention window. The same operation backs `bb plugin prune [--dry-run]` and the command palette's Clean up plugin cache.
+
+Before stabilization, audit whether the response should report retained-but-unused sizes so a UI can show reclaimable space without a dry run, and whether stale `.staging`, `.promoting`, and `.corrupt` directories left by crashes should be collected too.
+
 ## RPC caller identity (`ExperimentalPluginRpcHandlerContext.experimental_caller`)
 
 Every `bb.rpc.register` handler receives a second argument, an

@@ -1,5 +1,6 @@
 import type {
   InstalledPlugin,
+  PluginCachePruneResponse,
   PluginSafeModeUpdateResponse,
   PluginSettingDescriptor,
   PluginSettingsResponse,
@@ -210,6 +211,12 @@ export async function setPluginSafeMode(
   enabled: boolean,
 ): Promise<PluginSafeModeUpdateResponse> {
   return createPluginsClient(fetchImpl).experimental_setSafeMode({ enabled });
+}
+
+export async function prunePluginCache(
+  fetchImpl: FetchLike,
+): Promise<PluginCachePruneResponse> {
+  return createPluginsClient(fetchImpl).experimental_pruneCache();
 }
 
 export function usePluginSafeMode() {

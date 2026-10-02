@@ -138,6 +138,15 @@
     `bb plugin remove <id>` (deletes the plugin's settings, secrets, and
     schedules; managed git/npm files are deleted, and local path sources stay
     on disk).
+  - `bb plugin prune [--dry-run] [--json]` — delete cached git:/npm: plugin
+    versions under `<data>/plugins/cache` that no installed plugin uses
+    (left by earlier bb releases, rolled-back updates, or interrupted
+    operations) and unrecorded cache directories. A successful update already
+    deletes the version it replaced, and `bb plugin remove` deletes the
+    plugin's versions. Prints each removed version
+    with its size and the total freed; `--dry-run` only lists them. Active
+    versions, pending rollbacks, and local path sources are never touched.
+    The command palette's Clean up plugin cache runs the same prune.
   - `bb plugin safe-mode [on|off] [--json]` — show or change plugin safe
     mode. `on` stops every plugin you installed, official store plugins
     included, while keeping each plugin's enabled setting; plugins included

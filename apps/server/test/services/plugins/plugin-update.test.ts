@@ -3,6 +3,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
@@ -516,10 +517,22 @@ describe("plugin update service and routes", () => {
     expect(fetched.filter((url) => url.includes("api.github.com"))).toEqual([]);
   });
 
+  async function restorePhaseOneCloneHistory(
+    pluginId: string,
+    sourceRepo: string,
+  ): Promise<void> {
+    const rootDir = getInstalledPlugin(db, pluginId)?.rootDir;
+    if (rootDir === undefined) throw new Error(`missing ${pluginId}`);
+    const clone = join(workDir, `phase-one-clone-${pluginId}`);
+    await run("git", ["clone", "--quiet", "--no-checkout", sourceRepo, clone]);
+    await rename(join(clone, ".git"), join(rootDir, ".git"));
+  }
+
   it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
     db.$client
       .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
       .run("updater");
+    await restorePhaseOneCloneHistory("updater", repo);
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const checkedResponse = await app.request("/plugins/updates/check", {
       method: "POST",
@@ -693,7 +706,6 @@ describe("plugin update service and routes", () => {
     const before = getInstalledPluginRegistration(db, "updater");
     if (before === undefined) throw new Error("missing installed updater");
     const oldRoot = before.rootDir;
-    const oldPackage = await readFile(join(oldRoot, "package.json"), "utf8");
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const results = await Promise.all([
       service.applyUpdate("updater"),
@@ -730,11 +742,8 @@ describe("plugin update service and routes", () => {
       activeArtifactId: expect.any(String),
     });
     expect(updated?.rootDir).not.toBe(oldRoot);
-    await stat(oldRoot);
-    expect(await readFile(join(oldRoot, "package.json"), "utf8")).toBe(
-      oldPackage,
-    );
-    expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
+    await expect(stat(oldRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(listPluginArtifacts(db, "updater")).toHaveLength(1);
   });
 
   it("rolls back when a background service crashes during stabilization", async () => {
@@ -1004,7 +1013,7 @@ describe("plugin update service and routes", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("retains rollback state through the grace period and collects it afterward", async () => {
+  it("deletes the replaced version once the update settles and keeps rollback state through the grace period", async () => {
     await service.stop();
     let clock = Date.now();
     const makeService = () =>
@@ -1038,14 +1047,6 @@ describe("plugin update service and routes", () => {
       result: { applied: true },
     });
     expect(listPluginStateSnapshots(db, "updater")).toHaveLength(1);
-    expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
-    await stat(oldArtifact.path);
-
-    clock += 51;
-    await service.stop();
-    service = makeService();
-    await service.start();
-    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(0);
     const remaining = listPluginArtifacts(db, "updater");
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.id).toBe(
@@ -1055,6 +1056,13 @@ describe("plugin update service and routes", () => {
       code: "ENOENT",
     });
     await stat(remaining[0]!.path);
+
+    clock += 51;
+    await service.stop();
+    service = makeService();
+    await service.start();
+    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(0);
+    expect(listPluginArtifacts(db, "updater")).toEqual(remaining);
   }, 60_000);
 
   it("orders removal after an in-flight update without resurrecting the plugin", async () => {
@@ -1415,6 +1423,7 @@ describe("plugin update service and routes", () => {
     db.$client
       .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
       .run("tagged");
+    await restorePhaseOneCloneHistory("tagged", tagged);
 
     await git(tagged, ["tag", "-d", "v1.0.0"]);
     await writeFile(join(tagged, "release.txt"), "attacker code");
@@ -1426,7 +1435,7 @@ describe("plugin update service and routes", () => {
       {
         id: "tagged",
         outcome: "unavailable",
-        detail: expect.stringContaining("security check failed"),
+        detail: expect.stringContaining("recorded it as a tag"),
       },
     ]);
     expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
