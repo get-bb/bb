@@ -1248,8 +1248,8 @@ export function MachineUpdatesRows({
         }
         titleAside={
           failure === null ? null : (
-            <span className="flex min-w-0 items-center gap-1">
-              <span role="alert" className="min-w-0 text-xs text-destructive">
+            <span className="flex shrink-0 items-center">
+              <span role="alert" className="sr-only">
                 {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]}
               </span>
               <TooltipProvider delayDuration={250}>
@@ -1258,15 +1258,21 @@ export function MachineUpdatesRows({
                     <button
                       type="button"
                       aria-label={`View ${status.displayName} update log`}
-                      className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-destructive hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={() =>
                         openProviderCliInstallLog(failure.logDialogState)
                       }
                     >
-                      <Icon aria-hidden name="Info" className="size-3.5" />
+                      <Icon
+                        aria-hidden
+                        name="AlertTriangle"
+                        className="size-3.5"
+                      />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>View log</TooltipContent>
+                  <TooltipContent>
+                    {PROVIDER_CLI_FAILURE_DESCRIPTIONS[failure.kind]} · View log
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </span>

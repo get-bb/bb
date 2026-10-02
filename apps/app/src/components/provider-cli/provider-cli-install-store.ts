@@ -288,7 +288,7 @@ function runInstall(job: ProviderCliInstallJob): void {
         issue,
         kind: "interrupted",
         log: installLogChunks.join(""),
-        message,
+        message: "Connection lost during update",
         toastId: failureToastId,
       });
     })
