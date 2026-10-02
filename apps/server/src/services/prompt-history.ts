@@ -1,5 +1,6 @@
 import {
   createPromptHistoryEntry,
+  getThread,
   listPromptHistoryPage,
   listQueuedThreadMessages,
   listStoredProjectPromptHistoryRows,
@@ -10,6 +11,7 @@ import {
   type StoredPromptHistoryEntryRow,
 } from "@bb/db";
 import {
+  pathLooksRuntimeReadable,
   promptInputSchema,
   takeVisiblePromptHistoryEntries,
   type PromptHistoryEntry,
@@ -81,6 +83,18 @@ function parseStoredPromptHistoryInput(
   return storedPromptHistoryInputSchema.parse(input);
 }
 
+function portablePromptHistoryInput(
+  input: PromptHistoryEntryInput,
+  projectId: string,
+): PromptHistoryEntryInput {
+  return input.map((chunk) =>
+    (chunk.type === "localImage" || chunk.type === "localFile") &&
+    !pathLooksRuntimeReadable(chunk.path)
+      ? { ...chunk, experimental_sourceProjectId: projectId }
+      : chunk,
+  );
+}
+
 function buildAcceptedPromptHistoryEntry(
   row: StoredPromptHistoryEntryRow,
 ): InternalPromptHistoryEntry {
@@ -119,11 +133,12 @@ function comparePromptHistoryEntries(
 
 function toPromptHistoryEntry(
   entry: InternalPromptHistoryEntry,
+  projectId: string,
 ): PromptHistoryEntry {
   return {
     id: entry.id,
     createdAt: entry.createdAt,
-    input: entry.input,
+    input: portablePromptHistoryInput(entry.input, projectId),
   };
 }
 
@@ -166,6 +181,7 @@ function buildVisibleThreadPromptHistory(
   queuedEntries: readonly InternalPromptHistoryEntry[],
   acceptedEntries: readonly InternalPromptHistoryEntry[],
   limit: number,
+  projectId: string,
 ): PromptHistoryEntry[] {
   const mergedEntries = [...queuedEntries, ...acceptedEntries].sort(
     comparePromptHistoryEntries,
@@ -173,7 +189,7 @@ function buildVisibleThreadPromptHistory(
   return takeVisiblePromptHistoryEntries({
     entries: mergedEntries,
     limit,
-  }).map(toPromptHistoryEntry);
+  }).map((entry) => toPromptHistoryEntry(entry, projectId));
 }
 
 export function listProjectPromptHistory(
@@ -191,13 +207,15 @@ export function listProjectPromptHistory(
   return takeVisiblePromptHistoryEntries({
     entries: acceptedEntries,
     limit: args.limit,
-  }).map(toPromptHistoryEntry);
+  }).map((entry) => toPromptHistoryEntry(entry, args.projectId));
 }
 
 export function listThreadPromptHistory(
   deps: PromptHistoryServiceDeps,
   args: ThreadPromptHistoryArgs,
 ): PromptHistoryEntry[] {
+  const thread = getThread(deps.db, args.threadId);
+  if (thread === null) return [];
   const queuedEntries = buildPromptHistoryEntries({
     rows: listQueuedThreadMessages(deps.db, args.threadId),
     buildEntry: buildQueuedPromptHistoryEntry,
@@ -214,6 +232,7 @@ export function listThreadPromptHistory(
     queuedEntries,
     acceptedEntries,
     args.limit,
+    thread.projectId,
   );
 }
 
@@ -256,7 +275,10 @@ export function listPromptHistory(
     buildEntry: (row): PromptHistoryListEntry => ({
       id: row.id,
       createdAt: row.createdAt,
-      input: parseStoredPromptHistoryInput(row),
+      input: portablePromptHistoryInput(
+        parseStoredPromptHistoryInput(row),
+        row.projectId,
+      ),
       projectId: row.projectId,
       threadId: row.threadId,
     }),

@@ -703,13 +703,11 @@ describe("ThreadTimelineRows actions", () => {
           type: "localImage",
           path: "uploads/screenshot.png",
           name: "screenshot.png",
-          sizeBytes: 0,
         },
         {
           type: "localFile",
           path: "uploads/spec.md",
           name: "spec.md",
-          sizeBytes: 0,
         },
       ],
     );
@@ -769,13 +767,11 @@ describe("ThreadTimelineRows actions", () => {
           type: "localImage",
           path: "uploads/screenshot.png",
           name: "screenshot.png",
-          sizeBytes: 0,
         },
         {
           type: "localFile",
           path: "uploads/spec.md",
           name: "spec.md",
-          sizeBytes: 0,
         },
       ],
     );
@@ -811,7 +807,6 @@ describe("ThreadTimelineRows actions", () => {
         type: "localFile",
         path: "uploads/spec.md",
         name: "spec.md",
-        sizeBytes: 0,
       },
     ]);
   });

@@ -102,6 +102,7 @@ describe("AttachmentPreview", () => {
           {
             type: "localImage",
             path: "restored-2-def.png",
+            experimental_sourceProjectId: "proj_source",
             name: "restored.png",
             mimeType: "image/png",
             sizeBytes: 3,
@@ -115,7 +116,7 @@ describe("AttachmentPreview", () => {
     const images = getAllByRole("img");
     expect(images.map((image) => image.getAttribute("src"))).toEqual([
       "blob:local-1",
-      "/api/v1/projects/proj_1/attachments/content?path=restored-2-def.png",
+      "/api/v1/projects/proj_source/attachments/content?path=restored-2-def.png",
     ]);
     expect(
       images.every((image) => image.getAttribute("decoding") === "async"),

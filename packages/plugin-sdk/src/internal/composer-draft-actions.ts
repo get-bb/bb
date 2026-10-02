@@ -51,9 +51,10 @@ const attachmentsSchema = z.array(
   z.object({
     type: z.enum(["localImage", "localFile"]),
     path: z.string().min(1),
+    experimental_sourceProjectId: z.string().min(1).optional(),
     name: z.string(),
     mimeType: z.string().optional(),
-    sizeBytes: z.number().nonnegative(),
+    sizeBytes: z.number().nonnegative().optional(),
   }),
 );
 const replacementSchema = z

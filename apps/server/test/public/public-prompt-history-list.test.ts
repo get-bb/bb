@@ -1,6 +1,10 @@
-import { createPromptHistoryEntry } from "@bb/db";
+import { createPromptHistoryEntry, listQueuedThreadMessages } from "@bb/db";
 import { promptHistoryListResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import {
+  readAttachment,
+  storeAttachment,
+} from "../../src/services/projects/attachments.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -11,6 +15,103 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public prompt history list route", () => {
+  it.each(["localImage", "localFile"] as const)(
+    "restores history %s attachments into another project's queued prompt",
+    async (type) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps);
+        const { project: source } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const { project: destination } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const sourceThread = seedThread(harness.deps, { projectId: source.id });
+        const destinationThread = seedThread(harness.deps, {
+          projectId: destination.id,
+        });
+        const attachment = await storeAttachment(
+          harness.deps.db,
+          harness.deps.config.dataDir,
+          source.id,
+          new File(
+            ["attachment bytes"],
+            type === "localImage" ? "attachment.png" : "attachment.txt",
+            {
+              type: type === "localImage" ? "image/png" : "text/plain",
+            },
+          ),
+        );
+        createPromptHistoryEntry(harness.deps.db, {
+          projectId: source.id,
+          threadId: sourceThread.id,
+          scope: "thread",
+          requestSequence: 1,
+          input: [
+            ...textInput("Review this attachment"),
+            { type, path: attachment.path },
+          ],
+        });
+
+        const history = promptHistoryListResponseSchema.parse(
+          await readJson(await harness.app.request("/api/v1/prompt-history")),
+        );
+        const input = history.entries[0]!.input;
+        const response = await harness.app.request(
+          `/api/v1/threads/${destinationThread.id}/queued-messages`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              input,
+              model: "gpt-5",
+              reasoningLevel: "medium",
+              permissionMode: "full",
+              serviceTier: "default",
+            }),
+          },
+        );
+
+        expect(response.status, JSON.stringify(await readJson(response))).toBe(
+          201,
+        );
+        expect(
+          (
+            await readAttachment(
+              harness.deps.config.dataDir,
+              destination.id,
+              attachment.path,
+            )
+          ).content.toString(),
+        ).toBe("attachment bytes");
+        const queued = listQueuedThreadMessages(
+          harness.deps.db,
+          destinationThread.id,
+        )[0]!;
+        expect(JSON.parse(queued.content)).toEqual([
+          ...textInput("Review this attachment"),
+          { type, path: attachment.path },
+        ]);
+        const edited = await harness.app.request(
+          `/api/v1/threads/${destinationThread.id}/queued-messages/${queued.id}`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              input,
+              expectedUpdatedAt: queued.updatedAt,
+            }),
+          },
+        );
+        expect(edited.status).toBe(200);
+        expect(
+          listQueuedThreadMessages(harness.deps.db, destinationThread.id)[0]!
+            .content,
+        ).toBe(queued.content);
+      });
+    },
+  );
+
   it("pages every prompt newest first with project and thread locations", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

@@ -30,6 +30,7 @@ import type { PromptInput } from "@bb/domain";
 import type { UploadedPromptAttachment } from "@bb/server-contract";
 import mimeTypes from "mime-types";
 import { ApiError } from "../../errors.js";
+import { requirePublicProject } from "../lib/entity-lookup.js";
 
 const HEIF_IMAGE_MIME_TYPES = new Set([
   "image/heic",
@@ -38,12 +39,7 @@ const HEIF_IMAGE_MIME_TYPES = new Set([
   "image/heif-sequence",
 ]);
 
-type PromptAttachmentInput = Extract<
-  PromptInput,
-  { type: "localFile" | "localImage" }
->;
-
-interface ValidatePromptAttachmentReferencesArgs {
+interface ResolvePromptAttachmentReferencesArgs {
   db: DbConnection;
   dataDir: string;
   input: PromptInput[];
@@ -109,15 +105,6 @@ function resolveAttachmentPath(
     "invalid_request",
     "Attachment path escapes project directory",
   );
-}
-
-function shouldValidateProjectAttachmentReference(
-  input: PromptInput,
-): input is PromptAttachmentInput {
-  if (input.type !== "localFile" && input.type !== "localImage") {
-    return false;
-  }
-  return !pathLooksRuntimeReadable(input.path);
 }
 
 function missingAttachmentReferenceError(attachmentPath: string): ApiError {
@@ -204,27 +191,60 @@ export async function inventoryAttachmentReferences(
   }
 }
 
-export async function validatePromptAttachmentReferences(
-  args: ValidatePromptAttachmentReferencesArgs,
-): Promise<void> {
+export async function resolvePromptAttachmentReferences(
+  args: ResolvePromptAttachmentReferencesArgs,
+): Promise<PromptInput[]> {
+  const resolved: PromptInput[] = [];
+  const copies = new Map<string, Set<string>>();
   for (const input of args.input) {
-    if (!shouldValidateProjectAttachmentReference(input)) {
+    if (input.type !== "localFile" && input.type !== "localImage") {
+      resolved.push(input);
       continue;
     }
+    if (pathLooksRuntimeReadable(input.path)) {
+      if (input.experimental_sourceProjectId !== undefined) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          "A source project can only be specified for an uploaded attachment",
+        );
+      }
+      resolved.push(input);
+      continue;
+    }
+    const {
+      experimental_sourceProjectId: sourceProjectId = args.projectId,
+      ...attachment
+    } = input;
+    requirePublicProject(args.db, sourceProjectId);
     await ensureAttachmentReferenceExists(
       args.db,
       args.dataDir,
-      args.projectId,
+      sourceProjectId,
       input.path,
     );
+    if (sourceProjectId !== args.projectId) {
+      const paths = copies.get(sourceProjectId) ?? new Set<string>();
+      paths.add(input.path);
+      copies.set(sourceProjectId, paths);
+    }
+    resolved.push(attachment);
   }
+  for (const [sourceProjectId, paths] of copies) {
+    await copyProjectAttachments(
+      args.db,
+      args.dataDir,
+      sourceProjectId,
+      args.projectId,
+      [...paths],
+    );
+  }
+  return resolved;
 }
 
 function formatMegabytes(bytes: number): string {
   const megabytes = bytes / (1024 * 1024);
-  return Number.isInteger(megabytes)
-    ? String(megabytes)
-    : megabytes.toFixed(1);
+  return Number.isInteger(megabytes) ? String(megabytes) : megabytes.toFixed(1);
 }
 
 function isHeifImageUpload(file: File): boolean {
@@ -273,6 +293,7 @@ export async function storeAttachment(
 
   return {
     type: isImage ? "localImage" : "localFile",
+    experimental_sourceProjectId: projectId,
     path: storedName,
     name: file.name,
     mimeType: file.type || undefined,

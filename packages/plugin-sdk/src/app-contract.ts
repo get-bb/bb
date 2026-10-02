@@ -19,7 +19,6 @@ import type {
 import type {
   CreateExecutionInputSources,
   CreateThreadEnvironmentArgs,
-  UploadedPromptAttachment,
 } from "@bb/server-contract";
 import type {
   BbSdkAreas,
@@ -2469,7 +2468,16 @@ export interface ComposerDraft {
 }
 
 /** An already uploaded attachment; paths retain their original project or thread ownership. */
-export type ComposerAttachment = UploadedPromptAttachment;
+export interface ComposerAttachment {
+  type: "localImage" | "localFile";
+  path: string;
+  /** Project that currently owns this uploaded path; omit for destination-relative attachments. */
+  experimental_sourceProjectId?: string;
+  name: string;
+  mimeType?: string;
+  /** Exact size in bytes; omit when unknown. A wrong size can make the send fail when bb stages a file. */
+  sizeBytes?: number;
+}
 
 /** The complete current draft. Snapshots and their entries are immutable. */
 export interface ComposerDraftSnapshot extends ComposerDraft {
@@ -2639,8 +2647,10 @@ export interface PluginComposerApi {
    * an empty list clears them. Does not infer or rebase mention ranges.
    * Ranges are non-overlapping UTF-16 offsets into the supplied text.
    * Invalid results, throwing updaters, and unavailable editors leave the
-   * draft unchanged. Does not focus, submit, upload, or copy files between
-   * projects. Use `insert` for insertion at the editor's cursor.
+   * draft unchanged. Source project references on uploaded attachments are
+   * preserved; core copies them into the destination project when the draft
+   * is submitted. Does not focus or submit. Use `insert` for insertion at the
+   * editor's cursor.
    */
   replace(
     next:

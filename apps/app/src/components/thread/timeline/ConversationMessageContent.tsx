@@ -317,13 +317,11 @@ function buildAddToChatAttachments(
       type: "localImage" as const,
       path,
       name: fileNameFromPath(path),
-      sizeBytes: 0,
     })),
     ...attachments.localFilePaths.map((path) => ({
       type: "localFile" as const,
       path,
       name: fileNameFromPath(path),
-      sizeBytes: 0,
     })),
   ];
 }

@@ -3629,11 +3629,11 @@ snapshot is a no-op. `insert` remains the cursor/end insertion primitive.
 Core quoting, prefills and history restoration call this same contract. Quotes
 are pure draft transformations that append blockquoted text and merge attachments
 by path, followed by `focus()`. Attachments remain independent draft items, not
-children of a quote. `replace` does not upload/copy files across projects.
-Submission rollback, restore-if-empty seeds, uploads, and editor transactions
-remain beneath these actions. Command completion's trigger-range replacement and
-autocomplete dismissal remain a documented boundary, not a hidden option on
-`replace`.
+children of a quote. `replace` preserves source-project references; core copies
+those files into the destination project on submission. Submission rollback,
+restore-if-empty seeds, uploads, and editor transactions remain beneath these
+actions. Command completion's trigger-range replacement and autocomplete
+dismissal remain a documented boundary, not a hidden option on `replace`.
 
 `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
 `removeMention` are marked internal and stripped from published declarations,
@@ -3654,6 +3654,24 @@ Core history conversion is centralized in the composer adapter; quoting operates
 on text and attachments directly without a mention-format round trip. Persisted
 and editor mention formats remain unchanged, while the action layer reads one
 complete draft snapshot instead of separate content and attachment getters.
+
+## Portable prompt attachments
+
+`ComposerAttachment.experimental_sourceProjectId` and the matching local file
+and image prompt-input field identify the project owning an uploaded attachment.
+Uploads and prompt history populate it. Draft replacement, persistence, and input
+conversion preserve it; previews read from the source. Core validates the source
+and copies files to the destination before accepting a create, send, or queued
+message request, then removes the source field from persisted and dispatched
+input. Omission retains destination-relative behavior for existing clients.
+Runtime-readable paths cannot specify a source project. `sizeBytes` is optional
+on `ComposerAttachment`; absence means unknown, and legacy stored zero values are
+read as unknown.
+
+Stabilization requires cross-project history restoration coverage for files and
+images, draft persistence and project changes, queued-message editing,
+missing-source errors, and verification that provider input contains only
+destination-local references.
 
 ## Thread creation placement
 
