@@ -1472,6 +1472,47 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("discovers token usage keepers without reading payloads or computing unused byte totals", () => {
+    const { db, thread } = setup();
+    try {
+      insertEvents(
+        db,
+        noopNotifier,
+        [1, 2].map((sequence) => ({
+          data: JSON.stringify({ tokenUsage: { modelContextWindow: 200000 } }),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          scope: turnScope("usage-turn"),
+          sequence,
+          threadId: thread.id,
+          type: "thread/tokenUsage/updated" as const,
+        })),
+      );
+      advanceThreadPruning(db, "usage");
+      advanceThreadPruning(db, "usage");
+      const statements = captureStatements(db, () => {
+        const result = advanceThreadPruning(db, "usage");
+        expect(result.scanned).toBe(2);
+        expect(result.removed).toBe(0);
+        expect(result.removedBytes).toBe(0);
+        expect(result.cursor.latestRootSequence).toBe(2);
+      });
+      for (const statement of statements) {
+        const instructions = db.$client
+          .prepare<SqliteParameter[], { p4: string | null }>(
+            `EXPLAIN ${statement.sql}`,
+          )
+          .all(...statement.params);
+        expect(
+          instructions.filter((row) => /^(json_|sum\()/u.test(row.p4 ?? "")),
+        ).toEqual([]);
+      }
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("pins the latest-thread-state lookup to the partial index with no temp sort", () => {
     const { db, thread } = setup();
     insertEvents(db, noopNotifier, [

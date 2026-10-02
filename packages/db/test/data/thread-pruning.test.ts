@@ -863,6 +863,62 @@ describe("thread pruning", () => {
     }
   });
 
+  it("reports exact removed UTF-8 bytes while retaining usage keepers", () => {
+    const f = setup();
+    try {
+      const context = (modelContextWindow: number | null) =>
+        JSON.stringify({
+          contextWindowUsage: { modelContextWindow },
+          text: "é🙂",
+        });
+      const payloads = [
+        context(200000),
+        context(null),
+        context(null),
+        "",
+        "é🙂\0x",
+        "{}",
+        "malformed",
+      ];
+      for (const [index, data] of payloads.entries())
+        seed(f, index + 1, {
+          type:
+            index < 3
+              ? "thread/contextWindowUsage/updated"
+              : "thread/tokenUsage/updated",
+          data,
+        });
+      seed(f, 8, {
+        type: "turn/started",
+        turnId: "nested",
+        parentToolCallId: "tool",
+      });
+      seed(f, 9, {
+        type: "thread/tokenUsage/updated",
+        turnId: "nested",
+        data: "{}",
+      });
+      seed(f, 10, { type: "turn/completed" });
+      const results = cycle(f, "usage");
+      expect(sequences(f)).toEqual([1, 3, 7, 8, 10]);
+      expect(results.reduce((total, result) => total + result.removed, 0)).toBe(
+        5,
+      );
+      expect(
+        results.reduce((total, result) => total + result.removedBytes, 0),
+      ).toBe(
+        Buffer.byteLength(context(null)) + Buffer.byteLength("é🙂\0x") + 4,
+      );
+      expect(
+        results
+          .filter((result) => result.removed === 0)
+          .every((result) => result.removedBytes === 0),
+      ).toBe(true);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("restarts usage keeper discovery after a keeper disappears during a visit", () => {
     const f = setup();
     try {
