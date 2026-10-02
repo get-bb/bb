@@ -130,7 +130,7 @@ const BB_VS_SUPERSET: Comparison = {
             from anywhere. Open bb in any phone browser, or get push
             notifications with the bb iOS app, in beta on TestFlight.
           </p>
-          <p>It’s free. Superset keeps its phone app behind Pro.</p>
+          <p>It’s free, like everything else in bb.</p>
         </>
       ),
     },
@@ -141,13 +141,14 @@ const BB_VS_SUPERSET: Comparison = {
       body: (
         <>
           <p>
-            Add a task board, GitHub, or your own tools from the plugin gallery,
-            or ask an agent to build one. A panel, a command, or a theme shows
-            up in bb as soon as it’s done.
+            bb works out of the box. Worktrees, diff review, automations,
+            notifications, and phone access are built in, with nothing to
+            configure.
           </p>
           <p>
-            Your plugins come with you. bb’s phone app runs your own bb, so
-            everything you add works on mobile too.
+            When you want more, add plugins from the gallery or ask an agent to
+            build one. Everything you add works on your phone too, because bb’s
+            mobile app runs your own bb.
           </p>
         </>
       ),
@@ -281,11 +282,10 @@ const BB_VS_SUPERSET: Comparison = {
           question: "What’s the difference between bb and Superset?",
           answer: (
             <p>
-              Superset gives each agent its own workspace. bb lets your agents
-              work as a team. Both run Claude Code, Codex, and other agents in
-              parallel, each task in its own Git worktree. In bb, one agent can
-              start another, wait for it, and act on what it finds, and phone
-              access and automations are free instead of on a paid plan.
+              bb is built for agents that work as a team. One agent can start
+              another, wait for it, and act on what it finds, while you watch
+              them side by side. Every agent runs in parallel in its own Git
+              worktree, and phone access and automations are free.
             </p>
           ),
         },
@@ -325,21 +325,8 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               Yes. bb is MIT-licensed with no paid tier. Phone access,
               automations, remote access to your machine, and plugins are all
-              included, and bb Connect needs only a free account. You pay only
-              for the Claude, ChatGPT, or other agent plans and API keys you
-              already use.
-            </p>
-          ),
-        },
-        {
-          question: "Is Superset free? How much does it cost?",
-          answer: (
-            <p>
-              Superset’s free plan covers one user with local workspaces, the
-              desktop app, and the CLI. Pro is $20 per user per month, or $15
-              billed yearly, and adds more users, remote access, automations,
-              the mobile app, and Slack and Linear. Enterprise is custom-priced.
-              bb includes phone access, automations, and remote access for free.
+              included, for any team size. You pay only for the Claude, ChatGPT,
+              or other agent plans and API keys you already use.
             </p>
           ),
         },
@@ -350,17 +337,6 @@ const BB_VS_SUPERSET: Comparison = {
               Yes. bb is MIT-licensed end to end, and the code is on{" "}
               <a href="https://github.com/get-bb/bb">GitHub</a>. Fork it, change
               anything, and run your own build.
-            </p>
-          ),
-        },
-        {
-          question: "Is Superset open source?",
-          answer: (
-            <p>
-              No. Superset is source-available under the Elastic License 2.0,
-              which isn’t an OSI-approved open-source license. bb is
-              MIT-licensed end to end: fork it, change anything, run your own
-              build, or have an agent write you a plugin.
             </p>
           ),
         },
@@ -403,14 +379,13 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
-          question: "Can’t Superset’s agents start other agents too?",
+          question: "How is agent handoff different in bb?",
           answer: (
             <p>
-              Yes, through Superset’s CLI, SDK, and MCP server. What’s different
-              in bb is what you can see: every agent another agent starts is its
-              own thread in your sidebar, with the exact prompt it got, its tool
-              calls, and its answer. You can message it mid-run, with any agent,
-              in either direction.
+              Every agent another agent starts is its own thread, with the exact
+              prompt it got, its tool calls, and its answer. Agents message each
+              other directly, and you can open any of them side by side and step
+              in mid-run, across any provider, in either direction.
             </p>
           ),
         },
@@ -474,6 +449,17 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Working in bb",
       items: [
         {
+          question: "Does bb work out of the box?",
+          answer: (
+            <p>
+              Yes. Worktrees, diff review, terminals, automations,
+              notifications, and phone access are built in, with nothing to
+              install. bb uses the Claude Code and Codex logins and settings you
+              already have, so you can start a thread right away.
+            </p>
+          ),
+        },
+        {
           question: "How does bb use Git worktrees?",
           answer: (
             <p>
@@ -517,7 +503,7 @@ const BB_VS_SUPERSET: Comparison = {
               Yes, free. Schedule an agent thread or a script with a cron
               expression, or once at a set time or after a delay. Choose the
               agent, model, and permission mode, and give each run a fresh
-              worktree if you like. In Superset, automations are on Pro.
+              worktree if you like.
             </p>
           ),
         },
@@ -544,9 +530,10 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can I customize bb?",
           answer: (
             <p>
-              Yes. Add plugins from the gallery, ask an agent to build one, or
-              add a theme. Everything you add works on your phone too, because
-              bb’s mobile app runs your own bb.
+              Yes, when you want to. bb’s defaults cover most work, and you can
+              add plugins from the gallery, ask an agent to build one, or add a
+              theme. Everything you add works on your phone too, because bb’s
+              mobile app runs your own bb.
             </p>
           ),
         },
@@ -562,8 +549,7 @@ const BB_VS_SUPERSET: Comparison = {
               Yes, for free. bb Connect gives your computer a private address
               only you can open, so the whole app works in your phone’s browser:
               approve commands, answer questions, or start tasks. For push
-              alerts, install the bb iOS app, in public TestFlight beta. In
-              Superset, the mobile app is on Pro.{" "}
+              alerts, install the bb iOS app, in public TestFlight beta.{" "}
               <a href="/guides/steer-coding-agents-from-your-phone">
                 Set it up
               </a>
@@ -631,12 +617,11 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
-          question: "Does Superset work on Windows?",
+          question: "Does bb run on Windows and Linux?",
           answer: (
             <p>
-              Not yet. Superset runs on macOS, with an experimental Linux build.
-              bb has apps for Apple Silicon Macs and Linux (alpha), and runs on
-              Windows through WSL2 and on Intel Macs with{" "}
+              Yes. bb has apps for Apple Silicon Macs and Linux (alpha), and
+              runs on Windows through WSL2 and on Intel Macs with{" "}
               <code>npx bb-app@latest</code>.
             </p>
           ),
@@ -658,8 +643,8 @@ const BB_VS_SUPERSET: Comparison = {
           answer: (
             <p>
               No. bb is a free app for your own machines, with no seats to buy.
-              If your company needs SAML SSO, SCIM, audit logs, or an uptime
-              SLA, Superset’s Enterprise plan is built for that.
+              Everyone on your team can run it with their own agents and
+              subscriptions.
             </p>
           ),
         },
