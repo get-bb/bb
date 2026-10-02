@@ -108,8 +108,8 @@ const BB_VS_SUPERSET: Comparison = {
           </p>
           <p>
             Have Claude Code build a feature, Codex review it, and Cursor write
-            the release notes. Each handoff opens as its own thread you can view
-            side by side, so you can step in anytime.
+            the release notes. Agents message each other directly, and you can
+            watch them side by side in splits and step in anytime.
           </p>
         </>
       ),
