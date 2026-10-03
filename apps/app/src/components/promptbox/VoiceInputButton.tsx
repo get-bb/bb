@@ -4,7 +4,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Icon } from "@bb/shared-ui/icon";
 import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
-import { MicrophonePreferencesSplit } from "@/components/settings/MicrophonePreferencesSplit";
+import { MicrophonePreferencesSplit } from "./MicrophonePreferencesSplit";
 
 export function VoiceInputButton({
   warning,
@@ -114,7 +114,6 @@ export function VoiceInputButton({
           ) : null}
           <MicrophonePreferencesSplit
             open={open}
-            activeStream={null}
             onCaptureReady={handleCaptureReady}
           />
         </div>

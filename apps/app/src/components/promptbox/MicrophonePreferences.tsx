@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { WaveformVisualizer } from "@/components/promptbox/WaveformVisualizer";
+import { WaveformVisualizer } from "./WaveformVisualizer";
 import { useAudioInputDevices } from "@/hooks/useAudioInputDevices";
 import { useMicrophoneSignal } from "@/hooks/useMicrophoneSignal";
 import {
@@ -12,11 +12,9 @@ import {
 
 export function MicrophonePreferences({
   open,
-  activeStream,
   onCaptureReady,
 }: {
   open: boolean;
-  activeStream: MediaStream | null;
   onCaptureReady?: () => void;
 }) {
   const [preferred, setPreferred] = useAudioInputDevicePreference();
@@ -26,7 +24,7 @@ export function MicrophonePreferences({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || activeStream || !isSupported) return;
+    if (!open || !isSupported) return;
     let disposed = false;
     let acquired: MediaStream | null = null;
     setError(null);
@@ -54,13 +52,13 @@ export function MicrophonePreferences({
       acquired?.getTracks().forEach((track) => track.stop());
       setTestStream(null);
     };
-  }, [open, preferred, activeStream, refresh, isSupported]);
+  }, [open, preferred, refresh, isSupported]);
 
   useEffect(() => {
     if (open && testStream) onCaptureReady?.();
   }, [open, testStream, onCaptureReady]);
 
-  const stream = open ? (activeStream ?? testStream) : null;
+  const stream = open ? testStream : null;
   const { silent } = useMicrophoneSignal(stream, false);
   const activeLabel = stream?.getAudioTracks()[0]?.label;
   const preferredMissing =
@@ -91,7 +89,7 @@ export function MicrophonePreferences({
             active={open && stream !== null}
             className="h-9 w-full"
           />
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className="min-h-10 text-sm text-muted-foreground">
             {error ??
               (!isSupported
                 ? "Microphone access is unavailable in this browser."
@@ -132,7 +130,7 @@ export function MicrophonePreferences({
               onClick={() => setPreferred(device.deviceId)}
               className={cn(
                 "flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-50",
-                preferred === device.deviceId && "bg-state-active font-medium",
+                preferred === device.deviceId && "bg-state-active",
               )}
             >
               <Icon
@@ -149,9 +147,12 @@ export function MicrophonePreferences({
           ))}
         </div>
       </div>
-      {activeLabel ? (
-        <p className="border-t pt-3 text-xs text-muted-foreground">
-          Using: <span>{activeLabel}</span>
+      {open ? (
+        <p
+          className="truncate border-t pt-3 text-xs text-muted-foreground"
+          title={activeLabel}
+        >
+          {activeLabel ? `Using: ${activeLabel}` : "\u00a0"}
         </p>
       ) : null}
       {preferredMissing ? (
