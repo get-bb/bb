@@ -2118,7 +2118,7 @@ describe("bridge", () => {
     }
   });
 
-  it("returns to the user's permission preset once a plan is approved", async () => {
+  it("returns to the updated permission preset once a plan is approved", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -2134,10 +2134,10 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         options: {
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
+          permissionEscalation: "ask",
           instructions: "test",
           providerOptions: {
             workflowsEnabled: false,
@@ -2146,6 +2146,25 @@ describe("bridge", () => {
         },
       });
       await bridge.waitForResponse(1);
+
+      bridge.sendRequest(2, "turn/start", {
+        ...canonicalTurnParams({
+          threadId,
+          input: [{ type: "text", text: "Continue planning with Full Access after approval" }],
+        }),
+        options: {
+          ...canonicalOptions(),
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+      });
+      await bridge.flushWork();
+      expect(getLatestQueryOptions().permissionMode).toBe("plan");
+      expect(getLatestQueryOptions().allowDangerouslySkipPermissions).toBe(true);
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
 
       const canUseTool = getLastCanUseTool();
       const planPromise = canUseTool(
@@ -2175,7 +2194,7 @@ describe("bridge", () => {
       await expect(planPromise).resolves.toMatchObject({ behavior: "allow" });
       await bridge.flushWork();
 
-      expect(queries[0]?.setPermissionMode).toHaveBeenLastCalledWith(
+      expect(queries.at(-1)?.setPermissionMode).toHaveBeenLastCalledWith(
         "bypassPermissions",
       );
 
