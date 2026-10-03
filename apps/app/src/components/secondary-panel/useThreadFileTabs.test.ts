@@ -30,6 +30,10 @@ import {
 } from "@/lib/plugin-slots";
 import { makeTerminalSession as terminalSession } from "@/test/fixtures/terminal-sessions";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import {
+  createBbDesktopApi,
+  createNoopDesktopBrowserApi,
+} from "@/test/bb-desktop-test-utils";
 
 const syncMocks = vi.hoisted(() => ({
   scheduleLocalThreadTabsMigration: vi.fn(),
@@ -96,9 +100,86 @@ afterEach(() => {
   syncMocks.scheduleLocalThreadTabsMigration.mockClear();
   syncMocks.scheduleThreadTabsPersistence.mockClear();
   syncMocks.useThreadTabs.mockClear();
+  delete window.bbDesktop;
 });
 
 describe("useThreadFileTabs recently closed tabs", () => {
+  it.each([null, "hostId", "instanceId", "generation"] as const)(
+    "recreates a closed native browser only on its owning desktop (%s)",
+    async (differentField) => {
+      const desktopTarget = {
+        hostId: "host-1",
+        instanceId: "instance-1",
+        generation: "generation-1",
+      };
+      const browser = createNoopDesktopBrowserApi();
+      browser.getTarget = async () =>
+        differentField === null
+          ? desktopTarget
+          : { ...desktopTarget, [differentField]: "elsewhere" };
+      window.bbDesktop = createBbDesktopApi(
+        {
+          lastCheckedAt: null,
+          latestVersion: null,
+          pendingVersion: null,
+          platform: "macos",
+          updateAvailable: false,
+          updateDownloaded: false,
+          version: "0.0.0-test",
+        },
+        browser,
+      );
+      const panelStateId = `closed-native-browser-${differentField}`;
+      window.localStorage.setItem(
+        getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+        serializeFixedPanelTabsState({
+          state: createEmptyFixedPanelTabsState({
+            secondary: {
+              activeTabId: "native-browser",
+              isOpen: true,
+              tabs: [
+                { id: "launcher", kind: "new-tab" },
+                {
+                  id: "native-browser",
+                  kind: "browser",
+                  environmentId: null,
+                  desktopTarget,
+                  url: "https://latest.example",
+                  title: "Latest page",
+                },
+              ],
+            },
+            lastUsedAt: Date.now(),
+          }),
+        }),
+      );
+      const { result } = renderThreadHook(() =>
+        useThreadFileTabsWithActiveTab({
+          panelStateId,
+          syncThreadId: null,
+          environmentId: null,
+        }),
+      );
+      act(() => {
+        result.current.closeTab("launcher");
+        result.current.closeTab("native-browser");
+      });
+      await act(async () => {
+        expect(result.current.reopenClosedTab()).toBe(true);
+        expect(result.current.reopenClosedTab()).toBe(true);
+      });
+      expect(result.current.activeTab?.id).toBe("launcher");
+      expect(result.current.browserTabs[0]).toMatchObject({
+        id: "native-browser",
+        url: "https://latest.example",
+        title: "Latest page",
+      });
+      expect(result.current.browserTabs[0]?.desktopTarget).toEqual(
+        differentField === null ? undefined : desktopTarget,
+      );
+    },
+  );
+
   it("restores mixed plugin-detail and content history across a remount", () => {
     const params = {
       panelStateId: "mixed-history",
