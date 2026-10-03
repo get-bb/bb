@@ -94,7 +94,7 @@ it.each([
   expect(transcript).not.toHaveBeenCalled();
   const options = vi.mocked(appToast.error).mock.calls[0]?.[1];
   expect(options?.duration).toBe(Infinity);
-  expect(options?.action?.label).toBe("Download recording");
+  expect(options?.cancel?.label).toBe("Download recording");
   unmount();
   const createObjectURL = vi.fn(() => "blob:recording");
   const revokeObjectURL = vi.fn();
@@ -107,9 +107,9 @@ it.each([
       expect(this.isConnected).toBe(true);
     },
   );
-  if (!options?.action) throw new Error("Missing download action");
+  if (!options?.cancel) throw new Error("Missing download action");
   const button = render(
-    <button onClick={options.action.onClick}>Download recording</button>,
+    <button onClick={options.cancel.onClick}>Download recording</button>,
   );
   fireEvent.click(button.getByRole("button"));
   expect(createObjectURL).toHaveBeenCalledWith(
@@ -119,6 +119,39 @@ it.each([
   expect(revokeObjectURL).not.toHaveBeenCalled();
   vi.advanceTimersByTime(60_000);
   expect(revokeObjectURL).toHaveBeenCalledWith("blob:recording");
+});
+
+it("retries a failed transcription with the same recording", async () => {
+  const transcribe = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("the model did not answer in time"))
+    .mockResolvedValueOnce(" Retried words ");
+  const onTranscript = vi.fn();
+  const { result } = renderHook(() =>
+    useVoiceInput({
+      onTranscribe: transcribe,
+      onTranscript,
+      getPromptContext: () => "draft context",
+    }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop());
+  expect(result.current.state).toBe("error");
+  const options = vi.mocked(appToast.error).mock.calls[0]?.[1];
+  expect(options?.action?.label).toBe("Retry");
+  if (!options?.action) throw new Error("Missing retry action");
+  const button = render(
+    <button onClick={options.action.onClick}>Retry</button>,
+  );
+  await act(async () => fireEvent.click(button.getByRole("button")));
+  expect(transcribe).toHaveBeenCalledTimes(2);
+  expect(transcribe.mock.calls[1]?.[0].file).toBe(
+    transcribe.mock.calls[0]?.[0].file,
+  );
+  expect(transcribe.mock.calls[1]?.[0].promptContext).toBe("draft context");
+  expect(onTranscript).toHaveBeenCalledWith("Retried words");
+  expect(result.current.state).toBe("idle");
 });
 
 it("does not offer a download after explicit cancellation", async () => {

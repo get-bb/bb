@@ -2577,7 +2577,7 @@ fresh status, bounded at 2 s, before skipping a service whose cached status is
 older). At least one of `complete` / `transcribe` is required; which tasks a
 service appears for follows from the functions it declares. bb owns the
 prompts and the reply cleanup; the plugin owns the model, the API, and any retries. Failure is a
-rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
+rejected promise, and core aborts `signal` at 5 s (text) or 70 s (voice).
 
 The user picks per task in Settings → AI services, `bb settings ai-services
 set`, or `sdk.system.setAiServiceSelection` (`automatic` | `off` |

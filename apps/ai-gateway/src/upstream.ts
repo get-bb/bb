@@ -2,7 +2,7 @@ import type { GatewayConfig } from "./config.js";
 
 export const MAX_OUTPUT_TOKENS = 128;
 export const UPSTREAM_TIMEOUT_MS = 4_000;
-export const TRANSCRIBE_TIMEOUT_MS = 8_000;
+export const TRANSCRIBE_TIMEOUT_MS = 30_000;
 const TEMPERATURE = 0.2;
 
 export type UpstreamFetch = (
@@ -265,28 +265,34 @@ export async function callTranscribe(args: {
   input: TranscribeInput;
   timeoutMs: number;
 }): Promise<UpstreamResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), args.timeoutMs);
   let knownCost: number | null = null;
+  let unknownBilledCost = false;
   let last: UpstreamResult | null = null;
-  try {
-    for (const model of args.config.transcribeModels) {
+  for (const model of args.config.transcribeModels) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), args.timeoutMs);
+    try {
       last = await transcribeOnce({
         ...args,
         model,
         signal: controller.signal,
       });
-      if (last.costMicros !== null) {
-        knownCost = (knownCost ?? 0) + last.costMicros;
-      }
-      if (billable(last) || controller.signal.aborted) break;
+    } finally {
+      clearTimeout(timer);
     }
-  } finally {
-    clearTimeout(timer);
+    if (last.costMicros !== null) {
+      knownCost = (knownCost ?? 0) + last.costMicros;
+    } else if (billable(last)) {
+      unknownBilledCost = true;
+    }
+    if (last.kind === "ok") break;
   }
   if (last === null) throw new Error("no transcription model is configured");
   return {
     ...last,
-    costMicros: last.costMicros === null && billable(last) ? null : knownCost,
+    ...(last.kind === "error"
+      ? { mayBill: last.mayBill || unknownBilledCost }
+      : {}),
+    costMicros: unknownBilledCost ? null : knownCost,
   };
 }
