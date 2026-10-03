@@ -1337,9 +1337,11 @@ function buildTrackedSessionOptions(
     {
       ...toSessionConstructionConfig(params).sessionOptions,
       ...toInitialLiveSessionSettings(params),
+      permissionMode: params.approvedPlanPermissionMode,
     },
     env,
   );
+  sessionOptions.permissionMode = params.permissionMode;
   sessionOptions.hooks = buildSessionTrackingHooks(threadIdRef);
   sessionOptions.recordThreadId = () => threadIdRef.current;
   return sessionOptions;
