@@ -12,6 +12,7 @@ import {
   AppCommandProvider,
   useAppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -35,10 +36,23 @@ import {
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 
+const fullScreenShortcut = vi.hoisted(() => ({
+  current: null as AppShortcutPresentation | null,
+}));
+
+vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/commands/AppCommandProvider")
+  >()),
+  useAppCommandShortcut: (command: string) =>
+    command === "panel.fullScreen.toggle" ? fullScreenShortcut.current : null,
+}));
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  fullScreenShortcut.current = null;
 });
 
 const noop = () => {};
@@ -86,6 +100,8 @@ function renderPanel(args: {
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
   renderAsDrawer?: boolean;
+  showFullScreenShortcut?: boolean;
+  splitPanelStateId?: string;
 }) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
@@ -1019,6 +1035,41 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(
       document.querySelector('[data-split-pane-id][data-maximized="true"]'),
     ).toBeNull();
+  });
+});
+
+describe("ThreadSecondaryPanel full-screen shortcut", () => {
+  const shortcut = { label: "⌘⇧F", ariaKeyshortcuts: "Meta+Shift+F" };
+
+  it.each([
+    ["Full Screen", undefined],
+    ["Maximize pane", "full-screen-shortcut-split"],
+  ])("advertises the bound command on the %s control", (label, splitId) => {
+    fullScreenShortcut.current = shortcut;
+    renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+      showFullScreenShortcut: true,
+      splitPanelStateId: splitId,
+    });
+
+    const control = screen.getByRole("button", {
+      name: `${label} (${shortcut.label})`,
+    });
+    expect(control.getAttribute("aria-keyshortcuts")).toBe(
+      shortcut.ariaKeyshortcuts,
+    );
+  });
+
+  it("keeps the shortcut off hosts that do not handle the command", () => {
+    fullScreenShortcut.current = shortcut;
+    renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    const control = screen.getByRole("button", { name: "Full Screen" });
+    expect(control.getAttribute("aria-keyshortcuts")).toBeNull();
   });
 });
 
