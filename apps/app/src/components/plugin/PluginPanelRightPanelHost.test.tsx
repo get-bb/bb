@@ -881,6 +881,37 @@ describe("PluginPanelRightPanelHost", () => {
     });
   });
 
+  it("restores closed plugin details before older content tabs", async () => {
+    renderHost();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
+    expect(
+      await screen.findByText("host:host-explicit:/tmp/example.log"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close example.log" }));
+    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close Secrets" }));
+
+    act(() => {
+      expect(
+        appCommandHandlers.get("panel.reopenClosedTab")?.({ target: null }),
+      ).toBe(true);
+    });
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(screen.queryByTestId("host-scoped-file-preview")).toBeNull();
+
+    act(() => {
+      expect(
+        appCommandHandlers.get("panel.reopenClosedTab")?.({ target: null }),
+      ).toBe(true);
+    });
+    expect(
+      await screen.findByText("host:host-explicit:/tmp/example.log"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
+  });
+
   it("accepts sidebar detail requests before the plugin panel registers", async () => {
     fixedTabState.panelRegistered = false;
     renderHost();
