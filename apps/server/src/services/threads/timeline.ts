@@ -19,6 +19,7 @@ import {
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
+  MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
@@ -55,6 +56,8 @@ import {
   listContextWindowUsageRows,
   isTimelineCursorSequencePresent,
   listStoredConversationOutlineEventRows,
+  listStoredRootConversationOutlineEventRows,
+  getStoredConversationOutlineProjectionState,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRows,
   listTimelineInterruptionRows,
@@ -1602,8 +1605,13 @@ function selectThreadConversationOutline(
   options: BuildThreadConversationOutlineOptions,
   sequenceStart: number,
   precedingAgentMessageDeltaCount: number,
+  rootProjection: { summaryCompactionEnabled: boolean } | null,
 ): ConversationOutlineSelection {
-  const rawEventRows = listStoredConversationOutlineEventRows(db, {
+  const selectRows =
+    rootProjection === null
+      ? listStoredConversationOutlineEventRows
+      : listStoredRootConversationOutlineEventRows;
+  const rawEventRows = selectRows(db, {
     sequenceStart,
     threadId: thread.id,
   });
@@ -1612,7 +1620,11 @@ function selectThreadConversationOutline(
   );
   const decodedEvents = compactThreadTimelineSummaryEvents(
     decodedRawEvents,
-    precedingAgentMessageDeltaCount,
+    rootProjection === null
+      ? precedingAgentMessageDeltaCount
+      : rootProjection.summaryCompactionEnabled
+        ? MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION
+        : 0,
   );
   const clientRequestContextRows = selectClientRequestContextRows(db, {
     rows: rawEventRows,
@@ -1685,6 +1697,7 @@ export function buildThreadConversationOutline(
       options,
       sequenceStart,
       0,
+      null,
     );
     return {
       items: selection.project().map(({ item }) => item),
@@ -1767,13 +1780,32 @@ export function loadThreadConversationOutline(
           maxSeq: options.maxSeq,
           contextBoundarySeq,
           orderingBoundarySequence,
-          select: (sequenceStart, precedingAgentMessageDeltaCount) =>
+          resolveProjectionState: (classificationSequenceStart, previous) => {
+            const state = getStoredConversationOutlineProjectionState(db, {
+              threadId: thread.id,
+              sequenceStart: contextBoundarySeq,
+              classificationSequenceStart,
+              summaryCompactionDeltaThreshold:
+                MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
+            });
+            return {
+              includeNestedEvents:
+                orderingBoundarySequence !== null ||
+                previous?.includeNestedEvents === true ||
+                state.includeNestedEvents,
+              summaryCompactionEnabled: state.summaryCompactionEnabled,
+            };
+          },
+          select: (sequenceStart, precedingAgentMessageDeltaCount, state) =>
             selectThreadConversationOutline(
               db,
               thread,
               options,
               sequenceStart,
               precedingAgentMessageDeltaCount,
+              state.includeNestedEvents
+                ? null
+                : { summaryCompactionEnabled: state.summaryCompactionEnabled },
             ),
         }),
         maxSeq: options.maxSeq,
