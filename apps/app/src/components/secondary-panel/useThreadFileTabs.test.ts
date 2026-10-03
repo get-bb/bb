@@ -138,7 +138,6 @@ describe("useThreadFileTabs recently closed tabs", () => {
               activeTabId: "browser:native-browser:none",
               isOpen: true,
               tabs: [
-                { id: "new-tab:new-tab:none", kind: "new-tab" },
                 {
                   id: "browser:native-browser:none",
                   kind: "browser",
@@ -162,6 +161,7 @@ describe("useThreadFileTabs recently closed tabs", () => {
           terminalSessions: undefined,
         }),
       );
+      act(() => result.current.openTab({ kind: "new-tab" }));
       act(() => {
         result.current.closeTab("new-tab:new-tab:none");
         result.current.closeTab("browser:native-browser:none");
