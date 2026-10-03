@@ -18,9 +18,9 @@ const RECESSED = "#f1f1f1";
 const MAX_ASSET_BYTES = 4_000_000;
 const MAX_IMAGE_PIXELS = 4_200_000;
 
-export type MarketplaceOgAssetLoader = (url: string) => Promise<Response>;
+type MarketplaceOgAssetLoader = (url: string) => Promise<Response>;
 
-export interface MarketplaceOgArtwork {
+interface MarketplaceOgArtwork {
   icon: string | null;
   screenshot: string | null;
   avatar: string | null;
@@ -316,12 +316,6 @@ function rasterSize(bytes: Uint8Array, type: string) {
   if (type === "image/png" && bytes.length >= 24) {
     return { width: view.getUint32(16), height: view.getUint32(20) };
   }
-  if (type === "image/gif" && bytes.length >= 10) {
-    return {
-      width: view.getUint16(6, true),
-      height: view.getUint16(8, true),
-    };
-  }
   if (type === "image/jpeg") {
     let offset = 2;
     while (offset + 9 <= bytes.length) {
@@ -356,8 +350,7 @@ async function loadImage(
     if (
       type !== "image/svg+xml" &&
       type !== "image/png" &&
-      type !== "image/jpeg" &&
-      type !== "image/gif"
+      type !== "image/jpeg"
     ) {
       return null;
     }
