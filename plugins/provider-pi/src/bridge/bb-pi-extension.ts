@@ -2,7 +2,7 @@ export const BB_PI_EXTENSION_SOURCE = String.raw`
 import { readFileSync, renameSync, writeSync } from "node:fs";
 import { Socket } from "node:net";
 import { StringDecoder } from "node:string_decoder";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager, createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 const CHILD_TO_BRIDGE_FD = 3;
@@ -171,6 +171,7 @@ export default function bbExtension(pi) {
   const pendingToolCalls = new Map();
   let nextId = 0;
   let sessionContext = null;
+  let activeExecution = null;
 
   const onBridgeLine = (line) => {
     const trimmed = line.trim();
@@ -179,6 +180,15 @@ export default function bbExtension(pi) {
     try {
       message = JSON.parse(trimmed);
     } catch {
+      return;
+    }
+    if (message.kind === "abort-active-tool") {
+      if (activeExecution?.state === "executing") {
+        activeExecution.controller.abort({
+          kind: "steer",
+          message: message.message || "User sent a steering message",
+        });
+      }
       return;
     }
     if (message.kind === "tool-result") {
@@ -226,10 +236,14 @@ export default function bbExtension(pi) {
   } else {
     // Non-blocking: libuv polls the pipe, so pi's process.exit is never held
     // up by an outstanding read; EOF (the bridge ended its writer) closes it.
-    const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
-    bridgeIn.on("error", () => undefined);
-    bridgeIn.unref();
-    readLines(bridgeIn, onBridgeLine);
+    try {
+      const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
+      bridgeIn.on("error", () => undefined);
+      bridgeIn.unref();
+      readLines(bridgeIn, onBridgeLine);
+    } catch {
+      // In isolated environments without inherited bridge fd
+    }
   }
 
   async function handleBridgeRequest(message) {
@@ -295,6 +309,81 @@ export default function bbExtension(pi) {
         ? sessionContext.model.provider + "/" + sessionContext.model.id
         : null,
     };
+  }
+
+  function normalizeTimeout(rawTimeout) {
+    if (typeof rawTimeout !== "number" || !Number.isFinite(rawTimeout) || rawTimeout <= 0) {
+      return 600;
+    }
+    let sec = rawTimeout;
+    if (sec >= 1000 && (sec % 1000 === 0 || sec > 1800)) {
+      sec = Math.round(sec / 1000);
+    }
+    return Math.min(Math.max(sec, 1), 1800);
+  }
+
+  if (typeof createBashToolDefinition === "function") {
+    const defaultBash = createBashToolDefinition(process.cwd());
+    pi.registerTool({
+      name: "bash",
+      label: "bash",
+      description: defaultBash.description,
+      promptSnippet: defaultBash.promptSnippet,
+      promptGuidelines: defaultBash.promptGuidelines,
+      parameters: defaultBash.parameters,
+      async execute(id, params, signal, onUpdate, ctx) {
+        const safeTimeout = normalizeTimeout(params?.timeout);
+        const controller = new AbortController();
+        activeExecution = { id, state: "executing", controller };
+
+        if (signal) {
+          signal.addEventListener(
+            "abort",
+            () => {
+              if (activeExecution?.id === id && activeExecution.state === "executing") {
+                controller.abort(signal.reason);
+              }
+            },
+            { once: true },
+          );
+        }
+
+        try {
+          const result = await defaultBash.execute(
+            id,
+            { ...params, timeout: safeTimeout },
+            controller.signal,
+            onUpdate,
+            ctx,
+          );
+          if (activeExecution?.id === id) {
+            activeExecution.state = "settling";
+          }
+          return result;
+        } catch (err) {
+          if (activeExecution?.id === id) {
+            activeExecution.state = "settling";
+          }
+          if (controller.signal.aborted && controller.signal.reason?.kind === "steer") {
+            const steerMsg = controller.signal.reason?.message || "User sent a steering message";
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: "[Command terminated by user steering message: \"" + steerMsg + "\". Do not retry the prior command; attend immediately to the user's instructions.]",
+                },
+              ],
+            };
+          }
+          throw err;
+        } finally {
+          if (activeExecution?.id === id) {
+            activeExecution.state = "settled";
+            activeExecution = null;
+          }
+        }
+      },
+    });
   }
 
   for (const tool of tools) {

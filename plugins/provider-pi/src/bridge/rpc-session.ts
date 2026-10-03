@@ -372,6 +372,7 @@ export class PiRpcSession {
 
   async steer(text: string, images?: ImageContent[]): Promise<void> {
     const child = this.requireChild();
+    child.sendChannel({ kind: "abort-active-tool", message: text });
     const tracked = this.trackPendingInputConsumption("steering");
     try {
       await this.dispatchWithTransientAuthRetry(child, {
