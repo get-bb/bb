@@ -135,12 +135,12 @@ describe("useThreadFileTabs recently closed tabs", () => {
         serializeFixedPanelTabsState({
           state: createEmptyFixedPanelTabsState({
             secondary: {
-              activeTabId: "native-browser",
+              activeTabId: "browser:native-browser:none",
               isOpen: true,
               tabs: [
-                { id: "launcher", kind: "new-tab" },
+                { id: "new-tab:new-tab:none", kind: "new-tab" },
                 {
-                  id: "native-browser",
+                  id: "browser:native-browser:none",
                   kind: "browser",
                   environmentId: null,
                   desktopTarget,
@@ -163,16 +163,16 @@ describe("useThreadFileTabs recently closed tabs", () => {
         }),
       );
       act(() => {
-        result.current.closeTab("launcher");
-        result.current.closeTab("native-browser");
+        result.current.closeTab("new-tab:new-tab:none");
+        result.current.closeTab("browser:native-browser:none");
       });
       await act(async () => {
         expect(result.current.reopenClosedTab()).toBe(true);
         expect(result.current.reopenClosedTab()).toBe(true);
       });
-      expect(result.current.activeTab?.id).toBe("launcher");
+      expect(result.current.activeTab?.id).toBe("new-tab:new-tab:none");
       expect(result.current.browserTabs[0]).toMatchObject({
-        id: "native-browser",
+        id: "browser:native-browser:none",
         url: "https://latest.example",
         title: "Latest page",
       });
