@@ -27,11 +27,12 @@ const autoDenySessionOptions = {
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
 let requestLogPath: string;
+let scriptPath: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-signature-ws-"));
   requestLogPath = join(workspaceDir, "requests.jsonl");
-  const scriptPath = join(workspaceDir, "script.json");
+  scriptPath = join(workspaceDir, "script.json");
   writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
@@ -175,9 +176,11 @@ it.each(["start", "resume", "fork"] as const)(
 );
 
 it.each([
-  { before: FULL_ACCESS_SESSION_OPTIONS, after: autoAskSessionOptions, sandbox: "workspaceWrite" },
-  { before: autoAskSessionOptions, after: FULL_ACCESS_SESSION_OPTIONS, sandbox: "dangerFullAccess" },
-])("applies $sandbox permissions before accepting a steer", async ({ before, after, sandbox }) => {
+  { before: FULL_ACCESS_SESSION_OPTIONS, after: autoAskSessionOptions, sandbox: "workspaceWrite", beforeResponse: false },
+  { before: FULL_ACCESS_SESSION_OPTIONS, after: autoAskSessionOptions, sandbox: "workspaceWrite", beforeResponse: true },
+  { before: autoAskSessionOptions, after: FULL_ACCESS_SESSION_OPTIONS, sandbox: "dangerFullAccess", beforeResponse: false },
+])("applies $sandbox before steering (start response pending: $beforeResponse)", async ({ before, after, sandbox, beforeResponse }) => {
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath, startResponseDelayMs: beforeResponse ? 2000 : 0 }));
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,
     cwd: workspaceDir,
@@ -193,7 +196,15 @@ it.each([
     input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
     options: before,
   });
-  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  if (beforeResponse) {
+    await vi.waitFor(() => expect(harness.messages).toContainEqual(expect.objectContaining({
+      method: "thread/delta",
+      params: expect.objectContaining({ deltas: expect.arrayContaining([expect.objectContaining({ kind: "turn.open" })]) }),
+    })));
+    expect(harness.messages.some((message) => message.id === 2)).toBe(false);
+  } else {
+    expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  }
   harness.sendRequest(3, "turn/steer", {
     threadId: THREAD_ID,
     providerThreadId,
