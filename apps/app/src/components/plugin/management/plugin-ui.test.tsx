@@ -101,9 +101,32 @@ it("gives every built-in category its own icon and unknowns none", () => {
   expect(pluginCatalogCategoryIconName("future-category")).toBeUndefined();
 });
 
-it("labels install counts only when the catalog knows them", () => {
-  expect(pluginInstallCountPresentation(null)).toBeUndefined();
-  expect(pluginInstallCountPresentation(1)?.accessibleLabel).toBe("1 install");
-  expect(pluginInstallCountPresentation(2)?.accessibleLabel).toBe("2 installs");
-  expect(pluginInstallCountPresentation(0)?.accessibleLabel).toBe("0 installs");
+it("labels built-in, new, and counted plugins", () => {
+  const now = Date.parse("2026-10-02T00:00:00Z");
+  const community = { installedByDefault: false };
+  const recent = "2026-09-20T00:00:00Z";
+  const old = "2026-08-01T00:00:00Z";
+  const label = (entry: Parameters<typeof pluginInstallCountPresentation>[0]) =>
+    pluginInstallCountPresentation(entry, now)?.display;
+  expect(label({ installedByDefault: true, installs: 2 })).toBe("Built in");
+  expect(
+    pluginInstallCountPresentation(
+      { installedByDefault: false, installs: 1357 },
+      now,
+    )?.tone,
+  ).toBe("count");
+  expect(label({ ...community, installs: 25, publishedAt: recent })).toBe("25");
+  expect(label({ ...community, installs: 3, publishedAt: recent })).toBe("New");
+  expect(label({ ...community, installs: null, publishedAt: recent })).toBe(
+    "New",
+  );
+  expect(label({ ...community, installs: 3, publishedAt: old })).toBe("3");
+  expect(label({ ...community, installs: 3 })).toBe("3");
+  expect(label({ ...community, installs: null, publishedAt: old })).toBe(
+    undefined,
+  );
+  expect(
+    pluginInstallCountPresentation({ ...community, installs: 1 }, now)
+      ?.accessibleLabel,
+  ).toBe("1 install");
 });

@@ -195,7 +195,8 @@ export function CatalogPluginDetail({
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
 }) {
-  const count = pluginInstallCountPresentation(entry.installs);
+  const presentation = pluginInstallCountPresentation(entry);
+  const count = presentation?.tone === "count" ? presentation : undefined;
   const installBlocker = catalogEntryInstallBlocker(entry);
   const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   return (

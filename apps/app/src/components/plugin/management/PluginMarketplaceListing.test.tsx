@@ -33,6 +33,7 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
     },
     installed: false,
     conflictingInstallSource: null,
+    installedByDefault: false,
     installs: null,
     compatible: true,
     incompatibleReason: null,

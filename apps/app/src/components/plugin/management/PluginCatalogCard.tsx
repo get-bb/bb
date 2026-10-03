@@ -66,7 +66,7 @@ export function PluginCatalogCard({
   onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
-  const count = pluginInstallCountPresentation(entry.installs);
+  const count = pluginInstallCountPresentation(entry);
   const installBlocker = catalogEntryInstallBlocker(entry);
   return (
     <PluginCard

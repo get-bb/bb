@@ -103,6 +103,7 @@ const GITHUB_CATALOG_ENTRY = {
   author: null,
   installed: false,
   conflictingInstallSource: null,
+  installedByDefault: false,
   installs: null,
   compatible: true,
   incompatibleReason: null,

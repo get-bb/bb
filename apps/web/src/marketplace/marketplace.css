@@ -413,17 +413,6 @@
   white-space: nowrap;
 }
 
-.marketplace-new-chip {
-  padding: 2px 7px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 14%, var(--bg));
-  color: var(--accent);
-  font-size: 10.5px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
 .marketplace-artwork {
   display: inline-grid;
   place-items: center;

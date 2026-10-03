@@ -31,7 +31,7 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("Featured");
     expect(html).toContain("Popular");
     expect(html).toContain("marketplace-shelf-notable");
-    expect(html).toContain("marketplace-new-chip");
+    expect(html).not.toContain("marketplace-new-chip");
     expect(html).toContain("https://github.com/get-bb.png?size=32");
     expect(html).toContain("https://getbb.app/marketplace/v1/icons");
     expect(html).toContain('aria-label="Category: All categories"');

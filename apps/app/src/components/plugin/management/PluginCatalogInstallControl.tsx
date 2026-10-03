@@ -7,10 +7,14 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  NEW_TEXT_STYLE,
+  type PluginInstallCountPresentation,
+} from "./plugin-ui";
 
 type PluginCatalogInstallControlProps = {
   displayName: string;
-  count?: { display: string; accessibleLabel: string };
+  count?: PluginInstallCountPresentation;
   showLabel?: boolean;
   subtle?: boolean;
 } & (
@@ -38,6 +42,7 @@ export function PluginCatalogInstallControl(
       : disabled
         ? (props.unavailableReason ?? "Unavailable for this version of BB.")
         : `Install ${displayName}`;
+  const showStateIcon = !(installed && count?.tone === "builtin");
   const stateIcon = installed
     ? "Check"
     : disabled
@@ -72,17 +77,19 @@ export function PluginCatalogInstallControl(
               else props.onInstall();
             }}
           >
-            <span className="grid place-items-center" aria-hidden>
-              <Icon
-                name={stateIcon}
-                className={cn(
-                  "col-start-1 row-start-1 size-3.5",
-                  !installed && disabled && "text-warning-text",
-                  installed &&
-                    !disabled &&
-                    "group-hover/install:opacity-0 group-focus-visible/install:opacity-0",
-                )}
-              />
+            <span className="grid place-items-center empty:hidden" aria-hidden>
+              {showStateIcon ? (
+                <Icon
+                  name={stateIcon}
+                  className={cn(
+                    "col-start-1 row-start-1 size-3.5",
+                    !installed && disabled && "text-warning-text",
+                    installed &&
+                      !disabled &&
+                      "group-hover/install:opacity-0 group-focus-visible/install:opacity-0",
+                  )}
+                />
+              ) : null}
               {installed && !disabled ? (
                 <Icon
                   name="Trash2"
@@ -92,7 +99,14 @@ export function PluginCatalogInstallControl(
             </span>
             {props.showLabel ? (installed ? "Installed" : "Install") : null}
             {count === undefined ? null : (
-              <span aria-hidden className="text-2xs">
+              <span
+                aria-hidden
+                className={cn(
+                  "text-2xs",
+                  count.tone === "new" && "font-semibold",
+                )}
+                style={count.tone === "new" ? NEW_TEXT_STYLE : undefined}
+              >
                 {count.display}
               </span>
             )}

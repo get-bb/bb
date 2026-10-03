@@ -34,6 +34,7 @@ function entry(
     author: null,
     installed: false,
     conflictingInstallSource: null,
+    installedByDefault: false,
     installs: null,
     compatible: true,
     incompatibleReason: null,

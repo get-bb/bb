@@ -55,6 +55,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   },
   installed: false,
   conflictingInstallSource: null,
+  installedByDefault: false,
   installs: 4_210,
   compatible: true,
   incompatibleReason: null,

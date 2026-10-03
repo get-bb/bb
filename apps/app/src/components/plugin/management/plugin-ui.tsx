@@ -28,15 +28,51 @@ const PLUGIN_INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
 
+const PLUGIN_INSTALL_COUNT_DISPLAY_MINIMUM = 25;
+const PLUGIN_NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+export type PluginInstallCountPresentation = {
+  display: string;
+  accessibleLabel: string;
+  tone: "count" | "new" | "builtin";
+};
+
 export function pluginInstallCountPresentation(
-  installs: number | null,
-): { display: string; accessibleLabel: string } | undefined {
-  if (installs === null) return undefined;
+  entry: {
+    installs: number | null;
+    installedByDefault: boolean;
+    publishedAt?: string;
+  },
+  now: number = Date.now(),
+): PluginInstallCountPresentation | undefined {
+  if (entry.installedByDefault) {
+    return {
+      display: "Built in",
+      accessibleLabel: "Built in",
+      tone: "builtin",
+    };
+  }
+  const { installs } = entry;
+  if (installs !== null && installs >= PLUGIN_INSTALL_COUNT_DISPLAY_MINIMUM) {
+    return countPresentation(installs);
+  }
+  const publishedAt =
+    entry.publishedAt === undefined ? NaN : Date.parse(entry.publishedAt);
+  if (now - publishedAt < PLUGIN_NEW_WINDOW_MS) {
+    return { display: "New", accessibleLabel: "New", tone: "new" };
+  }
+  return installs === null ? undefined : countPresentation(installs);
+}
+
+function countPresentation(installs: number): PluginInstallCountPresentation {
   return {
     display: PLUGIN_INSTALL_COUNT_FORMATTER.format(installs),
     accessibleLabel: `${installs.toLocaleString()} ${installs === 1 ? "install" : "installs"}`,
+    tone: "count",
   };
 }
+
+export const NEW_TEXT_STYLE = { color: "var(--file-accent)" } as const;
 
 const PLUGIN_CATEGORY_ACCENT_TOKENS: Record<string, string> = {
   "themes-and-appearance": "--file-accent",
