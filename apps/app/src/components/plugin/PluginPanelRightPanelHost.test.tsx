@@ -36,6 +36,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import * as panelSplits from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
+import { resetRecentlyClosedPanelTabsForTest } from "@/components/secondary-panel/useThreadFileTabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
@@ -82,6 +83,15 @@ interface TestNewThreadPanelActionRegistration {
 }
 
 const browserState = vi.hoisted(() => ({ available: false }));
+const appCommandHandlers = vi.hoisted(
+  () =>
+    new Map<
+      string,
+      Parameters<
+        typeof import("@/components/commands/AppCommandProvider").useAppCommandHandler
+      >[1]
+    >(),
+);
 const viewportState = vi.hoisted(() => ({ isCompactViewport: false }));
 const createTerminal = vi.hoisted(() => vi.fn());
 const catalogQueryState = vi.hoisted(() => ({ queries: [] as string[] }));
@@ -211,7 +221,13 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 }));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandHandler: () => undefined,
+  useAppCommandHandler: (
+    ...[command, handler]: Parameters<
+      typeof import("@/components/commands/AppCommandProvider").useAppCommandHandler
+    >
+  ) => {
+    appCommandHandlers.set(command, handler);
+  },
   useAppCommandShortcut: () => null,
 }));
 
@@ -716,6 +732,8 @@ describe("PluginPanelRightPanelHost", () => {
   });
 
   beforeEach(() => {
+    appCommandHandlers.clear();
+    resetRecentlyClosedPanelTabsForTest();
     browserState.available = false;
     viewportState.isCompactViewport = false;
     createTerminal.mockReset();
@@ -834,6 +852,33 @@ describe("PluginPanelRightPanelHost", () => {
     expect(screen.getByTestId("current-path").textContent).toBe(
       "/plugins/demo/board",
     );
+  });
+
+  it("selects a restored file while a plugin detail tab is active", async () => {
+    renderHost();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
+    expect(
+      await screen.findByText("host:host-explicit:/tmp/example.log"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close example.log" }));
+
+    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+
+    act(() => {
+      expect(
+        appCommandHandlers.get("panel.reopenClosedTab")?.({ target: null }),
+      ).toBe(true);
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Close example.log" }),
+    ).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
+      expect(screen.getByText("host:host-explicit:/tmp/example.log")).toBeTruthy();
+    });
   });
 
   it("accepts sidebar detail requests before the plugin panel registers", async () => {
