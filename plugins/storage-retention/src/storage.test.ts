@@ -589,6 +589,59 @@ it.runIf(process.platform !== "win32")(
   },
 );
 
+it.skipIf(process.platform === "win32")(
+  "stops processes working inside thread storage before discarding it and leaves neighbors running",
+  async () => {
+    const root = await directory();
+    await fs.mkdir(path.join(root, "thr_busy", "checkout"), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(root, "thr_neighbor"));
+    const run = (cwd: string) => {
+      const child = spawn(
+        process.execPath,
+        ["-e", "setInterval(() => {}, 1000)"],
+        { cwd, stdio: "ignore" },
+      );
+      return {
+        child,
+        exited: new Promise<void>((resolve) =>
+          child.once("exit", () => resolve()),
+        ),
+      };
+    };
+    const busy = run(path.join(root, "thr_busy", "checkout"));
+    const neighbor = run(path.join(root, "thr_neighbor"));
+    const worker = experimental_createHostEntryHarness(hostEntry);
+    try {
+      await expect
+        .poll(async () => {
+          try {
+            process.kill(busy.child.pid!, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+        .toBe(true);
+      expect(
+        await worker.experimental_call("discard", {
+          rootPath: root,
+          names: ["thr_busy"],
+          recreate: true,
+        }),
+      ).toEqual({ removed: ["thr_busy"] });
+      await busy.exited;
+      expect(neighbor.child.exitCode).toBeNull();
+      expect(await fs.readdir(path.join(root, "thr_busy"))).toEqual([]);
+    } finally {
+      busy.child.kill("SIGKILL");
+      neighbor.child.kill("SIGKILL");
+      await worker.experimental_dispose();
+    }
+  },
+);
+
 it("rejects traversal and symlinks without deleting their targets", async () => {
   const root = await directory();
   const outside = await directory();

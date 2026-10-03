@@ -54,6 +54,7 @@ still wait for completion. Duplicate bulk jobs and overlapping scans are rejecte
 Conversation history is never affected. The Storage page suggests it once archived threads hold 1 GB
 or more of large files.
 Clear-archived-files removes whole storage folders, including small files, from archived, stopped, unpinned threads found in the last scan on the selected machine. Conversations and uploaded attachments are kept.
+Clear-thread, clear-archived-files and remove-orphans first stop processes whose working directory is inside each removed thread folder, matching worktree removal, so dev servers started there don't outlive their files.
 Clear-thread requires a stopped thread and an online machine. When the thread no longer has an environment, a completed scan must identify its storage on exactly one machine. Different threads can clear concurrently; duplicate clears for one thread are rejected. Scans and bulk cleanup remain exclusive per machine. Reports are cached
 snapshots; rescan to see external filesystem changes.
 

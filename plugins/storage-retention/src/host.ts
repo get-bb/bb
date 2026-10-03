@@ -1,4 +1,7 @@
-import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
+import {
+  experimental_defineHostEntry,
+  experimental_killProcessesWithCwdUnder,
+} from "@get-bb/plugin-sdk/host";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -150,6 +153,10 @@ export default experimental_defineHostEntry({
               throw new Error(
                 "Storage entry must be a directory, not a symbolic link",
               );
+            if (!name.startsWith(".bb-trash-"))
+              await experimental_killProcessesWithCwdUnder({
+                directory: source,
+              });
             const trash = name.startsWith(".bb-trash-")
               ? source
               : path.join(root, `.bb-trash-${name}-${randomUUID()}`);
