@@ -103,24 +103,20 @@ it("gives every built-in category its own icon and unknowns none", () => {
 
 it("labels built-in, new, and counted plugins", () => {
   const now = Date.parse("2026-10-02T00:00:00Z");
-  const community = { installedByDefault: false };
-  const recent = "2026-09-20T00:00:00Z";
-  const old = "2026-08-01T00:00:00Z";
   const label = (entry: Parameters<typeof pluginInstallCountPresentation>[0]) =>
-    pluginInstallCountPresentation(entry, now)?.display;
-  expect(label({ installedByDefault: true, installs: 2 })).toBe("Built in");
-  expect(label({ ...community, installs: 25, publishedAt: recent })).toBe("25");
-  expect(label({ ...community, installs: 3, publishedAt: recent })).toBe("New");
-  expect(label({ ...community, installs: null, publishedAt: recent })).toBe(
-    "New",
-  );
-  expect(label({ ...community, installs: 3, publishedAt: old })).toBe("3");
-  expect(label({ ...community, installs: 3 })).toBe("3");
-  expect(label({ ...community, installs: null, publishedAt: old })).toBe(
-    undefined,
+    pluginInstallCountPresentation(entry, now);
+  expect(label({ installedByDefault: true, installs: 2 })?.display).toBe(
+    "Built in",
   );
   expect(
-    pluginInstallCountPresentation({ ...community, installs: 1 }, now)
-      ?.accessibleLabel,
+    label({
+      installedByDefault: false,
+      installs: 3,
+      publishedAt: "2026-09-20T00:00:00Z",
+    })?.display,
+  ).toBe("New");
+  expect(
+    label({ installedByDefault: false, installs: 1 })?.accessibleLabel,
   ).toBe("1 install");
+  expect(label({ installedByDefault: false, installs: null })).toBeUndefined();
 });

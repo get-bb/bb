@@ -535,8 +535,7 @@
   height: 12px;
 }
 
-.marketplace-card-installs.is-new,
-.marketplace-detail-installs.is-new {
+.marketplace-card-installs.is-new {
   color: var(--accent);
   font-weight: 600;
 }

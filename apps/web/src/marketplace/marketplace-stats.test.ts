@@ -6,7 +6,7 @@ import {
 } from "./marketplace-v2.fixture.js";
 import {
   marketplaceEntryInstalls,
-  marketplaceInstallDisplay,
+  marketplaceInstallBadge,
 } from "./marketplace-model.js";
 import { parseMarketplaceStats } from "./marketplace-stats.js";
 
@@ -46,19 +46,22 @@ describe("marketplace install stats", () => {
     ).toThrow();
   });
 
-  it("labels recent low-count plugins new until they age out", () => {
+  it("badges entries from their stats and publish date", () => {
     const [entry] = MARKETPLACE_V2_FIXTURE.plugins;
     const now = Date.parse("2026-10-02T00:00:00Z");
-    const stats = (installs: number) => ({
+    const stats = {
       ...MARKETPLACE_STATS_FIXTURE,
-      plugins: { [entry!.id]: { installs } },
-    });
+      plugins: { [entry!.id]: { installs: 3 } },
+    };
     const recent = { ...entry!, publishedAt: "2026-09-20T00:00:00Z" };
     const old = { ...entry!, publishedAt: "2026-08-01T00:00:00Z" };
-    expect(marketplaceInstallDisplay(recent, stats(25), now)).toBe(25);
-    expect(marketplaceInstallDisplay(recent, stats(3), now)).toBe("new");
-    expect(marketplaceInstallDisplay(recent, null, now)).toBe("new");
-    expect(marketplaceInstallDisplay(old, stats(3), now)).toBe(3);
-    expect(marketplaceInstallDisplay(old, null, now)).toBeNull();
+    expect(marketplaceInstallBadge(recent, stats, now)).toEqual({
+      kind: "new",
+    });
+    expect(marketplaceInstallBadge(old, stats, now)).toEqual({
+      kind: "count",
+      installs: 3,
+    });
+    expect(marketplaceInstallBadge(old, null, now)).toBeNull();
   });
 });

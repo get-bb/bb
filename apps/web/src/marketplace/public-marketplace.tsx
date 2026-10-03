@@ -46,7 +46,7 @@ import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
 import { CommandButton } from "../landing/command-button.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
 import {
-  marketplaceInstallDisplay,
+  marketplaceInstallBadge,
   type MarketplaceStats,
 } from "./marketplace-model.js";
 import { MarketplaceScreenshots } from "./marketplace-screenshots.js";
@@ -111,6 +111,24 @@ const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
   Zap: ZapIcon,
   ZoomIn: ZoomInAreaIcon,
 };
+
+const MarketplaceRenderTimeContext = createContext<number | undefined>(
+  undefined,
+);
+
+export function MarketplaceRenderTimeProvider({
+  renderedAt,
+  children,
+}: {
+  renderedAt: number;
+  children: ReactNode;
+}) {
+  return (
+    <MarketplaceRenderTimeContext.Provider value={renderedAt}>
+      {children}
+    </MarketplaceRenderTimeContext.Provider>
+  );
+}
 
 const MarketplaceNavigationContext = createContext<
   ((href: string) => void) | undefined
@@ -246,12 +264,14 @@ function InstallCount({
   stats: MarketplaceStats | null;
   variant?: "card" | "detail";
 }) {
-  const total = marketplaceInstallDisplay(entry, stats);
+  const renderedAt = useContext(MarketplaceRenderTimeContext) ?? Date.now();
+  const badge = marketplaceInstallBadge(entry, stats, renderedAt);
   const className = `marketplace-${variant}-installs`;
-  if (total === "new") {
+  if (badge?.kind === "new" && variant === "card") {
     return <span className={`${className} is-new`}>New</span>;
   }
-  if (total === null) return null;
+  if (badge?.kind !== "count") return null;
+  const total = badge.installs;
   const formatted =
     variant === "detail" ? total.toLocaleString("en-US") : formatInstalls(total);
   return (

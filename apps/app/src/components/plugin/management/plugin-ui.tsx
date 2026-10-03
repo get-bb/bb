@@ -1,3 +1,4 @@
+import { pluginInstallBadge } from "@bb/domain/plugin-install-badge";
 import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
@@ -28,9 +29,6 @@ const PLUGIN_INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
 
-const PLUGIN_INSTALL_COUNT_DISPLAY_MINIMUM = 25;
-const PLUGIN_NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-
 export type PluginInstallCountPresentation = {
   display: string;
   accessibleLabel: string;
@@ -38,30 +36,22 @@ export type PluginInstallCountPresentation = {
 };
 
 export function pluginInstallCountPresentation(
-  entry: {
-    installs: number | null;
-    installedByDefault: boolean;
-    publishedAt?: string;
-  },
+  entry: Parameters<typeof pluginInstallBadge>[0],
   now: number = Date.now(),
 ): PluginInstallCountPresentation | undefined {
-  if (entry.installedByDefault) {
+  const badge = pluginInstallBadge(entry, now);
+  if (badge === null) return undefined;
+  if (badge.kind === "builtin") {
     return {
       display: "Built in",
       accessibleLabel: "Built in",
       tone: "builtin",
     };
   }
-  const { installs } = entry;
-  if (installs !== null && installs >= PLUGIN_INSTALL_COUNT_DISPLAY_MINIMUM) {
-    return countPresentation(installs);
-  }
-  const publishedAt =
-    entry.publishedAt === undefined ? NaN : Date.parse(entry.publishedAt);
-  if (now - publishedAt < PLUGIN_NEW_WINDOW_MS) {
+  if (badge.kind === "new") {
     return { display: "New", accessibleLabel: "New", tone: "new" };
   }
-  return installs === null ? undefined : countPresentation(installs);
+  return countPresentation(badge.installs);
 }
 
 function countPresentation(installs: number): PluginInstallCountPresentation {

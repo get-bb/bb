@@ -49,6 +49,11 @@
       "types": "./src/plugin-icon.ts",
       "default": "./src/plugin-icon.ts"
     },
+    "./plugin-install-badge": {
+      "source": "./src/plugin-install-badge.ts",
+      "types": "./src/plugin-install-badge.ts",
+      "default": "./src/plugin-install-badge.ts"
+    },
     "./provider-fork": {
       "source": "./src/provider-fork.ts",
       "types": "./src/provider-fork.ts",

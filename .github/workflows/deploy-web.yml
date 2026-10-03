@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/connect-db/**"
+      - "packages/domain/src/plugin-install-badge.ts"
       - "changelog-parser.ts"
   workflow_dispatch:
 
