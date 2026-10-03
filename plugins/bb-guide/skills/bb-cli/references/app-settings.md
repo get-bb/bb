@@ -269,3 +269,12 @@ upload date. The server fetches only public metadata, caches it for five minutes
 and returns `android: null` if unavailable or inconsistent. Download links remain
 usable during metadata failures. iOS version and release date are shown in TestFlight.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+
+Right-clicking the composer microphone or pressing Shift+F10 opens
+client-local voice preferences: a desktop popover or mobile drawer. Opening it
+starts a local waveform preview; select an input directly from the list. Closing
+the picker stops the preview. The recording row has no microphone menu.
+Missing or unreadable inputs fall back automatically; a missing preference alone
+is informational. Sustained silence warns without switching devices or stopping
+capture. Device selection remains browser-local; server voice-service settings
+and file transcription commands are unchanged.

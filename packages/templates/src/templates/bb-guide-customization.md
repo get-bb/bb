@@ -431,6 +431,29 @@ are visible by default. Example:
 
 Client-local UI preferences
 
+Open microphone preferences by right-clicking the composer microphone or pressing
+Shift+F10 while it is focused. A warning opens preferences when the microphone
+is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+preferences starts a local microphone preview with the recording waveform and
+a list of inputs. Closing preferences releases the preview. The recording controls
+contain only cancel, stop, and send; microphone preferences are available while idle.
+
+Recording tries the preferred device, then the system default, then other
+available inputs for missing or unreadable devices. Permission denials do not
+trigger fallback. A disconnect during recording switches the input into the
+same recorder, preserving audio captured before the disconnect. Reconnecting
+the preferred microphone makes it available for the next recording; it does not
+interrupt the current fallback recording.
+
+A missing preferred microphone alone does not block recording or show a warning.
+Capture failures, interrupted input, or no available inputs after access was
+granted show a decorative warning badge on the idle microphone. During capture,
+five seconds of near-silent audio produces a warning in the open preview or an
+accessible status in the recording row; the recording row has no microphone menu. Silence warnings clear when audio returns and never
+stop recording or switch microphones automatically. While idle, a warning opens
+preferences on click. Audio preview runs only while microphone preferences are
+open; it is not saved or transcribed.
+
 Some Settings values live only in the current browser/client. Sidebar width
 and open state stay local because they depend on the window size, and each tab
 or desktop window keeps its own: collapsing or resizing the sidebar in one tab
@@ -439,8 +462,7 @@ choice made anywhere in that browser. The Voice Input
 microphone picker stores the selected browser MediaDevices device id in
 localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
 command and does not change the server-side transcription model. When the preferred
-microphone is disconnected, recording falls back to the system default (including
-the sole available microphone). The saved preference is used again when it
+microphone is disconnected, recording tries the system default and then other available inputs. The saved preference is used again when it
 reconnects. Select System default to follow system microphone changes.
 
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,

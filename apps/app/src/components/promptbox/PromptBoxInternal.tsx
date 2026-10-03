@@ -1,3 +1,4 @@
+import { VoiceInputButton } from "./VoiceInputButton";
 import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
@@ -485,6 +486,7 @@ type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
+  microphoneWarning: string | null;
   isSupported: boolean;
   unsupportedReason?: VoiceUnsupportedReason | null;
   stream: MediaStream | null;
@@ -3489,6 +3491,7 @@ export function PromptBoxInternal({
                     isCompact={showCompactLayout}
                     state={renderedVoiceActionState}
                     stream={voice.stream}
+                    microphoneWarning={voice.microphoneWarning}
                     submitIcon={submitIcon ?? "CornerDownLeft"}
                     onConfirm={voice.stop}
                     onSend={voice.send}
@@ -3541,7 +3544,8 @@ export function PromptBoxInternal({
                       {voice &&
                       !showVoiceActionGroup &&
                       (!showVoiceAsPrimaryAction || showStop) ? (
-                        <Button
+                        <VoiceInputButton
+                          warning={voice?.microphoneWarning ?? null}
                           data-promptbox-expanded-only={
                             showCompactLayout ? undefined : ""
                           }
@@ -3565,7 +3569,7 @@ export function PromptBoxInternal({
                           }
                         >
                           <Icon name="Mic" className="size-4" />
-                        </Button>
+                        </VoiceInputButton>
                       ) : null}
                     </>
                   ) : null}
@@ -3593,7 +3597,8 @@ export function PromptBoxInternal({
                         />
                       </Button>
                     ) : showVoiceAsPrimaryAction ? (
-                      <Button
+                      <VoiceInputButton
+                        warning={voice?.microphoneWarning ?? null}
                         data-promptbox-submit-action=""
                         type="button"
                         size={showCompactLayout ? "icon" : "sm"}
@@ -3612,7 +3617,7 @@ export function PromptBoxInternal({
                         )}
                       >
                         <Icon name="Mic" className="size-4" />
-                      </Button>
+                      </VoiceInputButton>
                     ) : (
                       <ComposerSendMenu
                         isPointerCoarse={isPointerCoarse}

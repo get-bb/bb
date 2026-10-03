@@ -21,6 +21,7 @@ describe("VoiceRecordingBar", () => {
       <VoiceRecordingBar
         isCompact={false}
         state="recording"
+        microphoneWarning={null}
         stream={null}
         submitIcon="CornerDownLeft"
         onConfirm={onConfirm}
@@ -60,6 +61,7 @@ describe("VoiceRecordingBar", () => {
       <VoiceRecordingBar
         isCompact={false}
         state="transcribing"
+        microphoneWarning={null}
         stream={null}
         submitIcon="CornerDownLeft"
         onConfirm={onConfirm}
@@ -89,6 +91,7 @@ describe("VoiceRecordingBar", () => {
     const props = {
       isCompact: false,
       stream: null,
+      microphoneWarning: null,
       submitIcon: "ArrowUp" as const,
       onConfirm: vi.fn(),
       onSend: vi.fn(),

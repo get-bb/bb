@@ -266,11 +266,34 @@ another voice service.
 bb accepts voice recordings up to 25 MB. A service may set a lower limit;
 Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
 
+Open microphone preferences by right-clicking the composer microphone or pressing
+Shift+F10 while it is focused. A warning opens preferences when the microphone
+is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+preferences starts a local microphone preview with the recording waveform and
+a list of inputs. Closing preferences releases the preview. The recording controls
+contain only cancel, stop, and send; microphone preferences are available while idle.
+
+Recording tries the preferred device, then the system default, then other
+available inputs for missing or unreadable devices. Permission denials do not
+trigger fallback. A disconnect during recording switches the input into the
+same recorder, preserving audio captured before the disconnect. Reconnecting
+the preferred microphone makes it available for the next recording; it does not
+interrupt the current fallback recording.
+
+A missing preferred microphone alone does not block recording or show a warning.
+Capture failures, interrupted input, or no available inputs after access was
+granted show a decorative warning badge on the idle microphone. During capture,
+five seconds of near-silent audio produces a warning in the open preview or an
+accessible status in the recording row; the recording row has no microphone menu. Silence warnings clear when audio returns and never
+stop recording or switch microphones automatically. While idle, a warning opens
+preferences on click. Audio preview runs only while microphone preferences are
+open; it is not saved or transcribed.
+
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
-back to the system default when it is disconnected, then uses the saved
-preference again when it reconnects. Select System default to follow system
+back to the system default and other available inputs when it is disconnected,
+then uses the saved preference again when it reconnects. Select System default to follow system
 microphone changes; it does not change which service
 transcribes.
 

@@ -117,6 +117,7 @@ export function usePromptVoice(
   return useMemo<PromptVoiceConfig>(
     () => ({
       state: voiceInput.state,
+      microphoneWarning: voiceInput.microphoneWarning,
       isSupported: voiceInput.isSupported,
       stream: voiceInput.stream,
       start: voiceInput.start,
@@ -126,6 +127,7 @@ export function usePromptVoice(
     }),
     [
       voiceInput.state,
+      voiceInput.microphoneWarning,
       voiceInput.isSupported,
       voiceInput.stream,
       voiceInput.start,

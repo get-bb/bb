@@ -9,11 +9,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { appToast } from "@/components/ui/app-toast";
+import { useAudioInputDevicePreferenceValue } from "@/lib/audio-input-device-preference";
 import { useVoiceInput } from "./useVoiceInput";
 
 vi.mock("@/components/ui/app-toast", () => ({ appToast: { error: vi.fn() } }));
 vi.mock("@/lib/audio-input-device-preference", () => ({
-  useAudioInputDevicePreferenceValue: () => null,
+  useAudioInputDevicePreferenceValue: vi.fn(() => null),
   requestAudioInputStream: (mediaDevices: MediaDevices) =>
     mediaDevices.getUserMedia({ audio: true }),
 }));
@@ -56,13 +57,15 @@ class DeferredRecorder extends Recorder {
 }
 
 beforeEach(() => {
+  vi.mocked(useAudioInputDevicePreferenceValue).mockReturnValue(null);
   vi.useFakeTimers();
   vi.stubGlobal("MediaRecorder", Recorder);
   vi.stubGlobal("navigator", {
     mediaDevices: {
-      getUserMedia: vi
-        .fn()
-        .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
+      getUserMedia: vi.fn().mockResolvedValue({
+        getTracks: () => [{ stop: vi.fn() }],
+        getAudioTracks: () => [],
+      }),
     },
   });
 });
@@ -91,6 +94,7 @@ it.each([
   vi.advanceTimersByTime(1500);
   await act(async () => result.current.stop());
   expect(result.current.state).toBe("error");
+  expect(result.current.microphoneWarning).toBeNull();
   expect(transcript).not.toHaveBeenCalled();
   const options = vi.mocked(appToast.error).mock.calls[0]?.[1];
   expect(options?.duration).toBe(Infinity);
@@ -230,4 +234,193 @@ it("aborts transcription when the user cancels it", async () => {
   expect(signal?.aborted).toBe(true);
   await act(async () => finishTranscription?.("Cancelled words"));
   expect(onTranscript).not.toHaveBeenCalled();
+});
+
+it("warns when microphone access fails and clears the warning after a successful retry", async () => {
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockRejectedValueOnce(
+    new DOMException("Unavailable", "NotReadableError"),
+  );
+  const { result } = renderHook(() =>
+    useVoiceInput({ onTranscribe: vi.fn(), onTranscript: vi.fn() }),
+  );
+  await act(() => result.current.start());
+  expect(result.current.microphoneWarning).toBe(
+    "Microphone is unavailable or already in use",
+  );
+  await act(() => result.current.start());
+  expect(result.current.state).toBe("recording");
+  expect(result.current.microphoneWarning).toBeNull();
+});
+
+it("tracks interrupted audio and retains a disconnect warning after recording stops", async () => {
+  const track = Object.assign(new EventTarget(), {
+    muted: false,
+    readyState: "live",
+    stop: vi.fn(),
+  });
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue({
+    getTracks: () => [track],
+    getAudioTracks: () => [track],
+  } as unknown as MediaStream);
+  const { result } = renderHook(() =>
+    useVoiceInput({
+      onTranscribe: vi.fn().mockResolvedValue("hello"),
+      onTranscript: vi.fn(),
+    }),
+  );
+  await act(() => result.current.start());
+  act(() => {
+    track.muted = true;
+    track.dispatchEvent(new Event("mute"));
+  });
+  expect(result.current.microphoneWarning).toContain("not providing audio");
+  act(() => {
+    track.muted = false;
+    track.dispatchEvent(new Event("unmute"));
+  });
+  expect(result.current.microphoneWarning).toBeNull();
+  act(() => {
+    track.readyState = "ended";
+    track.dispatchEvent(new Event("ended"));
+  });
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop());
+  expect(result.current.microphoneWarning).toContain(
+    "disconnected during recording",
+  );
+});
+
+it("does not block recording for a missing preference when fallback devices exist", async () => {
+  vi.mocked(useAudioInputDevicePreferenceValue).mockReturnValue("built-in");
+  const enumerateDevices = vi
+    .fn()
+    .mockResolvedValue([{ kind: "audioinput", deviceId: "masked", label: "" }]);
+  const mediaDevices = Object.assign(new EventTarget(), {
+    enumerateDevices,
+    getUserMedia: vi.fn(),
+  });
+  vi.stubGlobal("navigator", { mediaDevices });
+  const { result } = renderHook(() =>
+    useVoiceInput({ onTranscribe: vi.fn(), onTranscript: vi.fn() }),
+  );
+  await act(async () => {});
+  expect(result.current.microphoneWarning).toBeNull();
+  enumerateDevices.mockResolvedValue([
+    { kind: "audioinput", deviceId: "external", label: "Display microphone" },
+  ]);
+  await act(async () => mediaDevices.dispatchEvent(new Event("devicechange")));
+  expect(result.current.microphoneWarning).toBeNull();
+  enumerateDevices.mockResolvedValue([
+    { kind: "audioinput", deviceId: "built-in", label: "Built-in microphone" },
+  ]);
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(result.current.microphoneWarning).toBeNull();
+  enumerateDevices.mockResolvedValue([]);
+  await act(async () => mediaDevices.dispatchEvent(new Event("devicechange")));
+  expect(result.current.microphoneWarning).not.toBeNull();
+});
+
+function installAudioContext() {
+  const audio = { amplitude: 0, closed: vi.fn() };
+  class TestAudioContext {
+    state = "running";
+    resume = async () => {};
+    close = async () => {
+      audio.closed();
+    };
+    createMediaStreamSource = () => ({ connect: vi.fn(), disconnect: vi.fn() });
+    createMediaStreamDestination = () => ({
+      stream: { getTracks: () => [{ stop: vi.fn() }] },
+    });
+    createAnalyser = () => ({
+      fftSize: 2048,
+      disconnect: vi.fn(),
+      getFloatTimeDomainData: (samples: Float32Array) =>
+        samples.fill(audio.amplitude),
+    });
+  }
+  vi.stubGlobal("AudioContext", TestAudioContext);
+  return audio;
+}
+
+it("warns about sustained silence without stopping and clears the warning as soon as sound returns", async () => {
+  const audio = installAudioContext();
+  const { result } = renderHook(() =>
+    useVoiceInput({ onTranscribe: vi.fn(), onTranscript: vi.fn() }),
+  );
+  await act(() => result.current.start());
+  act(() => vi.advanceTimersByTime(4900));
+  expect(result.current.microphoneWarning).toBeNull();
+  act(() => vi.advanceTimersByTime(200));
+  expect(result.current.microphoneWarning).toContain("No audio detected");
+  expect(result.current.state).toBe("recording");
+  audio.amplitude = 0.02;
+  act(() => vi.advanceTimersByTime(100));
+  expect(result.current.microphoneWarning).toBeNull();
+});
+
+it("keeps the same recorder and captured audio when a microphone disconnects, and releases a late replacement after stop", async () => {
+  installAudioContext();
+  const firstTrack = Object.assign(new EventTarget(), {
+    muted: false,
+    readyState: "live",
+    stop: vi.fn(),
+  });
+  const secondTrack = Object.assign(new EventTarget(), {
+    muted: false,
+    readyState: "live",
+    stop: vi.fn(),
+  });
+  const first = {
+    getTracks: () => [firstTrack],
+    getAudioTracks: () => [firstTrack],
+  };
+  const second = {
+    getTracks: () => [secondTrack],
+    getAudioTracks: () => [secondTrack],
+  };
+  const recorders: Recorder[] = [];
+  class CountingRecorder extends Recorder {
+    constructor() {
+      super();
+      recorders.push(this);
+    }
+  }
+  vi.stubGlobal("MediaRecorder", CountingRecorder);
+  const capture = vi
+    .fn()
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce(second);
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: capture } });
+  const transcribe = vi.fn().mockResolvedValue("Kept my dictation");
+  const { result } = renderHook(() =>
+    useVoiceInput({ onTranscribe: transcribe, onTranscript: vi.fn() }),
+  );
+  await act(() => result.current.start());
+  await act(async () => {
+    firstTrack.readyState = "ended";
+    firstTrack.dispatchEvent(new Event("ended"));
+  });
+  expect(result.current.stream).toBe(second);
+  expect(result.current.state).toBe("recording");
+  expect(recorders).toHaveLength(1);
+  expect(firstTrack.stop).toHaveBeenCalledOnce();
+  let finish: (stream: object) => void = () => {};
+  capture.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => {
+    secondTrack.readyState = "ended";
+    secondTrack.dispatchEvent(new Event("ended"));
+  });
+  act(() => vi.advanceTimersByTime(1500));
+  await act(async () => result.current.stop());
+  const lateStop = vi.fn();
+  await act(async () => finish({ getTracks: () => [{ stop: lateStop }] }));
+  expect(lateStop).toHaveBeenCalledOnce();
+  expect(transcribe).toHaveBeenCalledOnce();
+  expect(result.current.stream).toBeNull();
 });
