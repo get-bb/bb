@@ -1269,27 +1269,26 @@ function MachineRow({
 }) {
   const report = host.report;
   const scanning = host.scan.state === "scanning";
-  const details = [
-    ...(report
-      ? [
-          `${(report.threadsWithStorageCount - report.archivedThreadCount).toLocaleString()} active`,
-          `${report.archivedThreadCount.toLocaleString()} archived`,
-          ...(report.developerStorage && report.disk
-            ? [`${bytes(report.disk.freeBytes)} free`]
-            : []),
-        ]
-      : []),
-    scanning
-      ? "scanning…"
-      : host.scan.state === "failed"
-        ? "scan failed"
-        : report
-          ? `scanned ${ago(report.scannedAt)}`
-          : "not scanned",
-  ];
+  const name = machine?.name ?? host.hostId;
+  const scanState = scanning
+    ? "scanning…"
+    : host.scan.state === "failed"
+      ? "scan failed"
+      : report
+        ? `scanned ${ago(report.scannedAt)}`
+        : "not scanned";
+  const usage = report
+    ? [
+        `${bytes(threadStorageBytes(report))} in ${plural(report.threadsWithStorageCount, "thread")}`,
+        ...(report.developerStorage
+          ? [`${bytes(report.developerStorage.sizeBytes)} dev`]
+          : []),
+        ...(report.disk ? [`${bytes(report.disk.freeBytes)} free`] : []),
+      ]
+    : [];
   return (
     <div
-      className="group flex w-full cursor-pointer flex-col items-stretch gap-3 px-4 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+      className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
       onClick={(event) => {
         if (
           event.target instanceof Element &&
@@ -1309,51 +1308,50 @@ function MachineRow({
             className="min-w-0 truncate rounded-sm text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onOpen}
           >
-            {machine?.name ?? host.hostId}
+            {name}
           </button>
           {server && <Pill>server</Pill>}
         </span>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-subtle-foreground/75">
           {machine && <MachineStatus machine={machine} />}
-          {details.map((detail) => (
-            <span key={detail} className="shrink-0">
-              {detail}
-            </span>
-          ))}
+          <span aria-hidden>·</span>
+          <span>{scanState}</span>
         </span>
-      </span>
-      <span className="flex items-center gap-3">
-        {report && (
-          <span className="mr-auto shrink-0 text-left sm:mr-0 sm:text-right">
-            <span className="block text-sm font-normal tabular-nums">
-              {bytes(
-                threadStorageBytes(report) +
-                  (report.developerStorage?.sizeBytes ?? 0),
-              )}
-            </span>
-            {report.developerStorage ? (
-              <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
-                {bytes(threadStorageBytes(report))} threads ·{" "}
-                {bytes(report.developerStorage.sizeBytes)} dev
-              </span>
-            ) : (
-              report.disk && (
-                <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
-                  {bytes(report.disk.freeBytes)} free
+        {usage.length > 0 && (
+          <span className="block text-xs tabular-nums text-subtle-foreground/75">
+            {usage.map((item, index) => (
+              <span key={item}>
+                <span className="whitespace-nowrap">
+                  {item}
+                  {index < usage.length - 1 && "\u00a0·"}
                 </span>
-              )
+                {index < usage.length - 1 && " "}
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
+      <span className="-my-1 flex shrink-0 items-center gap-1">
+        {report && (
+          <span className="mr-1 text-sm font-medium tabular-nums">
+            {bytes(
+              threadStorageBytes(report) +
+                (report.developerStorage?.sizeBytes ?? 0),
             )}
           </span>
         )}
         <Button
           variant="ghost"
-          size="sm"
-          className="ml-auto shrink-0"
-          aria-label={`Scan ${machine?.name ?? host.hostId}`}
+          size="icon"
+          className="size-7"
+          aria-label={`${report ? "Rescan" : "Scan"} ${name}`}
           disabled={busy || scanning || machine?.status !== "connected"}
           onClick={onScan}
         >
-          {scanning ? "Scanning" : report ? "Rescan" : "Scan"}
+          <Icon
+            name="RotateCcw"
+            className={cn("size-4", scanning && "animate-spin")}
+          />
         </Button>
         <Icon
           name="ChevronRight"
