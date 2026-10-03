@@ -1934,3 +1934,13 @@ Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on
 
 The publishing workflow verifies the signed APK and publishes both the checksum-named
 asset and the stable `bb-android.apk` alias, then `latest.json`.
+
+## Prompt Library
+
+The bundled Prompt Library plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--prompt-library`. Its
+**Search prompts** command defaults to Ctrl+R and can be rebound in Keyboard
+Settings. Search scope is remembered in browser local storage separately for
+new-thread and follow-up composers. Starred text and mentions persist in the
+plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
+for CLI and SDK commands.
