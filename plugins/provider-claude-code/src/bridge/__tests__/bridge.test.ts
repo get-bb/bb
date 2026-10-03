@@ -3583,17 +3583,19 @@ describe("bridge", () => {
           instructionMode: "append",
           options: options(false),
         });
-        await bridge.waitForResponse(1);
+        const providerThreadId = getProviderThreadIdFromResult(
+          await bridge.waitForResponse(1),
+        );
         expect(getLatestQueryOptions().permissionMode).toBe("auto");
 
         bridge.sendRequest(2, "turn/start", {
-          ...canonicalTurnParams({ threadId, input: [{ type: "text", text: "first" }] }),
+          ...canonicalTurnParams({ threadId, providerThreadId, input: [{ type: "text", text: "first" }] }),
           options: options(false),
         });
         await readNextPrompt(getLatestQueryCall());
         await bridge.waitForResponse(2);
         if (method === "turn/start") {
-          queries[0]?.emit(createSuccessfulResultMessage(threadId));
+          queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
           await bridge.flushWork();
         }
 
@@ -3601,6 +3603,7 @@ describe("bridge", () => {
           bridge.sendRequest(id, method, {
             ...canonicalTurnParams({
               threadId,
+              providerThreadId,
               expectedTurnId: "active-turn",
               input: [{ type: "text", text: `permissions ${id}` }],
             }),
@@ -3610,7 +3613,7 @@ describe("bridge", () => {
           expect(queries).toHaveLength(id - 1);
           expect(queries[id - 3]?.close).toHaveBeenCalled();
           expect(getLatestQueryOptions()).toMatchObject({
-            resume: threadId,
+            resume: providerThreadId,
             permissionMode: full ? "bypassPermissions" : "auto",
           });
           if (full) {
@@ -3626,7 +3629,7 @@ describe("bridge", () => {
           await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(`permissions ${id}`);
           await bridge.waitForResponse(id);
           if (method === "turn/start") {
-            queries.at(-1)?.emit(createSuccessfulResultMessage(threadId));
+            queries.at(-1)?.emit(createSuccessfulResultMessage(providerThreadId));
             await bridge.flushWork();
           }
         }
@@ -4965,6 +4968,11 @@ describe("bridge", () => {
             threadId,
             input: [{ type: "text", text: "loosen permissions" }],
           }),
+          options: {
+            ...canonicalOptions(),
+            permissionMode: "auto",
+            approvalReviewer: "automatic",
+          },
           ...(testCase.method === "turn/steer"
             ? { expectedTurnId: "turn-1" }
             : {}),
