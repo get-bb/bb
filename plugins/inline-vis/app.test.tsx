@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
-const app = await loadPluginApp(() => import("./app"));
+let app: Awaited<ReturnType<typeof loadPluginApp>>;
+
+beforeEach(async () => {
+  app = await loadPluginApp(() => import("./app"));
+});
 
 afterEach(() => {
   cleanup();

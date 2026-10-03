@@ -220,7 +220,7 @@ export function GitDiffTabContent({
     );
   }
 
-  if (diffFilesError) {
+  if (diffFilesError && diffFilesResponse === undefined) {
     return (
       <GitDiffMessageSlot>
         <div className="rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive">

@@ -105,7 +105,8 @@ function resolveSecondaryPanelFilePreviewState({
   isLoading,
   lineRange,
 }: ResolveSecondaryPanelFilePreviewStateArgs): FilePreviewState {
-  if (error) {
+  const hasCurrentPreview = filePreview?.path === activePath;
+  if (error && !hasCurrentPreview) {
     if (asHttpError(error)?.status === 404) {
       return { kind: "not-found" };
     }
@@ -113,7 +114,7 @@ function resolveSecondaryPanelFilePreviewState({
     return message === null ? { kind: "error" } : { kind: "error", message };
   }
 
-  if (isLoading || !filePreview || filePreview.path !== activePath) {
+  if (isLoading || !filePreview || !hasCurrentPreview) {
     return { kind: "loading" };
   }
 
