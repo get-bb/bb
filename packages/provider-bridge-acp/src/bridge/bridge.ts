@@ -14,6 +14,7 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
 } from "@bb/provider-bridge-protocol";
 import type {
+  BridgeExecutionOptions,
   InitializeResult,
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
@@ -158,6 +159,7 @@ interface AcpPendingTurnInput {
   clientRequestId: string;
   input: PromptInput[];
   requestId: AcpBridgeRequestId | null;
+  options: BridgeExecutionOptions;
 }
 
 interface AcpThreadSession {
@@ -2099,6 +2101,21 @@ function runTurn(
       let stopReason: z.infer<typeof acpStopReasonSchema>;
       session.cancelRequested = false;
       try {
+        const previousSession = session;
+        const reconciled = reconcileExecutionSettings(session, pending.options);
+        session = reconciled instanceof Promise ? await reconciled : reconciled;
+        if (session.stopping) {
+          dropTurnInput(pending, "ACP session is stopping");
+          finishTurn(session, "cancelled");
+          return;
+        }
+        session.activePromptKind = "turn";
+        session.turnSettled = previousSession.turnSettled;
+        if (session !== previousSession) {
+          emitForSession(session, ACP_TURN_STARTED_METHOD, {
+            threadId: session.bbThreadId,
+          });
+        }
         session.promptRequestPending = true;
         const promptResult = session.connection.request({
           method: "session/prompt",
@@ -2150,6 +2167,96 @@ function runTurn(
       return;
     }
   })();
+}
+
+function reconcileExecutionSettings(
+  session: AcpThreadSession,
+  options: BridgeExecutionOptions,
+): AcpThreadSession | Promise<AcpThreadSession> {
+  if (options.permissionMode === "auto") {
+    throw new Error('ACP does not support permission mode "auto".');
+  }
+  const envVars =
+    Object.keys(options.envVars ?? {}).length > 0
+      ? {
+          ...(decodeLaunchSpec(options.providerOptions)?.env ?? {}),
+          ...options.envVars,
+        }
+      : session.construction.envVars;
+  const workspaceWriteRoots =
+    options.providerOptions?.additionalWorkspaceWriteRoots !== undefined
+      ? [
+          session.cwd,
+          ...decodeAdditionalWorkspaceWriteRoots(options.providerOptions),
+        ]
+      : session.policy.workspaceWriteRoots;
+  const construction = {
+    ...session.construction,
+    envVars,
+    permissionMode: options.permissionMode,
+    workspaceWriteRoots,
+  };
+  const launchArgsChanged = !isDeepStrictEqual(
+    permissionCliArgsForMode(
+      session.construction.permissionCli,
+      session.construction.permissionMode,
+    ),
+    permissionCliArgsForMode(
+      construction.permissionCli,
+      construction.permissionMode,
+    ),
+  );
+  const restart =
+    session.restartAfterCancelError ||
+    launchArgsChanged ||
+    !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
+  cancelPendingPermissions(session);
+  session.policy = {
+    permissionMode: options.permissionMode,
+    workspaceWriteRoots,
+  };
+  if (!restart) {
+    session.construction = construction;
+    return session;
+  }
+  return rebuildAgentSession(session, construction);
+}
+
+async function rebuildAgentSession(
+  session: AcpThreadSession,
+  construction: AcpSessionParams,
+): Promise<AcpThreadSession> {
+  const previousProviderThreadId = session.providerThreadId;
+  const reason = session.restartAfterCancelError
+    ? "The ACP agent failed during cancellation; its session was rebuilt before continuing."
+    : "Execution settings changed; the ACP session was rebuilt to apply them.";
+  const queuedInputs = session.queuedInputs.splice(0);
+  const continuingTurn = session.activePromptKind === "turn";
+  finishTurn(session, "cancelled");
+  let replacement: AcpThreadSession;
+  try {
+    replacement = await startAgentSession({
+      kind: "resume",
+      params: construction,
+      resumeProviderThreadId: previousProviderThreadId,
+    });
+  } catch (error) {
+    if (continuingTurn) {
+      emitSessionError(
+        session,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    throw error;
+  }
+  replacement.queuedInputs.push(...queuedInputs);
+  sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+    threadId: session.bbThreadId,
+    providerThreadId: replacement.providerThreadId,
+    reason,
+    contextLost: replacement.providerThreadId !== previousProviderThreadId,
+  });
+  return replacement;
 }
 
 function startCompaction(
@@ -2639,37 +2746,13 @@ async function handleRequest(
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
-      const envVars =
-        Object.keys(params.options.envVars ?? {}).length > 0
-          ? {
-              ...(decodeLaunchSpec(params.options.providerOptions)?.env ?? {}),
-              ...params.options.envVars,
-            }
-          : session.construction.envVars;
-      if (
-        session.restartAfterCancelError ||
-        !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {})
-      ) {
-        const previousProviderThreadId = session.providerThreadId;
-        const reason = session.restartAfterCancelError
-          ? "The ACP agent failed during cancellation; its session was rebuilt before continuing."
-          : "Execution settings changed; the ACP session was rebuilt to apply them.";
-        session = await startAgentSession({
-          kind: "resume",
-          params: { ...session.construction, envVars },
-          resumeProviderThreadId: previousProviderThreadId,
-        });
-        sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
-          threadId: params.threadId,
-          providerThreadId: session.providerThreadId,
-          reason,
-          contextLost: session.providerThreadId !== previousProviderThreadId,
-        });
-      }
+      const reconciled = reconcileExecutionSettings(session, params.options);
+      session = reconciled instanceof Promise ? await reconciled : reconciled;
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,
         input: params.input,
         requestId: request.id,
+        options: params.options,
       };
       if (isStandaloneBuiltinCompactCommand(params.input)) {
         startCompaction(session, pending);
@@ -2697,6 +2780,7 @@ async function handleRequest(
         clientRequestId: params.clientRequestId,
         input: params.input,
         requestId: null,
+        options: params.options,
       });
       requestSteerCancel(session);
       sendResult(request.id, { threadId: params.threadId });

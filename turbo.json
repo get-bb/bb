@@ -581,6 +581,18 @@
         "$TURBO_ROOT$/vitest*.ts"
       ]
     },
+    "@bb/provider-bridge-protocol#test": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest*.ts",
+        "$TURBO_ROOT$/plugins/provider-codex/src/**",
+        "$TURBO_ROOT$/plugins/provider-codex/package.json",
+        "$TURBO_ROOT$/plugins/provider-claude-code/src/**",
+        "$TURBO_ROOT$/plugins/provider-claude-code/package.json",
+        "$TURBO_ROOT$/packages/plugin-sdk/src/**"
+      ]
+    },
     "@bb/provider-parity#test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [

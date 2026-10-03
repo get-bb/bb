@@ -522,6 +522,20 @@ async function handlePrompt(message) {
       outcome = "error";
     }
     notifyUpdate(messageChunk(`permission:${outcome}`));
+  } else if (text.includes("permission-probe")) {
+    let wrote = false;
+    try {
+      await requestClient("fs/write_text_file", {
+        sessionId: activeSessionId,
+        path: process.env.FAKE_ACP_WRITE_PATH,
+        content: "permission probe\n",
+      });
+      wrote = true;
+    } catch {}
+    notifyUpdate(
+      messageChunk(JSON.stringify({ wrote, args: process.argv.slice(2) })),
+    );
+    if (text.includes("hold")) return;
   } else if (text.includes("write-file")) {
     try {
       const result = await requestClient("fs/write_text_file", {
