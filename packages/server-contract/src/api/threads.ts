@@ -612,6 +612,17 @@ export type ThreadQueuedMessageListResponse = z.infer<
 >;
 
 export const threadChildSummaryResponseSchema = z.object({
+  archiveThreads: z.array(
+    threadListEntrySchema.pick({
+      id: true,
+      projectId: true,
+      title: true,
+      titleFallback: true,
+      status: true,
+      createdAt: true,
+      visibility: true,
+    }),
+  ),
   nonDeletedChildCount: z.number().int().nonnegative(),
   unarchivedDescendantCount: z.number().int().nonnegative(),
 });

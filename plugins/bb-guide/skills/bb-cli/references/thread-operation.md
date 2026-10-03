@@ -210,3 +210,8 @@ For review or fix pipelines, get the environment ID from
   same scope, size, and title. It does not replay the original launch command.
 
 Clearing a thread's parent with `bb thread update --clear-parent-thread` inherits the former parent's section unless the update explicitly supplies a section. Children released by environment archiving also inherit their former parent's section.
+
+`bb thread archive-preview <id> --json` lists the unarchived threads included
+by the UI's archive-with-children action. It includes hidden and lifecycle-owned
+threads with titles, statuses and creation dates, without archiving them.
+SDK: `threads.childSummary({ threadId }).archiveThreads`.

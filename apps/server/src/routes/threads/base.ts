@@ -1,4 +1,4 @@
-import { countUnarchivedThreadDescendants } from "../../services/threads/thread-archive.js";
+import { listThreadArchivePreview } from "../../services/threads/thread-archive.js";
 import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
@@ -375,12 +375,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const nonDeletedChildCount = countNonDeletedAssignedChildThreads(deps.db, {
       parentThreadId: thread.id,
     });
+    const archiveThreads = listThreadArchivePreview(deps.db, thread);
     return {
+      archiveThreads,
       nonDeletedChildCount,
-      unarchivedDescendantCount: countUnarchivedThreadDescendants(
-        deps.db,
-        thread,
-      ),
+      unarchivedDescendantCount: archiveThreads.filter(
+        (candidate) =>
+          candidate.id !== thread.id && candidate.visibility === "visible",
+      ).length,
     };
   }
 
