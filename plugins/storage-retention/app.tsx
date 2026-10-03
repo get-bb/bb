@@ -543,36 +543,19 @@ function StoragePage({
                   className="space-y-4 rounded-lg border border-border bg-card px-4 py-3.5"
                   aria-label="Storage breakdown"
                 >
-                  {report.developerStorage ? (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm font-medium">Thread storage</p>
-                        <p className="text-lg font-semibold tabular-nums">
-                          {bytes(
-                            report.activeThreadBytes +
-                              report.archivedThreadBytes,
-                          )}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">
-                          BB development
-                        </p>
-                        <p className="text-lg font-semibold tabular-nums">
-                          {bytes(report.developerStorage.sizeBytes)}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-sm font-medium">Thread storage</p>
-                      <p className="text-lg font-semibold tabular-nums">
-                        {bytes(
-                          report.activeThreadBytes + report.archivedThreadBytes,
-                        )}
-                      </p>
-                    </div>
-                  )}
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-sm font-medium">
+                      {report.developerStorage ? "Total" : "Thread storage"}
+                    </p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bytes(
+                        categories(report).reduce(
+                          (total, category) => total + category.value,
+                          0,
+                        ),
+                      )}
+                    </p>
+                  </div>
                   <StorageBreakdown report={report} />
                   <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
                     {report.disk && (
@@ -1801,17 +1784,36 @@ function threadStorageBytes(report: NonNullable<HostReport["report"]>) {
   );
 }
 function categories(report: NonNullable<HostReport["report"]>) {
+  const threads = report.developerStorage ? " threads" : "";
   return [
     {
-      label: "Active",
+      label: `Active${threads}`,
       value: report.activeThreadBytes,
       count: report.threadsWithStorageCount - report.archivedThreadCount,
     },
     {
-      label: "Archived",
+      label: `Archived${threads}`,
       value: report.archivedThreadBytes,
       count: report.archivedThreadCount,
     },
+    ...(report.orphanBytes > 0
+      ? [
+          {
+            label: "Orphaned",
+            value: report.orphanBytes,
+            count: report.orphanCount,
+          },
+        ]
+      : []),
+    ...(report.developerStorage
+      ? [
+          {
+            label: "BB development",
+            value: report.developerStorage.sizeBytes,
+            count: report.developerStorage.entries.length,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -1822,7 +1824,7 @@ function StorageBreakdown({
 }) {
   return (
     <table className="w-full text-xs">
-      <caption className="sr-only">Thread storage by category</caption>
+      <caption className="sr-only">Storage by category</caption>
       <thead>
         <tr className="text-muted-foreground">
           <th scope="col" className="pb-2 text-left font-normal">
