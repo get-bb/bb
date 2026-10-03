@@ -30,6 +30,7 @@ const searchResult = {
   official: true,
   author: null,
   installed: false,
+  installedByDefault: false,
   conflictingInstallSource: null,
   installs: null,
   compatible: true,
