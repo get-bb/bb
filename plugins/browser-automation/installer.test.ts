@@ -112,7 +112,8 @@ if (process.argv[2] === "install") {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "dev-browser.cjs"), "shim");
   fs.writeFileSync(path.join(dir, "..", "package.json"), JSON.stringify({ name: "dev-browser", version: config.version }));
-  fs.writeFileSync(path.join(process.cwd(), "node_modules", ".package-lock.json"), JSON.stringify({ packages: { "node_modules/dev-browser": { version: config.version, resolved: (config.resolvedBase ?? process.env.npm_config_registry) + "/dev-browser/-/dev-browser.tgz", integrity: config.integrity } } }));
+  const omitResolved = config.omitLockfileRegistryResolved && !process.argv.includes("--omit-lockfile-registry-resolved=false");
+  fs.writeFileSync(path.join(process.cwd(), "node_modules", ".package-lock.json"), JSON.stringify({ packages: { "node_modules/dev-browser": { version: config.version, ...(omitResolved ? {} : { resolved: (config.resolvedBase ?? process.env.npm_config_registry) + "/dev-browser/-/dev-browser.tgz" }), integrity: config.integrity } } }));
   process.exit(0);
 }
 if (process.argv[2] === "audit") { process.stdout.write(JSON.stringify(config.audit)); process.exit(config.auditExit ?? 0); }
@@ -224,40 +225,42 @@ beforeEach(async () => {
 });
 
 describe("runtime installer", () => {
-  it("installs the exact pinned package once and reuses it without npm or network", async ({
-    skip,
-  }) => {
-    skip(process.platform === "win32", noWindowsRuntime);
-    const dir = await dataDir();
-    const progress: string[] = [];
-    const installed = await install(dir, {
-      onProgress: (detail) => progress.push(detail),
-    });
-    expect(installed.sha256).toBe(sha256(binaryContent));
-    expect(installed.binary).toBe(
-      join(
-        installRoot(dir),
-        `dev-browser@${version}`,
-        "node_modules/dev-browser/bin/dev-browser-bin",
-      ),
-    );
-    await access(installed.binary, constants.X_OK);
-    expect(await npmCalls()).toEqual([
-      `install --ignore-scripts --no-audit --no-fund --omit=dev --loglevel=error --registry=${base}`,
-      `audit signatures --json --registry=${base}`,
-    ]);
-    expect(requests).toEqual([attestationPath, "/SHA256SUMS", `/${asset}`]);
-    expect(progress).toContain(
-      "verifying npm registry signature and provenance",
-    );
-    expect(await entries(dir)).toEqual([`dev-browser@${version}`]);
-    const warm = await install(dir, {
-      env: env(false),
-      downloadBase: "http://127.0.0.1:9/unreachable",
-    });
-    expect(warm.binary).toBe(installed.binary);
-    expect(requests).toHaveLength(3);
-  });
+  it.for([false, true])(
+    "installs the exact pinned package with registry URL omission %s and reuses it without npm or network",
+    async (omitLockfileRegistryResolved, { skip }) => {
+      skip(process.platform === "win32", noWindowsRuntime);
+      await configureNpm({ omitLockfileRegistryResolved });
+      const dir = await dataDir();
+      const progress: string[] = [];
+      const installed = await install(dir, {
+        onProgress: (detail) => progress.push(detail),
+      });
+      expect(installed.sha256).toBe(sha256(binaryContent));
+      expect(installed.binary).toBe(
+        join(
+          installRoot(dir),
+          `dev-browser@${version}`,
+          "node_modules/dev-browser/bin/dev-browser-bin",
+        ),
+      );
+      await access(installed.binary, constants.X_OK);
+      expect(await npmCalls()).toEqual([
+        `install --ignore-scripts --no-audit --no-fund --omit=dev --omit-lockfile-registry-resolved=false --loglevel=error --registry=${base}`,
+        `audit signatures --json --registry=${base}`,
+      ]);
+      expect(requests).toEqual([attestationPath, "/SHA256SUMS", `/${asset}`]);
+      expect(progress).toContain(
+        "verifying npm registry signature and provenance",
+      );
+      expect(await entries(dir)).toEqual([`dev-browser@${version}`]);
+      const warm = await install(dir, {
+        env: env(false),
+        downloadBase: "http://127.0.0.1:9/unreachable",
+      });
+      expect(warm.binary).toBe(installed.binary);
+      expect(requests).toHaveLength(3);
+    },
+  );
   it("reinstalls when the cached binary no longer matches the pin", async ({
     skip,
   }) => {

@@ -593,6 +593,7 @@ export async function installRuntime(
           "--no-audit",
           "--no-fund",
           "--omit=dev",
+          "--omit-lockfile-registry-resolved=false",
           "--loglevel=error",
           `--registry=${release.registry}`,
         ],
