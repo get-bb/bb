@@ -319,7 +319,7 @@ function Shelf({
   const notable = shelf.kind === "collection";
   const description =
     shelf.description ??
-    (notable ? "Hand-picked recent additions." : undefined);
+    (notable ? "Trending and recently added plugins." : undefined);
   const viewHref = notable
     ? "/marketplace?sort=recently-added"
     : `/marketplace?category=${encodeURIComponent(shelf.id)}`;

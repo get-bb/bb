@@ -192,6 +192,7 @@ describe("plugin catalog queries", () => {
           pluginIds: ["todoist"],
         },
       ],
+      categories: [],
     });
   });
 

@@ -1,7 +1,10 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { PLUGIN_CATALOG_CATEGORIES as BUILTIN_DISCOVERY_CATEGORIES } from "@bb/domain";
+import {
+  PLUGIN_CATALOG_CATEGORIES as BUILTIN_DISCOVERY_CATEGORIES,
+  type PluginMarketplaceCategory,
+} from "@bb/domain";
 import {
   deletePluginMarketplace,
   getInstalledPlugin,
@@ -72,6 +75,7 @@ import {
   entrySourceDisplay,
   curatedMarketplaceManifestUrls,
   isBundledMarketplaceEntry,
+  marketplaceCategories,
   marketplaceCollections,
   marketplaceRowIconBase,
   parseMarketplaceManifestJson,
@@ -119,6 +123,7 @@ export interface PluginCatalogService {
   }): Promise<PluginMarketplaceRefreshResult[]>;
   search(query: string): Promise<PluginCatalogSearchResult[]>;
   collections(): PluginCatalogCollection[];
+  categories(): PluginMarketplaceCategory[];
   installPlan(
     selector: PluginCatalogEntrySelector,
   ): Promise<PluginCatalogInstallPlan>;
@@ -142,6 +147,7 @@ type ResolvedCatalogEntry = {
 interface ReservedCollectionIndex {
   catalogsByMarketplace: ReadonlyMap<string, MarketplaceManifest>;
   collections: readonly PluginCatalogCollection[];
+  categories: readonly PluginMarketplaceCategory[];
   membershipsByEntry: ReadonlyMap<
     string,
     readonly PluginCatalogCollectionMembership[]
@@ -166,12 +172,6 @@ export function createPluginCatalogService(deps: {
     deps.bundledPlugins ?? listBundledPluginRegistrations();
   const curatedManifestUrls = curatedMarketplaceManifestUrls(
     deps.marketplaceUrl,
-  );
-  const categoryOrder = new Map<string, number>(
-    BUILTIN_DISCOVERY_CATEGORIES.map((category, index) => [
-      category.displayName,
-      index,
-    ]),
   );
   const fetchMarketplace = deps.fetch ?? publicMarketplaceFetch;
   const stagingDir = join(deps.dataDir, "marketplaces", "staging");
@@ -346,9 +346,25 @@ export function createPluginCatalogService(deps: {
         });
       }
     }
+    const categoriesById = new Map<string, PluginMarketplaceCategory>();
+    const categorySources = [
+      catalogsByMarketplace.get(CURATED_PLUGIN_MARKETPLACE_NAME),
+      ...catalogsByMarketplace.values(),
+    ].flatMap((catalog) =>
+      catalog === undefined ? [] : marketplaceCategories(catalog),
+    );
+    for (const category of [
+      ...categorySources,
+      ...BUILTIN_DISCOVERY_CATEGORIES,
+    ]) {
+      if (!categoriesById.has(category.id)) {
+        categoriesById.set(category.id, category);
+      }
+    }
     return {
       catalogsByMarketplace,
       collections: [...collectionsByKey.values()],
+      categories: [...categoriesById.values()],
       membershipsByEntry,
     };
   }
@@ -998,6 +1014,10 @@ export function createPluginCatalogService(deps: {
       return [...reservedCollections.collections];
     },
 
+    categories() {
+      return [...reservedCollections.categories];
+    },
+
     async addMarketplace(rawSource) {
       return withLock(ADD_LOCK_KEY, async () => {
         const source = parseMarketplaceSource(rawSource);
@@ -1079,6 +1099,12 @@ export function createPluginCatalogService(deps: {
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
       const collectionIndex = reservedCollections;
+      const categoryOrder = new Map<string, number>(
+        collectionIndex.categories.map((category, index) => [
+          category.displayName,
+          index,
+        ]),
+      );
       const curatedRow = getPluginMarketplace(
         deps.db,
         CURATED_PLUGIN_MARKETPLACE_NAME,
