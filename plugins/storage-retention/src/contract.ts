@@ -68,6 +68,15 @@ export const storageRpc = defineRpcContract({
       clearedBytes: z.number().int().nonnegative(),
     }),
   },
+  removeMissingDevInstances: {
+    input: machineInput,
+    output: z.object({
+      removedCount: z.number().int().nonnegative(),
+      removedBytes: z.number().int().nonnegative(),
+      skippedCount: z.number().int().nonnegative(),
+      stoppedProcessCount: z.number().int().nonnegative(),
+    }),
+  },
   state: { input: z.null(), output: stateSchema },
   preview: { input: policySchema, output: previewSchema },
   configure: { input: policySchema, output: stateSchema },

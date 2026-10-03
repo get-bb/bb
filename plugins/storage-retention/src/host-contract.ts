@@ -80,6 +80,19 @@ export const hostStorageContract = defineRpcContract({
       .strict(),
     output: z.object({ entries: z.array(developerEntryInspectionSchema) }),
   },
+  removeDeveloperEntries: {
+    input: z
+      .object({
+        rootPath: z.string().min(1),
+        names: z.array(z.string().min(1)).max(500),
+        candidatePaths: z.array(z.string().min(1)),
+      })
+      .strict(),
+    output: z.object({
+      removed: z.array(z.string()),
+      stoppedProcessCount: z.number().int().nonnegative(),
+    }),
+  },
   homeDirectory: { input: z.null(), output: z.string().min(1) },
   discardLargeFiles: {
     input: z

@@ -62,8 +62,8 @@ function duration(days: number) {
     return days === 7 ? "1 week" : `${days / 7} weeks`;
   return days === 1 ? "1 day" : `${days} days`;
 }
-function plural(count: number, noun: string) {
-  return `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
+function plural(count: number, noun: string, nouns = `${noun}s`) {
+  return `${count.toLocaleString()} ${count === 1 ? noun : nouns}`;
 }
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -875,7 +875,29 @@ function StoragePage({
                   )}
                 </section>
                 {report.developerStorage && (
-                  <DeveloperStorage storage={report.developerStorage} />
+                  <DeveloperStorage
+                    storage={report.developerStorage}
+                    removeDisabled={locked || cleanup !== null}
+                    confirmation={
+                      cleanup?.key === "dev-instances" && cleanupConfirmation
+                    }
+                    onRemoveMissing={(count, size) =>
+                      setCleanup({
+                        key: "dev-instances",
+                        action: "Remove instances",
+                        title: `Remove ${plural(count, "development instance")} (${bytes(size)})?`,
+                        detail:
+                          "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
+                        run: async () => {
+                          const result = await rpc.call(
+                            "removeMissingDevInstances",
+                            { hostId: report.hostId },
+                          );
+                          return `Removed ${plural(result.removedCount, "development instance")} · ${bytes(result.removedBytes)} freed${result.stoppedProcessCount ? ` · stopped ${plural(result.stoppedProcessCount, "process", "processes")}` : ""}${result.skippedCount ? ` · ${result.skippedCount.toLocaleString()} skipped` : ""}`;
+                        },
+                      })
+                    }
+                  />
                 )}
               </>
             )}
@@ -1480,8 +1502,14 @@ function developerEntryLabel(entry: DeveloperEntry) {
 
 function DeveloperStorage({
   storage,
+  removeDisabled,
+  confirmation,
+  onRemoveMissing,
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
+  removeDisabled: boolean;
+  confirmation: ReactNode;
+  onRemoveMissing: (count: number, bytes: number) => void;
 }) {
   const navigate = useBbNavigate();
   const [expanded, setExpanded] = useState(false);
@@ -1492,6 +1520,10 @@ function DeveloperStorage({
   } | null>(null);
   const missing = storage.entries.filter(
     (entry) => entry.sourcePathState === "missing",
+  );
+  const missingBytes = missing.reduce(
+    (total, entry) => total + entry.sizeBytes,
+    0,
   );
   const unlinked = storage.entries.filter(
     (entry) => entry.sourcePath !== null && entry.threads.length === 0,
@@ -1582,14 +1614,28 @@ function DeveloperStorage({
           </Select>
         </div>
         {missing.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {bytes(
-              missing.reduce((total, entry) => total + entry.sizeBytes, 0),
-            )}{" "}
-            in {missing.length.toLocaleString()}{" "}
-            {missing.length === 1 ? "entry" : "entries"} whose source checkout
-            no longer exists.
-          </p>
+          <div className="space-y-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <p className="min-w-0 flex-1 text-xs leading-snug text-subtle-foreground">
+                <span className="text-foreground">
+                  {bytes(missingBytes)} in{" "}
+                  {plural(missing.length, "instance")}
+                </span>{" "}
+                whose source checkout no longer exists. Servers still running
+                from them are stopped before removal.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={removeDisabled}
+                onClick={() => onRemoveMissing(missing.length, missingBytes)}
+              >
+                Remove instances
+              </Button>
+            </div>
+            {confirmation}
+          </div>
         )}
         <div className="divide-y divide-border border-t border-border">
           {groups
@@ -1742,9 +1788,7 @@ function DeveloperStorage({
           </p>
         )}
         <p className="border-t border-border pt-3 text-xs leading-snug text-subtle-foreground/75">
-          Other instances have no matching thread in this BB. Missing checkouts
-          are candidates for cleanup. Stop the development server before
-          removing its data.
+          Other instances have no matching thread in this BB.
         </p>
       </div>
     </section>

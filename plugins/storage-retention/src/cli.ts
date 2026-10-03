@@ -192,6 +192,21 @@ export function registerCli(
               });
             }),
         }),
+        "remove-dev-instances": cliCommand({
+          summary:
+            "Remove ~/.bb-dev instances whose source checkout no longer exists, stopping servers still running from them",
+          options: { machine: MACHINE, yes: YES },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to stop their servers and permanently remove development instance data.",
+                );
+              return storage.removeMissingDevInstances({
+                hostId: required(input.options.machine, "machine"),
+              });
+            }),
+        }),
       },
     }),
   );

@@ -468,6 +468,9 @@ reports its running/completed/failed status, and survives navigation or reconnec
 for deletion to finish;
 `bb storage clear-archived-files --machine HOST_ID --yes` removes archived threads’
 whole storage folders, including small files, skipping pinned and running threads;
+`bb storage remove-dev-instances --machine HOST_ID --yes` removes `~/.bb-dev`
+instances whose source checkout no longer exists, first stopping servers still
+running from that checkout;
 `bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
 `bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
 The plugin owns the disk scanner, cached reports, classification, and host-worker

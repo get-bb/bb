@@ -24,6 +24,7 @@ bb storage clear-large-files --machine HOST_ID --yes
 bb storage retry-worktree-cleanup --machine HOST_ID
 bb storage clear-thread --thread THREAD_ID --yes
 bb storage clear-archived-files --machine HOST_ID --yes
+bb storage remove-dev-instances --machine HOST_ID --yes
 ```
 
 Without `--save`, retention thresholds only preview affected thread counts.
@@ -37,7 +38,8 @@ Scans run in the background; rerun usage to read completion, progress, or failur
 `--rescan` without `--machine` scans every online machine that is not already busy.
 A completed report includes `disk` (total and free bytes of the volume holding thread storage).
 Reports include `projectWorktrees`: counts of distinct managed worktree paths per project on the selected machine, including zero-count projects with a local source there; destroyed and removed environments are excluded, and `cleanupPendingCount` is a subset of the worktree count. Counts reflect current environment records, not filesystem measurements.
-Scans also measure `~/.bb-dev` on that machine. `developerStorage` is null when absent; otherwise it contains the path, total allocated bytes, and immediate folder/file sizes. Each entry includes `sourcePath`, `sourcePathState` (exists, missing, or unknown), and `threads` linked through host environment paths or a managed checkout’s thread ID. Matches cover threads known to this BB instance, including archived and hidden threads. Sources are recovered from saved launch metadata or hash-verified known/conventional checkout paths; unresolved sources remain null. Missing checkouts are cleanup candidates, not proof their development data is disposable. The UI offers missing-checkout, other-instance and unidentified-source filters. The developer section initially shows the five largest entries, grouped into linked threads, other development instances and unidentified sources, with an aligned Show all control for the remainder. Paths are hidden from rows and available through the three-dot menu’s Copy source checkout path and Copy dev data path actions. When `developerStorage` is present, the machine list totals thread and development storage with a per-kind split, and the machine page shows both totals in its first card; the entry list stays in its own section. Storage cleanup never removes development instances.
+Scans also measure `~/.bb-dev` on that machine. `developerStorage` is null when absent; otherwise it contains the path, total allocated bytes, and immediate folder/file sizes. Each entry includes `sourcePath`, `sourcePathState` (exists, missing, or unknown), and `threads` linked through host environment paths or a managed checkout’s thread ID. Matches cover threads known to this BB instance, including archived and hidden threads. Sources are recovered from saved launch metadata or hash-verified known/conventional checkout paths; unresolved sources remain null. Missing checkouts are cleanup candidates, not proof their development data is disposable. The UI offers missing-checkout, other-instance and unidentified-source filters. The developer section initially shows the five largest entries, grouped into linked threads, other development instances and unidentified sources, with an aligned Show all control for the remainder. Paths are hidden from rows and available through the three-dot menu’s Copy source checkout path and Copy dev data path actions. When `developerStorage` is present, the machine list totals thread and development storage with a per-kind split, and the machine page shows both totals in its first card; the entry list stays in its own section.
+Remove-dev-instances (page: Remove instances in the development section) removes `~/.bb-dev` entries the last scan marked missing. The machine re-checks each source at removal time and skips entries whose checkout exists again or cannot be resolved. Before removal it stops every process whose command line runs from a removed checkout (SIGTERM, then SIGKILL after 5 seconds), because servers keep running after their checkout is deleted; entries with surviving processes are skipped. It returns `removedCount`, `removedBytes`, `skippedCount` and `stoppedProcessCount`, and also deletes leftover `.bb-trash-*` folders in `~/.bb-dev`.
 The largest-thread list initially shows five rows; Show more reveals the remaining ranked threads in the report (up to 20), and Show fewer collapses it.
 Reads never start scans. Remove-orphans requires a completed scan and only removes
 storage the plugin identifies as orphaned from current SDK thread rows. Clear-large-files deletes
@@ -59,7 +61,7 @@ Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, deleteAfterDays})
 and `configure({archiveAfterDays, deleteAfterDays})`; use null for Never. Storage
 RPC methods are `hosts(null)`, `host({hostId})`, `scanHost({hostId})`,
 `removeOrphans({hostId})`, `retryWorktreeCleanup({hostId})`, and
-`clearThread({threadId})` and `clearArchivedFiles({hostId})`. The plugin owns its host worker and scan database.
+`clearThread({threadId})`, `clearArchivedFiles({hostId})` and `removeMissingDevInstances({hostId})`. The plugin owns its host worker and scan database.
 
 Cross-plugin protection is deferred. Pin automation target threads to keep them.
 Disabling the plugin stops scheduled retention and removes its storage actions. Core's idle orphan sweep remains independent.

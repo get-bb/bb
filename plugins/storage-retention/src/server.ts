@@ -18,6 +18,7 @@ export default function plugin(bb: BbPluginApi) {
     retryWorktreeCleanup: storage.retryWorktreeCleanup,
     clearThread: storage.clearThread,
     clearArchivedFiles: storage.clearArchivedFiles,
+    removeMissingDevInstances: storage.removeMissingDevInstances,
     state: () => service.state(),
     preview: (policy) => service.preview(policy),
     configure: (policy) => service.configure(policy),

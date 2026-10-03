@@ -363,6 +363,22 @@ export function createStorage(bb: BbPluginApi) {
       ),
     };
   }
+  function developerCandidatePaths(
+    hostId: string,
+    environments: Environment[],
+    projects: Awaited<ReturnType<BbPluginApi["sdk"]["projects"]["list"]>>,
+  ) {
+    return [
+      ...new Set([
+        ...environments.flatMap((env) => (env.path === null ? [] : [env.path])),
+        ...projects.flatMap((project) =>
+          project.sources
+            .filter((source) => source.hostId === hostId)
+            .map((source) => source.path),
+        ),
+      ]),
+    ];
+  }
   async function scanHost({ hostId }: { hostId: string }) {
     await requireHost(hostId, true);
     if (scans.get(hostId)?.state === "scanning") return host({ hostId });
@@ -441,25 +457,22 @@ export function createStorage(bb: BbPluginApi) {
         const root = measured.get(rootPath);
         const developer = measured.get(developerRoot);
         const developerEntries =
-          developer?.outcome === "measured" ? (developer.children ?? []) : [];
+          developer?.outcome === "measured"
+            ? (developer.children ?? []).filter(
+                (entry) => !entry.name.startsWith(".bb-trash-"),
+              )
+            : [];
         const inspected = new Map<
           string,
           z.infer<
             typeof hostStorageContract.inspectDeveloperEntries.output
           >["entries"][number]
         >();
-        const candidatePaths = [
-          ...new Set([
-            ...allEnvironments.flatMap((env) =>
-              env.path === null ? [] : [env.path],
-            ),
-            ...projects.flatMap((project) =>
-              project.sources
-                .filter((source) => source.hostId === hostId)
-                .map((source) => source.path),
-            ),
-          ]),
-        ];
+        const candidatePaths = developerCandidatePaths(
+          hostId,
+          allEnvironments,
+          projects,
+        );
         for (let offset = 0; offset < developerEntries.length; offset += 500) {
           const result = await worker.call(
             "inspectDeveloperEntries",
@@ -673,6 +686,67 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
+  async function removeMissingDevInstances({ hostId }: { hostId: string }) {
+    await requireHost(hostId, true);
+    const release = acquire(hostId);
+    try {
+      const cached = read(hostId);
+      const developer = cached?.developerStorage;
+      if (!cached || !developer)
+        throw new Error(
+          "Scan the machine before removing development instances",
+        );
+      const [environments, projects] = await Promise.all([
+        readEnvironments(hostId),
+        bb.sdk.projects.list({ signal: lifecycle.signal }),
+      ]);
+      const candidatePaths = developerCandidatePaths(
+        hostId,
+        environments,
+        projects,
+      );
+      const missing = developer.entries.filter(
+        (entry) => entry.sourcePathState === "missing",
+      );
+      let removedCount = 0;
+      let removedBytes = 0;
+      let stoppedProcessCount = 0;
+      for (let offset = 0; offset < missing.length; offset += 500) {
+        lifecycle.signal.throwIfAborted();
+        const result = await worker.call(
+          "removeDeveloperEntries",
+          {
+            rootPath: developer.path,
+            names: missing
+              .slice(offset, offset + 500)
+              .map((entry) => entry.name),
+            candidatePaths,
+          },
+          { hostId, signal: lifecycle.signal },
+        );
+        const removed = new Set(result.removed);
+        const bytes = developer.entries
+          .filter((entry) => removed.has(entry.name))
+          .reduce((total, entry) => total + entry.sizeBytes, 0);
+        developer.entries = developer.entries.filter(
+          (entry) => !removed.has(entry.name),
+        );
+        developer.sizeBytes = Math.max(0, developer.sizeBytes - bytes);
+        store(hostId, cached);
+        removedCount += removed.size;
+        removedBytes += bytes;
+        stoppedProcessCount += result.stoppedProcessCount;
+      }
+      return {
+        removedCount,
+        removedBytes,
+        skippedCount: missing.length - removedCount,
+        stoppedProcessCount,
+      };
+    } finally {
+      release();
+    }
+  }
   async function largeFileTargets(hostId: string | null) {
     lifecycle.signal.throwIfAborted();
     return hostId === null
@@ -826,6 +900,7 @@ export function createStorage(bb: BbPluginApi) {
     clearLargeFiles,
     startClearLargeFiles,
     clearArchivedFiles,
+    removeMissingDevInstances,
     clearThread,
     retryWorktreeCleanup,
   };

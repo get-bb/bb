@@ -2,7 +2,10 @@ import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { inspectDeveloperEntries } from "./developer-storage.js";
+import {
+  inspectDeveloperEntries,
+  removeDeveloperEntries,
+} from "./developer-storage.js";
 import { randomUUID } from "node:crypto";
 import { hostStorageContract } from "./host-contract.js";
 import { measureDiskUsage } from "./disk-usage.js";
@@ -27,6 +30,10 @@ export default experimental_defineHostEntry({
   handlers: {
     inspectDeveloperEntries: (input, context) =>
       inspectDeveloperEntries(input, context.signal),
+    removeDeveloperEntries: (input, context) =>
+      removeDeveloperEntries(input, context.signal, () =>
+        context.experimental_retainWorker(),
+      ),
     homeDirectory: () => os.homedir(),
     measure: (input, context) =>
       measureDiskUsage(input, undefined, context.signal),
