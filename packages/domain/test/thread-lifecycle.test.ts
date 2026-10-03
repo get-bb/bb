@@ -16,7 +16,7 @@
  * `stopping` row has NO run.started cell: dispatching new work into it is
  * structurally impossible, which is the table form of the old
  * `notStopRequested` guard. A settled stop lands on `idle` (`stop.settled` or
- * `run.succeeded`) or `error` (`run.failed`). THREAD_LIFECYCLE and
+ * `run.succeeded` or `run.interrupted`) or `error` (`run.failed`). THREAD_LIFECYCLE and
  * THREAD_LIFECYCLE_EVENT_PREDICATES in src/thread-lifecycle.ts are the source
  * of truth; these assertions pin them.
  */
@@ -35,6 +35,7 @@ const allEventTypes: readonly ThreadLifecycleEventType[] = [
   "run.started",
   "run.succeeded",
   "run.failed",
+  "run.interrupted",
   "stop.requested",
   "stop.settled",
 ];
@@ -86,16 +87,19 @@ describe("THREAD_LIFECYCLE table", () => {
       starting: {
         "run.started": "active",
         "run.succeeded": "idle",
+        "run.interrupted": "idle",
         "run.failed": "error",
         "stop.requested": "stopping",
       },
       active: {
         "run.succeeded": "idle",
+        "run.interrupted": "idle",
         "run.failed": "error",
         "stop.requested": "stopping",
       },
       stopping: {
         "run.succeeded": "idle",
+        "run.interrupted": "idle",
         "run.failed": "error",
         "stop.settled": "idle",
       },
@@ -112,6 +116,7 @@ describe("THREAD_LIFECYCLE table", () => {
       "run.started": { notArchived: true, notDeleted: true },
       "run.succeeded": {},
       "run.failed": { notDeleted: true },
+      "run.interrupted": {},
       "stop.requested": {},
       "stop.settled": {},
     });

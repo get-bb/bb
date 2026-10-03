@@ -1,4 +1,4 @@
-import { getThread, hasRootStoredTurnStarted } from "@bb/db";
+import { getThread, findLastRootStoredTurnStarted } from "@bb/db";
 import {
   requireThreadEventScopeTurnId,
   type ThreadEvent,
@@ -13,7 +13,7 @@ import {
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 
 interface ApplyTurnCompletedEventResult {
-  isRootTurnCompletion: boolean;
+  isCurrentRootTurnCompletion: boolean;
   nextStatus: ThreadStatus | null;
   thread: ReturnType<typeof getThread>;
 }
@@ -25,7 +25,7 @@ function lifecycleEventForTurnCompletion(
     return { type: "run.failed" };
   }
   if (status === "interrupted") {
-    return { type: "stop.settled" };
+    return { type: "run.interrupted" };
   }
   return { type: "run.succeeded" };
 }
@@ -36,19 +36,23 @@ export function applyTurnCompletedEvent(
 ): ApplyTurnCompletedEventResult {
   const thread = getThread(deps.db, payload.threadId);
   if (!thread) {
-    return { isRootTurnCompletion: false, nextStatus: null, thread: null };
+    return {
+      isCurrentRootTurnCompletion: false,
+      nextStatus: null,
+      thread: null,
+    };
   }
 
   const turnId = requireThreadEventScopeTurnId({
     type: payload.type,
     scope: payload.scope,
   });
-  const isRootTurnCompletion = hasRootStoredTurnStarted(deps.db, {
-    threadId: payload.threadId,
-    turnId,
-  });
-  if (!isRootTurnCompletion) {
-    return { isRootTurnCompletion, nextStatus: null, thread };
+  const isCurrentRootTurnCompletion =
+    findLastRootStoredTurnStarted(deps.db, {
+      threadId: payload.threadId,
+    })?.turnId === turnId;
+  if (!isCurrentRootTurnCompletion) {
+    return { isCurrentRootTurnCompletion, nextStatus: null, thread };
   }
 
   const outcome = applyLoggedThreadLifecycleEvent(deps, {
@@ -68,5 +72,5 @@ export function applyTurnCompletedEvent(
     });
   }
 
-  return { isRootTurnCompletion, nextStatus, thread };
+  return { isCurrentRootTurnCompletion, nextStatus, thread };
 }

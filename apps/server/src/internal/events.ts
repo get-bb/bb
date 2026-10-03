@@ -439,7 +439,7 @@ async function applyEventEffects(
         });
         if (
           turnCompleted.thread &&
-          turnCompleted.isRootTurnCompletion &&
+          turnCompleted.isCurrentRootTurnCompletion &&
           isParentNotifiableChildThread(turnCompleted.thread)
         ) {
           const alreadyHandledByCommandFailure =
@@ -472,10 +472,7 @@ async function applyEventEffects(
             });
           }
         }
-        if (
-          event.status === "completed" &&
-          turnCompleted.nextStatus === "idle"
-        ) {
+        if (turnCompleted.nextStatus === "idle") {
           followUps.push({
             kind: "queued-message-dispatch",
             wake: { kind: "thread-ready", threadId: entry.threadId },
