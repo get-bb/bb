@@ -25,6 +25,11 @@ const EXPO_PUSH_BATCH_SIZE = 100;
 const DEFAULT_COALESCE_MS = 2_000;
 const PUSH_TITLE_MAX_LENGTH = 80;
 const PUSH_BODY_MAX_LENGTH = 180;
+const THREAD_MENTION_BATCH_SIZE = 32;
+const THREAD_MENTION_MAX_LENGTH = 32;
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const THREAD_REFERENCE_PATTERN =
+  /(?<![\p{L}\p{N}_.+/@\\-])(?:@thread:)?(thr_[23456789abcdefghijkmnpqrstuvwxyz]{10})(?![\p{L}\p{N}_+/@\\-]|\.[\p{L}\p{N}_])/gu;
 const NETWORK_WARNING_INTERVAL_MS = 60 * 60 * 1_000;
 const LAST_OUTCOME_KEY = "last-send-outcome";
 const PUSH_KIND_PRIORITY: readonly PushNotificationKind[] = [
@@ -152,8 +157,9 @@ function firstLine(text: string): string {
 }
 
 function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+  const characters = Array.from(graphemes.segment(text), ({ segment }) => segment);
+  if (characters.length <= maxLength) return text;
+  return `${characters.slice(0, maxLength - 1).join("").trimEnd()}…`;
 }
 
 function threadDisplayTitle(thread: ThreadResponse): string {
@@ -307,6 +313,45 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     };
   }
 
+  async function resolveThreadNames(
+    texts: readonly string[],
+  ): Promise<string[]> {
+    const threadIds = [
+      ...new Set(
+        texts.flatMap((text) =>
+          [...text.matchAll(THREAD_REFERENCE_PATTERN)].map(
+            (match) => match[1]!,
+          ),
+        ),
+      ),
+    ];
+    const labels = new Map<string, string>();
+    for (const threadIdsBatch of chunks(threadIds, THREAD_MENTION_BATCH_SIZE)) {
+      try {
+        const resolved = await bb.sdk.threads.resolveMentions({
+          threadIds: threadIdsBatch,
+        });
+        for (const threadId of threadIdsBatch) {
+          labels.set(threadId, "Unavailable thread");
+        }
+        for (const mention of resolved) {
+          labels.set(mention.threadId, firstLine(mention.label));
+        }
+      } catch {
+        for (const threadId of threadIdsBatch) {
+          labels.set(threadId, "Thread (name unavailable)");
+        }
+      }
+    }
+    return texts.map((text) =>
+      text.replace(
+        THREAD_REFERENCE_PATTERN,
+        (_match, threadId: string) =>
+          `“${truncate(labels.get(threadId) || "Unavailable thread", THREAD_MENTION_MAX_LENGTH)}”`,
+      ),
+    );
+  }
+
   async function flushThread(
     threadId: string,
     entry: PendingThreadPush,
@@ -330,8 +375,12 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
     const resolved = await resolvePush(thread, entry);
     if (resolved === null) return;
-    const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
-    const body = truncate(resolved.body, PUSH_BODY_MAX_LENGTH);
+    const [resolvedTitle, resolvedBody] = await resolveThreadNames([
+      threadDisplayTitle(thread),
+      resolved.body,
+    ]);
+    const title = truncate(resolvedTitle!, PUSH_TITLE_MAX_LENGTH);
+    const body = truncate(resolvedBody!, PUSH_BODY_MAX_LENGTH);
     const config = await args.getDeliverySettings();
     const channels: ClientNotification["channels"] = [];
     if (config.webEnabled) channels.push("web");

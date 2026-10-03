@@ -22,6 +22,17 @@ on:
         description: Space-separated flow names (default = the CI set; see apps/mobile/e2e/scripts/ci-run-flows.sh)
         required: false
         default: ""
+      notification_baseline:
+        description: Optional commit to compare native thread-mention notifications against
+        required: false
+        default: ""
+      runner:
+        description: macOS runner for this manual run
+        type: choice
+        options:
+          - blacksmith-6vcpu-macos-15
+          - macos-15
+        default: blacksmith-6vcpu-macos-15
   schedule:
     # Nightly, 09:17 UTC (runs on the default branch).
     - cron: "17 9 * * *"
@@ -61,7 +72,7 @@ jobs:
       github.repository == 'get-bb/bb'
       && (github.event_name != 'pull_request'
       || contains(github.event.pull_request.labels.*.name, 'mobile-e2e'))
-    runs-on: blacksmith-6vcpu-macos-15
+    runs-on: ${{ inputs.runner || 'blacksmith-6vcpu-macos-15' }}
     timeout-minutes: 90
 
     steps:
@@ -307,6 +318,32 @@ jobs:
         run: |
           # shellcheck disable=SC2086
           apps/mobile/e2e/scripts/ci-run-flows.sh "$SIMULATOR_UDID" "$GITHUB_WORKSPACE/e2e-artifacts/maestro" $FLOWS
+
+      - name: Capture native notification comparison
+        if: inputs.notification_baseline != ''
+        env:
+          BASELINE: ${{ inputs.notification_baseline }}
+        run: |
+          set -euo pipefail
+          [[ "$BASELINE" =~ ^[0-9a-f]{40}$ ]]
+          git fetch origin "$BASELINE"
+          preview=$(mktemp -d "$GITHUB_WORKSPACE/.notification-preview-XXXXXX")
+          trap 'rm -rf "$preview"' EXIT
+          git show "$BASELINE:plugins/push-notifications/sender.ts" > "$preview/sender.ts"
+          git show "$BASELINE:plugins/push-notifications/contract.ts" > "$preview/contract.ts"
+          ln -s "$GITHUB_WORKSPACE/plugins/push-notifications/node_modules" "$preview/node_modules"
+          out="$GITHUB_WORKSPACE/e2e-artifacts/notifications"
+          mkdir -p "$out"
+          node --import tsx plugins/push-notifications/e2e/native-preview.ts "$preview/sender.ts" "$out/before.apns"
+          node --import tsx plugins/push-notifications/e2e/native-preview.ts "$GITHUB_WORKSPACE/plugins/push-notifications/sender.ts" "$out/after.apns"
+          printf 'Before sender: %s\nAfter sender and iOS app: %s\n' "$BASELINE" "$GITHUB_SHA" > "$out/revisions.txt"
+          xcrun simctl status_bar "$SIMULATOR_UDID" override --time '9:41' --batteryState charged --batteryLevel 100 --wifiMode active --wifiBars 3
+          for revision in before after; do
+            xcrun simctl push "$SIMULATOR_UDID" app.getbb.mobile "$out/$revision.apns"
+            sleep 2
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "$out/$revision.png"
+            sleep 10
+          done
 
       - name: Collect simulator logs
         if: always()

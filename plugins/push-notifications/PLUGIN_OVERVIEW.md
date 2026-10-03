@@ -6,6 +6,8 @@ Mobile devices receive push messages through Expo, including when the app is clo
 
 Click a notification to open its thread. The browser focus attempt is preserved on every click. On Linux desktop, notification clicks additionally restore the window that received the notification and request focus through the desktop bridge. Older desktop shells without this bridge method retain the browser focus fallback. Events arriving together are combined, with pending questions taking priority. Read, archived, deleted, and hidden threads are suppressed. Multiple tabs or windows of the same origin and client type deduplicate delivery when browser storage and Web Locks are available.
 
+Notification titles and previews show “Thread name” for `@thread:…` mentions and standalone thread IDs before shortening the text. Names longer than 32 visible characters end with an ellipsis inside the quotes, preserving whole emoji. No prefix or colon is added. Missing threads appear as “Unavailable thread”; a failed name lookup appears as “Thread (name unavailable)” without blocking delivery.
+
 ## Settings
 
 - `mobileEnabled` / **Mobile notifications**: send to registered phones and tablets. Default: true.
