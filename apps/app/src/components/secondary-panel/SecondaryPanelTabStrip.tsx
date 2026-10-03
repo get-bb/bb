@@ -46,6 +46,7 @@ import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  getDesktopBrowserApi,
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
 } from "@/lib/bb-desktop";
@@ -540,6 +541,9 @@ function SortablePanelTab({
     secondaryPanelTabsToClose(tabs, tabId, "others").length > 0;
   const canCloseRight =
     secondaryPanelTabsToClose(tabs, tabId, "right").length > 0;
+  const desktopBrowser = useMemo(() => getDesktopBrowserApi(), []);
+  const reloadableBrowser =
+    tab.tab.kind === "browser" ? desktopBrowser : null;
 
   return (
     <ContextMenu modal={false}>
@@ -563,6 +567,14 @@ function SortablePanelTab({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${tab.label} tab actions`}>
+        {reloadableBrowser !== null ? (
+          <>
+            <ContextMenuItem onSelect={() => reloadableBrowser.reload(tabId)}>
+              Reload tab
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        ) : null}
         <ContextMenuItem
           disabled={!canCloseSelf}
           onSelect={() => onCloseTabs(tabId, "self")}
