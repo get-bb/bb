@@ -25,13 +25,18 @@ const handshake: NativeShellHandshake = {
 };
 
 interface FakeWindow {
+  location: { href: string };
   ReactNativeWebView: { postMessage(raw: string): void };
   bb?: { native?: NativeShellApi };
 }
 
-function installBridge(overrides: Partial<NativeShellHandshake> = {}) {
+function installBridge(
+  overrides: Partial<NativeShellHandshake> = {},
+  page: Record<string, unknown> = {},
+) {
   const posted: string[] = [];
   const fakeWindow: FakeWindow = {
+    location: { href: "https://test/threads/one" },
     ReactNativeWebView: {
       postMessage: (raw: string) => {
         posted.push(raw);
@@ -40,7 +45,13 @@ function installBridge(overrides: Partial<NativeShellHandshake> = {}) {
   };
   const run = (script: string) => {
     // eslint-disable-next-line no-new-func
-    new Function("window", script)(fakeWindow);
+    new Function(
+      "window",
+      "document",
+      "DataTransfer",
+      "ClipboardEvent",
+      script,
+    )(fakeWindow, page.document, page.DataTransfer, page.ClipboardEvent);
   };
   run(buildBridgeInjectionScript({ ...handshake, ...overrides }));
   const native = fakeWindow.bb?.native;
@@ -160,5 +171,106 @@ describe("buildBridgeInjectionScript", () => {
     new Function("window", buildBridgeInjectionScript(handshake))(fakeWindow);
     const native = (fakeWindow.bb as { native: NativeShellApi }).native;
     expect(() => native.post({ type: "ready", path: "/" })).not.toThrow();
+  });
+});
+
+interface ImagePasteApi extends NativeShellApi {
+  __beginImagePaste(id: string): boolean;
+  __finishImagePaste(
+    id: string,
+    image: { data: string; name: string; type: string } | null,
+  ): void;
+}
+
+function installImageBridge() {
+  const dispatchEvent = vi.fn();
+  const target = {
+    isContentEditable: true,
+    isConnected: true,
+    closest: vi.fn<() => object | null>(() => ({})),
+    dispatchEvent,
+  };
+  const document = { activeElement: target };
+  class Transfer {
+    files: File[] = [];
+    items = { add: (file: File) => this.files.push(file) };
+  }
+  class Paste {
+    constructor(
+      public type: string,
+      public options: { clipboardData: Transfer },
+    ) {}
+  }
+  const { native, fakeWindow } = installBridge(
+    { platform: "android" },
+    { document, DataTransfer: Transfer, ClipboardEvent: Paste },
+  );
+  return {
+    native: native as ImagePasteApi,
+    document,
+    target,
+    dispatchEvent,
+    fakeWindow,
+  };
+}
+
+const image = { data: "AAECA/8=", name: "screenshot.png", type: "image/png" };
+
+describe("native keyboard image paste", () => {
+  it("delivers the image bytes and metadata through the original editor's paste handler", async () => {
+    const { native, document, dispatchEvent } = installImageBridge();
+    expect(native.__beginImagePaste("image")).toBe(true);
+    document.activeElement = {
+      ...document.activeElement,
+      dispatchEvent: vi.fn(),
+    };
+    native.__finishImagePaste("image", image);
+    const event = dispatchEvent.mock.calls[0]?.[0];
+    expect(event.type).toBe("paste");
+    const file: File = event.options.clipboardData.files[0];
+    expect(file.name).toBe("screenshot.png");
+    expect(file.type).toBe("image/png");
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(
+      new Uint8Array([0, 1, 2, 3, 255]),
+    );
+    native.__finishImagePaste("image", image);
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects text inputs and ignores images after the editor is removed", () => {
+    const { native, target, dispatchEvent } = installImageBridge();
+    target.closest.mockReturnValueOnce(null);
+    expect(native.__beginImagePaste("outside")).toBe(false);
+    target.isContentEditable = false;
+    expect(native.__beginImagePaste("text")).toBe(false);
+    target.isContentEditable = true;
+    expect(native.__beginImagePaste("gone")).toBe(true);
+    target.isConnected = false;
+    native.__finishImagePaste("gone", image);
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  it("discards images when navigation reuses the same editor element", () => {
+    const { native, fakeWindow, dispatchEvent } = installImageBridge();
+    native.__beginImagePaste("navigation");
+    fakeWindow.location.href = "https://test/threads/two";
+    native.__finishImagePaste("navigation", image);
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  it("discards failed and expired image reads", () => {
+    vi.useFakeTimers();
+    try {
+      const { native, dispatchEvent } = installImageBridge();
+      native.__beginImagePaste("failed");
+      native.__finishImagePaste("failed", null);
+      native.__finishImagePaste("failed", image);
+      native.__beginImagePaste("expired");
+      vi.advanceTimersByTime(30000);
+      native.__finishImagePaste("expired", image);
+      expect(dispatchEvent).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
