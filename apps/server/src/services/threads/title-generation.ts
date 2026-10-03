@@ -18,7 +18,8 @@ import { runTextAiTask } from "../ai/ai-tasks.js";
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WIDTH = 48;
 const MAX_TITLE_FALLBACK_WIDTH = 80;
-const TITLE_FALLBACK_ELLIPSIS = "...";
+const MAX_TITLE_PROMPT_WIDTH = 4000;
+const ELLIPSIS = "...";
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
 interface ApplyGeneratedThreadTitleArgs {
@@ -57,15 +58,12 @@ function cleanPromptText(input: PromptInput[]): string {
     .trim();
 }
 
-function clampTitleFallback(text: string): string {
-  if (displayWidth(text) <= MAX_TITLE_FALLBACK_WIDTH) {
+function clampToWidth(text: string, maxWidth: number): string {
+  if (displayWidth(text) <= maxWidth) {
     return text;
   }
-  const body = truncateToWidth(
-    text,
-    MAX_TITLE_FALLBACK_WIDTH - TITLE_FALLBACK_ELLIPSIS.length,
-  );
-  return `${body}${TITLE_FALLBACK_ELLIPSIS}`;
+  const body = truncateToWidth(text, maxWidth - ELLIPSIS.length);
+  return `${body}${ELLIPSIS}`;
 }
 
 export function deriveTitleFallback(input: PromptInput[]): string | null {
@@ -73,7 +71,7 @@ export function deriveTitleFallback(input: PromptInput[]): string | null {
   if (text.length === 0) {
     return null;
   }
-  return clampTitleFallback(text);
+  return clampToWidth(text, MAX_TITLE_FALLBACK_WIDTH);
 }
 
 const FORK_TITLE_PATTERN = /^\((\d+)\) (.+)$/s;
@@ -181,7 +179,10 @@ export function buildThreadTitlePrompt(input: PromptInput[]): string | null {
   const commands = collectInvokedPromptCommands(input);
   const body = promptTextWithoutCommands(input, commands);
   return renderTemplate("generateThreadMetadata", {
-    cleanedPrompt: body.length > 0 ? body : text,
+    cleanedPrompt: clampToWidth(
+      body.length > 0 ? body : text,
+      MAX_TITLE_PROMPT_WIDTH,
+    ),
     ...(commands.length > 0
       ? { invokedCommands: formatInvokedCommands(commands) }
       : {}),

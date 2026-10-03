@@ -820,6 +820,22 @@ describe("generated thread titles", () => {
     });
   });
 
+  it("caps very long tasks sent to the title service", async () => {
+    mockThreadMetadata({ title: "Summarize the pasted log" });
+    await withTestHarness(async (harness) => {
+      await generateThreadMetadataWithOutcome(harness.deps, {
+        input: textInput(`Summarize this log: ${"x".repeat(10_000)}`),
+        threadId: "thr_capped_task_metadata",
+      });
+      const prompt = sentPrompt();
+      expect(prompt).toContain(
+        `Task:\nSummarize this log: ${"x".repeat(3000)}`,
+      );
+      expect(prompt).toContain(`${"x".repeat(100)}...`);
+      expect(prompt).not.toContain("x".repeat(4000));
+    });
+  });
+
   it.each(["调", "𠮷"])(
     "preserves the full task after stripping commands containing %s",
     async (character) => {
