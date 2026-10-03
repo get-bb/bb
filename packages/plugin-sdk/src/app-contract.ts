@@ -2476,7 +2476,7 @@ export type ComposerAttachment = {
   path: string;
   name: string;
   mimeType?: string;
-  /** Exact size in bytes; omit when unknown. A wrong size can make the send fail when bb stages a file. */
+  /** Exact size in bytes; omit when unknown. Zero is treated as unknown. A wrong nonzero size can make the send fail when bb stages a file. */
   sizeBytes?: number;
 } & (
   | {

@@ -170,25 +170,24 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
-  it("omits unknown localFile size when mapping draft attachments to prompt input", () => {
+  it("sends no size for an unknown or zero-size placeholder attachment", () => {
     const input = promptDraftToInput({
       text: "",
       mentions: [],
       attachments: [
+        { type: "localFile", path: "uploads/spec.md", name: "spec.md" },
         {
           type: "localFile",
-          path: "uploads/spec.md",
-          name: "spec.md",
+          path: "uploads/plugin.md",
+          name: "plugin.md",
+          sizeBytes: 0,
         },
       ],
     });
 
     expect(input).toEqual([
-      {
-        type: "localFile",
-        path: "uploads/spec.md",
-        name: "spec.md",
-      },
+      { type: "localFile", path: "uploads/spec.md", name: "spec.md" },
+      { type: "localFile", path: "uploads/plugin.md", name: "plugin.md" },
     ]);
   });
 

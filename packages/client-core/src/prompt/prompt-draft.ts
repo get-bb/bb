@@ -257,9 +257,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       path: attachment.path,
       ...attachmentOwner(attachment),
       name: attachment.name,
-      ...(attachment.sizeBytes === undefined
-        ? {}
-        : { sizeBytes: attachment.sizeBytes }),
+      ...(attachment.sizeBytes ? { sizeBytes: attachment.sizeBytes } : {}),
       ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
     });
   }
