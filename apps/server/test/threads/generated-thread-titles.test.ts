@@ -824,12 +824,14 @@ describe("generated thread titles", () => {
     mockThreadMetadata({ title: "Summarize the pasted log" });
     await withTestHarness(async (harness) => {
       await generateThreadMetadataWithOutcome(harness.deps, {
-        input: textInput(`Summarize this log: ${"x".repeat(10_000)}`),
+        input: textInput(
+          `Summarize the errors in this log: ${"x".repeat(10_000)}`,
+        ),
         threadId: "thr_capped_task_metadata",
       });
       const prompt = sentPrompt();
       expect(prompt).toContain(
-        `Task:\nSummarize this log: ${"x".repeat(3000)}`,
+        `Task:\nSummarize the errors in this log: ${"x".repeat(3000)}`,
       );
       expect(prompt).toContain(`${"x".repeat(100)}...`);
       expect(prompt).not.toContain("x".repeat(4000));
