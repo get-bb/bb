@@ -78,7 +78,7 @@ export function createSlowThreadTimelineBuildLogger(
           responseRowCount: profile.responseRowCount,
           stageTimings: profile.stageTimings,
         },
-        "Thread timeline build blocked the event loop",
+        "Slow thread timeline build",
       );
     },
   };
