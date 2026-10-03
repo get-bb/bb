@@ -18,6 +18,8 @@ import {
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
+import { usePluginDetailPanelState } from "@/components/plugin/plugin-detail-navigation";
+import { getPanelTabHistoryKey } from "./recentlyClosedPanelTabs";
 import {
   resetRecentlyClosedPanelTabsForTest,
   useThreadFileTabs,
@@ -97,6 +99,76 @@ afterEach(() => {
 });
 
 describe("useThreadFileTabs recently closed tabs", () => {
+  it("restores mixed plugin-detail and content history across a remount", () => {
+    const params = {
+      panelStateId: "mixed-history",
+      syncThreadId: "thr_current",
+      environmentId: "env_1",
+      storageFiles: undefined,
+      terminalSessions: undefined,
+    };
+    const useMixedHistory = () => {
+      const details = usePluginDetailPanelState(
+        params.panelStateId,
+        true,
+        getPanelTabHistoryKey({
+          panelStateId: params.panelStateId,
+          environmentId: params.environmentId,
+          fileOwnerThreadId: params.syncThreadId,
+        }),
+      );
+      return { details, tabs: useThreadFileTabsWithActiveTab(params) };
+    };
+    const first = renderThreadHook(useMixedHistory);
+    let browserId = "";
+    act(() => {
+      browserId =
+        first.result.current.tabs.openTab({
+          kind: "browser",
+          url: "https://older.example",
+        })?.id ?? "";
+    });
+    act(() => first.result.current.tabs.closeTab(browserId));
+    act(() =>
+      first.result.current.details.open({
+        pluginId: "secrets",
+        title: "Secrets",
+      }),
+    );
+    act(() =>
+      first.result.current.details.open({ pluginId: "docs", title: "Docs" }),
+    );
+    act(() => {
+      first.result.current.details.close("secrets");
+      first.result.current.details.close("docs");
+    });
+    first.unmount();
+
+    const { result } = renderThreadHook(useMixedHistory);
+    act(() =>
+      expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
+        true,
+      ),
+    );
+    expect(result.current.details.activePluginId).toBe("docs");
+    act(() =>
+      expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
+        true,
+      ),
+    );
+    expect(result.current.details.activePluginId).toBe("secrets");
+    act(() =>
+      expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
+        true,
+      ),
+    );
+    expect(result.current.details.activePluginId).toBeNull();
+    expect(result.current.tabs.activeTab?.id).toBe(browserId);
+    expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
+      false,
+    );
+  });
+
   it.each([
     {
       label: "launcher",
@@ -126,47 +198,46 @@ describe("useThreadFileTabs recently closed tabs", () => {
         },
       },
     },
-  ])("restores the last closed $label instead of an older content tab", ({
-    label,
-    preserveWorkspaceTabsAcrossContexts,
-    request,
-  }) => {
-    const { result } = renderThreadHook(() =>
-      useThreadFileTabsWithActiveTab({
-        panelStateId: `recently-closed-order-${label}`,
-        syncThreadId: "thr_current",
-        environmentId: "env_1",
-        preserveWorkspaceTabsAcrossContexts,
-        storageFiles: undefined,
-        terminalSessions: undefined,
-      }),
-    );
+  ])(
+    "restores the last closed $label instead of an older content tab",
+    ({ label, preserveWorkspaceTabsAcrossContexts, request }) => {
+      const { result } = renderThreadHook(() =>
+        useThreadFileTabsWithActiveTab({
+          panelStateId: `recently-closed-order-${label}`,
+          syncThreadId: "thr_current",
+          environmentId: "env_1",
+          preserveWorkspaceTabsAcrossContexts,
+          storageFiles: undefined,
+          terminalSessions: undefined,
+        }),
+      );
 
-    let olderTabId = "";
-    act(() => {
-      olderTabId =
-        result.current.openTab({
-          kind: "browser",
-          url: "https://older.example",
-        })?.id ?? "";
-    });
-    act(() => result.current.closeTab(olderTabId));
+      let olderTabId = "";
+      act(() => {
+        olderTabId =
+          result.current.openTab({
+            kind: "browser",
+            url: "https://older.example",
+          })?.id ?? "";
+      });
+      act(() => result.current.closeTab(olderTabId));
 
-    let latestTabId = "";
-    act(() => {
-      latestTabId = result.current.openTab(request)?.id ?? "";
-    });
-    expect(result.current.activeTab?.id).toBe(latestTabId);
-    act(() => result.current.closeTab(latestTabId));
+      let latestTabId = "";
+      act(() => {
+        latestTabId = result.current.openTab(request)?.id ?? "";
+      });
+      expect(result.current.activeTab?.id).toBe(latestTabId);
+      act(() => result.current.closeTab(latestTabId));
 
-    act(() => {
-      expect(result.current.reopenClosedTab()).toBe(true);
-    });
-    expect(result.current.activeTab).toMatchObject({
-      id: latestTabId,
-      kind: request.kind,
-    });
-  });
+      act(() => {
+        expect(result.current.reopenClosedTab()).toBe(true);
+      });
+      expect(result.current.activeTab).toMatchObject({
+        id: latestTabId,
+        kind: request.kind,
+      });
+    },
+  );
 
   it("remembers the browser's latest navigation once across a remount", () => {
     const params = {
@@ -270,7 +341,7 @@ describe("useThreadFileTabs recently closed tabs", () => {
     expect(didReopen).toBe(false);
   });
 
-  it("does not reopen a launcher tab or a file reopened another way", () => {
+  it("does not record automatic launcher removal or reopen a file reopened another way", () => {
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "recently-closed-launcher",
@@ -292,7 +363,7 @@ describe("useThreadFileTabs recently closed tabs", () => {
 
     act(() => {
       const launcher = result.current.openTab({ kind: "new-tab" });
-      result.current.closeTab(launcher?.id ?? "");
+      result.current.closeTab(launcher?.id ?? "", { remember: false });
     });
     expect(result.current.reopenClosedTab()).toBe(false);
 
@@ -307,7 +378,7 @@ describe("useThreadFileTabs recently closed tabs", () => {
     expect(result.current.reopenClosedTab()).toBe(false);
   });
 
-  it("restores storage history immediately and skips a different owner", () => {
+  it("restores storage history immediately with its original owners", () => {
     let storageFiles = {
       files: [
         { name: "available.md", path: "available.md" },
@@ -366,6 +437,15 @@ describe("useThreadFileTabs recently closed tabs", () => {
     expect(didReopen).toBe(true);
     expect(result.current.activeStorageFilePath).toBe("deleted.md");
 
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeStorageFilePath).toBe("foreign.md");
+    expect(result.current.activeTab).toMatchObject({
+      kind: "thread-storage-file-preview",
+      threadId: "thr_foreign",
+    });
     act(() => {
       didReopen = result.current.reopenClosedTab();
     });

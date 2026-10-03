@@ -22,6 +22,11 @@ import {
   type PluginDetailOpener,
 } from "./plugin-detail-opener";
 
+import {
+  forgetClosedPanelTab,
+  rememberClosedPanelTab,
+} from "@/components/secondary-panel/recentlyClosedPanelTabs";
+
 const LazyPluginDetailPaneView = lazy(() =>
   import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
     default: PluginDetailPaneView,
@@ -42,6 +47,10 @@ interface PluginDetailPanelState {
   dismiss: () => void;
   close: (pluginId: string) => void;
   open: PluginDetailOpener;
+  restore: (entry: {
+    index: number;
+    destination: PluginDetailDestination;
+  }) => void;
   tabOrder: readonly string[];
   setTabOrder: (order: string[]) => void;
 }
@@ -49,10 +58,15 @@ interface PluginDetailPanelState {
 export const PluginDetailPanelContext =
   createContext<PluginDetailPanelState | null>(null);
 
-export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
+export function usePluginDetailPanelState(
+  resetKey: Key,
+  isFocused: boolean,
+  historyContextKey: string | null = null,
+) {
   const [destinations, setDestinations] = useState<PluginDetailDestination[]>(
     [],
   );
+  const destinationsRef = useRef(destinations);
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
   const [tabOrder, setTabOrder] = useState<string[]>([]);
   const orderedDestinations = useMemo(
@@ -67,29 +81,76 @@ export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
   useLayoutEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
     setDestinations([]);
+    destinationsRef.current = [];
     // oxlint-disable-next-line react/set-state-in-effect
     setActivePluginId(null);
     // oxlint-disable-next-line react/set-state-in-effect
     setTabOrder([]);
   }, [resetKey]);
   const dismiss = useCallback(() => setActivePluginId(null), []);
-  const open = useCallback<PluginDetailOpener>((destination) => {
-    setDestinations((current) =>
-      current.some((entry) => entry.pluginId === destination.pluginId)
+  const open = useCallback<PluginDetailOpener>(
+    (destination) => {
+      if (historyContextKey !== null)
+        forgetClosedPanelTab(
+          historyContextKey,
+          `marketplace-plugin:${destination.pluginId}`,
+        );
+      const current = destinationsRef.current;
+      const next = current.some(
+        (entry) => entry.pluginId === destination.pluginId,
+      )
         ? current
-        : [...current, destination],
-    );
-    setActivePluginId(destination.pluginId);
-    return true;
-  }, []);
+        : [...current, destination];
+      destinationsRef.current = next;
+      setDestinations(next);
+      setActivePluginId(destination.pluginId);
+      return true;
+    },
+    [historyContextKey],
+  );
+  const restore = useCallback(
+    ({
+      index,
+      destination,
+    }: {
+      index: number;
+      destination: PluginDetailDestination;
+    }) => {
+      open(destination);
+      setTabOrder((current) => {
+        const id = `marketplace-plugin:${destination.pluginId}`;
+        const next = current.filter((tabId) => tabId !== id);
+        next.splice(Math.min(index, next.length), 0, id);
+        return next;
+      });
+    },
+    [open],
+  );
   const close = useCallback(
     (pluginId: string) => {
       const index = orderedDestinations.findIndex(
         (entry) => entry.pluginId === pluginId,
       );
-      const remaining = orderedDestinations.filter(
-        (entry) => entry.pluginId !== pluginId,
+      const destination = destinationsRef.current.find(
+        (entry) => entry.pluginId === pluginId,
       );
+      if (destination === undefined) return;
+      const remaining = arrangeByStoredOrder({
+        items: destinationsRef.current.filter(
+          (entry) => entry.pluginId !== pluginId,
+        ),
+        getId: (entry) => `marketplace-plugin:${entry.pluginId}`,
+        storedOrder: tabOrder,
+      }).ordered;
+      destinationsRef.current = remaining;
+      if (historyContextKey !== null) {
+        const orderIndex = tabOrder.indexOf(`marketplace-plugin:${pluginId}`);
+        rememberClosedPanelTab(historyContextKey, {
+          kind: "plugin-detail",
+          index: orderIndex === -1 ? index : orderIndex,
+          destination,
+        });
+      }
       setDestinations(remaining);
       setTabOrder((current) =>
         current.filter((id) => id !== `marketplace-plugin:${pluginId}`),
@@ -100,7 +161,7 @@ export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
         );
       }
     },
-    [activePluginId, orderedDestinations],
+    [activePluginId, historyContextKey, orderedDestinations, tabOrder],
   );
   usePublishPluginDetailOpener(open, isFocused);
   return useMemo(
@@ -110,10 +171,19 @@ export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
       dismiss,
       close,
       open,
+      restore,
       tabOrder,
       setTabOrder,
     }),
-    [activePluginId, orderedDestinations, dismiss, close, open, tabOrder],
+    [
+      activePluginId,
+      orderedDestinations,
+      dismiss,
+      close,
+      open,
+      restore,
+      tabOrder,
+    ],
   );
 }
 
