@@ -82,6 +82,40 @@ describe("marketplace share cards", () => {
     ]);
   });
 
+  it("skips screenshots too large to decode within the Worker", async () => {
+    const header = new Uint8Array(24);
+    const view = new DataView(header.buffer);
+    header.set([137, 80, 78, 71, 13, 10, 26, 10]);
+    view.setUint32(16, 4500);
+    view.setUint32(20, 3156);
+    const requested: string[] = [];
+    await serveMarketplaceOg(
+      {
+        status: "available",
+        manifest: {
+          ...MARKETPLACE_V2_FIXTURE,
+          plugins: [
+            {
+              ...entry,
+              screenshots: ["screenshots/huge.png", "screenshots/ok.png"],
+            },
+          ],
+        },
+        stats: null,
+      },
+      entry.id,
+      async (url) => {
+        requested.push(url);
+        return url.endsWith("huge.png")
+          ? new Response(header, { headers: { "content-type": "image/png" } })
+          : new Response(null, { status: 404 });
+      },
+    );
+    expect(requested).toContain(
+      "https://getbb.app/marketplace/v2/screenshots/ok.png",
+    );
+  });
+
   it("does not render a misleading card for missing plugins or unavailable catalogs", async () => {
     expect(
       (await serveMarketplaceOg({ status: "unavailable" }, entry.id)).status,

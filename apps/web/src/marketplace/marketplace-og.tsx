@@ -15,7 +15,8 @@ const MUTED = "#8a8a8a";
 const BORDER = "#e4e4e4";
 const ACCENT = "#4075aa";
 const RECESSED = "#f1f1f1";
-const MAX_ASSET_BYTES = 10_000_000;
+const MAX_ASSET_BYTES = 4_000_000;
+const MAX_IMAGE_PIXELS = 4_200_000;
 
 export type MarketplaceOgAssetLoader = (url: string) => Promise<Response>;
 
@@ -164,9 +165,10 @@ export function marketplaceOgCard(
 ) {
   const { screenshot } = artwork;
   const name = clip(entry.displayName, screenshot ? 32 : 40);
-  const titleSize = screenshot
-    ? Math.min(44, Math.floor(384 / (name.length * 0.48)))
-    : 64;
+  const titleSize = Math.min(
+    screenshot ? 44 : 64,
+    Math.floor((screenshot ? 384 : 696) / (name.length * 0.48)),
+  );
   return (
     <div
       style={{
@@ -309,6 +311,40 @@ async function fetchAsset(url: string) {
   return fetch(url, { signal: AbortSignal.timeout(5000) });
 }
 
+function rasterSize(bytes: Uint8Array, type: string) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (type === "image/png" && bytes.length >= 24) {
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+  if (type === "image/gif" && bytes.length >= 10) {
+    return {
+      width: view.getUint16(6, true),
+      height: view.getUint16(8, true),
+    };
+  }
+  if (type === "image/jpeg") {
+    let offset = 2;
+    while (offset + 9 <= bytes.length) {
+      if (bytes[offset] !== 0xff) return null;
+      const marker = bytes[offset + 1]!;
+      const isFrame =
+        marker >= 0xc0 &&
+        marker <= 0xcf &&
+        marker !== 0xc4 &&
+        marker !== 0xc8 &&
+        marker !== 0xcc;
+      if (isFrame) {
+        return {
+          width: view.getUint16(offset + 7),
+          height: view.getUint16(offset + 5),
+        };
+      }
+      offset += 2 + view.getUint16(offset + 2);
+    }
+  }
+  return null;
+}
+
 async function loadImage(
   declared: string,
   loadAsset: MarketplaceOgAssetLoader,
@@ -317,9 +353,22 @@ async function loadImage(
     const response = await loadAsset(marketplaceAssetUrl(declared));
     if (!response.ok) return null;
     const type = response.headers.get("content-type")?.split(";")[0];
-    if (!type?.startsWith("image/") || type === "image/webp") return null;
+    if (
+      type !== "image/svg+xml" &&
+      type !== "image/png" &&
+      type !== "image/jpeg" &&
+      type !== "image/gif"
+    ) {
+      return null;
+    }
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (declaredLength > MAX_ASSET_BYTES) return null;
     const bytes = await response.arrayBuffer();
     if (bytes.byteLength > MAX_ASSET_BYTES) return null;
+    if (type !== "image/svg+xml") {
+      const size = rasterSize(new Uint8Array(bytes), type);
+      if (!size || size.width * size.height > MAX_IMAGE_PIXELS) return null;
+    }
     if (type === "image/svg+xml") {
       const svg = new TextDecoder()
         .decode(bytes)
