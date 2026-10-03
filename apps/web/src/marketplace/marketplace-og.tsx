@@ -311,12 +311,17 @@ async function fetchAsset(url: string) {
   return fetch(url, { signal: AbortSignal.timeout(5000) });
 }
 
-function rasterSize(bytes: Uint8Array, type: string) {
+const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+
+function rasterSize(bytes: Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (type === "image/png" && bytes.length >= 24) {
+  if (
+    bytes.length >= 24 &&
+    PNG_SIGNATURE.every((byte, index) => bytes[index] === byte)
+  ) {
     return { width: view.getUint32(16), height: view.getUint32(20) };
   }
-  if (type === "image/jpeg") {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
     let offset = 2;
     while (offset + 9 <= bytes.length) {
       if (bytes[offset] !== 0xff) return null;
@@ -359,13 +364,14 @@ async function loadImage(
     const bytes = await response.arrayBuffer();
     if (bytes.byteLength > MAX_ASSET_BYTES) return null;
     if (type !== "image/svg+xml") {
-      const size = rasterSize(new Uint8Array(bytes), type);
+      const size = rasterSize(new Uint8Array(bytes));
       if (!size || size.width * size.height > MAX_IMAGE_PIXELS) return null;
     }
     if (type === "image/svg+xml") {
       const svg = new TextDecoder()
         .decode(bytes)
         .replaceAll("currentColor", INK);
+      if (/<image\b/iu.test(svg)) return null;
       return `data:${type};base64,${Buffer.from(svg).toString("base64")}`;
     }
     return `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
