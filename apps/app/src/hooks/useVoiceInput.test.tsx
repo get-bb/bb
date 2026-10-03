@@ -161,6 +161,36 @@ it("keeps an accepted transcription running after unmount", async () => {
   expect(onTranscript).toHaveBeenCalledWith("Spoken words");
 });
 
+it("surfaces a failed asynchronous transcript submission after unmount", async () => {
+  let finishSubmission: (() => void) | undefined;
+  const onTranscript = vi.fn(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        finishSubmission = () => reject(new Error("Submission failed"));
+      }),
+  );
+  const { result, unmount } = renderHook(() =>
+    useVoiceInput({ onTranscribe: async () => "Spoken words", onTranscript }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(1500);
+  act(() => {
+    result.current.stop();
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(onTranscript).toHaveBeenCalledWith("Spoken words");
+  unmount();
+  await act(async () => {
+    finishSubmission?.();
+  });
+  expect(appToast.error).toHaveBeenCalledWith(
+    "Voice input failed",
+    expect.objectContaining({ description: "Submission failed" }),
+  );
+});
+
 it("discards a stopped recording cancelled before the recorder's stop event", async () => {
   vi.stubGlobal("MediaRecorder", DeferredRecorder);
   const onTranscribe = vi.fn();

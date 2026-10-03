@@ -19,7 +19,7 @@ import {
 type VoiceInputState = "idle" | "recording" | "transcribing" | "error";
 
 interface UseVoiceInputOptions {
-  onTranscript: (transcript: string) => void;
+  onTranscript: (transcript: string) => void | Promise<void>;
   onTranscribe: (args: {
     file: File;
     promptContext?: string;
@@ -338,7 +338,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
           if (normalized.length === 0) {
             throw new Error("Voice transcription returned an empty result.");
           }
-          options.onTranscript(normalized);
+          await options.onTranscript(normalized);
           setState("idle");
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") {

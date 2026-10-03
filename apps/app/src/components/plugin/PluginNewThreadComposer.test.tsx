@@ -1028,6 +1028,41 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted[0]?.executionInputSources.providerId).toBe("explicit");
   });
 
+  it("submits a draft populated after an empty composer unmounts", async () => {
+    const submitted: NewThreadRequest[] = [];
+    const view = renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "background-transcript",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    act(() => {
+      const host = latestPromptBoxProps().pluginComposerHost;
+      host.setDraft({ ...host.getCurrent(), text: "" });
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabledReason).toBe(
+        "Enter a prompt or attach a file.",
+      );
+    });
+    const host = latestPromptBoxProps().pluginComposerHost;
+    view.unmount();
+    host.setDraft({ ...host.getCurrent(), text: "Background transcript" });
+    await act(async () => {
+      await host.submit({ experimental_data: null }, undefined);
+    });
+    expect(submitted).toEqual([
+      {
+        ...STORED_REQUEST,
+        input: [{ type: "text", text: "Background transcript", mentions: [] }],
+      },
+    ]);
+  });
+
   it("binds plugin draft actions to the hosted composer instance", async () => {
     renderComposer(STORED_REQUEST, () => undefined, "host-binding");
 
