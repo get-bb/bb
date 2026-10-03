@@ -510,7 +510,11 @@ function applyPermissionSettings(
   attachment.approvedPlanPermissionMode = params.permissionMode;
   attachment.sessionPermissionGrants = [];
   const rebuilt = buildSessionOptions(
-    { ...construction, ...attachment.liveSettings },
+    {
+      ...construction,
+      ...attachment.liveSettings,
+      permissionMode: params.permissionMode,
+    },
     attachment.sessionOptions.env ?? {},
   );
   attachment.sessionOptions.permissionMode = permissionMode;
