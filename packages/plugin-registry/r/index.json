@@ -178,6 +178,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "question-form-draft",
+      "type": "registry:ui"
+    },
+    {
       "name": "question-form-host",
       "type": "registry:ui"
     },

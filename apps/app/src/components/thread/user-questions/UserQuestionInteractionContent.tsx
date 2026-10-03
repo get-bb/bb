@@ -42,19 +42,20 @@ export function UserQuestionAnswerForm({
     <div>
       <QuestionForm
         key={interactionId}
+        draftKey={`${threadId}:${interactionId}`}
         questions={normalizedQuestions}
         disabled={disabled}
         cancelDisabled={disabled || stopThread.isPending}
         onSubmit={(answers) => {
-          void resolvePendingInteraction
+          return resolvePendingInteraction
             .mutateAsync({
               threadId,
               interactionId,
               resolution: { kind: "user_answer", answers },
             })
-            .catch(() => {});
+            .then(() => {});
         }}
-        onCancel={() => stopThread.mutate(threadId)}
+        onCancel={() => stopThread.mutateAsync(threadId).then(() => {})}
       />
       {error ? (
         <div className="mt-2 shrink-0 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">

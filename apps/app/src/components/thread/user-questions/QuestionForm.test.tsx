@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render as renderReact,
@@ -91,20 +92,22 @@ function render(
   handlers: {
     submit?: (value: InteractionResponse) => Promise<void>;
     cancel?: () => Promise<void>;
+    draftKey?: string;
   } = {},
 ) {
   return renderReact(
     <AppCommandProvider>
       <ThreadQuestionFormHost>
         <QuestionForm
+          draftKey={handlers.draftKey}
           questions={payload.questions}
           disabled={false}
           cancelDisabled={false}
           onSubmit={(answers) => {
-            void handlers.submit?.({ answers });
+            return handlers.submit?.({ answers });
           }}
           onCancel={() => {
-            void handlers.cancel?.();
+            return handlers.cancel?.();
           }}
         />
       </ThreadQuestionFormHost>
@@ -124,6 +127,77 @@ function getButtonByText(
 }
 
 describe("answering a single-select question", () => {
+  it("isolates interactions and ignores corrupt drafts or changed questions", () => {
+    const firstKey = "thr_isolation:pint_first";
+    const secondKey = "thr_isolation:pint_second";
+    try {
+      const first = render(singleSelect, { draftKey: firstKey });
+      fireEvent.click(getButtonByText(first, "SQLite"));
+      first.unmount();
+      const second = render(singleSelect, { draftKey: secondKey });
+      expect(
+        getButtonByText(second, "SQLite").getAttribute("aria-pressed"),
+      ).toBe("false");
+      second.unmount();
+      const changed = render(
+        {
+          questions: [
+            { ...singleSelect.questions[0]!, prompt: "A different decision" },
+          ],
+        },
+        { draftKey: firstKey },
+      );
+      expect(
+        getButtonByText(changed, "SQLite").getAttribute("aria-pressed"),
+      ).toBe("false");
+      changed.unmount();
+      window.localStorage.setItem(
+        `bb.question-draft.v1:${firstKey}`,
+        "not JSON",
+      );
+      const corrupt = render(singleSelect, { draftKey: firstKey });
+      expect(
+        getButtonByText(corrupt, "SQLite").getAttribute("aria-pressed"),
+      ).toBe("false");
+      fireEvent.click(getButtonByText(corrupt, "SQLite"));
+      corrupt.unmount();
+      const repaired = render(singleSelect, { draftKey: firstKey });
+      expect(
+        getButtonByText(repaired, "SQLite").getAttribute("aria-pressed"),
+      ).toBe("true");
+      repaired.unmount();
+    } finally {
+      window.localStorage.removeItem(`bb.question-draft.v1:${firstKey}`);
+      window.localStorage.removeItem(`bb.question-draft.v1:${secondKey}`);
+    }
+  });
+
+  it("preserves answers across navigation when persistent storage is full", () => {
+    const storage = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("Storage is full", "QuotaExceededError");
+      });
+    const draftKey = "thr_quota:pint_quota";
+    try {
+      const slot = render(singleSelect, { draftKey });
+      fireEvent.click(getButtonByText(slot, "Other…"));
+      fireEvent.change(slot.getByLabelText("Database answer"), {
+        target: { value: "Keep this answer" },
+      });
+      slot.unmount();
+      const restored = render(singleSelect, { draftKey });
+      expect(restored.getByLabelText("Database answer")).toHaveProperty(
+        "value",
+        "Keep this answer",
+      );
+      restored.unmount();
+    } finally {
+      storage.mockRestore();
+      window.localStorage.removeItem(`bb.question-draft.v1:${draftKey}`);
+    }
+  });
+
   it("submits after a number shortcut followed by Enter", () => {
     const submit = vi.fn(async () => undefined);
     const slot = render(singleSelect, { submit });
@@ -288,6 +362,102 @@ describe("multi-select and multi-question flows", () => {
       },
     ],
   };
+
+  it("restores partial selections, free text, and the current question after navigation and from saved storage", () => {
+    const draftKey = "thr_draft:pint_draft";
+    const storageKey = `bb.question-draft.v1:${draftKey}`;
+    const original = window.localStorage.getItem(storageKey);
+    try {
+      const slot = render(multi, { draftKey });
+      fireEvent.click(getButtonByText(slot, "Metrics"));
+      fireEvent.click(getButtonByText(slot, "Tracing"));
+      fireEvent.click(getButtonByText(slot, "Next"));
+      fireEvent.click(getButtonByText(slot, "Other…"));
+      fireEvent.change(slot.getByLabelText("Database answer"), {
+        target: { value: "  DuckDB\nwith extensions  " },
+      });
+      slot.unmount();
+
+      const restored = render(multi, { draftKey });
+      expect(restored.getByText("2 of 2")).toBeTruthy();
+      expect(restored.getByLabelText("Database answer")).toHaveProperty(
+        "value",
+        "  DuckDB\nwith extensions  ",
+      );
+      fireEvent.click(getButtonByText(restored, "Back"));
+      expect(
+        getButtonByText(restored, "Metrics").getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(
+        getButtonByText(restored, "Tracing").getAttribute("aria-pressed"),
+      ).toBe("true");
+      restored.unmount();
+
+      const saved = window.localStorage.getItem(storageKey);
+      expect(saved).not.toBeNull();
+      const freshKey = "thr_draft:pint_reloaded";
+      window.localStorage.setItem(`bb.question-draft.v1:${freshKey}`, saved!);
+      const reloaded = render(multi, { draftKey: freshKey });
+      expect(
+        getButtonByText(reloaded, "Metrics").getAttribute("aria-pressed"),
+      ).toBe("true");
+      fireEvent.click(getButtonByText(reloaded, "Next"));
+      expect(reloaded.getByLabelText("Database answer")).toHaveProperty(
+        "value",
+        "  DuckDB\nwith extensions  ",
+      );
+      reloaded.unmount();
+      window.localStorage.removeItem(`bb.question-draft.v1:${freshKey}`);
+    } finally {
+      if (original === null) window.localStorage.removeItem(storageKey);
+      else window.localStorage.setItem(storageKey, original);
+    }
+  });
+
+  it.each(["submit", "cancel"] as const)(
+    "retains drafts on failed %s and clears them only after success",
+    async (action) => {
+      const draftKey = `thr_draft:pint_${action}`;
+      const storageKey = `bb.question-draft.v1:${draftKey}`;
+      const original = window.localStorage.getItem(storageKey);
+      try {
+        const handler = vi.fn<() => Promise<void>>(async () => {
+          throw new Error("offline");
+        });
+        const slot = render(singleSelect, { draftKey, [action]: handler });
+        fireEvent.click(getButtonByText(slot, "SQLite"));
+        const buttonLabel = action === "submit" ? "Submit answer" : "Cancel";
+        await act(async () =>
+          fireEvent.click(getButtonByText(slot, buttonLabel)),
+        );
+        slot.unmount();
+        let finish: () => void = () => {};
+        handler.mockImplementation(
+          () =>
+            new Promise<void>((resolve) => {
+              finish = resolve;
+            }),
+        );
+        const restored = render(singleSelect, { draftKey, [action]: handler });
+        expect(
+          getButtonByText(restored, "SQLite").getAttribute("aria-pressed"),
+        ).toBe("true");
+        fireEvent.click(getButtonByText(restored, buttonLabel));
+        expect(window.localStorage.getItem(storageKey)).not.toBeNull();
+        restored.unmount();
+        await act(async () => finish());
+        expect(window.localStorage.getItem(storageKey)).toBeNull();
+        const cleared = render(singleSelect, { draftKey });
+        expect(
+          getButtonByText(cleared, "SQLite").getAttribute("aria-pressed"),
+        ).toBe("false");
+        cleared.unmount();
+      } finally {
+        if (original === null) window.localStorage.removeItem(storageKey);
+        else window.localStorage.setItem(storageKey, original);
+      }
+    },
+  );
 
   it("advances and submits multiple questions entirely by keyboard", () => {
     const submit = vi.fn(async () => undefined);

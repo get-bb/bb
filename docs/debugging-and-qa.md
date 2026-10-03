@@ -64,6 +64,23 @@ checkpoint can perform filesystem writes and synchronization on the server
 thread. `operation: "exec"` also covers maintenance batches. SQL string
 literals are redacted and parameter values are never logged.
 
+## Pending Question Drafts
+
+Native provider questions and Ask User Question plugin forms save partial
+selections, free text, and the current question in browser-local storage under
+`bb.question-draft.v1:<threadId>:<interactionId>`. These drafts survive thread
+navigation and page reloads on the same browser/device. They are cleared after
+successful submission or cancellation and retained if either request fails.
+When local storage is unavailable, an in-memory fallback preserves drafts
+across navigation until the page reloads. Drafts are not sent to the agent until
+submitted, and CLI/SDK answers do not read the browser's draft.
+There is no time-based expiry. If an interaction is resolved elsewhere, its
+draft can remain in local storage but is never rendered as an active question;
+the server's pending interaction list controls that. Clearing browser site data
+removes these drafts. Older clients ignore this new storage namespace. Only the
+native question form and Ask User Question plugin opt in; secret-request forms
+do not use this storage.
+
 ## Native Draft Rollback
 
 Migration `0132_thread_drafts` now only adds the temporary `threads.draft`
