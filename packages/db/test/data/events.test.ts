@@ -47,6 +47,7 @@ import {
   listStoredClientTurnRequestRowsByKeys,
   listStoredEventRows,
   listStoredTimelineWindowEventRows,
+  listStoredTimelineTurnEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnCompletedKeys,
@@ -4461,6 +4462,22 @@ describe("events", () => {
 });
 
 describe("timeline read-boundary output truncation", () => {
+  it("reads turn rows in sequence order across batches, duplicates and sequence bounds", () => {
+    const { db, thread } = setup();
+    const turnIds = Array.from({ length: 1000 }, (_, i) => `ordered-turn-${i}`);
+    insertEvents(db, noopNotifier, turnIds.flatMap((turnId, index) => [
+      { threadId: thread.id, ...createTurnEventFields({ turnId }), sequence: 2 * index + 1, type: "turn/started" as const, data: JSON.stringify({ providerThreadId: "provider" }) },
+      { threadId: thread.id, ...createTurnEventFields({ turnId }), sequence: 2 * index + 2, type: "system/error" as const, data: JSON.stringify({ message: `Error ${index}` }) },
+    ]));
+    const rows = listStoredTimelineTurnEventRows(db, {
+      threadId: thread.id, turnIds: [...turnIds.reverse(), ...turnIds],
+      sequenceStart: 201, beforeSequence: 1200, maxInlineOutputChars: 1000,
+      excludedTypes: ["turn/started"],
+    });
+    expect(rows.map(row => row.sequence)).toEqual(Array.from({ length: 499 }, (_, i) => 202 + 2 * i));
+    expect(JSON.parse(rows[0]!.data)).toEqual({ message: "Error 100" });
+  });
+
   const maxInlineOutputChars = 1_000;
 
   function readWindowData(

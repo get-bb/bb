@@ -139,7 +139,7 @@ interface FilterExactEventRowsForRequestedTurnArgs {
   turnId: string;
 }
 
-interface BuildThreadTimelineOptions {
+export interface BuildThreadTimelineOptions {
   completedTurnDisplay: CompletedTurnDisplay;
   eventBudget: number;
   responseByteBudget?: number;

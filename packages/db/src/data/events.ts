@@ -3107,13 +3107,18 @@ export function listStoredTimelineTurnEventRows(
     queryBatch: (turnIds) =>
       db
         .select(storedEventRowSqlFields(args.maxInlineOutputChars))
-        .from(
-          sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
-        )
+        .from(sql`${events} NOT INDEXED`)
         .where(
           and(
             ...storedTimelineWindowConditions(args),
-            inArray(events.turnId, [...turnIds]),
+            sql`${events}.rowid IN (
+              SELECT selected_turn.rowid
+              FROM events AS selected_turn INDEXED BY events_thread_turn_type_item_sequence_idx
+              WHERE selected_turn.thread_id = ${args.threadId}
+                AND selected_turn.turn_id IN (${sql.join(turnIds.map(turnId => sql`${turnId}`), sql`, `)})
+                AND selected_turn.sequence >= ${args.sequenceStart}
+                ${args.beforeSequence === undefined ? sql`` : sql`AND selected_turn.sequence < ${args.beforeSequence}`}
+            )`,
           ),
         )
         .all(),

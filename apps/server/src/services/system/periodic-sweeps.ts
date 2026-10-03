@@ -345,13 +345,12 @@ async function runThreadProvisioningOrphanCleanupSweep(
     if (archiveUndoGraceKeepsTurnRunning(thread, now)) {
       continue;
     }
-    requestThreadStopForCurrentState(
-      deps,
-      thread,
-      thread.environmentId
-        ? getEnvironment(deps.db, thread.environmentId)
-        : null,
-    );
+    const environment = thread.environmentId
+      ? getEnvironment(deps.db, thread.environmentId)
+      : null;
+    if (environment !== null && !deps.hub.hasDaemonForHost(environment.hostId))
+      continue;
+    requestThreadStopForCurrentState(deps, thread, environment);
   }
   const deletedThreads = deps.db
     .select({

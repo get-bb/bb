@@ -1,3 +1,4 @@
+import { buildThreadTimelineOffThread } from "../../services/threads/timeline-worker-client.js";
 import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import {
@@ -38,7 +39,6 @@ import { toThreadQueuedMessage } from "../../services/threads/thread-queued-mess
 import {
   toThreadEventWithMeta,
   buildThreadConversationOutlineProjectionKey,
-  buildThreadTimelineWithProfile,
   buildTimelineTurnSummaryDetails,
   loadThreadConversationOutline,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
@@ -265,7 +265,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     });
   });
 
-  get(routes.timeline, (context, query) => {
+  get(routes.timeline, async (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
@@ -297,11 +297,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       includeDiagnosticOperations,
       completedTurnDisplay,
     };
-    const full = timelineCache.getOrBuild(
+    const full = await timelineCache.getOrBuildAsync(
       thread.id,
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
-      () => {
-        const { profile, response } = buildThreadTimelineWithProfile(
+      async () => {
+        const { profile, response } = await buildThreadTimelineOffThread(
           deps.db,
           thread,
           {

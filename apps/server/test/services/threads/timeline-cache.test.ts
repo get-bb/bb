@@ -61,6 +61,44 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
 };
 
 describe("createThreadTimelineCache", () => {
+  it("shares concurrent asynchronous builds and rejects stale cache writes after invalidation", async () => {
+    const cache = createThreadTimelineCache();
+    let finish!: (value: ThreadTimelineResponse) => void;
+    const build = vi.fn(
+      () =>
+        new Promise<ThreadTimelineResponse>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const a = cache.getOrBuildAsync("thr_x", "k", build);
+    const b = cache.getOrBuildAsync("thr_x", "k", build);
+    await Promise.resolve();
+    expect(build).toHaveBeenCalledTimes(1);
+    cache.invalidateThread("thr_x");
+    finish(makeResponse(3));
+    expect(await a).toBe(await b);
+    expect(cache.size).toBe(0);
+    await expect(
+      cache.getOrBuildAsync("thr_x", "k", async () => {
+        throw new Error("failed");
+      }),
+    ).rejects.toThrow("failed");
+    await cache.getOrBuildAsync("thr_x", "k", async () => makeResponse(3));
+    expect(cache.size).toBe(1);
+  });
+
+  it("bounds cached response bytes as well as rows", () => {
+    const response = makeResponse(1);
+    const bytes = Buffer.byteLength(JSON.stringify(response));
+    const cache = createThreadTimelineCache({ maxDataBytes: bytes + 1 });
+    cache.getOrBuild("thr_x", "a", () => response);
+    cache.getOrBuild("thr_x", "b", () => response);
+    expect(cache.size).toBe(1);
+    const build = vi.fn(() => response);
+    cache.getOrBuild("thr_x", "a", build);
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+
   it("builds once for the same key and serves cached on repeat", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));

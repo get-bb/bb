@@ -106,6 +106,38 @@ const UNTIMED_SWEEP_LIMITS: ThreadPruningSweepLimits = {
 };
 
 describe("runPeriodicSweeps", () => {
+  it("waits for an offline host before retrying an archived thread stop", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread, environment } = seedThreadFixture(harness);
+      harness.db
+        .update(threads)
+        .set({ status: "stopping", archivedAt: Date.now() - 86400000 })
+        .where(eq(threads.id, thread.id))
+        .run();
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "offline-provider",
+      });
+      const sessionId = harness.hub.getDaemonSessionIdForHost(
+        environment.hostId,
+      );
+      expect(sessionId).not.toBeNull();
+      harness.hub.unregisterDaemon(sessionId!);
+      const stop = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+      await runPeriodicSweeps({
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
+      });
+      expect(
+        stop.mock.calls.filter(
+          ([args]) => args.message.command.type === "thread.stop",
+        ),
+      ).toHaveLength(0);
+    });
+  });
+
   it("deletes expired retained outputs across yielded advances without changing previews", async () => {
     const now = Date.now();
     await withTestHarness(async (harness) => {
