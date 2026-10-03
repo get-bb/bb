@@ -1,16 +1,18 @@
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-index 80c68034b193a47bedb56ca527352de9548e8ac6..774bda697582dcc2f1e3f5e90dda3c36861c5034 100644
+index 80c68034b193a47bedb56ca527352de9548e8ac6..09435fc167abad52471881be04ccd3aa02ceaf4a 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-@@ -9,6 +9,7 @@ import android.view.Menu;
+@@ -9,6 +9,9 @@ import android.view.Menu;
  import android.view.MenuItem;
  import android.view.MotionEvent;
  import android.view.View;
 +import android.view.WindowInsets;
++import android.view.inputmethod.EditorInfo;
++import android.view.inputmethod.InputConnection;
  import android.webkit.JavascriptInterface;
  import android.webkit.ValueCallback;
  import android.webkit.WebChromeClient;
-@@ -17,6 +18,8 @@ import android.webkit.WebViewClient;
+@@ -17,6 +20,8 @@ import android.webkit.WebViewClient;
  
  import androidx.annotation.NonNull;
  import androidx.annotation.Nullable;
@@ -19,7 +21,19 @@ index 80c68034b193a47bedb56ca527352de9548e8ac6..774bda697582dcc2f1e3f5e90dda3c36
  import androidx.webkit.JavaScriptReplyProxy;
  import androidx.webkit.WebMessageCompat;
  import androidx.webkit.WebViewCompat;
-@@ -130,6 +133,16 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+@@ -122,6 +127,11 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         cleanupCallbacksAndDestroy();
+     }
+ 
++    @Override
++    public InputConnection onCreateInputConnection(EditorInfo info) {
++        return new RNCWebViewImagePaste(this).wrap(super.onCreateInputConnection(info), info);
++    }
++
+     @Override
+     public boolean onTouchEvent(MotionEvent event) {
+         if (this.nestedScrollEnabled) {
+@@ -130,6 +140,16 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
          return super.onTouchEvent(event);
      }
  
@@ -36,3 +50,121 @@ index 80c68034b193a47bedb56ca527352de9548e8ac6..774bda697582dcc2f1e3f5e90dda3c36
      @Override
      protected void onSizeChanged(int w, int h, int ow, int oh) {
          super.onSizeChanged(w, h, ow, oh);
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewImagePaste.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewImagePaste.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..a83ff61aee2b1bf8541eabe581d465798a0b97cc
+--- /dev/null
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewImagePaste.java
+@@ -0,0 +1,112 @@
++package com.reactnativecommunity.webview;
++
++import android.content.ContentResolver;
++import android.database.Cursor;
++import android.net.Uri;
++import android.provider.OpenableColumns;
++import android.util.Base64;
++import android.util.Log;
++import android.view.inputmethod.EditorInfo;
++import android.view.inputmethod.InputConnection;
++import android.webkit.MimeTypeMap;
++
++import androidx.core.view.inputmethod.EditorInfoCompat;
++import androidx.core.view.inputmethod.InputConnectionCompat;
++import androidx.core.view.inputmethod.InputContentInfoCompat;
++
++import org.json.JSONObject;
++
++import java.io.ByteArrayOutputStream;
++import java.io.InputStream;
++import java.util.UUID;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++final class RNCWebViewImagePaste {
++    private static final int MAX_BYTES = 35 * 1024 * 1024;
++    private static final ExecutorService READER = Executors.newSingleThreadExecutor();
++    private final RNCWebView webView;
++
++    RNCWebViewImagePaste(RNCWebView webView) {
++        this.webView = webView;
++    }
++
++    InputConnection wrap(InputConnection connection, EditorInfo info) {
++        if (connection == null || webView.injectedJSBeforeContentLoaded == null
++                || !webView.injectedJSBeforeContentLoaded.contains("__beginImagePaste")) {
++            return connection;
++        }
++        EditorInfoCompat.setContentMimeTypes(info, new String[]{"image/*"});
++        return InputConnectionCompat.createWrapper(connection, info, (content, flags, options) -> {
++            if (!content.getDescription().hasMimeType("image/*")) return false;
++            boolean granted = (flags & InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0;
++            try {
++                if (granted) content.requestPermission();
++                webView.post(() -> receive(content, granted));
++                return true;
++            } catch (Exception error) {
++                Log.w("BBImagePaste", "Could not receive keyboard image", error);
++                if (granted) content.releasePermission();
++                return false;
++            }
++        });
++    }
++
++    private void receive(InputContentInfoCompat content, boolean granted) {
++        String id = UUID.randomUUID().toString();
++        String begin = "(function(){var n=window.bb&&window.bb.native;return !!(n&&n.__beginImagePaste&&n.__beginImagePaste("
++                + JSONObject.quote(id) + "));})()";
++        webView.evaluateJavascript(begin, accepted -> {
++            if (!"true".equals(accepted)) {
++                if (granted) content.releasePermission();
++                return;
++            }
++            READER.execute(() -> {
++                JSONObject image = null;
++                try {
++                    image = read(content.getContentUri(), content.getDescription().getMimeType(0));
++                } catch (Exception error) {
++                    Log.w("BBImagePaste", "Could not read keyboard image", error);
++                } finally {
++                    if (granted) content.releasePermission();
++                }
++                String payload = image == null ? "null" : image.toString();
++                webView.post(() -> webView.evaluateJavascript(
++                        "(function(){var n=window.bb&&window.bb.native;if(n&&n.__finishImagePaste)n.__finishImagePaste("
++                                + JSONObject.quote(id) + "," + payload + ");})()", null));
++            });
++        });
++    }
++
++    private JSONObject read(Uri uri, String advertisedType) throws Exception {
++        if (!"content".equals(uri.getScheme())) throw new IllegalArgumentException("Expected content URI");
++        ContentResolver resolver = webView.getContext().getContentResolver();
++        String type = resolver.getType(uri);
++        if (type == null) type = advertisedType;
++        if (type == null || !type.startsWith("image/")) throw new IllegalArgumentException("Expected image");
++        String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(type);
++        String name = "clipboard-image" + (extension == null ? "" : "." + extension);
++        try (Cursor cursor = resolver.query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
++            if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
++                String candidate = cursor.getString(0);
++                if (!candidate.trim().isEmpty()) name = candidate;
++            }
++        }
++        try (InputStream stream = resolver.openInputStream(uri);
++             ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
++            if (stream == null) throw new IllegalArgumentException("Image unavailable");
++            byte[] buffer = new byte[16384];
++            int count;
++            while ((count = stream.read(buffer)) != -1) {
++                if (bytes.size() + count > MAX_BYTES) throw new IllegalArgumentException("Image exceeds 35 MB");
++                bytes.write(buffer, 0, count);
++            }
++            if (bytes.size() == 0) throw new IllegalArgumentException("Empty image");
++            JSONObject image = new JSONObject();
++            image.put("name", name);
++            image.put("type", type);
++            image.put("data", Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP));
++            return image;
++        }
++    }
++}

@@ -29,6 +29,7 @@ export function buildBridgeInjectionScript(
     var listeners = [];
     var pending = {};
     var nextId = 0;
+    var imagePastes = {};
 
     var post = function (message) {
       try {
@@ -41,6 +42,28 @@ export function buildBridgeInjectionScript(
 
     var native = {
       __installed: true,
+      __beginImagePaste: function (id) {
+        var target = document.activeElement;
+        if (!target || !target.isContentEditable || !target.closest("[data-promptbox]")) return false;
+        var timer = setTimeout(function () { delete imagePastes[id]; }, 30000);
+        imagePastes[id] = { target: target, timer: timer, href: window.location.href };
+        return true;
+      },
+      __finishImagePaste: function (id, image) {
+        var entry = imagePastes[id];
+        if (!entry) return;
+        delete imagePastes[id];
+        clearTimeout(entry.timer);
+        if (!image || !entry.target.isConnected || entry.href !== window.location.href) return;
+        var binary = atob(image.data);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        var clipboard = new DataTransfer();
+        clipboard.items.add(new File([bytes], image.name, { type: image.type }));
+        entry.target.dispatchEvent(new ClipboardEvent("paste", {
+          bubbles: true, cancelable: true, clipboardData: clipboard
+        }));
+      },
       __apply: function (next) {
         for (var key in next) {
           if (Object.prototype.hasOwnProperty.call(next, key)) {
