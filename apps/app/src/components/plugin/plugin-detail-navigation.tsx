@@ -45,7 +45,7 @@ interface PluginDetailPanelState {
   activePluginId: string | null;
   destinations: readonly PluginDetailDestination[];
   dismiss: () => void;
-  close: (pluginId: string) => void;
+  close: (pluginId: string, displayedOrder?: readonly string[]) => void;
   open: PluginDetailOpener;
   restore: (entry: {
     index: number;
@@ -127,7 +127,8 @@ export function usePluginDetailPanelState(
     [open],
   );
   const close = useCallback(
-    (pluginId: string) => {
+    (pluginId: string, displayedOrder?: readonly string[]) => {
+      const currentOrder = displayedOrder ?? tabOrder;
       const index = orderedDestinations.findIndex(
         (entry) => entry.pluginId === pluginId,
       );
@@ -144,7 +145,9 @@ export function usePluginDetailPanelState(
       }).ordered;
       destinationsRef.current = remaining;
       if (historyContextKey !== null) {
-        const orderIndex = tabOrder.indexOf(`marketplace-plugin:${pluginId}`);
+        const orderIndex = currentOrder.indexOf(
+          `marketplace-plugin:${pluginId}`,
+        );
         rememberClosedPanelTab(historyContextKey, {
           kind: "plugin-detail",
           index: orderIndex === -1 ? index : orderIndex,
@@ -152,8 +155,8 @@ export function usePluginDetailPanelState(
         });
       }
       setDestinations(remaining);
-      setTabOrder((current) =>
-        current.filter((id) => id !== `marketplace-plugin:${pluginId}`),
+      setTabOrder(
+        currentOrder.filter((id) => id !== `marketplace-plugin:${pluginId}`),
       );
       if (activePluginId === pluginId) {
         setActivePluginId(
@@ -220,7 +223,11 @@ export function usePluginDetailPanelProps(
             className="size-3.5"
           />
         ),
-        onClose: () => details.close(destination.pluginId),
+        onClose: () =>
+          details.close(
+            destination.pluginId,
+            tabs.map((tab) => tab.tab.id),
+          ),
         onSelect: () => details.open(destination),
         renderContent: () => (
           <PluginDetailTabContent pluginId={destination.pluginId} />
