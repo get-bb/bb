@@ -1,5 +1,6 @@
 import type { FixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { PluginDetailDestination } from "@/components/plugin/plugin-detail-opener";
+import { haveSameOrder } from "@/lib/stored-order";
 
 export interface ClosedPanelContentTab {
   kind: "content";
@@ -26,7 +27,42 @@ export interface PluginDetailHistoryTarget {
 }
 
 type ClosedPanelTab = ClosedPanelContentTab | ClosedPluginDetailTab;
-const recentlyClosedPanelTabs = new Map<string, ClosedPanelTab[]>();
+const recentlyClosedPanelTabs = new Map<
+  string,
+  (ClosedPanelTab & { orderIndex?: number })[]
+>();
+const panelTabOrders = new Map<string, readonly string[]>();
+const orderListeners = new Map<string, Set<() => void>>();
+const emptyOrder: readonly string[] = [];
+
+export function getPanelTabOrder(contextKey: string): readonly string[] {
+  return panelTabOrders.get(contextKey) ?? emptyOrder;
+}
+
+export function setPanelTabOrder(
+  contextKey: string,
+  order: readonly string[],
+): void {
+  if (haveSameOrder(getPanelTabOrder(contextKey), order)) return;
+  panelTabOrders.set(contextKey, order);
+  orderListeners.get(contextKey)?.forEach((listener) => listener());
+}
+
+export function subscribePanelTabOrder(
+  contextKey: string,
+  listener: () => void,
+): () => void {
+  const listeners = orderListeners.get(contextKey) ?? new Set();
+  listeners.add(listener);
+  orderListeners.set(contextKey, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size > 0) return;
+    orderListeners.delete(contextKey);
+    if (!recentlyClosedPanelTabs.has(contextKey))
+      panelTabOrders.delete(contextKey);
+  };
+}
 
 export function getPanelTabHistoryKey({
   environmentId,
@@ -63,9 +99,16 @@ export function rememberClosedPanelTab(
   entry: ClosedPanelTab,
 ): void {
   const stack = recentlyClosedPanelTabs.get(contextKey) ?? [];
-  stack.push(entry);
+  const order = getPanelTabOrder(contextKey);
+  const orderIndex = order.indexOf(closedTabId(entry));
+  stack.push(orderIndex === -1 ? entry : { ...entry, orderIndex });
   if (stack.length > 25) stack.splice(0, stack.length - 25);
   recentlyClosedPanelTabs.set(contextKey, stack);
+  if (orderIndex !== -1)
+    setPanelTabOrder(
+      contextKey,
+      order.filter((id) => id !== closedTabId(entry)),
+    );
 }
 
 export function forgetClosedPanelTab(contextKey: string, tabId: string): void {
@@ -90,6 +133,17 @@ export function takeClosedPanelTab(
     stack.pop();
     if (openTabIds.has(closedTabId(entry))) continue;
     if (stack.length === 0) recentlyClosedPanelTabs.delete(contextKey);
+    if (entry.orderIndex !== undefined) {
+      const order = getPanelTabOrder(contextKey).filter(
+        (id) => id !== closedTabId(entry),
+      );
+      order.splice(
+        Math.min(entry.orderIndex, order.length),
+        0,
+        closedTabId(entry),
+      );
+      setPanelTabOrder(contextKey, order);
+    }
     return entry;
   }
   recentlyClosedPanelTabs.delete(contextKey);
@@ -98,4 +152,5 @@ export function takeClosedPanelTab(
 
 export function resetRecentlyClosedPanelTabsForTest(): void {
   recentlyClosedPanelTabs.clear();
+  panelTabOrders.clear();
 }
