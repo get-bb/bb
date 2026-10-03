@@ -580,9 +580,10 @@ async function readResponseTextFromSse(
   let deltaText = "";
   let finalText: string | null = null;
   let totalBytes = 0;
+  let completed = false;
 
   try {
-    while (true) {
+    while (!completed) {
       const chunk = await readChunkWithTimeout({
         deadline: args.deadline,
         reader,
@@ -614,7 +615,11 @@ async function readResponseTextFromSse(
           .map((line) => line.slice(5).trim())
           .join("\n")
           .trim();
-        if (eventData && eventData !== "[DONE]") {
+        if (eventData === "[DONE]") {
+          completed = true;
+          break;
+        }
+        if (eventData) {
           const eventValue = parseSseEventValue(eventData);
           const event = toJsonObject(eventValue);
           if (event) {
@@ -625,15 +630,16 @@ async function readResponseTextFromSse(
                 result.failure.message,
               );
             }
+            if (
+              optionalString(event.type) === "response.completed" ||
+              optionalString(event.type) === "response.done"
+            ) {
+              finalText = result.text || null;
+              completed = true;
+              break;
+            }
             if (result.text) {
-              if (
-                optionalString(event.type) === "response.completed" ||
-                optionalString(event.type) === "response.done"
-              ) {
-                finalText = result.text;
-              } else {
-                deltaText += result.text;
-              }
+              deltaText += result.text;
             }
           }
         }
@@ -641,6 +647,9 @@ async function readResponseTextFromSse(
       }
     }
     buffer += decoder.decode();
+    if (completed) {
+      await cancelReaderBestEffort(reader);
+    }
   } catch (error) {
     await cancelReaderBestEffort(reader);
     throw error;
