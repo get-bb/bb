@@ -1,6 +1,7 @@
 import { LazyThreadDetailView } from "./views/thread-detail/LazyThreadDetailView";
 import { useRouteState } from "./hooks/useRouteState";
 import { lazy, Suspense, useEffect } from "react";
+import { parseMessageLink } from "@bb/client-core";
 import {
   matchPath,
   Navigate,
@@ -230,6 +231,9 @@ export function HashNavigationScroll() {
   const location = useLocation();
 
   useEffect(() => {
+    if (parseMessageLink(`${location.pathname}${location.hash}`) !== null) {
+      return;
+    }
     const targetId = hashTargetId(location.hash);
     if (targetId === null) return;
 
@@ -262,7 +266,7 @@ export function HashNavigationScroll() {
     observer.observe(document.body, { childList: true, subtree: true });
     timeoutId = window.setTimeout(stopWaiting, HASH_NAVIGATION_WAIT_MS);
     return stopWaiting;
-  }, [location.hash, location.key]);
+  }, [location.hash, location.key, location.pathname]);
 
   return null;
 }

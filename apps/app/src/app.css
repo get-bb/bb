@@ -824,20 +824,20 @@
   }
 }
 
-/* Briefly highlight a conversation message that a thread-search result
- * deep-links to, then fade back to transparent. */
 @keyframes bb-search-flash {
-  from {
-    background-color: color-mix(in oklch, var(--ring) 22%, transparent);
+  0%,
+  25% {
+    background-color: var(--state-hover);
   }
-  to {
+  100% {
     background-color: transparent;
   }
 }
 
 .bb-search-flash {
   border-radius: var(--radius-lg, 0.5rem);
-  animation: bb-search-flash 1.6s ease-out;
+  background-color: var(--state-hover);
+  animation: bb-search-flash 1.6s ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

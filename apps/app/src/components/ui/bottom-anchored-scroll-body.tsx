@@ -100,18 +100,6 @@ function isScrolledNearBottom(maxScrollOffset: number, scrollTop: number) {
   return maxScrollOffset - scrollTop <= BOTTOM_ANCHOR_THRESHOLD_PX;
 }
 
-function isElementFullyVisibleInScrollArea({
-  element,
-  scrollArea,
-}: ElementVisibilityArgs) {
-  const elementRect = element.getBoundingClientRect();
-  const scrollAreaRect = scrollArea.getBoundingClientRect();
-  return (
-    elementRect.top >= scrollAreaRect.top &&
-    elementRect.bottom <= scrollAreaRect.bottom
-  );
-}
-
 function getScrollOffsetToRevealElement({
   element,
   scrollArea,
@@ -373,12 +361,8 @@ export function BottomAnchoredScrollBody({
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {
       const scrollArea = scrollAreaRef.current;
-      if (
-        scrollArea &&
-        isElementFullyVisibleInScrollArea({ element, scrollArea })
-      ) {
-        return;
-      }
+      cancelPendingScrollRestore();
+      pendingPrependAnchorRef.current = null;
       shouldStickToBottomRef.current = false;
       setIsAtBottom(false);
       cancelQueuedRestore();
@@ -388,7 +372,7 @@ export function BottomAnchoredScrollBody({
         scrollArea.dispatchEvent(new Event("scroll"));
       }
     },
-    [cancelQueuedRestore],
+    [cancelPendingScrollRestore, cancelQueuedRestore],
   );
 
   const scrollElementIntoViewClampedToMaxScroll = useCallback(

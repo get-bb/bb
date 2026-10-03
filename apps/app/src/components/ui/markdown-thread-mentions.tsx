@@ -5,9 +5,11 @@ import { visit } from "unist-util-visit";
 import {
   isRawThreadId,
   RAW_THREAD_ID_PATTERN_SOURCE,
+  type PromptMentionResource,
   type PromptTextMention,
 } from "@bb/domain";
 import {
+  MessageMentionPill,
   PromptMentionPill,
   resolveThreadMentionResource,
 } from "@/components/thread/timeline/ConversationMessageMentions.js";
@@ -23,9 +25,10 @@ import {
 import { replaceTextMatches } from "./markdown-text-matches.js";
 
 const THREAD_MENTION_PATTERN = new RegExp(
-  `@thread:([A-Za-z0-9_-]+)|(${RAW_THREAD_ID_PATTERN_SOURCE})`,
+  `@thread:([A-Za-z0-9_-]+)(?:#msg=(0|[1-9]\\d*))?|(${RAW_THREAD_ID_PATTERN_SOURCE})`,
   "gu",
 );
+const MESSAGE_SUFFIX_PATTERN = /^#msg=(0|[1-9]\d*)/u;
 const RAW_THREAD_ID_PATTERN = new RegExp(RAW_THREAD_ID_PATTERN_SOURCE, "gu");
 const CHARACTER_REFERENCE_PATTERN = /&(?:#\d+|#x[\da-f]+|[a-z][a-z\d]*);/iu;
 const THREAD_MENTION_PREFIX = "@thread";
@@ -35,12 +38,21 @@ const THREAD_MENTION_HAST_NAME = "bb-thread-mention";
 const THREAD_MENTION_THREAD_ID_PROPERTY = "dataThreadId";
 const RAW_THREAD_ID_PROPERTY = "dataRawThreadId";
 const RAW_THREAD_INLINE_CODE_PROPERTY = "dataRawThreadInlineCode";
+const MESSAGE_SEQ_PROPERTY = "dataMessageSeq";
 
-function threadMentionNode(
-  threadId: string,
-  rawThreadId = false,
-  rawThreadInlineCode = false,
-): Text {
+interface ThreadMentionNodeArgs {
+  threadId: string;
+  messageSeq: string | null;
+  rawThreadId: boolean;
+  rawThreadInlineCode: boolean;
+}
+
+function threadMentionNode({
+  threadId,
+  messageSeq,
+  rawThreadId,
+  rawThreadInlineCode,
+}: ThreadMentionNodeArgs): Text {
   return {
     type: "text",
     value: "",
@@ -48,6 +60,7 @@ function threadMentionNode(
       hName: THREAD_MENTION_HAST_NAME,
       hProperties: {
         [THREAD_MENTION_THREAD_ID_PROPERTY]: threadId,
+        ...(messageSeq === null ? {} : { [MESSAGE_SEQ_PROPERTY]: messageSeq }),
         ...(rawThreadId ? { [RAW_THREAD_ID_PROPERTY]: threadId } : {}),
         ...(rawThreadInlineCode
           ? { [RAW_THREAD_INLINE_CODE_PROPERTY]: "true" }
@@ -105,7 +118,8 @@ function splitTextNodeOnMentions(
   const { value } = node;
   return replaceTextMatches(node, THREAD_MENTION_PATTERN, (match) => {
     const serializedThreadId = match[1];
-    const rawThreadId = match[2];
+    const messageSeq = match[2] ?? null;
+    const rawThreadId = match[3];
     const threadId = serializedThreadId ?? rawThreadId;
     const matchEnd = match.index + match[0].length;
     const boundaryText = rawThreadId === undefined ? value : context?.text;
@@ -125,7 +139,12 @@ function splitTextNodeOnMentions(
     ) {
       return null;
     }
-    return threadMentionNode(threadId, rawThreadId !== undefined);
+    return threadMentionNode({
+      threadId,
+      messageSeq,
+      rawThreadId: rawThreadId !== undefined,
+      rawThreadInlineCode: false,
+    });
   });
 }
 
@@ -219,9 +238,27 @@ export function splitRawThreadIdsInText(
   return segments;
 }
 
-function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {
+function directiveMessageSuffix(
+  parent: Parent,
+  index: number,
+): { messageSeq: string; length: number } | null {
   const next = parent.children[index + 1];
-  return next?.type !== "text" || isMentionEndBoundary(next.value, 0);
+  const match =
+    next?.type === "text" ? MESSAGE_SUFFIX_PATTERN.exec(next.value) : null;
+  return match === null || match[1] === undefined
+    ? null
+    : { messageSeq: match[1], length: match[0].length };
+}
+
+function isDirectiveMentionEndBoundary(
+  parent: Parent,
+  index: number,
+  suffixLength: number,
+): boolean {
+  const next = parent.children[index + 1];
+  return (
+    next?.type !== "text" || isMentionEndBoundary(next.value, suffixLength)
+  );
 }
 
 function markdownMayContainThreadMention(markdown: string): boolean {
@@ -270,7 +307,12 @@ export function remarkThreadMentions() {
         parent.children.splice(
           index,
           1,
-          threadMentionNode(node.value, true, true),
+          threadMentionNode({
+            threadId: node.value,
+            messageSeq: null,
+            rawThreadId: true,
+            rawThreadInlineCode: true,
+          }),
         );
         return index + 1;
       },
@@ -313,9 +355,14 @@ export function remarkThreadMentions() {
       if (prefixStart < 0 || !previous.value.endsWith(THREAD_MENTION_PREFIX)) {
         return;
       }
+      const messageSuffix = directiveMessageSuffix(parent, index);
       if (
         !isMentionBoundary(previous.value, prefixStart) ||
-        !isDirectiveMentionEndBoundary(parent, index) ||
+        !isDirectiveMentionEndBoundary(
+          parent,
+          index,
+          messageSuffix?.length ?? 0,
+        ) ||
         authoredMarkdownLinkNodes.has(node)
       ) {
         const leadingText = previous.value.slice(0, prefixStart);
@@ -332,7 +379,20 @@ export function remarkThreadMentions() {
         return index + 1;
       }
       previous.value = previous.value.slice(0, prefixStart);
-      parent.children.splice(index, 1, threadMentionNode(directive.name));
+      const next = parent.children[index + 1];
+      if (messageSuffix !== null && next?.type === "text") {
+        next.value = next.value.slice(messageSuffix.length);
+      }
+      parent.children.splice(
+        index,
+        1,
+        threadMentionNode({
+          threadId: directive.name,
+          messageSeq: messageSuffix?.messageSeq ?? null,
+          rawThreadId: false,
+          rawThreadInlineCode: false,
+        }),
+      );
       return index + 1;
     });
   };
@@ -343,6 +403,7 @@ interface BuildThreadMentionComponentArgs {
 }
 
 interface ThreadMentionElementProps {
+  "data-message-seq"?: string;
   "data-raw-thread-id"?: string;
   "data-raw-thread-inline-code"?: string;
   "data-thread-id"?: string;
@@ -379,10 +440,24 @@ export function buildThreadMentionComponent({
     return <PromptMentionPill resource={resource} serializedText={threadId} />;
   }
 
-  function ThreadMentionPillWithQuery({ threadId }: { threadId: string }) {
-    const liveResource = useThreadMentionResource(threadId);
-    const resource =
-      liveResource ?? resolveThreadMentionResource(mentions, threadId);
+  function ResolvedThreadMentionPill({
+    messageSeq,
+    resource,
+    threadId,
+  }: {
+    messageSeq: number | null;
+    resource: PromptMentionResource;
+    threadId: string;
+  }) {
+    if (messageSeq !== null) {
+      return (
+        <MessageMentionPill
+          messageSeq={messageSeq}
+          resource={resource}
+          threadId={threadId}
+        />
+      );
+    }
     return (
       <PromptMentionPill
         resource={resource}
@@ -391,9 +466,31 @@ export function buildThreadMentionComponent({
     );
   }
 
+  function ThreadMentionPillWithQuery({
+    messageSeq,
+    threadId,
+  }: {
+    messageSeq: number | null;
+    threadId: string;
+  }) {
+    const liveResource = useThreadMentionResource(threadId);
+    const resource =
+      liveResource ?? resolveThreadMentionResource(mentions, threadId);
+    return (
+      <ResolvedThreadMentionPill
+        messageSeq={messageSeq}
+        resource={resource}
+        threadId={threadId}
+      />
+    );
+  }
+
   function ThreadMentionElement(props: ThreadMentionElementProps) {
     const threadId = props["data-thread-id"] ?? "";
     const rawThreadId = props["data-raw-thread-id"];
+    const rawMessageSeq = props["data-message-seq"];
+    const messageSeq =
+      rawMessageSeq === undefined ? null : Number(rawMessageSeq);
     const sidebarResource = useSidebarThreadMentionResource(threadId);
     if (threadId.length === 0) {
       return null;
@@ -413,12 +510,18 @@ export function buildThreadMentionComponent({
     )?.resource;
     const resource = sidebarResource ?? persistedResource;
     if (resource === undefined) {
-      return <ThreadMentionPillWithQuery threadId={threadId} />;
+      return (
+        <ThreadMentionPillWithQuery
+          messageSeq={messageSeq}
+          threadId={threadId}
+        />
+      );
     }
     return (
-      <PromptMentionPill
+      <ResolvedThreadMentionPill
+        messageSeq={messageSeq}
         resource={resource}
-        serializedText={`@thread:${threadId}`}
+        threadId={threadId}
       />
     );
   }
