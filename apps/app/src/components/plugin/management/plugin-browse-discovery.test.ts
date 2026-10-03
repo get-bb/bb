@@ -150,6 +150,49 @@ describe("plugin browse shelves", () => {
   });
 });
 
+describe("plugin browse shelves without repeats", () => {
+  it("omits collection members from category shelves but counts them", () => {
+    const featured = entry("featured", {
+      categoryId: "themes-and-appearance",
+      category: "Themes & Appearance",
+      collections: [{ id: "new-and-notable", rank: 0 }],
+    });
+    const data: PluginCatalogSearchData = {
+      entries: [
+        featured,
+        entry("theme", {
+          categoryId: "themes-and-appearance",
+          category: "Themes & Appearance",
+        }),
+      ],
+      collections: [
+        {
+          id: "new-and-notable",
+          displayName: "New & notable",
+          pluginIds: ["featured"],
+        },
+      ],
+    };
+
+    expect(
+      pluginBrowseShelves(data).map((shelf) => [
+        shelf.label,
+        shelf.entries.map((candidate) => candidate.pluginId),
+      ]),
+    ).toEqual([
+      ["New & notable", ["featured"]],
+      ["Themes & Appearance", ["featured", "theme"]],
+    ]);
+    const themes = pluginBrowseShelves(data, {
+      omitCollectionEntriesFromCategories: true,
+    }).find((shelf) => shelf.label === "Themes & Appearance");
+    expect(themes?.entries.map((candidate) => candidate.pluginId)).toEqual([
+      "theme",
+    ]);
+    expect(themes?.totalCount).toBe(2);
+  });
+});
+
 describe("plugin category filters", () => {
   it("omits missing categories even when previously selected, preserving Local and custom categories", () => {
     expect(

@@ -34,6 +34,21 @@ describe("public marketplace view model", () => {
     ]);
   });
 
+  it("can omit collection members from category shelves", () => {
+    const shelves = marketplaceShelves(
+      MARKETPLACE_V2_FIXTURE,
+      MARKETPLACE_V2_FIXTURE.plugins,
+      { omitCollectionEntriesFromCategories: true },
+    );
+    expect(
+      shelves.map((shelf) => [shelf.label, shelf.entries.map(({ id }) => id)]),
+    ).toEqual([
+      ["New & notable", ["review-companion", "prompt-library"]],
+      ["Code & Reviews", ["review-notes"]],
+      ["More plugins", ["orphan-tool"]],
+    ]);
+  });
+
   it("sorts undated and uncounted entries last", () => {
     expect(
       sortMarketplaceEntries(

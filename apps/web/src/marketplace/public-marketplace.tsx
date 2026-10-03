@@ -704,7 +704,9 @@ function MarketplaceBrowser({
             />
           </section>
         ) : (
-          marketplaceShelves(manifest, entries).map((shelf) => (
+          marketplaceShelves(manifest, entries, {
+            omitCollectionEntriesFromCategories: true,
+          }).map((shelf) => (
             <Shelf
               key={`${shelf.kind}:${shelf.id}`}
               manifest={manifest}
