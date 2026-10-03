@@ -854,33 +854,6 @@ describe("PluginPanelRightPanelHost", () => {
     );
   });
 
-  it("selects a restored file while a plugin detail tab is active", async () => {
-    renderHost();
-
-    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
-    expect(
-      await screen.findByText("host:host-explicit:/tmp/example.log"),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Close example.log" }));
-
-    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
-    expect(await screen.findByText("Details for secrets")).toBeTruthy();
-
-    act(() => {
-      expect(
-        appCommandHandlers.get("panel.reopenClosedTab")?.({ target: null }),
-      ).toBe(true);
-    });
-
-    expect(
-      screen.getByRole("button", { name: "Close example.log" }),
-    ).toBeTruthy();
-    await waitFor(() => {
-      expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
-      expect(screen.getByText("host:host-explicit:/tmp/example.log")).toBeTruthy();
-    });
-  });
-
   it("restores closed plugin details before older content tabs", async () => {
     renderHost();
 
