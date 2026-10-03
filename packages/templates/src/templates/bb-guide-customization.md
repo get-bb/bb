@@ -99,9 +99,9 @@ collapsed groups) live in the plugin and sync to every window:
 `bb thread-list prefs list [--json]`, `prefs get <key>`,
 `prefs set <key> <value>`, and `prefs reset <key>`. `set` takes JSON; a bare
 word is a string. On first load the plugin copies non-default `sidebar.*`
-values from `bb settings ui` once. `showProviderIcons` defaults to `false`;
+values from `bb settings ui` once. `showProviderIcons` defaults to `true`;
 Organize → Rows → Provider icons toggles the icon before each title, and
-`bb thread-list prefs set showProviderIcons true` turns it on from the CLI.
+`bb thread-list prefs set showProviderIcons false` turns it off from the CLI.
 The `threadLifecycles` preference defaults
 to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both.

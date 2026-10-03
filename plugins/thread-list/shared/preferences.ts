@@ -70,7 +70,7 @@ function definePreference<Schema extends z.ZodTypeAny>(
 export const preferenceDefinitions = {
   showProviderIcons: definePreference(
     z.boolean(),
-    false,
+    true,
     "Show each thread's agent provider icon before its title.",
     null,
   ),
