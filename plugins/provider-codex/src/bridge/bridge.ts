@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   isStandaloneBuiltinCompactCommand,
   approvalInteractionOutcomeSchema,
@@ -463,6 +464,7 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
+  turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings> | null;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
   unopenedCompactionDispatches: PendingCompactionDispatch[];
@@ -1101,6 +1103,7 @@ async function constructThreadSession(
       args.cwd,
       decoded.sessionOptions,
     ),
+    turnPermissionSettings: null,
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
@@ -1280,6 +1283,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     translator: session.translator,
     construction: session.construction,
     constructionSignature: session.constructionSignature,
+    turnPermissionSettings: null,
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
@@ -1862,6 +1866,7 @@ async function handleTurnStart(
         resultSchema: ignoredChildResultSchema,
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
       });
+      session.turnPermissionSettings = permissionSettings;
     }
     sendResult(id, { threadId: params.threadId });
     settleAcceptedDispatch({
@@ -1905,6 +1910,32 @@ async function handleTurnSteer(
     return;
   }
   try {
+    const decoded = decodeCodexOptions(params.options);
+    const permissionSettings = toCodexPermissionSettings({
+      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
+      gitWritableRoots: session.translator.getThreadGitWritableRoots(params.threadId),
+      options: decoded.sessionOptions,
+    });
+    if (
+      session.turnPermissionSettings !== null &&
+      !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings)
+    ) {
+      if (!session.openCodexTurnIds.has(params.expectedTurnId)) {
+        throw new Error("The turn to steer is no longer active");
+      }
+      const failure = await interruptCodexTurn(
+        session, session.codexThreadId, params.expectedTurnId,
+      );
+      if (failure !== null) throw failure;
+      const settled = await waitForCodexTurnSettlement(
+        session, params.expectedTurnId, INTERRUPT_SETTLEMENT_TIMEOUT_MS,
+      );
+      if (!settled) {
+        throw new Error("Codex did not stop the active turn before applying new permissions");
+      }
+      await handleTurnStart(id, params);
+      return;
+    }
     await session.connection.request({
       method: "turn/steer",
       params: {
