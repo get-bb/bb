@@ -3629,11 +3629,11 @@ snapshot is a no-op. `insert` remains the cursor/end insertion primitive.
 Core quoting, prefills and history restoration call this same contract. Quotes
 are pure draft transformations that append blockquoted text and merge attachments
 by path, followed by `focus()`. Attachments remain independent draft items, not
-children of a quote. `replace` does not upload/copy files across projects.
-Submission rollback, restore-if-empty seeds, uploads, and editor transactions
-remain beneath these actions. Command completion's trigger-range replacement and
-autocomplete dismissal remain a documented boundary, not a hidden option on
-`replace`.
+children of a quote. `replace` preserves source-project references; core copies
+those files into the destination project on submission. Submission rollback,
+restore-if-empty seeds, uploads, and editor transactions remain beneath these
+actions. Command completion's trigger-range replacement and autocomplete
+dismissal remain a documented boundary, not a hidden option on `replace`.
 
 `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
 `removeMention` are marked internal and stripped from published declarations,

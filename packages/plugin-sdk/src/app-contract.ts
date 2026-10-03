@@ -19,7 +19,6 @@ import type {
 import type {
   CreateExecutionInputSources,
   CreateThreadEnvironmentArgs,
-  UploadedPromptAttachment,
 } from "@bb/server-contract";
 import type {
   BbSdkAreas,
@@ -2468,8 +2467,29 @@ export interface ComposerDraft {
   mentions: readonly ComposerMention[];
 }
 
-/** An already uploaded attachment; paths retain their original project or thread ownership. */
-export type ComposerAttachment = UploadedPromptAttachment;
+/**
+ * A composer attachment: an uploaded file, optionally owned by another
+ * project, or an absolute path on one machine. Never both.
+ */
+export type ComposerAttachment = {
+  type: "localImage" | "localFile";
+  path: string;
+  name: string;
+  mimeType?: string;
+  /** Exact size in bytes; omit when unknown. Zero is treated as unknown. A wrong nonzero size can make the send fail when bb stages a file. */
+  sizeBytes?: number;
+} & (
+  | {
+      /** Project that currently owns this uploaded path; omit for destination-relative attachments. */
+      sourceProjectId?: string;
+      hostId?: never;
+    }
+  | {
+      /** Machine whose absolute `path` this is; core rejects sending it to a thread on another machine. */
+      hostId: string;
+      sourceProjectId?: never;
+    }
+);
 
 /** The complete current draft. Snapshots and their entries are immutable. */
 export interface ComposerDraftSnapshot extends ComposerDraft {
@@ -2639,8 +2659,10 @@ export interface PluginComposerApi {
    * an empty list clears them. Does not infer or rebase mention ranges.
    * Ranges are non-overlapping UTF-16 offsets into the supplied text.
    * Invalid results, throwing updaters, and unavailable editors leave the
-   * draft unchanged. Does not focus, submit, upload, or copy files between
-   * projects. Use `insert` for insertion at the editor's cursor.
+   * draft unchanged. Source project references on uploaded attachments are
+   * preserved; core copies them into the destination project when the draft
+   * is submitted. Does not focus or submit. Use `insert` for insertion at the
+   * editor's cursor.
    */
   replace(
     next:

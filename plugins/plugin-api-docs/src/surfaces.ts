@@ -460,7 +460,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Reads the draft prompt, and can block typing while the plugin works. With this, a plugin can:",
         bullets: [
           "Read the draft prompt's text and every @-mention in it, whether it is empty, and how many files are attached",
-          "Read draft.attachments and atomically restore text, mention pills, and uploaded attachments with replace; omit attachments to preserve them or pass an empty array to clear them",
+          "Read draft.attachments and atomically restore text, mention pills, and uploaded attachments with replace; omit attachments to preserve them or pass an empty array to clear them. Attachment sizeBytes is absent when unknown. Preserve sourceProjectId on references from uploads and prompt history: core previews from the source and copies files to the destination project when submitted, without a plugin copy request. Absolute paths from history carry hostId instead; core rejects them in a thread on another machine",
           "Use insert(parts, { at: cursor or end }) to add text and pills; use replace(current => next) for atomic transformations of the latest immutable text, mentions, and attachments",
           "Supply explicit mention ranges to replace: it does not infer or rebase pills from text edits; returning the current snapshot is a no-op, and throwing or returning invalid data leaves the draft unchanged",
           "Core quotes use replace to append blockquoted text and merge attachments by path, then focus; attachments belong to the draft, not to the quoted block",
