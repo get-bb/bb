@@ -105,7 +105,7 @@ afterEach(() => {
 
 describe("useThreadFileTabs recently closed tabs", () => {
   it.each([null, "hostId", "instanceId", "generation"] as const)(
-    "recreates a closed native browser only on its owning desktop (%s)",
+    "preserves desktop ownership when a reopened browser becomes inactive (%s)",
     async (differentField) => {
       const desktopTarget = {
         hostId: "host-1",
@@ -177,7 +177,7 @@ describe("useThreadFileTabs recently closed tabs", () => {
         title: "Latest page",
       });
       expect(result.current.browserTabs[0]?.desktopTarget).toEqual(
-        differentField === null ? undefined : desktopTarget,
+        desktopTarget,
       );
     },
   );
