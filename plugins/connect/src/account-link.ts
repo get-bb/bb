@@ -1,5 +1,6 @@
 import type { PluginLogger } from "@get-bb/plugin-sdk";
 import {
+  AccountPausedError,
   AccountUnavailableError,
   type Account,
   type AccountClient,
@@ -63,7 +64,7 @@ export class AccountLink {
         if (signal.aborted) return;
         if (error instanceof AccountUnavailableError) {
           this.options.onAccount(null);
-        } else {
+        } else if (!(error instanceof AccountPausedError)) {
           this.options.log.warn(
             `could not read the bb account status: ${errorMessage(error)}`,
           );

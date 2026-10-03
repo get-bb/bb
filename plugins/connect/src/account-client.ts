@@ -95,6 +95,25 @@ export class AccountUnavailableError extends Error {
   }
 }
 
+/**
+ * The server answers plugin RPCs with 503 `server_moving` while a server move
+ * has changes paused. bb account is still running and its sign-in still holds,
+ * so callers keep the account they last saw instead of treating it as gone.
+ */
+export class AccountPausedError extends Error {
+  constructor() {
+    super("bb account is paused while the server moves to another machine");
+    this.name = "AccountPausedError";
+  }
+}
+
+function errorCodeOf(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return null;
+  }
+  return typeof error.code === "string" ? error.code : null;
+}
+
 function httpStatusOf(error: unknown): number | null {
   if (typeof error !== "object" || error === null || !("status" in error)) {
     return null;
@@ -146,6 +165,9 @@ export function createAccountClient(
       });
     } catch (error) {
       const status = httpStatusOf(error);
+      if (status === 503 && errorCodeOf(error) === "server_moving") {
+        throw new AccountPausedError();
+      }
       if (status === 503 || status === 404) {
         throw new AccountUnavailableError(`HTTP ${status}`);
       }

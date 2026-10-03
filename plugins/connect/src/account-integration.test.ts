@@ -36,6 +36,7 @@ let stub: StubGetbb;
 let accountHost: FakePluginHost;
 let connectHost: FakePluginHost;
 let accountRunning = true;
+let serverMoving = false;
 let credentialReads = 0;
 let failCredentialRead: number | null = null;
 let tunnelService: { controller: AbortController; done: Promise<void> } | null =
@@ -46,6 +47,16 @@ function callAccountRpc(args: RpcArgs): Promise<unknown> {
   const failRead =
     args.method === "bb-account.v1.connectCredential" &&
     credentialReads === failCredentialRead;
+  if (serverMoving) {
+    return Promise.reject(
+      Object.assign(
+        new Error(
+          "HTTP 503: The server is moving to another machine. Changes are paused until the move finishes or is cancelled.",
+        ),
+        { status: 503, code: "server_moving" },
+      ),
+    );
+  }
   if (args.pluginId !== "bb-account" || !accountRunning || failRead) {
     return Promise.reject(
       Object.assign(new Error(`HTTP 503: ${args.pluginId} is not running`), {
@@ -144,6 +155,7 @@ async function storedCredential(): Promise<string> {
 beforeEach(async () => {
   stub = await StubGetbb.start();
   accountRunning = true;
+  serverMoving = false;
   credentialReads = 0;
   failCredentialRead = null;
 });
@@ -324,6 +336,29 @@ describe("connect on top of bb account", () => {
     accountRunning = true;
     await waitForConnected(2);
   });
+  it("keeps the tunnel up while a server move pauses bb account", async () => {
+    await loadBoth();
+    await signInAccount();
+    startTunnel();
+    await waitForConnected(1);
+
+    serverMoving = true;
+    accountHost = await accountHost.harness.reload(
+      createBbAccountPlugin(ACCOUNT_OPTIONS),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(stub.tunnelDials).toHaveLength(1);
+    expect(await connectStatus()).toMatchObject({
+      paired: true,
+      state: "connected",
+    });
+
+    serverMoving = false;
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(stub.tunnelDials).toHaveLength(1);
+    expect((await connectStatus()).state).toBe("connected");
+  });
+
   it("retries when bb account is briefly unavailable while handing over the credential", async () => {
     await loadBoth();
     await signInAccount();
