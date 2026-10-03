@@ -89,6 +89,9 @@ export const claudeTurnStartParamsSchema = z.object({
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
+  permissionMode: claudePermissionModeSchema,
+  permissionScope: bridgePermissionScopeSchema,
+  additionalWorkspaceWriteRoots: z.array(z.string()),
   permissionEscalation: bridgePermissionEscalationSchema,
   claudeCodePermissionMode: z.literal("plan").optional(),
 });

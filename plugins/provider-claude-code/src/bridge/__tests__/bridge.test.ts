@@ -107,6 +107,7 @@ interface ControlledClaudeQuery {
 }
 
 interface ClaudeQueryCallOptions {
+  allowDangerouslySkipPermissions?: boolean;
   canUseTool?: CanUseTool;
   env?: Record<string, string | undefined>;
   extraArgs?: Record<string, string | null>;
@@ -3613,8 +3614,10 @@ describe("bridge", () => {
             permissionMode: full ? "bypassPermissions" : "auto",
           });
           if (full) {
+            expect(getLatestQueryOptions().allowDangerouslySkipPermissions).toBe(true);
             expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
           } else {
+            expect(getLatestQueryOptions()).not.toHaveProperty("allowDangerouslySkipPermissions");
             expect(getLatestQueryOptions().sandbox).toMatchObject({
               enabled: true,
               filesystem: { allowWrite: ["/tmp/shared-worktree"] },
