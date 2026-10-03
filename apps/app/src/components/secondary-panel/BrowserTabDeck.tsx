@@ -97,7 +97,7 @@ export function BrowserTabDeck({
       <BrowserTabContent
         key={activeBrowserTab.id}
         tabId={activeBrowserTab.id}
-        existingOnly={target === undefined ? undefined : true}
+        desktopTarget={target}
         initialUrl={activeBrowserTab.url}
         addressFocusRequest={
           addressFocusRequest?.tabId === activeBrowserTab.id

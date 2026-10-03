@@ -24,7 +24,7 @@ import {
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { allowBrowserViewRecreation } from "./browserViewVisibilityCoordinator";
 import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
   createFileOpenerTabForRequest,
@@ -573,7 +573,6 @@ export function useThreadFileTabs({
       const restoredDetails: Parameters<
         PluginDetailHistoryTarget["restore"]
       >[0][] = [];
-      const restoredBrowsers: BrowserFixedPanelTab[] = [];
       let didReopen = false;
       updateFixedPanelTabsState((state) => {
         const entry = takeClosedPanelTab(
@@ -593,42 +592,10 @@ export function useThreadFileTabs({
           return state;
         }
         if (entry.tab.kind === "browser" && entry.tab.desktopTarget) {
-          restoredBrowsers.push(entry.tab);
+          allowBrowserViewRecreation(entry.tab.id, entry.tab.desktopTarget);
         }
         return restoreEntry(state, entry);
       });
-      for (const browser of restoredBrowsers) {
-        const target = browser.desktopTarget;
-        if (target === undefined) continue;
-        void getDesktopBrowserApi()
-          ?.getTarget?.()
-          .then((actual) => {
-            if (
-              actual?.hostId !== target.hostId ||
-              actual.instanceId !== target.instanceId ||
-              actual.generation !== target.generation
-            ) {
-              return;
-            }
-            updateFixedPanelTabsState((state) => {
-              const current = findSecondaryPanelTab(
-                state.secondary.tabs,
-                browser.id,
-              );
-              if (
-                current?.kind !== "browser" ||
-                current.desktopTarget?.hostId !== target.hostId ||
-                current.desktopTarget.instanceId !== target.instanceId ||
-                current.desktopTarget.generation !== target.generation
-              ) {
-                return state;
-              }
-              const { desktopTarget: _desktopTarget, ...tab } = current;
-              return updateSecondaryPanelTabInState({ state, tab });
-            });
-          })
-          .catch(() => undefined);
-      }
       for (const entry of restoredDetails) pluginDetails?.restore(entry);
       if (didReopen && restoredDetails.length === 0) pluginDetails?.dismiss();
       return didReopen;

@@ -19,6 +19,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
 import { usePluginDetailPanelState } from "@/components/plugin/plugin-detail-navigation";
+import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
 import { getPanelTabHistoryKey } from "./recentlyClosedPanelTabs";
 import {
   resetRecentlyClosedPanelTabsForTest,
@@ -96,6 +97,7 @@ afterEach(() => {
   queryClient.clear();
   window.localStorage.clear();
   resetRecentlyClosedPanelTabsForTest();
+  resetBrowserViewPersistence();
   resetPluginSlotStoreForTest();
   syncMocks.scheduleLocalThreadTabsMigration.mockClear();
   syncMocks.scheduleThreadTabsPersistence.mockClear();
@@ -104,83 +106,75 @@ afterEach(() => {
 });
 
 describe("useThreadFileTabs recently closed tabs", () => {
-  it.each([null, "hostId", "instanceId", "generation"] as const)(
-    "preserves desktop ownership when a reopened browser becomes inactive (%s)",
-    async (differentField) => {
-      const desktopTarget = {
-        hostId: "host-1",
-        instanceId: "instance-1",
-        generation: "generation-1",
-      };
-      const browser = createNoopDesktopBrowserApi();
-      browser.getTarget = async () =>
-        differentField === null
-          ? desktopTarget
-          : { ...desktopTarget, [differentField]: "elsewhere" };
-      window.bbDesktop = createBbDesktopApi(
-        {
-          lastCheckedAt: null,
-          latestVersion: null,
-          pendingVersion: null,
-          platform: "macos",
-          updateAvailable: false,
-          updateDownloaded: false,
-          version: "0.0.0-test",
-        },
-        browser,
-      );
-      const panelStateId = `closed-native-browser-${differentField}`;
-      window.localStorage.setItem(
-        getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
-        serializeFixedPanelTabsState({
-          state: createEmptyFixedPanelTabsState({
-            secondary: {
-              activeTabId: "browser:native-browser:none",
-              isOpen: true,
-              tabs: [
-                {
-                  id: "browser:native-browser:none",
-                  kind: "browser",
-                  environmentId: null,
-                  desktopTarget,
-                  url: "https://latest.example",
-                  title: "Latest page",
-                },
-              ],
-            },
-            lastUsedAt: Date.now(),
-          }),
+  it("preserves desktop ownership when a reopened browser becomes inactive", async () => {
+    const desktopTarget = {
+      hostId: "host-1",
+      instanceId: "instance-1",
+      generation: "generation-1",
+    };
+    const browser = createNoopDesktopBrowserApi();
+    browser.getTarget = async () => desktopTarget;
+    window.bbDesktop = createBbDesktopApi(
+      {
+        lastCheckedAt: null,
+        latestVersion: null,
+        pendingVersion: null,
+        platform: "macos",
+        updateAvailable: false,
+        updateDownloaded: false,
+        version: "0.0.0-test",
+      },
+      browser,
+    );
+    const panelStateId = "closed-native-browser";
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          secondary: {
+            activeTabId: "browser:native-browser:none",
+            isOpen: true,
+            tabs: [
+              {
+                id: "browser:native-browser:none",
+                kind: "browser",
+                environmentId: null,
+                desktopTarget,
+                url: "https://latest.example",
+                title: "Latest page",
+              },
+            ],
+          },
+          lastUsedAt: Date.now(),
         }),
-      );
-      const { result } = renderThreadHook(() =>
-        useThreadFileTabsWithActiveTab({
-          panelStateId,
-          syncThreadId: null,
-          environmentId: null,
-          storageFiles: undefined,
-          terminalSessions: undefined,
-        }),
-      );
-      act(() => result.current.openTab({ kind: "new-tab" }));
-      act(() => {
-        result.current.closeTab("new-tab:new-tab:none");
-        result.current.closeTab("browser:native-browser:none");
-      });
-      await act(async () => {
-        expect(result.current.reopenClosedTab()).toBe(true);
-        expect(result.current.reopenClosedTab()).toBe(true);
-      });
-      expect(result.current.activeTab?.id).toBe("new-tab:new-tab:none");
-      expect(result.current.browserTabs[0]).toMatchObject({
-        id: "browser:native-browser:none",
-        url: "https://latest.example",
-        title: "Latest page",
-      });
-      expect(result.current.browserTabs[0]?.desktopTarget).toEqual(
-        desktopTarget,
-      );
-    },
-  );
+      }),
+    );
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab({
+        panelStateId,
+        syncThreadId: null,
+        environmentId: null,
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() => {
+      result.current.closeTab("new-tab:new-tab:none");
+      result.current.closeTab("browser:native-browser:none");
+    });
+    await act(async () => {
+      expect(result.current.reopenClosedTab()).toBe(true);
+      expect(result.current.reopenClosedTab()).toBe(true);
+    });
+    expect(result.current.activeTab?.id).toBe("new-tab:new-tab:none");
+    expect(result.current.browserTabs[0]).toMatchObject({
+      id: "browser:native-browser:none",
+      url: "https://latest.example",
+      title: "Latest page",
+    });
+    expect(result.current.browserTabs[0]?.desktopTarget).toEqual(desktopTarget);
+  });
 
   it("restores mixed plugin-detail and content history across a remount", () => {
     const params = {
