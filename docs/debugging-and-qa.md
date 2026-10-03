@@ -1,5 +1,6 @@
 # Debugging And QA
 
+- `pnpm dev` and `pnpm start:worktree` save the absolute source checkout path in `<data dir>/bb-dev-instance.json`. Storage reports use this record to identify development data even after the checkout is removed. Older instances can be identified from `bb-app-runtime.json` or hash-verified path matches; unknown source paths are reported explicitly.
 - `pnpm dev` prints the active frontend URL, server API URL, host daemon port, data dir, and logs dir. Do not assume fixed dev ports.
 - `pnpm start:worktree` builds production artifacts and serves the optimized app bundle from the checkout-specific dev server URL, while keeping the same dev data directory and deterministic server/host-daemon ports. It has no Vite dev server or hot reload.
 - `pnpm start:worktree-remote` is the trusted-network variant of `pnpm start:worktree`; it binds that server to all IPv4 interfaces.
