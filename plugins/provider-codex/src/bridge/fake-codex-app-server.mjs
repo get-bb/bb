@@ -117,6 +117,10 @@ function runCompaction(threadId) {
       turnId,
       item: { type: "contextCompaction", id: itemId },
     });
+    if (COMPACTION_MODE === "wait-for-interrupt") {
+      openTurnIdsByThreadId.set(threadId, turnId);
+      return;
+    }
     notify("item/completed", {
       threadId,
       turnId,
