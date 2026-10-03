@@ -158,6 +158,8 @@ describe("useThreadFileTabs recently closed tabs", () => {
           panelStateId,
           syncThreadId: null,
           environmentId: null,
+          storageFiles: undefined,
+          terminalSessions: undefined,
         }),
       );
       act(() => {
