@@ -57,7 +57,7 @@ function cleanPromptText(input: PromptInput[]): string {
     .trim();
 }
 
-function clampPromptText(text: string): string {
+function clampTitleFallback(text: string): string {
   if (displayWidth(text) <= MAX_TITLE_FALLBACK_WIDTH) {
     return text;
   }
@@ -73,7 +73,7 @@ export function deriveTitleFallback(input: PromptInput[]): string | null {
   if (text.length === 0) {
     return null;
   }
-  return clampPromptText(text);
+  return clampTitleFallback(text);
 }
 
 const FORK_TITLE_PATTERN = /^\((\d+)\) (.+)$/s;
@@ -174,14 +174,14 @@ export function sanitizeGeneratedBranchSlug(value: string): string | null {
 }
 
 export function buildThreadTitlePrompt(input: PromptInput[]): string | null {
-  const fallback = deriveTitleFallback(input);
-  if (!fallback) {
+  const text = cleanPromptText(input);
+  if (!text) {
     return null;
   }
   const commands = collectInvokedPromptCommands(input);
   const body = promptTextWithoutCommands(input, commands);
   return renderTemplate("generateThreadMetadata", {
-    cleanedPrompt: body.length > 0 ? clampPromptText(body) : fallback,
+    cleanedPrompt: body.length > 0 ? body : text,
     ...(commands.length > 0
       ? { invokedCommands: formatInvokedCommands(commands) }
       : {}),
