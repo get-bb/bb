@@ -36,11 +36,50 @@ describe("marketplace share cards", () => {
 
   it("includes plugin details with and without a screenshot", () => {
     for (const screenshot of [null, "https://example.com/screenshot.png"]) {
-      const html = renderToStaticMarkup(marketplaceOgCard(entry, screenshot));
+      const html = renderToStaticMarkup(
+        marketplaceOgCard(
+          entry,
+          { icon: null, screenshot, avatar: null },
+          "Thread Content",
+        ),
+      );
       expect(html).toContain(entry.displayName);
       expect(html).toContain(entry.author.name);
-      expect(html.includes("<img")).toBe(screenshot !== null);
+      expect(html).toContain("Thread Content");
+      expect(html.includes("screenshot.png")).toBe(screenshot !== null);
     }
+  });
+
+  it("loads screenshots and icons through the provided asset loader", async () => {
+    const requested: string[] = [];
+    const response = await serveMarketplaceOg(
+      {
+        status: "available",
+        manifest: {
+          ...MARKETPLACE_V2_FIXTURE,
+          plugins: [
+            {
+              ...entry,
+              icon: { url: "/marketplace/v1/icons/prompt-library.svg" },
+              screenshots: ["screenshots/a.webp", "screenshots/b.png"],
+            },
+          ],
+        },
+        stats: null,
+      },
+      entry.id,
+      async (url) => {
+        requested.push(url);
+        return new Response(null, { status: 404 });
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(requested.sort()).toEqual([
+      "https://getbb.app/marketplace/v1/icons/prompt-library.svg",
+      "https://getbb.app/marketplace/v2/screenshots/a.webp",
+      "https://getbb.app/marketplace/v2/screenshots/b.png",
+      `https://github.com/${entry.author.github}.png?size=72`,
+    ]);
   });
 
   it("does not render a misleading card for missing plugins or unavailable catalogs", async () => {
