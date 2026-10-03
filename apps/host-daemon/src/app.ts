@@ -516,6 +516,13 @@ export async function createHostDaemonApp(
     applyMachineEnvironment: (shell) =>
       machineEnvironment.shellEnvironment(shell),
     onEvent: ({ environmentId, event }) => {
+      if (event.type === "turn/completed" && event.scope.kind === "turn") {
+        interactiveRequestRegistry.interruptTurn({
+          threadId: event.threadId,
+          turnId: event.scope.turnId,
+          reason: `Provider turn ${event.status} while awaiting user interaction`,
+        });
+      }
       try {
         eventSink.emit({
           threadId: event.threadId,

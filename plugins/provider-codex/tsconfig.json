@@ -8,14 +8,10 @@
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
-      "@get-bb/plugin-sdk": [
-        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts"
-      ],
-      "@get-bb/plugin-sdk/app": [
-        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts"
-      ]
+      "@/*": ["../../packages/shared-ui/src/*"]
     },
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "react-jsx"
   },
-  "include": ["server.ts", "src", "vitest.config.ts"]
+  "include": ["server.ts", "src", "vitest.config.ts", "app.tsx", "app.test.tsx"]
 }
