@@ -136,6 +136,12 @@ export interface ExperimentalQuestionShortcut {
  * what choosing an option means.
  */
 export interface ExperimentalQuestionFormHost {
+  /** Host microphone controls; transcripts are editable answers, never auto-submitted. */
+  experimental_VoiceInput?: ComponentType<{
+    disabled: boolean;
+    onTranscript: (text: string) => void;
+    onBusyChange: (busy: boolean) => void;
+  }>;
   /**
    * Shortcut per zero-based option index, as a string (`"0"` is the first
    * option). Missing entries have no binding.

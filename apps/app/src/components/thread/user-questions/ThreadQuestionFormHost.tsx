@@ -1,3 +1,4 @@
+import { QuestionVoiceInput } from "./QuestionVoiceInput";
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { QUESTION_SELECT_APP_COMMAND_IDS } from "@bb/domain";
@@ -34,6 +35,7 @@ export function ThreadQuestionFormHost({ children }: { children: ReactNode }) {
         }),
       ),
       registerChoiceHandler,
+      experimental_VoiceInput: QuestionVoiceInput,
     }),
     [bindings, registerChoiceHandler],
   );
