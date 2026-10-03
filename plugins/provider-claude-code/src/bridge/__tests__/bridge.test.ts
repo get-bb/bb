@@ -2147,7 +2147,7 @@ describe("bridge", () => {
       });
       await bridge.waitForResponse(1);
 
-      bridge.sendRequest(2, "turn/start", {
+      bridge.sendRequest(10, "turn/start", {
         ...canonicalTurnParams({
           threadId,
           input: [{ type: "text", text: "Continue planning with Full Access after approval" }],
@@ -2164,7 +2164,7 @@ describe("bridge", () => {
       expect(getLatestQueryOptions().permissionMode).toBe("plan");
       expect(getLatestQueryOptions().allowDangerouslySkipPermissions).toBe(true);
       await readNextPrompt(getLatestQueryCall());
-      await bridge.waitForResponse(2);
+      await bridge.waitForResponse(10);
 
       const canUseTool = getLastCanUseTool();
       const planPromise = canUseTool(
@@ -2198,8 +2198,9 @@ describe("bridge", () => {
         "bypassPermissions",
       );
 
-      await stopBridgeThread({ bridge, queries, threadId });
+      await stopBridgeThread({ bridge, queries: queries.slice(-1), threadId });
     } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });
