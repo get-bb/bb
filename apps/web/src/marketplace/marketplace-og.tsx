@@ -17,6 +17,8 @@ const ACCENT = "#4075aa";
 const RECESSED = "#f1f1f1";
 const MAX_ASSET_BYTES = 4_000_000;
 const MAX_IMAGE_PIXELS = 4_200_000;
+const MAX_SVG_BYTES = 64_000;
+const UNSAFE_SVG = /<!(?:DOCTYPE|ENTITY)|<(?:[\w.-]+:)?(?:image|feImage)\b/iu;
 
 type MarketplaceOgAssetLoader = (url: string) => Promise<Response>;
 
@@ -368,10 +370,11 @@ async function loadImage(
       if (!size || size.width * size.height > MAX_IMAGE_PIXELS) return null;
     }
     if (type === "image/svg+xml") {
+      if (bytes.byteLength > MAX_SVG_BYTES) return null;
       const svg = new TextDecoder()
         .decode(bytes)
         .replaceAll("currentColor", INK);
-      if (/<image\b/iu.test(svg)) return null;
+      if (UNSAFE_SVG.test(svg)) return null;
       return `data:${type};base64,${Buffer.from(svg).toString("base64")}`;
     }
     return `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
