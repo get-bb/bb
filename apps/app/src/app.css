@@ -435,6 +435,11 @@
     }
 
     [data-new-thread-footer]
+      [data-promptbox-shrinkable-control]:has(~ :not(:empty)) {
+      flex-shrink: 0 !important;
+    }
+
+    [data-new-thread-footer]
       [data-promptbox-shrinkable-control]:has(~ :not(:empty))
       [data-promptbox-compact-label] {
       display: none !important;
