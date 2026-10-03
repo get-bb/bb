@@ -72,6 +72,7 @@ export function PluginCatalogCard({
     <PluginCard
       leading={<CatalogEntryIconChip entry={entry} compact />}
       title={entry.displayName}
+      experimental={entry.experimental}
       description={entry.description || undefined}
       byline={<PluginCardAuthor entry={entry} />}
       footerAction={

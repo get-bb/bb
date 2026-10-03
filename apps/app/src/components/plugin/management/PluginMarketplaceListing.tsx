@@ -1,3 +1,4 @@
+import { PluginExperimentalBadge } from "./PluginExperimentalBadge";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -313,7 +314,12 @@ export function PluginMoreFromAuthorSection({
           <ResourceRow
             key={`${candidate.marketplace}/${candidate.entryId}`}
             leading={<CatalogEntryIconChip entry={candidate} />}
-            title={candidate.displayName}
+            title={
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                {candidate.displayName}
+                {candidate.experimental ? <PluginExperimentalBadge /> : null}
+              </span>
+            }
             description={candidate.description || undefined}
             trailingVisual={<ResourceRowDetailChevron />}
             openLabel={`Open ${candidate.displayName} details`}

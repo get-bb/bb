@@ -38,6 +38,23 @@ describe("plugin manifest", () => {
     );
   }
 
+  it.each([
+    [undefined, false],
+    [false, false],
+    [true, true],
+  ])("reads experimental opt-in %s as %s", async (experimental, expected) => {
+    await writeManifest(undefined, {
+      ...validBb,
+      ...(experimental === undefined ? {} : { experimental }),
+    });
+    expect((await readPluginManifest(rootDir)).experimental).toBe(expected);
+  });
+
+  it("rejects an experimental flag that is not a boolean", async () => {
+    await writeManifest(undefined, { ...validBb, experimental: "true" });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(/bb\.experimental/);
+  });
+
   it("accepts a valid engines.bbPluginSdk range", async () => {
     await writeManifest("^0.2.0 || >=2.0.0");
     expect((await readPluginManifest(rootDir)).bbPluginSdkRange).toBe(

@@ -1934,3 +1934,7 @@ Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on
 
 The publishing workflow verifies the signed APK and publishes both the checksum-named
 asset and the stable `bb-android.apk` alias, then `latest.json`.
+
+### Experimental plugin status
+
+A plugin package.json can opt into an Experimental badge with `bb.experimental: true`. Omitted or false means no badge. Marketplace v2 entries can declare `experimental: true` for catalog listings before installation; BB Official entries inherit the plugin manifest value. Installed and catalog SDK responses and the corresponding `bb plugin list --json` and `bb plugin catalog search --json` output expose `experimental`.

@@ -491,6 +491,10 @@ export function createPluginCatalogService(deps: {
       pluginId,
       displayName: manifest?.name ?? entry.displayName,
       description: manifest?.description ?? entry.description,
+      experimental:
+        manifest?.experimental ??
+        ("experimental" in entry ? entry.experimental : false) ??
+        false,
       icon: manifest?.branding.icon ?? entryIconName(entry),
       ...iconAsset,
       ...metadata,

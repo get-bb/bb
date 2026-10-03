@@ -24,6 +24,7 @@ export interface PluginManifest {
   version: string;
   name: string;
   description: string;
+  experimental?: boolean;
   branding: {
     icon?: string;
     compactIconPath?: string;
@@ -226,6 +227,7 @@ export async function readPluginManifest(
     version,
     name: bb.name,
     description: bb.description,
+    experimental: bb.experimental ?? false,
     branding: {
       ...(bb.branding.icon === undefined ? {} : { icon: bb.branding.icon }),
       ...(brandingCompactIconPath === undefined

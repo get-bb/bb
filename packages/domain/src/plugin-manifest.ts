@@ -80,6 +80,7 @@ const pluginBbManifestSchema = z
   .object({
     name: requiredManifestString,
     description: requiredManifestString,
+    experimental: z.boolean().optional(),
     branding: pluginBrandingSchema,
     experimental_providers: z
       .array(

@@ -84,6 +84,7 @@ export const marketplaceV2EntrySchema = z.object({
   id: z.string().regex(MARKETPLACE_ID_PATTERN),
   displayName: z.string().min(1),
   description: z.string().min(1),
+  experimental: z.boolean().optional(),
   icon: marketplaceIconSchema,
   tags: z
     .array(z.string().max(32).regex(TAG_PATTERN))

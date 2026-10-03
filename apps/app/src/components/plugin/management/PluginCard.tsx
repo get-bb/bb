@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PluginExperimentalBadge } from "./PluginExperimentalBadge";
 import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
@@ -18,6 +19,7 @@ export function PluginCardGrid({ children }: { children: ReactNode }) {
 
 interface PluginCardProps {
   title: string;
+  experimental?: boolean;
   description: ReactNode;
   leading: ReactNode;
   byline: ReactNode;
@@ -26,7 +28,12 @@ interface PluginCardProps {
   onOpen: (trigger: HTMLButtonElement) => void;
 }
 
-export function PluginCard({ byline, footerAction, ...props }: PluginCardProps) {
+export function PluginCard({
+  byline,
+  footerAction,
+  experimental,
+  ...props
+}: PluginCardProps) {
   return (
     <ResourceBrowseCard
       {...props}
@@ -36,7 +43,10 @@ export function PluginCard({ byline, footerAction, ...props }: PluginCardProps) 
         <span className="block min-h-[2lh]">{props.description}</span>
       }
       title={
-        <span className="line-clamp-2 whitespace-normal">{props.title}</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="line-clamp-2 whitespace-normal">{props.title}</span>
+          {experimental ? <PluginExperimentalBadge /> : null}
+        </span>
       }
       footer={
         <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs text-subtle-foreground">

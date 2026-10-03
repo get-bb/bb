@@ -143,6 +143,7 @@ export const marketplaceEntryV2Schema = z.object({
   id: z.string().regex(NAME_PATTERN),
   displayName: z.string().min(1),
   description: z.string().min(1),
+  experimental: z.boolean().optional(),
   icon: marketplaceIconSchema(),
   category: pluginCatalogCategoryIdSchema.optional(),
   screenshots: z

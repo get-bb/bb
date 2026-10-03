@@ -9,7 +9,8 @@
     "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
-    "name": "Modal Sandbox [Experimental]",
+    "name": "Modal Sandbox",
+    "experimental": true,
     "description": "Run bb threads in on-demand, isolated sandboxes",
     "branding": {
       "icon": "./modal-logo.svg"
