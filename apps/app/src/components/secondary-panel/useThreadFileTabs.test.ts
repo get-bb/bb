@@ -97,6 +97,43 @@ afterEach(() => {
 });
 
 describe("useThreadFileTabs recently closed tabs", () => {
+  it("restores the last closed launcher instead of an older content tab", () => {
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab({
+        panelStateId: "recently-closed-launcher-order",
+        syncThreadId: null,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let olderTabId = "";
+    act(() => {
+      olderTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://older.example",
+        })?.id ?? "";
+    });
+    act(() => result.current.closeTab(olderTabId));
+
+    let launcherTabId = "";
+    act(() => {
+      launcherTabId =
+        result.current.openTab({ kind: "new-tab" })?.id ?? "";
+    });
+    act(() => result.current.closeTab(launcherTabId));
+
+    act(() => {
+      expect(result.current.reopenClosedTab()).toBe(true);
+    });
+    expect(result.current.activeTab).toMatchObject({
+      id: launcherTabId,
+      kind: "new-tab",
+    });
+  });
+
   it("reopens closed tabs in reverse close order and restores their positions", () => {
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
