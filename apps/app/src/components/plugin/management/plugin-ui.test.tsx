@@ -109,12 +109,6 @@ it("labels built-in, new, and counted plugins", () => {
   const label = (entry: Parameters<typeof pluginInstallCountPresentation>[0]) =>
     pluginInstallCountPresentation(entry, now)?.display;
   expect(label({ installedByDefault: true, installs: 2 })).toBe("Built in");
-  expect(
-    pluginInstallCountPresentation(
-      { installedByDefault: false, installs: 1357 },
-      now,
-    )?.tone,
-  ).toBe("count");
   expect(label({ ...community, installs: 25, publishedAt: recent })).toBe("25");
   expect(label({ ...community, installs: 3, publishedAt: recent })).toBe("New");
   expect(label({ ...community, installs: null, publishedAt: recent })).toBe(

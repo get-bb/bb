@@ -42,7 +42,6 @@ export function PluginCatalogInstallControl(
       : disabled
         ? (props.unavailableReason ?? "Unavailable for this version of BB.")
         : `Install ${displayName}`;
-  const showStateIcon = !(installed && count?.tone === "builtin");
   const stateIcon = installed
     ? "Check"
     : disabled
@@ -77,19 +76,23 @@ export function PluginCatalogInstallControl(
               else props.onInstall();
             }}
           >
-            <span className="grid place-items-center empty:hidden" aria-hidden>
-              {showStateIcon ? (
-                <Icon
-                  name={stateIcon}
-                  className={cn(
-                    "col-start-1 row-start-1 size-3.5",
-                    !installed && disabled && "text-warning-text",
-                    installed &&
-                      !disabled &&
-                      "group-hover/install:opacity-0 group-focus-visible/install:opacity-0",
-                  )}
-                />
-              ) : null}
+            <span
+              className={cn(
+                "grid place-items-center",
+                count?.tone === "builtin" && "hidden",
+              )}
+              aria-hidden
+            >
+              <Icon
+                name={stateIcon}
+                className={cn(
+                  "col-start-1 row-start-1 size-3.5",
+                  !installed && disabled && "text-warning-text",
+                  installed &&
+                    !disabled &&
+                    "group-hover/install:opacity-0 group-focus-visible/install:opacity-0",
+                )}
+              />
               {installed && !disabled ? (
                 <Icon
                   name="Trash2"
