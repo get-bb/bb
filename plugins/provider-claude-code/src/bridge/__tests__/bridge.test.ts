@@ -2118,7 +2118,12 @@ describe("bridge", () => {
     }
   });
 
-  it("returns to the updated permission preset once a plan is approved", async () => {
+  it.each([
+    { mode: "full", nativeMode: "bypassPermissions" },
+    { mode: "auto", nativeMode: "auto" },
+    { mode: "accept-edits", nativeMode: "acceptEdits" },
+  ] as const)("prepares the $mode sandbox before approving a changed Plan preset", async ({ mode, nativeMode }) => {
+    const full = mode === "full";
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -2128,16 +2133,16 @@ describe("bridge", () => {
     });
 
     try {
-      const threadId = "thread-plan-restores-preset";
+      const threadId = `thread-plan-restores-${mode}`;
       bridge.sendRequest(1, "thread/start", {
         threadId,
         cwd: "/tmp/worktree",
         instructionMode: "append",
         options: {
-          permissionMode: "auto",
-          permissionScope: "workspace",
-          approvalReviewer: "automatic",
-          permissionEscalation: "ask",
+          permissionMode: full ? "auto" : "full",
+          permissionScope: full ? "workspace" : "full",
+          approvalReviewer: full ? "automatic" : null,
+          permissionEscalation: full ? "ask" : null,
           instructions: "test",
           providerOptions: {
             workflowsEnabled: false,
@@ -2150,19 +2155,36 @@ describe("bridge", () => {
       bridge.sendRequest(10, "turn/start", {
         ...canonicalTurnParams({
           threadId,
-          input: [{ type: "text", text: "Continue planning with Full Access after approval" }],
+          input: [{ type: "text", text: "Continue planning with the new permission preset after approval" }],
         }),
         options: {
           ...canonicalOptions(),
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
+          permissionMode: mode,
+          permissionScope: full ? "full" : "workspace",
+          approvalReviewer: full ? null : mode === "auto" ? "automatic" : "user",
+          permissionEscalation: full ? null : "ask",
+          providerOptions: {
+            workflowsEnabled: false,
+            sandboxEnabled: true,
+            additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
+          },
         },
       });
       await bridge.flushWork();
       expect(getLatestQueryOptions().permissionMode).toBe("plan");
-      expect(getLatestQueryOptions().allowDangerouslySkipPermissions).toBe(true);
+      if (full) {
+        expect(getLatestQueryOptions().allowDangerouslySkipPermissions).toBe(true);
+        expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
+      } else {
+        expect(getLatestQueryOptions()).not.toHaveProperty("allowDangerouslySkipPermissions");
+        expect(getLatestQueryOptions()).toMatchObject({
+          sandbox: {
+            enabled: true,
+            filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+          },
+          additionalDirectories: ["/tmp/shared-worktree"],
+        });
+      }
       await readNextPrompt(getLatestQueryCall());
       await bridge.waitForResponse(10);
 
@@ -2195,8 +2217,9 @@ describe("bridge", () => {
       await bridge.flushWork();
 
       expect(queries.at(-1)?.setPermissionMode).toHaveBeenLastCalledWith(
-        "bypassPermissions",
+        nativeMode,
       );
+      expect(queries).toHaveLength(2);
 
       await stopBridgeThread({ bridge, queries: queries.slice(-1), threadId });
     } finally {
