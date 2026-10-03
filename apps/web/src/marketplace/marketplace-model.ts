@@ -24,11 +24,12 @@ export function marketplaceInstallBadge(
   entry: MarketplaceV2Entry,
   stats: MarketplaceStats | null,
   now: number,
+  options: { installedByDefault: boolean } = { installedByDefault: false },
 ): PluginInstallBadge | null {
   return pluginInstallBadge(
     {
       installs: marketplaceEntryInstalls(entry, stats) ?? null,
-      installedByDefault: false,
+      installedByDefault: options.installedByDefault,
       ...(entry.publishedAt === undefined
         ? {}
         : { publishedAt: entry.publishedAt }),

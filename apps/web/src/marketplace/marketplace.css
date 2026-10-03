@@ -514,6 +514,18 @@
   font-weight: 700;
 }
 
+.marketplace-author-avatar.is-official {
+  display: inline-grid;
+  place-items: center;
+}
+
+.marketplace-author-mark {
+  width: 72%;
+  height: 60%;
+  background-size: 177.78% 210.99%;
+  background-position: 50% 50.5%;
+}
+
 .marketplace-author-avatar.is-large {
   width: 64px;
   height: 64px;

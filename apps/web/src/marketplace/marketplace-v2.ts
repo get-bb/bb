@@ -80,7 +80,13 @@ const marketplaceNpmSourceSchema = z.object({
     .refine((value) => value.range === undefined || value.tag === undefined),
 });
 
-export const marketplaceV2EntrySchema = z.object({
+const marketplaceBundledSourceSchema = z.object({
+  bundled: z.object({
+    plugin: z.string().regex(MARKETPLACE_ID_PATTERN),
+  }),
+});
+
+const marketplaceV2EntryBaseSchema = z.object({
   id: z.string().regex(MARKETPLACE_ID_PATTERN),
   displayName: z.string().min(1),
   description: z.string().min(1),
@@ -90,7 +96,6 @@ export const marketplaceV2EntrySchema = z.object({
     .transform((tags) => tags.slice(0, 10))
     .default([]),
   author: marketplaceAuthorSchema,
-  source: z.union([marketplaceGitSourceSchema, marketplaceNpmSourceSchema]),
   category: z.string().regex(MARKETPLACE_ID_PATTERN).optional(),
   screenshots: z
     .array(screenshotUrlSchema)
@@ -99,6 +104,18 @@ export const marketplaceV2EntrySchema = z.object({
   overview: z.string().min(1).optional(),
   publishedAt: z.string().datetime({ offset: true }).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
+});
+
+const communityMarketplaceEntrySchema = marketplaceV2EntryBaseSchema.extend({
+  source: z.union([marketplaceGitSourceSchema, marketplaceNpmSourceSchema]),
+});
+
+export const marketplaceV2EntrySchema = marketplaceV2EntryBaseSchema.extend({
+  source: z.union([
+    marketplaceGitSourceSchema,
+    marketplaceNpmSourceSchema,
+    marketplaceBundledSourceSchema,
+  ]),
 });
 
 const marketplaceCategorySchema = z.object({
@@ -145,31 +162,52 @@ function reportDuplicateIds(
   });
 }
 
+const marketplaceManifestShape = {
+  $schema: z.literal(MARKETPLACE_V2_SCHEMA_URL).optional(),
+  schemaVersion: z.literal(2),
+  name: z.string().regex(MARKETPLACE_ID_PATTERN),
+  displayName: z.string().min(1),
+  description: z.string().min(1).optional(),
+  categories: z.array(marketplaceCategorySchema).default([]),
+  collections: z.array(marketplaceCollectionSchema).default([]),
+};
+
+function reportDuplicateManifestIds(
+  manifest: {
+    categories: readonly { id: string }[];
+    collections: readonly { id: string }[];
+    plugins: readonly { id: string }[];
+  },
+  context: z.RefinementCtx,
+): void {
+  reportDuplicateIds(manifest.categories, context, "categories");
+  reportDuplicateIds(manifest.collections, context, "collections");
+  reportDuplicateIds(manifest.plugins, context, "plugins");
+}
+
 export const marketplaceV2ManifestSchema = z
   .object({
-    $schema: z.literal(MARKETPLACE_V2_SCHEMA_URL).optional(),
-    schemaVersion: z.literal(2),
-    name: z.string().regex(MARKETPLACE_ID_PATTERN),
-    displayName: z.string().min(1),
-    description: z.string().min(1).optional(),
-    categories: z.array(marketplaceCategorySchema).default([]),
-    collections: z.array(marketplaceCollectionSchema).default([]),
+    ...marketplaceManifestShape,
     plugins: z.array(marketplaceV2EntrySchema),
   })
-  .superRefine((manifest, context) => {
-    reportDuplicateIds(manifest.categories, context, "categories");
-    reportDuplicateIds(manifest.collections, context, "collections");
-    reportDuplicateIds(manifest.plugins, context, "plugins");
-  });
+  .superRefine(reportDuplicateManifestIds);
+
+const communityMarketplaceManifestSchema = z
+  .object({
+    ...marketplaceManifestShape,
+    plugins: z.array(communityMarketplaceEntrySchema),
+  })
+  .superRefine(reportDuplicateManifestIds);
 
 export type MarketplaceCategory = z.infer<typeof marketplaceCategorySchema>;
 export type MarketplaceV2Entry = z.infer<typeof marketplaceV2EntrySchema>;
 export type MarketplaceV2Manifest = z.infer<typeof marketplaceV2ManifestSchema>;
 
-export function parseMarketplaceV2Manifest(
+function parseManifest(
+  schema: z.ZodType<MarketplaceV2Manifest>,
   input: unknown,
 ): MarketplaceV2Manifest {
-  const parsed = marketplaceV2ManifestSchema.safeParse(input);
+  const parsed = schema.safeParse(input);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((issue) => {
@@ -181,4 +219,16 @@ export function parseMarketplaceV2Manifest(
     throw new Error(`Invalid marketplace v2 manifest: ${issues}`);
   }
   return parsed.data;
+}
+
+export function parseMarketplaceV2Manifest(
+  input: unknown,
+): MarketplaceV2Manifest {
+  return parseManifest(communityMarketplaceManifestSchema, input);
+}
+
+export function parseBundledMarketplaceManifest(
+  input: unknown,
+): MarketplaceV2Manifest {
+  return parseManifest(marketplaceV2ManifestSchema, input);
 }
