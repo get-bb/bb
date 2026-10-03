@@ -3,7 +3,8 @@ import {
   ActionMenuSeparator,
 } from "@/components/ui/action-menu-items";
 import type { Thread } from "@bb/domain";
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
+import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -351,5 +352,32 @@ export function ThreadActionsMenu({
         />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+export function ThreadActionsLongPressMenu({
+  children,
+  thread,
+}: {
+  children: ReactNode;
+  thread: Thread;
+}) {
+  const { compactStep, setCompactStep, handleOpenChange } =
+    useThreadActionsMenuLifecycle();
+
+  return (
+    <CompactLongPressMenu
+      label="Thread actions"
+      onOpenChange={handleOpenChange}
+      items={
+        <ThreadActionsMenuItems
+          thread={thread}
+          compactStep={compactStep}
+          onCompactStepChange={setCompactStep}
+        />
+      }
+    >
+      {children}
+    </CompactLongPressMenu>
   );
 }

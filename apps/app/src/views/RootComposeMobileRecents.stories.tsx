@@ -8,6 +8,7 @@ import {
   makeThreadListEntry,
 } from "../../.ladle/story-fixtures";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
+import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 
 export default {
   title: "views/Mobile Recents",
@@ -31,7 +32,7 @@ function MobileStage({ children }: MobileStageProps) {
           }
         }
       `}</style>
-      {children}
+      <ThreadActionsProvider>{children}</ThreadActionsProvider>
     </div>
   );
 }

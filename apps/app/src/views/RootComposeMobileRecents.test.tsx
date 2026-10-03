@@ -1,13 +1,20 @@
 // @vitest-environment jsdom
 
 import type { ThreadListEntry } from "@bb/domain";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Provider, createStore } from "jotai";
 import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import { systemEnvironmentProvidersQueryKey } from "@/hooks/queries/environment-provider-queries";
 import {
@@ -16,6 +23,19 @@ import {
   RootComposeMobileRecents,
 } from "./RootComposeMobileRecents";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+
+const threadActions = vi.hoisted(() => ({
+  requestArchive: vi.fn(),
+  requestDelete: vi.fn(),
+  requestRename: vi.fn(),
+  togglePin: vi.fn(),
+  toggleRead: vi.fn(),
+  unarchiveThread: vi.fn(),
+}));
+
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => threadActions,
+}));
 
 const personalProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
@@ -108,6 +128,8 @@ function makeIdleThread(
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  vi.useRealTimers();
+  vi.clearAllMocks();
 });
 
 const NONE: ReadonlySet<string> = new Set();
@@ -657,6 +679,42 @@ describe("mobile recent thread rows", () => {
 });
 
 describe("RootComposeMobileRecents", () => {
+  it("opens thread actions on a long press without following the thread link", () => {
+    vi.useFakeTimers();
+    const thread = makeThread();
+    render(
+      <TestProviders>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <RootComposeMobileRecents
+            highlightedThreadId={null}
+            projectNamesById={new Map()}
+            providersById={new Map()}
+            showCreatingRow={false}
+            threads={[thread]}
+          />
+        </CompactViewportOverrideProvider>
+      </TestProviders>,
+    );
+    const link = screen.getByRole("link");
+    fireEvent.pointerDown(link, {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    act(() => vi.advanceTimersByTime(700));
+    fireEvent.pointerUp(link, { pointerId: 1, pointerType: "touch" });
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    fireEvent(link, click);
+    expect(click.defaultPrevented).toBe(true);
+    act(() => vi.advanceTimersByTime(500));
+    const pin = screen.getByRole("menuitem", { name: "Pin" });
+    fireEvent.pointerDown(pin, { pointerType: "touch" });
+    fireEvent.click(pin);
+    expect(threadActions.togglePin).toHaveBeenCalledWith(thread);
+  });
+
   it("shows concurrent Plan activity before the runtime spinner", () => {
     render(
       <TestProviders>
