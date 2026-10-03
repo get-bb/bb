@@ -3566,7 +3566,7 @@ describe("bridge", () => {
         ...canonicalOptions(),
         permissionMode: full ? "full" : "auto",
         permissionScope: full ? "full" : "workspace",
-        approvalReviewer: full ? "user" : "auto",
+        approvalReviewer: full ? null : "automatic",
         permissionEscalation: full ? null : "ask",
         providerOptions: {
           workflowsEnabled: false,
