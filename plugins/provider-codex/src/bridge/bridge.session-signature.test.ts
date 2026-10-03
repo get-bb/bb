@@ -189,7 +189,7 @@ it.each([
   harness.sendRequest(2, "turn/start", {
     threadId: THREAD_ID,
     providerThreadId,
-    clientRequestId: "creq_permissionstart",
+    clientRequestId: "creq_permstart2",
     input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
     options: before,
   });
@@ -198,7 +198,7 @@ it.each([
     threadId: THREAD_ID,
     providerThreadId,
     expectedTurnId: "turn-fx-1",
-    clientRequestId: "creq_permissionsteer",
+    clientRequestId: "creq_permsteer2",
     input: [{ type: "text", text: "Continue with the new permissions", mentions: [] }],
     options: after,
   });
