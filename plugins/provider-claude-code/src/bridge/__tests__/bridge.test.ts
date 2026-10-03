@@ -3551,6 +3551,89 @@ describe("bridge", () => {
     },
   );
 
+  it.each(["turn/start", "turn/steer"])(
+    "refreshes permissions before %s and preserves the conversation",
+    async (method) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+      const threadId = `thread-permissions-${method}`;
+      const options = (full: boolean) => ({
+        ...canonicalOptions(),
+        permissionMode: full ? "full" : "auto",
+        permissionScope: full ? "full" : "workspace",
+        approvalReviewer: full ? "user" : "auto",
+        permissionEscalation: full ? null : "ask",
+        providerOptions: {
+          workflowsEnabled: false,
+          sandboxEnabled: true,
+          additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
+        },
+      });
+
+      try {
+        bridge.sendRequest(1, "thread/start", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options: options(false),
+        });
+        await bridge.waitForResponse(1);
+        expect(getLatestQueryOptions().permissionMode).toBe("auto");
+
+        bridge.sendRequest(2, "turn/start", {
+          ...canonicalTurnParams({ threadId, input: [{ type: "text", text: "first" }] }),
+          options: options(false),
+        });
+        await readNextPrompt(getLatestQueryCall());
+        await bridge.waitForResponse(2);
+        if (method === "turn/start") {
+          queries[0]?.emit(createSuccessfulResultMessage(threadId));
+          await bridge.flushWork();
+        }
+
+        for (const [id, full] of [[3, true], [4, false]] as const) {
+          bridge.sendRequest(id, method, {
+            ...canonicalTurnParams({
+              threadId,
+              expectedTurnId: "active-turn",
+              input: [{ type: "text", text: `permissions ${id}` }],
+            }),
+            options: options(full),
+          });
+          await bridge.flushWork();
+          expect(queries).toHaveLength(id - 1);
+          expect(queries[id - 3]?.close).toHaveBeenCalled();
+          expect(getLatestQueryOptions()).toMatchObject({
+            resume: threadId,
+            permissionMode: full ? "bypassPermissions" : "auto",
+          });
+          if (full) {
+            expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
+          } else {
+            expect(getLatestQueryOptions().sandbox).toMatchObject({
+              enabled: true,
+              filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+            });
+          }
+          await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(`permissions ${id}`);
+          await bridge.waitForResponse(id);
+          if (method === "turn/start") {
+            queries.at(-1)?.emit(createSuccessfulResultMessage(threadId));
+            await bridge.flushWork();
+          }
+        }
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
+
   it("restarts the Claude process before the next turn when the sandbox setting changes", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
