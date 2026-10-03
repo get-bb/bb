@@ -1852,6 +1852,8 @@ async function handleTurnStart(
         ),
         options: decoded.sessionOptions,
       });
+      const previousPermissions = session.turnPermissionSettings;
+      session.turnPermissionSettings = permissionSettings;
       result = await connection.request({
         method: "turn/start",
         params: {
@@ -1865,8 +1867,12 @@ async function handleTurnStart(
         },
         resultSchema: ignoredChildResultSchema,
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      }).catch((error: unknown) => {
+        if (session.turnPermissionSettings === permissionSettings) {
+          session.turnPermissionSettings = previousPermissions;
+        }
+        throw error;
       });
-      session.turnPermissionSettings = permissionSettings;
     }
     sendResult(id, { threadId: params.threadId });
     settleAcceptedDispatch({
