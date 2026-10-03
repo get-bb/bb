@@ -376,12 +376,12 @@ function AccountUsage({
             providerKind="agent"
             provider={account}
             fallback="Bot"
-            className="size-3.5 shrink-0"
+            className="size-3 shrink-0"
           />
         ) : null}
         <h3
           title={title}
-          className="min-w-0 flex-1 truncate text-xs text-sidebar-foreground"
+          className="min-w-0 flex-1 truncate text-2xs font-medium text-sidebar-foreground"
         >
           {title}
         </h3>
