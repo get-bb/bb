@@ -8,6 +8,10 @@ import { Command, Option } from "commander";
 import { z } from "zod";
 import { derivePluginId, jsonValueSchema } from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
+import {
+  pluginInstallBadge,
+  type PluginInstallBadge,
+} from "@bb/domain/plugin-install-badge";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
@@ -67,6 +71,13 @@ export function resolveNewPluginTarget(name: string): NewPluginTarget | null {
     packageName,
     directoryName: `bb-plugin-${pluginId}`,
   };
+}
+
+function pluginInstallBadgeLabel(badge: PluginInstallBadge | null): string {
+  if (badge === null) return "";
+  if (badge.kind === "builtin") return "Built in";
+  if (badge.kind === "new") return "New";
+  return badge.installs.toLocaleString("en-US");
 }
 
 function toolchainBaseDir(): string {
@@ -889,19 +900,17 @@ export function registerPluginCommands(
           return;
         }
         const showMarketplace = results.some((result) => !result.official);
-        const showInstalls = results.some((result) => result.installs !== null);
-        const rows = results.map((result) => [
+        const now = Date.now();
+        const badges = results.map((result) =>
+          pluginInstallBadgeLabel(pluginInstallBadge(result, now)),
+        );
+        const showInstalls = badges.some((badge) => badge !== "");
+        const rows = results.map((result, index) => [
           result.displayName,
           result.description,
           result.category ?? "Uncategorized",
           ...(showMarketplace ? [result.marketplaceDisplayName] : []),
-          ...(showInstalls
-            ? [
-                result.installs === null
-                  ? ""
-                  : result.installs.toLocaleString("en-US"),
-              ]
-            : []),
+          ...(showInstalls ? [badges[index]] : []),
           result.installed
             ? "✓ installed"
             : !result.compatible

@@ -196,6 +196,29 @@ describe("bb plugin catalog", () => {
     expect(output).toContain("4,210");
   });
 
+  it("labels built-in and new listings like the plugin store", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        results: [
+          { ...searchResult, installedByDefault: true, installs: 2 },
+          {
+            ...searchResult,
+            entryId: "notes",
+            pluginId: "notes",
+            displayName: "Notes",
+            installs: 3,
+            publishedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    await runCommand(["plugin", "search", "lin"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Built in");
+    expect(output).toContain("New");
+  });
+
   it("outputs raw catalog search results as JSON", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json({ results: [searchResult] }));
 

@@ -504,6 +504,13 @@ them itself rather than repeating a publisher's claim.
 BB Official entries use the same counts. bb finds each count in the BB
 Community `stats.json` file by the plugin id.
 
+The store, getbb.app, and the Installs column of `bb plugin search` turn
+each count into the same badge. Plugins that ship installed with bb show
+"Built in". A count of 25 or more shows as is. Below 25, a plugin published
+in the last 30 days shows "New", and an older one shows its real count.
+`bb plugin search --json` returns the raw `installs` and
+`installedByDefault` fields.
+
 Third-party marketplaces
 
 Anyone can host a marketplace manifest. Add one with its https manifest URL,
