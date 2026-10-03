@@ -173,3 +173,41 @@ it.each(["start", "resume", "fork"] as const)(
   },
   30_000,
 );
+
+it.each([
+  { before: FULL_ACCESS_SESSION_OPTIONS, after: autoAskSessionOptions, sandbox: "workspaceWrite" },
+  { before: autoAskSessionOptions, after: FULL_ACCESS_SESSION_OPTIONS, sandbox: "dangerFullAccess" },
+])("applies $sandbox permissions before accepting a steer", async ({ before, after, sandbox }) => {
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: before,
+  });
+  const started = await harness.waitForResponse(1);
+  const { providerThreadId } = z.object({ providerThreadId: z.string() }).parse(started.result);
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_permissionstart",
+    input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
+    options: before,
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  harness.sendRequest(3, "turn/steer", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    expectedTurnId: "turn-fx-1",
+    clientRequestId: "creq_permissionsteer",
+    input: [{ type: "text", text: "Continue with the new permissions", mentions: [] }],
+    options: after,
+  });
+  expect((await harness.waitForResponse(3)).error).toBeUndefined();
+  const requests = recordedRequests();
+  expect(requests.filter((entry) => entry.method === "turn/steer")).toEqual([]);
+  expect(requests.filter((entry) => entry.method === "turn/interrupt")).toHaveLength(1);
+  expect(requests.filter((entry) => entry.method === "turn/start").at(-1)?.params).toMatchObject({
+    threadId: providerThreadId,
+    sandboxPolicy: { type: sandbox },
+  });
+}, 30_000);
