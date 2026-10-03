@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import { flattenPromptInputGroups } from "@bb/domain";
+import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import {
   COMPETING_TURN_ERROR_CODE,
   type HostDaemonCommandResult,
@@ -60,6 +61,7 @@ export async function deleteThreadStorage(
     path.join(options.threadStorageRootPath, command.threadId),
     "Thread storage path escapes the storage root",
   );
+  await killProcessesWithCwdUnder({ directory: storagePath });
   await fs.rm(storagePath, { recursive: true, force: true });
 }
 

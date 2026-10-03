@@ -335,6 +335,12 @@ Both skip a default set of dependency and cache directories such as
 or exact root-relative paths using `/` separators. Use
 `--json` for metadata and machine-readable results.
 
+`bb file remove --recursive` and `sdk.files.remove({ recursive: true, ... })`
+stop processes whose working directories are inside the directory before
+deleting it, including processes in nested checkouts. This uses the same
+SIGTERM grace period and SIGKILL fallback as worktree removal on macOS and
+Linux; Windows does not enumerate process working directories.
+
 Server-backed sidebar preferences
 
 Sidebar layout lives on the server in a keyed, revisioned registry so every

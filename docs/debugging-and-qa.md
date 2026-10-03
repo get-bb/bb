@@ -660,6 +660,13 @@ behavior. Keep temporary review stories and fixtures out of the final diff.
 
 ## Pull Request Status And Daemon Compatibility
 
+Host-daemon protocol 228 makes `thread.storage.delete` and recursive directory
+removal through `host.remove_path` stop processes with working directories
+inside the target before deleting files. The latter also covers orphaned
+thread storage cleanup and CLI/SDK file removal. This uses the worktree removal
+process sweep on macOS and Linux; Windows does not enumerate process working
+directories. Older daemons must update to receive these cleanup semantics.
+
 Host-daemon protocol 226 opens the service tier: `serviceTier` in execution
 options is any non-empty tier id instead of `fast` or `default`, and
 `model/list` entries may carry `supportedServiceTiers`. A daemon on 225 rejects

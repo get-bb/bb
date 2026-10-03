@@ -484,3 +484,9 @@ Lifecycle ownership:
   recursively deletes them after runtime/storage cleanup. Failed cleanup retries
   durably. Unarchive the owner before explicitly restoring a dependent. Stop does
   not cascade. Sidebar parents and ordinary forks retain their existing policies.
+
+Thread storage deletion and orphan cleanup stop processes whose working
+directories are inside that storage before removing files, including dev
+servers in nested checkouts. On macOS and Linux this uses the same SIGTERM
+grace period and SIGKILL fallback as worktree removal. Windows does not
+enumerate process working directories.
