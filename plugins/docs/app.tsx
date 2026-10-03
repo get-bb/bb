@@ -2405,7 +2405,7 @@ export default definePluginApp((app) => {
         panelId: "docs",
         id: "navigation",
         title: "Navigation",
-        icon: "ListView",
+        icon: "FileText",
         component: NotesNavigationPanel,
         layout: "flush",
       },
