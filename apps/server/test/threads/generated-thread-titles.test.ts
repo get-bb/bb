@@ -807,8 +807,21 @@ describe("generated thread titles", () => {
     });
   });
 
+  it("sends task details beyond the fallback title limit to the title service", async () => {
+    mockThreadMetadata({ title: "Show plan completion burndown" });
+    await withTestHarness(async (harness) => {
+      const task =
+        'For the plan graph tooling, can we show in the background of the plan graph visualizer the "burndown" chart? Show how many plan items have been completed over time, from the beginning of the ledger to now.';
+      await generateThreadMetadataWithOutcome(harness.deps, {
+        input: textInput(task),
+        threadId: "thr_full_task_metadata",
+      });
+      expect(sentPrompt()).toContain(`Task:\n${task}`);
+    });
+  });
+
   it.each(["调", "𠮷"])(
-    "clamps the task after stripping commands without splitting %s",
+    "preserves the full task after stripping commands containing %s",
     async (character) => {
       mockThreadMetadata({ title: "Investigate the reported issue" });
       await withTestHarness(async (harness) => {
@@ -822,30 +835,32 @@ describe("generated thread titles", () => {
         expect(prompt).toContain(
           "The prompt invokes these commands or skills: /review.",
         );
-        expect(prompt).toContain(`Task:\n${character.repeat(38)}...`);
-        expect(prompt).not.toContain(character.repeat(39));
+        expect(prompt).toContain(`Task:\n${character.repeat(60)}`);
         expect(input).toEqual(original);
       });
     },
   );
 
-  it("titles a bare skill invocation from what the skill does", async () => {
-    mockThreadMetadata({ title: "Generate the weekly report" });
-    await withTestHarness(async (harness) => {
-      await expect(
-        generateThreadMetadataWithOutcome(harness.deps, {
-          input: skillInput("weekly-report"),
-          threadId: "thr_bare_skill_metadata",
-        }),
-      ).resolves.toMatchObject({
-        metadata: { title: "Generate the weekly report" },
+  it.each(["weekly-report", `generate-${"weekly-".repeat(12)}report`])(
+    "titles a bare skill invocation %s from what the skill does",
+    async (name) => {
+      mockThreadMetadata({ title: "Generate the weekly report" });
+      await withTestHarness(async (harness) => {
+        await expect(
+          generateThreadMetadataWithOutcome(harness.deps, {
+            input: skillInput(name),
+            threadId: "thr_bare_skill_metadata",
+          }),
+        ).resolves.toMatchObject({
+          metadata: { title: "Generate the weekly report" },
+        });
+        expect(sentPrompt()).toContain(
+          `The prompt invokes these commands or skills: /${name}.`,
+        );
+        expect(sentPrompt()).toContain(`Task:\n/${name}`);
       });
-      expect(sentPrompt()).toContain(
-        "The prompt invokes these commands or skills: /weekly-report.",
-      );
-      expect(sentPrompt()).toContain("Task:\n/weekly-report");
-    });
-  });
+    },
+  );
 
   it("reports a failed title generation without retrying the same service", async () => {
     completeTitle.mockRejectedValue(new Error("metadata failed"));
