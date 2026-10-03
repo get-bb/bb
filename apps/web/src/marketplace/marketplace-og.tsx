@@ -11,7 +11,7 @@ import {
 
 const INK = "#333333";
 const DIM = "#6b6b6b";
-const MUTED = "#8a8a8a";
+const MUTED = "#767676";
 const BORDER = "#e4e4e4";
 const ACCENT = "#4075aa";
 const RECESSED = "#f1f1f1";
