@@ -200,7 +200,7 @@ export function marketplaceOgCard(
             <div
               style={{
                 display: "flex",
-                marginBottom: 16,
+                marginBottom: 28,
                 fontSize: 20,
                 color: ACCENT,
               }}
