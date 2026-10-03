@@ -468,7 +468,10 @@ function applySandboxSetting(
     return;
   }
   sessionOptions.sandboxEnabled = enabled;
-  const sandbox = buildWorkspaceWriteSandbox(sessionOptions);
+  const sandbox = buildWorkspaceWriteSandbox({
+    ...sessionOptions,
+    permissionMode: attachment.approvedPlanPermissionMode,
+  });
   if (sandbox) {
     attachment.sessionOptions.sandbox = sandbox;
   } else {
