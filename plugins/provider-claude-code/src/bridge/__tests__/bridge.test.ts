@@ -2152,23 +2152,24 @@ describe("bridge", () => {
       });
       await bridge.waitForResponse(1);
 
+      const options = {
+        ...canonicalOptions(),
+        permissionMode: mode,
+        permissionScope: full ? "full" : "workspace",
+        approvalReviewer: full ? null : mode === "auto" ? "automatic" : "user",
+        permissionEscalation: full ? null : "ask",
+        providerOptions: {
+          workflowsEnabled: false,
+          sandboxEnabled: true,
+          additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
+        },
+      };
       bridge.sendRequest(10, "turn/start", {
         ...canonicalTurnParams({
           threadId,
           input: [{ type: "text", text: "Continue planning with the new permission preset after approval" }],
         }),
-        options: {
-          ...canonicalOptions(),
-          permissionMode: mode,
-          permissionScope: full ? "full" : "workspace",
-          approvalReviewer: full ? null : mode === "auto" ? "automatic" : "user",
-          permissionEscalation: full ? null : "ask",
-          providerOptions: {
-            workflowsEnabled: false,
-            sandboxEnabled: true,
-            additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
-          },
-        },
+        options,
       });
       await bridge.flushWork();
       expect(getLatestQueryOptions().permissionMode).toBe("plan");
@@ -2220,6 +2221,30 @@ describe("bridge", () => {
         nativeMode,
       );
       expect(queries).toHaveLength(2);
+
+      if (!full) {
+        for (const [id, sandboxEnabled] of [[11, false], [12, true]] as const) {
+          bridge.sendRequest(id, "turn/start", {
+            ...canonicalTurnParams({ threadId, input: [{ type: "text", text: "Update sandbox after approval" }] }),
+            options: {
+              ...options,
+              providerOptions: { ...options.providerOptions, sandboxEnabled },
+            },
+          });
+          await bridge.flushWork();
+          expect(getLatestQueryOptions().permissionMode).toBe(nativeMode);
+          if (sandboxEnabled) {
+            expect(getLatestQueryOptions().sandbox).toMatchObject({
+              enabled: true,
+              filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+            });
+          } else {
+            expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
+          }
+          await readNextPrompt(getLatestQueryCall());
+          await bridge.waitForResponse(id);
+        }
+      }
 
       await stopBridgeThread({ bridge, queries: queries.slice(-1), threadId });
     } finally {
