@@ -740,6 +740,28 @@ describe("bb-app launcher", () => {
     );
   });
 
+  it("passes opt-in performance diagnostics through to the launched server", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-performance-"));
+    try {
+      for (const enabled of [false, true]) {
+        const runtime = await resolveBbAppRuntimeState({
+          entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js")
+            .href,
+          env: { BB_DATA_DIR: dataDir },
+          homeDir: "/home/tester",
+          options: parseLauncherArgs(enabled ? ["--perf-diagnostics"] : [])
+            .options,
+          serverUrlMode: "local",
+        });
+        expect(runtime.serverEnv.BB_PERF_DIAGNOSTICS).toBe(
+          enabled ? "1" : undefined,
+        );
+      }
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("reports the server bind host separately from the loopback connection URL", async () => {
     const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));

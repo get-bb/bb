@@ -224,6 +224,13 @@ export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
   parse: parseStringEnvValue,
 });
 
+export const BB_PERF_DIAGNOSTICS_ENV = defineEnvVar<boolean>({
+  description:
+    "Permit server performance diagnostics when the performanceDiagnostics experiment is on. Requires restart.",
+  name: "BB_PERF_DIAGNOSTICS",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
   description:
     "Anonymous usage telemetry (app starts, thread creation counts, user message counts, and plugin installs). Set to false to opt out.",

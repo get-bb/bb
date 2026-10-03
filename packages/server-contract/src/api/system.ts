@@ -228,6 +228,7 @@ export const systemConfigResponseSchema = z.object({
   defaultKeybindings: appDefaultKeybindingsSchema,
   keybindingOverrides: appKeybindingOverridesSchema,
   experiments: experimentsSchema,
+  performanceDiagnosticsAvailable: z.boolean(),
   appearance: appThemeSchema,
   customThemes: z.array(z.string()),
   pluginThemes: z.array(pluginThemeMetaSchema),

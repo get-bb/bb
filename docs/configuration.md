@@ -1934,3 +1934,21 @@ Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on
 
 The publishing workflow verifies the signed APK and publishes both the checksum-named
 asset and the stable `bb-android.apk` alias, then `latest.json`.
+
+### Server performance diagnostics
+
+`BB_PERF_DIAGNOSTICS=1` permits opt-in CPU profiling and detailed server
+performance logs; the default is false. Restart to change it. The launcher
+flag `pnpm start --perf-diagnostics` (also `pnpm start:worktree` and `bb-app`)
+grants permission for that launch; the experiment must also be on. See [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics)
+for capture retention, overhead, and interpretation.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.

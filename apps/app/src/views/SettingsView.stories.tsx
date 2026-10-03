@@ -296,6 +296,7 @@ function ExperimentsStory() {
     <ExperimentsSettingsSection
       disabled={false}
       experiments={state.experiments}
+      performanceDiagnosticsAvailable={true}
       onExperimentChange={(key, enabled) =>
         state.setExperiments((current) => ({ ...current, [key]: enabled }))
       }

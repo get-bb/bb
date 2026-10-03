@@ -649,3 +649,75 @@ serve workspace RPCs until it updates and reconnects. Auto-update-enabled
 older daemons install the server's matching bb-app artifact; disabled or failed
 updates leave the machine disconnected until a manual update succeeds. This
 is an intentional version gate, not backward-compatible field defaulting.
+
+## Opt-in server performance diagnostics
+
+Run `pnpm start --perf-diagnostics` (or `pnpm start:worktree --perf-diagnostics`)
+when investigating slowness. `bb-app --perf-diagnostics` uses the same launcher
+option. The equivalent startup setting is `BB_PERF_DIAGNOSTICS=1`; it defaults
+to false and requires a server restart. Remove the flag/setting and restart to
+turn it off. This does not enable profiling for the daemon or other servers.
+
+When both gates are on, the mode logs database operations taking at least 25 ms, API requests taking
+at least 100 ms, and event-loop stalls of at least 100 ms. Every five seconds,
+`Server performance sample` records process and main-thread CPU time, loop
+utilization/delay, GC duration/count/max, and memory. CPU values are totals for
+that interval, not attribution to an individual request. GC callbacks can be
+delayed by a blocked loop. These measurements distinguish CPU pressure from
+elapsed-time stalls but do not prove a particular OS scheduling or I/O cause.
+
+Continuous V8 CPU sampling at 1 ms writes a `.cpuprofile` every 30 seconds to
+`$BB_DATA_DIR/logs/performance/`. Profiles are retained for up to 12 hours with a total cap of 1 GB
+(1,000,000,000 bytes), deleting oldest captures first when either limit is
+reached. Each file is limited to 12 MiB (oversized captures are discarded).
+Cleanup runs when collection starts and before each save, including captures
+from previous sessions. Space for the pending file is reserved inside the
+total cap. Turning collection off leaves saved captures until collection
+starts again; their age does not reset. Graceful
+shutdown saves the partial window; a crash can lose the current window.
+`Server CPU profile saved` logs its path, PID, and UTC start/end times. Copy
+relevant files before age or size retention removes them. Load a profile in Chrome
+DevTools' JavaScript profiler to inspect sampled stacks. No inspector network
+port is opened. Save records explicitly report `sampleTimeBasis: elapsed` and
+`nativeFramesMayIncludeWaiting: true`. Sampling can miss short calls and does not identify native
+I/O waits precisely.
+
+Profiling, serialization, and extra logging add overhead, so leave this off
+for routine operation. Files use private permissions and can contain local
+paths and function names; inspect before sharing. Existing logs retain their
+normal rotation policy. No request bodies or SQL bindings are added by this
+mode. A capture failure is logged and disables CPU capture for that process;
+summary logging continues. Profiles already saved remain after disabling it.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.
+
+### Diagnose a captured stall
+
+1. Record the affected request path and approximate UTC time. Find its
+   `Slow API request` and nearby `Event loop stalled` records. For timelines,
+   match the thread ID to `Thread timeline build blocked the event loop` and
+   inspect the stage timings. `inFlightWorkAtObservation` can name an unrelated asynchronous
+   long poll; it is not proof of what blocked the loop. Compare `longestSynchronousWork`
+   and its `longestSynchronousWorkWallMs` / `longestSynchronousWorkCpuMs`
+   measurements with the profile stacks instead.
+2. Find the `Server CPU profile saved` interval covering that time and PID.
+   Copy the file before rotation overwrites it. In the JavaScript profiler,
+   select the affected time window and inspect the bottom-up view and caller
+   stack. Packaged captures name functions and bundled JavaScript locations;
+   match function names against the exact source revision used to build it.
+3. Compare sampled stacks with `mainThreadCpuMs`, GC totals and SQL
+   `cpuDurationMs`. A native SQLite call may appear throughout an elapsed wait
+   without consuming equivalent CPU. A slow SQL operation with very little
+   CPU indicates waiting, but does not identify the lock owner or prove disk
+   I/O. Interval CPU totals include other requests and background work.
+4. Repeat with a small control workload. Expected long polls can generate
+   slow-request records without blocking the event loop; require corroborating
+   loop delay, stage timings or sampled execution before calling them stalls.

@@ -240,6 +240,9 @@ describe("run-dev", () => {
 
   it("runs the production-style source launcher for worktree start", () => {
     const command = createStartWorktreeCommand();
+    expect(createStartWorktreeCommand(false, true).args).toContain(
+      "--perf-diagnostics",
+    );
 
     expect(command.command).toBe(process.execPath);
     expect(command.args).toEqual([

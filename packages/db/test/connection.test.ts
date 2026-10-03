@@ -67,6 +67,30 @@ describe("createConnection", () => {
     }
   });
 
+  it("applies live thresholds to statements prepared before the setting changed", () => {
+    const logger = new CapturingSlowQueryLogger();
+    let thresholdMs = Infinity;
+    const db = createConnection(":memory:", {
+      slowQueryLogger: logger,
+      slowQueryThresholdMs: () => thresholdMs,
+    });
+    migrate(db);
+    try {
+      const statement = db.$client.prepare("SELECT 1");
+      statement.get();
+      expect(logger.infoLogs).toHaveLength(0);
+      thresholdMs = 0;
+      statement.get();
+      expect(getOnlyInfoLog(logger).fields.thresholdMs).toBe(0);
+      logger.clear();
+      thresholdMs = Infinity;
+      statement.get();
+      expect(logger.infoLogs).toHaveLength(0);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it.each(["default", "deferred", "immediate", "exclusive"] as const)(
     "times complete %s transactions and exec while preserving rollback and receivers",
     (mode) => {

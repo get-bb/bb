@@ -24,6 +24,7 @@ import { createAppUpdateService } from "./services/system/app-update.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createLauncherChannel } from "./services/system/launcher-channel.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
+import { startGatedPerformanceDiagnostics } from "./services/system/performance-diagnostics.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
   runPeriodicSweeps,
@@ -107,7 +108,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
   });
+  let diagnosticsEnabled = () => false;
   const db = initDb(serverConfig.databasePath, {
+    slowQueryThresholdMs: () => (diagnosticsEnabled() ? 25 : 100),
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
   });
@@ -156,6 +159,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     hostDaemonPort: serverConfig.BB_HOST_DAEMON_PORT,
     inheritedSkillsRootPaths: serverConfig.BB_INHERITED_SKILLS_ROOTS,
     isDevelopment: !isProduction,
+    performanceDiagnosticsAvailable: serverConfig.BB_PERF_DIAGNOSTICS,
     serverPort: serverConfig.BB_SERVER_PORT,
     sharedSkillRoots: { user: [], project: [] },
   };
@@ -288,6 +292,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         retireProcess: retireServerProcess,
       },
       staticDir,
+      performanceDiagnosticsEnabled: () => diagnosticsEnabled(),
     },
   );
   disconnectImportedDaemonSessions(
@@ -308,7 +313,18 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     },
     { sessions: serverImport.importedDaemonSessions },
   );
-  const eventLoopStallMonitor = startEventLoopStallMonitor({ logger });
+  const performanceDiagnostics = await startGatedPerformanceDiagnostics({
+    allowed: serverConfig.BB_PERF_DIAGNOSTICS,
+    dataDir: serverConfig.BB_DATA_DIR,
+    db,
+    hub,
+    logger,
+  });
+  diagnosticsEnabled = performanceDiagnostics.isEnabled;
+  const eventLoopStallMonitor = startEventLoopStallMonitor({
+    logger,
+    thresholdMs: () => (diagnosticsEnabled() ? 100 : 500),
+  });
   const stopDaemonLivenessChecks = startDaemonLivenessChecks({
     config: runtimeConfig,
     db,
@@ -420,6 +436,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();
       eventLoopStallMonitor.stop();
+      await performanceDiagnostics.stop();
       stopDaemonLivenessChecks();
       if (sweepInterval !== null) {
         clearInterval(sweepInterval);

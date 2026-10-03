@@ -31,6 +31,7 @@ export interface ServerRuntimeConfig {
   hostDaemonPort: number;
   inheritedSkillsRootPaths: string[];
   isDevelopment: boolean;
+  performanceDiagnosticsAvailable: boolean;
   marketplaceUrl: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;

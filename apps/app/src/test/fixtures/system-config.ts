@@ -21,6 +21,7 @@ export function makeSystemConfig(
     defaultKeybindings: [],
     keybindingOverrides: [],
     experiments: defaultExperiments,
+    performanceDiagnosticsAvailable: false,
     appearance: defaultAppTheme,
     customThemes: [],
     pluginThemes: [],
