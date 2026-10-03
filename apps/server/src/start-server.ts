@@ -35,7 +35,10 @@ import {
   type ProviderRegistryService,
 } from "./services/providers/provider-registry.js";
 import type { PluginService } from "./services/plugins/plugin-service.js";
-import { createTelemetryService } from "./services/system/telemetry.js";
+import {
+  appInstallFromServerConfig,
+  createTelemetryService,
+} from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerLogger, ServerRuntimeConfig } from "./types.js";
@@ -195,6 +198,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
 
   const telemetry = await createTelemetryService({
     apiKey: serverConfig.BB_POSTHOG_API_KEY,
+    appInstall: appInstallFromServerConfig(serverConfig),
     appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
     dataDir: serverConfig.BB_DATA_DIR,

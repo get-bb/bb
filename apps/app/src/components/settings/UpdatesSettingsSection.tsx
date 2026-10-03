@@ -218,26 +218,31 @@ export function UpdateActionButton({
   );
 }
 
-const ROW_GRID =
-  "grid min-w-0 grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-3";
-
 const ROW_SPACING = "py-2 first:pt-0 last:pb-0";
 
 function UpdatesRow({
   leading,
   children,
-  className,
+  actions,
 }: {
-  leading?: ReactNode;
+  leading: ReactNode;
   children: ReactNode;
-  className?: string;
+  actions: ReactNode;
 }) {
   return (
-    <div className={cn(ROW_GRID, ROW_SPACING, "text-sm", className)}>
-      <span className="flex size-6 shrink-0 items-center justify-center">
-        {leading}
+    <div
+      className={cn(
+        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm",
+        ROW_SPACING,
+      )}
+    >
+      <span className="flex min-w-0 items-start gap-3">
+        <span className="flex h-5 w-6 shrink-0 items-center justify-center">
+          {leading}
+        </span>
+        {children}
       </span>
-      {children}
+      {actions}
     </div>
   );
 }
@@ -820,19 +825,26 @@ export function BbAppUpdateRows({
   ) : (
     <RowStateControl state="up-to-date" />
   );
-  const row = (name: ReactNode, indicator: ReactNode, caption?: ReactNode) => (
+  const row: BbAppRowRenderer = (name, indicator, caption, description) => (
     <UpdatesRow
       leading={
         <span data-bb-update-role="app" aria-hidden>
           <BbLogo className="size-4" />
         </span>
       }
+      actions={<RowActions>{indicator}</RowActions>}
     >
-      <span className="flex min-w-0 items-baseline gap-2">
-        {name}
-        {caption}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 items-baseline gap-2">
+          {name}
+          {caption}
+        </span>
+        {description === undefined ? null : (
+          <span className="mt-0.5 text-xs leading-snug text-muted-foreground">
+            {description}
+          </span>
+        )}
       </span>
-      <RowActions>{indicator}</RowActions>
     </UpdatesRow>
   );
   if (isDesktop && desktopInfo === null) {
@@ -947,6 +959,7 @@ type BbAppRowRenderer = (
   name: ReactNode,
   indicator: ReactNode,
   caption?: ReactNode,
+  description?: ReactNode,
 ) => ReactNode;
 
 function InAppUpdateRow({
@@ -970,6 +983,14 @@ function InAppUpdateRow({
   const name = (
     <RowName
       name={rowName}
+      detail={
+        status.support.kind === "supported" &&
+        status.support.mode === "source" ? (
+          <span className="shrink-0 text-2xs text-muted-foreground">
+            Source checkout
+          </span>
+        ) : undefined
+      }
       current={formatAppUpdateRevision(status.current)}
       latest={available === null ? null : formatAppUpdateTarget(available)}
     />
@@ -1033,9 +1054,8 @@ function InAppUpdateRow({
       ) : (
         settledStatus
       ),
-      <span className="min-w-0 truncate text-xs text-muted-foreground">
-        {status.blocked.message}
-      </span>,
+      undefined,
+      status.blocked.message,
     );
   }
   if (updateButton !== null) {

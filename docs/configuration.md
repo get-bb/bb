@@ -202,8 +202,9 @@ app's own relaunch update) separately. `pnpm dev`, `bb-server`, and a standalone
 `bb-host-daemon` do not offer in-app updates. Updating restarts bb,
 which interrupts running threads; the app and CLI ask first.
 
-`BB_APP_UPDATE_MODE` is an internal marker the launcher passes to its server
-child; do not set it yourself.
+`BB_APP_UPDATE_MODE`, `BB_APP_INSTALL_KIND`, `BB_APP_SOURCE_ORIGIN`, and
+`BB_APP_SOURCE_COMMIT` are internal markers the launcher passes to its server
+child; do not set them yourself.
 
 ## Common Keys
 

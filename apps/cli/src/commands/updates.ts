@@ -172,7 +172,7 @@ function printUpdatesTable(args: {
 function formatRevision(revision: SystemAppUpdateRevision): string {
   return revision.commit === null
     ? revision.version
-    : `${revision.version} (${revision.commit.slice(0, 10)})`;
+    : `source checkout ${revision.commit.slice(0, 10)}`;
 }
 
 function formatAvailableTarget(status: SystemAppUpdateStatus): string | null {

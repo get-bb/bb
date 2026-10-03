@@ -92,7 +92,15 @@ import {
   type AppRevision,
   type AppUpdateMode,
 } from "@bb/config/app-update";
+import {
+  APP_INSTALL_KIND_ENV_NAME,
+  APP_SOURCE_COMMIT_ENV_NAME,
+  APP_SOURCE_ORIGIN_ENV_NAME,
+  appInstallEnv,
+  type AppInstall,
+} from "@bb/config/app-install";
 import { z } from "zod";
+import { resolveAppInstall } from "./app-install.js";
 import {
   createLauncherAppUpdateController,
   type LauncherAppUpdateController,
@@ -606,6 +614,7 @@ interface CreateSharedEnvArgs {
 interface CreateServerEnvArgs {
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
+  install: AppInstall;
 }
 
 interface CreateServerBaseEnvArgs {
@@ -2465,9 +2474,27 @@ function resolveServerAppSurface(env: NodeJS.ProcessEnv): AppSurface {
   return parseAppSurface(env[APP_SURFACE_ENV_NAME]) ?? APP_SURFACE_WEB;
 }
 
+function resolveOwnAppInstall(args: {
+  context: BbAppStartContext;
+  env: NodeJS.ProcessEnv;
+}): Promise<AppInstall> {
+  return resolveAppInstall({
+    desktop: resolveServerAppSurface(args.env) === APP_SURFACE_DESKTOP,
+    runner: runCommand,
+    sourceRoot: runsFromSourceCheckout(import.meta.url)
+      ? resolve(args.context.packageRoot, "..", "..")
+      : null,
+  });
+}
+
 export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
+  const inheritedEnv = { ...args.env };
+  delete inheritedEnv[APP_INSTALL_KIND_ENV_NAME];
+  delete inheritedEnv[APP_SOURCE_COMMIT_ENV_NAME];
+  delete inheritedEnv[APP_SOURCE_ORIGIN_ENV_NAME];
   return {
-    ...args.env,
+    ...inheritedEnv,
+    ...appInstallEnv(args.install),
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
     BB_CLI: join(args.context.daemonBundleDir, "bb"),
@@ -2746,6 +2773,10 @@ Exits with code 3 without starting when the server on this data directory moved 
     env: createServerEnv({
       context: runtime.context,
       env: runtime.serverEnv,
+      install: await resolveOwnAppInstall({
+        context: runtime.context,
+        env: runtime.serverEnv,
+      }),
     }),
   });
   process.exitCode = toExitCode(await waitForProcessExit(childProcess));
@@ -4153,6 +4184,10 @@ export async function runBbApp(
                   ...fullStackRuntime.serverEnv,
                   [APP_UPDATE_MODE_ENV_NAME]: appUpdateMode,
                 },
+          install: await resolveOwnAppInstall({
+            context,
+            env: fullStackRuntime.serverEnv,
+          }),
         });
         const sharedEnv = createSharedEnv({
           context,

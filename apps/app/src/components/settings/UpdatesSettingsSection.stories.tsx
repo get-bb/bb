@@ -520,6 +520,38 @@ export function UpdateStates() {
         </State>
 
         <State
+          name="Source checkout update available"
+          note="A clean pnpm start checkout on main shows commits instead of a release version and offers to fast-forward."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={NPM_VERSION}
+              appUpdate={{
+                ...IN_APP_UPDATE,
+                available: {
+                  channel: "main",
+                  commit: "76a1ebcaf5c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5",
+                  commitCount: 54,
+                  subjects: ["Restore closed right-panel tabs"],
+                  version: "0.45.0",
+                },
+                current: {
+                  commit: "1b973d5584e10963018f4ae7d9c001e8ec09b99b",
+                  version: "0.44.0",
+                },
+                support: { kind: "supported", mode: "source" },
+              }}
+              desktopInfo={null}
+              isDesktop={false}
+              onApplyAppUpdate={noop}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+              onShowAppUpdateResult={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
           name="Source checkout blocked"
           note="A pnpm start checkout explains why it cannot fast-forward instead of offering a button."
         >

@@ -7,6 +7,15 @@ import {
   appUpdateModeSchema,
   type AppUpdateMode,
 } from "./app-update.js";
+import {
+  APP_INSTALL_KIND_ENV_NAME,
+  APP_SOURCE_COMMIT_ENV_NAME,
+  APP_SOURCE_ORIGIN_ENV_NAME,
+  appInstallKindSchema,
+  appSourceOriginSchema,
+  type AppInstallKind,
+  type AppSourceOrigin,
+} from "./app-install.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
   APP_SURFACE_ENV_NAME,
@@ -59,6 +68,26 @@ function parseAppUpdateModeEnvValue(args: EnvVarParseArgs): AppUpdateMode {
   }
   throw new Error(
     `${args.name} must be one of ${appUpdateModeSchema.options.join(", ")}`,
+  );
+}
+
+function parseAppInstallKindEnvValue(args: EnvVarParseArgs): AppInstallKind {
+  const parsed = appInstallKindSchema.safeParse(args.value);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error(
+    `${args.name} must be one of ${appInstallKindSchema.options.join(", ")}`,
+  );
+}
+
+function parseAppSourceOriginEnvValue(args: EnvVarParseArgs): AppSourceOrigin {
+  const parsed = appSourceOriginSchema.safeParse(args.value);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error(
+    `${args.name} must be one of ${appSourceOriginSchema.options.join(", ")}`,
   );
 }
 
@@ -189,6 +218,27 @@ export const BB_APP_UPDATE_MODE_ENV = defineEnvVar<AppUpdateMode>({
   parse: parseAppUpdateModeEnvValue,
 });
 
+export const BB_APP_INSTALL_KIND_ENV = defineEnvVar<AppInstallKind>({
+  description:
+    "Internal marker the bb-app launcher hands its server child for telemetry attribution: desktop for the desktop app, npm for package installs, source for pnpm start checkouts. Absent when the server runs without the launcher.",
+  name: APP_INSTALL_KIND_ENV_NAME,
+  parse: parseAppInstallKindEnvValue,
+});
+
+export const BB_APP_SOURCE_ORIGIN_ENV = defineEnvVar<AppSourceOrigin>({
+  description:
+    "Internal marker the bb-app launcher hands its server child for source checkouts: official when the origin remote is github.com/get-bb/bb, fork for any other origin, none without one.",
+  name: APP_SOURCE_ORIGIN_ENV_NAME,
+  parse: parseAppSourceOriginEnvValue,
+});
+
+export const BB_APP_SOURCE_COMMIT_ENV = defineEnvVar<string>({
+  description:
+    "Internal marker the bb-app launcher hands its server child with the HEAD commit of an official source checkout. Never set for forks.",
+  name: APP_SOURCE_COMMIT_ENV_NAME,
+  parse: parseNonEmptyStringEnvValue,
+});
+
 export const BB_APP_SURFACE_ENV = defineEnvVar<AppSurface>({
   description:
     "Internal launcher marker for telemetry attribution. Set by bb-app and desktop launchers.",
@@ -226,7 +276,7 @@ export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
 
 export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
   description:
-    "Anonymous usage telemetry (app starts, thread creation counts, user message counts, and plugin installs). Set to false to opt out.",
+    "Anonymous usage telemetry (app starts, thread creation counts, user message counts, and plugin installs, tagged with app version, install kind, and OS and Node versions). Set to false to opt out.",
   name: "BB_TELEMETRY",
   parse: parseBooleanEnvValue,
 });

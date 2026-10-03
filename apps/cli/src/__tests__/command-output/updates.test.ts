@@ -316,7 +316,7 @@ describe("bb updates app command output", () => {
     await runCommand(["updates", "app"], register);
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      `bb-app 0.0.32 (${"a".repeat(10)}) -> ${"b".repeat(10)} (+12 commits)`,
+      `bb-app source checkout ${"a".repeat(10)} -> ${"b".repeat(10)} (+12 commits)`,
       "  Fix bug",
       "  Add feature",
       "  … 10 more",

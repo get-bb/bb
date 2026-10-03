@@ -2044,16 +2044,38 @@ describe("bb-app launcher", () => {
     const desktopServerEnv = createServerEnv({
       context,
       env: { BB_APP_SURFACE: "desktop" },
+      install: { kind: "desktop" },
     });
-    const webServerEnv = createServerEnv({ context, env: {} });
+    const webServerEnv = createServerEnv({
+      context,
+      env: {},
+      install: { kind: "npm" },
+    });
     const invalidSurfaceServerEnv = createServerEnv({
       context,
       env: { BB_APP_SURFACE: "bogus" },
+      install: { kind: "npm" },
     });
 
     expect(desktopServerEnv.BB_APP_SURFACE).toBe("desktop");
     expect(webServerEnv.BB_APP_SURFACE).toBe("web");
     expect(invalidSurfaceServerEnv.BB_APP_SURFACE).toBe("web");
+  });
+
+  it("replaces inherited install markers so a fork never reports a stale commit", () => {
+    const serverEnv = createServerEnv({
+      context: createTestStartContext(),
+      env: {
+        BB_APP_INSTALL_KIND: "source",
+        BB_APP_SOURCE_COMMIT: "a".repeat(40),
+        BB_APP_SOURCE_ORIGIN: "official",
+      },
+      install: { kind: "source", origin: "fork" },
+    });
+
+    expect(serverEnv.BB_APP_INSTALL_KIND).toBe("source");
+    expect(serverEnv.BB_APP_SOURCE_ORIGIN).toBe("fork");
+    expect(serverEnv).not.toHaveProperty("BB_APP_SOURCE_COMMIT");
   });
 });
 
