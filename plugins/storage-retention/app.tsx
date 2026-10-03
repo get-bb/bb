@@ -543,14 +543,36 @@ function StoragePage({
                   className="space-y-4 rounded-lg border border-border bg-card px-4 py-3.5"
                   aria-label="Storage breakdown"
                 >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-sm font-medium">Thread storage</p>
-                    <p className="text-lg font-semibold tabular-nums">
-                      {bytes(
-                        report.activeThreadBytes + report.archivedThreadBytes,
-                      )}
-                    </p>
-                  </div>
+                  {report.developerStorage ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm font-medium">Thread storage</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {bytes(
+                            report.activeThreadBytes +
+                              report.archivedThreadBytes,
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">
+                          BB development
+                        </p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {bytes(report.developerStorage.sizeBytes)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-sm font-medium">Thread storage</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {bytes(
+                          report.activeThreadBytes + report.archivedThreadBytes,
+                        )}
+                      </p>
+                    </div>
+                  )}
                   <StorageBreakdown report={report} />
                   <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
                     {report.disk && (
@@ -1247,6 +1269,9 @@ function MachineRow({
       ? [
           `${(report.threadsWithStorageCount - report.archivedThreadCount).toLocaleString()} active`,
           `${report.archivedThreadCount.toLocaleString()} archived`,
+          ...(report.developerStorage && report.disk
+            ? [`${bytes(report.disk.freeBytes)} free`]
+            : []),
         ]
       : []),
     scanning
@@ -1296,12 +1321,22 @@ function MachineRow({
         {report && (
           <span className="mr-auto shrink-0 text-left sm:mr-0 sm:text-right">
             <span className="block text-sm font-normal tabular-nums">
-              {bytes(threadStorageBytes(report))}
+              {bytes(
+                threadStorageBytes(report) +
+                  (report.developerStorage?.sizeBytes ?? 0),
+              )}
             </span>
-            {report.disk && (
+            {report.developerStorage ? (
               <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
-                {bytes(report.disk.freeBytes)} free
+                {bytes(threadStorageBytes(report))} threads ·{" "}
+                {bytes(report.developerStorage.sizeBytes)} dev
               </span>
+            ) : (
+              report.disk && (
+                <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
+                  {bytes(report.disk.freeBytes)} free
+                </span>
+              )
             )}
           </span>
         )}
