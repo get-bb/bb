@@ -4231,7 +4231,7 @@ export async function runBbApp(
     await shutdown("SIGTERM");
     throw error;
   } finally {
-    appUpdateController?.dispose();
+    await appUpdateController?.dispose();
     removeSignalForwarding();
     if (runtimeRecordOwned) {
       await clearOwnBbAppRuntimeFile({

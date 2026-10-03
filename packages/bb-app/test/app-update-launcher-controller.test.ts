@@ -22,6 +22,7 @@ import {
 } from "@bb/config/app-update";
 import {
   createLauncherAppUpdateController,
+  type LauncherAppUpdateController,
   type LauncherServerPort,
 } from "../src/app-update/launcher-controller.js";
 import {
@@ -31,8 +32,12 @@ import {
 import type { RunCommand } from "../src/app-update/run-command.js";
 
 const scratchDirs: string[] = [];
+const controllers: LauncherAppUpdateController[] = [];
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(
+    controllers.splice(0).map((controller) => controller.dispose()),
+  );
   for (const dir of scratchDirs.splice(0)) {
     rmSync(dir, { force: true, recursive: true });
   }
@@ -117,7 +122,7 @@ function createController(args: {
   runner?: RunCommand | undefined;
   shutdowns?: string[];
 }) {
-  return createLauncherAppUpdateController({
+  const controller = createLauncherAppUpdateController({
     current: args.current,
     dataDir: args.dataDir,
     log: () => undefined,
@@ -127,6 +132,8 @@ function createController(args: {
     restartNoticeMs: 0,
     runner: args.runner ?? failingRunner,
   });
+  controllers.push(controller);
+  return controller;
 }
 
 function setUp(args: { runner?: RunCommand; stageTarget?: boolean } = {}) {
@@ -215,7 +222,7 @@ describe("launcher app update controller", () => {
       expect(port.statuses().at(-1)?.activity.phase).toBe("ready"),
     );
     expect(await controller.finalizeExit()).toBeNull();
-    controller.dispose();
+    await controller.dispose();
 
     port.request("late", { type: "restart" });
     expect(await port.response("late")).toMatchObject({
@@ -249,9 +256,12 @@ describe("launcher app update controller", () => {
   });
 
   it("stops an in-flight download on shutdown without recording a failure", async () => {
+    const startedSignals: AbortSignal[] = [];
     const runner: RunCommand = (call) =>
       new Promise((resolvePromise) => {
-        call.signal?.addEventListener("abort", () =>
+        if (call.signal === undefined) throw new Error("Missing abort signal");
+        startedSignals.push(call.signal);
+        call.signal.addEventListener("abort", () =>
           resolvePromise({
             code: null,
             outputTail: ["Cancelled"],
@@ -263,15 +273,86 @@ describe("launcher app update controller", () => {
     const { controller, dataDir, port } = setUp({ runner, stageTarget: false });
 
     port.request("apply", applyRequest());
-    await vi.waitFor(() =>
-      expect(port.statuses().at(-1)?.activity.phase).toBe("preparing"),
-    );
-    controller.dispose();
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+    await vi.waitFor(() => expect(startedSignals).toHaveLength(1));
+    expect(port.statuses().at(-1)?.activity.phase).toBe("preparing");
+    const exiting = controller.finalizeExit();
+    expect(startedSignals[0]?.aborted).toBe(true);
+    expect(await exiting).toBeNull();
+    expect(readdirSync(formatAppUpdateVersionsDir(dataDir))).toEqual([]);
 
     const state = await readAppUpdateState(dataDir);
     expect(state.lastResult).toBeNull();
     expect(state.pending).toBeNull();
+  });
+
+  it("waits for an in-flight source check to stop before finalizing shutdown", async () => {
+    const dataDir = scratchDir();
+    const commands: { aborted: boolean; exit: () => void }[] = [];
+    const runner: RunCommand = async (call) => {
+      if (call.args[0] !== "fetch") {
+        return {
+          code: 0,
+          outputTail: [],
+          signal: null,
+          stdout:
+            call.args[0] === "rev-parse"
+              ? "commit-1"
+              : call.args[0] === "show"
+                ? JSON.stringify({ version: "1.0.0" })
+                : call.args[0] === "symbolic-ref"
+                  ? "main"
+                  : "",
+        };
+      }
+      return new Promise((resolvePromise) => {
+        const command = {
+          aborted: false,
+          exit: () =>
+            resolvePromise({
+              code: null,
+              outputTail: ["Cancelled"],
+              signal: "SIGTERM",
+              stdout: "",
+            }),
+        };
+        call.signal?.addEventListener("abort", () => {
+          command.aborted = true;
+        });
+        commands.push(command);
+      });
+    };
+    const controller = createLauncherAppUpdateController({
+      current: { commit: "commit-1", kind: "source", version: "1.0.0" },
+      dataDir,
+      log: () => undefined,
+      mode: "source",
+      repoRoot: dataDir,
+      requestShutdown: () => undefined,
+      runner,
+    });
+    controllers.push(controller);
+    const port = new FakeServerPort();
+    controller.attachServer(port);
+    port.request("check", { type: "check-source" });
+    await vi.waitFor(() => expect(commands).toHaveLength(1));
+
+    let exited = false;
+    const exiting = controller.finalizeExit().then((code) => {
+      exited = true;
+      return code;
+    });
+    try {
+      expect(commands[0]?.aborted).toBe(true);
+      await new Promise<void>((resolvePromise) => setImmediate(resolvePromise));
+      expect(exited).toBe(false);
+    } finally {
+      commands[0]?.exit();
+    }
+    expect(await exiting).toBeNull();
+    expect(await port.response("check")).toMatchObject({
+      error: null,
+      result: { blocked: { reason: "fetch-failed" } },
+    });
   });
 
   it("keeps running and records the failure when the download fails", async () => {

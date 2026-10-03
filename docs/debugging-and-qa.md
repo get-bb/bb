@@ -12,6 +12,26 @@
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+## Reproducing Test Order Failures
+
+CI's test shards shuffle test files and tests within each file. Vitest prints the seed for
+runs that execute; unchanged Turbo tasks can still reuse cached results.
+Reproduce a failing package with its logged seed:
+
+```bash
+pnpm exec turbo run test --filter=@bb/app -- --sequence.shuffle --sequence.seed=4721 --maxWorkers=2
+```
+
+For a repository-wide order audit, omit the filter and use `--concurrency=4`
+before Turbo's `--` separator. CI caps each Vitest process at two workers so
+package concurrency does not multiply into unbounded worker contention.
+Use a second seed after
+repairing order dependencies. Reset test-owned mock implementations, fixture
+arrays, persisted preferences, and databases before each test. Await background
+work and close streams, workers, and subprocesses before removing their files or
+tearing down their environment. Worker isolation does not restore built-in
+process objects or cancel resources that a test leaves running.
+
 ## ACP Steer Cancellation Failures
 
 ACP steering cancels the active prompt before submitting the follow-up. If that

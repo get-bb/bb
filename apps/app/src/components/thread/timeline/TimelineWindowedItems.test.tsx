@@ -127,6 +127,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  scrollElement.remove();
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

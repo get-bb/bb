@@ -20,6 +20,7 @@ const packageJsonSchema = z
 interface SourceGitArgs {
   repoRoot: string;
   runner: RunCommand;
+  signal?: AbortSignal;
 }
 
 function gitEnv(): NodeJS.ProcessEnv {
@@ -35,6 +36,7 @@ async function git(
   gitArgs: string[],
   timeoutMs?: number,
 ): Promise<string> {
+  args.signal?.throwIfAborted();
   const result = await runCheckedCommand(
     args.runner,
     `git ${gitArgs[0] ?? ""}`,
@@ -43,6 +45,7 @@ async function git(
       command: "git",
       cwd: args.repoRoot,
       env: gitEnv(),
+      ...(args.signal === undefined ? {} : { signal: args.signal }),
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
     },
   );
@@ -53,11 +56,13 @@ async function tryGit(
   args: SourceGitArgs,
   gitArgs: string[],
 ): Promise<string | null> {
+  args.signal?.throwIfAborted();
   const result = await args.runner({
     args: gitArgs,
     command: "git",
     cwd: args.repoRoot,
     env: gitEnv(),
+    ...(args.signal === undefined ? {} : { signal: args.signal }),
   });
   return result.code === 0 ? result.stdout.trim() : null;
 }
@@ -140,11 +145,13 @@ export async function inspectSourceCheckout(
   const current = await readSourceRevision(args);
   const localBlock = await readLocalBlock(args);
   if (args.fetch && localBlock?.reason !== "detached-head") {
+    args.signal?.throwIfAborted();
     const fetchResult = await args.runner({
       args: ["fetch", "--quiet", SOURCE_REMOTE, SOURCE_BRANCH],
       command: "git",
       cwd: args.repoRoot,
       env: gitEnv(),
+      ...(args.signal === undefined ? {} : { signal: args.signal }),
       timeoutMs: FETCH_TIMEOUT_MS,
     });
     if (fetchResult.code !== 0) {

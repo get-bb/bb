@@ -340,7 +340,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
   });
 
-  it("shows the root fallback before realizing compact drawer content", () => {
+  it("shows the root fallback before realizing compact drawer content", async () => {
     vi.useFakeTimers();
     try {
       renderRootCompose({
@@ -354,12 +354,16 @@ describe("RootComposeSecondaryContent desktop layout", () => {
         screen.getByTestId("drawer-panel-loading-skeleton"),
       ).not.toBeNull();
 
-      act(() => {
-        vi.advanceTimersByTime(120);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120);
       });
+      vi.useRealTimers();
 
-      expect(screen.getByTestId("drawer-secondary-panel")).not.toBeNull();
+      expect(
+        await screen.findByTestId("drawer-secondary-panel"),
+      ).not.toBeNull();
     } finally {
+      cleanup();
       vi.useRealTimers();
     }
   });

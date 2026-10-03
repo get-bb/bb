@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
   BRIDGE_RECORDING_PROCESS_SCOPE,
   createBridgeRecorder,
@@ -10,23 +10,24 @@ import {
   type BridgeRecordingEntry,
 } from "./bridge-recorder.js";
 
-let dir: string;
-
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
-});
-
-function readLane(scope: string, direction: string): BridgeRecordingEntry[] {
-  return readFileSync(join(dir, scope, `${direction}.ndjson`), "utf8")
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as BridgeRecordingEntry);
+function recordingFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "bb-bridge-recorder-"));
+  const recorder = createBridgeRecorder({ dir });
+  onTestFinished(() => {
+    recorder.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const readLane = (scope: string, direction: string): BridgeRecordingEntry[] =>
+    readFileSync(join(dir, scope, `${direction}.ndjson`), "utf8")
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line) as BridgeRecordingEntry);
+  return { dir, readLane, recorder };
 }
 
 describe("bridge recorder", () => {
   it("routes responses to the scope of the request they answer", () => {
-    dir = mkdtempSync(join(tmpdir(), "bb-bridge-recorder-"));
-    const recorder = createBridgeRecorder({ dir });
+    const { dir, readLane, recorder } = recordingFixture();
 
     recorder.recordRuntimeLine(
       "runtime→bridge",
@@ -122,8 +123,7 @@ describe("bridge recorder", () => {
   });
 
   it("tees a child's stdout and stdin writes as provider lanes", () => {
-    dir = mkdtempSync(join(tmpdir(), "bb-bridge-recorder-"));
-    const recorder = createBridgeRecorder({ dir });
+    const { readLane, recorder } = recordingFixture();
     const stdin = new PassThrough();
     const stdout = new PassThrough();
     recorder.recordChildIo({ stdin, stdout }, { threadId: "thr_b" });

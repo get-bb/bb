@@ -756,6 +756,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.dispatchEvent(new Event("pagehide"));
   vi.restoreAllMocks();
   threadStore.clear();
   resetPluginSlotStoreForTest();

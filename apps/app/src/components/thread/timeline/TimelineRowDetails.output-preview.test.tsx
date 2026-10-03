@@ -150,7 +150,9 @@ describe("previewed command output", () => {
   it("keeps the live preview for a running row and does not fetch details", async () => {
     const view = renderExpandedRow(previewedCommandRow({ status: "pending" }));
 
-    expect(view.container.textContent).toContain("characters omitted");
+    await waitFor(() => {
+      expect(view.container.textContent).toContain("characters omitted");
+    });
     expect(
       screen.getByTestId("timeline-output-preview-note").textContent,
     ).toContain("full output loads when this finishes");
@@ -165,7 +167,9 @@ describe("previewed command output", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
     });
-    expect(view.container.textContent).toContain("characters omitted");
+    await waitFor(() => {
+      expect(view.container.textContent).toContain("characters omitted");
+    });
     expect(
       screen.getByTestId("timeline-output-preview-note").textContent,
     ).toContain("Failed to load the full output");
@@ -212,7 +216,9 @@ describe("previewed command output", () => {
     };
     const view = renderExpandedRow(row);
 
-    expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
+    await waitFor(() => {
+      expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
+    });
     expect(
       screen.getByTestId("timeline-output-preview-note").textContent,
     ).toContain("retention period ended");
