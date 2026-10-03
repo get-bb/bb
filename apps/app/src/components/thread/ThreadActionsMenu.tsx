@@ -29,6 +29,7 @@ import { useThreadSectionMove } from "./ThreadSectionMoveProvider";
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
   onOpenInSplit?: () => void;
+  onCreateNewThreadInEnvironment?: () => void;
 }
 
 export interface ThreadActionsMenuResponsiveAction {
@@ -147,6 +148,7 @@ function ThreadSectionMoveMenu({
 function ThreadActionsMenuItems({
   thread,
   onOpenInSplit,
+  onCreateNewThreadInEnvironment,
   compactStep = "actions",
   onCompactStepChange,
   responsiveActions = [],
@@ -213,6 +215,15 @@ function ThreadActionsMenuItems({
           </ActionMenuItem>
           {showSeparators ? <ActionMenuSeparator surface="dropdown" /> : null}
         </>
+      ) : null}
+      {isCompactViewport && onCreateNewThreadInEnvironment ? (
+        <ActionMenuItem
+          surface="dropdown"
+          icon="MessageSquarePlus"
+          onSelect={onCreateNewThreadInEnvironment}
+        >
+          New thread in environment
+        </ActionMenuItem>
       ) : null}
       <ActionMenuItem
         surface="dropdown"
@@ -311,6 +322,7 @@ function useThreadActionsMenuLifecycle(onOpenChange?: (open: boolean) => void) {
 export function ThreadActionsMenu({
   thread,
   onOpenInSplit,
+  onCreateNewThreadInEnvironment,
   responsiveActions,
   onOpenChange,
   triggerClassName,
@@ -345,6 +357,7 @@ export function ThreadActionsMenu({
         <ThreadActionsMenuItems
           thread={thread}
           onOpenInSplit={onOpenInSplit}
+          onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
           compactStep={compactStep}
           onCompactStepChange={setCompactStep}
           responsiveActions={responsiveActions}
