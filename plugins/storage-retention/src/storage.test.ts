@@ -294,8 +294,10 @@ it.each([false, true])(
       });
       if (detached) expect(scanned.report!.developerStorage).toBeNull();
       else {
+        expect(path.normalize(scanned.report!.developerStorage!.path)).toBe(
+          path.join(fakeHome, ".bb-dev"),
+        );
         expect(scanned.report!.developerStorage).toMatchObject({
-          path: path.join(fakeHome, ".bb-dev"),
           entries: [
             {
               name: "checkout-a",
