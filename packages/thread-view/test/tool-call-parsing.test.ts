@@ -151,7 +151,7 @@ describe("parseSentThreadMessage", () => {
     ["a path-like recipient", 'bb thread tell ../hosts/h "Is it ready?"', 0],
     [
       "two sends in one command",
-      'bb thread tell thr_wrkr234567 "a" && bb thread tell thr_othr234567 "b"',
+      'bb thread tell thr_wrkr234567 "a" && bb thread tell thr_nxtr234567 "b"',
       0,
     ],
     ["another bb command", "bb thread show thr_wrkr234567", 0],
