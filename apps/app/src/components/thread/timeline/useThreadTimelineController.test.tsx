@@ -1187,4 +1187,76 @@ describe("useThreadTimelineController commits", () => {
     await flushQueryNotifications();
     expect(view.latest().isCatchingUpTimeline).toBe(false);
   });
+  it("reports catching up when returning to a thread before another thread's fetch settles", async () => {
+    const otherThreadFetch = createDeferredPromise<ThreadTimelineResponse>();
+    const returnFetch = createDeferredPromise<ThreadTimelineResponse>();
+    vi.mocked(sdk.threads.timeline)
+      .mockResolvedValueOnce(
+        makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+      )
+      .mockReturnValueOnce(otherThreadFetch.promise)
+      .mockReturnValueOnce(returnFetch.promise);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const { result, rerender } = renderHook(
+      ({ threadId }: { threadId: string }) =>
+        useThreadTimelineController({ threadId }),
+      { initialProps: { threadId: "thread-1" }, wrapper },
+    );
+    await waitFor(() => {
+      expect(rowIds(result.current)).toEqual([newestLoadedRow.id]);
+    });
+
+    rerender({ threadId: "thread-2" });
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
+    });
+    act(() => {
+      queryClient.setQueryData(
+        TIMELINE_QUERY_KEY,
+        makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+        { updatedAt: 0 },
+      );
+    });
+
+    rerender({ threadId: "thread-1" });
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(3);
+    });
+    expect(result.current.isCatchingUpTimeline).toBe(true);
+
+    await act(async () => {
+      returnFetch.resolve(
+        makeTimelineResponse({
+          maxSeq: 2,
+          rows: [newestLoadedRow, realtimeRow],
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(result.current.isCatchingUpTimeline).toBe(false);
+    });
+  });
+
+  it("reports catching up when a hidden timeline is enabled over stale cached rows", async () => {
+    const refetch = createDeferredPromise<ThreadTimelineResponse>();
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(refetch.promise);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+      { updatedAt: 0 },
+    );
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useThreadTimelineController({ enabled, threadId: "thread-1" }),
+      { initialProps: { enabled: false }, wrapper },
+    );
+    expect(result.current.isCatchingUpTimeline).toBe(false);
+
+    rerender({ enabled: true });
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current.isCatchingUpTimeline).toBe(true);
+  });
 });

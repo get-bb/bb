@@ -57,6 +57,11 @@ export interface UseThreadTimelineControllerResult {
   timelineRows: TimelineRow[];
 }
 
+interface MountFetchState {
+  key: string | null;
+  settled: boolean;
+}
+
 interface LoadedTimelineTracker {
   latestTimeline: ThreadTimelineResponse | undefined;
   loaded: LoadedTimelineState;
@@ -111,14 +116,18 @@ export function useThreadTimelineController({
   threadId,
 }: UseThreadTimelineControllerArgs): UseThreadTimelineControllerResult {
   const queryClient = useQueryClient();
-  const [mountFetchSettledThreadId, setMountFetchSettledThreadId] = useState<
-    string | null
-  >(null);
-  const isMountFetchSettled = mountFetchSettledThreadId === threadId;
-  const isMountFetchSettledRef = useRef(isMountFetchSettled);
-  isMountFetchSettledRef.current = isMountFetchSettled;
+  const mountFetchKey = enabled ? threadId : null;
+  const [mountFetch, setMountFetch] = useState<MountFetchState>(() => ({
+    key: mountFetchKey,
+    settled: false,
+  }));
+  const isTrackingMountFetch =
+    mountFetchKey !== null &&
+    !(mountFetch.key === mountFetchKey && mountFetch.settled);
+  const isTrackingMountFetchRef = useRef(isTrackingMountFetch);
+  isTrackingMountFetchRef.current = isTrackingMountFetch;
   const notifyOnChangeProps = useCallback((): TimelineQueryResultProp[] => {
-    if (!isMountFetchSettledRef.current) {
+    if (isTrackingMountFetchRef.current) {
       return TIMELINE_CONTROLLER_PROPS_WITHOUT_ROWS;
     }
     const cachedTimeline = queryClient.getQueryData<ThreadTimelineResponse>(
@@ -269,11 +278,16 @@ export function useThreadTimelineController({
     latestTimelineQuery.isLoading ||
     (timelineQueryState.status === "loading" && timelineRows.length === 0) ||
     (latestTimelineQuery.isFetching && timelineRows.length === 0);
-  if (!isMountFetchSettled && !latestTimelineQuery.isFetching) {
-    setMountFetchSettledThreadId(threadId);
+  const isMountFetchIdle =
+    mountFetchKey !== null && !latestTimelineQuery.isFetching;
+  if (
+    mountFetch.key !== mountFetchKey ||
+    (isMountFetchIdle && !mountFetch.settled)
+  ) {
+    setMountFetch({ key: mountFetchKey, settled: isMountFetchIdle });
   }
   const isCatchingUpTimeline =
-    !isMountFetchSettled &&
+    isTrackingMountFetch &&
     latestTimelineQuery.isFetching &&
     timelineRows.length > 0;
   const timelineError =
