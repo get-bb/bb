@@ -2407,6 +2407,7 @@ describe("CommandPalette Go to", () => {
     const { store } = renderPalette({ kind: "all" });
     openThreadSearch();
     await screen.findByRole("combobox", { name: "Go to" });
+    fireEvent.change(searchField(), { target: { value: "only" } });
     const trigger = screen.getByRole("button", { name: "Filter: All" });
     act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
@@ -2415,6 +2416,7 @@ describe("CommandPalette Go to", () => {
     fireEvent.keyDown(threads, { key: "Enter" });
     await screen.findByRole("combobox", { name: "Search threads" });
     expect(store.get(paletteKindFilterAtom)).toBe("threads");
+    expect((searchField() as HTMLInputElement).value).toBe("only");
   });
 });
 
