@@ -2476,6 +2476,7 @@ describe("CommandPalette Go to narrowing", () => {
     await openGoTo();
     await choose("palette pro", "Project");
     await screen.findByRole("button", { name: "Remove filter" });
+    expect(screen.queryByRole("button", { name: /^Filter:/ })).toBeNull();
     fireEvent.keyDown(searchField(), { key: "Backspace" });
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Remove filter" })).toBeNull(),

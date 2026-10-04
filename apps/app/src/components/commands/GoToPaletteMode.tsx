@@ -418,7 +418,7 @@ export function GoToPaletteMode({
         );
       });
     },
-    [isCompact, navigate, runAfterClose, store],
+    [isCompact, navigate, runAfterClose, setQuery, store],
   );
 
   const exitScope = useCallback(() => {
@@ -429,7 +429,7 @@ export function GoToPaletteMode({
     setHighlightedIndex(0);
     setHighlightedKey(null);
     inputRef.current?.focus();
-  }, []);
+  }, [setQuery]);
 
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -585,9 +585,11 @@ export function GoToPaletteMode({
       }
       inputLabel="Go to"
       inputAccessory={
-        <div className="max-w-[45%] shrink-0">
-          <PaletteKindFilter />
-        </div>
+        scope === null ? (
+          <div className="max-w-[45%] shrink-0">
+            <PaletteKindFilter />
+          </div>
+        ) : undefined
       }
       inputRef={inputRef}
       listId={listId}
