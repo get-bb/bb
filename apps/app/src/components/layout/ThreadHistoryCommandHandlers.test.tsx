@@ -23,7 +23,12 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
+import { getDefaultStore } from "jotai";
 import { appQueryClient } from "@/lib/app-query-client";
+import {
+  EMPTY_THREAD_NAVIGATION_HISTORY,
+  threadNavigationHistoryAtom,
+} from "@/lib/thread-navigation-history";
 import { ThreadHistoryCommandHandlers } from "./ThreadHistoryCommandHandlers";
 
 const mocks = vi.hoisted(() => ({
@@ -132,6 +137,10 @@ describe("ThreadHistoryCommandHandlers", () => {
     harness.runner = null;
     harness.navigate = null;
     appQueryClient.clear();
+    getDefaultStore().set(
+      threadNavigationHistoryAtom,
+      EMPTY_THREAD_NAVIGATION_HISTORY,
+    );
   });
 
   it("goes back and forward through the threads opened in this window", () => {
