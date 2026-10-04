@@ -1236,6 +1236,12 @@ export function registerAutomationCli(args: {
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: {
             project: PROJECT_OPTION,
+            "retry-run": {
+              type: "string",
+              placeholder: "run-id",
+              description:
+                "Retry a failed or stopped run using its recorded prompt in the same thread",
+            },
             "idempotency-key": {
               type: "string",
               placeholder: "key",
@@ -1251,6 +1257,9 @@ export function registerAutomationCli(args: {
                 projectId: requireProjectId(input.options.project, ctx),
                 automationId: input.positionals.automationId,
                 ...(idempotencyKey ? { idempotencyKey } : {}),
+                ...(input.options["retry-run"]
+                  ? { retryRunId: input.options["retry-run"] }
+                  : {}),
               });
               const threadLine = result.run.threadId
                 ? `Thread: ${result.run.threadId}\n`

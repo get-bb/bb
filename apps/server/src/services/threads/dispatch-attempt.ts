@@ -357,7 +357,13 @@ async function runDispatchAttempt(
     origin: args.origin,
     originPluginId: args.originPluginId,
     requestedBy: args.startedOnBehalfOf,
-    payload: args.queuePayload,
+    payload:
+      args.queuePayload.kind === "inline"
+        ? {
+            ...args.queuePayload,
+            experimental_timelineEvent: payload.experimental_timelineEvent,
+          }
+        : args.queuePayload,
     systemNotice: null,
   };
 
@@ -764,6 +770,7 @@ async function admitPendingThread(
           execution,
           fork: startContext.fork,
           input: args.payload.input,
+          experimental_timelineEvent: args.payload.experimental_timelineEvent,
           ...(startContext.providerInput === undefined
             ? {}
             : { providerInput: startContext.providerInput }),

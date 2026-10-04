@@ -7,6 +7,7 @@ import {
   listRunningAutomationRuns,
   listRunningAutomationRunsByThread,
   markAutomationThread,
+  markAutomationRunTimelineEvent,
   setAutomationEnabled,
   setAutomationRunThread,
   type AutomationRow,
@@ -23,6 +24,9 @@ import type {
 
 type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
+  queuedMessages: Pick<BbPluginApi["sdk"]["threads"]["queuedMessages"], "list">;
+  experimental_getTimelineEvent: BbPluginApi["sdk"]["threads"]["experimental_getTimelineEvent"];
+  experimental_updateTimelineEvent: BbPluginApi["sdk"]["threads"]["experimental_updateTimelineEvent"];
   get(
     args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
   ): Promise<unknown>;
@@ -82,18 +86,43 @@ function isProjectGoneError(error: unknown): boolean {
   return projectGoneErrorSchema.safeParse(error).success;
 }
 
-function renderAutomationDueMessage(args: {
-  automationId: string;
-  prompt: string;
-}): string {
-  return `[bb automation due:${args.automationId}]\n\n${args.prompt}`;
+function automationTimelineEvent(args: AgentRunArgs) {
+  return {
+    id: args.run.id,
+    rendererId: "run",
+    payload: {
+      automationId: args.automation.id,
+      projectId: args.automation.projectId,
+      name: args.automation.name,
+      runId: args.run.id,
+      execution: args.execution,
+    },
+    presentation: {
+      label: { pending: "Running automation", completed: "Automation" },
+      icon: { glyph: "Timer" },
+      title: args.automation.name,
+    },
+  };
+}
+
+function automationInput(args: AgentRunArgs) {
+  return [
+    {
+      type: "text" as const,
+      visibility: "agent-only" as const,
+      text: `[Automation: ${args.automation.name} (${args.automation.id})]\n\n${args.execution.prompt}`,
+      mentions: [],
+    },
+  ];
 }
 
 function isThreadReusable(thread: SdkThread): boolean {
   return (
     thread.deletedAt === null &&
     thread.archivedAt === null &&
-    (thread.status === "idle" || thread.status === "active")
+    (thread.status === "idle" ||
+      thread.status === "active" ||
+      thread.status === "error")
   );
 }
 
@@ -110,6 +139,7 @@ export async function executeAgentRun(
   args: AgentRunArgs,
 ): Promise<void> {
   try {
+    markAutomationRunTimelineEvent(db, args.run.id);
     if (args.automation.targetThreadId !== null) {
       await reuseTargetThreadForRun(bb, db, {
         ...args,
@@ -121,10 +151,8 @@ export async function executeAgentRun(
       await bb.sdk.threads.spawn({
         projectId: args.automation.projectId,
         environment: args.execution.environment,
-        prompt: renderAutomationDueMessage({
-          automationId: args.automation.id,
-          prompt: args.execution.prompt,
-        }),
+        input: automationInput(args),
+        experimental_timelineEvent: automationTimelineEvent(args),
         title: args.automation.name,
         providerId: args.execution.providerId,
         model: args.execution.model,
@@ -144,6 +172,24 @@ export async function executeAgentRun(
     });
   } catch (error) {
     settleDispatchFailure(bb, db, args, error);
+    if (args.automation.targetThreadId !== null) {
+      try {
+        const marker = await bb.sdk.threads.experimental_getTimelineEvent({
+          threadId: args.automation.targetThreadId,
+          eventId: args.run.id,
+        });
+        if (marker)
+          await bb.sdk.threads.experimental_updateTimelineEvent({
+            threadId: marker.threadId,
+            eventId: marker.id,
+            status: "error",
+          });
+      } catch (markerError) {
+        bb.log.warn(
+          `Could not update failed run marker: ${errorMessage(markerError)}`,
+        );
+      }
+    }
   } finally {
     publishAutomationChange(bb, args.automation.projectId, [
       "automations-changed",
@@ -220,17 +266,9 @@ async function reuseTargetThreadForRun(
   });
   await bb.sdk.threads.send({
     threadId: args.targetThreadId,
-    mode: "steer-if-active",
-    input: [
-      {
-        type: "text",
-        text: renderAutomationDueMessage({
-          automationId: args.automation.id,
-          prompt: args.execution.prompt,
-        }),
-        mentions: [],
-      },
-    ],
+    mode: "queue-if-active",
+    input: automationInput(args),
+    experimental_timelineEvent: automationTimelineEvent(args),
     permissionMode: args.execution.permissionMode,
   });
 }
@@ -324,21 +362,26 @@ export async function executeScriptRun(
   }
 }
 
-export function closeAutomationRunForSettledThread(
-  bb: Pick<BbPluginApi, "realtime">,
+export async function closeAutomationRunForSettledThread(
+  bb: AgentRunApi,
   db: Db,
-  args: { threadId: string; status: "idle" | "failed"; error?: string | null },
-): void {
+  args: { threadId: string; status?: "idle" | "failed"; error?: string | null },
+): Promise<void> {
   const runs = listRunningAutomationRunsByThread(db, args.threadId);
   const now = Date.now();
   const changedProjects = new Set<string>();
   for (const run of runs) {
+    if (run.timelineEventId === null && args.status === undefined) continue;
+    const outcome =
+      run.timelineEventId === null ? null : await reconcileOutcome(bb, run);
+    if (run.timelineEventId !== null && outcome === null) continue;
     const closed = closeAutomationRun(db, {
       runId: run.id,
       status: args.status === "idle" ? "succeeded" : "failed",
       error: args.status === "idle" ? null : (args.error ?? "Turn failed"),
       threadId: args.threadId,
       now,
+      ...(outcome ?? {}),
     });
     if (!closed) continue;
     const automation = getAutomation(db, closed.automationId);
@@ -363,7 +406,7 @@ export async function reconcileRunningAutomationRuns(
 ): Promise<void> {
   const changedProjects = new Set<string>();
   for (const run of listRunningAutomationRuns(db)) {
-    const outcome = await reconcileOutcome(bb, run);
+    const outcome = await reconcileOutcome(bb, run, true);
     if (outcome === null) continue;
     const closed = closeAutomationRun(db, {
       runId: run.id,
@@ -394,6 +437,7 @@ export async function reconcileRunningAutomationRuns(
 async function reconcileOutcome(
   bb: AgentRunApi,
   run: AutomationRunRow,
+  recoverMissing = false,
 ): Promise<ReconcileOutcome | null> {
   if (run.runMode === "script") {
     return {
@@ -433,6 +477,49 @@ async function reconcileOutcome(
         thread.deletedAt !== null ? "deleted" : "archived"
       }`,
     };
+  }
+  if (run.timelineEventId !== null) {
+    try {
+      const marker = await bb.sdk.threads.experimental_getTimelineEvent({
+        threadId: run.threadId,
+        eventId: run.timelineEventId,
+      });
+      if (marker?.status === "completed") return { status: "succeeded" };
+      if (marker?.status === "error" || marker?.status === "interrupted")
+        return {
+          status: "failed",
+          error:
+            marker.status === "interrupted"
+              ? "Run stopped before it finished"
+              : "Turn failed",
+        };
+      if (marker === null && recoverMissing) {
+        const queued = await bb.sdk.threads.queuedMessages.list({
+          threadId: run.threadId,
+        });
+        if (
+          !queued.some(
+            (entry) =>
+              entry.payload.kind === "inline" &&
+              entry.payload.experimental_timelineEvent?.id ===
+                run.timelineEventId &&
+              entry.payload.experimental_timelineEvent.pluginId ===
+                "automations",
+          )
+        ) {
+          return {
+            status: "skipped",
+            skipReason: "interrupted: queued run was cancelled before dispatch",
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      bb.log.warn(
+        `Could not check marker for run ${run.id}: ${errorMessage(error)}`,
+      );
+      return null;
+    }
   }
   switch (thread.status) {
     case "idle":

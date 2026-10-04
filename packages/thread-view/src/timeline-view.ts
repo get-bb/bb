@@ -744,11 +744,21 @@ function isSummarizableActivityRow(
     row.kind === "work" &&
     row.workKind !== "approval" &&
     row.workKind !== "question" &&
-    row.workKind !== "workflow"
+    row.workKind !== "workflow" &&
+    !(
+      row.workKind === "extension" &&
+      row.experimental_timelineEventId !== undefined
+    )
   );
 }
 
 function isTimelineStepBoundary(row: ThreadTimelineViewRow): boolean {
+  if (
+    row.kind === "work" &&
+    row.workKind === "extension" &&
+    row.experimental_timelineEventId !== undefined
+  )
+    return true;
   if (row.kind !== "conversation") return false;
   if (row.role === "user" && row.turnRequest.status === "pending") {
     return false;
