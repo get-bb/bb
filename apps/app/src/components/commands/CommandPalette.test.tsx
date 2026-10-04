@@ -36,6 +36,7 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
+import { recordPaletteVisit } from "@/lib/command-palette/palette-visits";
 import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
@@ -333,10 +334,12 @@ function renderPalette({
   compact = false,
   layout = null,
   lifecycles = ["active"],
+  threadId = null,
 }: {
   compact?: boolean;
   layout?: SplitLayout | null;
   lifecycles?: ThreadArchiveFilter[];
+  threadId?: string | null;
 } = {}) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
@@ -356,7 +359,7 @@ function renderPalette({
             <Handler command="terminal.open" />
             <Handler command="composer.focus" />
             <Handler command="browser.reload" />
-            <CommandPalette threadId={null} projectId={null} />
+            <CommandPalette threadId={threadId} projectId={null} />
             <LocationProbe />
           </AppCommandProvider>
         </MemoryRouter>
@@ -1315,6 +1318,38 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("group", { name: "Active" })).toBeTruthy();
     expect(screen.getAllByRole("option")).toHaveLength(7);
     expect(screen.getByText("Show more")).toBeTruthy();
+  });
+
+  it("flips back to the previous thread with Enter", async () => {
+    modeState.activeRecents = [
+      makeThread("current", { updatedAt: Date.now() }),
+      makeThread("previous", { updatedAt: 1 }),
+      makeThread("busy", {
+        updatedAt: Date.now() + 10,
+        runtime: { displayStatus: "active" },
+      }),
+    ];
+    recordPaletteVisit("thread", "previous", 1);
+    recordPaletteVisit("thread", "current", 2);
+    renderPalette({ threadId: "current" });
+    openThreadSearch();
+    await screen.findByRole("option", { name: /Title previous/ });
+    expect(optionTitles()).toEqual([
+      expect.stringContaining("Title previous"),
+      expect.stringContaining("Title current"),
+      expect.stringContaining("Title busy"),
+    ]);
+    expectText(selectedOption(), "Title previous");
+    expect(searchField().getAttribute("aria-activedescendant")).toBe(
+      selectedOption()?.id,
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+    await waitFor(() =>
+      expect(routeNavigateMock).toHaveBeenCalledWith(
+        "/projects/project-1/threads/previous",
+        { state: undefined },
+      ),
+    );
   });
 
   it.each(["active", "archived"] as const)(

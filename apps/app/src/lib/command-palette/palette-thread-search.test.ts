@@ -2,6 +2,7 @@ import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { buildPaletteThreadSearchRows } from "./palette-thread-search";
+import type { PaletteVisit } from "./palette-visits";
 
 const NOW = 1_000_000;
 
@@ -57,6 +58,7 @@ function build(
   overrides: Partial<Parameters<typeof buildPaletteThreadSearchRows>[0]> = {},
 ) {
   return buildPaletteThreadSearchRows({
+    currentThreadId: null,
     lifecycles: ["active"],
     now: NOW,
     projectNamesById: new Map([["project-1", "Palette project"]]),
@@ -67,6 +69,7 @@ function build(
       archived: { results: [], total: 0 },
     },
     searchResultsAreCurrent: true,
+    visits: [],
     ...overrides,
   });
 }
@@ -249,5 +252,83 @@ describe("buildPaletteThreadSearchRows", () => {
     expect(rows[0]?.threadId).toBe("20");
     expect(rows.at(-1)?.threadId).toBe("1");
     expect(recentThreads[0]?.id).toBe("0");
+  });
+
+  describe("switcher ordering", () => {
+    const visit = (id: string, visitedAt: number): PaletteVisit => ({
+      kind: "thread",
+      id,
+      visitedAt,
+    });
+    const ids = (result: ReturnType<typeof build>) =>
+      result.rows.map((row) => row.threadId);
+
+    it("puts the previous thread first and the current thread second", () => {
+      const result = build({
+        query: "",
+        currentThreadId: "b",
+        visits: [visit("b", 3), visit("a", 2)],
+        recentThreads: [
+          makeThread("c", { updatedAt: NOW + 10 }),
+          makeThread("a", { updatedAt: 1 }),
+          makeThread("b", { updatedAt: 2 }),
+        ],
+      });
+      expect(ids(result)).toEqual(["a", "b", "c"]);
+      expect(result.previousThreadId).toBe("a");
+    });
+
+    it("highlights the last thread when no thread is current", () => {
+      const result = build({
+        query: "",
+        currentThreadId: null,
+        visits: [visit("b", 2), visit("a", 1)],
+        recentThreads: [makeThread("a"), makeThread("b"), makeThread("c")],
+      });
+      expect(ids(result)).toEqual(["b", "a", "c"]);
+      expect(result.previousThreadId).toBe("b");
+    });
+
+    it("skips visits to threads that are not loaded when choosing the previous thread", () => {
+      const result = build({
+        query: "",
+        currentThreadId: "b",
+        visits: [visit("b", 3), visit("deleted", 2), visit("a", 1)],
+        recentThreads: [makeThread("a"), makeThread("b")],
+      });
+      expect(result.previousThreadId).toBe("a");
+      expect(ids(result)).toEqual(["a", "b"]);
+    });
+
+    it("places the current thread after the first thread on a fresh device", () => {
+      const result = build({
+        query: "",
+        currentThreadId: "current",
+        visits: [visit("current", 1)],
+        recentThreads: [
+          makeThread("current", { updatedAt: NOW + 50 }),
+          makeThread("newest", { updatedAt: NOW + 10 }),
+          makeThread("older", { updatedAt: NOW }),
+        ],
+      });
+      expect(ids(result)).toEqual(["newest", "current", "older"]);
+      expect(result.previousThreadId).toBeNull();
+    });
+
+    it("orders archived threads by visit, then archive time, with the current thread second", () => {
+      const result = build({
+        query: "",
+        lifecycles: ["archived"],
+        currentThreadId: "current",
+        visits: [visit("current", 3), visit("visited", 2)],
+        recentThreads: [
+          makeThread("recent", { archivedAt: 100 }),
+          makeThread("visited", { archivedAt: 1 }),
+          makeThread("current", { archivedAt: 2 }),
+          makeThread("old", { archivedAt: 50 }),
+        ],
+      });
+      expect(ids(result)).toEqual(["visited", "current", "recent", "old"]);
+    });
   });
 });

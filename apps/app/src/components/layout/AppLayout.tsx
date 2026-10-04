@@ -27,6 +27,7 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CommandPalette } from "@/components/commands/CommandPalette";
+import { usePaletteVisitRecorder } from "@/hooks/usePaletteVisitRecorder";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import {
   resolveAutomationBreadcrumbs,
@@ -403,6 +404,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const { projectId, threadId, isThreadView, isArchivedView, isRootView } =
     useRouteState();
+  usePaletteVisitRecorder(threadId ?? null);
   const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
     resourceRouteLabelAtom,
   );
