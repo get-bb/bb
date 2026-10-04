@@ -1,16 +1,14 @@
 import { useState } from "react";
 import type { TimelineRow } from "@bb/server-contract";
-import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import { Switch } from "@bb/shared-ui/switch";
 import { FollowUpPromptBox } from "@/components/promptbox/FollowUpPromptBox";
 import type { ExecutionPermissionConfig } from "@/components/promptbox/ExecutionControls";
-import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  type AttachmentsConfig,
-  type TypeaheadConfig,
-} from "@/components/promptbox/PromptBoxInternal";
 import { ThreadTimelinePane } from "@/views/thread-detail/ThreadTimelinePane";
-import { makeExecutionControlsProps } from "../../../../.ladle/story-fixtures";
+import {
+  makeAttachmentsConfig,
+  makeExecutionControlsProps,
+  makeTypeaheadConfig,
+} from "../../../../.ladle/story-fixtures";
 
 export default {
   title: "thread/timeline/Catch-up indicator",
@@ -19,13 +17,9 @@ export default {
 const THREAD_ID = "thr_catch_up_story";
 const now = 1_800_000_000_000;
 
-function conversationRow(
-  index: number,
-  role: "user" | "assistant",
-  text: string,
-): TimelineRow {
+function conversationRow(index: number): TimelineRow {
   const base = {
-    id: `row_${role}_${index}`,
+    id: `row_${index}`,
     threadId: THREAD_ID,
     turnId: `turn_${Math.floor(index / 2)}`,
     sourceSeqStart: index + 1,
@@ -33,12 +27,12 @@ function conversationRow(
     startedAt: now + index * 1_000,
     createdAt: now + index * 1_000,
     kind: "conversation" as const,
-    text,
     attachments: null,
   };
-  if (role === "user") {
+  if (index % 2 === 0) {
     return {
       ...base,
+      text: `Request ${index / 2 + 1}: check the audit log query plan and the flag rollout.`,
       role: "user",
       initiator: "user",
       senderThreadId: null,
@@ -48,62 +42,23 @@ function conversationRow(
       mentions: [],
     };
   }
-  return { ...base, role: "assistant", turnRequest: null };
+  return {
+    ...base,
+    text: `Reply ${(index + 1) / 2}: the query uses the covering index and the flag defaults to off.`,
+    role: "assistant",
+    turnRequest: null,
+  };
 }
 
-const earlierRows: TimelineRow[] = Array.from({ length: 4 }, (_, turn) => [
-  conversationRow(
-    turn * 2,
-    "user",
-    `Earlier request ${turn + 1}: check the audit log query plan and the flag rollout.`,
-  ),
-  conversationRow(
-    turn * 2 + 1,
-    "assistant",
-    `Earlier reply ${turn + 1}: the query plan looks fine and the flag defaults to off, so nothing ships until we flip it.`,
-  ),
-]).flat();
-
-const cachedRows: TimelineRow[] = [
-  ...earlierRows,
-  conversationRow(
-    8,
-    "user",
-    "Add pagination to the audit log and ship it behind a feature flag.",
-  ),
-  conversationRow(
-    9,
-    "assistant",
-    "I added cursor pagination to the audit log query and wired the flag. The query now uses the covering index instead of a scan.",
-  ),
-  conversationRow(10, "user", "Run the integration suite before you finish."),
-  conversationRow(
-    11,
-    "assistant",
-    "Running the integration suite now. These are the rows cached from your last visit; newer ones are still being fetched.",
-  ),
-];
+const cachedRows: TimelineRow[] = Array.from({ length: 12 }, (_, index) =>
+  conversationRow(index),
+);
 
 const noop = () => {};
 
-const typeahead: TypeaheadConfig = {
-  mention: {
-    results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-    isLoading: false,
-    isError: false,
-    onQueryChange: noop,
-  },
-  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-};
+const typeahead = makeTypeaheadConfig();
 
-const attachments: AttachmentsConfig = {
-  items: [],
-  projectId: "proj_demo",
-  isAttaching: false,
-  error: null,
-  onAttachFiles: noop,
-  onRemove: noop,
-};
+const attachments = makeAttachmentsConfig();
 
 const permission: ExecutionPermissionConfig = {
   value: "auto",
