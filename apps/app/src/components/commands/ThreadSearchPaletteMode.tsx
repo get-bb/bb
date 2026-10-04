@@ -25,10 +25,7 @@ import {
   resolveThreadStatus,
 } from "@/components/thread/ThreadStatusGlyph";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
-import {
-  ThreadLifecycleFilter,
-  THREAD_LIFECYCLE_OPTIONS,
-} from "@/components/thread/ThreadLifecycleFilter";
+import { THREAD_LIFECYCLE_OPTIONS } from "@/components/thread/ThreadLifecycleFilter";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
 import {
   normalizeThreadLifecycleFilter,
@@ -60,6 +57,7 @@ import {
   PaletteShell,
   PaletteShortcut,
 } from "./PaletteShell";
+import { PaletteKindFilter } from "./PaletteKindFilter";
 
 const GROUP_LIMIT = 6;
 const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
@@ -92,7 +90,7 @@ export function ThreadSearchPaletteMode({
   const store = useStore();
   const splitLayout = useAtomValue(splitLayoutAtom);
   const isCompact = useIsCompactViewport();
-  const [selectedLifecycles, setLifecycles] = useAtom(
+  const [selectedLifecycles] = useAtom(
     paletteThreadLifecyclesAtom,
   );
   const lifecycles = useMemo(
@@ -374,7 +372,7 @@ export function ThreadSearchPaletteMode({
       inputLabel="Search threads"
       inputAccessory={
         <div className="max-w-[45%] shrink-0">
-          <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
+          <PaletteKindFilter />
         </div>
       }
       inputRef={inputRef}
@@ -494,7 +492,7 @@ export function ThreadSearchPaletteMode({
   );
 }
 
-function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
+export function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
   const primaryRef = useRef<HTMLSpanElement | null>(null);
   const matchKey = `${row.primaryText}\u0000${row.highlightRanges
     .map((range) => `${range.start}:${range.end}`)

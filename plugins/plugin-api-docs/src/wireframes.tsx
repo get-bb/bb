@@ -518,7 +518,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
         </span>
         <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
           <MiniIcon icon="Search" />
-          Search threads
+          Search
         </span>
         <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
           <MiniIcon icon="Plug02" />
@@ -727,7 +727,7 @@ export function CommandPaletteWireframe({
                 </div>
                 <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
                   <MiniIcon icon="Search" className="size-3.5" />
-                  Search threads
+                  Search
                 </div>
                 <div className="mt-3 px-2 text-2xs font-medium uppercase tracking-wide text-subtle-foreground">
                   Threads

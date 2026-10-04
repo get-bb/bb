@@ -23,7 +23,7 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Feature | Drive | Observable success |
 | --- | --- | --- |
 | Home and projectless compose | Open / with and without a selected project; create a projectless draft, switch project, then return. | Draft and project selection follow their scopes; no accidental thread starts. |
-| Search threads and message contents | Use Search threads in the quick palette; query a unique title and a different string found only in a message. Compare bb thread search `<query>`. | Matching thread/message opens the correct thread and preserves search scope. |
+| Search threads and message contents | Use Go to (⌘K) in the quick palette; query a unique title and a different string found only in a message. Compare bb thread search `<query>`. | Matching thread/message opens the correct thread and preserves search scope. |
 | Previous, next, and numbered jumps | Invoke the named keyboard actions over a filtered sidebar; repeat at both ends and with an input focused. | Navigation uses visible thread order and does not steal normal typing. |
 | Pin, unpin, and pinned order | Pin two threads via Thread actions; reorder them; reload; unpin one. Compare thread pin/unpin/reorder-pinned and thread list. | Saved order and pin state agree across UI and CLI; unpin preserves the thread. |
 | Read and unread | Mark a finished thread unread, open it, then mark read explicitly. Compare thread read/unread. | Unread indicators and notification eligibility follow the saved read state. |

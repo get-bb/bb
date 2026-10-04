@@ -11,7 +11,11 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { createStore, Provider } from "jotai";
-import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
+import {
+  paletteKindFilterAtom,
+  paletteThreadLifecyclesAtom,
+  type PaletteKindFilter,
+} from "@/lib/command-palette/palette-preferences";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { MAX_PANES, type SplitLayout } from "@/lib/split-layout";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -336,15 +340,18 @@ function renderPalette({
   layout = null,
   lifecycles = ["active"],
   threadId = null,
+  kind = "threads",
 }: {
   compact?: boolean;
   layout?: SplitLayout | null;
   lifecycles?: ThreadArchiveFilter[];
   threadId?: string | null;
+  kind?: PaletteKindFilter;
 } = {}) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   store.set(paletteThreadLifecyclesAtom, lifecycles);
+  store.set(paletteKindFilterAtom, kind);
   const tree = () => (
     <Provider store={store}>
       <CompactViewportOverrideProvider isCompactViewport={compact}>
@@ -695,7 +702,7 @@ describe("CommandPalette", () => {
     expect(titles?.[0]).toContain("New thread");
     expect(titles).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("Search threads"),
+        expect.stringContaining("Go to"),
         expect.stringContaining("General settings"),
         expect.stringContaining("Open terminal"),
       ]),
@@ -778,7 +785,7 @@ describe("CommandPalette", () => {
     const threadRows = within(bucketGroup("Threads")).getAllByRole("option");
     expect(threadRows.map((row) => row.textContent)).toEqual([
       expect.stringContaining("New thread"),
-      expect.stringContaining("Search threads"),
+      expect.stringContaining("Go to"),
       expect.stringContaining("Next thread"),
     ]);
     for (const row of threadRows) {
@@ -788,7 +795,7 @@ describe("CommandPalette", () => {
     expectClasses(searchThreadsRow.querySelector("kbd"), "bg-state-hover/50");
     expectNoClasses(searchThreadsRow.querySelector("kbd"), "opacity-60");
     expectAttribute(searchThreadsRow, "data-palette-action-kind", "drill-in");
-    expectText(searchThreadsRow, "Search threads…");
+    expectText(searchThreadsRow, "Go to…");
     expect(
       searchThreadsRow.querySelector('[data-icon="ChevronRight"]'),
     ).toBeNull();
@@ -898,7 +905,7 @@ describe("CommandPalette", () => {
 
     const searchCommand = within(bucketGroup("Threads"))
       .getAllByRole("option")
-      .find((row) => row.textContent?.includes("Search threads"));
+      .find((row) => row.textContent?.includes("Go to"));
     fireEvent.click(searchCommand as HTMLElement);
     const clearAfterCommand = await screen.findByRole("button", {
       name: "Return to commands",
@@ -1090,7 +1097,7 @@ describe("CommandPalette", () => {
     openThreadSearch();
     await screen.findByRole("combobox", { name: "Search threads" });
     const trigger = screen.getByRole("button", {
-      name: "Filter: Active",
+      name: "Filter: Threads",
     });
     expectClasses(trigger, "font-normal", "text-subtle-foreground");
     act(() => trigger.focus());
@@ -1104,8 +1111,10 @@ describe("CommandPalette", () => {
       "active",
       "archived",
     ]);
-    expectText(trigger, "All");
-    expect(trigger.getAttribute("aria-label")).toBe("Filter: All");
+    expectText(trigger, "Threads · Active, Archived");
+    expect(trigger.getAttribute("aria-label")).toBe(
+      "Filter: Threads · Active, Archived",
+    );
     expect(routeNavigateMock).not.toHaveBeenCalled();
     fireEvent.keyDown(archived, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
@@ -2289,5 +2298,101 @@ describe("CommandPalette", () => {
     expectClasses(screen.getByText("No matching commands"), "px-3", "py-4");
     fireEvent.keyDown(searchField(), { key: "Enter" });
     expect(testState.calls).toEqual([]);
+  });
+});
+
+describe("CommandPalette Go to", () => {
+  const read = { lastReadAt: 10, latestAttentionAt: 1 };
+
+  function registerAutomationsPage() {
+    setPluginSlotRegistrations(
+      "automations",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "automations",
+            title: "Automations",
+            icon: "Calendar",
+            path: "automations",
+            component: () => null,
+          },
+        ],
+        threadPanelActions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+  }
+
+  it("lists threads with the previous one highlighted, then recent places", async () => {
+    registerAutomationsPage();
+    modeState.activeRecents = [
+      makeThread("current", { ...read, updatedAt: Date.now() }),
+      makeThread("previous", { ...read, updatedAt: 1 }),
+    ];
+    recordPaletteVisit("thread", "previous", 1);
+    recordPaletteVisit("page", "plugin-page:automations/automations", 2);
+    recordPaletteVisit("thread", "current", 3);
+    renderPalette({ threadId: "current", kind: "all" });
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Go to" });
+    await waitFor(() => expectText(selectedOption(), "Title previous"));
+    const places = within(screen.getByRole("group", { name: "Recent places" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+    expect(places).toEqual([expect.stringContaining("Automations")]);
+    expect(places[0]).toContain("Page");
+    expect(screen.queryByRole("button", { name: /Return to commands/ })).toBeNull();
+  });
+
+  it("falls back to plugin pages before any place is visited", async () => {
+    registerAutomationsPage();
+    modeState.activeRecents = [makeThread("only", read)];
+    renderPalette({ kind: "all" });
+    openThreadSearch();
+    const group = await screen.findByRole("group", { name: "Recent places" });
+    expect(within(group).getByRole("option").textContent).toContain("Automations");
+  });
+
+  it("finds a page on the first keystroke and navigates to it once", async () => {
+    registerAutomationsPage();
+    modeState.activeRecents = [makeThread("other", { ...read, title: "Zzz" })];
+    renderPalette({ kind: "all" });
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Go to" });
+    fireEvent.change(searchField(), { target: { value: "autom" } });
+    await waitFor(() => expect(selectedOption()?.textContent).toContain("Automations"));
+    expect(selectedOption()?.textContent).toContain("Page");
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+    await waitFor(() =>
+      expect(routeNavigateMock).toHaveBeenCalledWith(
+        "/plugins/automations/automations",
+      ),
+    );
+    expect(routeNavigateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows No matches when nothing loaded matches one character", async () => {
+    modeState.activeRecents = [makeThread("other", { ...read, title: "Zzz" })];
+    renderPalette({ kind: "all" });
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Go to" });
+    fireEvent.change(searchField(), { target: { value: "q" } });
+    expect(await screen.findByText("No matches")).toBeTruthy();
+  });
+
+  it("switches to the Threads view from the filter and remembers it", async () => {
+    modeState.activeRecents = [makeThread("only", read)];
+    const { store } = renderPalette({ kind: "all" });
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Go to" });
+    const trigger = screen.getByRole("button", { name: "Filter: All" });
+    act(() => trigger.focus());
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const threads = await screen.findByRole("menuitemradio", { name: "Threads" });
+    act(() => threads.focus());
+    fireEvent.keyDown(threads, { key: "Enter" });
+    await screen.findByRole("combobox", { name: "Search threads" });
+    expect(store.get(paletteKindFilterAtom)).toBe("threads");
   });
 });

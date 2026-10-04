@@ -541,7 +541,7 @@ delayed shortcut badges without disabling any shortcuts.
 | --------- | ----------------------------------------- | --------------------------------- | ------------------------ |
 | Palette   | Quick palette                             | `Mod+Shift+P`                     | All clients              |
 | Threads   | New thread                                | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
-| Threads   | Search threads                            | `Mod+K`                           | All clients              |
+| Threads   | Go to                                     | `Mod+K`                           | All clients              |
 | Threads   | Rename focused thread                     | Unassigned                        | Thread view              |
 | Threads   | Archive focused thread                    | Unassigned                        | Thread view              |
 | Threads   | Previous / next thread                    | Surface defaults above            | Desktop / web            |
@@ -965,8 +965,10 @@ Plugin sidebar replacements own their rendering.
 The palette's Filter independently selects Active and Archived before
 and after typing. It defaults to Active and remembers its selection in this
 browser only; it is not configurable through SDK/CLI.
-Active includes threads with saved messages. Search threads retains the existing
-title and conversation search behavior and opens the owning thread.
+Active includes threads with saved messages. The Threads filter retains the existing
+title and conversation search behavior and opens the owning thread. The filter's
+default, All, also lists plugin pages, settings sections, and the Plugins and Skills
+pages, with recently visited places first; it is stored in this browser only.
 Archived loads a bounded list in most-recently-archived order only while selected.
 Search uses the existing
 ranked Active/Archived response and displays the selected groups, with six initial

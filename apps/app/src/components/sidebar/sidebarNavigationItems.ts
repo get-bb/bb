@@ -66,7 +66,7 @@ const HOST_ROWS: readonly SidebarNavigationRow[] = [
   hostRow(NEW_THREAD_NAVIGATION_ITEM_ID, "New thread", "new-thread", {
     kind: "new-thread",
   }),
-  hostRow(SEARCH_THREADS_NAVIGATION_ITEM_ID, "Search threads", "search", {
+  hostRow(SEARCH_THREADS_NAVIGATION_ITEM_ID, "Search", "search", {
     kind: "search-threads",
   }),
   hostRow(PLUGINS_NAVIGATION_ITEM_ID, "Plugins", "extensions", {

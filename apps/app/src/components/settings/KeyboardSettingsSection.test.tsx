@@ -764,7 +764,7 @@ describe("KeyboardSettingsSection", () => {
     expect(recorder.matches(":disabled")).toBe(true);
     expect(
       screen
-        .getByRole("button", { name: /^Record shortcut for Search threads/ })
+        .getByRole("button", { name: /^Record shortcut for Go to/ })
         .closest('[aria-busy="true"]'),
     ).toBeNull();
     testState.keyboardPending = false;

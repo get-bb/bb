@@ -42,8 +42,9 @@ so they carry over between navigation plugins.
   plugin sidebar replacements keep ownership of their rendering.
 - The palette's Filter selects Active and Archived independently of the
   sidebar, defaulting to Active. This selection is browser-local, not configurable
-  through SDK/CLI. Active includes threads with saved messages; Search threads
-  retains existing title and conversation matching. Archived recents load only while selected and are
+  through SDK/CLI. Active includes threads with saved messages; the Threads filter
+  retains existing title and conversation matching. The default, All, also lists
+  plugin pages, settings sections, and the Plugins and Skills pages. Archived recents load only while selected and are
   bounded at the server.
 - `sidebar.organizationMode` defaults to Custom (`chronological`) on new installs.
   Migrated installs with existing projects, threads, or UI preferences fall back to

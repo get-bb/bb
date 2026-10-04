@@ -32,10 +32,18 @@ import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries"
 import type { PluginSettingsCandidate } from "@/components/settings/plugin-settings-entries";
 import { appQueryClient } from "@/lib/app-query-client";
 import { LazyCommandPaletteBody } from "./LazyCommandPaletteBody";
+import { useAtomValue } from "jotai";
+import { paletteKindFilterAtom } from "@/lib/command-palette/palette-preferences";
 
 const ThreadSearchPaletteMode = lazy(() =>
   import("./ThreadSearchPaletteMode").then((module) => ({
     default: module.ThreadSearchPaletteMode,
+  })),
+);
+
+const GoToPaletteMode = lazy(() =>
+  import("./GoToPaletteMode").then((module) => ({
+    default: module.GoToPaletteMode,
   })),
 );
 
@@ -61,6 +69,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
 
   const [open, setOpen] = useState(false);
+  const kindFilter = useAtomValue(paletteKindFilterAtom);
   const [openCount, setOpenCount] = useState(0);
   const [query, setQuery] = useState("");
   const [actions, setActions] = useState<readonly PaletteAction[]>([]);
@@ -296,15 +305,24 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                 role="status"
                 className="px-3 py-4 text-sm text-muted-foreground"
               >
-                Loading threads
+                Loading
               </p>
             }
           >
-            <ThreadSearchPaletteMode
-              currentThreadId={threadId}
-              onExit={exitMode}
-              runAfterClose={runAfterClose}
-            />
+            {kindFilter === "all" ? (
+              <GoToPaletteMode
+                currentThreadId={threadId}
+                installedPlugins={installedPlugins}
+                onExit={exitMode}
+                runAfterClose={runAfterClose}
+              />
+            ) : (
+              <ThreadSearchPaletteMode
+                currentThreadId={threadId}
+                onExit={exitMode}
+                runAfterClose={runAfterClose}
+              />
+            )}
           </Suspense>
         )}
       </DialogContent>

@@ -216,7 +216,7 @@ own if your layout wants one.
 
 Read the items with `experimental_useSidebarNavigation()`. It returns
 `{ items, activeItemId, isShortcutModifierHeld, actions }`; show item shortcut
-labels while `isShortcutModifierHeld` is true, as bb's rows do. `items` holds New thread, Search threads,
+labels while `isShortcutModifierHeld` is true, as bb's rows do. `items` holds New thread, Search,
 Plugins, Skills, and plugin panels in the user's saved order, hidden ones
 included. Each item has an `id` (its arrangement key, such as
 `__bb__/new-thread` or `<pluginId>/<panelId>`), `label`, semantic `icon`, host
