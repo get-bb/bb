@@ -1786,58 +1786,78 @@ describe("competing turn refusals", () => {
 });
 
 describe("plugin turn markers", () => {
-  it("settles a marker when cold provider startup fails before accepting input", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedColdIdleThreadFixture({ harness, value: 902 });
-      const target = {
-        threadId: thread.id,
-        pluginId: "automations",
-        eventId: "cold-run",
-      };
-      await acceptThreadSendRequest(harness.deps, {
-        thread,
-        payload: {
-          input: [
-            {
-              type: "text",
-              text: "hidden prompt",
-              mentions: [],
-              visibility: "agent-only",
-            },
-          ],
-          mode: "auto",
-          permissionMode: "full",
-          model: "gpt-5",
-          reasoningLevel: "medium",
-          serviceTier: "default",
-          experimental_timelineEvent: {
-            id: target.eventId,
-            pluginId: target.pluginId,
-            rendererId: "run",
-            payload: {},
-            presentation: {
-              icon: { glyph: "Timer" },
-              label: { pending: "Running", completed: "Finished" },
+  it.each(["failed", "completed"] as const)(
+    "settles a cold-start marker without an acceptance event: %s",
+    async (status) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedColdIdleThreadFixture({ harness, value: 902 });
+        const target = {
+          threadId: thread.id,
+          pluginId: "automations",
+          eventId: "cold-run",
+        };
+        await acceptThreadSendRequest(harness.deps, {
+          thread,
+          payload: {
+            input: [
+              {
+                type: "text",
+                text: "hidden prompt",
+                mentions: [],
+                visibility: "agent-only",
+              },
+            ],
+            mode: "auto",
+            permissionMode: "full",
+            model: "gpt-5",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+            experimental_timelineEvent: {
+              id: target.eventId,
+              pluginId: target.pluginId,
+              rendererId: "run",
+              payload: {},
+              presentation: {
+                icon: { glyph: "Timer" },
+                label: { pending: "Running", completed: "Finished" },
+              },
             },
           },
-        },
+        });
+        const command = await waitForQueuedCommand(
+          harness,
+          (entry) =>
+            entry.command.type === "thread.start" &&
+            entry.command.threadId === thread.id,
+        );
+        if (status === "failed") {
+          await reportQueuedCommandError(harness, command, {
+            errorCode: "provider_rpc_error",
+            errorMessage: "Provider could not start",
+          });
+        } else {
+          seedTurnStarted(harness.deps, {
+            threadId: thread.id,
+            providerThreadId: "cold-provider",
+            turnId: "cold-turn",
+            sequence: 100,
+          });
+          seedStoredEvent(harness.deps, {
+            threadId: thread.id,
+            providerThreadId: "cold-provider",
+            sequence: 101,
+            scope: turnScope("cold-turn"),
+            type: "turn/completed",
+            data: { status: "completed" },
+          });
+        }
+        expect(getPluginTimelineEvent(harness.db, target)).toMatchObject({
+          status: status === "failed" ? "error" : "completed",
+          turnId: status === "failed" ? null : "cold-turn",
+        });
       });
-      const command = await waitForQueuedCommand(
-        harness,
-        (entry) =>
-          entry.command.type === "thread.start" &&
-          entry.command.threadId === thread.id,
-      );
-      await reportQueuedCommandError(harness, command, {
-        errorCode: "provider_rpc_error",
-        errorMessage: "Provider could not start",
-      });
-      expect(getPluginTimelineEvent(harness.db, target)).toMatchObject({
-        status: "error",
-        turnId: null,
-      });
-    });
-  });
+    },
+  );
 
   it.each([false, true])(
     "keeps hidden input and its marker linked through dispatch (queued: %s)",
@@ -1906,6 +1926,7 @@ describe("plugin turn markers", () => {
           input,
         });
         seedStoredEvent(harness.deps, {
+          providerThreadId: "provider-send-dispatch-901",
           threadId: thread.id,
           sequence: 100,
           scope: turnScope("plugin-turn"),
@@ -1913,6 +1934,7 @@ describe("plugin turn markers", () => {
           data: { clientRequestId: marker.requestId },
         });
         seedStoredEvent(harness.deps, {
+          providerThreadId: "provider-send-dispatch-901",
           threadId: thread.id,
           sequence: 101,
           scope: turnScope("unrelated-turn"),
@@ -1923,6 +1945,7 @@ describe("plugin turn markers", () => {
           "pending",
         );
         seedStoredEvent(harness.deps, {
+          providerThreadId: "provider-send-dispatch-901",
           threadId: thread.id,
           sequence: 102,
           scope: turnScope("plugin-turn"),

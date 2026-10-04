@@ -76,13 +76,17 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
     threads: Pick<
       BbPluginApi["sdk"]["threads"],
-      | "queuedMessages"
       | "get"
       | "send"
       | "spawn"
       | "experimental_getTimelineEvent"
       | "experimental_updateTimelineEvent"
-    >;
+    > & {
+      queuedMessages: Pick<
+        BbPluginApi["sdk"]["threads"]["queuedMessages"],
+        "list"
+      >;
+    };
   };
 };
 
