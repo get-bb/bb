@@ -447,7 +447,6 @@ local token deletion does not require that server to be reachable. This does not
 delete the Firebase installation ID or previously processed provider data.
 iOS keeps its existing APNs registration behavior.
 
-
 - Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)
   registers the phone's Expo push token with each enabled server through
   Settings → This device → Notifications. It calls the `push-notifications`
@@ -714,3 +713,25 @@ Production AABs retain all architectures so Google Play can deliver
 device-specific packages. Keep EAS signing credentials unchanged so existing
 sideload installations can update. The smaller APK still undergoes browser
 security scanning; reduced size does not guarantee a fix for scanning hangs.
+
+## Android keyboard image paste
+
+The `react-native-webview` patch receives keyboard image content through
+AndroidX `InputConnectionCompat`. It is enabled only for WebViews with BB's
+injected mobile bridge. The bridge captures the focused prompt editor, then
+replays the image as a clipboard file through the existing web paste handler.
+URI permissions are released after reading; reads run off the UI thread and
+are capped at the composer's 35 MB attachment limit. Removed editors and
+expired reads discard the result. This requires an updated Android APK but
+works with the existing web composer without a server update.
+
+For a device smoke test:
+
+1. Copy a screenshot to the Android clipboard and focus a thread composer.
+2. Open Gboard's clipboard panel and tap the image. Check that its attachment
+   preview appears and finishes uploading.
+3. Paste ordinary clipboard text and check that it still appears in the editor.
+4. Remove the test attachment and text without sending a message.
+
+Bridge regression tests run with
+`pnpm exec turbo run test typecheck --filter=@bb/mobile-bridge`.
