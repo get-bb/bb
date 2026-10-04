@@ -39,14 +39,20 @@ import {
 } from "@/lib/command-palette/palette-thread-search";
 import { buildPaletteGoToResults } from "@/lib/command-palette/palette-go-to";
 import {
+  buildPaletteGroupingPlaces,
   buildPalettePlaces,
   orderPanelsBySidebar,
   PLACE_KIND_LABELS,
   resolvePalettePlaceVisit,
   selectRecentPlaces,
   type PalettePlace,
+  type PaletteScope,
 } from "@/lib/command-palette/palette-places";
-import { readPaletteVisits } from "@/lib/command-palette/palette-visits";
+import {
+  readPaletteVisits,
+  recordPaletteVisit,
+} from "@/lib/command-palette/palette-visits";
+import type { ThreadListEntry } from "@bb/domain";
 import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
@@ -56,6 +62,13 @@ import { PaletteKindFilter } from "./PaletteKindFilter";
 import { ThreadSearchPaletteRow } from "./ThreadSearchPaletteMode";
 
 const THREAD_ROW_LIMIT = 6;
+const EMPTY_PROJECT_NAMES: ReadonlyMap<string, string> = new Map();
+
+function isThreadInScope(thread: ThreadListEntry, scope: PaletteScope): boolean {
+  if (scope.kind === "project") return thread.projectId === scope.id;
+  if (scope.kind === "section") return thread.sectionId === scope.id;
+  return thread.pinnedAt !== null;
+}
 const NO_MATCHES_MESSAGE = "No matches";
 
 type GoToOption =
@@ -115,10 +128,11 @@ export function GoToPaletteMode({
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [followPreviousThread, setFollowPreviousThread] = useState(true);
   const [threadsExpanded, setThreadsExpanded] = useState(false);
+  const [scope, setScope] = useState<PaletteScope | null>(null);
   const [now] = useState(() => Date.now());
   const [visits] = useState(readPaletteVisits);
   const navigation = useSidebarNavigation();
-  const threadSearch = useThreadSearch({ active: true, query });
+  const threadSearch = useThreadSearch({ active: scope === null, query });
   const trimmedQuery = query.trim();
   const searchable = hasThreadSearchableQuery(trimmedQuery);
   const searchResultsAreCurrent =
@@ -133,7 +147,7 @@ export function GoToPaletteMode({
     ].map((project) => [project.id, project.name] as const);
     return new Map(entries);
   }, [navigation.data]);
-  const activeThreads = useMemo(
+  const allActiveThreads = useMemo(
     () => [
       ...(navigation.data?.projects.flatMap((project) => project.threads) ??
         []),
@@ -141,7 +155,33 @@ export function GoToPaletteMode({
     ],
     [navigation.data],
   );
-  const places = useMemo(
+  const activeThreads = useMemo(
+    () =>
+      scope === null
+        ? allActiveThreads
+        : allActiveThreads.filter((thread) => isThreadInScope(thread, scope)),
+    [allActiveThreads, scope],
+  );
+  const rowProjectNames =
+    scope?.kind === "project" ? EMPTY_PROJECT_NAMES : projectNamesById;
+  const scopedCurrentThreadId =
+    currentThreadId !== null &&
+    activeThreads.some((thread) => thread.id === currentThreadId)
+      ? currentThreadId
+      : null;
+  const groupingPlaces = useMemo(
+    () =>
+      buildPaletteGroupingPlaces({
+        projects: navigation.data?.projects ?? [],
+        personalProject: navigation.data?.personalProject ?? null,
+        sections: navigation.data?.sections ?? [],
+        hasPinnedThreads: allActiveThreads.some(
+          (thread) => thread.pinnedAt !== null,
+        ),
+      }),
+    [allActiveThreads, navigation.data],
+  );
+  const pagePlaces = useMemo(
     () =>
       buildPalettePlaces({
         navigate: (path) => navigate(path),
@@ -161,6 +201,10 @@ export function GoToPaletteMode({
       settingsSections,
     ],
   );
+  const places = useMemo(
+    () => (scope === null ? [...pagePlaces, ...groupingPlaces] : []),
+    [groupingPlaces, pagePlaces, scope],
+  );
   const currentPlaceId =
     resolvePalettePlaceVisit(location.pathname, pluginSlots.navPanels)?.id ??
     null;
@@ -168,21 +212,24 @@ export function GoToPaletteMode({
   const recentThreadResult = useMemo(
     () =>
       buildPaletteThreadSearchRows({
-        currentThreadId,
+        currentThreadId: scopedCurrentThreadId,
         lifecycles: ["active"],
         now,
-        projectNamesById,
+        projectNamesById: rowProjectNames,
         query: "",
         recentThreads: activeThreads,
         searchResponse: undefined,
         searchResultsAreCurrent: true,
         visits,
       }),
-    [activeThreads, currentThreadId, now, projectNamesById, visits],
+    [activeThreads, now, rowProjectNames, scopedCurrentThreadId, visits],
   );
   const recentPlaces = useMemo(
-    () => selectRecentPlaces({ currentPlaceId, places, visits }),
-    [currentPlaceId, places, visits],
+    () =>
+      scope === null
+        ? selectRecentPlaces({ currentPlaceId, places, visits })
+        : [],
+    [currentPlaceId, places, scope, visits],
   );
   const typedResults = useMemo(
     () =>
@@ -190,9 +237,9 @@ export function GoToPaletteMode({
         activeThreads,
         now,
         places,
-        projectNamesById,
+        projectNamesById: rowProjectNames,
         query,
-        searchResponse: threadSearch.data,
+        searchResponse: scope === null ? threadSearch.data : undefined,
         searchResultsAreCurrent,
         visits,
       }),
@@ -200,8 +247,9 @@ export function GoToPaletteMode({
       activeThreads,
       now,
       places,
-      projectNamesById,
+      rowProjectNames,
       query,
+      scope,
       searchResultsAreCurrent,
       threadSearch.data,
       visits,
@@ -303,6 +351,18 @@ export function GoToPaletteMode({
         inputRef.current?.focus();
         return;
       }
+      if (option.type === "place" && option.place.scope !== null) {
+        const nextScope = option.place.scope;
+        recordPaletteVisit(nextScope.kind, nextScope.id);
+        setScope(nextScope);
+        setQuery("");
+        setFollowPreviousThread(true);
+        setThreadsExpanded(false);
+        setHighlightedIndex(0);
+        setHighlightedKey(null);
+        inputRef.current?.focus();
+        return;
+      }
       if (option.type === "place") {
         const placeSplit = option.place.split;
         runAfterClose(() => {
@@ -352,9 +412,25 @@ export function GoToPaletteMode({
     [isCompact, navigate, runAfterClose, store],
   );
 
+  const exitScope = useCallback(() => {
+    setScope(null);
+    setQuery("");
+    setFollowPreviousThread(true);
+    setThreadsExpanded(false);
+    setHighlightedIndex(0);
+    setHighlightedKey(null);
+    inputRef.current?.focus();
+  }, []);
+
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
       if (event.nativeEvent.isComposing) return;
+      if (event.key === "Backspace" && query.length === 0 && scope !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        exitScope();
+        return;
+      }
       if (
         (event.key === "Backspace" && query.length === 0) ||
         event.key === "Escape"
@@ -390,10 +466,20 @@ export function GoToPaletteMode({
         selectOption(option, activeIndex, event.metaKey || event.ctrlKey);
       }
     },
-    [activeIndex, highlightOption, onExit, options, query.length, selectOption],
+    [
+      activeIndex,
+      exitScope,
+      highlightOption,
+      onExit,
+      options,
+      query.length,
+      scope,
+      selectOption,
+    ],
   );
 
   const isSearching =
+    scope === null &&
     searchable &&
     (!searchResultsAreCurrent ||
       threadSearch.isDebouncing ||
@@ -403,10 +489,15 @@ export function GoToPaletteMode({
     emptyMessage = isRecent
       ? navigation.isLoading
         ? "Loading threads"
-        : NO_MATCHES_MESSAGE
+        : scope !== null
+          ? "No threads"
+          : NO_MATCHES_MESSAGE
       : isSearching
         ? "Searching"
-        : searchable && searchResultsAreCurrent && threadSearch.isError
+        : scope === null &&
+            searchable &&
+            searchResultsAreCurrent &&
+            threadSearch.isError
           ? "Couldn’t search threads"
           : NO_MATCHES_MESSAGE;
   }
@@ -492,6 +583,17 @@ export function GoToPaletteMode({
       inputRef={inputRef}
       listId={listId}
       listLabel="Go to"
+      modeChip={
+        scope === null
+          ? undefined
+          : {
+              icon: scope.icon,
+              label: scope.name,
+              clearLabel: "Remove filter",
+              onClear: exitScope,
+              hideShortcut: true,
+            }
+      }
       listRef={listRef}
       onInputChange={(value) => {
         setQuery(value);
@@ -502,7 +604,11 @@ export function GoToPaletteMode({
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
-      placeholder="Go to thread, page, setting…"
+      placeholder={
+        scope === null
+          ? "Go to thread, project, page…"
+          : `Search ${scope.name} threads…`
+      }
       value={query}
     >
       {emptyMessage !== null ? (

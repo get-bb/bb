@@ -4,6 +4,7 @@ import {
   SETTINGS_NAV_SECTIONS,
 } from "@/components/settings/settings-sections";
 import {
+  buildPaletteGroupingPlaces,
   buildPalettePlaces,
   resolvePalettePlaceVisit,
   selectRecentPlaces,
@@ -19,7 +20,7 @@ const panels = [
 ];
 
 function place(id: string, kind: PalettePlace["kind"] = "page"): PalettePlace {
-  return { id, kind, title: id, icon: "Zap", split: null, run: () => {} };
+  return { id, kind, title: id, icon: "Zap", split: null, scope: null, run: () => {} };
 }
 
 function visit(kind: PaletteVisit["kind"], id: string, visitedAt: number): PaletteVisit {
@@ -134,5 +135,23 @@ describe("buildPalettePlaces", () => {
     expect(places.map((entry) => entry.id)).toEqual(
       expect.arrayContaining(["tools:plugins", "tools:skills"]),
     );
+  });
+});
+
+describe("buildPaletteGroupingPlaces", () => {
+  it("labels Personal, lists sections, and adds Pinned only when something is pinned", () => {
+    const build = (hasPinnedThreads: boolean) =>
+      buildPaletteGroupingPlaces({
+        projects: [{ id: "proj_1", name: "bb" }],
+        personalProject: { id: "proj_personal", name: "Personal project" },
+        sections: [{ id: "sec_inbox", name: "Inbox" }],
+        hasPinnedThreads,
+      }).map((entry) => [entry.kind, entry.title, entry.scope?.id]);
+    expect(build(false)).toEqual([
+      ["project", "bb", "proj_1"],
+      ["project", "Personal", "proj_personal"],
+      ["section", "Inbox", "sec_inbox"],
+    ]);
+    expect(build(true).at(-1)).toEqual(["pinned", "Pinned", "pinned"]);
   });
 });

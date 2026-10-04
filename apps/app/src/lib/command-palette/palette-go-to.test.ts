@@ -56,7 +56,7 @@ function makeThread(
 }
 
 function place(id: string, title: string): PalettePlace {
-  return { id, kind: "page", title, icon: "Zap", split: null, run: () => {} };
+  return { id, kind: "page", title, icon: "Zap", split: null, scope: null, run: () => {} };
 }
 
 function labelOf(item: PaletteGoToItem): string {

@@ -45,7 +45,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       command(
         "thread.search",
         "Go to",
-        "Go to a thread, page, or setting in the quick palette.",
+        "Go to a thread, project, page, or setting in the quick palette.",
       ),
       command("thread.rename", "Rename thread", "Rename the focused thread."),
       command(

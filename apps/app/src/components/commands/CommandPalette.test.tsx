@@ -130,6 +130,7 @@ const modeState = vi.hoisted(() => ({
   recentError: false,
   searchLoading: false,
   searchError: false,
+  sections: [] as { id: string; name: string; createdAt: number; updatedAt: number }[],
 }));
 const routeNavigateMock = vi.hoisted(() => vi.fn());
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
@@ -232,6 +233,7 @@ vi.mock("@/hooks/usePromptDraftStorage", () => ({
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
     data: {
+      sections: modeState.sections,
       projects: [
         {
           id: "project-1",
@@ -433,6 +435,7 @@ afterEach(() => {
   modeState.recentError = false;
   modeState.searchLoading = false;
   modeState.searchError = false;
+  modeState.sections = [];
   routeNavigateMock.mockReset();
   openThreadInSplitMock.mockReset();
   window.localStorage.clear();
@@ -2394,5 +2397,114 @@ describe("CommandPalette Go to", () => {
     fireEvent.keyDown(threads, { key: "Enter" });
     await screen.findByRole("combobox", { name: "Search threads" });
     expect(store.get(paletteKindFilterAtom)).toBe("threads");
+  });
+});
+
+describe("CommandPalette Go to narrowing", () => {
+  const read = { lastReadAt: 10, latestAttentionAt: 1 };
+
+  async function openGoTo() {
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Go to" });
+  }
+
+  async function choose(query: string, text: string) {
+    fireEvent.change(searchField(), { target: { value: query } });
+    await waitFor(() => expect(selectedOption()?.textContent).toContain(text));
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+  }
+
+  it("narrows to a project's threads, drops the project name, and records the visit", async () => {
+    modeState.activeRecents = [
+      makeThread("in-project", read),
+      makeThread("elsewhere", { ...read, projectId: "proj_personal" }),
+    ];
+    renderPalette({ kind: "all" });
+    await openGoTo();
+    await choose("palette pro", "Project");
+    await waitFor(() =>
+      expect(searchField().getAttribute("placeholder")).toBe(
+        "Search Palette project threads…",
+      ),
+    );
+    const titles = optionTitles();
+    expect(titles).toEqual([expect.stringContaining("Title in-project")]);
+    expect(titles?.[0]).not.toContain("Palette project");
+    expect(routeNavigateMock).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(window.localStorage.getItem("bb.palette.visits") ?? "[]")[0],
+    ).toMatchObject({ kind: "project", id: "project-1" });
+  });
+
+  it("matches titles only inside the narrowed list", async () => {
+    modeState.activeRecents = [
+      makeThread("alpha", { ...read, title: "Deploy alpha" }),
+      makeThread("beta", { ...read, title: "Deploy beta", projectId: "proj_personal" }),
+    ];
+    renderPalette({ kind: "all" });
+    await openGoTo();
+    await choose("palette pro", "Project");
+    fireEvent.change(searchField(), { target: { value: "deploy" } });
+    await waitFor(() =>
+      expect(optionTitles()).toEqual([expect.stringContaining("Deploy alpha")]),
+    );
+  });
+
+  it("removes the filter with Backspace on an empty query, then returns to commands", async () => {
+    modeState.activeRecents = [makeThread("in-project", read)];
+    renderPalette({ kind: "all" });
+    await openGoTo();
+    await choose("palette pro", "Project");
+    await screen.findByRole("button", { name: "Remove filter" });
+    fireEvent.keyDown(searchField(), { key: "Backspace" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Remove filter" })).toBeNull(),
+    );
+    expect(screen.getByRole("combobox", { name: "Go to" })).toBeTruthy();
+    fireEvent.keyDown(searchField(), { key: "Backspace" });
+    await waitFor(() =>
+      expect(screen.queryByRole("combobox", { name: "Go to" })).toBeNull(),
+    );
+  });
+
+  it("narrows to a sidebar section", async () => {
+    modeState.sections = [{ id: "sec_inbox", name: "Inbox", createdAt: 1, updatedAt: 1 }];
+    modeState.activeRecents = [
+      makeThread("triage", { ...read, sectionId: "sec_inbox" }),
+      makeThread("other", read),
+    ];
+    renderPalette({ kind: "all" });
+    await openGoTo();
+    await choose("inbox", "Section");
+    await waitFor(() =>
+      expect(optionTitles()).toEqual([expect.stringContaining("Title triage")]),
+    );
+  });
+
+  it("offers Pinned only when a thread is pinned and keeps project names there", async () => {
+    modeState.activeRecents = [makeThread("loose", read)];
+    const { unmount } = renderPalette({ kind: "all" });
+    await openGoTo();
+    fireEvent.change(searchField(), { target: { value: "pinned" } });
+    await waitFor(() =>
+      expect(
+        screen.queryAllByRole("option").some((option) =>
+          option.textContent?.includes("Pinned"),
+        ),
+      ).toBe(false),
+    );
+    unmount();
+
+    modeState.activeRecents = [
+      makeThread("pinned-one", { ...read, pinnedAt: 5 }),
+      makeThread("loose", read),
+    ];
+    renderPalette({ kind: "all" });
+    await openGoTo();
+    await choose("pinned", "Pinned");
+    await waitFor(() =>
+      expect(optionTitles()).toEqual([expect.stringContaining("Title pinned-one")]),
+    );
+    expect(optionTitles()?.[0]).toContain("Palette project");
   });
 });

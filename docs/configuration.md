@@ -967,8 +967,10 @@ and after typing. It defaults to Active and remembers its selection in this
 browser only; it is not configurable through SDK/CLI.
 Active includes threads with saved messages. The Threads filter retains the existing
 title and conversation search behavior and opens the owning thread. The filter's
-default, All, also lists plugin pages, settings sections, and the Plugins and Skills
-pages, with recently visited places first; it is stored in this browser only.
+default, All, also lists plugin pages, settings sections, the Plugins and Skills
+pages, projects, sidebar sections, and Pinned, with recently visited places first;
+it is stored in this browser only. Choosing a project, section, or Pinned narrows
+the list to its threads by title; Backspace on an empty query removes the filter.
 Archived loads a bounded list in most-recently-archived order only while selected.
 Search uses the existing
 ranked Active/Archived response and displays the selected groups, with six initial

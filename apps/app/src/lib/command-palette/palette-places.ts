@@ -29,7 +29,21 @@ import { buildSettingsPaletteActions } from "./palette-settings-actions";
 import { buildToolsPagePaletteActions } from "./palette-tools-page-actions";
 import type { PaletteVisit } from "./palette-visits";
 
-export type PalettePlaceKind = "page" | "setting";
+export type PalettePlaceKind =
+  | "page"
+  | "setting"
+  | "project"
+  | "section"
+  | "pinned";
+
+export type PaletteScopeKind = "project" | "section" | "pinned";
+
+export interface PaletteScope {
+  kind: PaletteScopeKind;
+  id: string;
+  name: string;
+  icon: IconName;
+}
 
 export interface PalettePlaceSplit {
   content: PaneContent;
@@ -42,11 +56,12 @@ export interface PalettePlace {
   title: string;
   icon: IconName;
   split: PalettePlaceSplit | null;
+  scope: PaletteScope | null;
   run: () => void;
 }
 
 export interface PalettePlaceVisit {
-  kind: PalettePlaceKind;
+  kind: "page" | "setting";
   id: string;
 }
 
@@ -65,7 +80,12 @@ export const RECENT_PLACES_LIMIT = 3;
 export const PLACE_KIND_LABELS: Record<PalettePlaceKind, string> = {
   page: "Page",
   setting: "Setting",
+  project: "Project",
+  section: "Section",
+  pinned: "Pinned",
 };
+
+export const PINNED_SCOPE_ID = "pinned";
 
 const TOOLS_PAGE_ICONS: Record<string, IconName> = {
   "tools:plugins": "Plug02",
@@ -104,6 +124,7 @@ function settingPlace(action: PaletteAction, icon: IconName): PalettePlace {
       : action.title,
     icon,
     split: null,
+    scope: null,
     run: action.run,
   };
 }
@@ -140,6 +161,7 @@ export function buildPalettePlaces({
             path: panel.path,
           }),
         },
+        scope: null,
         run: action.run,
       }),
     ),
@@ -151,6 +173,7 @@ export function buildPalettePlaces({
       title: action.title,
       icon: TOOLS_PAGE_ICONS[action.id] ?? "Plug02",
       split: null,
+      scope: null,
       run: action.run,
     }),
   );
@@ -239,4 +262,57 @@ export function selectRecentPlaces({
         place.id !== currentPlaceId,
     )
     .slice(0, RECENT_PLACES_LIMIT);
+}
+
+interface PaletteGroupingSource {
+  id: string;
+  name: string;
+}
+
+interface BuildPaletteGroupingPlacesArgs {
+  projects: readonly PaletteGroupingSource[];
+  personalProject: PaletteGroupingSource | null;
+  sections: readonly PaletteGroupingSource[];
+  hasPinnedThreads: boolean;
+}
+
+function scopePlace(scope: PaletteScope): PalettePlace {
+  return {
+    id: scope.id,
+    kind: scope.kind,
+    title: scope.name,
+    icon: scope.icon,
+    split: null,
+    scope,
+    run: () => {},
+  };
+}
+
+export function buildPaletteGroupingPlaces({
+  projects,
+  personalProject,
+  sections,
+  hasPinnedThreads,
+}: BuildPaletteGroupingPlacesArgs): PalettePlace[] {
+  return [
+    ...projects.map((project) =>
+      scopePlace({ kind: "project", id: project.id, name: project.name, icon: "Folder" }),
+    ),
+    ...(personalProject === null
+      ? []
+      : [
+          scopePlace({
+            kind: "project",
+            id: personalProject.id,
+            name: "Personal",
+            icon: "Folder",
+          }),
+        ]),
+    ...sections.map((section) =>
+      scopePlace({ kind: "section", id: section.id, name: section.name, icon: "Layers" }),
+    ),
+    ...(hasPinnedThreads
+      ? [scopePlace({ kind: "pinned", id: PINNED_SCOPE_ID, name: "Pinned", icon: "Pin" })]
+      : []),
+  ];
 }
