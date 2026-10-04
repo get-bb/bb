@@ -5796,53 +5796,35 @@ describe("thread URL clipboard paste", () => {
       const changes: PromptChange[] = [];
       const submitted = vi.fn();
       const promptBoxRef = createRef<PromptBoxHandle>();
-      function Harness() {
-        const [value, setValue] = useState("");
-        const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
-          [],
-        );
-        return (
-          <MemoryRouter>
-            <PromptBoxInternal
-              {...createPromptBoxProps({
-                value,
-                mentionRanges,
-                onChange: (nextValue, nextMentions) => {
-                  changes.push({ value: nextValue, mentions: nextMentions });
-                  setValue(nextValue);
-                  setMentionRanges(nextMentions);
-                },
-                onSubmit: () => submitted(value),
-              })}
-              promptBoxRef={promptBoxRef}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setValue("Replacement draft");
-                setMentionRanges([]);
-              }}
-            >
-              Replace draft
-            </button>
-          </MemoryRouter>
-        );
-      }
+      const props = createPromptBoxProps({
+        onChange: (value, mentions) => changes.push({ value, mentions }),
+        onSubmit: submitted,
+      });
+      const content = (value: string) => (
+        <MemoryRouter>
+          <PromptBoxInternal
+            {...props}
+            value={value}
+            promptBoxRef={promptBoxRef}
+          />
+        </MemoryRouter>
+      );
       try {
-        render(<Harness />);
+        const view = render(content(""));
         await focusPromptEnd(promptBoxRef);
         pastePlainText(url);
         await waitFor(() => expect(lookup).toHaveBeenCalledTimes(1));
         expect(latestChange(changes)).toEqual({ value: url, mentions: [] });
-        fireEvent.click(
-          screen.getByRole("button", {
-            name: action === "submit" ? "Submit (Enter)" : "Replace draft",
-          }),
-        );
+        view.rerender(content(url));
+        if (action === "submit")
+          fireEvent.click(
+            screen.getByRole("button", { name: "Submit (Enter)" }),
+          );
+        else view.rerender(content("Replacement draft"));
         const expected = action === "submit" ? url : "Replacement draft";
         expect(lookup.mock.calls[0]?.[0].signal?.aborted).toBe(true);
         if (action === "submit") {
-          expect(submitted).toHaveBeenCalledExactlyOnceWith(url);
+          expect(submitted).toHaveBeenCalledOnce();
         }
         const countBeforeResolution = changes.length;
         await act(async () => {

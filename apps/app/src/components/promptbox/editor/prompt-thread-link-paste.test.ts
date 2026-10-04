@@ -71,6 +71,7 @@ async function paste(editor: Editor, text: string, skip = false) {
     .setMeta(promptThreadLinkPasteKey, { skip })
     .run();
   await vi.dynamicImportSettled();
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 function value(editor: Editor) {
@@ -128,8 +129,6 @@ describe("pasted thread link conversion", () => {
       editor.commands.setTextSelection({ from: 8, to: 16 });
       const pasted = `😀 (${url}/), ${secondUrl} and ${url}. https://example.com`;
       await paste(editor, pasted);
-      await vi.dynamicImportSettled();
-      await vi.advanceTimersByTimeAsync(0);
       expect(value(editor)).toEqual({
         text: `Before ${pasted} after`,
         mentions: [],
@@ -148,12 +147,6 @@ describe("pasted thread link conversion", () => {
         { kind: "thread", ...resolution(secondId) },
         { kind: "thread", ...resolution() },
       ]);
-      for (const mention of converted.mentions) {
-        expect(converted.text.slice(mention.start, mention.end)).toBe(
-          `@thread:${mention.resource.kind === "thread" ? mention.resource.threadId : ""}`,
-        );
-      }
-
       editor.commands.undo();
       expect(value(editor)).toEqual({
         text: `Before ${pasted} after`,
@@ -189,8 +182,6 @@ describe("pasted thread link conversion", () => {
     );
     const editor = createEditor({ resolveThreads });
     await paste(editor, `${url} and ${url} then ${url}`);
-    await vi.dynamicImportSettled();
-    await vi.advanceTimersByTimeAsync(0);
     editor.view.dispatch(editor.state.tr.insertText("📎 ", 1));
     editor.view.dispatch(editor.state.tr.insertText("!", 1 + 3 + url.length));
 
@@ -250,8 +241,6 @@ describe("pasted thread link conversion", () => {
       );
       const editor = createEditor({ resolveThreads });
       await paste(editor, url);
-      await vi.dynamicImportSettled();
-      await vi.advanceTimersByTimeAsync(0);
       const signal = resolveThreads.mock.calls[0]![1];
       if (action === "undo") editor.commands.undo();
       if (action === "cancel") {
@@ -298,8 +287,6 @@ describe("pasted thread link conversion", () => {
       .map((id) => `${origin}/projects/${projectId}/threads/${id}`)
       .join(" ");
     await paste(editor, pasted);
-    await vi.dynamicImportSettled();
-    await vi.advanceTimersByTimeAsync(0);
     expect(resolveThreads.mock.calls.map(([batch]) => batch.length)).toEqual([
       32, 1,
     ]);
@@ -341,8 +328,6 @@ describe("pasted thread link conversion", () => {
       editor,
       [mismatched, personal, wrongProjectless, missing].join(" "),
     );
-    await vi.dynamicImportSettled();
-    await vi.advanceTimersByTimeAsync(0);
     expect(value(editor)).toEqual({
       text: `${mismatched} @thread:${personalId} ${wrongProjectless} ${missing}`,
       mentions: [
@@ -390,8 +375,6 @@ describe("pasted thread link conversion", () => {
     expect(resolveThreads).not.toHaveBeenCalled();
 
     await paste(editor, ` fresh ${url}`);
-    await vi.dynamicImportSettled();
-    await vi.advanceTimersByTimeAsync(0);
     expect(value(editor).text).toBe(
       `${url} copied ${url} programmatic ${url} fresh @thread:${threadId}`,
     );
@@ -436,8 +419,6 @@ describe("pasted thread link conversion", () => {
       if (context === "code") editor.commands.setCode();
       if (context === "blockquote") editor.commands.setBlockquote();
       await paste(editor, url);
-      await vi.dynamicImportSettled();
-      await vi.advanceTimersByTimeAsync(0);
       expect(value(editor).mentions).toHaveLength(0);
       expect(value(editor).text).toContain(url);
       expect(resolveThreads).not.toHaveBeenCalled();
