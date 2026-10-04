@@ -65,11 +65,11 @@ export function useMachineAttention(hosts: Host[], isLoading: boolean) {
     label:
       unseen.length === 0
         ? null
-        : unseen.length === 1
-          ? unseen[0]!.label
-          : unseen.every((issue) => issue.offline)
+        : issues.length === 1
+          ? issues[0]!.label
+          : issues.every((issue) => issue.offline)
             ? "Machines offline"
-            : `${unseen.length} machines need attention`,
+            : `${issues.length} machines need attention`,
     acknowledge: () => setAcknowledged(issues.map((issue) => issue.key)),
   };
 }

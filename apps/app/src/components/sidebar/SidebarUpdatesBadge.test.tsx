@@ -252,7 +252,7 @@ describe("SidebarUpdatesBadge", () => {
       machines: [first, second],
     });
     result.rerender(<BadgeHarness />);
-    expect(screen.getByTestId("sidebar-machines-attention-badge")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Machines offline" })).toBeTruthy();
   });
 
   it("does not warn about intentionally paused machines or ephemeral hosts", () => {
