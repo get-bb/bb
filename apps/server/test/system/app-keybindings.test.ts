@@ -347,6 +347,43 @@ describe("app keybindings", () => {
           when: { all: ["mainSurface"], none: ["modalOpen"] },
         },
       ]);
+      for (const [command, key] of [
+        ["thread.back", "["],
+        ["thread.forward", "]"],
+      ] as const) {
+        expect(
+          assignedDefaultKeybindings
+            .filter((binding) => binding.command === command)
+            .map((binding) => ({
+              desktopOnly: binding.desktopOnly,
+              key: binding.shortcut.key,
+              mod: binding.shortcut.mod,
+              control: binding.shortcut.control,
+              shift: binding.shortcut.shift,
+              when: binding.when,
+            })),
+        ).toEqual([
+          {
+            desktopOnly: false,
+            key,
+            mod: false,
+            control: true,
+            shift: false,
+            when: {
+              all: ["mainSurface", "webSurface"],
+              none: ["modalOpen"],
+            },
+          },
+          {
+            desktopOnly: true,
+            key,
+            mod: true,
+            control: false,
+            shift: false,
+            when: { all: ["mainSurface"], none: ["modalOpen"] },
+          },
+        ]);
+      }
       expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.command.startsWith("thread.jump."))
@@ -594,6 +631,8 @@ describe("app keybindings", () => {
         "thread.new",
         "thread.previous",
         "thread.next",
+        "thread.back",
+        "thread.forward",
         ...THREAD_JUMP_APP_COMMAND_IDS,
         ...PANE_FOCUS_APP_COMMAND_IDS,
         "panel.reopenClosedTab",

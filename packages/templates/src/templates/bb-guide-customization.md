@@ -247,6 +247,12 @@ the focused item.
 The initially unassigned `panel.fullScreen.toggle` command runs the right
 panel's Full Screen / Exit Full Screen control while the panel is open. In a
 split right panel it maximizes the focused group.
+`thread.back` / `thread.forward` move through the threads opened in the
+current window, like browser history: `Mod+[` / `Mod+]` on desktop and
+`Control+[` / `Control+]` on the web. `thread.previous` / `thread.next`
+(`Mod+Shift+[` / `Mod+Shift+]` on desktop, `Control+Shift+[` / `Control+Shift+]`
+on the web) follow the sidebar order instead. History is per window, in
+memory, and capped at 50 threads; deleted threads are skipped.
 Chat splits use `pane.focus.left` / `right` / `up` / `down` with
 `Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
 spatially to the adjacent chat pane, including stacked splits, and stop at the
