@@ -24,7 +24,6 @@ import {
 import type { PaneContent } from "@/lib/split-layout";
 import { arrangeByStoredOrder } from "@/lib/stored-order";
 import type { PaletteAction } from "./palette-action";
-import { buildPluginPagePaletteActions } from "./palette-plugin-page-actions";
 import { buildSettingsPaletteActions } from "./palette-settings-actions";
 import { buildToolsPagePaletteActions } from "./palette-tools-page-actions";
 import type { PaletteVisit } from "./palette-visits";
@@ -142,30 +141,29 @@ export function buildPalettePlaces({
   pluginSettingsEntries,
   settingsSections,
 }: BuildPalettePlacesArgs): PalettePlace[] {
-  const pages = panels.flatMap((panel) =>
-    buildPluginPagePaletteActions({ navigate, panels: [panel] }).map(
-      (action): PalettePlace => ({
-        id: action.id,
-        kind: "page",
-        title: action.title,
-        icon: panel.icon,
-        split: {
-          content: {
-            kind: "plugin-panel",
-            pluginId: panel.pluginId,
-            panelPath: panel.path,
-            subPath: "",
-          },
-          route: getPluginPanelRoutePath({
-            pluginId: panel.pluginId,
-            path: panel.path,
-          }),
+  const pages = panels.map((panel): PalettePlace => {
+    const route = getPluginPanelRoutePath({
+      pluginId: panel.pluginId,
+      path: panel.path,
+    });
+    return {
+      id: pluginPagePlaceId(panel),
+      kind: "page",
+      title: panel.title,
+      icon: panel.icon,
+      split: {
+        content: {
+          kind: "plugin-panel",
+          pluginId: panel.pluginId,
+          panelPath: panel.path,
+          subPath: "",
         },
-        scope: null,
-        run: action.run,
-      }),
-    ),
-  );
+        route,
+      },
+      scope: null,
+      run: () => navigate(route),
+    };
+  });
   const tools = buildToolsPagePaletteActions({ navigate }).map(
     (action): PalettePlace => ({
       id: action.id,
