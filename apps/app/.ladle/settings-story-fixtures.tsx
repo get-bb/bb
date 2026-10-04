@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { PERSONAL_PROJECT_ID, type ProviderInfo } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type Host, type ProviderInfo } from "@bb/domain";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import type {
   SidebarBootstrapResponse,
@@ -289,7 +289,7 @@ export function SettingsUpdatesStory() {
   );
 }
 
-function createSettingsStoryQueryClient() {
+function createSettingsStoryQueryClient(hosts: Host[] = SETTINGS_STORY_HOSTS) {
   const queryClient = createAppQueryClient({
     showMutationErrorToasts: false,
     defaultOptions: {
@@ -301,8 +301,8 @@ function createSettingsStoryQueryClient() {
       },
     },
   });
-  queryClient.setQueryData(hostsQueryKey(), SETTINGS_STORY_HOSTS);
-  queryClient.setQueryData(hostsQueryKey(true), SETTINGS_STORY_HOSTS);
+  queryClient.setQueryData(hostsQueryKey(), hosts);
+  queryClient.setQueryData(hostsQueryKey(true), hosts);
   queryClient.setQueryData(systemConfigQueryKey(), systemConfig);
   queryClient.setQueryData(systemProvidersQueryKey(), systemProviders);
   queryClient.setQueryData(systemVersionQueryKey(), systemVersion);
@@ -345,8 +345,18 @@ function createSettingsStoryQueryClient() {
   return queryClient;
 }
 
-export function SettingsStoryFixtures({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(createSettingsStoryQueryClient);
+export function SettingsStoryFixtures({
+  children,
+  hosts = SETTINGS_STORY_HOSTS,
+}: {
+  children: ReactNode;
+  hosts?: Host[];
+}) {
+  const [queryClient] = useState(() => createSettingsStoryQueryClient(hosts));
+  useEffect(() => {
+    queryClient.setQueryData(hostsQueryKey(), hosts);
+    queryClient.setQueryData(hostsQueryKey(true), hosts);
+  }, [hosts, queryClient]);
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );

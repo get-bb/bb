@@ -1,13 +1,24 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ProviderCliInstallAction } from "@bb/host-daemon-contract";
 import { SettingsStoryFixtures } from "../../../.ladle/settings-story-fixtures";
 import {
   HOST_IDS,
+  makeHost,
   makeProviderCliStatus,
 } from "../../../.ladle/story-fixtures";
 import type { ProviderCliActionableIssue } from "@/components/provider-cli/provider-cli-install";
 import { startProviderCliInstall } from "@/components/provider-cli/provider-cli-install-store";
-import { SidebarMenu } from "@/components/ui/sidebar";
+import {
+  SidebarInset,
+  SidebarMenu,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@bb/shared-ui/button";
+import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import { SettingsStoryChrome } from "../../../.ladle/story-settings-chrome";
+import { AppSidebar } from "./AppSidebar";
 import { sdk } from "@/lib/sdk";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
@@ -84,4 +95,81 @@ export function ProviderUpdateAvailable() {
 
 export function ProviderUpdateDownloading() {
   return <ActiveProviderUpdate />;
+}
+
+export function MachineNotices() {
+  const [offlineCount, setOfflineCount] = useState(2);
+  const [lastSeenAt, setLastSeenAt] = useState(Date.now);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const hosts = useMemo(
+    () => [
+      makeHost({
+        id: HOST_IDS.local,
+        name: "Work laptop",
+        status: offlineCount > 0 ? "disconnected" : "connected",
+        lastSeenAt,
+        lastRejectedProtocolVersion: offlineCount > 0 ? 1 : null,
+      }),
+      makeHost({
+        id: HOST_IDS.remote,
+        name: "Studio desktop",
+        status: offlineCount > 1 ? "disconnected" : "connected",
+        lastSeenAt,
+      }),
+    ],
+    [offlineCount, lastSeenAt],
+  );
+
+  return (
+    <SettingsStoryFixtures hosts={hosts}>
+      {pathname === "/settings/machines" ? (
+        <SettingsStoryChrome activeSection="machines">
+          <MachinesSettingsSection />
+        </SettingsStoryChrome>
+      ) : (
+        <SidebarProvider className="h-screen bg-background">
+          <AppSidebar
+            isResizing={false}
+            onResizeMouseDown={() => {}}
+            settingsRoutePath="/settings/machines"
+          />
+          <SidebarInset>
+            <main className="space-y-6 p-6">
+              <SidebarTrigger />
+              <h1 className="text-lg font-semibold">Machine notices</h1>
+              <p className="max-w-lg text-sm text-muted-foreground">
+                Hover the footer warning, then open it to see the machines.
+                Return to the app: the same outage stays acknowledged.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[0, 1, 2].map((count) => (
+                  <Button
+                    key={count}
+                    variant={offlineCount === count ? "default" : "outline"}
+                    onClick={() => setOfflineCount(count)}
+                  >
+                    {count === 0
+                      ? "All online"
+                      : count === 1
+                        ? "One offline"
+                        : "Two offline"}
+                  </Button>
+                ))}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setLastSeenAt(Date.now());
+                    navigate("/");
+                  }}
+                >
+                  New outage
+                </Button>
+              </div>
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
+      )}
+    </SettingsStoryFixtures>
+  );
 }
