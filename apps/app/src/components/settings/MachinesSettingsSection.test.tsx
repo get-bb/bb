@@ -371,7 +371,7 @@ describe("MachinesSettingsSection", () => {
     ).toBeNull();
   });
 
-  it("shows protocol versions when a machine needs an update", async () => {
+  it("prioritizes offline status while keeping the retry update action available", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([
       primaryHost,
@@ -384,11 +384,8 @@ describe("MachinesSettingsSection", () => {
 
     renderSection();
 
-    const updateStatus = await screen.findByText(
-      `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
-    );
-    expect(updateStatus.className).toContain("min-w-0");
-    expect(updateStatus.className).not.toContain("shrink-0");
+    await screen.findByText(/^Offline · last seen/);
+    expect(screen.queryByText(/Needs update|daemon protocol/)).toBeNull();
     await openHostMenu("dev-vm");
     const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
     const retryItem = await screen.findByRole("menuitem", {
