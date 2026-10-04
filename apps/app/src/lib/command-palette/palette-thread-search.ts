@@ -50,11 +50,11 @@ export interface PaletteThreadSearchRowsResult {
   rows: PaletteThreadSearchRow[];
 }
 
-type HighlightRange = PaletteThreadSearchRow["highlightRanges"][number];
+export type HighlightRange = PaletteThreadSearchRow["highlightRanges"][number];
 
 const RECENT_THREAD_LIMIT = 20;
 const NEEDS_YOU_LIMIT = 3;
-const LOCAL_ROWS_BEFORE_SERVER_ROWS = 3;
+export const LOCAL_ROWS_BEFORE_SERVER_ROWS = 3;
 const UNVISITED_RANK = Number.MAX_SAFE_INTEGER;
 const NEEDS_YOU_INDICATORS: ReadonlySet<ThreadListIndicatorKind> =
   new Set<ThreadListIndicatorKind>([
@@ -76,7 +76,7 @@ function projectMetadata(
     : (projectNamesById.get(projectId) ?? null);
 }
 
-function serverRow(
+export function paletteThreadRow(
   thread: ThreadListEntry,
   matches: readonly ThreadSearchMatch[],
   lifecycle: ThreadArchiveFilter,
@@ -104,7 +104,7 @@ function serverRow(
   };
 }
 
-function positionsToRanges(positions: readonly number[]): HighlightRange[] {
+export function positionsToRanges(positions: readonly number[]): HighlightRange[] {
   const ranges: HighlightRange[] = [];
   for (const position of [...new Set(positions)].sort((a, b) => a - b)) {
     const last = ranges.at(-1);
@@ -213,9 +213,25 @@ function localTitleRows(
     )
     .slice(0, PALETTE_RESULT_LIMIT)
     .map((match) => ({
-      ...serverRow(match.item, [], "active", projectNamesById, now),
+      ...paletteThreadRow(match.item, [], "active", projectNamesById, now),
       highlightRanges: positionsToRanges(match.positions),
     }));
+}
+
+export function withServerMatch(
+  row: PaletteThreadSearchRow,
+  server: PaletteThreadSearchRow | undefined,
+): PaletteThreadSearchRow {
+  if (server === undefined) return row;
+  return server.secondaryTitle === null
+    ? { ...row, messageSeq: server.messageSeq }
+    : {
+        ...row,
+        primaryText: server.primaryText,
+        highlightRanges: server.highlightRanges,
+        secondaryTitle: server.secondaryTitle,
+        messageSeq: server.messageSeq,
+      };
 }
 
 function mergeActiveRows(
@@ -224,19 +240,9 @@ function mergeActiveRows(
 ): PaletteThreadSearchRow[] {
   const serverRowsById = new Map(serverRows.map((row) => [row.id, row]));
   const localIds = new Set(localRows.map((row) => row.id));
-  const merged = localRows.map((row) => {
-    const server = serverRowsById.get(row.id);
-    if (server === undefined) return row;
-    return server.secondaryTitle === null
-      ? { ...row, messageSeq: server.messageSeq }
-      : {
-          ...row,
-          primaryText: server.primaryText,
-          highlightRanges: server.highlightRanges,
-          secondaryTitle: server.secondaryTitle,
-          messageSeq: server.messageSeq,
-        };
-  });
+  const merged = localRows.map((row) =>
+    withServerMatch(row, serverRowsById.get(row.id)),
+  );
   return [
     ...merged.slice(0, LOCAL_ROWS_BEFORE_SERVER_ROWS),
     ...serverRows.filter((row) => !localIds.has(row.id)),
@@ -285,7 +291,7 @@ export function buildPaletteThreadSearchRows({
   const serverRowsFor = (lifecycle: ThreadArchiveFilter) =>
     isSearchable && searchResultsAreCurrent
       ? (searchResponse?.[lifecycle]?.results ?? []).map((result) =>
-          serverRow(
+          paletteThreadRow(
             result.thread,
             result.matches,
             lifecycle,
@@ -309,7 +315,7 @@ export function buildPaletteThreadSearchRows({
       )
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) =>
-          serverRow(thread, [], lifecycle, projectNamesById, now),
+          paletteThreadRow(thread, [], lifecycle, projectNamesById, now),
         );
     }
     if (lifecycle === "archived") return serverRowsFor(lifecycle);
