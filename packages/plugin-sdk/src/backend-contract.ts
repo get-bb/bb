@@ -1,3 +1,8 @@
+import type {
+  PluginTimelineEventSeed,
+  PluginTimelineEvent,
+  PluginTimelineEventUpdate,
+} from "@bb/domain";
 import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
@@ -2028,6 +2033,13 @@ export interface PluginStatusApi {
   needsConfiguration(message: string): void;
 }
 
+type PluginTimelineSpawnArgs<T = Parameters<BbSdk["threads"]["spawn"]>[0]> =
+  T extends unknown
+    ? Omit<T, "experimental_timelineEvent"> & {
+        experimental_timelineEvent?: Omit<PluginTimelineEventSeed, "pluginId">;
+      }
+    : never;
+
 /**
  * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata` and
  * `threads.updatePluginMetadata` default `pluginId` to that plugin's id. An
@@ -2040,8 +2052,33 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata"
+    | "getPluginMetadata"
+    | "updatePluginMetadata"
+    | "spawn"
+    | "send"
+    | "experimental_getTimelineEvent"
+    | "experimental_updateTimelineEvent"
   > & {
+    /** Start with agent-only input and attach a plugin-owned marker to the exact request. The host fills pluginId. */
+    spawn(args: PluginTimelineSpawnArgs): ReturnType<BbSdk["threads"]["spawn"]>;
+    /** The marker follows queued input to dispatch. Use queue-if-active for a separate turn. */
+    send(
+      args: Omit<
+        Parameters<BbSdk["threads"]["send"]>[0],
+        "experimental_timelineEvent"
+      > & {
+        experimental_timelineEvent?: Omit<PluginTimelineEventSeed, "pluginId">;
+      },
+    ): ReturnType<BbSdk["threads"]["send"]>;
+    /** Read this plugin's marker and its exact turn's current status; null before a queued request dispatches. */
+    experimental_getTimelineEvent(args: {
+      threadId: string;
+      eventId: string;
+    }): Promise<PluginTimelineEvent | null>;
+    /** Update this plugin's existing marker in place. Payload and presentation replace their previous values when supplied. */
+    experimental_updateTimelineEvent(
+      args: { threadId: string; eventId: string } & PluginTimelineEventUpdate,
+    ): Promise<PluginTimelineEvent>;
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
     ): Promise<ThreadPluginMetadataResult>;

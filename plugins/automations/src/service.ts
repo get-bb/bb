@@ -1,3 +1,4 @@
+import { automationRunMarkerSchema } from "./run-marker.js";
 import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import {
   decodeAutomationRow,
   deleteAutomation,
   getAutomationForProject,
+  getAutomationRun,
   isAutomationSpawnedThread,
   listAllAutomations,
   listAutomationRuns,
@@ -72,7 +74,14 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
-    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
+    threads: Pick<
+      BbPluginApi["sdk"]["threads"],
+      | "get"
+      | "send"
+      | "spawn"
+      | "experimental_getTimelineEvent"
+      | "experimental_updateTimelineEvent"
+    >;
   };
 };
 
@@ -857,12 +866,38 @@ export function createAutomationService(args: {
     },
 
     async run(input) {
-      const automation = requireProjectAutomation(db, input);
-      const { execution } = requireCanonicalAutomationForWrite(
+      let automation = requireProjectAutomation(db, input);
+      let { execution } = requireCanonicalAutomationForWrite(
         pluginDataDir,
         automation,
         "run",
       );
+      if (input.retryRunId !== undefined) {
+        const failed = getAutomationRun(db, input.retryRunId);
+        if (
+          !failed ||
+          failed.automationId !== automation.id ||
+          failed.threadId === null
+        )
+          throw new Error("Automation run not found");
+        const marker = await bb.sdk.threads.experimental_getTimelineEvent({
+          threadId: failed.threadId,
+          eventId: failed.id,
+        });
+        if (
+          !marker ||
+          (marker.status !== "error" && marker.status !== "interrupted")
+        )
+          throw new Error("Only failed or stopped runs can be retried");
+        execution = automationRunMarkerSchema.parse(marker.payload).execution;
+        automation = { ...automation, targetThreadId: failed.threadId };
+        closeAutomationRun(db, {
+          runId: failed.id,
+          status: "failed",
+          error: "Turn did not finish",
+          now: Date.now(),
+        });
+      }
       const now = Date.now();
       const { run, deduped } = createManualRun(db, {
         automationId: automation.id,

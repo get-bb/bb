@@ -69,8 +69,10 @@ function buildTimelineLogicalSegments(
     ownedSequenceStart,
     ...new Set(
       args.rows.flatMap((row) =>
-        row.kind === "conversation" &&
-        row.role === "user" &&
+        ((row.kind === "conversation" && row.role === "user") ||
+          (row.kind === "work" &&
+            row.workKind === "extension" &&
+            row.experimental_timelineEventId !== undefined)) &&
         row.sourceSeqStart > ownedSequenceStart &&
         row.sourceSeqStart < ownedSequenceEnd
           ? [row.sourceSeqStart]

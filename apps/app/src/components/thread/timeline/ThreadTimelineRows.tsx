@@ -1453,6 +1453,27 @@ function TimelineRowView({
   );
   const staticLeadingIconUrl = useLeadingIconUrlForRow(row);
 
+  if (
+    row.kind === "work" &&
+    row.workKind === "extension" &&
+    row.experimental_timelineEventId &&
+    pluginRendererSlot?.experimental_fullRow
+  ) {
+    return (
+      <div className={horizontalPadding}>
+        <PluginTimelineRendererBody
+          row={row}
+          slot={pluginRendererSlot}
+          original={() => (
+            <span>
+              {row.presentation.title ?? row.presentation.label.completed}
+            </span>
+          )}
+        />
+      </div>
+    );
+  }
+
   if (row.kind === "conversation") {
     return (
       <ConversationRow

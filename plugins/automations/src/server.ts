@@ -33,18 +33,22 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   registerAutomationCli({ bb, service });
 
-  bb.events.on("thread.idle", ({ thread }) => {
-    closeAutomationRunForSettledThread(bb, db, {
+  bb.events.on("thread.idle", async ({ thread }) => {
+    await closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "idle",
     });
   });
-  bb.events.on("thread.failed", ({ thread, error }) => {
-    closeAutomationRunForSettledThread(bb, db, {
+  bb.events.on("thread.failed", async ({ thread, error }) => {
+    await closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "failed",
       error,
     });
+  });
+
+  bb.events.on("experimental_thread.events", async ({ thread }) => {
+    await closeAutomationRunForSettledThread(bb, db, { threadId: thread.id });
   });
 
   bb.events.on("thread.deleted", ({ thread }) => {

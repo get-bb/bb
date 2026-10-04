@@ -219,6 +219,10 @@ function createAutomationServiceBb() {
           ] as never,
       },
       threads: {
+        experimental_getTimelineEvent: async () => null,
+        experimental_updateTimelineEvent: async () => {
+          throw new Error("not expected");
+        },
         get: async () => {
           throw new Error("not expected");
         },
@@ -355,6 +359,10 @@ describe("startup reconciliation", () => {
       bb: {
         sdk: {
           threads: {
+            experimental_getTimelineEvent: async () => null,
+            experimental_updateTimelineEvent: async () => {
+              throw new Error("not expected");
+            },
             get: threads.get,
             send: async () => {
               throw new Error("not expected");
@@ -841,6 +849,10 @@ describe("automation data access", () => {
           },
         },
         threads: {
+          experimental_getTimelineEvent: async () => null,
+          experimental_updateTimelineEvent: async () => {
+            throw new Error("not expected");
+          },
           get: async () => {
             throw new Error("not expected");
           },
@@ -1273,6 +1285,10 @@ describe("automation service", () => {
           list: async () => [],
         },
         threads: {
+          experimental_getTimelineEvent: async () => null,
+          experimental_updateTimelineEvent: async () => {
+            throw new Error("not expected");
+          },
           get: async () => {
             throw new Error("not expected");
           },

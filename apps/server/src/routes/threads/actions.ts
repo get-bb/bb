@@ -320,6 +320,20 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   });
 
   patch(routes.updateQueuedMessage, async (context, payload) => {
+    const queued = getQueuedThreadMessage(
+      deps.db,
+      context.req.param("queuedMessageId"),
+    );
+    if (
+      queued?.threadId === context.req.param("id") &&
+      queued.timelineEventJson !== null
+    ) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Plugin turn input cannot be edited in the queue",
+      );
+    }
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadQueueIsWritable(thread);
     await validatePromptAttachmentReferences({

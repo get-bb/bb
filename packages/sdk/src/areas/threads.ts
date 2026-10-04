@@ -1,3 +1,7 @@
+import type {
+  PluginTimelineEvent,
+  PluginTimelineEventUpdate,
+} from "@bb/domain";
 import {
   parseThreadEventRow,
   type PromptInput,
@@ -563,6 +567,18 @@ export interface ThreadsArea {
   ): Promise<ThreadDefaultExecutionOptionsResult>;
   delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
   editMessage(args: ThreadEditMessageArgs): Promise<ThreadEditMessageResult>;
+  experimental_getTimelineEvent(args: {
+    threadId: string;
+    pluginId: string;
+    eventId: string;
+  }): Promise<PluginTimelineEvent | null>;
+  experimental_updateTimelineEvent(
+    args: {
+      threadId: string;
+      pluginId: string;
+      eventId: string;
+    } & PluginTimelineEventUpdate,
+  ): Promise<PluginTimelineEvent>;
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
@@ -694,6 +710,7 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     senderThreadId: args.senderThreadId,
     serviceTier: args.serviceTier,
     pluginSubmission: args.pluginSubmission,
+    experimental_timelineEvent: args.experimental_timelineEvent,
     executionInputSources: args.executionInputSources,
     // Present ⇒ the message joins the queue waiting for the clock instead
     // of attempting now; the response reports `delivery: "queued"`.
@@ -1154,6 +1171,22 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       const { threadId, ...json } = input;
       return transport.readJson(
         transport.api.v1.threads[":id"]["edit-message"].$post({
+          param: { id: threadId },
+          json,
+        }),
+      );
+    },
+    async experimental_getTimelineEvent({ threadId, ...query }) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["timeline-event"].$get({
+          param: { id: threadId },
+          query,
+        }),
+      );
+    },
+    async experimental_updateTimelineEvent({ threadId, ...json }) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["timeline-event"].$patch({
           param: { id: threadId },
           json,
         }),

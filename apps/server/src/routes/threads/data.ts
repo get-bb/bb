@@ -1,3 +1,4 @@
+import { getPluginTimelineEvent, updatePluginTimelineEvent } from "@bb/db";
 import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import {
@@ -211,6 +212,27 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ThreadConversationOutlineResponse["items"]
   >();
   const CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES = 128;
+
+  get(routes.experimental_timelineEvent.get, (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(
+      getPluginTimelineEvent(deps.db, { threadId: thread.id, ...query }),
+    );
+  });
+
+  patch(routes.experimental_timelineEvent.update, (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const marker = updatePluginTimelineEvent(deps.db, {
+      threadId: thread.id,
+      pluginId: payload.pluginId,
+      eventId: payload.eventId,
+      update: payload,
+    });
+    if (marker === null)
+      throw new ApiError(404, "invalid_request", "Timeline event not found");
+    deps.hub.notifyThread(thread.id, ["history-rewritten"]);
+    return context.json(marker);
+  });
 
   get(routes.pluginMetadata.get, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));

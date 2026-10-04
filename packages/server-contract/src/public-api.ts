@@ -1,4 +1,11 @@
 import {
+  threadTimelineEventQuerySchema,
+  updateThreadTimelineEventRequestSchema,
+  type ThreadTimelineEventQuery,
+  type UpdateThreadTimelineEventRequest,
+} from "./api/threads.js";
+import type { PluginTimelineEvent } from "@bb/domain";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -1358,6 +1365,24 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadResponse>(),
     }),
+    experimental_timelineEvent: {
+      get: defineRoute({
+        path: "/threads/:id/timeline-event",
+        method: "get",
+        request: queryRequest<PathId, ThreadTimelineEventQuery>(
+          threadTimelineEventQuerySchema,
+        ),
+        response: jsonResponse<PluginTimelineEvent | null>(),
+      }),
+      update: defineRoute({
+        path: "/threads/:id/timeline-event",
+        method: "patch",
+        request: jsonRequest<PathId, UpdateThreadTimelineEventRequest>(
+          updateThreadTimelineEventRequestSchema,
+        ),
+        response: jsonResponse<PluginTimelineEvent>(),
+      }),
+    },
     pluginMetadata: {
       get: defineRoute({
         path: "/threads/:id/plugin-metadata",

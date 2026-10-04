@@ -1,3 +1,4 @@
+import { pluginTimelineEventSeedSchema } from "./plugin-timeline-event.js";
 import { z } from "zod";
 import { pluginIdSchema } from "./plugin-id.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
@@ -165,7 +166,10 @@ export type QueuedMessagePayloadKind = z.infer<
 >;
 
 export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("inline") }),
+  z.object({
+    kind: z.literal("inline"),
+    experimental_timelineEvent: pluginTimelineEventSeedSchema.optional(),
+  }),
   z.object({
     kind: z.literal("retry"),
     /**

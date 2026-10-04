@@ -1,3 +1,5 @@
+import type { PluginTimelineEventSeed } from "@bb/domain";
+import { insertPluginTimelineEvent } from "@bb/db";
 import { getNonDestroyedHostByLaunchKey } from "@bb/db";
 import { sweepProviderMachine } from "../machines/provider-orchestration.js";
 import { cancelProviderEnvironmentCreation } from "../environments/environment-engine.js";
@@ -54,6 +56,7 @@ import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
+  experimental_timelineEvent?: PluginTimelineEventSeed;
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   fork: ThreadForkDescriptor | null;
@@ -65,6 +68,7 @@ interface RequestThreadProvisionArgs {
 }
 
 interface RequestThreadTargetReprovisionArgs {
+  experimental_timelineEvent?: PluginTimelineEventSeed;
   beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
   environment: EnvironmentRow;
   execution: ResolvedThreadExecutionOptions;
@@ -305,6 +309,14 @@ export function requestThreadProvision(
       source: "spawn",
       target,
     });
+    if (args.experimental_timelineEvent) {
+      insertPluginTimelineEvent(deps.db, {
+        threadId: args.thread.id,
+        requestId: request.requestId,
+        requestSequence: request.sequence,
+        seed: args.experimental_timelineEvent,
+      });
+    }
     recordAcceptedPromptHistoryEntry(deps, {
       thread: args.thread,
       input: args.input,
@@ -434,6 +446,7 @@ function appendReprovisionTurnRequest(
             threadId: args.thread.id,
             environmentId: args.environment.id,
             type: "client/turn/requested",
+            experimental_timelineEvent: args.experimental_timelineEvent,
             input: args.input,
             ...(args.inputGroups !== undefined
               ? { inputGroups: args.inputGroups }

@@ -553,6 +553,10 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         throw createQueuedMessageClaimLostError();
       }
       const request = appendClientTurnEventInTransaction(tx, {
+        experimental_timelineEvent:
+          queuedMessage.payload.kind === "inline"
+            ? queuedMessage.payload.experimental_timelineEvent
+            : undefined,
         environmentId: thread.environmentId,
         execution,
         initiator,
@@ -694,6 +698,12 @@ async function sendClaimedQueuedMessageForThread(
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
     payload: {
+      ...(queuedMessage.payload.kind === "inline"
+        ? {
+            experimental_timelineEvent:
+              queuedMessage.payload.experimental_timelineEvent,
+          }
+        : {}),
       ...sendQueuedMessagePayload(
         { ...queuedMessage, content: input },
         args.mode,

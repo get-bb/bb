@@ -121,6 +121,12 @@ async function bootAutomationsPlugin(
         },
       },
       threads: {
+        async experimental_getTimelineEvent() {
+          return null;
+        },
+        async experimental_updateTimelineEvent() {
+          throw new Error("not expected");
+        },
         async get({ threadId }) {
           return {
             id: threadId,
@@ -1349,7 +1355,7 @@ describe("automations server plugin harness", () => {
     await reloaded.harness.dispose();
   });
 
-  it("dispatches a due agent automation from one sweep tick and closes it from thread.idle", async () => {
+  it("dispatches hidden automation input and settles only its linked turn", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const host = await bootAutomationsPlugin();
@@ -1370,7 +1376,21 @@ describe("automations server plugin harness", () => {
     expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
       projectId: PROJECT_ID,
-      prompt: `[bb automation due:${automation.id}]\n\nsummarize the inbox`,
+      input: [
+        {
+          type: "text",
+          visibility: "agent-only",
+          text: `[Automation: Sweep (${automation.id})]\n\nsummarize the inbox`,
+          mentions: [],
+        },
+      ],
+      experimental_timelineEvent: {
+        rendererId: "run",
+        payload: {
+          name: "Sweep",
+          execution: { prompt: "summarize the inbox" },
+        },
+      },
       title: "Sweep",
       origin: "plugin",
       originPluginId: "automations",
@@ -1389,6 +1409,21 @@ describe("automations server plugin harness", () => {
       trigger: "schedule",
     });
 
+    await harness.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_spawned", projectId: PROJECT_ID }),
+      lastAssistantText: null,
+    });
+    expect(
+      automationRunListResponseSchema.parse(
+        await harness.callRpc("automations_runs", {
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+        }),
+      ).runs[0]?.status,
+    ).toBe("running");
+    harness.sdk.stub("threads.experimental_getTimelineEvent", () => ({
+      status: "completed",
+    }));
     await harness.emitThreadEvent("thread.idle", {
       thread: makeThreadResponse({ id: "thr_spawned", projectId: PROJECT_ID }),
       lastAssistantText: null,

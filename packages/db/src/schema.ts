@@ -1063,6 +1063,7 @@ export const queuedThreadMessages = sqliteTable(
     retryOfTurnRequestId: text("retry_of_turn_request_id"),
     retryAttempt: integer("retry_attempt"),
     retryReason: text("retry_reason"),
+    timelineEventJson: text("timeline_event_json"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     sortKey: text("sort_key").notNull(),
@@ -1333,4 +1334,33 @@ export const projectAttachmentBackfills = sqliteTable(
     attemptedAt: integer("attempted_at").notNull(),
     error: text("error"),
   },
+);
+
+export const pluginTimelineEvents = sqliteTable(
+  "plugin_timeline_events",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    pluginId: text("plugin_id").notNull(),
+    id: text("id").notNull(),
+    requestEventId: text("request_event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull(),
+    requestSequence: integer("request_sequence").notNull(),
+    rendererId: text("renderer_id").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    presentationJson: text("presentation_json").notNull(),
+    status: text("status"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.threadId, table.pluginId, table.id] }),
+    index("plugin_timeline_events_request_idx").on(
+      table.threadId,
+      table.requestSequence,
+    ),
+  ],
 );

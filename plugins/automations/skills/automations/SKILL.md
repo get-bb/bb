@@ -44,7 +44,7 @@ bb automation show <automationId> --project <id>
 bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete execution flags | partial agent update flags]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
-bb automation run <automationId> --project <id> [--idempotency-key <key>]
+bb automation run <automationId> --project <id> [--idempotency-key <key>] [--retry-run <runId>]
 bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>]
 bb automation delete <automationId> --project <id> --yes
 ```
@@ -56,3 +56,10 @@ read [references/updates.md](references/updates.md). Every command supports `--j
 accepted values, and rules. Unknown commands, unknown options, and stray
 arguments are rejected rather than ignored, and a failure under `--json` also
 prints a `{"ok":false,"error":{"code","message","hint"}}` envelope on stdout.
+
+Agent runs use hidden turn input. Automations owns the timeline marker with the
+run name, time, status and View prompt. Failed or stopped runs offer Retry, which
+uses that run's recorded prompt in the same thread. The CLI equivalent is
+`bb automation run <automationId> --project <id> --retry-run <runId>`.
+Runs targeting a busy thread queue a separate turn. Historical Automation chips
+keep their original rendering.

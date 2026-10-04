@@ -404,6 +404,7 @@ export type TimelinePlanStepsWorkRow = z.infer<
 
 export const timelineExtensionWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("extension"),
+  experimental_timelineEventId: z.string().optional(),
   callId: z.string(),
   extensionKind: extensionKindSchema,
   payload: jsonValueSchema,
