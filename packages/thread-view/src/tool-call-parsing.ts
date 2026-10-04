@@ -1,3 +1,4 @@
+import { rawThreadIdSchema } from "@bb/domain";
 import type { EventProjectionToolParsedIntent } from "./event-projection-types.js";
 
 const SHELL_WRAPPER_NAMES = new Set(["sh", "bash", "zsh"]);
@@ -560,4 +561,83 @@ export function parseShellCommandIntents(
     return true;
   });
   return intents;
+}
+
+const THREAD_TELL_FLAGS_WITH_VALUE: ReadonlySet<string> = new Set([
+  "--message-file",
+  "--model",
+  "--service-tier",
+  "--reasoning-level",
+  "--permission-mode",
+  "--mode",
+  "--send-at",
+  "--file",
+  "--image",
+]);
+
+const BB_CLI_TOKENS: ReadonlySet<string> = new Set(["$BB_CLI", "${BB_CLI}"]);
+
+export interface ThreadTellCommand {
+  threadId: string;
+  message: string;
+}
+
+function parseThreadTellSegment(
+  tokens: readonly ShellToken[],
+): ThreadTellCommand | null {
+  const commandIndex = getCommandTokenIndex(tokens);
+  const [cli, group, verb, ...argTokens] = tokens.slice(commandIndex);
+  if (
+    cli === undefined ||
+    (baseExecutableName(cli.value) !== "bb" && !BB_CLI_TOKENS.has(cli.value)) ||
+    group?.value !== "thread" ||
+    (verb?.value !== "tell" && verb?.value !== "message")
+  ) {
+    return null;
+  }
+  const [threadId, message, ...extra] = collectPositionals(
+    argTokens,
+    THREAD_TELL_FLAGS_WITH_VALUE,
+  );
+  if (
+    extra.length > 0 ||
+    threadId === undefined ||
+    !rawThreadIdSchema.safeParse(threadId).success ||
+    message === undefined ||
+    message.trim().length === 0
+  ) {
+    return null;
+  }
+  return { threadId, message };
+}
+
+export function parseThreadTellCommand(
+  command: string,
+): ThreadTellCommand | null {
+  const script = extractShellCommandFromString(command);
+  if (script === undefined) return null;
+  const tells: ThreadTellCommand[] = [];
+  visitShellCommandSegments(script, (segment) => {
+    const tell = parseThreadTellSegment(segment);
+    if (tell !== null) tells.push(tell);
+    return tells.length < 2;
+  });
+  return tells.length === 1 ? tells[0]! : null;
+}
+
+interface CommandCall {
+  command: string;
+  exitCode: number | null;
+  status: string;
+}
+
+export function parseSentThreadMessage({
+  command,
+  exitCode,
+  status,
+}: CommandCall): ThreadTellCommand | null {
+  if (status !== "completed" || (exitCode !== null && exitCode !== 0)) {
+    return null;
+  }
+  return parseThreadTellCommand(command);
 }

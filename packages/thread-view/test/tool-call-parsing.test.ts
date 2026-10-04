@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractShellCommandFromString,
+  parseSentThreadMessage,
   parseShellCommandIntents,
 } from "../src/tool-call-parsing.js";
 
@@ -88,5 +89,41 @@ describe("tool-call shell parsing", () => {
         path: null,
       },
     ]);
+  });
+});
+
+describe("parseSentThreadMessage", () => {
+  const sent = (command: string, exitCode: number | null = 0) =>
+    parseSentThreadMessage({ command, exitCode, status: "completed" });
+
+  it.each([
+    ['bb thread tell thr_wrkr234567 "Is it ready?"'],
+    ['"$BB_CLI" thread tell thr_wrkr234567 "Is it ready?"'],
+    ["bb thread message thr_wrkr234567 'Is it ready?'"],
+    ['bb thread tell --mode queue thr_wrkr234567 "Is it ready?" 2>&1'],
+    [`/bin/zsh -lc 'bb thread tell thr_wrkr234567 "Is it ready?"'`],
+  ])("reads the recipient and message of %s", (command) => {
+    expect(sent(command)).toEqual({
+      threadId: "thr_wrkr234567",
+      message: "Is it ready?",
+    });
+  });
+
+  it.each([
+    ["a failed send", 'bb thread tell thr_wrkr234567 "Is it ready?"', 1],
+    [
+      "a message read from a file",
+      "bb thread tell thr_wrkr234567 --message-file - <<'EOF'",
+      0,
+    ],
+    ["a path-like recipient", 'bb thread tell ../hosts/h "Is it ready?"', 0],
+    [
+      "two sends in one command",
+      'bb thread tell thr_wrkr234567 "a" && bb thread tell thr_othr234567 "b"',
+      0,
+    ],
+    ["another bb command", "bb thread show thr_wrkr234567", 0],
+  ])("ignores %s", (_case, command, exitCode) => {
+    expect(sent(command, exitCode)).toBeNull();
   });
 });
