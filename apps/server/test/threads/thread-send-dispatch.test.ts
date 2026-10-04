@@ -1786,6 +1786,59 @@ describe("competing turn refusals", () => {
 });
 
 describe("plugin turn markers", () => {
+  it("settles a marker when cold provider startup fails before accepting input", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedColdIdleThreadFixture({ harness, value: 902 });
+      const target = {
+        threadId: thread.id,
+        pluginId: "automations",
+        eventId: "cold-run",
+      };
+      await acceptThreadSendRequest(harness.deps, {
+        thread,
+        payload: {
+          input: [
+            {
+              type: "text",
+              text: "hidden prompt",
+              mentions: [],
+              visibility: "agent-only",
+            },
+          ],
+          mode: "auto",
+          permissionMode: "full",
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          experimental_timelineEvent: {
+            id: target.eventId,
+            pluginId: target.pluginId,
+            rendererId: "run",
+            payload: {},
+            presentation: {
+              icon: { glyph: "Timer" },
+              label: { pending: "Running", completed: "Finished" },
+            },
+          },
+        },
+      });
+      const command = await waitForQueuedCommand(
+        harness,
+        (entry) =>
+          entry.command.type === "thread.start" &&
+          entry.command.threadId === thread.id,
+      );
+      await reportQueuedCommandError(harness, command, {
+        errorCode: "provider_rpc_error",
+        errorMessage: "Provider could not start",
+      });
+      expect(getPluginTimelineEvent(harness.db, target)).toMatchObject({
+        status: "error",
+        turnId: null,
+      });
+    });
+  });
+
   it.each([false, true])(
     "keeps hidden input and its marker linked through dispatch (queued: %s)",
     async (queued) => {
@@ -1821,6 +1874,7 @@ describe("plugin turn markers", () => {
               payload: { prompt: "private run prompt" },
               presentation: {
                 title: "Inbox review",
+                icon: { glyph: "Timer" },
                 label: { pending: "Running", completed: "Finished" },
               },
             },

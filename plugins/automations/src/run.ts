@@ -24,6 +24,7 @@ import type {
 
 type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
+  queuedMessages: Pick<BbPluginApi["sdk"]["threads"]["queuedMessages"], "list">;
   experimental_getTimelineEvent: BbPluginApi["sdk"]["threads"]["experimental_getTimelineEvent"];
   experimental_updateTimelineEvent: BbPluginApi["sdk"]["threads"]["experimental_updateTimelineEvent"];
   get(
@@ -405,7 +406,7 @@ export async function reconcileRunningAutomationRuns(
 ): Promise<void> {
   const changedProjects = new Set<string>();
   for (const run of listRunningAutomationRuns(db)) {
-    const outcome = await reconcileOutcome(bb, run);
+    const outcome = await reconcileOutcome(bb, run, true);
     if (outcome === null) continue;
     const closed = closeAutomationRun(db, {
       runId: run.id,
@@ -436,6 +437,7 @@ export async function reconcileRunningAutomationRuns(
 async function reconcileOutcome(
   bb: AgentRunApi,
   run: AutomationRunRow,
+  recoverMissing = false,
 ): Promise<ReconcileOutcome | null> {
   if (run.runMode === "script") {
     return {
@@ -450,22 +452,6 @@ async function reconcileOutcome(
       skipReason:
         "interrupted: the server restarted before a thread was attached",
     };
-  }
-  if (run.timelineEventId !== null) {
-    const marker = await bb.sdk.threads.experimental_getTimelineEvent({
-      threadId: run.threadId,
-      eventId: run.timelineEventId,
-    });
-    if (marker?.status === "completed") return { status: "succeeded" };
-    if (marker?.status === "error" || marker?.status === "interrupted")
-      return {
-        status: "failed",
-        error:
-          marker.status === "interrupted"
-            ? "Run stopped before it finished"
-            : "Turn failed",
-      };
-    return null;
   }
   let thread: SdkThread;
   try {
@@ -491,6 +477,49 @@ async function reconcileOutcome(
         thread.deletedAt !== null ? "deleted" : "archived"
       }`,
     };
+  }
+  if (run.timelineEventId !== null) {
+    try {
+      const marker = await bb.sdk.threads.experimental_getTimelineEvent({
+        threadId: run.threadId,
+        eventId: run.timelineEventId,
+      });
+      if (marker?.status === "completed") return { status: "succeeded" };
+      if (marker?.status === "error" || marker?.status === "interrupted")
+        return {
+          status: "failed",
+          error:
+            marker.status === "interrupted"
+              ? "Run stopped before it finished"
+              : "Turn failed",
+        };
+      if (marker === null && recoverMissing) {
+        const queued = await bb.sdk.threads.queuedMessages.list({
+          threadId: run.threadId,
+        });
+        if (
+          !queued.some(
+            (entry) =>
+              entry.payload.kind === "inline" &&
+              entry.payload.experimental_timelineEvent?.id ===
+                run.timelineEventId &&
+              entry.payload.experimental_timelineEvent.pluginId ===
+                "automations",
+          )
+        ) {
+          return {
+            status: "skipped",
+            skipReason: "interrupted: queued run was cancelled before dispatch",
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      bb.log.warn(
+        `Could not check marker for run ${run.id}: ${errorMessage(error)}`,
+      );
+      return null;
+    }
   }
   switch (thread.status) {
     case "idle":

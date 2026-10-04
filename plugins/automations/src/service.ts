@@ -76,6 +76,7 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
     threads: Pick<
       BbPluginApi["sdk"]["threads"],
+      | "queuedMessages"
       | "get"
       | "send"
       | "spawn"
@@ -899,12 +900,24 @@ export function createAutomationService(args: {
         });
       }
       const now = Date.now();
+      const retryKey =
+        input.idempotencyKey ??
+        (input.retryRunId === undefined ? null : `retry:${input.retryRunId}`);
       const { run, deduped } = createManualRun(db, {
         automationId: automation.id,
-        runMode: automation.runMode,
-        idempotencyKey: input.idempotencyKey ?? null,
+        runMode: execution.mode,
+        idempotencyKey: retryKey,
         now,
       });
+      if (
+        input.retryRunId !== undefined &&
+        deduped &&
+        run.idempotencyKey !== retryKey
+      ) {
+        throw new Error(
+          "This automation is already running. Retry after it finishes.",
+        );
+      }
       if (!deduped) {
         publishAutomationChange(bb, input.projectId, "automation-runs-changed");
         const closeFailedRun = (error: unknown): void => {

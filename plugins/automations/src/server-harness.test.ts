@@ -121,6 +121,7 @@ async function bootAutomationsPlugin(
         },
       },
       threads: {
+        queuedMessages: { list: async () => [] },
         async experimental_getTimelineEvent() {
           return null;
         },
@@ -1328,6 +1329,9 @@ describe("automations server plugin harness", () => {
     const reloaded = await harness.reload(
       plugin as unknown as Parameters<typeof harness.reload>[0],
     );
+    reloaded.harness.sdk.stub("threads.experimental_getTimelineEvent", () => ({
+      status: "completed",
+    }));
     const service = reloaded.harness.runService("automation-sweep");
     await vi.waitFor(async () => {
       const runs = automationRunListResponseSchema.parse(
@@ -1353,6 +1357,73 @@ describe("automations server plugin harness", () => {
     expect(next.run.status).toBe("running");
 
     await reloaded.harness.dispose();
+  });
+
+  it("retries the recorded prompt and rejects an unrelated active run", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const automation = await createAgentAutomation(harness);
+    const first = automationRunRpcResponseSchema.parse(
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
+    );
+    harness.sdk.stub("threads.experimental_getTimelineEvent", () => ({
+      status: "error",
+      payload: {
+        automationId: automation.id,
+        projectId: PROJECT_ID,
+        name: automation.name,
+        runId: first.run.id,
+        execution: { ...agentExecution(), prompt: "original failed prompt" },
+      },
+    }));
+    await harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thr_spawned", projectId: PROJECT_ID }),
+      error: "failed",
+    });
+    const newer = automationRunRpcResponseSchema.parse(
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      }),
+    );
+    expect(newer.run.id).not.toBe(first.run.id);
+    await expect(
+      harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+        retryRunId: first.run.id,
+      }),
+    ).rejects.toThrow("already running");
+    await harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thr_spawned", projectId: PROJECT_ID }),
+      error: "failed",
+    });
+    await harness.callRpc("automations_run", {
+      projectId: PROJECT_ID,
+      automationId: automation.id,
+      retryRunId: first.run.id,
+    });
+    await vi.waitFor(() =>
+      expect(harness.sdk.callsTo("threads.send")).toHaveLength(1),
+    );
+    expect(harness.sdk.callsTo("threads.send")[0]?.[0]).toMatchObject({
+      threadId: "thr_spawned",
+      input: [
+        {
+          visibility: "agent-only",
+          text: expect.stringContaining("original failed prompt"),
+        },
+      ],
+      experimental_timelineEvent: {
+        payload: { execution: { prompt: "original failed prompt" } },
+      },
+    });
+    await harness.dispose();
   });
 
   it("dispatches hidden automation input and settles only its linked turn", async () => {

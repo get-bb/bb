@@ -46,7 +46,10 @@ function materialize(db: DbQueryConnection, row: StoredMarker): PluginTimelineEv
     sql`(
       (${events.type} = 'client/turn/rejected' AND json_extract(${events.data}, '$.requestId') = ${row.requestId})
       OR (${events.type} = 'turn/completed' AND ${events.turnId} = ${turnId})
-      OR (${events.type} = 'system/thread/interrupted' AND NOT EXISTS (
+      OR ((${events.type} = 'system/thread/interrupted' OR (
+        ${turnId} IS NULL AND ${events.type} = 'system/error'
+        AND json_extract(${events.data}, '$.code') IN ('thread_command_failed', 'thread_provisioning_failed')
+      )) AND NOT EXISTS (
         SELECT 1 FROM events next_request
         WHERE next_request.thread_id = ${row.threadId} AND next_request.type = 'client/turn/requested'
           AND next_request.sequence > ${row.requestSequence} AND next_request.sequence < ${events.sequence}
@@ -54,7 +57,7 @@ function materialize(db: DbQueryConnection, row: StoredMarker): PluginTimelineEv
     )`,
   )).orderBy(events.sequence).limit(1).get();
   const turnStatus = settled?.type === "turn/completed" ? threadEventTurnStatusSchema.parse(JSON.parse(settled.data).status) : null;
-  const status = row.status ?? (settled?.type === "client/turn/rejected" || turnStatus === "failed"
+  const status = row.status ?? (settled?.type === "client/turn/rejected" || settled?.type === "system/error" || turnStatus === "failed"
     ? "error" : settled?.type === "system/thread/interrupted" || turnStatus === "interrupted"
       ? "interrupted" : turnStatus === "completed" ? "completed" : "pending");
   return pluginTimelineEventSchema.parse({

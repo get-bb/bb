@@ -4,7 +4,7 @@ import {
   type PluginTimelineRendererProps,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
-import { automationRunMarkerSchema } from "./src/run-marker";
+
 import type { automationRpcContract } from "./src/rpc";
 
 export function AutomationRunMarker({
@@ -17,10 +17,28 @@ export function AutomationRunMarker({
   const [retrying, setRetrying] = useState(false);
   const [retried, setRetried] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const parsed = automationRunMarkerSchema.safeParse(payload);
-  if (!parsed.success || parsed.data.execution.mode !== "agent")
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload))
     return <Original />;
-  const marker = parsed.data;
+  const { name, runId, projectId, automationId, execution } = payload;
+  if (
+    typeof name !== "string" ||
+    typeof runId !== "string" ||
+    typeof projectId !== "string" ||
+    typeof automationId !== "string" ||
+    execution === null ||
+    typeof execution !== "object" ||
+    Array.isArray(execution) ||
+    execution.mode !== "agent" ||
+    typeof execution.prompt !== "string"
+  )
+    return <Original />;
+  const marker = {
+    name,
+    runId,
+    projectId,
+    automationId,
+    execution: { prompt: execution.prompt },
+  };
   const failed = row.status === "error" || row.status === "interrupted";
   const glyph = failed
     ? "CircleAlert"
