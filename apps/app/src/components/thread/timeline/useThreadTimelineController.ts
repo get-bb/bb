@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   useQueryClient,
   type QueryObserverResult,
@@ -48,6 +48,7 @@ export interface UseThreadTimelineControllerResult {
   goal: ThreadTimelineResponse["goal"];
   modelFallback: ThreadTimelineResponse["modelFallback"];
   hasOlderTimelineRows: boolean;
+  isCatchingUpTimeline: boolean;
   isLoadingOlderTimelineRows: boolean;
   loadOlderTimelineRows: () => Promise<void>;
   pendingTodos: ThreadTimelineResponse["pendingTodos"];
@@ -110,7 +111,16 @@ export function useThreadTimelineController({
   threadId,
 }: UseThreadTimelineControllerArgs): UseThreadTimelineControllerResult {
   const queryClient = useQueryClient();
+  const [mountFetchSettledThreadId, setMountFetchSettledThreadId] = useState<
+    string | null
+  >(null);
+  const isMountFetchSettled = mountFetchSettledThreadId === threadId;
+  const isMountFetchSettledRef = useRef(isMountFetchSettled);
+  isMountFetchSettledRef.current = isMountFetchSettled;
   const notifyOnChangeProps = useCallback((): TimelineQueryResultProp[] => {
+    if (!isMountFetchSettledRef.current) {
+      return TIMELINE_CONTROLLER_PROPS_WITHOUT_ROWS;
+    }
     const cachedTimeline = queryClient.getQueryData<ThreadTimelineResponse>(
       threadTimelineQueryKey(threadId),
     );
@@ -259,6 +269,13 @@ export function useThreadTimelineController({
     latestTimelineQuery.isLoading ||
     (timelineQueryState.status === "loading" && timelineRows.length === 0) ||
     (latestTimelineQuery.isFetching && timelineRows.length === 0);
+  if (!isMountFetchSettled && !latestTimelineQuery.isFetching) {
+    setMountFetchSettledThreadId(threadId);
+  }
+  const isCatchingUpTimeline =
+    !isMountFetchSettled &&
+    latestTimelineQuery.isFetching &&
+    timelineRows.length > 0;
   const timelineError =
     timelineLoading || timelineQueryState.status !== "unavailable"
       ? null
@@ -274,6 +291,7 @@ export function useThreadTimelineController({
     goal: latestTimeline?.goal ?? null,
     modelFallback: latestTimeline?.modelFallback ?? null,
     hasOlderTimelineRows,
+    isCatchingUpTimeline,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
     pendingTodos: latestTimeline?.pendingTodos ?? null,

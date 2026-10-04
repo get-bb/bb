@@ -1148,4 +1148,43 @@ describe("useThreadTimelineController commits", () => {
     expect(rowIds(view.latest())).toEqual([newestLoadedRow.id]);
     expect(view.latest().hasOlderTimelineRows).toBe(true);
   });
+  it("reports catching up while the mount refetch of a stale cached timeline runs", async () => {
+    const refetch = createDeferredPromise<ThreadTimelineResponse>();
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(refetch.promise);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+      { updatedAt: 0 },
+    );
+
+    const view = renderProfiledController(wrapper);
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
+    });
+    expect(view.latest().isCatchingUpTimeline).toBe(true);
+    expect(view.latest().timelineLoading).toBe(false);
+    expect(rowIds(view.latest())).toEqual([newestLoadedRow.id]);
+
+    await act(async () => {
+      refetch.resolve(
+        makeTimelineResponse({
+          maxSeq: 2,
+          rows: [newestLoadedRow, realtimeRow],
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(view.latest().isCatchingUpTimeline).toBe(false);
+    });
+    expect(rowIds(view.latest())).toEqual([newestLoadedRow.id, realtimeRow.id]);
+
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(new Promise(() => {}));
+    startTimelineRefetch(queryClient);
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
+    });
+    await flushQueryNotifications();
+    expect(view.latest().isCatchingUpTimeline).toBe(false);
+  });
 });
