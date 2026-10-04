@@ -231,7 +231,7 @@ describe("SidebarUpdatesBadge", () => {
       host: makeHost({ id: "second", status: "disconnected" }),
     });
     const result = renderBadge({ machines: [first, second] });
-    fireEvent.click(screen.getByTestId("sidebar-machines-attention-badge"));
+    fireEvent.click(screen.getByRole("link", { name: "Machines offline" }));
     useUpdateInventoryMock.mockReturnValue({
       isLoading: false,
       machines: [first],

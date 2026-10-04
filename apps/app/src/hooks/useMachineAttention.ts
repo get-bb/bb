@@ -14,7 +14,9 @@ const acknowledgedIssuesAtom = atomWithStorage<string[]>(
   { getOnInit: true },
 );
 
-function machineIssue(host: Host): { key: string; label: string } | null {
+function machineIssue(
+  host: Host,
+): { key: string; label: string; offline: boolean } | null {
   if (host.type === "ephemeral") return null;
   if (
     host.lifecycle.phase === "removing" &&
@@ -28,6 +30,7 @@ function machineIssue(host: Host): { key: string; label: string } | null {
         host.lifecycle.message,
       ]),
       label: `${host.name} cleanup failed`,
+      offline: false,
     };
   }
   if (host.lifecycle.phase !== "active" || host.status === "connected") {
@@ -36,6 +39,7 @@ function machineIssue(host: Host): { key: string; label: string } | null {
   return {
     key: JSON.stringify([host.id, "offline", host.lastSeenAt]),
     label: `${host.name} is offline`,
+    offline: true,
   };
 }
 
@@ -63,7 +67,9 @@ export function useMachineAttention(hosts: Host[], isLoading: boolean) {
         ? null
         : unseen.length === 1
           ? unseen[0]!.label
-          : `${unseen.length} machines need attention`,
+          : unseen.every((issue) => issue.offline)
+            ? "Machines offline"
+            : `${unseen.length} machines need attention`,
     acknowledge: () => setAcknowledged(issues.map((issue) => issue.key)),
   };
 }
