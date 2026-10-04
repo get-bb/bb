@@ -9,9 +9,9 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { AddMarkStep, RemoveMarkStep } from "@tiptap/pm/transform";
 import {
-  findPastedThreadLinks,
+  findPastedThreadLinkCandidates,
   type PastedThreadLink,
-} from "../mentions/pasted-thread-links";
+} from "../mentions/pasted-thread-link-candidates";
 import {
   promptEditorSerializationFromDoc,
   type PromptEditorOffsetSegment,
@@ -42,12 +42,14 @@ interface PasteMetadata {
   skip?: boolean;
   cancel?: boolean;
   complete?: number;
+  literalLinkIndexes?: number[];
 }
 
 interface Lookup {
   controller: AbortController;
   timeout: ReturnType<typeof setTimeout> | null;
   resolved: Map<string, ThreadMentionResolution>;
+  findLinks: typeof findPastedThreadLinkCandidates | null;
 }
 
 export const promptThreadLinkPasteKey = new PluginKey<PasteState>(
@@ -60,6 +62,14 @@ function pasteMetadata(transaction: Transaction): PasteMetadata {
   return {
     skip: "skip" in metadata && metadata.skip === true,
     cancel: "cancel" in metadata && metadata.cancel === true,
+    literalLinkIndexes:
+      "literalLinkIndexes" in metadata &&
+      Array.isArray(metadata.literalLinkIndexes)
+        ? metadata.literalLinkIndexes.filter(
+            (index): index is number =>
+              typeof index === "number" && Number.isInteger(index),
+          )
+        : [],
     ...("complete" in metadata && typeof metadata.complete === "number"
       ? { complete: metadata.complete }
       : {}),
@@ -125,6 +135,7 @@ function occurrenceInDocument(
 function pastedOccurrences(
   transaction: Transaction,
   origin: string,
+  literalLinkIndexes: number[],
 ): PastedThreadLink[] {
   const inserted: { from: number; to: number }[] = [];
   for (const [index, map] of transaction.mapping.maps.entries()) {
@@ -137,16 +148,42 @@ function pastedOccurrences(
   const { text, offsetMapping } = promptEditorSerializationFromDoc(
     transaction.doc,
   );
-  return findPastedThreadLinks({ text, origin }).flatMap((link) => {
+  let pastedIndex = 0;
+  return findPastedThreadLinkCandidates({ text, origin }).flatMap((link) => {
     const occurrence = occurrenceInDocument(link, offsetMapping);
-    return occurrence &&
-      inserted.some(
+    if (
+      !occurrence ||
+      !inserted.some(
         (range) => occurrence.from >= range.from && occurrence.to <= range.to,
-      ) &&
-      isConvertibleText(transaction.doc, occurrence)
+      )
+    )
+      return [];
+    const literal = literalLinkIndexes.includes(pastedIndex++);
+    return !literal && isConvertibleText(transaction.doc, occurrence)
       ? [occurrence]
       : [];
   });
+}
+
+function eligibleOccurrences(
+  doc: ProseMirrorNode,
+  paste: PendingPaste,
+  origin: string,
+  findLinks: typeof findPastedThreadLinkCandidates,
+): PastedThreadLink[] {
+  const { text, offsetMapping } = promptEditorSerializationFromDoc(doc);
+  const eligible = findLinks({ text, origin }).flatMap((link) => {
+    const occurrence = occurrenceInDocument(link, offsetMapping);
+    return occurrence ? [occurrence] : [];
+  });
+  return paste.occurrences.filter((occurrence) =>
+    eligible.some(
+      (link) =>
+        link.from === occurrence.from &&
+        link.to === occurrence.to &&
+        link.text === occurrence.text,
+    ),
+  );
 }
 
 function mapOccurrence(
@@ -226,6 +263,7 @@ export function createPromptThreadLinkPasteExtension(
                 const occurrences = pastedOccurrences(
                   transaction,
                   options.getOrigin(),
+                  metadata.literalLinkIndexes ?? [],
                 );
                 if (occurrences.length > 0) {
                   pastes.push({ id: nextId++, occurrences });
@@ -266,8 +304,16 @@ export function createPromptThreadLinkPasteExtension(
                 .getState(view.state)
                 ?.pastes.find((pending) => pending.id === id);
               if (!paste) return;
+              const eligible = lookup.findLinks
+                ? eligibleOccurrences(
+                    view.state.doc,
+                    paste,
+                    options.getOrigin(),
+                    lookup.findLinks,
+                  )
+                : [];
               const transaction = view.state.tr;
-              for (const occurrence of [...paste.occurrences].sort(
+              for (const occurrence of eligible.sort(
                 (left, right) => right.from - left.from,
               )) {
                 const resolved = lookup.resolved.get(occurrence.threadId);
@@ -308,58 +354,72 @@ export function createPromptThreadLinkPasteExtension(
                 controller: new AbortController(),
                 timeout: null,
                 resolved: new Map(),
+                findLinks: null,
               };
               lookups.set(paste.id, lookup);
               lookup.timeout = setTimeout(
                 () => finish(paste.id, lookup),
                 2_000,
               );
-              queueMicrotask(() => {
-                if (destroyed || lookup.controller.signal.aborted) return;
-                const missing: string[] = [];
-                for (const threadId of new Set(
-                  paste.occurrences.map((occurrence) => occurrence.threadId),
-                )) {
-                  const cached = options.getCachedThread(threadId);
-                  if (cached?.threadId === threadId) {
-                    lookup.resolved.set(threadId, cached);
-                  } else {
-                    missing.push(threadId);
+              void import("../mentions/pasted-thread-links")
+                .then(({ findPastedThreadLinks }) => {
+                  if (destroyed || lookup.controller.signal.aborted) return;
+                  lookup.findLinks = findPastedThreadLinks;
+                  const currentPaste = promptThreadLinkPasteKey
+                    .getState(view.state)
+                    ?.pastes.find((pending) => pending.id === paste.id);
+                  if (!currentPaste) return;
+                  const eligible = eligibleOccurrences(
+                    view.state.doc,
+                    currentPaste,
+                    options.getOrigin(),
+                    findPastedThreadLinks,
+                  );
+                  const missing: string[] = [];
+                  for (const threadId of new Set(
+                    eligible.map((occurrence) => occurrence.threadId),
+                  )) {
+                    const cached = options.getCachedThread(threadId);
+                    if (cached?.threadId === threadId) {
+                      lookup.resolved.set(threadId, cached);
+                    } else {
+                      missing.push(threadId);
+                    }
                   }
-                }
-                const batches: Promise<void>[] = [];
-                for (
-                  let index = 0;
-                  index < missing.length;
-                  index += THREAD_MENTION_RESOLVE_MAX_IDS
-                ) {
-                  const ids = missing.slice(
-                    index,
-                    index + THREAD_MENTION_RESOLVE_MAX_IDS,
-                  );
-                  batches.push(
-                    Promise.resolve()
-                      .then(() =>
-                        options.resolveThreads(ids, lookup.controller.signal),
-                      )
-                      .then((resolved) => {
-                        if (lookup.controller.signal.aborted) return;
-                        for (const thread of resolved) {
-                          if (ids.includes(thread.threadId)) {
-                            lookup.resolved.set(thread.threadId, thread);
+                  const batches: Promise<void>[] = [];
+                  for (
+                    let index = 0;
+                    index < missing.length;
+                    index += THREAD_MENTION_RESOLVE_MAX_IDS
+                  ) {
+                    const ids = missing.slice(
+                      index,
+                      index + THREAD_MENTION_RESOLVE_MAX_IDS,
+                    );
+                    batches.push(
+                      Promise.resolve()
+                        .then(() =>
+                          options.resolveThreads(ids, lookup.controller.signal),
+                        )
+                        .then((resolved) => {
+                          if (lookup.controller.signal.aborted) return;
+                          for (const thread of resolved) {
+                            if (ids.includes(thread.threadId)) {
+                              lookup.resolved.set(thread.threadId, thread);
+                            }
                           }
-                        }
-                      }),
-                  );
-                }
-                if (batches.length === 0) {
-                  finish(paste.id, lookup);
-                } else {
-                  void Promise.allSettled(batches).then(() =>
-                    finish(paste.id, lookup),
-                  );
-                }
-              });
+                        }),
+                    );
+                  }
+                  if (batches.length === 0) {
+                    finish(paste.id, lookup);
+                  } else {
+                    void Promise.allSettled(batches).then(() =>
+                      finish(paste.id, lookup),
+                    );
+                  }
+                })
+                .catch(() => finish(paste.id, lookup));
             };
             const sync = () => {
               const pastes =

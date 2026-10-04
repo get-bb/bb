@@ -5707,6 +5707,28 @@ describe("thread URL clipboard paste", () => {
     label: "Composer paste improvements",
   };
 
+  it("keeps HTML code and authored links literal while converting repeated URLs in prose", async () => {
+    const lookup = vi
+      .spyOn(sdk.threads, "resolveMentions")
+      .mockResolvedValue([resolved]);
+    try {
+      const { changes, promptBoxRef } = renderPromptBox("");
+      await focusPromptEnd(promptBoxRef);
+      pasteClipboard({
+        plainText: `${url}\n${url}\n${url}\n${url}`,
+        html: `<p>${url}</p><pre><code>${url}</code></pre><p><a href="https://example.com">${url}</a></p><p><a href="${url}">${url}</a></p>`,
+      });
+      await waitFor(() =>
+        expect(latestChange(changes)?.mentions).toHaveLength(2),
+      );
+      expect(latestValue(changes)).toBe(
+        `@thread:${threadId}\n${url}\n${url}\n@thread:${threadId}`,
+      );
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
   it.each(["ctrlKey", "metaKey"])(
     "keeps %s+Shift+V literal and converts the next normal clipboard paste through the SDK",
     async (modifier) => {

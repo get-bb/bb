@@ -165,6 +165,7 @@ import {
 } from "./mentions/MentionMenu";
 import { useTypeaheadMenuMaxHeight } from "./useTypeaheadMenuMaxHeight";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
+import { findPastedThreadLinkCandidates } from "./mentions/pasted-thread-link-candidates";
 import {
   blurPromptEditor,
   ComposerEditorSlot,
@@ -578,6 +579,7 @@ interface PromptEditorSelectionRevealArgs {
 }
 
 interface ParsedRichClipboardValue {
+  threadLinks: { text: string; literal: boolean }[];
   hasMentions: boolean;
   value: PromptEditorValue;
 }
@@ -782,6 +784,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   let hasMentions = false;
   let listMarkerPending = false;
   const mentions: PromptTextMention[] = [];
+  const literalRanges: { from: number; to: number }[] = [];
 
   const flushListMarker = () => {
     if (!listMarkerPending) {
@@ -791,11 +794,16 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     text += RICH_PASTE_LIST_MARKER;
   };
 
-  const appendText = (appendedText: string) => {
+  const appendText = (appendedText: string, literal = false) => {
     if (appendedText.length === 0) {
       return;
     }
     flushListMarker();
+    if (literal)
+      literalRanges.push({
+        from: text.length,
+        to: text.length + appendedText.length,
+      });
     text += appendedText;
   };
 
@@ -806,7 +814,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     }
   };
 
-  const appendCollapsedText = (rawText: string) => {
+  const appendCollapsedText = (rawText: string, literal: boolean) => {
     const collapsedText = rawText.replace(/\s+/gu, " ");
     if (collapsedText.trim().length === 0) {
       if (listMarkerPending) {
@@ -817,7 +825,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
       }
       return;
     }
-    appendText(collapsedText);
+    appendText(collapsedText, literal);
   };
 
   const appendClipboardMention = (element: Element): boolean => {
@@ -838,29 +846,42 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     return true;
   };
 
-  const visitChildren = (node: Node, preserveWhitespace: boolean) => {
+  const visitChildren = (
+    node: Node,
+    preserveWhitespace: boolean,
+    literal = false,
+  ) => {
     for (const childNode of node.childNodes) {
-      visitNode(childNode, preserveWhitespace);
+      visitNode(childNode, preserveWhitespace, literal);
     }
   };
 
-  const visitNode = (node: Node, preserveWhitespace: boolean) => {
+  const visitNode = (
+    node: Node,
+    preserveWhitespace: boolean,
+    literal: boolean,
+  ) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const rawText = node.textContent ?? "";
       if (preserveWhitespace) {
-        appendText(normalizePastedPlainText(rawText));
+        appendText(normalizePastedPlainText(rawText), literal);
         return;
       }
-      appendCollapsedText(rawText);
+      appendCollapsedText(rawText, literal);
       return;
     }
 
     if (!(node instanceof Element)) {
-      visitChildren(node, preserveWhitespace);
+      visitChildren(node, preserveWhitespace, literal);
       return;
     }
 
     const tagName = node.tagName.toUpperCase();
+    literal ||=
+      tagName === "CODE" ||
+      tagName === "BLOCKQUOTE" ||
+      (tagName === "A" &&
+        node.getAttribute("href") !== node.textContent?.trim());
     if (RICH_PASTE_IGNORED_TAGS.has(tagName)) {
       return;
     }
@@ -873,34 +894,44 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     }
     if (tagName === "PRE") {
       appendNewline();
-      appendText(normalizePastedPlainText(node.textContent ?? ""));
+      appendText(normalizePastedPlainText(node.textContent ?? ""), true);
       appendNewline();
       return;
     }
     if (tagName === "LI") {
       appendNewline();
       listMarkerPending = true;
-      visitChildren(node, preserveWhitespace);
+      visitChildren(node, preserveWhitespace, literal);
       listMarkerPending = false;
       appendNewline();
       return;
     }
     if (RICH_PASTE_BLOCK_TAGS.has(tagName)) {
       appendNewline();
-      visitChildren(node, preserveWhitespace);
+      visitChildren(node, preserveWhitespace, literal);
       appendNewline();
       return;
     }
 
-    visitChildren(node, preserveWhitespace);
+    visitChildren(node, preserveWhitespace, literal);
   };
 
   visitChildren(document.body, false);
+  const threadLinks = findPastedThreadLinkCandidates({
+    text,
+    origin: window.location.origin,
+  }).map((link) => ({
+    text: link.text,
+    literal: literalRanges.some(
+      (range) => range.from < link.to && range.to > link.from,
+    ),
+  }));
 
   if (hasMentions) {
     const trimmedText = text.replace(/\n+$/u, "");
     return {
       hasMentions,
+      threadLinks,
       value: {
         text: trimmedText,
         mentions: mentions.filter(
@@ -915,6 +946,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
 
   return {
     hasMentions,
+    threadLinks,
     value: {
       text: text
         .replace(/[ \t]+\n/gu, "\n")
@@ -929,14 +961,10 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
 function promptEditorValueFromClipboardPaste(
   clipboardData: DataTransfer | null,
   promptActions?: readonly PromptBoxAction[],
+  richValue?: ParsedRichClipboardValue | null,
 ): PromptEditorValue | null {
-  const html = clipboardData?.getData("text/html") ?? "";
-  const hasHtml = html.trim().length > 0;
-  if (hasHtml) {
-    const richValue = promptEditorValueFromRichHtml(html);
-    if (richValue.hasMentions) {
-      return withPromptActionCommandMentions(richValue.value, promptActions);
-    }
+  if (richValue?.hasMentions) {
+    return withPromptActionCommandMentions(richValue.value, promptActions);
   }
 
   const plainText = clipboardData?.getData("text/plain") ?? "";
@@ -944,11 +972,7 @@ function promptEditorValueFromClipboardPaste(
     return promptEditorValueFromPlainText(plainText, promptActions);
   }
 
-  if (!hasHtml) {
-    return null;
-  }
-
-  return promptEditorValueFromRichHtml(html).value;
+  return richValue?.value ?? null;
 }
 
 function runAfterClipboardCut(callback: () => void): void {
@@ -1842,6 +1866,32 @@ export function PromptBoxInternal({
         handlePaste: (view, event, slice) => {
           const skipThreadLinks = pasteWithoutFormattingRef.current;
           pasteWithoutFormattingRef.current = false;
+          const html = event.clipboardData?.getData("text/html") ?? "";
+          const richClipboard = html.trim()
+            ? promptEditorValueFromRichHtml(html)
+            : null;
+          const threadLinkMetadata = (pastedValue: PromptEditorValue) => {
+            const links = richClipboard?.threadLinks ?? [];
+            if (!links.some((link) => link.literal))
+              return { skip: skipThreadLinks };
+            const pastedLinks = findPastedThreadLinkCandidates({
+              text: pastedValue.text,
+              origin: window.location.origin,
+            });
+            if (
+              pastedLinks.length !== links.length ||
+              pastedLinks.some(
+                (link, index) => link.text !== links[index]?.text,
+              )
+            )
+              return { skip: true };
+            return {
+              skip: skipThreadLinks,
+              literalLinkIndexes: links.flatMap((link, index) =>
+                link.literal ? [index] : [],
+              ),
+            };
+          };
           const attachFiles = onAttachFilesRef.current;
           const clipboardItems = Array.from(event.clipboardData?.items ?? []);
           const pastedFiles = clipboardItems
@@ -1875,7 +1925,10 @@ export function PromptBoxInternal({
               .focus()
               .insertContent(pastedContent)
               .setMeta("uiEvent", "paste")
-              .setMeta(promptThreadLinkPasteKey, { skip: skipThreadLinks })
+              .setMeta(
+                promptThreadLinkPasteKey,
+                threadLinkMetadata(pastedValue),
+              )
               .run();
             if (currentEditor && !currentEditor.isDestroyed) {
               const nextValue = trimTrailingPromptNewlines(
@@ -1890,6 +1943,7 @@ export function PromptBoxInternal({
           const pastedValue = promptEditorValueFromClipboardPaste(
             event.clipboardData ?? null,
             promptActions,
+            richClipboard,
           );
           if (pastedValue === null) {
             return attachFiles !== undefined && pastedFiles.length > 0;
@@ -1903,7 +1957,7 @@ export function PromptBoxInternal({
             .focus()
             .insertContent(promptEditorInlineContentFromValue(pastedValue))
             .setMeta("uiEvent", "paste")
-            .setMeta(promptThreadLinkPasteKey, { skip: skipThreadLinks })
+            .setMeta(promptThreadLinkPasteKey, threadLinkMetadata(pastedValue))
             .run();
           return true;
         },
