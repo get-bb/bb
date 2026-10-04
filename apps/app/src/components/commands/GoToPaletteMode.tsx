@@ -91,11 +91,15 @@ export function GoToPaletteMode({
   currentThreadId,
   installedPlugins,
   onExit,
+  query,
+  onQueryChange: setQuery,
   runAfterClose,
 }: {
   currentThreadId: string | null;
   installedPlugins: readonly PluginSettingsCandidate[];
   onExit: () => void;
+  query: string;
+  onQueryChange: (query: string) => void;
   runAfterClose: (run: () => void) => void;
 }) {
   const listId = useId();
@@ -110,10 +114,11 @@ export function GoToPaletteMode({
   const isCompact = useIsCompactViewport();
   const pluginSlots = usePluginSlots();
   const settingsSections = useSettingsNavSections(pluginSlots.fileOpeners);
-  const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
-  const [followPreviousThread, setFollowPreviousThread] = useState(true);
+  const [followPreviousThread, setFollowPreviousThread] = useState(
+    () => query.trim().length === 0,
+  );
   const [threadsExpanded, setThreadsExpanded] = useState(false);
   const [now] = useState(() => Date.now());
   const [visits] = useState(readPaletteVisits);

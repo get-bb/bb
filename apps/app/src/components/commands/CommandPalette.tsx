@@ -72,6 +72,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const kindFilter = useAtomValue(paletteKindFilterAtom);
   const [openCount, setOpenCount] = useState(0);
   const [query, setQuery] = useState("");
+  const [modeQuery, setModeQuery] = useState("");
   const [actions, setActions] = useState<readonly PaletteAction[]>([]);
   const [searchingThreads, setSearchingThreads] = useState(false);
   const [installedPlugins, setInstalledPlugins] = useState<
@@ -170,6 +171,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       if (!open) openTargetRef.current = target;
       setActions(buildActions(openTargetRef.current));
       setQuery("");
+      setModeQuery("");
       setOpenCount((count) => count + 1);
       void appQueryClient
         .fetchQuery(pluginListQueryOptions({ enabled: true }))
@@ -242,12 +244,14 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     if (!nextOpen) {
       setSearchingThreads(false);
       setQuery("");
+      setModeQuery("");
     }
   }, []);
 
   const exitMode = () => {
     setSearchingThreads(false);
     setQuery("");
+    setModeQuery("");
   };
 
   return (
@@ -314,12 +318,16 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                 currentThreadId={threadId}
                 installedPlugins={installedPlugins}
                 onExit={exitMode}
+                query={modeQuery}
+                onQueryChange={setModeQuery}
                 runAfterClose={runAfterClose}
               />
             ) : (
               <ThreadSearchPaletteMode
                 currentThreadId={threadId}
                 onExit={exitMode}
+                query={modeQuery}
+                onQueryChange={setModeQuery}
                 runAfterClose={runAfterClose}
               />
             )}

@@ -76,10 +76,14 @@ function optionKey(option: ThreadSearchOption): string {
 export function ThreadSearchPaletteMode({
   currentThreadId,
   onExit,
+  query,
+  onQueryChange: setQuery,
   runAfterClose,
 }: {
   currentThreadId: string | null;
   onExit: () => void;
+  query: string;
+  onQueryChange: (query: string) => void;
   runAfterClose: (run: () => void) => void;
 }) {
   const listId = useId();
@@ -97,10 +101,11 @@ export function ThreadSearchPaletteMode({
     () => normalizeThreadLifecycleFilter(selectedLifecycles),
     [selectedLifecycles],
   );
-  const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
-  const [followPreviousThread, setFollowPreviousThread] = useState(true);
+  const [followPreviousThread, setFollowPreviousThread] = useState(
+    () => query.trim().length === 0,
+  );
   const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
   const filterKey = lifecycles.join(",");
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
