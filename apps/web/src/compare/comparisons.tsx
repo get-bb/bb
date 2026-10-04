@@ -4,7 +4,7 @@ import supersetIcon from "../assets/competitors/superset.png";
 import { CustomizeBuild, ProviderChips } from "../landing/landing-visuals";
 import {
   AgentSplit,
-  PhoneApp,
+  AnywhereVisual,
   TeamCost,
   type BrandLogo,
 } from "./compare-visuals";
@@ -54,7 +54,6 @@ export type Comparison = {
   sub: string;
   switchGuide: { label: string; href: string };
   highlights: CompareHighlight[];
-  tableTitle: string;
   tableNote: string;
   table: CompareGroup[];
   faqTitle: string;
@@ -82,7 +81,7 @@ const BB_VS_SUPERSET: Comparison = {
   },
   highlights: [
     {
-      title: "More agents and teammates. $0 more.",
+      title: "Run more agents, solo or as a team. $0 more.",
       wide: false,
       visual: (
         <TeamCost
@@ -95,7 +94,7 @@ const BB_VS_SUPERSET: Comparison = {
         <>
           <p>
             You only pay for the AI plans you already have. bb is free, whether
-            one person runs one agent or a whole team runs dozens.
+            you run one agent on your own or a whole team runs dozens.
           </p>
           <p>
             The mobile app, automations, remote access, and plugins all come
@@ -128,13 +127,16 @@ const BB_VS_SUPERSET: Comparison = {
     {
       title: "Keep working from anywhere",
       wide: false,
-      visual: <PhoneApp />,
+      visual: <AnywhereVisual />,
       body: (
         <>
           <p>
             Start tasks, answer your agents, and approve their work from the bb
-            mobile app or any browser. Your agents keep running on your computer
-            while you’re out.
+            mobile app or any browser.
+          </p>
+          <p>
+            Run agents on your laptop, a desktop at home, or a cloud server, and
+            manage them all from one bb. They keep working while you’re out.
           </p>
         </>
       ),
@@ -146,30 +148,36 @@ const BB_VS_SUPERSET: Comparison = {
       body: (
         <>
           <p>
-            bb works out of the box. When you need more, add a plugin or ask an
-            agent to build one, like a task board, a dashboard, or a new agent.
-            It shows up on your phone too.
+            bb works out of the box. Worktrees, diff review, automations,
+            notifications, and the mobile app are ready from your first thread,
+            with defaults you can change anytime in Settings.
+          </p>
+          <p>
+            When you want more, browse the{" "}
+            <a href="/marketplace">plugin marketplace</a> or ask an agent to
+            build exactly what you need: a live background that reacts to your
+            agents, a map of your saved places, or your own X analytics
+            dashboard. Everything you add shows up on your phone too.
           </p>
         </>
       ),
     },
   ],
-  tableTitle: "bb vs Superset, feature by feature",
   tableNote:
-    "Pro marks features that need a paid Superset plan, from $20 per user / month.",
+    "marks features that need a paid Superset plan, from $20 per user / month.",
   table: [
     {
       title: "Agents",
       rows: [
         {
-          feature: "Claude Code, Codex, and more",
+          feature: "Multi-agent support",
           bb: cell("yes", "Plus any you add"),
           competitor: cell("yes", "Any CLI agent"),
         },
         {
-          feature: "Agents hand off work to each other",
+          feature: "Agent-to-agent handoff",
           bb: cell("yes", "Spawn, message, wait"),
-          competitor: cell("yes", "Via terminal read/send"),
+          competitor: cell("yes", "Via a coordinator skill"),
         },
       ],
     },
@@ -197,29 +205,29 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Worktrees and review",
       rows: [
         {
-          feature: "Worktree per task",
+          feature: "Git worktrees",
           bb: cell("yes", ".env copy, setup, teardown"),
           competitor: cell("yes", "Setup, teardown, run"),
         },
         {
-          feature: "Diff review and PR merge",
+          feature: "Diff review and merge",
           bb: cell("yes"),
           competitor: cell("yes"),
         },
         {
-          feature: "Terminal and browser",
+          feature: "Built-in terminal and browser",
           bb: cell("yes", "Browser on desktop"),
           competitor: cell("yes"),
         },
         {
-          feature: "File editor",
+          feature: "Code editor",
           bb: cell("yes", "Opt-in plugin"),
           competitor: cell("yes"),
         },
         {
-          feature: "Dev server ports",
+          feature: "Port management",
           bb: cell("no"),
-          competitor: cell("yes", "Detect, label, kill"),
+          competitor: cell("yes", "View, kill, group"),
         },
       ],
     },
@@ -227,17 +235,17 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Integrations",
       rows: [
         {
-          feature: "Plugins",
+          feature: "Plugin marketplace",
           bb: cell("yes", "Gallery or agent-built"),
           competitor: cell("partial", "Themes and integrations"),
         },
         {
-          feature: "Linear",
+          feature: "Linear integration",
           bb: cell("yes", "Community plugin"),
           competitor: cell("partial", "", true),
         },
         {
-          feature: "Slack",
+          feature: "Slack integration",
           bb: cell("no"),
           competitor: cell("partial", "@superset agent bot", true),
         },
@@ -247,17 +255,17 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Platform and license",
       rows: [
         {
-          feature: "Windows",
+          feature: "Windows support",
           bb: cell("yes", "Through WSL2"),
           competitor: cell("no", "Planned, no date"),
         },
         {
-          feature: "Linux",
+          feature: "Linux support",
           bb: cell("partial", "Alpha"),
           competitor: cell("partial", "Experimental AppImage"),
         },
         {
-          feature: "Open source",
+          feature: "Open-source license",
           bb: cell("yes", "MIT"),
           competitor: cell("no", "Elastic License 2.0"),
         },
@@ -267,12 +275,12 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Teams and price",
       rows: [
         {
-          feature: "Team plans, SSO, SLA",
+          feature: "Team plans and SSO",
           bb: cell("no"),
           competitor: cell("partial", "SSO on Enterprise", true),
         },
         {
-          feature: "Price",
+          feature: "Pricing",
           bb: cell(null, "$0, any team size"),
           competitor: cell(null, "$0 solo, $20/user/mo"),
         },

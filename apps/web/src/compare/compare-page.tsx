@@ -104,7 +104,7 @@ function Cell({ cell, us }: { cell: CompareCell; us: boolean }) {
             {cell.text}
             {cell.pro ? (
               <span className={cell.text ? "cmp-pro" : "cmp-pro cmp-pro-solo"}>
-                Pro<span className="cmp-sr"> plan only</span>
+                $ Pro<span className="cmp-sr"> plan only</span>
               </span>
             ) : null}
           </span>
@@ -230,7 +230,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       )}
 
       <section className="cmp-team" data-reveal>
-        <h2>Built by a team from</h2>
+        <h2>Built by alumni of</h2>
         <ul className="company-proof-logos cmp-team-logos">
           {TEAM_COMPANIES.map(([name, logo]) => (
             <li key={name} className="company-proof-company">
@@ -242,10 +242,18 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       </section>
 
       <section className="cmp-section" data-reveal>
-        <h2 id="cmp-table-title" className="sec-title">
-          {comparison.tableTitle}
+        <h2 id="cmp-table-title" className="sec-title cmp-table-title">
+          <BrandMark logo={{ kind: "bb" }} className="cmp-table-title-logo" />
+          bb
+          <span className="cmp-table-title-vs">vs</span>
+          <BrandMark logo={competitor.logo} className="cmp-table-title-logo" />
+          {competitor.name}
         </h2>
-        <p className="cmp-table-note">{comparison.tableNote}</p>
+        <p className="cmp-table-sub">Feature by feature</p>
+        <p className="cmp-table-note">
+          <span className="cmp-pro cmp-pro-solo">$ Pro</span>{" "}
+          {comparison.tableNote}
+        </p>
         <CompareTable comparison={comparison} />
       </section>
 
