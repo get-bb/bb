@@ -36,6 +36,7 @@ type PluginComposerActionContribution = ResolvedComposerAction;
 interface PluginComposerActionGroup {
   pluginId: string;
   actions: readonly PluginComposerActionContribution[];
+  placesFirst: boolean;
   registrationIndex: number;
 }
 
@@ -217,17 +218,22 @@ function orderActionGroups(
       groupsByPluginId.set(action.pluginId, {
         ...existing,
         actions: [...existing.actions, action],
+        placesFirst:
+          existing.placesFirst ||
+          action.action.experimental_placement === "start",
       });
       return;
     }
     groupsByPluginId.set(action.pluginId, {
       pluginId: action.pluginId,
       actions: [action],
+      placesFirst: action.action.experimental_placement === "start",
       registrationIndex,
     });
   });
   return [...groupsByPluginId.values()].sort(
     (left, right) =>
+      Number(right.placesFirst) - Number(left.placesFirst) ||
       (usageCounts[right.pluginId] ?? 0) - (usageCounts[left.pluginId] ?? 0) ||
       left.registrationIndex - right.registrationIndex,
   );

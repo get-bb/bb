@@ -73,3 +73,29 @@ describe("composer popup registration", () => {
     ]);
   });
 });
+
+describe("composer action placement", () => {
+  it("keeps start placement and rejects only actions with unknown placements", () => {
+    const component = () => null;
+    const onRejected = vi.fn();
+    const registration = collectComposerCustomization(
+      {
+        id: "pins",
+        actions: [
+          { id: "pin", component, experimental_placement: "start" },
+          { id: "later", component, experimental_placement: "end" },
+          { id: "plain", component },
+        ],
+      },
+      new Set(),
+      onRejected,
+    );
+    expect(registration?.actions).toEqual([
+      { id: "pin", component, experimental_placement: "start" },
+      { id: "plain", component },
+    ]);
+    expect(onRejected.mock.calls.flat()).toEqual([
+      expect.stringContaining('"experimental_placement" must be "start"'),
+    ]);
+  });
+});

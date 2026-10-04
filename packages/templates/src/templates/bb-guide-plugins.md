@@ -937,7 +937,10 @@ navPanel, threadPanelAction, experimental_newThreadPanelAction, fileOpener,
 messageDirective) and composer
 customizations via `app.composer.customize({ actions, plusMenu, sendMenu,
 banners, richText })`; action/banner components use `useComposer()`, while the
-host renders plus-menu and send-menu rows and editor decorations. The deprecated pre-1.0 `slots.composerAccessory` footer API was
+host renders plus-menu and send-menu rows and editor decorations. An action
+with `experimental_placement: "start"` (SDK 0.6.17) ranks its plugin's action
+group ahead of plugins without it; use ranking and the 3-plugin inline limit
+still apply. The deprecated pre-1.0 `slots.composerAccessory` footer API was
 removed; migrate controls to actions or the plus menu and larger content to
 banners. Register all frontend surfaces via
 definePluginApp, use the hooks

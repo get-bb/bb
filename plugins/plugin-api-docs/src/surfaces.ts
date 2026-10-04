@@ -600,6 +600,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Register a rebindable composer command that runs in the composer holding the caret, for example to open the popup with Ctrl+R; inside the popup, useComposer targets that composer and useComposer().experimental_closePopup() restores editor focus",
           "Read reactive picker values from composer.selection, or set them through the same paths the pickers use and read back what the composer settled on",
           "Render in the same row as bb's own prompt-box buttons; bb keeps up to 3 plugins with applicable actions inline, ranked by use, and moves the rest into an overflow menu",
+          'Request experimental_placement: "start" to rank the plugin\'s actions ahead of plugins that do not request it; use ranking, the inline limit and the overflow menu still apply',
         ],
         apiSymbols: [
           "PluginComposerApi",
@@ -607,6 +608,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ComposerInsertPart",
           "ComposerInsertOptions",
           "ComposerCustomization.experimental_popups",
+          "ComposerActionRegistration.experimental_placement",
           "ExperimentalComposerPopupRegistration",
           "PluginComposerApi.experimental_openPopup",
           "PluginComposerApi.experimental_closePopup",

@@ -2366,7 +2366,7 @@ export interface ComposerCustomization {
   id: string;
   /** Composer kinds where this customization is active; omit for all kinds. */
   scopes?: readonly PluginComposerScope["kind"][];
-  actions?: readonly { id: string; component: ComponentType }[];
+  actions?: readonly ComposerActionRegistration[];
   banners?: readonly {
     id: string;
     /** Host chrome around the banner. Defaults to `"card"`. */
@@ -2379,6 +2379,19 @@ export interface ComposerCustomization {
   richText?: ComposerRichTextSpec;
   /** Host-managed popups sharing the mention menu's above/below placement, with a responsive drawer on compact screens. Open by popup id, unique within this plugin. */
   experimental_popups?: readonly ExperimentalComposerPopupRegistration[];
+}
+
+/** Button rendered in the composer's action row. */
+export interface ComposerActionRegistration {
+  id: string;
+  component: ComponentType;
+  /**
+   * `"start"` places this plugin's action group ahead of groups that do not
+   * request it. Usage ranking still orders groups within each placement, and
+   * the inline limit and overflow menu apply unchanged. A plugin's actions
+   * render as one group, so one action requesting `"start"` moves the group.
+   */
+  experimental_placement?: "start";
 }
 
 /** Content for one composer's popup. The host owns placement, dismissal and focus restoration; the component owns its content and keyboard navigation. */

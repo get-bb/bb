@@ -35,6 +35,7 @@ function registrationSet(
   labels: readonly string[],
   onMount?: (label: string) => void,
   onUnmount?: (label: string) => void,
+  placement?: "start",
 ): PluginRegistrationSet {
   return makePluginRegistrationSet({
     composerCustomizations: [
@@ -49,6 +50,9 @@ function registrationSet(
             }, []);
             return <button type="button">{label}</button>;
           },
+          ...(placement !== undefined && index === 0
+            ? { experimental_placement: placement }
+            : {}),
         })),
       },
     ],
@@ -60,10 +64,11 @@ function registerPlugin(
   labels = [pluginId],
   onMount?: (label: string) => void,
   onUnmount?: (label: string) => void,
+  placement?: "start",
 ): void {
   setPluginSlotRegistrations(
     pluginId,
-    registrationSet(labels, onMount, onUnmount),
+    registrationSet(labels, onMount, onUnmount, placement),
   );
 }
 
@@ -166,6 +171,34 @@ describe("ComposerActionsSlot overflow", () => {
 
     expect(() => renderActions()).not.toThrow();
     expect(inlinePluginIds()).toEqual(["alpha", "beta", "delta"]);
+  });
+
+  it("ranks start-placed groups ahead of used groups and applies usage within each placement", () => {
+    window.localStorage.setItem(
+      PLUGIN_COMPOSER_ACTION_USAGE_STORAGE_KEY,
+      JSON.stringify({ alpha: 9, beta: 5, gamma: 1, epsilon: 2 }),
+    );
+    resetPluginComposerActionUsageForTest();
+    registerPlugin("alpha");
+    registerPlugin("beta");
+    registerPlugin("gamma", ["gamma"], undefined, undefined, "start");
+    registerPlugin("delta");
+    registerPlugin(
+      "epsilon",
+      ["epsilon one", "epsilon two"],
+      undefined,
+      undefined,
+      "start",
+    );
+
+    renderActions();
+
+    expect(inlinePluginIds()).toEqual(["epsilon", "gamma", "alpha"]);
+    expect(screen.getByRole("button", { name: "epsilon two" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "beta" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "More plugin actions" }),
+    ).toBeDefined();
   });
 
   it("preserves BB-owned actions after plugin contributions", () => {

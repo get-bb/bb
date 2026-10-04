@@ -255,9 +255,17 @@ function parseRegions(
     NonNullable<ComposerCustomization["actions"]>[number]
   >(`${kind}.actions`, registration.actions, onRejected, (entryKind, value) => {
     const entry = value as Record<string, unknown> | null;
+    const id = requireSlotId(entryKind, entry?.id);
+    const placement = entry?.experimental_placement;
+    if (placement !== undefined && placement !== "start") {
+      throw new Error(
+        `${entryKind}: "experimental_placement" must be "start" when set`,
+      );
+    }
     return {
-      id: requireSlotId(entryKind, entry?.id),
+      id,
       component: requireComponent(entryKind, entry?.component),
+      ...(placement !== undefined ? { experimental_placement: placement } : {}),
     };
   });
   const banners = parseContributionArray<

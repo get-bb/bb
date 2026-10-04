@@ -28,6 +28,23 @@ reload and crash recovery, scope suppression, and compact Safari
 keyboard/drawer behavior. Verify multiple popups in one customization and popup-id uniqueness across
 customizations.
 
+## Composer action placement
+
+`ComposerActionRegistration.experimental_placement: "start"` (SDK 0.6.17)
+ranks the plugin's composer action group ahead of groups that omit it. A
+plugin's actions render as one group, so the group moves when any of its
+actions in the current composer scope requests `"start"`. Within each
+placement, groups keep the existing order: local use count
+(`bb.pluginComposerActionUsage.v1`), then registration order. The three-plugin
+inline limit and the overflow menu are unchanged, so start groups can overflow
+when more than three request it. Values other than `"start"` reject that action
+entry. Hosts older than SDK 0.6.17 ignore the field.
+
+Before stabilization, decide whether placement should resolve conflicts between
+several start plugins beyond use count, whether an `"end"` placement or a user
+override is needed, and whether the field belongs on the action or on the
+customization.
+
 ## Composer commands
 
 `PluginAppComposer.experimental_registerCommand({ id, title, defaultShortcut?,
