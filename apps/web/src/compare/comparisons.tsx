@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 
 import supersetIcon from "../assets/competitors/superset.png";
+import { CustomizeBuild, ProviderChips } from "../landing/landing-visuals";
 import {
   AgentSplit,
   PhoneApp,
-  PluginsPanel,
   TeamCost,
   type BrandLogo,
 } from "./compare-visuals";
@@ -82,7 +82,7 @@ const BB_VS_SUPERSET: Comparison = {
   },
   highlights: [
     {
-      title: "Nothing behind a paywall",
+      title: "More agents and teammates. $0 more.",
       wide: false,
       visual: (
         <TeamCost
@@ -94,61 +94,61 @@ const BB_VS_SUPERSET: Comparison = {
       body: (
         <>
           <p>
-            bb is free and MIT-licensed, with no paid tier. Phone access,
-            automations, remote access to your machine, and plugins are all
+            You only pay for the AI plans you already have. bb is free, whether
+            one person runs one agent or a whole team runs dozens.
+          </p>
+          <p>
+            The mobile app, automations, remote access, and plugins all come
             included.
           </p>
-          <p>You pay only for the agent subscriptions you already have.</p>
         </>
       ),
     },
     {
-      title: "Hand off work between agents",
+      title: "Agents that work together like a team",
       wide: true,
       visual: <AgentSplit />,
       body: (
         <>
           <p>
-            Claude Code builds, Codex reviews, Cursor writes the release notes.
-            Your agents message each other, and you watch them side by side.
+            Claude Code builds a feature, Codex reviews it, and Cursor writes
+            the release notes. They pass work back and forth on their own, so
+            you get finished, reviewed work without copying between tools.
           </p>
-          <p>
-            Works with any agent: Claude Code, Codex, Cursor, Pi, OpenCode,
-            Devin. Need another? Add it with a plugin.
+          <div className="providers cmp-providers">
+            <span className="label">Works with any agent</span>
+            <ProviderChips />
+          </div>
+          <p className="cmp-providers-note">
+            Need another? Add it with a <a href="/marketplace">plugin</a>.
           </p>
         </>
       ),
     },
     {
-      title: "Your whole bb, on your phone",
+      title: "Keep working from anywhere",
       wide: false,
       visual: <PhoneApp />,
       body: (
         <>
           <p>
-            Start a task, check on every agent, reply, and review their work
-            from anywhere. Open bb in any phone browser, or get push
-            notifications with the bb iOS app, in beta on TestFlight.
+            Start tasks, answer your agents, and approve their work from the bb
+            mobile app or any browser. Your agents keep running on your computer
+            while you’re out.
           </p>
-          <p>It’s free, like everything else in bb.</p>
         </>
       ),
     },
     {
-      title: "Make bb yours, on every screen",
+      title: "Turn bb into the tool you need",
       wide: false,
-      visual: <PluginsPanel />,
+      visual: <CustomizeBuild />,
       body: (
         <>
           <p>
-            bb works out of the box. Worktrees, diff review, automations,
-            notifications, and phone access are built in, with nothing to
-            configure.
-          </p>
-          <p>
-            When you want more, add plugins from the gallery or ask an agent to
-            build one. Everything you add works on your phone too, because bb’s
-            mobile app runs your own bb.
+            bb works out of the box. When you need more, add a plugin or ask an
+            agent to build one, like a task board, a dashboard, or a new agent.
+            It shows up on your phone too.
           </p>
         </>
       ),
@@ -273,7 +273,7 @@ const BB_VS_SUPERSET: Comparison = {
       ],
     },
   ],
-  faqTitle: "bb vs Superset: common questions",
+  faqTitle: "FAQ",
   faq: [
     {
       title: "bb vs Superset",
@@ -652,8 +652,8 @@ const BB_VS_SUPERSET: Comparison = {
     },
   ],
   closer: {
-    title: "Try bb on your next task",
-    body: "Free and open source. It works on the same repo as Superset, so you can try it without switching anything.",
+    title: "Get your agents working together",
+    body: "Free and open source. Bring the AI plans you already pay for.",
   },
 };
 

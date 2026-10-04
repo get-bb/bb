@@ -2,11 +2,6 @@ import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon"
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
-import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
-import Rocket01Icon from "@hugeicons/core-free-icons/Rocket01Icon";
-import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
-import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
-import Coffee01Icon from "@hugeicons/core-free-icons/Coffee01Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
@@ -261,69 +256,13 @@ export function PhoneApp() {
             </li>
           </ul>
         </div>
+        <div className="cmp-phone-composer">
+          <span className="cmp-phone-input">Ask anything…</span>
+          <span className="send-btn">
+            <HugeiconsIcon icon={ArrowMoveDownLeftIcon} className="send-ic" />
+          </span>
+        </div>
         <span className="cmp-home" aria-hidden="true" />
-      </div>
-    </div>
-  );
-}
-
-const PLUGINS = [
-  { icon: KanbanIcon, name: "Tasks", detail: "A board for your agents’ work" },
-  { icon: GithubIcon, name: "GitHub", detail: "Issues, PRs, and checks" },
-  {
-    icon: Clock01Icon,
-    name: "Automations",
-    detail: "Run agents on a schedule",
-  },
-  { icon: Coffee01Icon, name: "Keep Awake", detail: "Keep your Mac running" },
-] as const;
-
-export function PluginsPanel() {
-  return (
-    <div
-      className="cmp-plugins"
-      role="img"
-      aria-label="bb's plugin list, with a plugin Claude Code just built, also available on your phone"
-    >
-      <div className="cmp-plugins-head">
-        <span className="cmp-plugins-title">Plugins</span>
-        <span className="cmp-plugins-count">5 installed</span>
-      </div>
-      <ul className="cmp-plugins-list">
-        <li className="cmp-plugin cmp-plugin-new">
-          <span className="cmp-plugin-ic">
-            <HugeiconsIcon icon={Rocket01Icon} />
-          </span>
-          <span className="cmp-plugin-body">
-            <span className="cmp-plugin-name">
-              Release tracker <span className="cmp-plugin-badge">New</span>
-            </span>
-            <span className="cmp-plugin-detail">
-              <ClaudeIcon className="cmp-plugin-by" />
-              Built by Claude Code just now
-            </span>
-          </span>
-          <span className="cmp-toggle" />
-        </li>
-        {PLUGINS.map((plugin) => (
-          <li key={plugin.name} className="cmp-plugin">
-            <span className="cmp-plugin-ic">
-              <HugeiconsIcon icon={plugin.icon} />
-            </span>
-            <span className="cmp-plugin-body">
-              <span className="cmp-plugin-name">{plugin.name}</span>
-              <span className="cmp-plugin-detail">{plugin.detail}</span>
-            </span>
-            <span className="cmp-toggle" />
-          </li>
-        ))}
-      </ul>
-      <div className="cmp-plugins-foot">
-        <HugeiconsIcon
-          icon={SmartPhone01Icon}
-          className="cmp-plugins-foot-ic"
-        />
-        Also on your phone
       </div>
     </div>
   );

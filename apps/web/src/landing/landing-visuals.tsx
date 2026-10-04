@@ -1,7 +1,15 @@
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
+import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
+import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
@@ -310,6 +318,258 @@ export function SpawnSidebar() {
             at={1.8}
             doneAt={3.4}
           />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type IconProps = { className?: string };
+
+const PanelIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SidebarLeftIcon} className={className} />
+);
+const ChevronRight = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowRight01Icon} className={className} />
+);
+const ChevronDown = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowDown01Icon} className={className} />
+);
+const Maximize2 = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowExpand01Icon} className={className} />
+);
+const Paperclip = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={AttachmentIcon} className={className} />
+);
+const SendIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowMoveDownLeftIcon} className={className} />
+);
+const GitBranchIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={GitBranchIcon_} className={className} />
+);
+const Spinner = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Loading03Icon} className={className} />
+);
+
+type CustomizeMessage = {
+  role: "user" | "agent" | "tool";
+  text: string;
+};
+
+type CustomizeTask = {
+  key: string;
+  title: string;
+  status: "in_progress" | "todo" | "backlog";
+  priority: "urgent" | "high" | "medium" | "low";
+};
+
+type CustomizeScenario = {
+  title: string;
+  prompt: string;
+  promptWidth: string;
+  branch: string;
+  messages: CustomizeMessage[];
+  panel: {
+    name: string;
+    tasks: CustomizeTask[];
+  };
+};
+
+const CUSTOMIZE_SCENARIO: CustomizeScenario = {
+  title: "Build a tasks plugin",
+  prompt: "Add a task management system",
+  promptWidth: "210px",
+  branch: "bb/tasks-plugin",
+  messages: [
+    { role: "user", text: "Add a task management system" },
+    {
+      role: "agent",
+      text: "I'll build it as a bb plugin and mount it in your sidebar.",
+    },
+    { role: "tool", text: "wrote plugin: tasks" },
+    { role: "tool", text: "registered panel + bb tasks CLI" },
+    { role: "agent", text: "Done. Tasks is live, and your agents can use it." },
+  ],
+  panel: {
+    name: "Tasks",
+    tasks: [
+      {
+        key: "BB-1",
+        title: "Ship task delegation",
+        status: "in_progress",
+        priority: "high",
+      },
+      {
+        key: "BB-2",
+        title: "Wire up the tasks CLI",
+        status: "todo",
+        priority: "medium",
+      },
+      {
+        key: "BB-3",
+        title: "Add label filters",
+        status: "todo",
+        priority: "low",
+      },
+      {
+        key: "BB-4",
+        title: "Nightly changelog draft",
+        status: "in_progress",
+        priority: "medium",
+      },
+      {
+        key: "BB-5",
+        title: "Triage flaky integration tests",
+        status: "backlog",
+        priority: "high",
+      },
+      {
+        key: "BB-6",
+        title: "Port the settings panel",
+        status: "backlog",
+        priority: "low",
+      },
+      {
+        key: "BB-7",
+        title: "Document the plugin API",
+        status: "backlog",
+        priority: "medium",
+      },
+    ],
+  },
+};
+
+export function CustomizeBuild() {
+  const { cycle, leaving } = useCycle(10600, 500);
+  const run = CUSTOMIZE_SCENARIO;
+  const promptStyle = {
+    "--customize-prompt-width": run.promptWidth,
+  } as CSSProperties;
+  return (
+    <div className="mockup-wrap mockup-wrap-customize">
+      <div
+        className="mock mock-customize-mobile"
+        aria-label="Mobile bb preview: a prompt asks for a task management system, and the agent builds it as a plugin"
+      >
+        <div className="mock-bar">
+          <div className="bar-left">
+            <span className="bar-menu" aria-hidden>
+              <PanelIcon className="ri bar-ic" />
+            </span>
+          </div>
+          <div className="bar-main">
+            <span className="bar-title">{run.title}</span>
+          </div>
+        </div>
+
+        <div
+          className={
+            leaving
+              ? "mock-body customize-body leaving"
+              : "mock-body customize-body"
+          }
+          key={cycle}
+        >
+          <div className="main">
+            <div className="feed feed-live customize-feed">
+              {run.messages.map((message, i) => {
+                const style = { animationDelay: `${3.2 + i * 0.68}s` };
+                if (message.role === "user") {
+                  return (
+                    <div
+                      className="msg-user customize-msg"
+                      key={`${message.role}-${message.text}`}
+                      style={style}
+                    >
+                      {message.text}
+                    </div>
+                  );
+                }
+                if (message.role === "tool") {
+                  return (
+                    <div
+                      className="msg-step customize-msg customize-tool"
+                      key={`${message.role}-${message.text}`}
+                      style={style}
+                    >
+                      <ChevronRight className="step-chev" />
+                      {message.text}
+                    </div>
+                  );
+                }
+                return (
+                  <div
+                    className="msg-say customize-msg"
+                    key={`${message.role}-${message.text}`}
+                    style={style}
+                  >
+                    {message.text}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="composer customize-composer">
+              <div className="composer-box customize-composer-box">
+                <div className="composer-top">
+                  <span className="composer-input customize-typeahead">
+                    <span className="customize-type-text" style={promptStyle}>
+                      {run.prompt}
+                    </span>
+                    <span className="customize-caret" aria-hidden />
+                  </span>
+                  <Maximize2 className="cb-expand" />
+                </div>
+                <div className="composer-row">
+                  <span className="model">
+                    <OpenAiIcon className="model-ic" />
+                    Codex
+                    <ChevronDown className="chev-sm" />
+                  </span>
+                  <span className="composer-actions" aria-hidden>
+                    <Paperclip className="composer-clip" />
+                    <span className="send-btn customize-send">
+                      <SendIcon className="send-ic" />
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div className="context-row customize-context">
+                <span className="ctx">
+                  <GitBranchIcon className="ctx-ic" />
+                  <span className="ctx-branch">{run.branch}</span>
+                </span>
+                <Spinner className="ctx-spin" />
+              </div>
+            </div>
+          </div>
+
+          {}
+          <div className="plugin-panel" aria-hidden>
+            <div className="plugin-panel-bar">
+              <span className="plugin-panel-name">{run.panel.name}</span>
+              <span className="plugin-panel-badge">Plugin</span>
+            </div>
+            <div className="plugin-panel-rows">
+              {run.panel.tasks.map((task, i) => (
+                <div
+                  className="plugin-task"
+                  key={task.key}
+                  style={{ animationDelay: `${8.3 + i * 0.14}s` }}
+                >
+                  <span
+                    className={`plugin-task-status is-${task.status}`}
+                    aria-hidden
+                  />
+                  <span className="plugin-task-key">{task.key}</span>
+                  <span className="plugin-task-title">{task.title}</span>
+                  <span className={`plugin-task-prio is-${task.priority}`}>
+                    {task.priority}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

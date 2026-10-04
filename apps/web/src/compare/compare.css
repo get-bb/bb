@@ -80,6 +80,22 @@
   gap: 18px 40px;
 }
 
+.cmp-providers {
+  justify-content: flex-start;
+  margin-top: 26px;
+}
+
+.cmp-providers-note {
+  font-size: 14px;
+}
+
+.cmp-providers-note a {
+  color: var(--heading);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border);
+}
+
 .cmp-section {
   border-top: 1px solid var(--border-soft);
   padding: 80px 0;
@@ -92,23 +108,47 @@
 }
 
 .cmp-phone {
+  position: relative;
   width: 100%;
-  max-width: 290px;
-  padding: 10px;
-  border-radius: 50px;
+  max-width: 280px;
+  padding: 11px;
+  border-radius: 54px;
   background: var(--shade);
   box-shadow:
+    inset 0 0 0 2px color-mix(in oklab, var(--bg) 18%, var(--shade)),
     0 0 0 1px color-mix(in oklab, var(--shade) 80%, var(--bg)),
-    0 24px 60px color-mix(in oklab, var(--shade) 22%, transparent);
+    0 30px 70px color-mix(in oklab, var(--shade) 24%, transparent);
+}
+
+.cmp-phone::before,
+.cmp-phone::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--shade);
+}
+
+.cmp-phone::before {
+  top: 120px;
+  left: -3px;
+  height: 64px;
+  box-shadow: 0 84px 0 var(--shade);
+}
+
+.cmp-phone::after {
+  top: 150px;
+  right: -3px;
+  height: 92px;
 }
 
 .cmp-phone-screen {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 440px;
+  aspect-ratio: 9 / 19.5;
   padding: 0 10px 22px;
-  border-radius: 40px;
+  border-radius: 43px;
   background: var(--bg);
   overflow: hidden;
 }
@@ -238,6 +278,22 @@
   cursor: default;
 }
 
+.cmp-phone-composer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg);
+}
+
+.cmp-phone-input {
+  font-size: 13px;
+  color: var(--subtle);
+}
+
 .cmp-home {
   position: absolute;
   bottom: 8px;
@@ -247,152 +303,6 @@
   border-radius: 999px;
   background: var(--heading);
   transform: translateX(-50%);
-}
-
-.cmp-plugins {
-  width: 100%;
-  max-width: 400px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--bg);
-  box-shadow: 0 18px 50px color-mix(in oklab, var(--shade) 10%, transparent);
-}
-
-.cmp-plugins-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px 10px;
-}
-
-.cmp-plugins-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--heading);
-}
-
-.cmp-plugins-count {
-  font-size: 12px;
-  color: var(--subtle);
-}
-
-.cmp-plugins-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  list-style: none;
-}
-
-.cmp-plugin {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 12px;
-}
-
-.cmp-plugin-new {
-  border: 1px solid color-mix(in oklab, var(--accent) 32%, var(--bg));
-  background: color-mix(in oklab, var(--accent) 5%, var(--bg));
-  animation: cmp-feed-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.6s backwards;
-}
-
-.cmp-plugin-ic {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border: 1px solid var(--border-soft);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--ink-strong);
-}
-
-.cmp-plugin-ic svg {
-  width: 18px;
-  height: 18px;
-}
-
-.cmp-plugin-body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.35;
-}
-
-.cmp-plugin-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--heading-sub);
-}
-
-.cmp-plugin-badge {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 14%, var(--bg));
-  font-size: 10.5px;
-  line-height: 16px;
-  color: var(--accent);
-}
-
-.cmp-plugin-detail {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--subtle);
-}
-
-.cmp-plugin-by {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-.cmp-toggle {
-  position: relative;
-  width: 30px;
-  height: 18px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--ok);
-}
-
-.cmp-toggle::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--bg);
-}
-
-.cmp-plugins-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  padding: 10px;
-  border-top: 1px solid var(--border-soft);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--dim);
-}
-
-.cmp-plugins-foot-ic {
-  width: 15px;
-  height: 15px;
 }
 
 @keyframes cmp-push-in {
@@ -783,6 +693,10 @@
   color: var(--heading);
 }
 
+.cmp-wide-copy .cmp-providers {
+  justify-content: center;
+}
+
 .cmp-wide-copy p {
   margin-top: 16px;
   color: var(--dim);
@@ -1025,6 +939,10 @@
     text-align: left;
   }
 
+  .cmp-wide-copy .cmp-providers {
+    justify-content: flex-start;
+  }
+
   .cmp-page .cmp-wide-band h2 {
     font-size: 26px;
   }
@@ -1172,10 +1090,6 @@
   font-size: 12px;
   line-height: 1.45;
   color: var(--subtle);
-}
-
-.cmp-us {
-  background: color-mix(in oklab, var(--ok) 7%, var(--bg));
 }
 
 @media (max-width: 720px) {
