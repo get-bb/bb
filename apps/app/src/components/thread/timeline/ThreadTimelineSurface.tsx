@@ -264,14 +264,16 @@ export function ThreadTimelineSurface({
           />
         ) : null}
         <HeightTransition visible={showCatchUpIndicator}>
-          <TimelineStatusIndicator
-            label={
-              <span role="status" className="animate-shine">
-                {showCatchUpIndicator ? CATCH_UP_INDICATOR_LABEL : null}
-              </span>
-            }
-            className="mt-4 flex min-h-7 items-center"
-          />
+          {showCatchUpIndicator ? (
+            <TimelineStatusIndicator
+              label={
+                <span role="status" className="animate-shine">
+                  {CATCH_UP_INDICATOR_LABEL}
+                </span>
+              }
+              className="mt-4 flex min-h-7 items-center"
+            />
+          ) : null}
         </HeightTransition>
         <HeightTransition visible={showOngoingIndicator}>
           <TimelineWorkingIndicator
