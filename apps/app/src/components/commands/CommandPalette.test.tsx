@@ -125,6 +125,7 @@ const modeState = vi.hoisted(() => ({
   recentLoading: false,
   recentError: false,
   searchLoading: false,
+  searchError: false,
 }));
 const routeNavigateMock = vi.hoisted(() => vi.fn());
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
@@ -259,7 +260,7 @@ vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
       debouncedQuery: query.trim(),
       hasSearchableQuery: query.trim().length >= 2,
       isDebouncing: false,
-      isError: false,
+      isError: modeState.searchError,
       isFetching: false,
       isLoading: modeState.searchLoading,
     }),
@@ -344,7 +345,7 @@ function renderPalette({
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   store.set(paletteThreadLifecyclesAtom, lifecycles);
-  const result = render(
+  const tree = () => (
     <Provider store={store}>
       <CompactViewportOverrideProvider isCompactViewport={compact}>
         <MemoryRouter>
@@ -364,10 +365,11 @@ function renderPalette({
           </AppCommandProvider>
         </MemoryRouter>
       </CompactViewportOverrideProvider>
-    </Provider>,
+    </Provider>
   );
+  const result = render(tree());
   screen.getByTestId("origin").focus();
-  return { ...result, store };
+  return { ...result, store, rerenderPalette: () => result.rerender(tree()) };
 }
 
 function openPalette(): KeyboardEvent {
@@ -423,6 +425,7 @@ afterEach(() => {
   modeState.recentLoading = false;
   modeState.recentError = false;
   modeState.searchLoading = false;
+  modeState.searchError = false;
   routeNavigateMock.mockReset();
   openThreadInSplitMock.mockReset();
   window.localStorage.clear();
@@ -1112,7 +1115,7 @@ describe("CommandPalette", () => {
   });
 
   it.each(["", "match"])(
-    "keeps saved messages with Active and budgets two groups for query '%s'",
+    "keeps saved messages with Active and caps Active at six and Archived at three for query '%s'",
     async (query) => {
       const active = Array.from({ length: 7 }, (_, index) =>
         makeThread(`active-${index}`, {
@@ -1142,11 +1145,16 @@ describe("CommandPalette", () => {
       });
       fireEvent.change(input, { target: { value: query } });
       expect(screen.queryByRole("group", { name: "Drafts" })).toBeNull();
-      for (const name of ["Active", "Archived"]) {
-        expect(
-          within(screen.getByRole("group", { name })).getAllByRole("option"),
-        ).toHaveLength(4);
-      }
+      expect(
+        within(screen.getByRole("group", { name: "Active" })).getAllByRole(
+          "option",
+        ),
+      ).toHaveLength(7);
+      expect(
+        within(screen.getByRole("group", { name: "Archived" })).getAllByRole(
+          "option",
+        ),
+      ).toHaveLength(4);
       fireEvent.click(
         screen.getByRole("option", { name: "Show more threads" }),
       );
@@ -1160,7 +1168,7 @@ describe("CommandPalette", () => {
           "option",
         ),
       ).toHaveLength(4);
-      expectText(selectedOption(), "Title active-3");
+      expectText(selectedOption(), "Title active-6");
       act(() => store.set(paletteThreadLifecyclesAtom, ["active"]));
       expect(
         screen.getByRole("option", { name: "Show more threads" }),
@@ -1270,9 +1278,9 @@ describe("CommandPalette", () => {
         .getAllByRole("option")
         .map((row) => row.textContent),
     ).toEqual([
-      expect.stringContaining("Title active-0"),
-      expect.stringContaining("Title active-1"),
-      expect.stringContaining("Title active-2"),
+      ...Array.from({ length: 6 }, (_, index) =>
+        expect.stringContaining(`Title active-${index}`),
+      ),
       "Show more",
     ]);
     expect(within(archivedGroup).getAllByRole("option")).toHaveLength(4);
@@ -1289,7 +1297,7 @@ describe("CommandPalette", () => {
       "text-subtle-foreground",
     );
     expect(more.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-    for (let index = 0; index < 3; index++)
+    for (let index = 0; index < 6; index++)
       fireEvent.keyDown(input, { key: "ArrowDown" });
     expectClasses(more.parentElement, "bg-state-hover", "text-foreground");
     expect(input.getAttribute("aria-activedescendant")).toBe(more.id);
@@ -1297,23 +1305,23 @@ describe("CommandPalette", () => {
     expect(within(activeGroup).getAllByRole("option")).toHaveLength(8);
     expect(within(archivedGroup).getAllByRole("option")).toHaveLength(4);
     expect(input.getAttribute("aria-activedescendant")).toBe(
-      within(activeGroup).getAllByRole("option")[3].id,
+      within(activeGroup).getAllByRole("option")[6].id,
     );
     expect(
       within(activeGroup)
-        .getAllByRole("option")[3]
+        .getAllByRole("option")[6]
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(document.activeElement).toBe(input);
     expect(routeNavigateMock).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: "changed" } });
-    expect(within(activeGroup).getAllByRole("option")).toHaveLength(4);
+    expect(within(activeGroup).getAllByRole("option")).toHaveLength(7);
     fireEvent.click(
       within(archivedGroup).getByRole("option", {
         name: "Show more archived threads",
       }),
     );
-    expect(within(activeGroup).getAllByRole("option")).toHaveLength(4);
+    expect(within(activeGroup).getAllByRole("option")).toHaveLength(7);
     expect(within(archivedGroup).getAllByRole("option")).toHaveLength(8);
     expect(input.getAttribute("aria-activedescendant")).toBe(
       within(archivedGroup).getAllByRole("option")[3].id,
@@ -1363,6 +1371,111 @@ describe("CommandPalette", () => {
       ),
     );
   });
+
+  it("matches loaded titles on the first character and keeps the highlight when server rows merge in", async () => {
+    modeState.activeRecents = Array.from({ length: 6 }, (_, index) =>
+      makeThread(`fix-${index}`, {
+        title: `Fix ${index}`,
+        lastReadAt: Date.now(),
+        updatedAt: Date.now() - index,
+      }),
+    );
+    const { rerenderPalette } = renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "f" } });
+    expect(optionTitles()).toHaveLength(6);
+    expect(
+      screen.getAllByRole("option")[0].querySelector("mark")?.textContent,
+    ).toBe("F");
+    fireEvent.change(input, { target: { value: "fix" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expectText(selectedOption(), "Fix 1");
+    modeState.searchResponse = {
+      active: {
+        total: 2,
+        results: [
+          {
+            thread: makeThread("message-only", { title: "Weekly sync" }),
+            matches: [
+              {
+                sourceKind: "assistant_message",
+                text: "we should fix it",
+                highlightRanges: [{ start: 10, end: 13 }],
+                sourceSeq: 7,
+              },
+            ],
+          },
+          {
+            thread: modeState.activeRecents[2],
+            matches: [
+              {
+                sourceKind: "user_message",
+                text: "please fix 2",
+                highlightRanges: [{ start: 7, end: 10 }],
+                sourceSeq: 12,
+              },
+            ],
+          },
+        ],
+      },
+      archived: { total: 0, results: [] },
+    };
+    rerenderPalette();
+    expect(optionTitles()).toEqual([
+      expect.stringContaining("Fix 0"),
+      expect.stringContaining("Fix 1"),
+      expect.stringContaining("please fix 2"),
+      expect.stringContaining("we should fix it"),
+      expect.stringContaining("Fix 3"),
+      expect.stringContaining("Fix 4"),
+      "Show more",
+    ]);
+    expectText(selectedOption(), "Fix 1");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(routeNavigateMock).toHaveBeenCalledWith(
+        "/projects/project-1/threads/fix-2",
+        { state: { searchMessageSeq: 12, searchThreadId: "fix-2" } },
+      ),
+    );
+  });
+
+  it("keeps loaded matches when the server search fails", async () => {
+    modeState.activeRecents = [makeThread("fix", { title: "Fix it" })];
+    modeState.searchError = true;
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "fix" } });
+    expect(optionTitles()).toEqual([expect.stringContaining("Fix it")]);
+    expect(screen.queryByText("Couldn’t load threads")).toBeNull();
+    fireEvent.change(input, { target: { value: "zz" } });
+    await screen.findByText("Couldn’t load threads");
+  });
+
+  it.each([
+    [["active"], "No matching threads"],
+    [["archived"], "Type at least 2 characters"],
+  ] as const)(
+    "explains a one-character miss with lifecycles %j",
+    async (lifecycles, message) => {
+      modeState.activeRecents = [makeThread("fix", { title: "Fix it" })];
+      renderPalette({ lifecycles: [...lifecycles] });
+      openThreadSearch();
+      const input = await screen.findByRole("combobox", {
+        name: "Search threads",
+      });
+      fireEvent.change(input, { target: { value: "z" } });
+      await screen.findByText(message);
+      expect(screen.queryByRole("option")).toBeNull();
+    },
+  );
 
   it.each(["active", "archived"] as const)(
     "shows six %s-only matches and opens a revealed result",

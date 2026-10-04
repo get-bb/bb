@@ -61,6 +61,11 @@ import {
   PaletteShortcut,
 } from "./PaletteShell";
 
+const GROUP_LIMIT = 6;
+const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
+
+const NO_MATCHING_THREADS_MESSAGE = "No matching threads";
+
 interface ThreadSearchOption {
   lifecycle: ThreadArchiveFilter;
   row: PaletteThreadSearchRow | null;
@@ -163,15 +168,16 @@ export function ThreadSearchPaletteMode({
     ],
   );
   const options = useMemo(() => {
-    const nonemptyGroups = lifecycles.filter((lifecycle) =>
-      result.rows.some((row) => row.lifecycle === lifecycle),
-    );
-    const limit = nonemptyGroups.length === 2 ? 3 : 6;
-    return nonemptyGroups.flatMap((lifecycle) => {
+    return lifecycles.flatMap((lifecycle) => {
       const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
       const visible = expandedGroups.includes(lifecycle)
         ? rows
-        : rows.slice(0, limit);
+        : rows.slice(
+            0,
+            lifecycle === "archived" && lifecycles.includes("active")
+              ? ARCHIVED_BESIDE_ACTIVE_LIMIT
+              : GROUP_LIMIT,
+          );
       const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
         lifecycle,
         row,
@@ -219,7 +225,7 @@ export function ThreadSearchPaletteMode({
     result.isRecent && recentQueries.some((result) => result.isLoading);
   const hasLoadError = result.isRecent
     ? recentQueries.some((result) => result.isError)
-    : searchResultsAreCurrent && threadSearch.isError;
+    : searchable && searchResultsAreCurrent && threadSearch.isError;
   const showThreadListEmptyState =
     result.rows.length === 0 &&
     result.isRecent &&
@@ -350,11 +356,11 @@ export function ThreadSearchPaletteMode({
           : "Searching threads"
         : hasLoadError
           ? "Couldn’t load threads"
-          : trimmedQuery.length === 1
+          : trimmedQuery.length === 1 && !lifecycles.includes("active")
             ? "Type at least 2 characters"
             : result.isRecent
               ? NO_THREADS_MESSAGE
-              : "No matching threads";
+              : NO_MATCHING_THREADS_MESSAGE;
   }
 
   return (
@@ -474,7 +480,7 @@ export function ThreadSearchPaletteMode({
           );
         })
       ) : showThreadListEmptyState ||
-        (searchable && !isLoading && !hasLoadError) ? (
+        emptyMessage === NO_MATCHING_THREADS_MESSAGE ? (
         <ThreadListEmptyState
           message={emptyMessage}
           className="justify-center px-3 py-4"
