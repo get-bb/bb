@@ -11,6 +11,7 @@ import type {
   TimelineTurnRow,
   TimelineWorkRow,
 } from "@bb/server-contract";
+import { parseAgentMessageToolCall } from "./agent-message-tool-call.js";
 import { assertNever } from "./assert-never.js";
 import {
   getFileChangeAction,
@@ -744,7 +745,8 @@ function isSummarizableActivityRow(
     row.kind === "work" &&
     row.workKind !== "approval" &&
     row.workKind !== "question" &&
-    row.workKind !== "workflow"
+    row.workKind !== "workflow" &&
+    (row.workKind !== "tool" || parseAgentMessageToolCall(row) === null)
   );
 }
 

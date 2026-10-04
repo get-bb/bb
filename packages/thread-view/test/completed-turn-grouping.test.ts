@@ -7,6 +7,7 @@ import type {
   EventProjectionCommandMessage,
   EventProjectionMessage,
   EventProjectionOperationMessage,
+  EventProjectionToolCallMessage,
   EventProjectionTurnRequest,
   EventProjectionTurn,
   EventProjectionUserMessage,
@@ -51,6 +52,22 @@ function commandMessage(args: MessageBaseArgs): EventProjectionCommandMessage {
     source: null,
     output: "",
     exitCode: 0,
+    completedAt: args.seq,
+    approvalStatus: null,
+    status: "completed",
+  };
+}
+
+function agentMessageToolCall(
+  args: MessageBaseArgs,
+): EventProjectionToolCallMessage {
+  return {
+    ...messageBase(args),
+    kind: "tool-call",
+    callId: args.id,
+    toolName: "bb:bb_thread_message",
+    toolArgs: { threadId: "thr_wrkr234567", message: "Is it ready?" },
+    output: "Delivered.",
     completedAt: args.seq,
     approvalStatus: null,
     status: "completed",
@@ -133,6 +150,24 @@ function summarySourceMessageIds(
 }
 
 describe("groupCompletedTurnMessages", () => {
+  it("keeps an agent message out of the summary", () => {
+    const before = commandMessage({ id: "command-1", seq: 1 });
+    const sent = agentMessageToolCall({ id: "sent", seq: 2 });
+    const after = commandMessage({ id: "command-2", seq: 3 });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([before, sent, after], undefined),
+    );
+
+    expect(summarySourceMessageIds(groups)).toEqual([
+      ["command-1"],
+      ["command-2"],
+    ]);
+    expect(groups.summaryItems).toContainEqual({
+      kind: "ungrouped-message",
+      message: sent,
+    });
+  });
+
   it("unwraps a singleton compaction group after a user message", () => {
     const user = userMessage({ id: "compact-request", seq: 1 });
     const compaction = compactionMessage({ id: "compaction", seq: 2 });

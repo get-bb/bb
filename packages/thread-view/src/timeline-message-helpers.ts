@@ -1,3 +1,4 @@
+import { parseAgentMessageToolCall } from "./agent-message-tool-call.js";
 import type { EventProjectionMessage } from "./event-projection-types.js";
 
 export function isTimelineTerminalMessage(
@@ -24,6 +25,9 @@ export function isTimelineUngroupableMessage(
   }
   if (message.kind === "assistant-text") {
     return message.isLegacyUserMessage === true;
+  }
+  if (message.kind === "tool-call") {
+    return parseAgentMessageToolCall(message) !== null;
   }
   return false;
 }
