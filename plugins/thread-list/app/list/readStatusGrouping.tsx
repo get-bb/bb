@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { ThreadUnreadPredicate } from "../model/project-thread-groups.js";
 
@@ -18,6 +18,9 @@ export function useHeldReadStatus(
       ? lastHeldReadStatus
       : null,
   );
+  useEffect(() => {
+    lastHeldReadStatus = held;
+  }, [held]);
   if (held?.threadId === selectedThreadId) {
     return held;
   }
@@ -28,7 +31,6 @@ export function useHeldReadStatus(
   const next = thread
     ? { threadId: thread.id, isUnread: thread.isUnread }
     : null;
-  lastHeldReadStatus = next;
   if (next !== null || held !== null) {
     setHeld(next);
   }

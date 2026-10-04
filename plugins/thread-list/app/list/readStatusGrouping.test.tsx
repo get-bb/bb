@@ -49,12 +49,12 @@ describe("useHeldReadStatus", () => {
 
   it("keeps the held status when the sidebar remounts", () => {
     const opened = makeSidebarThread({ id: "remounted", latestAttentionAt: 5 });
-    const holdStatus = (threads: SidebarThread[]) =>
+    const useHeldUnreadPredicate = (threads: SidebarThread[]) =>
       createThreadUnreadPredicate(
         threads,
         useHeldReadStatus(threads, "remounted"),
       );
-    const first = renderHook(() => holdStatus([opened]));
+    const first = renderHook(() => useHeldUnreadPredicate([opened]));
     expect(first.result.current(opened)).toBe(true);
     first.unmount();
 
@@ -63,7 +63,7 @@ describe("useHeldReadStatus", () => {
       latestAttentionAt: 5,
       lastReadAt: 10,
     });
-    const second = renderHook(() => holdStatus([markedRead]));
+    const second = renderHook(() => useHeldUnreadPredicate([markedRead]));
     expect(second.result.current(markedRead)).toBe(true);
   });
 });
