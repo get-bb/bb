@@ -14,7 +14,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { SettingsStoryChrome } from "../../../.ladle/story-settings-chrome";
@@ -100,24 +100,19 @@ export function ProviderUpdateDownloading() {
 export function MachineNotices() {
   const [offlineCount, setOfflineCount] = useState(2);
   const [lastSeenAt, setLastSeenAt] = useState(Date.now);
-  const navigate = useNavigate();
   const { pathname } = useLocation();
   const hosts = useMemo(
-    () => [
-      makeHost({
-        id: HOST_IDS.local,
-        name: "Work laptop",
-        status: offlineCount > 0 ? "disconnected" : "connected",
-        lastSeenAt,
-        lastRejectedProtocolVersion: offlineCount > 0 ? 1 : null,
-      }),
-      makeHost({
-        id: HOST_IDS.remote,
-        name: "Studio desktop",
-        status: offlineCount > 1 ? "disconnected" : "connected",
-        lastSeenAt,
-      }),
-    ],
+    () =>
+      ["Work laptop", "Studio desktop"].map((name, index) =>
+        makeHost({
+          id: index === 0 ? HOST_IDS.local : HOST_IDS.remote,
+          name,
+          status: offlineCount > index ? "disconnected" : "connected",
+          lastSeenAt,
+          lastRejectedProtocolVersion:
+            index === 0 && offlineCount > 0 ? 1 : null,
+        }),
+      ),
     [offlineCount, lastSeenAt],
   );
 
@@ -158,10 +153,7 @@ export function MachineNotices() {
                 ))}
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    setLastSeenAt(Date.now());
-                    navigate("/");
-                  }}
+                  onClick={() => setLastSeenAt(Date.now())}
                 >
                   New outage
                 </Button>

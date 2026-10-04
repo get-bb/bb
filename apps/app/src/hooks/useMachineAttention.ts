@@ -60,10 +60,9 @@ export function useMachineAttention(hosts: Host[], isLoading: boolean) {
     }
   }, [acknowledged, hosts.length, isLoading, issues, setAcknowledged]);
 
-  const unseen = issues.filter((issue) => !acknowledged.includes(issue.key));
   return {
     label:
-      unseen.length === 0
+      issues.every((issue) => acknowledged.includes(issue.key))
         ? null
         : issues.length === 1
           ? issues[0]!.label

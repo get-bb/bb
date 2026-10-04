@@ -101,7 +101,6 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               className={cn(CHIP_CLASS, "text-warning-text")}
             >
               <Icon name="AlertTriangle" className="size-3" />
-              <span className="sr-only">Machines</span>
             </Link>
           </TooltipTrigger>
           <TooltipContent side="top">{machineAttention.label}</TooltipContent>
