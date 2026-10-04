@@ -1997,7 +1997,7 @@ describe("plugin turn markers", () => {
           timeline.rows.filter(
             (row) => row.kind === "conversation" && row.role === "user",
           ),
-        ).toEqual([]);
+        ).toEqual([expect.objectContaining({ text: "Prior task" })]);
         expect(
           timeline.rows.filter(
             (row) => row.kind === "work" && row.workKind === "extension",
