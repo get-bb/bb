@@ -1446,8 +1446,8 @@ export function listLatestThreadStateEventRowsByThreadIds(
         candidate.type <> 'thread/extensionState/updated'
         OR json_extract(candidate.data, '$.kind') = ${args.kind}
       )`;
-      const threadIdList = sql.join(
-        threadIds.map((threadId) => sql`${threadId}`),
+      const requestedThreads = sql.join(
+        threadIds.map((threadId) => sql`(${threadId})`),
         sql`, `,
       );
       return db
@@ -1455,17 +1455,16 @@ export function listLatestThreadStateEventRowsByThreadIds(
         .from(events)
         .where(
           sql`${events}.rowid IN (
-        SELECT latest_state.rowid
-        FROM ${events} AS latest_state INDEXED BY events_thread_state_thread_sequence_idx
-        WHERE latest_state.thread_id IN (${threadIdList})
-          AND latest_state.type ${stateTypesPredicate}
-          AND latest_state.sequence = (
-            SELECT MAX(candidate.sequence)
-            FROM ${events} AS candidate INDEXED BY events_thread_state_thread_sequence_idx
-            WHERE candidate.thread_id = latest_state.thread_id
-              AND candidate.type ${stateTypesPredicate}
-              AND ${kindPredicate}
-          )
+        SELECT (
+          SELECT candidate.rowid
+          FROM ${events} AS candidate INDEXED BY events_thread_state_thread_sequence_idx
+          WHERE candidate.thread_id = requested.column1
+            AND candidate.type ${stateTypesPredicate}
+            AND ${kindPredicate}
+          ORDER BY candidate.sequence DESC
+          LIMIT 1
+        )
+        FROM (VALUES ${requestedThreads}) AS requested
       )`,
         )
         .all();
