@@ -41,7 +41,7 @@ export function AutomationRunMarker({
   };
   const failed = row.status === "error" || row.status === "interrupted";
   const glyph = failed
-    ? "CircleAlert"
+    ? "AlertCircle"
     : row.status === "completed"
       ? "Check"
       : "Timer";
