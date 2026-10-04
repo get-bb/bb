@@ -163,7 +163,7 @@ export const automationTriggerSchema = z.discriminatedUnion("triggerType", [
 ]);
 export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 
-export const automationAgentExecutionSchema = z
+const automationAgentExecutionSchema = z
   .object({
     mode: z.literal("agent"),
     prompt: z.string().min(1),
@@ -472,7 +472,6 @@ export type UpdateAutomationInput = z.infer<typeof updateAutomationInputSchema>;
 
 export const runAutomationInputSchema = projectAutomationInputSchema
   .extend({
-    retryRunId: z.string().min(1).optional(),
     idempotencyKey: z
       .string()
       .min(1)

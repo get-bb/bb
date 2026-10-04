@@ -380,47 +380,8 @@ function wrapSdkForPlugin(
       fork(args: ThreadForkArgs) {
         return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));
       },
-      spawn(args) {
-        const { experimental_timelineEvent, ...rest } = args;
-        return sdk.threads.spawn(
-          withPluginThreadAttribution(
-            {
-              ...rest,
-              ...(experimental_timelineEvent
-                ? {
-                    experimental_timelineEvent: {
-                      ...experimental_timelineEvent,
-                      pluginId,
-                    },
-                  }
-                : {}),
-            },
-            pluginId,
-          ),
-        );
-      },
-      send(args) {
-        const { experimental_timelineEvent, ...rest } = args;
-        return sdk.threads.send({
-          ...rest,
-          ...(experimental_timelineEvent
-            ? {
-                experimental_timelineEvent: {
-                  ...experimental_timelineEvent,
-                  pluginId,
-                },
-              }
-            : {}),
-        });
-      },
-      experimental_getTimelineEvent(args) {
-        return sdk.threads.experimental_getTimelineEvent({ ...args, pluginId });
-      },
-      experimental_updateTimelineEvent(args) {
-        return sdk.threads.experimental_updateTimelineEvent({
-          ...args,
-          pluginId,
-        });
+      spawn(args: ThreadSpawnArgs) {
+        return sdk.threads.spawn(withPluginThreadAttribution(args, pluginId));
       },
     },
   };

@@ -3683,29 +3683,3 @@ with third-party providers.
 `bb.sdk.experimental_promptHistory.list({ cursor?, limit?, signal? })` returns `{ entries, nextCursor }`: every accepted user prompt across projects and threads, newest first, each with `id`, `createdAt`, `input`, `projectId`, and `threadId`. `limit` is a digit string, defaulting to 100 and capped at 1000. `nextCursor` is an opaque string, or null on the last page. A page can hold fewer than `limit` entries while `nextCursor` is set, because stored rows whose input no longer parses are skipped. Prompts from a deleted thread remain listed until the thread row is removed, which cascades to its prompt history. The same route backs `bb prompt-history list`.
 
 Before stabilization, audit whether `limit` should be a number, whether the cursor format needs versioning, whether project or thread filters belong on this call rather than on `projects.promptHistory` and `threads.promptHistory`, and whether skipped rows should fill the page.
-
-## Plugin-originated turn markers
-
-`threads.spawn` and `threads.send` accept an optional `experimental_timelineEvent`
-with an id, rendererId, JSON payload, and declarative presentation. The plugin-bound
-SDK supplies pluginId. The marker is committed with the exact client turn request;
-queued sends retain it until dispatch. Use `visibility: "agent-only"` prompt blocks
-to start without a user bubble. Hidden inputs stay out of prompt history and
-message search; raw event exports retain them as execution history, not secrets.
-
-`bb.sdk.threads.experimental_getTimelineEvent({threadId, eventId})` returns the
-owning plugin's marker with requestId, turnId, timestamps and pending/completed/
-error/interrupted status, or null before dispatch. Completion is derived from the
-linked turn, never the thread's latest status. `experimental_updateTimelineEvent`
-accepts a status and optional replacement payload/presentation, updating the same
-row and notifying clients. The standalone SDK accepts an explicit pluginId.
-
-`app.slots.experimental_timelineRenderer` accepts optional
-`experimental_fullRow: true` for turn markers. Existing extension/tool/form
-renderers keep their expanded-body contract. Missing, disabled or crashing
-renderers keep a declarative fallback. Old automation message chips remain
-readable without rewriting historical inputs.
-
-Stabilization: verify queue/restart/stop/failure identity, namespace isolation,
-pagination and realtime replacement, renderer fallback, and payload limits with
-another plugin adopter. No daemon command or provider event shape changes.

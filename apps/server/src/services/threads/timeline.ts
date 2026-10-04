@@ -1,5 +1,3 @@
-import { listPluginTimelineEvents } from "@bb/db";
-import { insertTimelineEventRows } from "./plugin-timeline-events.js";
 import {
   projectConversationOutlineIncrementally,
   type ConversationOutlineSelection,
@@ -1412,15 +1410,6 @@ function buildThreadTimelineInternal(
           providerId: thread.providerId,
         },
       }),
-  );
-  insertTimelineEventRows(
-    timeline.rows,
-    listPluginTimelineEvents(db, {
-      threadId: thread.id,
-      requestSequences: rawEventRows
-        .filter((row) => row.type === "client/turn/requested")
-        .map((row) => row.sequence),
-    }),
   );
   const projectedTimelineRows = applyRetainedOutputPreviews(
     orderTimelineRowsUsingContext(

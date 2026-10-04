@@ -230,18 +230,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "timeline-renderers",
         title: "Timeline entry content",
         summary:
-          "Renders plugin-owned timeline entries, including markers that start an agent turn without a user message. With this, a plugin can:",
+          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
         bullets: [
           "Draw the expanded content beneath timeline entries created by the plugin's own provider",
-          "Attach experimental_timelineEvent to threads.send or threads.spawn with agent-only input; the marker is linked atomically to that request and follows its exact turn status",
-          "Render a complete turn marker with experimental_fullRow, and read or update it later with experimental_getTimelineEvent and experimental_updateTimelineEvent",
           "Receive the entry data and plugin payload, plus bb's default content as `Original`",
           "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
         ],
         apiSymbols: [
           "PluginTimelineRendererRegistration",
-          "PluginBbSdk.threads.experimental_getTimelineEvent",
-          "PluginBbSdk.threads.experimental_updateTimelineEvent",
           "PluginTimelineRendererProps",
         ],
         experimental: true,

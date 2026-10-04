@@ -1972,8 +1972,6 @@ export interface PluginTimelineRendererProps {
  * instead, so a row never goes blank. Crashes are contained per row.
  */
 export interface PluginTimelineRendererRegistration {
-  /** Render the complete row for a plugin-originated turn marker. Other extension/tool/form rows retain their host header. Omitted preserves expanded-body rendering. */
-  experimental_fullRow?: boolean;
   /**
    * `"<pluginId>/<name>"` for one of this plugin's extension kinds, or
    * `"tool"` for the generic tool items of this plugin's providers.

@@ -49,36 +49,9 @@ interface OptionalServerFieldGroup {
   reason: string;
 }
 
-const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 47;
+const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 46;
 
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
-  {
-    reason:
-      "Plugin turn markers are opt-in. Legacy sends, queue entries, and provider extension rows carry no marker; presentation fields retain their existing optional meanings.",
-    fields: [
-      "createThreadRequestSchema.experimental_timelineEvent",
-      "createThreadRequestSchema.experimental_timelineEvent.presentation.badge",
-      "createThreadRequestSchema.experimental_timelineEvent.presentation.detail",
-      "createThreadRequestSchema.experimental_timelineEvent.presentation.suppress",
-      "createThreadRequestSchema.experimental_timelineEvent.presentation.tint",
-      "createThreadRequestSchema.experimental_timelineEvent.presentation.title",
-      "sendMessageRequestSchema.experimental_timelineEvent",
-      "sendMessageRequestSchema.experimental_timelineEvent.presentation.badge",
-      "sendMessageRequestSchema.experimental_timelineEvent.presentation.detail",
-      "sendMessageRequestSchema.experimental_timelineEvent.presentation.suppress",
-      "sendMessageRequestSchema.experimental_timelineEvent.presentation.tint",
-      "sendMessageRequestSchema.experimental_timelineEvent.presentation.title",
-      "sendQueuedMessageResponseSchema.queuedMessage.payload.experimental_timelineEvent",
-      "sendQueuedMessageResponseSchema.queuedMessage.payload.experimental_timelineEvent.presentation.badge",
-      "sendQueuedMessageResponseSchema.queuedMessage.payload.experimental_timelineEvent.presentation.detail",
-      "sendQueuedMessageResponseSchema.queuedMessage.payload.experimental_timelineEvent.presentation.suppress",
-      "sendQueuedMessageResponseSchema.queuedMessage.payload.experimental_timelineEvent.presentation.tint",
-      "sendQueuedMessageResponseSchema.queuedMessage.payload.experimental_timelineEvent.presentation.title",
-      "threadTimelineResponseSchema.rows.experimental_timelineEventId",
-      "threadTimelineResponseSchema.delta.upsertRows.experimental_timelineEventId",
-      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.experimental_timelineEventId",
-    ],
-  },
   {
     reason:
       "Older parent notices have no per-child outcomes. New notices omit interruption details for completed, failed, or unclassified turns; a recorded host-connection-loss cause is optional even when the interruption reason is known.",

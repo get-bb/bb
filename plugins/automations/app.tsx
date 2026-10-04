@@ -1,4 +1,3 @@
-import { AutomationRunMarker } from "./run-marker";
 import { composerCustomization, CREATE_AUTOMATION_PROMPT } from "./composer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -755,11 +754,6 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
 }
 
 export default definePluginApp((app) => {
-  app.slots.experimental_timelineRenderer({
-    kind: "automations/run",
-    experimental_fullRow: true,
-    component: AutomationRunMarker,
-  });
   app.composer.customize(composerCustomization);
   app.slots.navPanel({
     id: "automations",

@@ -33,7 +33,7 @@ const AUTOMATION_RUN_COLUMNS = `id, automation_id AS automationId, run_mode AS r
   thread_id AS threadId, status, trigger, skip_reason AS skipReason,
   error, output, exit_code AS exitCode,
   idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-  started_at AS startedAt, finished_at AS finishedAt, timeline_event_id AS timelineEventId`;
+  started_at AS startedAt, finished_at AS finishedAt`;
 
 export type Db = Database.Database;
 
@@ -64,7 +64,6 @@ export interface AutomationRow {
 }
 
 export interface AutomationRunRow {
-  timelineEventId: string | null;
   id: string;
   automationId: string;
   runMode: AutomationRunMode;
@@ -218,7 +217,6 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
-  `ALTER TABLE automation_runs ADD COLUMN timeline_event_id TEXT;`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -914,7 +912,7 @@ export function createManualRun(
   })();
 }
 
-export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
+function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
   return optionalRunRow(
     db
       .prepare(
@@ -1049,10 +1047,4 @@ export function disableAutomationsForDeletedThread(
     )
     .all(args)
     .map(requiredAutomationRow);
-}
-
-export function markAutomationRunTimelineEvent(db: Db, runId: string): void {
-  db.prepare(
-    "UPDATE automation_runs SET timeline_event_id = ? WHERE id = ?",
-  ).run(runId, runId);
 }

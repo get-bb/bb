@@ -1,8 +1,3 @@
-import {
-  pluginTimelineEventSeedSchema,
-  pluginTimelineEventSchema,
-  pluginTimelineEventUpdateSchema,
-} from "@bb/domain";
 import { z } from "zod";
 import {
   activeThinkingSchema,
@@ -103,7 +98,6 @@ export const createThreadRequestSchema = z
     visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     input: z.array(promptInputSchema),
-    experimental_timelineEvent: pluginTimelineEventSeedSchema.optional(),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
@@ -238,7 +232,6 @@ export const forkThreadRequestSchema = z
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
 const sendMessageRequestFieldsSchema = z.object({
-  experimental_timelineEvent: pluginTimelineEventSeedSchema.optional(),
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
@@ -291,12 +284,7 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 // `sendAt` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to schedule.
 export const editMessageRequestSchema = sendMessageRequestFieldsSchema
-  .omit({
-    mode: true,
-    sendAt: true,
-    pluginSubmission: true,
-    experimental_timelineEvent: true,
-  })
+  .omit({ mode: true, sendAt: true, pluginSubmission: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -1086,23 +1074,4 @@ export const threadStoragePathListResponseSchema =
   });
 export type ThreadStoragePathListResponse = z.infer<
   typeof threadStoragePathListResponseSchema
->;
-
-export const threadTimelineEventQuerySchema = z.object({
-  pluginId: pluginIdSchema,
-  eventId: z.string().min(1),
-});
-export const updateThreadTimelineEventRequestSchema =
-  pluginTimelineEventUpdateSchema.extend({
-    pluginId: pluginIdSchema,
-    eventId: z.string().min(1),
-  });
-export const threadTimelineEventResponseSchema =
-  pluginTimelineEventSchema.nullable();
-
-export type ThreadTimelineEventQuery = z.infer<
-  typeof threadTimelineEventQuerySchema
->;
-export type UpdateThreadTimelineEventRequest = z.infer<
-  typeof updateThreadTimelineEventRequestSchema
 >;

@@ -430,7 +430,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
       thread,
       payload: {
         input: args.request.input,
-        experimental_timelineEvent: args.request.experimental_timelineEvent,
         mode: "start",
         model: execution.model,
         reasoningLevel: execution.reasoningLevel,

@@ -589,18 +589,6 @@ function QueuedMessagePreview({
     [queuedMessage.content],
   );
 
-  if (
-    queuedMessage.payload.kind === "inline" &&
-    queuedMessage.payload.experimental_timelineEvent
-  ) {
-    const marker = queuedMessage.payload.experimental_timelineEvent;
-    return (
-      <span className={queuedMarkdownPreviewClass(compact)}>
-        {marker.presentation.title ?? marker.presentation.label.pending}
-      </span>
-    );
-  }
-
   if (queuedMessage.payload.kind === "retry") {
     return (
       <div className="min-w-0 flex-1 overflow-hidden text-foreground">

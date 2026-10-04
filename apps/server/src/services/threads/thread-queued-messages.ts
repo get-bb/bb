@@ -1,4 +1,3 @@
-import { pluginTimelineEventSeedSchema } from "@bb/domain";
 import {
   promptInputSchema,
   queuedMessageWaitingOnSchema,
@@ -34,7 +33,6 @@ interface StoredQueuedThreadMessageRow {
   retryAttempt: number | null;
   retryOfTurnRequestId: string | null;
   retryReason: string | null;
-  timelineEventJson?: string | null;
   permissionMode: PermissionMode;
   sendAt: number | null;
   serviceTier: string;
@@ -137,16 +135,7 @@ function toQueuedMessagePayload(
   row: StoredQueuedThreadMessageRow,
 ): QueuedMessagePayload {
   if (row.payloadKind === "inline") {
-    return {
-      kind: "inline",
-      ...(row.timelineEventJson == null
-        ? {}
-        : {
-            experimental_timelineEvent: pluginTimelineEventSeedSchema.parse(
-              JSON.parse(row.timelineEventJson),
-            ),
-          }),
-    };
+    return { kind: "inline" };
   }
   if (
     row.retryOfTurnRequestId === null ||
@@ -197,10 +186,7 @@ export function toThreadQueuedMessage(
     payload: toQueuedMessagePayload(row),
     // An `inline` draft stops being editable the moment the drain claims it:
     // the row is on its way to a provider and a rewrite would be lost.
-    editable:
-      row.payloadKind === "inline" &&
-      row.claimedAt === null &&
-      row.timelineEventJson == null,
+    editable: row.payloadKind === "inline" && row.claimedAt === null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

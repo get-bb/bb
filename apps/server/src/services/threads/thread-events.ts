@@ -1,5 +1,3 @@
-import { insertPluginTimelineEvent } from "@bb/db";
-import type { PluginTimelineEventSeed } from "@bb/domain";
 import {
   appendStoredThreadEventsInTransaction,
   createEventId,
@@ -75,7 +73,6 @@ export interface TurnRequestRetryMarker {
 }
 
 interface ClientTurnRequestedEventArgs {
-  experimental_timelineEvent?: PluginTimelineEventSeed;
   /**
    * Set only when a `turn.failed` retry row is dispatching, marking this turn
    * as attempt N of an earlier request rather than something the user just
@@ -527,23 +524,10 @@ export function appendClientTurnEventInTransaction(
   db: DbTransaction,
   args: ClientTurnEventArgs,
 ): number | AppendedClientTurnRequest {
-  const result = appendBuiltClientTurnEvent(
+  return appendBuiltClientTurnEvent(
     (eventArgs) => appendThreadEventInTransaction(db, eventArgs),
     args,
   );
-  if (
-    args.type === "client/turn/requested" &&
-    args.experimental_timelineEvent &&
-    typeof result !== "number"
-  ) {
-    insertPluginTimelineEvent(db, {
-      threadId: args.threadId,
-      requestId: result.requestId,
-      requestSequence: result.sequence,
-      seed: args.experimental_timelineEvent,
-    });
-  }
-  return result;
 }
 
 export function appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
@@ -554,14 +538,6 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
     db,
     buildClientTurnRequestedEventArgs(args),
   );
-  if (args.experimental_timelineEvent) {
-    insertPluginTimelineEvent(db, {
-      threadId: args.threadId,
-      requestId: args.requestId,
-      requestSequence: result.sequence,
-      seed: args.experimental_timelineEvent,
-    });
-  }
   return {
     requestId: args.requestId,
     sequence: result.sequence,

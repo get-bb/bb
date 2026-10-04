@@ -924,9 +924,6 @@ export function collectPluginAppRegistrations(
         const itemKind = requireTimelineRendererKind(kind, registration?.kind);
         requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
         collected.timelineRenderers.push({
-          ...(registration.experimental_fullRow === true
-            ? { experimental_fullRow: true }
-            : {}),
           kind: itemKind,
           component: requireComponent(kind, registration.component),
         });

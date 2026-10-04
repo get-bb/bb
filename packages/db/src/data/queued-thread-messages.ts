@@ -347,8 +347,6 @@ function queuedMessageGroupingEnvelopeMatches(
 ): boolean {
   return (
     firstQueuedMessage !== null &&
-    firstQueuedMessage.timelineEventJson === null &&
-    queuedMessage.timelineEventJson === null &&
     queuedMessage.senderThreadId === firstQueuedMessage.senderThreadId &&
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
@@ -638,8 +636,6 @@ export function createQueuedThreadMessageInTransaction(
       systemNotice:
         input.systemNotice === null ? null : JSON.stringify(input.systemNotice),
       payloadKind: input.payload.kind,
-      timelineEventJson: input.payload.kind === "inline" && input.payload.experimental_timelineEvent !== undefined
-        ? JSON.stringify(input.payload.experimental_timelineEvent) : null,
       retryOfTurnRequestId:
         input.payload.kind === "retry"
           ? input.payload.retryOfTurnRequestId

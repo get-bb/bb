@@ -967,13 +967,6 @@
       "when": 1790900209592,
       "tag": "0137_stiff_prism",
       "breakpoints": true
-    },
-    {
-      "idx": 138,
-      "version": "6",
-      "when": 1791076438694,
-      "tag": "0138_smiling_doctor_strange",
-      "breakpoints": true
     }
   ]
 }

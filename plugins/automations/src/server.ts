@@ -1,5 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { migrations, closeAutomationRun, getAutomation } from "./data.js";
+import { migrations } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
 import { pluginDataDirFromDb } from "./path.js";
 import { automationRpcContract, createRpcHandlers } from "./rpc.js";
@@ -9,7 +9,6 @@ import {
   errorMessage,
   reconcileRunningAutomationRuns,
 } from "./run.js";
-import { publishAutomationChange } from "./realtime.js";
 import { registerAutomationCli } from "./cli.js";
 import { createAutomationService } from "./service.js";
 import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
@@ -34,43 +33,18 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   registerAutomationCli({ bb, service });
 
-  bb.events.on("thread.idle", async ({ thread }) => {
-    await closeAutomationRunForSettledThread(bb, db, {
+  bb.events.on("thread.idle", ({ thread }) => {
+    closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "idle",
     });
   });
-  bb.events.on("thread.failed", async ({ thread, error }) => {
-    await closeAutomationRunForSettledThread(bb, db, {
+  bb.events.on("thread.failed", ({ thread, error }) => {
+    closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "failed",
       error,
     });
-  });
-
-  bb.events.on("experimental_thread.events", async ({ thread }) => {
-    await closeAutomationRunForSettledThread(bb, db, { threadId: thread.id });
-  });
-
-  bb.events.on("message.cancelled", ({ entry }) => {
-    const marker =
-      entry.payload.kind === "inline"
-        ? entry.payload.experimental_timelineEvent
-        : undefined;
-    if (marker?.pluginId !== bb.pluginId) return;
-    const closed = closeAutomationRun(db, {
-      runId: marker.id,
-      status: "skipped",
-      skipReason: "Cancelled before dispatch",
-      now: Date.now(),
-    });
-    if (!closed) return;
-    const automation = getAutomation(db, closed.automationId);
-    if (automation)
-      publishAutomationChange(bb, automation.projectId, [
-        "automations-changed",
-        "automation-runs-changed",
-      ]);
   });
 
   bb.events.on("thread.deleted", ({ thread }) => {
