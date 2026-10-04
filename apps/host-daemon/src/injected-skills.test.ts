@@ -236,6 +236,109 @@ describe("injected skill staging", () => {
     expect(fetchSkillTree).toHaveBeenCalledWith(payload.treeHash);
   });
 
+  it.each([
+    { state: "empty directory", files: [] },
+    { state: "unfinished directory", files: ["unfinished"] },
+    { state: "missing content directory", files: [".complete"] },
+    { state: "missing completion marker", files: ["content/SKILL.md"] },
+  ])("repairs a stored tree with $state before staging", async ({ files }) => {
+    const dataDir = await makeTempDir();
+    const payload = createTreePayload("repaired-skill");
+    const treeRootPath = path.join(
+      dataDir,
+      "runtime",
+      "skill-store",
+      payload.treeHash,
+    );
+    await mkdir(treeRootPath, { recursive: true });
+    for (const file of files) {
+      const filePath = path.join(treeRootPath, file);
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, "unfinished\n");
+    }
+    const fetchSkillTree = vi.fn(async () => payload);
+    const stages = [];
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      stages.push(
+        await stageInjectedSkillSources({
+          dataDir,
+          fetchSkillTree,
+          injectedSkillSources: [
+            createTreeSource("repaired-skill", payload.treeHash),
+          ],
+        }).then(
+          (stage) => stage,
+          (error: unknown) => {
+            if (error instanceof Error) return error;
+            throw error;
+          },
+        ),
+      );
+    }
+    expect(
+      stages
+        .filter((stage) => stage instanceof Error)
+        .map((error) => error.message),
+    ).toEqual([]);
+    await expect(
+      readFile(path.join(treeRootPath, ".complete"), "utf8"),
+    ).resolves.toBe("complete\n");
+    for (const stage of stages) {
+      if (stage instanceof Error) throw stage;
+      await expect(
+        readFile(
+          path.join(
+            requireSkillRoot(stage.skillRoots).path,
+            "repaired-skill",
+            "scripts",
+            "run.sh",
+          ),
+          "utf8",
+        ),
+      ).resolves.toBe("#!/bin/sh\necho synced\n");
+    }
+    expect(fetchSkillTree).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses a complete tree installed while the fetch is pending", async () => {
+    const dataDir = await makeTempDir();
+    const payload = createTreePayload("concurrent-install");
+    const staged = await stageInjectedSkillSources({
+      dataDir,
+      fetchSkillTree: async () => {
+        const treeRootPath = await seedStoredTree(dataDir, payload);
+        await writeFile(path.join(treeRootPath, "resident"), "keep\n");
+        return payload;
+      },
+      injectedSkillSources: [
+        createTreeSource("concurrent-install", payload.treeHash),
+      ],
+    });
+    await expect(
+      readFile(
+        path.join(
+          requireSkillRoot(staged.skillRoots).path,
+          "concurrent-install",
+          "scripts",
+          "run.sh",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("#!/bin/sh\necho synced\n");
+    await expect(
+      readFile(
+        path.join(
+          dataDir,
+          "runtime",
+          "skill-store",
+          payload.treeHash,
+          "resident",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("keep\n");
+  });
+
   it("surfaces a failed required tree pull instead of silently skipping it", async () => {
     const dataDir = await makeTempDir();
     const payload = createTreePayload("failed-pull");

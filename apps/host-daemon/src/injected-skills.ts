@@ -607,6 +607,18 @@ export async function hashInstalledSkillDirectory(args: {
   }
 }
 
+async function isStoredTreeComplete(treeRootPath: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(treeRootPath, STORE_COMPLETE_MARKER));
+    return (
+      await fs.stat(path.join(treeRootPath, STORE_CONTENT_DIR))
+    ).isDirectory();
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) return false;
+    throw error;
+  }
+}
+
 async function touchStoredTree(treeRootPath: string): Promise<void> {
   await fs.writeFile(path.join(treeRootPath, STORE_LAST_USED_MARKER), "");
 }
@@ -691,8 +703,8 @@ async function writeFetchedTreeToStore(args: {
     `.tmp-${args.treeHash}-${process.pid}-${Date.now()}-${randomUUID()}`,
   );
   const contentRootPath = path.join(tempRootPath, STORE_CONTENT_DIR);
-  await fs.mkdir(contentRootPath, { recursive: true });
   try {
+    await fs.mkdir(contentRootPath, { recursive: true });
     for (const file of files) {
       const destinationPath = path.join(contentRootPath, file.relativePath);
       await fs.mkdir(path.dirname(destinationPath), { recursive: true });
@@ -704,17 +716,22 @@ async function writeFetchedTreeToStore(args: {
       path.join(tempRootPath, STORE_COMPLETE_MARKER),
       "complete\n",
     );
-    await fs.rename(tempRootPath, treeRootPath);
-  } catch (error) {
-    if (
-      isFsErrorWithCode(error, "EEXIST") ||
-      isFsErrorWithCode(error, "ENOTEMPTY")
-    ) {
-      await fs.rm(tempRootPath, { recursive: true, force: true });
-    } else {
-      await fs.rm(tempRootPath, { recursive: true, force: true });
-      throw error;
+    try {
+      await fs.rename(tempRootPath, treeRootPath);
+    } catch (error) {
+      if (
+        !isFsErrorWithCode(error, "EEXIST") &&
+        !isFsErrorWithCode(error, "ENOTEMPTY")
+      ) {
+        throw error;
+      }
+      if (!(await isStoredTreeComplete(treeRootPath))) {
+        await fs.rm(treeRootPath, { recursive: true, force: true });
+        await fs.rename(tempRootPath, treeRootPath);
+      }
     }
+  } finally {
+    await fs.rm(tempRootPath, { recursive: true, force: true });
   }
   await touchStoredTree(treeRootPath);
   await gcSkillStore(args.dataDir);
@@ -733,16 +750,10 @@ export async function ensureStoredSkillTree(args: {
   }
   const pull = runInSerialLane(skillStoreQueues, args.dataDir, async () => {
     const treeRootPath = resolveStoredTreeRootPath(args.dataDir, args.treeHash);
-    try {
-      await fs.access(path.join(treeRootPath, STORE_COMPLETE_MARKER));
-      await fs.access(path.join(treeRootPath, STORE_CONTENT_DIR));
+    if (await isStoredTreeComplete(treeRootPath)) {
       await touchStoredTree(treeRootPath);
       await gcSkillStore(args.dataDir);
       return path.join(treeRootPath, STORE_CONTENT_DIR);
-    } catch (error) {
-      if (!isFsErrorWithCode(error, "ENOENT")) {
-        throw error;
-      }
     }
     return writeFetchedTreeToStore({
       dataDir: args.dataDir,
