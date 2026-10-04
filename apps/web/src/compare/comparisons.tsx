@@ -155,75 +155,91 @@ const BB_VS_SUPERSET: Comparison = {
     },
   ],
   tableTitle: "bb vs Superset, feature by feature",
-  tableNote: "Pro marks features that need Superset Pro, $20 per user / month.",
+  tableNote:
+    "Pro marks features that need a paid Superset plan, from $20 per user / month.",
   table: [
     {
       title: "Agents",
       rows: [
         {
           feature: "Claude Code, Codex, and more",
-          bb: cell("yes", "Plus any ACP agent"),
-          competitor: cell("yes", "20+ CLI agents"),
+          bb: cell("yes", "Plus any you add"),
+          competitor: cell("yes", "Any CLI agent"),
         },
         {
           feature: "Agents hand off work to each other",
-          bb: cell("yes", "Each in its own thread"),
-          competitor: cell("yes", "Through its CLI and MCP"),
+          bb: cell("yes", "Spawn, message, wait"),
+          competitor: cell("yes", "Via terminal read/send"),
         },
       ],
     },
     {
-      title: "Phone, remote, and automations",
+      title: "Away from your desk",
       rows: [
         {
-          feature: "Phone app",
-          bb: cell("yes", "Free. Browser or iOS beta"),
-          competitor: cell("yes", "iPhone, iOS 26+", true),
-        },
-        {
-          feature: "Automations",
-          bb: cell("yes", "Free"),
-          competitor: cell("yes", "", true),
-        },
-        {
-          feature: "Reach your machine remotely",
-          bb: cell("yes", "Free"),
-          competitor: cell("yes", "", true),
+          feature: "Mobile app",
+          bb: cell("yes", "iOS beta, any browser"),
+          competitor: cell("partial", "iPhone only, iOS 26+", true),
         },
         {
           feature: "Run agents on other machines",
-          bb: cell("yes", "Free"),
-          competitor: cell("yes", "", true),
+          bb: cell("yes", "Enroll any machine"),
+          competitor: cell("partial", "Via Superset relay", true),
+        },
+        {
+          feature: "Scheduled automations",
+          bb: cell("yes", "Cron, one-shot, scripts"),
+          competitor: cell("partial", "Recurring only", true),
         },
       ],
     },
     {
-      title: "Workspace",
+      title: "Worktrees and review",
       rows: [
         {
           feature: "Worktree per task",
-          bb: cell("yes", "One click"),
-          competitor: cell("yes", "Automatic"),
+          bb: cell("yes", ".env copy, setup, teardown"),
+          competitor: cell("yes", "Setup, teardown, run"),
         },
         {
-          feature: "Diff review with comments",
+          feature: "Diff review and PR merge",
           bb: cell("yes"),
           competitor: cell("yes"),
         },
         {
           feature: "Terminal and browser",
-          bb: cell("yes"),
+          bb: cell("yes", "Browser on desktop"),
           competitor: cell("yes"),
         },
         {
           feature: "File editor",
-          bb: cell("yes", "As a plugin"),
+          bb: cell("yes", "Opt-in plugin"),
           competitor: cell("yes"),
         },
         {
+          feature: "Dev server ports",
+          bb: cell("no"),
+          competitor: cell("yes", "Detect, label, kill"),
+        },
+      ],
+    },
+    {
+      title: "Integrations",
+      rows: [
+        {
           feature: "Plugins",
-          bb: cell("yes", "Your agents can write them"),
+          bb: cell("yes", "Gallery or agent-built"),
           competitor: cell("partial", "Themes and integrations"),
+        },
+        {
+          feature: "Linear",
+          bb: cell("yes", "Community plugin"),
+          competitor: cell("partial", "", true),
+        },
+        {
+          feature: "Slack",
+          bb: cell("no"),
+          competitor: cell("partial", "@superset agent bot", true),
         },
       ],
     },
@@ -233,17 +249,17 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Windows",
           bb: cell("yes", "Through WSL2"),
-          competitor: cell("no"),
+          competitor: cell("no", "Planned, no date"),
         },
         {
           feature: "Linux",
           bb: cell("partial", "Alpha"),
-          competitor: cell("partial", "Experimental"),
+          competitor: cell("partial", "Experimental AppImage"),
         },
         {
           feature: "Open source",
           bb: cell("yes", "MIT"),
-          competitor: cell("no", "Source available"),
+          competitor: cell("no", "Elastic License 2.0"),
         },
       ],
     },
@@ -251,24 +267,14 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Teams and price",
       rows: [
         {
-          feature: "Linear",
-          bb: cell("yes", "Plugin, free"),
-          competitor: cell("yes", "", true),
-        },
-        {
-          feature: "Slack",
-          bb: cell("no"),
-          competitor: cell("yes", "", true),
-        },
-        {
           feature: "Team plans, SSO, SLA",
           bb: cell("no"),
-          competitor: cell("yes", "Pro and Enterprise"),
+          competitor: cell("partial", "SSO on Enterprise", true),
         },
         {
           feature: "Price",
-          bb: cell(null, "Free"),
-          competitor: cell(null, "Free for 1 user, then $20 per user / month"),
+          bb: cell(null, "$0, any team size"),
+          competitor: cell(null, "$0 solo, $20/user/mo"),
         },
       ],
     },
@@ -276,57 +282,48 @@ const BB_VS_SUPERSET: Comparison = {
   faqTitle: "FAQ",
   faq: [
     {
-      title: "bb vs Superset",
+      title: "Switching from Superset",
       items: [
         {
-          question: "What’s the difference between bb and Superset?",
+          question: "Is there a free, open-source Superset alternative?",
           answer: (
             <p>
-              bb is built for agents that work as a team. One agent can start
-              another, wait for it, and act on what it finds, while you watch
-              them side by side. Every agent runs in parallel in its own Git
-              worktree, and phone access and automations are free.
-            </p>
-          ),
-        },
-        {
-          question: "What’s the best Superset alternative?",
-          answer: (
-            <p>
-              bb is the best Superset alternative if you use more than one
-              coding agent. It’s free and MIT-licensed, runs Claude Code, Codex,
-              Cursor, OpenCode, and any ACP agent, and lets one agent hand work
-              to another. Phone access, automations, and extra machines are
-              included. Comparing more tools?{" "}
+              Yes: bb is free and MIT-licensed. It runs Claude Code, Codex, and
+              other coding agents on your own machines, lets them start and
+              message each other, and includes a mobile app. Comparing more
+              tools? See the{" "}
               <a href="/compare/conductor-alternatives">
-                See our Conductor alternatives roundup
+                Conductor alternatives roundup
               </a>
               .
             </p>
           ),
         },
         {
-          question: "Can I use bb and Superset together?",
+          question: "How do I switch from Superset to bb?",
           answer: (
             <p>
-              Yes. Both work on the same repo with plain Git and the same agent
-              logins. Try bb on one real task this week and keep what fits.
+              Add your repo to bb. Branches and worktrees are plain Git, so bb
+              can work in an existing Superset worktree, and your setup scripts
+              map to bb’s setup files. Chats don’t carry over, and Superset
+              keeps working while you try bb. Follow the{" "}
+              <a href="/guides/move-from-superset-to-bb">step-by-step guide</a>.
             </p>
           ),
         },
       ],
     },
     {
-      title: "Pricing and license",
+      title: "Price and license",
       items: [
         {
-          question: "Is bb really free?",
+          question: "Is bb free?",
           answer: (
             <p>
-              Yes. bb is MIT-licensed with no paid tier. Phone access,
-              automations, remote access to your machine, and plugins are all
-              included, for any team size. You pay only for the Claude, ChatGPT,
-              or other agent plans and API keys you already use.
+              Yes. bb has no paid tier, for one person or a whole team. The
+              mobile app, automations, remote access, and plugins are all
+              included. You pay only for the Claude, ChatGPT, or other agent
+              plans and API keys you already use.
             </p>
           ),
         },
@@ -334,19 +331,20 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Is bb open source?",
           answer: (
             <p>
-              Yes. bb is MIT-licensed end to end, and the code is on{" "}
-              <a href="https://github.com/get-bb/bb">GitHub</a>. Fork it, change
-              anything, and run your own build.
+              Yes. bb is MIT-licensed, and the code is on{" "}
+              <a href="https://github.com/get-bb/bb">GitHub</a>. Read it, fork
+              it, change anything, and run your own build.
             </p>
           ),
         },
         {
-          question: "Do I need an API key?",
+          question: "Can I use my Claude Max or ChatGPT subscription with bb?",
           answer: (
             <p>
-              No. bb uses the Claude Code and Codex subscriptions you’re already
-              signed in to, like Claude Pro or Max and ChatGPT plans. API keys
-              work too if you prefer them.
+              Yes. bb runs the Claude Code and Codex you’re already signed in
+              to, so your Claude Pro or Max and ChatGPT plans work as they do
+              today, along with your CLAUDE.md, skills, MCP servers, and Codex
+              settings. API keys work too.
             </p>
           ),
         },
@@ -356,13 +354,13 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Agents",
       items: [
         {
-          question: "Which agents does bb support?",
+          question: "Which coding agents does bb support?",
           answer: (
             <p>
-              Claude Code, Codex, and Pi through their own integrations, plus
-              Cursor, OpenCode, Grok Build, omp, Hermes Agent, and any other
-              agent that speaks the Agent Client Protocol. You choose the agent
-              for each thread.
+              Claude Code, Codex, Pi, Cursor, OpenCode, Grok Build, omp, and
+              Hermes Agent. Add any other agent that supports the open Agent
+              Client Protocol, like Gemini CLI or Devin, in Settings, or add one
+              with a plugin. You pick the agent for each thread.
             </p>
           ),
         },
@@ -370,186 +368,59 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can I use Claude Code and Codex together?",
           answer: (
             <p>
-              Yes, and in bb they work together, not just side by side. Tell
-              Claude Code: “When you’re done, start a bb Codex thread to review
-              this branch, then fix what it finds.” Claude starts Codex in the
-              same worktree, waits for the review, and applies the fixes.{" "}
+              Yes. Ask Claude Code to “start a bb Codex thread to review this
+              branch, then fix what it finds.” It starts Codex in the same
+              worktree, waits, and applies the fixes. Codex shows up as its own
+              thread you can open.{" "}
               <a href="/guides/claude-code-and-codex-together">See how</a>.
             </p>
           ),
         },
         {
-          question: "How is agent handoff different in bb?",
+          question: "Can my coding agents talk to each other?",
           answer: (
             <p>
-              Every agent another agent starts is its own thread, with the exact
-              prompt it got, its tool calls, and its answer. Agents message each
-              other directly, and you can open any of them side by side and step
-              in mid-run, across any provider, in either direction.
+              Yes. Tell them to work together, and any agent can message another
+              thread, whatever the provider: mid-task, or queued until it
+              finishes. The receiving thread shows each message and who sent it,
+              and you can step in and message any of them yourself.
             </p>
           ),
         },
         {
-          question:
-            "Can I add an agent bb doesn’t list, like Gemini CLI or Devin?",
+          question: "Can I run multiple coding agents in parallel?",
           answer: (
             <p>
-              Yes. Add any agent that speaks the Agent Client Protocol in bb’s
-              Custom agents setting, with the command that starts it. For
-              anything else, a plugin can add a new agent provider.
+              Yes. Give each thread its own Git worktree so agents don’t
+              overwrite each other’s changes. List your .env files and setup
+              commands once, and bb prepares every new worktree. By default, bb
+              runs one thread per processor core and queues the rest.
             </p>
           ),
         },
         {
-          question: "What is the Agent Client Protocol (ACP)?",
-          answer: (
-            <p>
-              An open standard, started by Zed, for connecting coding agents to
-              the apps you use them in. Agents like Cursor, OpenCode, Grok
-              Build, and Devin speak it, which is how bb runs them alongside
-              Claude Code and Codex.
-            </p>
-          ),
-        },
-        {
-          question: "Do my Claude Code and Codex logins carry over?",
-          answer: (
-            <p>
-              Yes. bb runs the agent CLIs you’re already signed in to, with your{" "}
-              <code>CLAUDE.md</code>, skills, MCP servers, and{" "}
-              <code>~/.codex</code> config. There’s nothing to set up again.
-            </p>
-          ),
-        },
-        {
-          question: "How many agents can I run in parallel?",
-          answer: (
-            <p>
-              As many as your machines can handle. By default, bb runs one
-              thread per processor core on each machine and queues the rest
-              until a thread goes idle. Change the limit, or enroll a desktop,
-              mini PC, or cloud server and run threads on all of them from one
-              bb.
-            </p>
-          ),
-        },
-        {
-          question: "Can I control what agents are allowed to do?",
+          question: "Can I control what my agents are allowed to do?",
           answer: (
             <p>
               Yes. Pick a permission mode for each thread: Accept Edits, Approve
               for me, or Full Access. When an agent needs your approval, allow
-              or deny it from your desktop or your phone.
+              or deny it from your computer or your phone.
             </p>
           ),
         },
       ],
     },
     {
-      title: "Working in bb",
-      items: [
-        {
-          question: "Does bb work out of the box?",
-          answer: (
-            <p>
-              Yes. Worktrees, diff review, terminals, automations,
-              notifications, and phone access are built in, with nothing to
-              install. bb uses the Claude Code and Codex logins and settings you
-              already have, so you can start a thread right away.
-            </p>
-          ),
-        },
-        {
-          question: "How does bb use Git worktrees?",
-          answer: (
-            <p>
-              Each thread can run in its own worktree, so agents never step on
-              each other’s changes. Pick Worktree when you start a thread, and
-              bb remembers your choice. Once you archive a worktree’s threads,
-              bb cleans it up.
-            </p>
-          ),
-        },
-        {
-          question:
-            "How do I handle .env files and databases in each worktree?",
-          answer: (
-            <p>
-              With small files at your repo root. <code>.worktreeinclude</code>{" "}
-              copies files like <code>.env</code> from your main checkout into
-              every new worktree. <code>.bb-env-setup.sh</code> runs before the
-              agent starts, so it can install dependencies or start a database,
-              and <code>.bb-env-teardown.sh</code> cleans up when the worktree
-              goes.
-            </p>
-          ),
-        },
-        {
-          question: "How do I review an agent’s changes in bb?",
-          answer: (
-            <p>
-              Each thread has a diff of its changes. Select lines and choose{" "}
-              <strong>Add to chat</strong> to send feedback to the agent. Once
-              it opens a PR, the thread shows the checks and a{" "}
-              <strong>Merge</strong> button. The GitHub plugin adds your issues
-              and PRs, with <strong>Review with agent</strong> on any PR.
-            </p>
-          ),
-        },
-        {
-          question: "Can bb run agents on a schedule?",
-          answer: (
-            <p>
-              Yes, free. Schedule an agent thread or a script with a cron
-              expression, or once at a set time or after a delay. Choose the
-              agent, model, and permission mode, and give each run a fresh
-              worktree if you like.
-            </p>
-          ),
-        },
-        {
-          question: "Does bb have a CLI and an API?",
-          answer: (
-            <p>
-              Yes. Everything in the app is also in the <code>bb</code> CLI and
-              the HTTP API, so scripts, cron jobs, and other agents can start
-              and manage threads.
-            </p>
-          ),
-        },
-        {
-          question: "Does bb replace my editor?",
-          answer: (
-            <p>
-              No. bb is where your agents work. The desktop app opens files in
-              the editor you already use, like VS Code, Cursor, or Zed.
-            </p>
-          ),
-        },
-        {
-          question: "Can I customize bb?",
-          answer: (
-            <p>
-              Yes, when you want to. bb’s defaults cover most work, and you can
-              add plugins from the gallery, ask an agent to build one, or add a
-              theme. Everything you add works on your phone too, because bb’s
-              mobile app runs your own bb.
-            </p>
-          ),
-        },
-      ],
-    },
-    {
-      title: "Phone and remote",
+      title: "Mobile and remote",
       items: [
         {
           question: "Can I control my coding agents from my phone?",
           answer: (
             <p>
-              Yes, for free. bb Connect gives your computer a private address
-              only you can open, so the whole app works in your phone’s browser:
-              approve commands, answer questions, or start tasks. For push
-              alerts, install the bb iOS app, in public TestFlight beta.{" "}
+              Yes, for free. Install the bb mobile app for iPhone, in public
+              beta on TestFlight, for push notifications, or open bb in any
+              phone or computer browser through bb Connect. Start tasks, approve
+              commands, answer questions, and review changes from anywhere.{" "}
               <a href="/guides/steer-coding-agents-from-your-phone">
                 Set it up
               </a>
@@ -561,18 +432,9 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Is there an Android app?",
           answer: (
             <p>
-              bb works in any Android browser today through bb Connect, and a
-              native Android app is in testing. On iPhone and iPad, the bb iOS
-              app is in public beta on TestFlight.
-            </p>
-          ),
-        },
-        {
-          question: "Can bb run agents on other machines?",
-          answer: (
-            <p>
-              Yes. Enroll a desktop, a mini PC, or a cloud server, and run
-              threads on any of them from one bb, for free.
+              Not yet. On Android, open bb in your phone’s browser through bb
+              Connect: the whole app works there, without push notifications. A
+              native Android app is in testing.
             </p>
           ),
         },
@@ -580,71 +442,106 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Will my agents keep running when I close my laptop?",
           answer: (
             <p>
-              Agents run on your machine, so it needs to stay awake. On a Mac,
-              switch on Keep Awake. For long runs, put bb on an always-on
-              machine and check in from anywhere.
+              Not on that laptop. Agents run on your machine, and closing the
+              lid puts it to sleep. On a Mac, Keep Awake stops idle sleep. For
+              long runs, add an always-on desktop, mini PC, or cloud server to
+              bb and run threads there.
             </p>
           ),
         },
       ],
     },
     {
-      title: "Switching and setup",
+      title: "Working in bb",
       items: [
         {
-          question: "How do I get started with bb?",
+          question: "Can I review and merge an agent’s changes in bb?",
           answer: (
             <p>
-              Download the app or run <code>npx bb-app@latest</code>, add a
-              repo, and start a thread. bb uses the Claude Code and Codex logins
-              you already have, so there’s nothing to configure first.
+              Yes, without leaving the thread. Select lines in its diff and
+              choose Add to chat to send feedback. Once the agent opens a pull
+              request, the thread shows its checks and a Merge button. The
+              GitHub plugin adds Review with agent to any PR.
             </p>
           ),
         },
         {
-          question: "Can I move my Superset projects to bb?",
+          question: "Can bb run agents on a schedule?",
           answer: (
             <p>
-              Yes. Your repo, branches, and worktrees are plain Git, so they
-              come with you, and bb can work inside an existing Superset
-              worktree. Your setup and teardown scripts map to bb’s own setup
-              files.{" "}
-              <a href="/guides/move-from-superset-to-bb">
-                Follow the step-by-step guide
-              </a>
-              .
+              Yes, free. Automations start an agent thread or run a script on a
+              repeating schedule, once at a set time, or after a delay. Pick the
+              agent, model, and permission mode, and give each run its own
+              worktree if you like.
             </p>
           ),
         },
         {
-          question: "Does bb run on Windows and Linux?",
+          question: "Does bb replace my code editor?",
           answer: (
             <p>
-              Yes. bb has apps for Apple Silicon Macs and Linux (alpha), and
-              runs on Windows through WSL2 and on Intel Macs with{" "}
-              <code>npx bb-app@latest</code>.
+              No. bb is where your agents work, and it opens files in the editor
+              you already use, like VS Code, Cursor, or Zed. For quick edits
+              inside bb, turn on the built-in code editor plugin.
             </p>
           ),
         },
         {
-          question: "Is my code private?",
+          question: "Can I customize bb with plugins?",
           answer: (
             <p>
-              bb runs on your machines, and your agents talk to their providers
-              exactly as they do without bb. bb’s usage events are anonymous,
-              never include code, prompts, or project names, and can be turned
-              off. bb Connect’s relay doesn’t store your traffic, and you can
-              use Tailscale instead.
+              Yes. Install plugins from the{" "}
+              <a href="/marketplace">marketplace</a>, or ask an agent to build
+              one for you. Plugins can add panels, commands, and new agents.
+              Everything you add works in the mobile app too, because it runs
+              your own bb.
             </p>
           ),
         },
         {
-          question: "Does bb have team plans or SSO?",
+          question: "Does bb have a CLI and an API?",
           answer: (
             <p>
-              No. bb is a free app for your own machines, with no seats to buy.
-              Everyone on your team can run it with their own agents and
-              subscriptions.
+              Yes. Everything in the app is also in the bb CLI and the HTTP API,
+              so scripts, cron jobs, and other agents can start, message, and
+              manage threads.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      title: "Platforms, privacy, and teams",
+      items: [
+        {
+          question: "Does bb run on Mac, Windows, and Linux?",
+          answer: (
+            <p>
+              Yes. Download the app for Apple Silicon Macs or Linux (alpha), or
+              run <code>npx bb-app@latest</code> on Windows through WSL2 or an
+              Intel Mac. Then add a repo and start a thread; there’s nothing
+              else to set up.
+            </p>
+          ),
+        },
+        {
+          question: "Is my code private with bb?",
+          answer: (
+            <p>
+              Yes: bb runs on your machines, so your code goes only where your
+              agents send it, the AI providers you chose. Anonymous usage stats
+              exclude code and prompts and can be turned off. The bb Connect
+              relay doesn’t store traffic, but isn’t end-to-end encrypted.
+            </p>
+          ),
+        },
+        {
+          question: "Can my team use bb?",
+          answer: (
+            <p>
+              Yes, for free, with no seats to buy. Each person runs bb on their
+              own machines with their own agent subscriptions. bb doesn’t offer
+              team plans, SSO, or a support SLA.
             </p>
           ),
         },
