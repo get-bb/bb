@@ -58,6 +58,7 @@ export interface UseThreadTimelineControllerResult {
 }
 
 interface MountFetchState {
+  hasNewEvents: boolean;
   key: string | null;
   settled: boolean;
 }
@@ -117,13 +118,21 @@ export function useThreadTimelineController({
 }: UseThreadTimelineControllerArgs): UseThreadTimelineControllerResult {
   const queryClient = useQueryClient();
   const mountFetchKey = enabled ? threadId : null;
-  const [mountFetch, setMountFetch] = useState<MountFetchState>(() => ({
-    key: mountFetchKey,
+  const [mountFetch, setMountFetch] = useState<MountFetchState>({
+    hasNewEvents: false,
+    key: null,
     settled: false,
-  }));
+  });
+  const isNewMountFetch = mountFetch.key !== mountFetchKey;
+  const mountFetchHasNewEvents = isNewMountFetch
+    ? mountFetchKey !== null &&
+      queryClient.getQueryState(threadTimelineQueryKey(mountFetchKey))
+        ?.isInvalidated === true
+    : mountFetch.hasNewEvents;
   const isTrackingMountFetch =
     mountFetchKey !== null &&
-    !(mountFetch.key === mountFetchKey && mountFetch.settled);
+    mountFetchHasNewEvents &&
+    (isNewMountFetch || !mountFetch.settled);
   const isTrackingMountFetchRef = useRef(isTrackingMountFetch);
   isTrackingMountFetchRef.current = isTrackingMountFetch;
   const notifyOnChangeProps = useCallback((): TimelineQueryResultProp[] => {
@@ -280,11 +289,12 @@ export function useThreadTimelineController({
     (latestTimelineQuery.isFetching && timelineRows.length === 0);
   const isMountFetchIdle =
     mountFetchKey !== null && !latestTimelineQuery.isFetching;
-  if (
-    mountFetch.key !== mountFetchKey ||
-    (isMountFetchIdle && !mountFetch.settled)
-  ) {
-    setMountFetch({ key: mountFetchKey, settled: isMountFetchIdle });
+  if (isNewMountFetch || (isMountFetchIdle && !mountFetch.settled)) {
+    setMountFetch({
+      hasNewEvents: mountFetchHasNewEvents,
+      key: mountFetchKey,
+      settled: isMountFetchIdle,
+    });
   }
   const isCatchingUpTimeline =
     isTrackingMountFetch &&

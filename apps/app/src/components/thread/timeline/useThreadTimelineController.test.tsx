@@ -356,6 +356,13 @@ function startTimelineRefetch(queryClient: QueryClient): void {
   });
 }
 
+function markTimelineHasNewEvents(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({
+    queryKey: TIMELINE_QUERY_KEY,
+    refetchType: "none",
+  });
+}
+
 describe("mergeLatestTimelineRows", () => {
   it("replaces a retained optimistic row with the server row it stands in for", () => {
     const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
@@ -1148,15 +1155,15 @@ describe("useThreadTimelineController commits", () => {
     expect(rowIds(view.latest())).toEqual([newestLoadedRow.id]);
     expect(view.latest().hasOlderTimelineRows).toBe(true);
   });
-  it("reports catching up while the mount refetch of a stale cached timeline runs", async () => {
+  it("reports catching up while the mount refetch of a timeline with new events runs", async () => {
     const refetch = createDeferredPromise<ThreadTimelineResponse>();
     vi.mocked(sdk.threads.timeline).mockReturnValueOnce(refetch.promise);
     const { queryClient, wrapper } = createQueryClientTestHarness();
     queryClient.setQueryData(
       TIMELINE_QUERY_KEY,
       makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
-      { updatedAt: 0 },
     );
+    markTimelineHasNewEvents(queryClient);
 
     const view = renderProfiledController(wrapper);
     await waitFor(() => {
@@ -1214,8 +1221,8 @@ describe("useThreadTimelineController commits", () => {
       queryClient.setQueryData(
         TIMELINE_QUERY_KEY,
         makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
-        { updatedAt: 0 },
       );
+      markTimelineHasNewEvents(queryClient);
     });
 
     rerender({ threadId: "thread-1" });
@@ -1237,15 +1244,15 @@ describe("useThreadTimelineController commits", () => {
     });
   });
 
-  it("reports catching up when a hidden timeline is enabled over stale cached rows", async () => {
+  it("reports catching up when a hidden timeline with new events is enabled", async () => {
     const refetch = createDeferredPromise<ThreadTimelineResponse>();
     vi.mocked(sdk.threads.timeline).mockReturnValueOnce(refetch.promise);
     const { queryClient, wrapper } = createQueryClientTestHarness();
     queryClient.setQueryData(
       TIMELINE_QUERY_KEY,
       makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
-      { updatedAt: 0 },
     );
+    markTimelineHasNewEvents(queryClient);
     const { result, rerender } = renderHook(
       ({ enabled }: { enabled: boolean }) =>
         useThreadTimelineController({ enabled, threadId: "thread-1" }),
@@ -1258,5 +1265,21 @@ describe("useThreadTimelineController commits", () => {
       expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
     });
     expect(result.current.isCatchingUpTimeline).toBe(true);
+  });
+  it("does not report catching up when a cached timeline is only stale by age", async () => {
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(new Promise(() => {}));
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+      { updatedAt: 0 },
+    );
+
+    const view = renderProfiledController(wrapper);
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
+    });
+    await flushQueryNotifications();
+    expect(view.latest().isCatchingUpTimeline).toBe(false);
   });
 });
