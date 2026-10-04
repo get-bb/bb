@@ -109,8 +109,40 @@ describe("parseSentThreadMessage", () => {
     });
   });
 
+  it("reads a long message written to a heredoc variable", () => {
+    const command = [
+      "MSG=$(cat <<'EOF'",
+      "## Plan",
+      "",
+      "- Backfill first.",
+      "EOF",
+      ")",
+      '"${BB_CLI:-bb}" thread tell thr_wrkr234567 "$MSG"',
+    ].join("\n");
+
+    expect(sent(command)).toEqual({
+      threadId: "thr_wrkr234567",
+      message: "## Plan\n\n- Backfill first.",
+    });
+  });
+
+  it("reads a message piped from a heredoc with --message-file -", () => {
+    const command = [
+      "bb thread tell thr_wrkr234567 --message-file - <<'EOF'",
+      "Line one.",
+      "Line two.",
+      "EOF",
+    ].join("\n");
+
+    expect(sent(command)).toEqual({
+      threadId: "thr_wrkr234567",
+      message: "Line one.\nLine two.",
+    });
+  });
+
   it.each([
     ["a failed send", 'bb thread tell thr_wrkr234567 "Is it ready?"', 1],
+    ["an unknown variable", 'bb thread tell thr_wrkr234567 "$MSG"', 0],
     [
       "a message read from a file",
       "bb thread tell thr_wrkr234567 --message-file - <<'EOF'",
