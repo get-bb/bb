@@ -612,12 +612,14 @@ describe("builtin plugin reconciliation", () => {
       drafts: true,
       "provider-retry": true,
       "push-notifications": true,
+      "agent-messages": false,
     });
   });
 
   it.each([
     ["provider-usage", "bb--provider-usage"],
     ["provider-retry", "provider-retry"],
+    ["agent-messages", "bb--agent-messages"],
   ])(
     "runs the real %s builtin on a fresh database",
     async (builtinName, pluginId) => {

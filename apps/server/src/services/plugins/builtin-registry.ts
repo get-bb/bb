@@ -45,6 +45,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: accountPoolDefaultEnabled(),
   },
   {
+    name: "agent-messages",
+    pluginId: "bb--agent-messages",
+    defaultEnabled: false,
+  },
+  {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
