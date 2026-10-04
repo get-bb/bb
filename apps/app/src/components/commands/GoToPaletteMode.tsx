@@ -61,7 +61,8 @@ import {
 import { PaletteKindFilter } from "./PaletteKindFilter";
 import { ThreadSearchPaletteRow } from "./ThreadSearchPaletteMode";
 
-const THREAD_ROW_LIMIT = 6;
+const THREAD_ROW_LIMIT = 4;
+const SCOPED_THREAD_ROW_LIMIT = 6;
 const EMPTY_PROJECT_NAMES: ReadonlyMap<string, string> = new Map();
 
 function isThreadInScope(thread: ThreadListEntry, scope: PaletteScope): boolean {
@@ -268,7 +269,10 @@ export function GoToPaletteMode({
     const rows = recentThreadResult.rows;
     const visibleRows = threadsExpanded
       ? rows
-      : rows.slice(0, THREAD_ROW_LIMIT);
+      : rows.slice(
+          0,
+          scope === null ? THREAD_ROW_LIMIT : SCOPED_THREAD_ROW_LIMIT,
+        );
     return [
       ...visibleRows.map(threadOption),
       ...(visibleRows.length < rows.length
@@ -276,7 +280,7 @@ export function GoToPaletteMode({
         : []),
       ...recentPlaces.map((place) => placeOption(place, "places", [])),
     ];
-  }, [isRecent, recentPlaces, recentThreadResult, threadsExpanded, typedResults]);
+  }, [isRecent, recentPlaces, recentThreadResult, scope, threadsExpanded, typedResults]);
 
   const previousThreadIndex =
     isRecent && followPreviousThread && recentThreadResult.previousThreadId !== null
