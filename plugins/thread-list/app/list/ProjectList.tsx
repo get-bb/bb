@@ -66,6 +66,7 @@ import {
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
+  groupComparatorByReadStatus,
   isSidebarProjectThread,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
@@ -93,6 +94,7 @@ import {
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   sidebarChronologicalSortAtom,
+  sidebarGroupByReadStatusAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarSortDirectionAtom,
   sidebarCollapsedMachinesAtom,
@@ -118,6 +120,10 @@ import {
 } from "./BuiltInSidebarSection.js";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList.js";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder.js";
+import {
+  createThreadUnreadPredicate,
+  useHeldReadStatus,
+} from "./readStatusGrouping.js";
 import { haveSameOrder } from "../model/stored-order.js";
 import {
   useSidebarData,
@@ -1547,16 +1553,26 @@ function ProjectListComponent({
     sidebarChronologicalSortAtom,
   );
   const sortDirection = useAtomValue(sidebarSortDirectionAtom);
-  const activeRename = useSidebarRenameState();
-  const sidebarThreadComparator = useMemo<ThreadComparator>(
+  const groupByReadStatus = useAtomValue(sidebarGroupByReadStatusAtom);
+  const heldReadStatus = useHeldReadStatus(threads, selectedThreadId);
+  const threadUnreadPredicate = useMemo(
     () =>
-      getSidebarThreadComparator(
-        chronologicalSort,
-        sortDirection,
-        activeRename,
-      ),
-    [chronologicalSort, sortDirection, activeRename],
+      groupByReadStatus
+        ? createThreadUnreadPredicate(threads, heldReadStatus)
+        : null,
+    [groupByReadStatus, heldReadStatus, threads],
   );
+  const activeRename = useSidebarRenameState();
+  const sidebarThreadComparator = useMemo<ThreadComparator>(() => {
+    const comparator = getSidebarThreadComparator(
+      chronologicalSort,
+      sortDirection,
+      activeRename,
+    );
+    return threadUnreadPredicate
+      ? groupComparatorByReadStatus(comparator, threadUnreadPredicate)
+      : comparator;
+  }, [chronologicalSort, sortDirection, activeRename, threadUnreadPredicate]);
   const collapsedThreadIds = useMemo(
     () => new Set(collapsedThreadIdList),
     [collapsedThreadIdList],

@@ -7,6 +7,7 @@ The sidebar thread list, as a plugin.
 - Nested child threads, worktree grouping, drag to reorder, pin, nest, and move between sections.
 - Inline rename, keyboard jump shortcuts, and the same status glyphs bb draws elsewhere.
 - Agent provider icons before thread titles, controlled by Organize → Rows → Provider icons.
+- Unread threads listed above read ones, controlled by Organize → Groups → By read status.
 
 ## How it works
 

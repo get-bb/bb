@@ -102,6 +102,9 @@ word is a string. On first load the plugin copies non-default `sidebar.*`
 values from `bb settings ui` once. `showProviderIcons` defaults to `false`;
 Organize → Rows → Provider icons toggles the icon before each title, and
 `bb thread-list prefs set showProviderIcons true` turns it on from the CLI.
+`groupByReadStatus` defaults to `false`; Organize → Groups → By read status or
+`bb thread-list prefs set groupByReadStatus true` lists unread threads above
+read ones, keeping the selected sort within each group.
 The `threadLifecycles` preference defaults
 to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both.

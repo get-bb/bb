@@ -30,6 +30,8 @@ export const sidebarGroupThreadsByEnvironmentAtom = atom((get) => {
   if (grouping !== "auto") return grouping;
   return get(sidebarOrganizationModeAtom) !== "chronological";
 });
+export const sidebarGroupByReadStatusAtom =
+  createSyncedPreferenceAtom("groupByReadStatus");
 export const sidebarChronologicalSortAtom =
   createSyncedPreferenceAtom("chronologicalSort");
 export const sidebarSortDirectionAtom =

@@ -7,7 +7,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 
 The Thread list plugin owns the sidebar's layout state. Read it with
 `bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `organizationMode`,
-`environmentGrouping`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
+`environmentGrouping`, `groupByReadStatus`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
 built-in `threads` group), `rowActions`,
 `collapsedSections`, `collapsedProjects`, `collapsedThreads`,
@@ -49,6 +49,14 @@ Organize → Rows → Provider icons toggles the icon before each thread title.
 `showProviderIcons` defaults to `false`; use
 `bb thread-list prefs set showProviderIcons true` to show them. Unknown
 provider ids have no icon.
+
+Organize → Groups → By read status lists unread threads above read threads at
+each level of the list, keeping the selected sort within each group.
+`groupByReadStatus` defaults to `false`; use
+`bb thread-list prefs set groupByReadStatus true` to turn it on. Worktree rows
+and parent threads count as unread when any thread in them is unread. The open
+thread keeps its place until another thread is opened, and pinned threads keep
+their manual order.
 
 New threads inherit the sidebar group where creation was invoked. Pinned
 creates pinned threads; custom sections supply their section; project, machine,

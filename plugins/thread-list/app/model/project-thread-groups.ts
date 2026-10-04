@@ -124,6 +124,48 @@ export function compareStandardThreads(
   return compareByLatestAttentionAtDescending(left, right);
 }
 
+export type ThreadUnreadPredicate = (thread: SidebarThread) => boolean;
+
+function getReadStatusThread(item: ProjectThreadItem): SidebarThread | null {
+  switch (item.kind) {
+    case "thread":
+      return item.node.thread;
+    case "environment":
+      return item.group.nodes[0].thread;
+    case "section":
+      return null;
+  }
+}
+
+function compareReadStatus(
+  left: SidebarThread,
+  right: SidebarThread,
+  isUnread: ThreadUnreadPredicate,
+): number {
+  return Number(isUnread(right)) - Number(isUnread(left));
+}
+
+export function groupComparatorByReadStatus(
+  compareThreads: ThreadComparator,
+  isUnread: ThreadUnreadPredicate,
+): ThreadComparator {
+  const grouped: ThreadComparator = (left, right) =>
+    compareReadStatus(left, right, isUnread) || compareThreads(left, right);
+  const compareItems = compareThreads.compareItems;
+  if (compareItems) {
+    grouped.compareItems = (left, right) => {
+      const leftThread = getReadStatusThread(left);
+      const rightThread = getReadStatusThread(right);
+      const readStatusDelta =
+        leftThread && rightThread
+          ? compareReadStatus(leftThread, rightThread, isUnread)
+          : 0;
+      return readStatusDelta || compareItems(left, right);
+    };
+  }
+  return grouped;
+}
+
 function representativeThread(item: ProjectThreadItem): SidebarThread {
   switch (item.kind) {
     case "thread":

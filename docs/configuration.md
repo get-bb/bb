@@ -1890,12 +1890,20 @@ takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
 
-### Thread list provider icons and lifecycle filter
+### Thread list provider icons, read status grouping, and lifecycle filter
 
 The Thread list plugin's `showProviderIcons` preference defaults to `false`.
 Organize → Rows → Provider icons or
 `bb thread-list prefs set showProviderIcons true` shows the agent provider
 icon before each thread title. Unknown provider ids have no icon.
+
+The `groupByReadStatus` preference defaults to `false`. Organize → Groups →
+By read status or `bb thread-list prefs set groupByReadStatus true` lists
+unread threads above read threads at each level of the list; the selected sort
+applies within each group. Read status is the
+innermost grouping, so worktree rows and parent threads stay grouped and count
+as unread when any thread in them is unread. The open thread keeps its place
+until another thread is opened. Pinned threads keep their manual order.
 
 The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with

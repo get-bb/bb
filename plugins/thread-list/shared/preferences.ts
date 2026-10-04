@@ -96,6 +96,12 @@ export const preferenceDefinitions = {
     "Whether sibling threads sharing a worktree collapse into one row. auto groups them in every organization except chronological.",
     "sidebar.threadGrouping.environment",
   ),
+  groupByReadStatus: definePreference(
+    z.boolean(),
+    false,
+    "List unread threads above read threads at each level of the list, keeping the selected sort within each group. Worktree rows and parent threads count as unread when any thread in them is unread. The open thread keeps its place until another thread is opened.",
+    null,
+  ),
   chronologicalSort: definePreference(
     chronologicalSortSchema,
     "updated",
