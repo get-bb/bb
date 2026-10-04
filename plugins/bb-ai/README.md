@@ -40,7 +40,8 @@ status|usage` prints the same data, and `bb ai on|off` changes the setting.
 
 What leaves the machine while bb cloud is on: the text of a thread's first
 prompt (titles), the changed files with a diff excerpt (commit messages), and
-voice recordings with the vocabulary hint (voice input). getbb.app stores daily
+voice recordings with the vocabulary hint (voice input), plus any thread title
+instructions you add in Settings → AI services. getbb.app stores daily
 usage totals and, for 30 days, per-request metadata (time, server, model, token
 counts, cost, latency, outcome); it never stores prompts, recordings, or
 replies.

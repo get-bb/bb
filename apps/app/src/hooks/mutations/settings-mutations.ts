@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   type AppKeybindingOverrides,
-  type AppSettings,
+  type AppSettingsUpdate,
   type AppThemeSelection,
   type ExperimentUpdates,
 } from "@bb/domain";
@@ -42,7 +42,7 @@ export function useUpdateGeneralSettings() {
     meta: {
       errorMessage: "Failed to update general settings.",
     },
-    mutationFn: (settings: AppSettings) =>
+    mutationFn: (settings: AppSettingsUpdate) =>
       sdk.system.updateGeneralSettings(settings),
     onSuccess: (_settings, written) => {
       const previousStreamerMode = readCachedStreamerMode(queryClient);

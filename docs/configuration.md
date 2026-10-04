@@ -253,6 +253,22 @@ primary machine. bb cloud is on by default once you sign in; `bb ai off` turns i
 is used alone; if it fails, titles fall back to the start of the prompt and
 commits to `bb: automated commit`. Each plugin picks its own model.
 
+### Thread title instructions
+
+Settings → AI services → Thread titles → Add instructions adds your own
+instructions to bb's built-in title rules, server-wide. The field saves when it
+loses focus. Use instructions for language, length, tone, or naming
+conventions, such as "Write titles in French." Your instructions take
+precedence over bb's style rules, but a title stays one line of at most 100
+display columns. bb adds the task text and invoked commands itself, so no
+template variables are needed. Existing titles are not renamed.
+
+Set them with `bb settings general threadTitleInstructions "<instructions>"`,
+or pass `threadTitleInstructions` with the other current settings from
+`system.config().generalSettings` to SDK `system.updateGeneralSettings`. The
+setting accepts 1–2,000 characters after trimming. Set `null`, or clear the
+field, to use only bb's rules.
+
 `BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION` were removed.
 bb ignores them in `~/.bb/config.json` with a warning, and `bb-app config set`
 refuses them.

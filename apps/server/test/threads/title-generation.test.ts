@@ -100,21 +100,32 @@ describe("thread title generation", () => {
   });
 
   it("bounds unspaced generated titles instead of passing them through", () => {
-    const title = sanitizeGeneratedTitle(
-      "调查侧边栏线程行分叉后显示错误环境标记的问题并提出修复方案以及根本原因",
-    );
+    const reply =
+      "调查侧边栏线程行分叉后显示错误环境标记的问题并提出修复方案以及根本原因".repeat(
+        2,
+      );
+    const title = sanitizeGeneratedTitle(reply);
 
     expect(title).not.toBeNull();
-    expect(title?.length).toBeLessThanOrEqual(24);
-    expect(
-      "调查侧边栏线程行分叉后显示错误环境标记的问题并提出修复方案以及根本原因".startsWith(
-        title ?? "",
-      ),
-    ).toBe(true);
+    expect(title?.length).toBeLessThanOrEqual(50);
+    expect(reply.startsWith(title ?? "")).toBe(true);
   });
 
   it("falls back to a hard cut when the first word exceeds the budget", () => {
-    expect(sanitizeGeneratedTitle("A".repeat(120))).toBe("A".repeat(48));
+    expect(sanitizeGeneratedTitle("A".repeat(120))).toBe("A".repeat(100));
+  });
+
+  it("keeps prefixed and longer-language titles whole", () => {
+    expect(
+      sanitizeGeneratedTitle(
+        "Feature: Add a hideable burndown chart to the dashboard",
+      ),
+    ).toBe("Feature: Add a hideable burndown chart to the dashboard");
+    expect(
+      sanitizeGeneratedTitle(
+        "Investigar el bloqueo de migración al iniciar el servidor",
+      ),
+    ).toBe("Investigar el bloqueo de migración al iniciar el servidor");
   });
 
   it("returns null for empty generated titles", () => {

@@ -1,5 +1,7 @@
 import {
   createThread,
+  getAppSettings,
+  setAppSettings,
   getThread,
   listEvents,
   setAiServiceSelection,
@@ -739,6 +741,50 @@ describe("generated thread titles", () => {
       ).toEqual([]);
     });
   });
+  it("adds saved title instructions to titles and service tests, then clears them", async () => {
+    await withTestHarness(async (harness) => {
+      const custom =
+        "Write a short title in French. Keep {{literal}} as plain text.";
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        threadTitleInstructions: custom,
+      });
+      completeTitle.mockResolvedValue("Améliorer les titres");
+      const generate = () =>
+        generateThreadMetadataWithOutcome(harness.deps, {
+          input: textInput("Improve the generated title fallback path"),
+          threadId: "thr_custom_prompt",
+        });
+      expect((await generate()).metadata?.title).toBe("Améliorer les titres");
+      expect(sentPrompt()).toContain(custom);
+      expect(sentPrompt()).toContain(
+        "Task:\nImprove the generated title fallback path",
+      );
+      expect(sentPrompt()).toContain(
+        "You create concise titles for coding tasks.",
+      );
+      expect(sentPrompt().indexOf(custom)).toBeLessThan(
+        sentPrompt().indexOf("Task:"),
+      );
+      const testResponse = await harness.app.request(
+        "/api/v1/system/ai-services/test",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ task: "thread-title" }),
+        },
+      );
+      expect(testResponse.status).toBe(200);
+      expect(sentPrompt(1)).toContain(custom);
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        threadTitleInstructions: null,
+      });
+      await generate();
+      expect(sentPrompt(2)).not.toContain(custom);
+    });
+  });
+
   it("skips generation when thread titles are turned off", async () => {
     await withTestHarness(async (harness) => {
       setAiServiceSelection(harness.db, "thread-title", { mode: "off" });
@@ -769,7 +815,7 @@ describe("generated thread titles", () => {
     });
   });
 
-  it("cleans and clamps a chatty title reply", async () => {
+  it("cleans a chatty title reply", async () => {
     completeTitle.mockResolvedValue(
       '<think>short and clear</think>\nTitle: "Make the generated branch names easier to read in the sidebar"',
     );
@@ -779,7 +825,7 @@ describe("generated thread titles", () => {
         threadId: "thr_chatty_title",
       });
       expect(outcome.metadata?.title).toBe(
-        "Make the generated branch names easier to read",
+        "Make the generated branch names easier to read in the sidebar",
       );
     });
   });

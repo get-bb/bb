@@ -31,6 +31,9 @@
 <thread-title|commit-message>` to try the current choice. Add
   `--plugin <plugin-id>` to `set` when two plugins register the same service
   id.
+- Use `bb settings general threadTitleInstructions "<text>"` to add
+  instructions to bb's built-in thread title rules; see
+  `references/app-settings.md`.
 - Use `bb settings general <key> <value>` or
   `bb settings experiment <key> <value>` for updates.
 - Use `bb settings keyboard list`, `set`, and `reset` for shortcut overrides.
