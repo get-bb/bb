@@ -3,6 +3,7 @@
 import { focusPaneComposer } from "@/lib/pane-composer-focus";
 import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
+import { sdk } from "@/lib/sdk";
 import type { PromptTextMention } from "@bb/domain";
 import type { TiptapEditorHTMLElement } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
@@ -5694,4 +5695,146 @@ describe("voice recording escape", () => {
     expect(pressEscape().defaultPrevented).toBe(false);
     expect(cancel).not.toHaveBeenCalled();
   });
+});
+
+describe("thread URL clipboard paste", () => {
+  const threadId = "thr_86mb5jjzi9";
+  const projectId = "proj_khiw2za95v";
+  const url = `${window.location.origin}/projects/${projectId}/threads/${threadId}`;
+  const resolved = {
+    threadId,
+    projectId,
+    label: "Composer paste improvements",
+  };
+
+  it.each(["ctrlKey", "metaKey"])(
+    "keeps %s+Shift+V literal and converts the next normal clipboard paste through the SDK",
+    async (modifier) => {
+      const lookup = vi
+        .spyOn(sdk.threads, "resolveMentions")
+        .mockResolvedValue([resolved]);
+      try {
+        const { changes, promptBoxRef } = renderPromptBox("");
+        await focusPromptEnd(promptBoxRef);
+        fireEvent.keyDown(getPromptEditorElement(), {
+          key: "V",
+          code: "KeyV",
+          shiftKey: true,
+          [modifier]: true,
+        });
+        pastePlainText(url);
+        fireEvent.keyUp(getPromptEditorElement(), {
+          key: "V",
+          code: "KeyV",
+        });
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(latestChange(changes)).toEqual({ value: url, mentions: [] });
+        expect(lookup).not.toHaveBeenCalled();
+
+        pastePlainText(` ${url}`);
+        await waitFor(() =>
+          expect(latestValue(changes)).toBe(`${url} @thread:${threadId}`),
+        );
+        expect(latestChange(changes)?.mentions).toEqual([
+          {
+            start: url.length + 1,
+            end: url.length + 1 + `@thread:${threadId}`.length,
+            resource: { kind: "thread", ...resolved },
+          },
+        ]);
+        expect(
+          getPromptEditorElement().querySelector(
+            `[data-prompt-mention-serialized-text="@thread:${threadId}"]`,
+          )?.textContent,
+        ).toBe(resolved.label);
+        expect(lookup).toHaveBeenCalledTimes(1);
+        expect(lookup.mock.calls[0]?.[0].threadIds).toEqual([threadId]);
+      } finally {
+        lookup.mockRestore();
+      }
+    },
+  );
+
+  it.each(["submit", "replace draft"])(
+    "does not apply a delayed resolution after the real %s handler",
+    async (action) => {
+      let finishLookup!: (
+        result: Awaited<ReturnType<typeof sdk.threads.resolveMentions>>,
+      ) => void;
+      const lookup = vi
+        .spyOn(sdk.threads, "resolveMentions")
+        .mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              finishLookup = resolve;
+            }),
+        );
+      const changes: PromptChange[] = [];
+      const submitted = vi.fn();
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      function Harness() {
+        const [value, setValue] = useState("");
+        const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+          [],
+        );
+        return (
+          <MemoryRouter>
+            <PromptBoxInternal
+              {...createPromptBoxProps({
+                value,
+                mentionRanges,
+                onChange: (nextValue, nextMentions) => {
+                  changes.push({ value: nextValue, mentions: nextMentions });
+                  setValue(nextValue);
+                  setMentionRanges(nextMentions);
+                },
+                onSubmit: () => submitted(value),
+              })}
+              promptBoxRef={promptBoxRef}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setValue("Replacement draft");
+                setMentionRanges([]);
+              }}
+            >
+              Replace draft
+            </button>
+          </MemoryRouter>
+        );
+      }
+      try {
+        render(<Harness />);
+        await focusPromptEnd(promptBoxRef);
+        pastePlainText(url);
+        await waitFor(() => expect(lookup).toHaveBeenCalledTimes(1));
+        expect(latestChange(changes)).toEqual({ value: url, mentions: [] });
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: action === "submit" ? "Submit (Enter)" : "Replace draft",
+          }),
+        );
+        const expected = action === "submit" ? url : "Replacement draft";
+        expect(lookup.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+        if (action === "submit") {
+          expect(submitted).toHaveBeenCalledExactlyOnceWith(url);
+        }
+        const countBeforeResolution = changes.length;
+        await act(async () => {
+          finishLookup([resolved]);
+          await Promise.resolve();
+        });
+        expect(getPromptEditorElement().textContent).toBe(expected);
+        expect(changes).toHaveLength(countBeforeResolution);
+        expect(
+          getPromptEditorElement().querySelector("[data-prompt-mention]"),
+        ).toBeNull();
+      } finally {
+        lookup.mockRestore();
+      }
+    },
+  );
 });

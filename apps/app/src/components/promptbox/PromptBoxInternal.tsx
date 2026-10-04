@@ -7,6 +7,12 @@ import type {
   PromptTextMention,
 } from "@bb/domain";
 import type { ComposerView } from "@get-bb/plugin-sdk";
+import type { ThreadResponse } from "@bb/server-contract";
+import { QueryClientContext } from "@tanstack/react-query";
+import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { useEditor, type Editor } from "@tiptap/react";
@@ -128,6 +134,11 @@ import {
 } from "./editor/prompt-decoration-extension";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
+import {
+  cancelPromptThreadLinkPaste,
+  createPromptThreadLinkPasteExtension,
+  promptThreadLinkPasteKey,
+} from "./editor/prompt-thread-link-paste";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
@@ -1247,6 +1258,11 @@ export function PromptBoxInternal({
     );
   }, [containerCompactPlaceholder]);
   const editorRef = useRef<Editor | null>(null);
+  const pasteWithoutFormattingRef = useRef(false);
+  const threadTitleResources = useThreadTitleMentionResources();
+  const queryClient = useContext(QueryClientContext);
+  const threadLinkCacheRef = useRef({ threadTitleResources, queryClient });
+  threadLinkCacheRef.current = { threadTitleResources, queryClient };
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
   const promptActionFocusFrameRef = useRef<number | null>(null);
@@ -1674,13 +1690,34 @@ export function PromptBoxInternal({
 
   const [richTextEditing] = useRichTextEditingPreference();
   const editorExtensions = useMemo(
-    () =>
-      promptEditorExtensions({
+    () => [
+      ...promptEditorExtensions({
         richTextEditing,
         getPlaceholder: () => placeholderRef.current,
         getDecorationSources: () => pluginDecorationSourcesRef.current,
         getDraftObservers: () => pluginDraftObserversRef.current,
       }),
+      createPromptThreadLinkPasteExtension({
+        getOrigin: () => window.location.origin,
+        getCachedThread: (threadId) => {
+          const cache = threadLinkCacheRef.current;
+          const thread =
+            cache.threadTitleResources.threadById.get(threadId) ??
+            cache.queryClient?.getQueryData<ThreadResponse>(
+              threadQueryKey(threadId),
+            );
+          return thread
+            ? {
+                threadId,
+                projectId: thread.projectId,
+                label: getThreadDisplayTitle(thread),
+              }
+            : null;
+        },
+        resolveThreads: (threadIds, signal) =>
+          sdk.threads.resolveMentions({ threadIds, signal }),
+      }),
+    ],
     [richTextEditing],
   );
 
@@ -1734,6 +1771,7 @@ export function PromptBoxInternal({
             return false;
           },
           blur: () => {
+            pasteWithoutFormattingRef.current = false;
             if (composerMenuRef.current?.kind === "suggestions")
               dismissComposerMenu();
             if (dismissedTriggerRef.current) {
@@ -1758,6 +1796,10 @@ export function PromptBoxInternal({
             return false;
           },
           keydown: (_view, event) => {
+            pasteWithoutFormattingRef.current =
+              (event.metaKey || event.ctrlKey) &&
+              event.shiftKey &&
+              event.key.toLowerCase() === "v";
             if (
               !_view.editable ||
               !isIPadOSWebKitDevice ||
@@ -1780,6 +1822,10 @@ export function PromptBoxInternal({
 
             return handleEditorKeyDownRef.current(event, true);
           },
+          keyup: () => {
+            pasteWithoutFormattingRef.current = false;
+            return false;
+          },
           click: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
           },
@@ -1794,6 +1840,8 @@ export function PromptBoxInternal({
           return handleEditorKeyDownRef.current(event);
         },
         handlePaste: (view, event, slice) => {
+          const skipThreadLinks = pasteWithoutFormattingRef.current;
+          pasteWithoutFormattingRef.current = false;
           const attachFiles = onAttachFilesRef.current;
           const clipboardItems = Array.from(event.clipboardData?.items ?? []);
           const pastedFiles = clipboardItems
@@ -1827,6 +1875,7 @@ export function PromptBoxInternal({
               .focus()
               .insertContent(pastedContent)
               .setMeta("uiEvent", "paste")
+              .setMeta(promptThreadLinkPasteKey, { skip: skipThreadLinks })
               .run();
             if (currentEditor && !currentEditor.isDestroyed) {
               const nextValue = trimTrailingPromptNewlines(
@@ -1854,6 +1903,7 @@ export function PromptBoxInternal({
             .focus()
             .insertContent(promptEditorInlineContentFromValue(pastedValue))
             .setMeta("uiEvent", "paste")
+            .setMeta(promptThreadLinkPasteKey, { skip: skipThreadLinks })
             .run();
           return true;
         },
@@ -1914,6 +1964,21 @@ export function PromptBoxInternal({
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  useLayoutEffect(() => {
+    if (editor) cancelPromptThreadLinkPaste(editor);
+  }, [
+    editor,
+    composerScopeKey,
+    pluginComposerHost?.textEffectKey,
+    focusScopeKey,
+  ]);
+
+  useLayoutEffect(() => {
+    if (editor && (isSubmitting || composerInputLocked)) {
+      cancelPromptThreadLinkPaste(editor);
+    }
+  }, [editor, isSubmitting, composerInputLocked]);
 
   useLayoutEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -2008,6 +2073,7 @@ export function PromptBoxInternal({
 
     try {
       skipEditorChangeRef.current = true;
+      cancelPromptThreadLinkPaste(editor);
       editor.commands.setContent(
         promptEditorContentFromValue(nextValue, {
           richTextMarkdown: richTextEditing,
@@ -2872,6 +2938,7 @@ export function PromptBoxInternal({
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
     if (!canPrimarySubmit) return;
+    if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
     onSubmit?.();
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
@@ -2940,6 +3007,7 @@ export function PromptBoxInternal({
 
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
+    if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
     onModifierSubmit();
   }, [canModifierSubmit, onModifierSubmit]);
 
