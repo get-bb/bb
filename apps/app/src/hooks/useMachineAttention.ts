@@ -3,7 +3,6 @@ import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import type { Host } from "@bb/domain";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
-import { hostNeedsUpdate } from "@/lib/host-update-status";
 
 const acknowledgedIssuesAtom = atomWithStorage<string[]>(
   "bb.sidebar.machineAttentionAcknowledged",
@@ -35,15 +34,8 @@ function machineIssue(host: Host): { key: string; label: string } | null {
     return null;
   }
   return {
-    key: JSON.stringify([
-      host.id,
-      "offline",
-      host.lastSeenAt,
-      host.lastRejectedProtocolVersion,
-    ]),
-    label: hostNeedsUpdate(host)
-      ? `${host.name} needs an update and is offline`
-      : `${host.name} is offline`,
+    key: JSON.stringify([host.id, "offline", host.lastSeenAt]),
+    label: `${host.name} is offline`,
   };
 }
 

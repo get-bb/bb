@@ -194,7 +194,7 @@ describe("SidebarUpdatesBadge", () => {
     renderBadge({ machines: [offline] });
     expect(screen.queryByTestId("sidebar-updates-badge-bb")).toBeNull();
     const warning = screen.getByRole("link", {
-      name: "Work laptop needs an update and is offline",
+      name: "Work laptop is offline",
     });
     expect(warning.getAttribute("href")).toBe("/settings/machines");
     fireEvent.click(warning);
@@ -204,7 +204,12 @@ describe("SidebarUpdatesBadge", () => {
     const reloaded = renderBadge({ isLoading: true });
     useUpdateInventoryMock.mockReturnValue({
       isLoading: false,
-      machines: [offline],
+      machines: [
+        {
+          ...offline,
+          host: { ...offline.host, lastRejectedProtocolVersion: 2 },
+        },
+      ],
       appUpdateAvailable: true,
     });
     reloaded.rerender(<BadgeHarness />);
