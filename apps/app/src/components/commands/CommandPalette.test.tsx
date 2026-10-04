@@ -2345,6 +2345,24 @@ describe("CommandPalette Go to", () => {
     expect(screen.queryByRole("button", { name: /Return to commands/ })).toBeNull();
   });
 
+  it("keeps recent places in view by capping threads at four before typing", async () => {
+    registerAutomationsPage();
+    modeState.activeRecents = Array.from({ length: 6 }, (_, index) =>
+      makeThread(`t-${index}`, read),
+    );
+    renderPalette({ kind: "all" });
+    openThreadSearch();
+    const threads = await screen.findByRole("group", { name: "Threads" });
+    expect(within(threads).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      expect.stringContaining("Title"),
+      expect.stringContaining("Title"),
+      expect.stringContaining("Title"),
+      expect.stringContaining("Title"),
+      expect.stringContaining("Show more"),
+    ]);
+    expect(screen.getByRole("group", { name: "Recent places" })).toBeTruthy();
+  });
+
   it("falls back to plugin pages before any place is visited", async () => {
     registerAutomationsPage();
     modeState.activeRecents = [makeThread("only", read)];

@@ -55,7 +55,7 @@ import {
 import { PaletteKindFilter } from "./PaletteKindFilter";
 import { ThreadSearchPaletteRow } from "./ThreadSearchPaletteMode";
 
-const THREAD_ROW_LIMIT = 6;
+const THREAD_ROW_LIMIT = 4;
 const NO_MATCHES_MESSAGE = "No matches";
 
 type GoToOption =
