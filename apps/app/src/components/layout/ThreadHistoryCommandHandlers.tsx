@@ -1,11 +1,12 @@
 import { useCallback, useEffect } from "react";
 import { useAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import type { ChangedMessage } from "@bb/domain";
 import type { ThreadResponse } from "@bb/server-contract";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { useCloseMobileSidebar } from "@/components/ui/sidebar.js";
+import { appQueryClient } from "@/lib/app-query-client";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -61,7 +62,6 @@ function deletedEntryMatcher(
 export function ThreadHistoryCommandHandlers() {
   const { projectId, threadId } = useRouteState();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [history, setHistory] = useAtom(threadNavigationHistoryAtom);
   const closeOnMobile = useCloseMobileSidebar();
 
@@ -89,7 +89,7 @@ export function ThreadHistoryCommandHandlers() {
       const next = stepThreadNavigationHistory(history, offset, {
         currentThreadId: threadId,
         isAvailable: (entry) =>
-          !isThreadKnownDeleted(queryClient, entry.threadId),
+          !isThreadKnownDeleted(appQueryClient, entry.threadId),
       });
       if (next === null) return false;
       setHistory(next.history);
@@ -97,7 +97,7 @@ export function ThreadHistoryCommandHandlers() {
       void navigate(getThreadRoutePath(next.entry));
       return true;
     },
-    [closeOnMobile, history, navigate, queryClient, setHistory, threadId],
+    [closeOnMobile, history, navigate, setHistory, threadId],
   );
 
   useAppCommandHandler("thread.back", () => step(-1));

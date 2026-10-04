@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import type { QueryClient } from "@tanstack/react-query";
+import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   MemoryRouter,
   useLocation,
@@ -23,7 +23,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
-import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { appQueryClient } from "@/lib/app-query-client";
 import { ThreadHistoryCommandHandlers } from "./ThreadHistoryCommandHandlers";
 
 const mocks = vi.hoisted(() => ({
@@ -80,17 +80,16 @@ function Harness() {
 }
 
 function renderAt(pathname: string): QueryClient {
-  const { queryClient, wrapper: Wrapper } = createQueryClientTestHarness();
   render(
-    <Wrapper>
+    <QueryClientProvider client={appQueryClient}>
       <MemoryRouter initialEntries={[pathname]}>
         <AppCommandProvider>
           <Harness />
         </AppCommandProvider>
       </MemoryRouter>
-    </Wrapper>,
+    </QueryClientProvider>,
   );
-  return queryClient;
+  return appQueryClient;
 }
 
 function open(pathname: string) {
@@ -132,6 +131,7 @@ describe("ThreadHistoryCommandHandlers", () => {
     mocks.changeListeners.clear();
     harness.runner = null;
     harness.navigate = null;
+    appQueryClient.clear();
   });
 
   it("goes back and forward through the threads opened in this window", () => {

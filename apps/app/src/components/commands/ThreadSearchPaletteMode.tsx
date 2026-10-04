@@ -61,10 +61,8 @@ import {
   PaletteShortcut,
 } from "./PaletteShell";
 
-const GROUP_LIMITS: Record<ThreadArchiveFilter, number> = {
-  active: 6,
-  archived: 3,
-};
+const GROUP_LIMIT = 6;
+const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
 
 const NO_MATCHING_THREADS_MESSAGE = "No matching threads";
 
@@ -174,7 +172,12 @@ export function ThreadSearchPaletteMode({
       const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
       const visible = expandedGroups.includes(lifecycle)
         ? rows
-        : rows.slice(0, GROUP_LIMITS[lifecycle]);
+        : rows.slice(
+            0,
+            lifecycle === "archived" && lifecycles.includes("active")
+              ? ARCHIVED_BESIDE_ACTIVE_LIMIT
+              : GROUP_LIMIT,
+          );
       const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
         lifecycle,
         row,
