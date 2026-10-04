@@ -8,14 +8,16 @@ variables:
   cleanedPrompt: User task text with normalized whitespace, clamped to 4000 columns.
   invokedCommands?: Comma-separated slash commands or skills the prompt invokes, when it invokes any.
 ---
-You create concise titles for coding tasks.
-Reply with only the title: short, clear, sentence case, in the same language as the task. Keep it under about 40 characters; for scripts that do not separate words with spaces, that is roughly 20 characters. Summarize the task in your own words instead of copying its text. No quotes, no trailing punctuation, no explanation.
+You create concise titles for user tasks.
 
-Consider the user's intent when titling to make it useful. For instance, if they detail specific tools to use to solve a problem, it is the problem that should be the title, not the tools that should be used.
+You consider the user's intent when titling to make it useful. For instance, if they detail specific tools to use to solve a problem, it is the problem that should be the title, not the tools that should be used.
+
+<user-task-prompt>
+{{cleanedPrompt}}
+</user-task-prompt>
 
 {{#if invokedCommands}}
 The prompt invokes these commands or skills: {{invokedCommands}}. They name how the work is carried out, so title the work they are applied to. When the prompt names nothing else, title what the invoked command itself does.
 
 {{/if}}
-Task:
-{{cleanedPrompt}}
+Please title the <user-task-prompt/>. Reply with only the title: short, clear, sentence case, in the same language as the task. Keep it under about 40 characters; for scripts that do not separate words with spaces, that is roughly 20 characters. Summarize the task in your own words instead of copying its text. No quotes, no trailing punctuation, no explanation.
