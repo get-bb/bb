@@ -1007,7 +1007,10 @@ describe("CommandPalette", () => {
   it("shows active recents in update order with project metadata and follow-up status", async () => {
     modeState.activeRecents = [
       makeThread("saved-draft", { status: "pending", updatedAt: 1 }),
-      makeThread("older", { updatedAt: Date.now() - 100 }),
+      makeThread("older", {
+        updatedAt: Date.now() - 100,
+        lastReadAt: Date.now(),
+      }),
       makeThread("newer", { updatedAt: Date.now(), lastReadAt: Date.now() }),
     ];
     modeState.threadDraftIds.add("newer");
@@ -1114,6 +1117,7 @@ describe("CommandPalette", () => {
       const active = Array.from({ length: 7 }, (_, index) =>
         makeThread(`active-${index}`, {
           status: index === 1 ? "pending" : "idle",
+          lastReadAt: Date.now(),
         }),
       );
       const archived = Array.from({ length: 4 }, (_, index) =>
@@ -1320,14 +1324,19 @@ describe("CommandPalette", () => {
     expect(screen.getByText("Show more")).toBeTruthy();
   });
 
-  it("flips back to the previous thread with Enter", async () => {
+  it("flips back to the previous thread with Enter, below threads that need you", async () => {
+    const read = { lastReadAt: Date.now() };
     modeState.activeRecents = [
-      makeThread("current", { updatedAt: Date.now() }),
-      makeThread("previous", { updatedAt: 1 }),
+      makeThread("current", { ...read, updatedAt: Date.now() }),
+      makeThread("previous", { ...read, updatedAt: 1 }),
       makeThread("busy", {
+        ...read,
         updatedAt: Date.now() + 10,
         runtime: { displayStatus: "active" },
       }),
+      makeThread("waiting-1", { ...read, hasPendingInteraction: true }),
+      makeThread("waiting-2", { ...read, hasPendingInteraction: true }),
+      makeThread("unread-done", { latestAttentionAt: 5, lastReadAt: 0 }),
     ];
     recordPaletteVisit("thread", "previous", 1);
     recordPaletteVisit("thread", "current", 2);
@@ -1335,6 +1344,9 @@ describe("CommandPalette", () => {
     openThreadSearch();
     await screen.findByRole("option", { name: /Title previous/ });
     expect(optionTitles()).toEqual([
+      expect.stringContaining("Title unread-done"),
+      expect.stringContaining("Title waiting-1"),
+      expect.stringContaining("Title waiting-2"),
       expect.stringContaining("Title previous"),
       expect.stringContaining("Title current"),
       expect.stringContaining("Title busy"),

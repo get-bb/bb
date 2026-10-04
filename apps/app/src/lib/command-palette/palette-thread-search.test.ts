@@ -29,7 +29,7 @@ function makeThread(
     pinnedAt: null,
     pinSortKey: null,
     deletedAt: null,
-    lastReadAt: null,
+    lastReadAt: 1,
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: NOW,
@@ -260,6 +260,14 @@ describe("buildPaletteThreadSearchRows", () => {
       id,
       visitedAt,
     });
+    const waiting = (id: string, latestAttentionAt: number) =>
+      makeThread(id, {
+        hasPendingInteraction: true,
+        latestAttentionAt,
+        lastReadAt: latestAttentionAt,
+      });
+    const unreadDone = (id: string, latestAttentionAt: number) =>
+      makeThread(id, { latestAttentionAt, lastReadAt: 0 });
     const ids = (result: ReturnType<typeof build>) =>
       result.rows.map((row) => row.threadId);
 
@@ -276,6 +284,52 @@ describe("buildPaletteThreadSearchRows", () => {
       });
       expect(ids(result)).toEqual(["a", "b", "c"]);
       expect(result.previousThreadId).toBe("a");
+    });
+
+    it("lists up to three threads that need you above the previous thread, newest attention first", () => {
+      const result = build({
+        query: "",
+        currentThreadId: "b",
+        visits: [visit("b", 9), visit("a", 8), visit("w1", 7), visit("w5", 6)],
+        recentThreads: [
+          makeThread("a", { updatedAt: 1 }),
+          makeThread("b", { updatedAt: 1 }),
+          waiting("w1", 10),
+          waiting("w2", 50),
+          unreadDone("u3", 40),
+          makeThread("e4", {
+            status: "error",
+            latestAttentionAt: 30,
+            lastReadAt: 0,
+          }),
+          waiting("w5", 20),
+          makeThread("busy", {
+            updatedAt: NOW + 100,
+            runtime: { displayStatus: "active" },
+          }),
+        ],
+      });
+      expect(ids(result)).toEqual([
+        "w2",
+        "u3",
+        "e4",
+        "a",
+        "b",
+        "w1",
+        "w5",
+        "busy",
+      ]);
+      expect(result.previousThreadId).toBe("a");
+    });
+
+    it("never moves the previous or current thread into the needs-you block", () => {
+      const result = build({
+        query: "",
+        currentThreadId: "b",
+        visits: [visit("b", 2), visit("a", 1)],
+        recentThreads: [waiting("a", 100), waiting("b", 90), waiting("c", 1)],
+      });
+      expect(ids(result)).toEqual(["c", "a", "b"]);
     });
 
     it("highlights the last thread when no thread is current", () => {
@@ -309,9 +363,10 @@ describe("buildPaletteThreadSearchRows", () => {
           makeThread("current", { updatedAt: NOW + 50 }),
           makeThread("newest", { updatedAt: NOW + 10 }),
           makeThread("older", { updatedAt: NOW }),
+          waiting("needs-you", 5),
         ],
       });
-      expect(ids(result)).toEqual(["newest", "current", "older"]);
+      expect(ids(result)).toEqual(["needs-you", "newest", "current", "older"]);
       expect(result.previousThreadId).toBeNull();
     });
 

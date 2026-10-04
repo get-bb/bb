@@ -1,4 +1,9 @@
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  resolveThreadListIndicator,
+  threadListIndicatorStateForThread,
+  type ThreadListIndicatorKind,
+} from "@bb/client-core";
 import type {
   ThreadSearchMatch,
   ThreadSearchResponse,
@@ -44,7 +49,14 @@ export interface PaletteThreadSearchRowsResult {
 }
 
 const RECENT_THREAD_LIMIT = 20;
+const NEEDS_YOU_LIMIT = 3;
 const UNVISITED_RANK = Number.MAX_SAFE_INTEGER;
+const NEEDS_YOU_INDICATORS: ReadonlySet<ThreadListIndicatorKind> =
+  new Set<ThreadListIndicatorKind>([
+    "waiting-for-input",
+    "unread-error",
+    "unread-success",
+  ]);
 
 function isTitleMatch(match: ThreadSearchMatch): boolean {
   return match.sourceKind === "title" || match.sourceKind === "title_fallback";
@@ -87,6 +99,14 @@ function serverRow(
   };
 }
 
+function isNeedsYouThread(thread: ThreadListEntry): boolean {
+  return NEEDS_YOU_INDICATORS.has(
+    resolveThreadListIndicator(
+      threadListIndicatorStateForThread(thread, false),
+    ),
+  );
+}
+
 function threadVisitRanks(
   visits: readonly PaletteVisit[],
 ): ReadonlyMap<string, number> {
@@ -107,19 +127,30 @@ function orderActiveRecents(
 ): ThreadListEntry[] {
   const isAnchor = (thread: ThreadListEntry) =>
     thread.id === previousThreadId || thread.id === currentThreadId;
+  const needsYou = threads
+    .filter((thread) => !isAnchor(thread) && isNeedsYouThread(thread))
+    .sort((left, right) => right.latestAttentionAt - left.latestAttentionAt)
+    .slice(0, NEEDS_YOU_LIMIT);
+  const needsYouIds = new Set(needsYou.map((thread) => thread.id));
   const previous = threads.find((thread) => thread.id === previousThreadId);
   const current = threads.find((thread) => thread.id === currentThreadId);
   const rest = threads
-    .filter((thread) => !isAnchor(thread))
+    .filter((thread) => !isAnchor(thread) && !needsYouIds.has(thread.id))
     .sort(
       (left, right) =>
         visitRankOf(left) - visitRankOf(right) ||
         right.updatedAt - left.updatedAt,
     );
   if (previous !== undefined) {
-    return [previous, ...(current === undefined ? [] : [current]), ...rest];
+    return [
+      ...needsYou,
+      previous,
+      ...(current === undefined ? [] : [current]),
+      ...rest,
+    ];
   }
   return [
+    ...needsYou,
     ...rest.slice(0, 1),
     ...(current === undefined ? [] : [current]),
     ...rest.slice(1),
