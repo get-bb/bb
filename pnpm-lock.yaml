@@ -1611,6 +1611,9 @@ importers:
       bb-plugin-automations:
         specifier: workspace:*
         version: link:../../plugins/automations
+      bb-plugin-bb--agent-messages:
+        specifier: workspace:*
+        version: link:../../plugins/agent-messages
       bb-plugin-bb--provider-usage:
         specifier: workspace:*
         version: link:../../plugins/provider-usage
