@@ -54,11 +54,19 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
+import { readPaletteVisits } from "@/lib/command-palette/palette-visits";
 import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
   PaletteShortcut,
 } from "./PaletteShell";
+
+const GROUP_LIMITS: Record<ThreadArchiveFilter, number> = {
+  active: 6,
+  archived: 3,
+};
+
+const NO_MATCHING_THREADS_MESSAGE = "No matching threads";
 
 interface ThreadSearchOption {
   lifecycle: ThreadArchiveFilter;
@@ -70,9 +78,11 @@ function optionKey(option: ThreadSearchOption): string {
 }
 
 export function ThreadSearchPaletteMode({
+  currentThreadId,
   onExit,
   runAfterClose,
 }: {
+  currentThreadId: string | null;
   onExit: () => void;
   runAfterClose: (run: () => void) => void;
 }) {
@@ -94,6 +104,7 @@ export function ThreadSearchPaletteMode({
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
+  const [followPreviousThread, setFollowPreviousThread] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
   const filterKey = lifecycles.join(",");
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
@@ -102,6 +113,7 @@ export function ThreadSearchPaletteMode({
     setExpandedGroups([]);
   }
   const [now] = useState(() => Date.now());
+  const [visits] = useState(readPaletteVisits);
   const navigation = useSidebarNavigation();
   const threadSearch = useThreadSearch({ active: true, query });
   const trimmedQuery = query.trim();
@@ -135,6 +147,7 @@ export function ThreadSearchPaletteMode({
   const result = useMemo(
     () =>
       buildPaletteThreadSearchRows({
+        currentThreadId,
         lifecycles,
         now,
         projectNamesById,
@@ -142,8 +155,10 @@ export function ThreadSearchPaletteMode({
         recentThreads,
         searchResponse: threadSearch.data,
         searchResultsAreCurrent,
+        visits,
       }),
     [
+      currentThreadId,
       lifecycles,
       now,
       projectNamesById,
@@ -151,18 +166,15 @@ export function ThreadSearchPaletteMode({
       recentThreads,
       searchResultsAreCurrent,
       threadSearch.data,
+      visits,
     ],
   );
   const options = useMemo(() => {
-    const nonemptyGroups = lifecycles.filter((lifecycle) =>
-      result.rows.some((row) => row.lifecycle === lifecycle),
-    );
-    const limit = nonemptyGroups.length === 2 ? 3 : 6;
-    return nonemptyGroups.flatMap((lifecycle) => {
+    return lifecycles.flatMap((lifecycle) => {
       const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
       const visible = expandedGroups.includes(lifecycle)
         ? rows
-        : rows.slice(0, limit);
+        : rows.slice(0, GROUP_LIMITS[lifecycle]);
       const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
         lifecycle,
         row,
@@ -172,21 +184,30 @@ export function ThreadSearchPaletteMode({
       return groupOptions;
     });
   }, [expandedGroups, lifecycles, result]);
+  const previousThreadIndex =
+    followPreviousThread && result.previousThreadId !== null
+      ? options.findIndex(
+          (option) => option.row?.threadId === result.previousThreadId,
+        )
+      : -1;
   const retainedIndex = options.findIndex(
     (option) => optionKey(option) === highlightedKey,
   );
   const activeIndex =
-    retainedIndex >= 0
-      ? retainedIndex
-      : options.length === 0
-        ? -1
-        : Math.min(highlightedIndex, options.length - 1);
+    previousThreadIndex >= 0
+      ? previousThreadIndex
+      : retainedIndex >= 0
+        ? retainedIndex
+        : options.length === 0
+          ? -1
+          : Math.min(highlightedIndex, options.length - 1);
   useLayoutEffect(() => {
     setHighlightedIndex(Math.max(activeIndex, 0));
     setHighlightedKey(activeIndex < 0 ? null : optionKey(options[activeIndex]));
   }, [activeIndex, options]);
   const highlightOption = useCallback(
     (index: number) => {
+      setFollowPreviousThread(false);
       setHighlightedIndex(index);
       setHighlightedKey(
         options[index] === undefined ? null : optionKey(options[index]),
@@ -201,7 +222,7 @@ export function ThreadSearchPaletteMode({
     result.isRecent && recentQueries.some((result) => result.isLoading);
   const hasLoadError = result.isRecent
     ? recentQueries.some((result) => result.isError)
-    : searchResultsAreCurrent && threadSearch.isError;
+    : searchable && searchResultsAreCurrent && threadSearch.isError;
   const showThreadListEmptyState =
     result.rows.length === 0 &&
     result.isRecent &&
@@ -236,6 +257,7 @@ export function ThreadSearchPaletteMode({
     ({ row, lifecycle }: ThreadSearchOption, index: number, split = false) => {
       if (row === null) {
         scrollOnNextHighlightRef.current = true;
+        setFollowPreviousThread(false);
         setExpandedGroups((current) => [...current, lifecycle]);
         setHighlightedIndex(index);
         setHighlightedKey(null);
@@ -331,11 +353,11 @@ export function ThreadSearchPaletteMode({
           : "Searching threads"
         : hasLoadError
           ? "Couldn’t load threads"
-          : trimmedQuery.length === 1
+          : trimmedQuery.length === 1 && !lifecycles.includes("active")
             ? "Type at least 2 characters"
             : result.isRecent
               ? NO_THREADS_MESSAGE
-              : "No matching threads";
+              : NO_MATCHING_THREADS_MESSAGE;
   }
 
   return (
@@ -365,6 +387,7 @@ export function ThreadSearchPaletteMode({
       }}
       onInputChange={(value) => {
         setQuery(value);
+        setFollowPreviousThread(value.trim().length === 0);
         setHighlightedIndex(0);
         setHighlightedKey(null);
         setExpandedGroups([]);
@@ -454,7 +477,7 @@ export function ThreadSearchPaletteMode({
           );
         })
       ) : showThreadListEmptyState ||
-        (searchable && !isLoading && !hasLoadError) ? (
+        emptyMessage === NO_MATCHING_THREADS_MESSAGE ? (
         <ThreadListEmptyState
           message={emptyMessage}
           className="justify-center px-3 py-4"

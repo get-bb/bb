@@ -27,6 +27,7 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CommandPalette } from "@/components/commands/CommandPalette";
+import { usePaletteVisitRecorder } from "@/hooks/usePaletteVisitRecorder";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import {
   resolveAutomationBreadcrumbs,
@@ -118,6 +119,7 @@ import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNaviga
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
+import { ThreadHistoryCommandHandlers } from "./ThreadHistoryCommandHandlers";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -403,6 +405,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const { projectId, threadId, isThreadView, isArchivedView, isRootView } =
     useRouteState();
+  usePaletteVisitRecorder(threadId ?? null);
   const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
     resourceRouteLabelAtom,
   );
@@ -780,6 +783,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 {backToAppRoutePath !== null && !isSidebarResizing ? (
                   <BackToAppCommandHandler routePath={backToAppRoutePath} />
                 ) : null}
+                <ThreadHistoryCommandHandlers />
                 <AppLayoutSidebar
                   mode={
                     isGlobalSettingsView
