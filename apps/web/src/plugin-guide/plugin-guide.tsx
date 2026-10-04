@@ -1,4 +1,3 @@
-import { createPluginSurfaceAgentReference } from "../../../../plugins/plugin-api-docs/src/agent-reference";
 import { firstPartyPluginId } from "../../../../plugins/plugin-api-docs/src/plugin-icons";
 import { ProductMap } from "../../../../plugins/plugin-api-docs/src/product-map";
 import {
@@ -59,7 +58,9 @@ export function pluginSurfaceAgentPrompt(
     surface.summary
       .replace(/ With this, a plugin can:$/, "")
       .replace(/\[([^\]]+)\]\([a-z0-9-]+\)/g, "$1"),
-    createPluginSurfaceAgentReference(surface).context,
+    `Plugin Guide surface: ${surface.title} (${surface.id}).`,
+    `Relevant @get-bb/plugin-sdk symbols: ${surface.apiSymbols.join(", ")}.`,
+    "Use the bb-plugin-authoring skill and the authoritative @get-bb/plugin-sdk declarations to build it.",
     `Plugin Guide: ${guideUrl.href}`,
   ].join("\n");
 }
