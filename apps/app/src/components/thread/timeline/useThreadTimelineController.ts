@@ -13,6 +13,7 @@ import {
   resolveLoadedTimelineSurfaceKey,
   type LoadedTimelineState,
 } from "@bb/client-core";
+import { hasThreadTimelineUnseenEvents } from "@/hooks/cache-owners/thread-timeline-unseen-events";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -126,8 +127,7 @@ export function useThreadTimelineController({
   const isNewMountFetch = mountFetch.key !== mountFetchKey;
   const mountFetchHasNewEvents = isNewMountFetch
     ? mountFetchKey !== null &&
-      queryClient.getQueryState(threadTimelineQueryKey(mountFetchKey))
-        ?.isInvalidated === true
+      hasThreadTimelineUnseenEvents(queryClient, mountFetchKey)
     : mountFetch.hasNewEvents;
   const isTrackingMountFetch =
     mountFetchKey !== null &&
@@ -289,7 +289,10 @@ export function useThreadTimelineController({
     (latestTimelineQuery.isFetching && timelineRows.length === 0);
   const isMountFetchIdle =
     mountFetchKey !== null && !latestTimelineQuery.isFetching;
-  if (isNewMountFetch || (isMountFetchIdle && !mountFetch.settled)) {
+  if (
+    isNewMountFetch ||
+    (mountFetch.hasNewEvents && isMountFetchIdle && !mountFetch.settled)
+  ) {
     setMountFetch({
       hasNewEvents: mountFetchHasNewEvents,
       key: mountFetchKey,

@@ -29,6 +29,10 @@ import {
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
+import {
+  hasThreadTimelineUnseenEvents,
+  markThreadTimelineUnseenEvents,
+} from "@/hooks/cache-owners/thread-timeline-unseen-events";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { systemRow } from "@/test/fixtures/thread-timeline-rows";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows";
@@ -357,6 +361,7 @@ function startTimelineRefetch(queryClient: QueryClient): void {
 }
 
 function markTimelineHasNewEvents(queryClient: QueryClient): void {
+  markThreadTimelineUnseenEvents(queryClient, "thread-1");
   void queryClient.invalidateQueries({
     queryKey: TIMELINE_QUERY_KEY,
     refetchType: "none",
@@ -1281,5 +1286,48 @@ describe("useThreadTimelineController commits", () => {
     });
     await flushQueryNotifications();
     expect(view.latest().isCatchingUpTimeline).toBe(false);
+  });
+  it("does not report catching up for a timeline invalidated without unseen events", async () => {
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(new Promise(() => {}));
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    void queryClient.invalidateQueries({
+      queryKey: TIMELINE_QUERY_KEY,
+      refetchType: "none",
+    });
+
+    const view = renderProfiledController(wrapper);
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
+    });
+    await flushQueryNotifications();
+    expect(view.latest().isCatchingUpTimeline).toBe(false);
+  });
+
+  it("clears unseen events once the catch-up fetch succeeds", async () => {
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      makeTimelineResponse({
+        maxSeq: 2,
+        rows: [newestLoadedRow, realtimeRow],
+      }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    markTimelineHasNewEvents(queryClient);
+
+    const view = renderProfiledController(wrapper);
+    await waitFor(() => {
+      expect(rowIds(view.latest())).toEqual([
+        newestLoadedRow.id,
+        realtimeRow.id,
+      ]);
+    });
+    expect(hasThreadTimelineUnseenEvents(queryClient, "thread-1")).toBe(false);
   });
 });
