@@ -13,9 +13,14 @@ bb automation show <automationId> --project <id>
 bb automation create --project <id> --name <name> <schedule> <execution>
 bb automation update <automationId> --project <id> [changes]
 bb automation pause|resume <automationId> --project <id>
-bb automation run <automationId> --project <id>
+bb automation run <automationId> --project <id> [--retry-run <runId>]
 bb automation runs <automationId> --project <id> [--limit <count>]
 bb automation delete <automationId> --project <id> --yes
+
+Agent runs use hidden turn input and an Automations timeline marker. View prompt
+shows the recorded prompt. Retry (or --retry-run) repeats a failed or stopped
+run in its thread using that recorded execution; an unrelated running run must
+finish first. Legacy Automation chips retain their existing display.
 
 Schedules:
 

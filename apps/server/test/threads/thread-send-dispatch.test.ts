@@ -1925,6 +1925,18 @@ describe("plugin turn markers", () => {
           requestId: marker.requestId,
           input,
         });
+        seedTurnStarted(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-901",
+          turnId: "plugin-turn",
+          sequence: 98,
+        });
+        seedTurnStarted(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-901",
+          turnId: "unrelated-turn",
+          sequence: 99,
+        });
         seedStoredEvent(harness.deps, {
           providerThreadId: "provider-send-dispatch-901",
           threadId: thread.id,

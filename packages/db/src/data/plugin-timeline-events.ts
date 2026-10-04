@@ -77,7 +77,7 @@ function materialize(
             eq(events.threadId, row.threadId),
             eq(events.type, "turn/started"),
             gt(events.sequence, row.requestSequence),
-            sql`EXISTS (SELECT 1 FROM events request WHERE request.id = ${row.requestEventId} AND json_extract(request.data, '$.target.kind') = 'thread-start')`,
+            sql`EXISTS (SELECT 1 FROM events request WHERE request.id = ${row.requestEventId} AND (json_extract(request.data, '$.target.kind') IN ('thread-start', 'new-turn') OR (json_extract(request.data, '$.target.kind') = 'auto' AND json_extract(request.data, '$.target.expectedTurnId') IS NULL)))`,
             sql`NOT EXISTS (SELECT 1 FROM events next_request WHERE next_request.thread_id = ${row.threadId} AND next_request.type = 'client/turn/requested' AND next_request.sequence > ${row.requestSequence} AND next_request.sequence < ${events.sequence})`,
           ),
         )
