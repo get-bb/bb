@@ -66,7 +66,6 @@ import {
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
-  groupComparatorByReadStatus,
   isSidebarProjectThread,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
@@ -90,11 +89,9 @@ import {
 } from "./PinnedThreadTree.js";
 import {
   collapsedEnvironmentIdsAtom,
-  collapsedThreadIdsAtom,
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   sidebarChronologicalSortAtom,
-  sidebarGroupByReadStatusAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarSortDirectionAtom,
   sidebarCollapsedMachinesAtom,
@@ -120,12 +117,7 @@ import {
 } from "./BuiltInSidebarSection.js";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList.js";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder.js";
-import {
-  collapseParentThreads,
-  createThreadUnreadPredicate,
-  threadsExpandedWhileGroupedAtom,
-  useHeldReadStatus,
-} from "./readStatusGrouping.js";
+import { useReadStatusGrouping } from "./useReadStatusGrouping.js";
 import { haveSameOrder } from "../model/stored-order.js";
 import {
   useSidebarData,
@@ -1490,9 +1482,6 @@ function ProjectListComponent({
     },
     [sectionDeleteDialog],
   );
-  const [collapsedThreadIdList, setCollapsedThreadIdList] = useAtom(
-    collapsedThreadIdsAtom,
-  );
   const [collapsedEnvironmentIdList, setCollapsedEnvironmentIdList] = useAtom(
     collapsedEnvironmentIdsAtom,
   );
@@ -1555,39 +1544,25 @@ function ProjectListComponent({
     sidebarChronologicalSortAtom,
   );
   const sortDirection = useAtomValue(sidebarSortDirectionAtom);
-  const groupByReadStatus = useAtomValue(sidebarGroupByReadStatusAtom);
-  const heldReadStatus = useHeldReadStatus(threads, selectedThreadId);
-  const threadUnreadPredicate = useMemo(
-    () =>
-      groupByReadStatus ? createThreadUnreadPredicate(heldReadStatus) : null,
-    [groupByReadStatus, heldReadStatus],
-  );
   const activeRename = useSidebarRenameState();
-  const sidebarThreadComparator = useMemo<ThreadComparator>(() => {
-    const comparator = getSidebarThreadComparator(
-      chronologicalSort,
-      sortDirection,
-      activeRename,
-    );
-    return threadUnreadPredicate
-      ? groupComparatorByReadStatus(comparator, threadUnreadPredicate)
-      : comparator;
-  }, [chronologicalSort, sortDirection, activeRename, threadUnreadPredicate]);
-  const [threadsExpandedWhileGrouped, setThreadsExpandedWhileGrouped] = useAtom(
-    threadsExpandedWhileGroupedAtom,
-  );
-  const collapsedThreadIds = useMemo(
+  const baseThreadComparator = useMemo<ThreadComparator>(
     () =>
-      groupByReadStatus
-        ? collapseParentThreads(threads, threadsExpandedWhileGrouped)
-        : new Set(collapsedThreadIdList),
-    [
-      collapsedThreadIdList,
-      groupByReadStatus,
-      threads,
-      threadsExpandedWhileGrouped,
-    ],
+      getSidebarThreadComparator(
+        chronologicalSort,
+        sortDirection,
+        activeRename,
+      ),
+    [chronologicalSort, sortDirection, activeRename],
   );
+  const {
+    comparator: sidebarThreadComparator,
+    collapsedThreadIds,
+    toggleThreadCollapsed,
+  } = useReadStatusGrouping({
+    threads,
+    selectedThreadId,
+    comparator: baseThreadComparator,
+  });
   const collapsedEnvironmentIds = useMemo(
     () => new Set(collapsedEnvironmentIdList),
     [collapsedEnvironmentIdList],
@@ -1633,27 +1608,6 @@ function ProjectListComponent({
     [pinnedSidebarState.rootNodes],
   );
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
-  const toggleThreadCollapsed = useCallback<ToggleCollapsedId>(
-    (threadId) => {
-      if (groupByReadStatus) {
-        setThreadsExpandedWhileGrouped((current) =>
-          current.includes(threadId)
-            ? current.filter((id) => id !== threadId)
-            : [...current, threadId],
-        );
-        return;
-      }
-      setCollapsedThreadIdList((current) => {
-        return toggleCollapsedIdList({ current, id: threadId });
-      });
-    },
-    [
-      groupByReadStatus,
-      setCollapsedThreadIdList,
-      setThreadsExpandedWhileGrouped,
-    ],
-  );
-
   const toggleEnvironmentCollapsed = useCallback<ToggleCollapsedId>(
     (environmentId) => {
       setCollapsedEnvironmentIdList((current) => {

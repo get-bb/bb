@@ -5,7 +5,6 @@ import {
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
-  groupComparatorByReadStatus,
   resolveSidebarProjectId,
   type ProjectThreadItem,
   type ProjectThreadNode,
@@ -913,61 +912,5 @@ describe("resolveSidebarProjectId", () => {
       "thr_child",
       "thr_child",
     ]);
-  });
-});
-
-describe("read status grouping", () => {
-  const isUnread = (thread: SidebarThread) => thread.isUnread;
-  const read = { lastReadAt: 10_000 };
-
-  it("lists unread threads above read ones and keeps the base order in each group", () => {
-    const items = buildSectionThreadList(
-      [
-        createThread({
-          id: "read-new",
-          sectionId: "sec_inbox",
-          latestAttentionAt: 400,
-          ...read,
-        }),
-        createThread({
-          id: "unread-new",
-          sectionId: "sec_inbox",
-          latestAttentionAt: 300,
-        }),
-        createThread({
-          id: "read-old",
-          sectionId: "sec_inbox",
-          latestAttentionAt: 200,
-          ...read,
-        }),
-        createThread({
-          id: "unread-old",
-          sectionId: "sec_inbox",
-          latestAttentionAt: 100,
-        }),
-      ],
-      groupComparatorByReadStatus(compareStandardThreads, isUnread),
-      [{ id: "sec_inbox", name: "Inbox" }],
-    );
-
-    expect(summarizeItems(items)).toEqual([
-      {
-        section: "chronological::sec_inbox",
-        name: "Inbox",
-        items: ["unread-new", "unread-old", "read-new", "read-old"],
-      },
-    ]);
-  });
-
-  it("applies read status before the alphabetical item comparator", () => {
-    const items = buildSectionThreadList(
-      [
-        createThread({ id: "a", title: "Alpha" }),
-        createThread({ id: "z", title: "Zulu", ...read }),
-      ],
-      groupComparatorByReadStatus(compareAlphaDescending, isUnread),
-    );
-
-    expect(summarizeItems(items)).toEqual(["a", "z"]);
   });
 });

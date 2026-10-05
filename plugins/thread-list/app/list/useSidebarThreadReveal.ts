@@ -16,14 +16,12 @@ import {
   collapsedEnvironmentIdsAtom,
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
-  collapsedThreadIdsAtom,
   sidebarCollapsedMachinesAtom,
   sidebarCollapsedThreadSectionsAtom,
-  sidebarGroupByReadStatusAtom,
   sidebarOrganizationModeAtom,
 } from "../preferences/atoms.js";
-import { threadsExpandedWhileGroupedAtom } from "./readStatusGrouping.js";
 import { usePreferencesReady } from "../preferences/PreferencesSync.js";
+import { useExpandThreadAncestors } from "./useReadStatusGrouping.js";
 
 interface ThreadSidebarExpansionArgs {
   organizationMode: SidebarOrganizationMode;
@@ -123,11 +121,7 @@ export function useSidebarThreadRevealCore({
   personalProjectId,
 }: SidebarThreadRevealInputs): void {
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
-  const setCollapsedThreadIdList = useSetAtom(collapsedThreadIdsAtom);
-  const groupByReadStatus = useAtomValue(sidebarGroupByReadStatusAtom);
-  const setThreadsExpandedWhileGrouped = useSetAtom(
-    threadsExpandedWhileGroupedAtom,
-  );
+  const expandThreadAncestors = useExpandThreadAncestors();
   const setCollapsedEnvironmentIdList = useSetAtom(collapsedEnvironmentIdsAtom);
   const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
   const setCollapsedMachineKeyList = useSetAtom(sidebarCollapsedMachinesAtom);
@@ -158,12 +152,8 @@ export function useSidebarThreadRevealCore({
       return;
     }
     const revealIds = new Set<string>();
-    let navigationRevealId: string | undefined;
-    if (
-      pendingNavigation.current &&
-      threadById.has(pendingNavigation.current)
-    ) {
-      navigationRevealId = pendingNavigation.current;
+    const navigationRevealId = pendingNavigation.current;
+    if (navigationRevealId && threadById.has(navigationRevealId)) {
       revealIds.add(navigationRevealId);
       pendingNavigation.current = undefined;
     }
@@ -209,15 +199,7 @@ export function useSidebarThreadRevealCore({
         remainingHops -= 1;
       }
 
-      if (!groupByReadStatus) {
-        setCollapsedThreadIdList((current) =>
-          removeCollapsedIds(current, threadIdsToExpand),
-        );
-      } else if (threadId === navigationRevealId) {
-        setThreadsExpandedWhileGrouped((current) => [
-          ...new Set([...current, ...threadIdsToExpand]),
-        ]);
-      }
+      expandThreadAncestors(threadIdsToExpand, threadId === navigationRevealId);
       setCollapsedEnvironmentIdList((current) =>
         removeCollapsedIds(current, environmentIdsToExpand),
       );
@@ -264,9 +246,7 @@ export function useSidebarThreadRevealCore({
     threads,
     threadById,
     effectivePinnedThreadIds,
-    groupByReadStatus,
-    setCollapsedThreadIdList,
-    setThreadsExpandedWhileGrouped,
+    expandThreadAncestors,
     setCollapsedEnvironmentIdList,
     setCollapsedProjectIdList,
     setCollapsedMachineKeyList,
