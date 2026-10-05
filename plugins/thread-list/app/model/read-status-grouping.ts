@@ -64,11 +64,15 @@ export function foldReadThreads(
   isUnread: ThreadUnreadPredicate | null,
   revealed: boolean,
   selectedThreadId: string | undefined,
+  hasFolded = false,
 ) {
   if (
     isUnread === null ||
     revealed ||
-    !items.some((item) => item.kind === "thread" && isUnread(item.node.thread))
+    (!hasFolded &&
+      !items.some(
+        (item) => item.kind === "thread" && isUnread(item.node.thread),
+      ))
   ) {
     return { items, hiddenCount: 0 };
   }

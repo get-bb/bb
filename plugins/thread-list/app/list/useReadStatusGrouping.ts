@@ -28,7 +28,9 @@ import {
 import { ThreadListGroupContext } from "./ThreadListVisibility.js";
 
 const threadsExpandedWhileGroupedAtom = atom<readonly string[]>([]);
-const revealedReadSectionsAtom = atom<readonly string[]>([]);
+const readSectionStatesAtom = atom<
+  Readonly<Record<string, "folded" | "revealed">>
+>({});
 export const ReadStatusGroupingContext =
   createContext<ThreadUnreadPredicate | null>(null);
 let lastHeldReadStatus: HeldReadStatus | null = null;
@@ -127,26 +129,35 @@ export function useReadThreadFold(
   const isUnread = useContext(ReadStatusGroupingContext);
   const groupId = useContext(ThreadListGroupContext);
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
-  const [revealedSections, setRevealedSections] = useAtom(
-    revealedReadSectionsAtom,
-  );
+  const [sectionStates, setSectionStates] = useAtom(readSectionStatesAtom);
   const id = sectionId ?? groupId;
   const key = `${organizationMode}:${id}`;
+  const state = sectionStates[key];
+  const hasUnreadThreads =
+    isUnread !== null &&
+    items.some((item) => item.kind === "thread" && isUnread(item.node.thread));
+  useEffect(() => {
+    if (id === null || !hasUnreadThreads || state !== undefined) return;
+    setSectionStates((current) =>
+      current[key] === undefined ? { ...current, [key]: "folded" } : current,
+    );
+  }, [hasUnreadThreads, id, key, state, setSectionStates]);
   const folded = useMemo(
     () =>
       foldReadThreads(
         items,
         isUnread,
-        id === null || revealedSections.includes(key),
+        id === null || state === "revealed",
         selectedThreadId,
+        state === "folded",
       ),
-    [items, isUnread, id, revealedSections, key, selectedThreadId],
+    [items, isUnread, id, state, selectedThreadId],
   );
   const revealReadThreads = useCallback(() => {
-    setRevealedSections((current) =>
-      current.includes(key) ? current : [...current, key],
+    setSectionStates((current) =>
+      current[key] === "revealed" ? current : { ...current, [key]: "revealed" },
     );
-  }, [key, setRevealedSections]);
+  }, [key, setSectionStates]);
   return { ...folded, revealReadThreads };
 }
 

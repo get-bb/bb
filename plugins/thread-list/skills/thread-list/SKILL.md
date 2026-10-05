@@ -57,8 +57,10 @@ turn it on. Parents start collapsed while it is on, without changing
 `collapsedThreads`, and `environmentGrouping` is ignored. The open thread keeps
 its place until another thread is opened.
 In sections with unread threads, read threads fold behind a “N read threads”
-row. Revealing them lasts until reload. Sections with no unread threads keep
-showing all their threads. The open thread and its ancestors stay visible.
+row. Revealing them lasts until reload. Sections that start with no unread
+threads keep showing all their threads. Once a rollup starts, newly read
+threads join it even when the last unread thread becomes read. The open
+thread and its ancestors stay visible.
 
 New threads inherit the sidebar group where creation was invoked. Pinned
 creates pinned threads; custom sections supply their section; project, machine,
