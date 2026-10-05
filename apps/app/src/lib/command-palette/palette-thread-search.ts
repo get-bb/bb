@@ -148,8 +148,8 @@ function orderActiveRecents(
     );
   if (previous !== undefined) {
     return [
-      ...needsYou,
       previous,
+      ...needsYou,
       ...(current === undefined ? [] : [current]),
       ...rest,
     ];
