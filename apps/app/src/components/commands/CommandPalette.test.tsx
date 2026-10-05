@@ -1332,7 +1332,7 @@ describe("CommandPalette", () => {
     expect(screen.getByText("Show more")).toBeTruthy();
   });
 
-  it("flips back to the previous thread with Enter, below threads that need you", async () => {
+  it("flips back to the previous thread with Enter from the top row, above threads that need you", async () => {
     const read = { lastReadAt: Date.now() };
     modeState.activeRecents = [
       makeThread("current", { ...read, updatedAt: Date.now() }),
@@ -1352,10 +1352,10 @@ describe("CommandPalette", () => {
     openThreadSearch();
     await screen.findByRole("option", { name: /Title previous/ });
     expect(optionTitles()).toEqual([
+      expect.stringContaining("Title previous"),
       expect.stringContaining("Title unread-done"),
       expect.stringContaining("Title waiting-1"),
       expect.stringContaining("Title waiting-2"),
-      expect.stringContaining("Title previous"),
       expect.stringContaining("Title current"),
       expect.stringContaining("Title busy"),
     ]);
