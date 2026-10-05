@@ -1377,6 +1377,14 @@ Experimental surfaces are changed in Settings → Experiments or with
 bb stores only the experiments you set; the others follow the shipped default.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
+The default-off `navigationRail` experiment keeps a vertical rail of
+destinations on the left edge of the sidebar on every screen. Home returns to
+the last thread, Settings sits at the bottom, and New thread moves into the
+sidebar header. The sidebar beside the rail still swaps between the thread
+list, Plugins, Skills, and Settings. While it is on, bb draws the navigation
+itself, so the Navigation and Header choices under Settings → Appearance are
+not used; they apply again when the experiment is turned off. Narrow windows
+and phones keep the regular drawer.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,

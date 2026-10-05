@@ -9,7 +9,7 @@ interface AppCommandShortcutHintProps {
 
 interface AppCommandShortcutPillProps {
   ariaHidden?: boolean;
-  shortcut: AppShortcutPresentation;
+  shortcut: Pick<AppShortcutPresentation, "label">;
   className?: string;
 }
 

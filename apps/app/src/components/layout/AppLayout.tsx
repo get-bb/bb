@@ -102,6 +102,7 @@ import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
+import { useNavigationRailExperiment } from "@/components/sidebar/navigationRailExperiment";
 import {
   useAppCommandHandler,
   useAppCommandShortcut,
@@ -436,6 +437,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
     useAppSettingsRouteMemory();
+  const navigationRail = useNavigationRailExperiment();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -792,6 +794,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                           ? "skills"
                           : "app"
                   }
+                  navigationRail={navigationRail}
                   onResizeMouseDown={handleResizeMouseDown}
                   isResizing={isSidebarResizing}
                   appRoutePath={appRoutePath}

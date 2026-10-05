@@ -2410,6 +2410,13 @@ retains the drawer, thread list, footer, resize handle, and hidden-body
 shortcut policy. While a provider calls `openCustomize()`, the host renders
 its customize editor in the region and keeps the provider mounted but hidden.
 
+While the default-off `navigationRail` experiment is on, wide viewports do not
+mount this slot: the host draws a persistent rail from the same navigation
+model (items, order, visibility, accessories, split drags) and keeps the
+customize editor. Registrations and `sidebar.navigationProvider` are kept, so
+the picked provider returns when the experiment is turned off. Compact
+viewports still mount the slot.
+
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
 bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
@@ -2489,7 +2496,9 @@ under Settings → Appearance → Header. The component receives `width`,
 `controlSize`, and `isCompactViewport`. The host clips content to the row,
 keeps the window drag region on macOS while interactive descendants opt out,
 hides the header while the navigation customize editor is open, and removes
-it with one toast on a crash. `--bb-sidebar-control-size` and
+it with one toast on a crash. While the `navigationRail` experiment is on,
+wide viewports do not mount this slot because New thread takes the header;
+`sidebar.headerProvider` is kept and applies again when the experiment is off. `--bb-sidebar-control-size` and
 `--bb-sidebar-control-icon-size` expose the header's control sizing.
 
 A plugin that moves its navigation into the header tracks whether its header

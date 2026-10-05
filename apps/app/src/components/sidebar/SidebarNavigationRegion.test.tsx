@@ -157,7 +157,22 @@ function RetainedOwner({ onMount }: { onMount: () => void }) {
   return <div data-testid="retained-owner">Retained thread list</div>;
 }
 
-function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
+function HostCustomizeTrigger() {
+  const { actions } = useSidebarNavigation();
+  return (
+    <button type="button" onClick={() => actions.openCustomize()}>
+      Host customize
+    </button>
+  );
+}
+
+function Harness({
+  onOwnerMount,
+  providerSuppressed = false,
+}: {
+  onOwnerMount: () => void;
+  providerSuppressed?: boolean;
+}) {
   const [isCustomizing, setCustomizing] = useState(false);
   const focusReturnTargetRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -180,7 +195,9 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
           onCustomizingChange={setCustomizing}
           focusReturnTargetRef={focusReturnTargetRef}
           onNavigate={vi.fn()}
+          providerSuppressed={providerSuppressed}
         />
+        {providerSuppressed ? <HostCustomizeTrigger /> : null}
       </SidebarNavigationModelProvider>
       <RetainedOwner onMount={onOwnerMount} />
       <LocationProbe />
@@ -192,6 +209,7 @@ function renderHarness(
   onOwnerMount = vi.fn(),
   initialEntries: string[] = ["/"],
   navigationProvider = "garden/navbar",
+  providerSuppressed = false,
 ) {
   const store = createStore();
   store.set(sidebarNavigationProviderAtom, navigationProvider);
@@ -199,7 +217,10 @@ function renderHarness(
     <Provider store={store}>
       <MemoryRouter initialEntries={initialEntries}>
         <SidebarProvider>
-          <Harness onOwnerMount={onOwnerMount} />
+          <Harness
+            onOwnerMount={onOwnerMount}
+            providerSuppressed={providerSuppressed}
+          />
         </SidebarProvider>
       </MemoryRouter>
     </Provider>,
@@ -506,6 +527,33 @@ describe("SidebarNavigationRegion", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Customize replacement" }),
     );
+  });
+
+  it("leaves the provider unmounted when the host draws navigation, yet still opens the editor", async () => {
+    registerFixture();
+    renderHarness(vi.fn(), ["/"], "garden/navbar", true);
+
+    const region = screen.getByTestId("sidebar-navigation-region");
+    expect(screen.queryByTestId("replacement-navigation")).toBeNull();
+    expect(region.hidden).toBe(true);
+    expect(capturedActions.current).toBeNull();
+
+    const trigger = screen.getByRole("button", { name: "Host customize" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-sidebar-navigation-customize-mode="true"]',
+        ),
+      ).not.toBeNull(),
+    );
+    expect(region.hidden).toBe(false);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+    expect(region.hidden).toBe(true);
+    expect(screen.queryByTestId("replacement-navigation")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("focuses the first navigation control when the opener is gone", async () => {
