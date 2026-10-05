@@ -110,7 +110,7 @@ export function requestHostProblem(
   return {
     status: 403,
     error:
-      "Host must be localhost, an IP address, or the hostname configured in BB_APP_URL",
+      'Host must be localhost, an IP address, or the hostname configured in BB_APP_URL. To allow your custom hostname, run "npx bb-app config set BB_APP_URL https://bb.example.com" on the machine running BB (including the desktop app), replacing https://bb.example.com with your app URL, then reload this page.',
   };
 }
 
