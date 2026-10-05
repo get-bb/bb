@@ -32,19 +32,36 @@ import type { CSSProperties, ReactNode } from "react";
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
 import { trackLandingEvent, useInitAnalytics } from "../landing/analytics";
+import adobeLogo from "../assets/company-logos/adobe.svg";
+import atlassianLogo from "../assets/company-logos/atlassian.svg";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
+import browserbaseLogo from "../assets/company-logos/browserbase.png";
+import bytedanceLogo from "../assets/company-logos/bytedance.svg";
+import customerIoLogo from "../assets/company-logos/customer-io.png";
 import datadogLogo from "../assets/company-logos/datadog.svg";
 import figmaLogo from "../assets/company-logos/figma.svg";
+import gustoLogo from "../assets/company-logos/gusto.png";
+import hubspotLogo from "../assets/company-logos/hubspot.svg";
+import jetbrainsLogo from "../assets/company-logos/jetbrains.svg";
+import justEatTakeawayLogo from "../assets/company-logos/just-eat-takeaway.svg";
+import kernelLogo from "../assets/company-logos/kernel.png";
 import linearLogo from "../assets/company-logos/linear.svg";
 import metaLogo from "../assets/company-logos/meta.svg";
+import microsoftLogo from "../assets/company-logos/microsoft.svg";
 import moodysLogo from "../assets/company-logos/moodys.png";
 import notionLogo from "../assets/company-logos/notion.png";
+import oracleLogo from "../assets/company-logos/oracle.svg";
 import ownerLogo from "../assets/company-logos/owner.png";
 import pendoLogo from "../assets/company-logos/pendo.svg";
 import renderLogo from "../assets/company-logos/render.svg";
 import shopifyLogo from "../assets/company-logos/shopify.svg";
 import shortcutLogo from "../assets/company-logos/shortcut.svg";
 import simileLogo from "../assets/company-logos/simile.svg";
+import statsigLogo from "../assets/company-logos/statsig.png";
+import stitchFixLogo from "../assets/company-logos/stitch-fix.png";
+import tencentLogo from "../assets/company-logos/tencent.png";
+import vercelLogo from "../assets/company-logos/vercel.svg";
+import zooxLogo from "../assets/company-logos/zoox.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
@@ -81,18 +98,35 @@ import {
 
 const COMPANY_PROOF = [
   ["Meta", metaLogo, "glyph"],
+  ["Microsoft", microsoftLogo, "glyph"],
   ["Figma", figmaLogo, "glyph"],
   ["Notion", notionLogo, "tile"],
+  ["Vercel", vercelLogo, "glyph"],
   ["Datadog", datadogLogo, "glyph"],
-  ["Owner.com", ownerLogo, "tile"],
-  ["Pendo", pendoLogo, "glyph"],
-  ["Blackstone", blackstoneLogo, "tile"],
-  ["Moody's", moodysLogo, "tile"],
-  ["Shortcut", shortcutLogo, "tile"],
-  ["Render", renderLogo, "glyph"],
-  ["Simile", simileLogo, "glyph"],
-  ["Linear", linearLogo, "glyph"],
   ["Shopify", shopifyLogo, "glyph"],
+  ["Adobe", adobeLogo, "glyph"],
+  ["Owner.com", ownerLogo, "tile"],
+  ["Linear", linearLogo, "glyph"],
+  ["HubSpot", hubspotLogo, "glyph"],
+  ["Pendo", pendoLogo, "glyph"],
+  ["ByteDance", bytedanceLogo, "glyph"],
+  ["Blackstone", blackstoneLogo, "tile"],
+  ["Atlassian", atlassianLogo, "glyph"],
+  ["Moody's", moodysLogo, "tile"],
+  ["JetBrains", jetbrainsLogo, "glyph"],
+  ["Shortcut", shortcutLogo, "tile"],
+  ["Oracle", oracleLogo, "glyph"],
+  ["Render", renderLogo, "glyph"],
+  ["Tencent", tencentLogo, "tile"],
+  ["Gusto", gustoLogo, "tile"],
+  ["Simile", simileLogo, "glyph"],
+  ["Browserbase", browserbaseLogo, "tile"],
+  ["Kernel", kernelLogo, "tile"],
+  ["Customer.io", customerIoLogo, "tile"],
+  ["Statsig", statsigLogo, "tile"],
+  ["Zoox", zooxLogo, "tile"],
+  ["Stitch Fix", stitchFixLogo, "tile"],
+  ["Just Eat Takeaway", justEatTakeawayLogo, "glyph"],
 ] as const;
 
 function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
