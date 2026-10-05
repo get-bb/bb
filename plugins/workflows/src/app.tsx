@@ -23,7 +23,7 @@ import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
   PromptStackCountSlot,
-  PromptStackHoverChevron,
+  PromptStackChevron,
   PromptStackPeekLayers,
   useDisclosureFocusHandoff,
 } from "@/components/ui/prompt-stack-disclosure";
@@ -688,7 +688,7 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           )}
         >
           <WorkflowComposerSummary run={run} />
-          <PromptStackHoverChevron isExpanded={expanded} />
+          <PromptStackChevron isExpanded={expanded} />
         </button>
         <button
           type="button"

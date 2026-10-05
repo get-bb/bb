@@ -34,12 +34,14 @@ describe("ThreadWorkflowCard", () => {
     });
     const body = document.getElementById(header.getAttribute("aria-controls")!);
     expect(body?.getAttribute("aria-labelledby")).toBe(header.id);
+    expect(header.querySelector('[data-icon="ChevronDown"]')).not.toBeNull();
 
     fireEvent.click(header);
     const collapse = screen.getByRole("button", {
       name: "Collapse workflow release-review",
     });
     expect(header.getAttribute("aria-expanded")).toBe("true");
+    expect(header.querySelector('[data-icon="ChevronDown"]')).toBeNull();
     expect(document.activeElement).toBe(collapse);
 
     fireEvent.click(collapse);
