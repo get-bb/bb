@@ -354,7 +354,7 @@ function Shelf({
     (builtIn
       ? "Made by the bb team and included with bb."
       : notable
-        ? "Hand-picked recent additions."
+        ? "Trending and recently added plugins."
         : undefined);
   const viewHref = builtIn
     ? `#${shelf.id}`
