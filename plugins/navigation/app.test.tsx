@@ -76,7 +76,7 @@ const ITEMS = [
   ),
   hostItem(
     "__bb__/search-threads",
-    "Search threads",
+    "Search",
     { kind: "search-threads" },
     { isVisible: false },
   ),

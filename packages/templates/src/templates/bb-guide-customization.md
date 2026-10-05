@@ -382,9 +382,10 @@ Plugin sidebar replacements own their filters.
 
 The palette's Filter uses Active and Archived independently of the
 sidebar, defaulting to Active. Its selection is browser-local, not configurable
-through SDK/CLI. Active includes threads with saved messages; Search threads retains
-the existing title and conversation search behavior. Archived fetches bounded recent rows only when
-selected.
+through SDK/CLI. Active includes threads with saved messages; Go to (`Mod+K`) retains
+the existing title and conversation search behavior. Once you type, it also lists
+matching plugin pages, settings sections, and the Plugins and Skills pages under
+Places. Archived fetches bounded recent rows only when selected.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, Sort by, and Filter. Organize selects By project,

@@ -302,6 +302,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           >
             <ThreadSearchPaletteMode
               currentThreadId={threadId}
+              installedPlugins={installedPlugins}
               onExit={exitMode}
               runAfterClose={runAfterClose}
             />

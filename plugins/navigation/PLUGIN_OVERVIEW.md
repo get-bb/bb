@@ -2,7 +2,7 @@ The sidebar navigation, as a plugin.
 
 ## What you get
 
-- **New thread**, **Search threads**, **Plugins**, **Skills**, and a row for every plugin panel.
+- **New thread**, **Search**, **Plugins**, **Skills**, and a row for every plugin panel.
 - Drag plugin rows to reorder them, hide any row, and reach hidden rows from **More**.
 - Open panels in a split, see where they are open, and read each panel's live count.
 

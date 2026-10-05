@@ -2403,7 +2403,7 @@ renders in the same footer row.
 ## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the bounded sidebar navigation controls for New
-thread, Search threads, Plugins, Skills, and plugin panel destinations. The
+thread, Search, Plugins, Skills, and plugin panel destinations. The
 component receives `isCompactViewport` and `experimental_Original`; it reads
 items and host actions through `experimental_useSidebarNavigation()`. BB
 retains the drawer, thread list, footer, resize handle, and hidden-body

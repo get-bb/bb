@@ -56,6 +56,18 @@ import {
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import { readPaletteVisits } from "@/lib/command-palette/palette-visits";
 import {
+  buildPalettePlaces,
+  matchPalettePlaces,
+  PALETTE_PLACE_KIND_LABELS,
+  type PalettePlaceMatch,
+} from "@/lib/command-palette/palette-places";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import {
+  buildPluginSettingsEntries,
+  type PluginSettingsCandidate,
+} from "@/components/settings/plugin-settings-entries";
+import { useSettingsNavSections } from "@/components/settings/settings-nav";
+import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
   PaletteShortcut,
@@ -66,21 +78,33 @@ const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
 
 const NO_MATCHING_THREADS_MESSAGE = "No matching threads";
 
-interface ThreadSearchOption {
-  lifecycle: ThreadArchiveFilter;
-  row: PaletteThreadSearchRow | null;
-}
+type PaletteGroup = ThreadArchiveFilter | "places";
+
+const PALETTE_GROUPS: readonly { value: PaletteGroup; label: string }[] = [
+  THREAD_LIFECYCLE_OPTIONS[0],
+  { value: "places", label: "Places" },
+  THREAD_LIFECYCLE_OPTIONS[1],
+];
+
+type ThreadSearchOption =
+  | { type: "thread"; group: ThreadArchiveFilter; row: PaletteThreadSearchRow }
+  | { type: "place"; group: "places"; match: PalettePlaceMatch }
+  | { type: "more"; group: PaletteGroup };
 
 function optionKey(option: ThreadSearchOption): string {
-  return option.row?.id ?? `more:${option.lifecycle}`;
+  if (option.type === "thread") return option.row.id;
+  if (option.type === "place") return `place:${option.match.place.id}`;
+  return `more:${option.group}`;
 }
 
 export function ThreadSearchPaletteMode({
   currentThreadId,
+  installedPlugins,
   onExit,
   runAfterClose,
 }: {
   currentThreadId: string | null;
+  installedPlugins: readonly PluginSettingsCandidate[];
   onExit: () => void;
   runAfterClose: (run: () => void) => void;
 }) {
@@ -103,7 +127,7 @@ export function ThreadSearchPaletteMode({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [followPreviousThread, setFollowPreviousThread] = useState(true);
-  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<PaletteGroup[]>([]);
   const filterKey = lifecycles.join(",");
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
   if (previousFilterKey !== filterKey) {
@@ -167,30 +191,68 @@ export function ThreadSearchPaletteMode({
       visits,
     ],
   );
+  const pluginSlots = usePluginSlots();
+  const settingsSections = useSettingsNavSections(pluginSlots.fileOpeners);
+  const places = useMemo(
+    () =>
+      buildPalettePlaces({
+        navigate: (path) => navigate(path),
+        panels: pluginSlots.navPanels,
+        pluginSettingsEntries: buildPluginSettingsEntries({
+          installedPlugins,
+          settingsSections: pluginSlots.settingsSections,
+        }),
+        settingsSections,
+      }),
+    [
+      installedPlugins,
+      navigate,
+      pluginSlots.navPanels,
+      pluginSlots.settingsSections,
+      settingsSections,
+    ],
+  );
+  const placeMatches = useMemo(
+    () => matchPalettePlaces(places, trimmedQuery),
+    [places, trimmedQuery],
+  );
   const options = useMemo(() => {
-    return lifecycles.flatMap((lifecycle) => {
-      const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
-      const visible = expandedGroups.includes(lifecycle)
-        ? rows
-        : rows.slice(
+    return PALETTE_GROUPS.flatMap(({ value: group }): ThreadSearchOption[] => {
+      const all: ThreadSearchOption[] =
+        group === "places"
+          ? placeMatches.map((match): ThreadSearchOption => ({
+              type: "place",
+              group,
+              match,
+            }))
+          : lifecycles.includes(group)
+            ? result.rows
+                .filter((row) => row.lifecycle === group)
+                .map((row): ThreadSearchOption => ({
+                  type: "thread",
+                  group,
+                  row,
+                }))
+            : [];
+      const visible = expandedGroups.includes(group)
+        ? all
+        : all.slice(
             0,
-            lifecycle === "archived" && lifecycles.includes("active")
+            group === "archived" && lifecycles.includes("active")
               ? ARCHIVED_BESIDE_ACTIVE_LIMIT
               : GROUP_LIMIT,
           );
-      const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
-        lifecycle,
-        row,
-      }));
-      if (visible.length < rows.length)
-        groupOptions.push({ row: null, lifecycle });
-      return groupOptions;
+      return visible.length < all.length
+        ? [...visible, { type: "more", group }]
+        : visible;
     });
-  }, [expandedGroups, lifecycles, result]);
+  }, [expandedGroups, lifecycles, placeMatches, result]);
   const previousThreadIndex =
     followPreviousThread && result.previousThreadId !== null
       ? options.findIndex(
-          (option) => option.row?.threadId === result.previousThreadId,
+          (option) =>
+            option.type === "thread" &&
+            option.row.threadId === result.previousThreadId,
         )
       : -1;
   const retainedIndex = options.findIndex(
@@ -233,7 +295,9 @@ export function ThreadSearchPaletteMode({
     !hasLoadError;
   const activeDescendantId =
     activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
-  const activeRow = options[activeIndex]?.row;
+  const activeOption = options[activeIndex];
+  const activeRow =
+    activeOption?.type === "thread" ? activeOption.row : undefined;
   const canSplit =
     activeRow != null &&
     !isCompact &&
@@ -257,16 +321,21 @@ export function ThreadSearchPaletteMode({
   }, [activeIndex, options]);
 
   const selectOption = useCallback(
-    ({ row, lifecycle }: ThreadSearchOption, index: number, split = false) => {
-      if (row === null) {
+    (option: ThreadSearchOption, index: number, split = false) => {
+      if (option.type === "more") {
         scrollOnNextHighlightRef.current = true;
         setFollowPreviousThread(false);
-        setExpandedGroups((current) => [...current, lifecycle]);
+        setExpandedGroups((current) => [...current, option.group]);
         setHighlightedIndex(index);
         setHighlightedKey(null);
         inputRef.current?.focus();
         return;
       }
+      if (option.type === "place") {
+        runAfterClose(option.match.place.run);
+        return;
+      }
+      const { row } = option;
       runAfterClose(() => {
         const state =
           row.messageSeq === null
@@ -348,7 +417,7 @@ export function ThreadSearchPaletteMode({
       threadSearch.isDebouncing ||
       threadSearch.isLoading);
   let emptyMessage: string | null = null;
-  if (result.rows.length === 0) {
+  if (result.rows.length === 0 && placeMatches.length === 0) {
     emptyMessage =
       isLoading || isRecentLoading
         ? result.isRecent
@@ -371,7 +440,7 @@ export function ThreadSearchPaletteMode({
           ? `Use ${splitModifier}+Enter to open in split. Use Escape to return to commands.`
           : "Use Escape to return to commands."
       }
-      inputLabel="Search threads"
+      inputLabel="Go to"
       inputAccessory={
         <div className="max-w-[45%] shrink-0">
           <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
@@ -397,18 +466,18 @@ export function ThreadSearchPaletteMode({
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
-      placeholder="Search title, project, or message…"
+      placeholder="Search threads, pages, settings…"
       value={query}
     >
       {emptyMessage === null ? (
-        THREAD_LIFECYCLE_OPTIONS.map(({ value: lifecycle, label }) => {
-          if (!result.rows.some((row) => row.lifecycle === lifecycle)) {
+        PALETTE_GROUPS.map(({ value: group, label }) => {
+          if (!options.some((option) => option.group === group)) {
             return null;
           }
-          const labelId = `${optionIdPrefix}-${lifecycle}-label`;
+          const labelId = `${optionIdPrefix}-${group}-label`;
           return (
             <div
-              key={lifecycle}
+              key={group}
               role="group"
               aria-labelledby={labelId}
               className="not-last:mb-2"
@@ -417,12 +486,12 @@ export function ThreadSearchPaletteMode({
                 {label}
               </div>
               {options.map((option, index) =>
-                option.lifecycle !== lifecycle ? null : (
+                option.group !== group ? null : (
                   <div
                     key={
-                      option.row === null
-                        ? `more:${lifecycle}`
-                        : `${option.row.id}:${option.row.primaryText}`
+                      option.type === "thread"
+                        ? `${option.row.id}:${option.row.primaryText}`
+                        : optionKey(option)
                     }
                     className={cn(
                       "flex min-w-0 items-center rounded-md",
@@ -435,21 +504,25 @@ export function ThreadSearchPaletteMode({
                       role="option"
                       aria-selected={index === activeIndex}
                       aria-label={
-                        option.row !== null
+                        option.type !== "more"
                           ? undefined
-                          : lifecycle === "archived"
+                          : group === "archived"
                             ? "Show more archived threads"
-                            : "Show more threads"
+                            : group === "places"
+                              ? "Show more places"
+                              : "Show more threads"
                       }
                       className={cn(
                         "flex min-w-0 flex-1 cursor-pointer items-center rounded-md px-2 py-1.5",
-                        option.row === null
+                        option.type === "more"
                           ? "gap-1.5 text-xs text-subtle-foreground"
-                          : "min-h-11 gap-3 text-left text-sm",
+                          : option.type === "place"
+                            ? "gap-3 text-left text-sm"
+                            : "min-h-11 gap-3 text-left text-sm",
                       )}
                       onClick={() => selectOption(option, index)}
                     >
-                      {option.row === null ? (
+                      {option.type === "more" ? (
                         <>
                           Show more
                           <Icon
@@ -458,6 +531,8 @@ export function ThreadSearchPaletteMode({
                             aria-hidden
                           />
                         </>
+                      ) : option.type === "place" ? (
+                        <PlacePaletteRow match={option.match} />
                       ) : (
                         <ThreadSearchPaletteRow row={option.row} />
                       )}
@@ -491,6 +566,26 @@ export function ThreadSearchPaletteMode({
         </p>
       )}
     </PaletteShell>
+  );
+}
+
+function PlacePaletteRow({ match }: { match: PalettePlaceMatch }) {
+  return (
+    <>
+      <Icon
+        name={match.place.icon}
+        className="size-4 shrink-0 text-subtle-foreground"
+        aria-hidden
+      />
+      <ThreadTitle
+        title={match.place.title}
+        highlightRanges={match.highlightRanges}
+        className="min-w-0 flex-1 text-foreground"
+      />
+      <span className="shrink-0 text-xs text-subtle-foreground">
+        {PALETTE_PLACE_KIND_LABELS[match.place.kind]}
+      </span>
+    </>
   );
 }
 

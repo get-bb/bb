@@ -349,7 +349,7 @@ describe("SidebarNavigationRegion", () => {
     expect(mocks.onSearchThreads).toHaveBeenCalledOnce();
     expect(mocks.dispatch).toHaveBeenCalledWith("thread.search", null);
     expect(
-      screen.queryByRole("combobox", { name: "Search threads" }),
+      screen.queryByRole("combobox", { name: "Go to" }),
     ).toBeNull();
     expect(screen.getByTestId("replacement-navigation")).toBeDefined();
   });

@@ -541,7 +541,7 @@ describe("CommandPalette", () => {
     };
     renderPalette({ layout: splitLayout });
     openThreadSearch();
-    await screen.findByRole("combobox", { name: "Search threads" });
+    await screen.findByRole("combobox", { name: "Go to" });
     fireEvent.change(searchField(), { target: { value: "match" } });
     fireEvent.keyDown(searchField(), { key: "End" });
     expect(selectedOption()?.textContent).toContain("Show more");
@@ -580,7 +580,7 @@ describe("CommandPalette", () => {
     };
     renderPalette({ layout: splitLayout, lifecycles: ["archived"] });
     openThreadSearch();
-    await screen.findByRole("combobox", { name: "Search threads" });
+    await screen.findByRole("combobox", { name: "Go to" });
     fireEvent.change(searchField(), { target: { value: "matching" } });
     fireEvent.keyDown(searchField(), { key: "Enter", metaKey: true });
     await waitFor(() => expect(openThreadInSplitMock).toHaveBeenCalledTimes(1));
@@ -622,9 +622,7 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(searchField()).toBeTruthy());
     openThreadSearch();
     await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("combobox", { name: "Go to" })).toBeTruthy(),
     );
     openPalette();
     await waitFor(() =>
@@ -695,7 +693,7 @@ describe("CommandPalette", () => {
     expect(titles?.[0]).toContain("New thread");
     expect(titles).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("Search threads"),
+        expect.stringContaining("Go to"),
         expect.stringContaining("General settings"),
         expect.stringContaining("Open terminal"),
       ]),
@@ -778,7 +776,7 @@ describe("CommandPalette", () => {
     const threadRows = within(bucketGroup("Threads")).getAllByRole("option");
     expect(threadRows.map((row) => row.textContent)).toEqual([
       expect.stringContaining("New thread"),
-      expect.stringContaining("Search threads"),
+      expect.stringContaining("Go to"),
       expect.stringContaining("Next thread"),
     ]);
     for (const row of threadRows) {
@@ -788,7 +786,7 @@ describe("CommandPalette", () => {
     expectClasses(searchThreadsRow.querySelector("kbd"), "bg-state-hover/50");
     expectNoClasses(searchThreadsRow.querySelector("kbd"), "opacity-60");
     expectAttribute(searchThreadsRow, "data-palette-action-kind", "drill-in");
-    expectText(searchThreadsRow, "Search threads…");
+    expectText(searchThreadsRow, "Go to…");
     expect(
       searchThreadsRow.querySelector('[data-icon="ChevronRight"]'),
     ).toBeNull();
@@ -818,9 +816,7 @@ describe("CommandPalette", () => {
     renderPalette();
     const event = openThreadSearch();
     await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("combobox", { name: "Go to" })).toBeTruthy(),
     );
     expect(event.defaultPrevented).toBe(true);
     const modeSelect = screen.getByRole("button", { name: "Threads search" });
@@ -836,7 +832,7 @@ describe("CommandPalette", () => {
     expect(screen.queryByRole("button", { name: "Open in split" })).toBeNull();
     expect(document.querySelector("[data-palette-footer]")).toBeNull();
     const threadInput = screen.getByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     const threadDescriptionId = threadInput.getAttribute("aria-describedby");
     expect(threadDescriptionId).not.toBeNull();
@@ -861,9 +857,7 @@ describe("CommandPalette", () => {
     renderPalette();
     openThreadSearch();
     await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("combobox", { name: "Go to" })).toBeTruthy(),
     );
 
     const clearMode = screen.getByRole("button", {
@@ -898,7 +892,7 @@ describe("CommandPalette", () => {
 
     const searchCommand = within(bucketGroup("Threads"))
       .getAllByRole("option")
-      .find((row) => row.textContent?.includes("Search threads"));
+      .find((row) => row.textContent?.includes("Go to"));
     fireEvent.click(searchCommand as HTMLElement);
     const clearAfterCommand = await screen.findByRole("button", {
       name: "Return to commands",
@@ -922,7 +916,7 @@ describe("CommandPalette", () => {
     async (query) => {
       renderPalette();
       openThreadSearch();
-      await screen.findByRole("combobox", { name: "Search threads" });
+      await screen.findByRole("combobox", { name: "Go to" });
       fireEvent.change(searchField(), { target: { value: query } });
       const message = await screen.findByText(
         query === "" ? "No threads" : "No matching threads",
@@ -947,9 +941,7 @@ describe("CommandPalette", () => {
       fireEvent.keyDown(searchField(), { key: "Enter" });
       fireEvent.keyDown(searchField(), { key: "Enter", metaKey: true });
       fireEvent.keyDown(searchField(), { key: "Enter", ctrlKey: true });
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy();
+      expect(screen.getByRole("combobox", { name: "Go to" })).toBeTruthy();
       expect(testState.calls).toEqual([]);
       expect(routeNavigateMock).not.toHaveBeenCalled();
     },
@@ -994,7 +986,7 @@ describe("CommandPalette", () => {
     renderPalette();
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
 
     fireEvent.keyDown(input, { key: "Backspace" });
@@ -1031,7 +1023,7 @@ describe("CommandPalette", () => {
     };
     renderPalette();
     openThreadSearch();
-    await screen.findByRole("combobox", { name: "Search threads" });
+    await screen.findByRole("combobox", { name: "Go to" });
     const results = screen.getByRole("listbox", { name: "Threads" });
     const rows = within(results).getAllByRole("option");
     expect(rows.map((row) => row.textContent)).toEqual([
@@ -1066,7 +1058,7 @@ describe("CommandPalette", () => {
     const { store } = renderPalette();
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expectText(selectedOption(), "Title selected");
@@ -1088,7 +1080,7 @@ describe("CommandPalette", () => {
     modeState.activeRecents = [makeThread("active")];
     const { store } = renderPalette();
     openThreadSearch();
-    await screen.findByRole("combobox", { name: "Search threads" });
+    await screen.findByRole("combobox", { name: "Go to" });
     const trigger = screen.getByRole("button", {
       name: "Filter: Active",
     });
@@ -1109,9 +1101,7 @@ describe("CommandPalette", () => {
     expect(routeNavigateMock).not.toHaveBeenCalled();
     fireEvent.keyDown(archived, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    expect(
-      screen.getByRole("combobox", { name: "Search threads" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Go to" })).toBeTruthy();
   });
 
   it.each(["", "match"])(
@@ -1141,7 +1131,7 @@ describe("CommandPalette", () => {
       const { store } = renderPalette({ lifecycles: ["active", "archived"] });
       openThreadSearch();
       const input = await screen.findByRole("combobox", {
-        name: "Search threads",
+        name: "Go to",
       });
       fireEvent.change(input, { target: { value: query } });
       expect(screen.queryByRole("group", { name: "Drafts" })).toBeNull();
@@ -1205,7 +1195,7 @@ describe("CommandPalette", () => {
     renderPalette({ lifecycles: ["active", "archived"] });
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     fireEvent.change(input, { target: { value: "match" } });
     const results = screen.getByRole("listbox", { name: "Threads" });
@@ -1266,7 +1256,7 @@ describe("CommandPalette", () => {
     renderPalette({ lifecycles: ["active", "archived"] });
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     expect(screen.getAllByRole("option")).toHaveLength(7);
     expect(screen.getByText("Show more")).toBeTruthy();
@@ -1383,7 +1373,7 @@ describe("CommandPalette", () => {
     const { rerenderPalette } = renderPalette();
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     fireEvent.change(input, { target: { value: "f" } });
     expect(optionTitles()).toHaveLength(6);
@@ -1450,7 +1440,7 @@ describe("CommandPalette", () => {
     renderPalette();
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     fireEvent.change(input, { target: { value: "fix" } });
     expect(optionTitles()).toEqual([expect.stringContaining("Fix it")]);
@@ -1469,7 +1459,7 @@ describe("CommandPalette", () => {
       renderPalette({ lifecycles: [...lifecycles] });
       openThreadSearch();
       const input = await screen.findByRole("combobox", {
-        name: "Search threads",
+        name: "Go to",
       });
       fireEvent.change(input, { target: { value: "z" } });
       await screen.findByText(message);
@@ -1496,7 +1486,7 @@ describe("CommandPalette", () => {
       renderPalette({ lifecycles: [lifecycle] });
       openThreadSearch();
       const input = await screen.findByRole("combobox", {
-        name: "Search threads",
+        name: "Go to",
       });
       fireEvent.change(input, { target: { value: "match" } });
       expect(screen.getAllByRole("group")).toHaveLength(1);
@@ -1537,7 +1527,7 @@ describe("CommandPalette", () => {
     renderPalette({ lifecycles: ["active", "archived"] });
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     fireEvent.change(input, { target: { value: "match" } });
 
@@ -1606,7 +1596,7 @@ describe("CommandPalette", () => {
       renderPalette();
       openThreadSearch();
       const input = await screen.findByRole("combobox", {
-        name: "Search threads",
+        name: "Go to",
       });
       fireEvent.change(input, { target: { value: query } });
       const results = screen.getByRole("listbox", { name: "Threads" });
@@ -1680,7 +1670,7 @@ describe("CommandPalette", () => {
     setPluginThreadRowStatus("waiting", "checks", pluginStatus);
     renderPalette();
     openThreadSearch();
-    await screen.findByRole("combobox", { name: "Search threads" });
+    await screen.findByRole("combobox", { name: "Go to" });
     const row = screen.getByRole("option", { name: /Title plugin/ });
     expect(within(row).queryByRole("img")).toBeNull();
     act(() => setPluginThreadRowStatus("plugin", "checks", pluginStatus));
@@ -1731,7 +1721,7 @@ describe("CommandPalette", () => {
     renderPalette({ lifecycles: ["archived"] });
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
-      name: "Search threads",
+      name: "Go to",
     });
     fireEvent.change(input, { target: { value: "matching" } });
     const results = screen.getByRole("listbox", { name: "Threads" });
@@ -2290,5 +2280,98 @@ describe("CommandPalette", () => {
     expectClasses(screen.getByText("No matching commands"), "px-3", "py-4");
     fireEvent.keyDown(searchField(), { key: "Enter" });
     expect(testState.calls).toEqual([]);
+  });
+});
+
+function registerAutomationsPage() {
+  setPluginSlotRegistrations(
+    "automations",
+    makePluginRegistrationSet({
+      navPanels: [
+        {
+          id: "automations",
+          title: "Automations",
+          icon: "Calendar",
+          path: "automations",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+    }),
+  );
+}
+
+const groupNames = () =>
+  screen
+    .getAllByRole("group")
+    .map(
+      (group) =>
+        document.getElementById(group.getAttribute("aria-labelledby") ?? "")
+          ?.textContent,
+    );
+
+describe("Go to places", () => {
+  it("lists matching pages once typing and navigates once on Enter", async () => {
+    registerAutomationsPage();
+    modeState.activeRecents = [makeThread("plain")];
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", { name: "Go to" });
+    expect(input.getAttribute("placeholder")).toBe(
+      "Search threads, pages, settings…",
+    );
+    expect(screen.queryByRole("group", { name: "Places" })).toBeNull();
+    expect(screen.queryByText("Automations")).toBeNull();
+
+    fireEvent.change(input, { target: { value: "autom" } });
+    const places = await screen.findByRole("group", { name: "Places" });
+    const row = within(places).getAllByRole("option")[0] as HTMLElement;
+    expect(row.textContent).toBe("AutomationsPage");
+    expect(row.querySelector("mark")?.textContent).toBe("Autom");
+    expect(row.querySelector('[data-icon="Calendar"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Open in split" })).toBeNull();
+
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(routeNavigateMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(routeNavigateMock).toHaveBeenCalledWith(
+      "/plugins/automations/automations",
+    );
+    expect(openThreadInSplitMock).not.toHaveBeenCalled();
+  });
+
+  it("places settings before Archived even with the Archived-only filter", async () => {
+    modeState.activeRecents = [makeThread("keys", { title: "Keyboard bug" })];
+    modeState.searchResponse = {
+      active: { total: 0, results: [] },
+      archived: {
+        total: 1,
+        results: [
+          {
+            thread: makeThread("old", {
+              title: "Keyboard notes",
+              archivedAt: 1,
+            }),
+            matches: [],
+          },
+        ],
+      },
+    };
+    renderPalette({ lifecycles: ["archived"] });
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", { name: "Go to" });
+    fireEvent.change(input, { target: { value: "keyboard" } });
+    await screen.findByRole("group", { name: "Places" });
+    expect(groupNames()).toEqual(["Places", "Archived"]);
+    const setting = within(
+      screen.getByRole("group", { name: "Places" }),
+    ).getByRole("option");
+    expect(setting.textContent).toBe("KeyboardSetting");
+
+    fireEvent.click(setting);
+    await waitFor(() => expect(routeNavigateMock).toHaveBeenCalledTimes(1));
+    expect(routeNavigateMock).toHaveBeenCalledWith("/settings/keyboard");
   });
 });

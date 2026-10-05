@@ -321,7 +321,7 @@ describe("guide fixture boundaries", () => {
     expect(pluginRow).toContain("Your panel");
     expect(pluginRow).not.toContain("Plugins");
     expect(pluginRow).not.toContain("Skills");
-    expect(markup).not.toContain('class="sr-only">Search threads');
+    expect(markup).not.toContain('class="sr-only">Search<');
   });
 
   it("grows the app window within capped viewport-fit bounds while retaining loose timeline spacing", () => {

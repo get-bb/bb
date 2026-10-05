@@ -391,7 +391,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
 
     expect(visibleRowKeys()).toEqual(DEFAULT_VISIBLE_HOST_KEYS);
     expect(await openMoreMenu()).toEqual([
-      "Search threads",
+      "Search",
       "Customize sidebar",
     ]);
   });
@@ -566,7 +566,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     fireEvent.click(moreTrigger());
     expect(await screen.findByRole("button", { name: "Docs" })).not.toBeNull();
     expect(menuEntryLabels()).toEqual([
-      "Search threads",
+      "Search",
       "Docs",
       "Customize sidebar",
     ]);
@@ -1132,7 +1132,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
       ...labels.map((_, index) => `plugin-${index}/main`),
     ]);
     expect(await openMoreMenu()).toEqual([
-      "Search threads",
+      "Search",
       "Customize sidebar",
     ]);
   });
@@ -1179,7 +1179,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
 
     const items = await openMoreMenu();
     expect(trigger.getAttribute("data-state")).toBe("open");
-    expect(items).toEqual(["Search threads", "Customize sidebar"]);
+    expect(items).toEqual(["Search", "Customize sidebar"]);
     expect(
       screen
         .getByRole("button", { name: "Customize sidebar" })
@@ -1188,7 +1188,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
         ),
     ).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Search threads" }));
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
     expect(mocks.onSearchThreads).toHaveBeenCalledOnce();
     expect(mocks.dispatch).toHaveBeenCalledWith("thread.search", null);
@@ -1371,7 +1371,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
         storedOrder: ["docs/main", ...HOST_KEYS],
         storedVisibleKeys: [],
       });
-      const title = kind === "plugin" ? "Docs" : "Search threads";
+      const title = kind === "plugin" ? "Docs" : "Search";
       const key = kind === "plugin" ? "docs/main" : "__bb__/search-threads";
 
       await openMoreMenu();
@@ -1457,7 +1457,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     expect(screen.queryByRole("button", { name: "One" })).toBeNull();
 
     const items = await openMoreMenu();
-    expect(items).toEqual(["Search threads", "One", "Customize sidebar"]);
+    expect(items).toEqual(["Search", "One", "Customize sidebar"]);
     fireEvent.click(screen.getByRole("button", { name: "One" }));
 
     expect(screen.getByTestId("location-path").textContent).toBe(
@@ -1669,7 +1669,7 @@ describe("Navigation plugin in the sidebar navigation region", () => {
     await openCustomizeFromMore();
     expect(customizeRows().map((row) => row.textContent?.trim())).toEqual([
       "Four",
-      "Search threads",
+      "Search",
       "Two",
       "New thread",
       "One",
