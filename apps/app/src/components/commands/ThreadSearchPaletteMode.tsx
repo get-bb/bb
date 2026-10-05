@@ -54,11 +54,17 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
-import { readPaletteVisits } from "@/lib/command-palette/palette-visits";
 import {
+  readPaletteVisits,
+  recordPaletteVisit,
+} from "@/lib/command-palette/palette-visits";
+import {
+  buildPaletteGroupingPlaces,
   buildPalettePlaces,
+  isThreadInGrouping,
   matchPalettePlaces,
   PALETTE_PLACE_KIND_LABELS,
+  type PaletteGrouping,
   type PalettePlaceMatch,
 } from "@/lib/command-palette/palette-places";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -77,6 +83,7 @@ const GROUP_LIMIT = 6;
 const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
 
 const NO_MATCHING_THREADS_MESSAGE = "No matching threads";
+const NO_PROJECT_NAMES: ReadonlyMap<string, string> = new Map();
 
 type PaletteGroup = ThreadArchiveFilter | "places";
 
@@ -119,9 +126,15 @@ export function ThreadSearchPaletteMode({
   const [selectedLifecycles, setLifecycles] = useAtom(
     paletteThreadLifecyclesAtom,
   );
-  const lifecycles = useMemo(
+  const [grouping, setGrouping] = useState<PaletteGrouping | null>(null);
+  const filterLifecycles = useMemo(
     () => normalizeThreadLifecycleFilter(selectedLifecycles),
     [selectedLifecycles],
+  );
+  const lifecycles = useMemo(
+    (): readonly ThreadArchiveFilter[] =>
+      grouping === null ? filterLifecycles : ["active"],
+    [filterLifecycles, grouping],
   );
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -137,12 +150,13 @@ export function ThreadSearchPaletteMode({
   const [now] = useState(() => Date.now());
   const [visits] = useState(readPaletteVisits);
   const navigation = useSidebarNavigation();
-  const threadSearch = useThreadSearch({ active: true, query });
+  const threadSearch = useThreadSearch({ active: grouping === null, query });
   const trimmedQuery = query.trim();
   const archived = usePaletteRecentArchivedThreads({
     enabled: trimmedQuery.length === 0 && lifecycles.includes("archived"),
   });
-  const searchable = hasThreadSearchableQuery(trimmedQuery);
+  const searchable =
+    grouping === null && hasThreadSearchableQuery(trimmedQuery);
   const searchResultsAreCurrent =
     !searchable || threadSearch.debouncedQuery === trimmedQuery;
 
@@ -155,16 +169,25 @@ export function ThreadSearchPaletteMode({
     ].map((project) => [project.id, project.name] as const);
     return new Map(entries);
   }, [navigation.data]);
-  const recentThreads = useMemo(
+  const activeThreads = useMemo(
     () => [
-      ...[
-        ...(navigation.data?.projects.flatMap((project) => project.threads) ??
-          []),
-        ...(navigation.data?.personalProject.threads ?? []),
-      ],
-      ...(lifecycles.includes("archived") ? (archived.data ?? []) : []),
+      ...(navigation.data?.projects.flatMap((project) => project.threads) ??
+        []),
+      ...(navigation.data?.personalProject.threads ?? []),
     ],
-    [archived.data, lifecycles, navigation.data],
+    [navigation.data],
+  );
+  const recentThreads = useMemo(
+    () =>
+      grouping === null
+        ? [
+            ...activeThreads,
+            ...(lifecycles.includes("archived") ? (archived.data ?? []) : []),
+          ]
+        : activeThreads.filter((thread) =>
+            isThreadInGrouping(thread, grouping),
+          ),
+    [activeThreads, archived.data, grouping, lifecycles],
   );
   const result = useMemo(
     () =>
@@ -172,15 +195,17 @@ export function ThreadSearchPaletteMode({
         currentThreadId,
         lifecycles,
         now,
-        projectNamesById,
+        projectNamesById:
+          grouping?.kind === "project" ? NO_PROJECT_NAMES : projectNamesById,
         query,
         recentThreads,
-        searchResponse: threadSearch.data,
+        searchResponse: grouping === null ? threadSearch.data : undefined,
         searchResultsAreCurrent,
         visits,
       }),
     [
       currentThreadId,
+      grouping,
       lifecycles,
       now,
       projectNamesById,
@@ -212,9 +237,24 @@ export function ThreadSearchPaletteMode({
       settingsSections,
     ],
   );
+  const groupingPlaces = useMemo(
+    () =>
+      buildPaletteGroupingPlaces({
+        projects: navigation.data?.projects ?? [],
+        personalProject: navigation.data?.personalProject ?? null,
+        sections: navigation.data?.sections ?? [],
+        hasPinnedThreads: activeThreads.some(
+          (thread) => thread.pinnedAt !== null,
+        ),
+      }),
+    [activeThreads, navigation.data],
+  );
   const placeMatches = useMemo(
-    () => matchPalettePlaces(places, trimmedQuery),
-    [places, trimmedQuery],
+    () =>
+      grouping === null
+        ? matchPalettePlaces([...places, ...groupingPlaces], trimmedQuery)
+        : [],
+    [grouping, groupingPlaces, places, trimmedQuery],
   );
   const options = useMemo(() => {
     return PALETTE_GROUPS.flatMap(({ value: group }): ThreadSearchOption[] => {
@@ -320,6 +360,17 @@ export function ThreadSearchPaletteMode({
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, options]);
 
+  const resetView = useCallback((nextGrouping: PaletteGrouping | null) => {
+    setGrouping(nextGrouping);
+    setQuery("");
+    setFollowPreviousThread(true);
+    setExpandedGroups([]);
+    setHighlightedIndex(0);
+    setHighlightedKey(null);
+    if (listRef.current !== null) listRef.current.scrollTop = 0;
+    inputRef.current?.focus();
+  }, []);
+
   const selectOption = useCallback(
     (option: ThreadSearchOption, index: number, split = false) => {
       if (option.type === "more") {
@@ -332,7 +383,13 @@ export function ThreadSearchPaletteMode({
         return;
       }
       if (option.type === "place") {
-        runAfterClose(option.match.place.run);
+        const { place } = option.match;
+        if (place.grouping === null) {
+          runAfterClose(place.run);
+          return;
+        }
+        recordPaletteVisit(place.grouping.kind, place.grouping.id);
+        resetView(place.grouping);
         return;
       }
       const { row } = option;
@@ -364,7 +421,7 @@ export function ThreadSearchPaletteMode({
         );
       });
     },
-    [isCompact, navigate, runAfterClose, store],
+    [isCompact, navigate, resetView, runAfterClose, store],
   );
 
   const handleInputKeyDown = useCallback(
@@ -373,7 +430,8 @@ export function ThreadSearchPaletteMode({
       if (event.key === "Backspace" && query.length === 0) {
         event.preventDefault();
         event.stopPropagation();
-        onExit();
+        if (grouping === null) onExit();
+        else resetView(null);
         return;
       }
       if (event.key === "Escape") {
@@ -408,7 +466,16 @@ export function ThreadSearchPaletteMode({
         selectOption(option, activeIndex, event.metaKey || event.ctrlKey);
       }
     },
-    [activeIndex, highlightOption, onExit, options, query.length, selectOption],
+    [
+      activeIndex,
+      grouping,
+      highlightOption,
+      onExit,
+      options,
+      query.length,
+      resetView,
+      selectOption,
+    ],
   );
 
   const isLoading =
@@ -442,21 +509,36 @@ export function ThreadSearchPaletteMode({
       }
       inputLabel="Go to"
       inputAccessory={
-        <div className="max-w-[45%] shrink-0">
-          <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
-        </div>
+        grouping === null ? (
+          <div className="max-w-[45%] shrink-0">
+            <ThreadLifecycleFilter
+              value={filterLifecycles}
+              onChange={setLifecycles}
+            />
+          </div>
+        ) : null
       }
       inputRef={inputRef}
       listId={listId}
       listLabel="Threads"
       listRef={listRef}
-      modeChip={{
-        icon: "Search",
-        label: "Threads",
-        clearLabel: "Return to commands",
-        onClear: onExit,
-        hideShortcut: isCompact,
-      }}
+      modeChip={
+        grouping === null
+          ? {
+              icon: "Search",
+              label: "Threads",
+              clearLabel: "Return to commands",
+              onClear: onExit,
+              hideShortcut: isCompact,
+            }
+          : {
+              icon: grouping.icon,
+              label: grouping.name,
+              clearLabel: "Remove filter",
+              onClear: () => resetView(null),
+              hideShortcut: true,
+            }
+      }
       onInputChange={(value) => {
         setQuery(value);
         setFollowPreviousThread(value.trim().length === 0);
@@ -466,7 +548,11 @@ export function ThreadSearchPaletteMode({
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
-      placeholder="Search threads, pages, settings…"
+      placeholder={
+        grouping === null
+          ? "Search threads, pages, settings…"
+          : `Search ${grouping.name} threads…`
+      }
       value={query}
     >
       {emptyMessage === null ? (

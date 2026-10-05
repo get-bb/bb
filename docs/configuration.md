@@ -969,6 +969,11 @@ Active includes threads with saved messages. Go to retains the existing
 title and conversation search behavior and opens the owning thread. Once you
 type, a Places group between Active and Archived also lists matching plugin
 pages, settings sections, and the Plugins and Skills pages, whatever the Filter.
+Places also lists projects (including Personal), sidebar sections, and Pinned
+when a thread is pinned. Choosing one narrows the palette to that grouping's
+active threads in the same visit order; typing then matches only their titles.
+Backspace on an empty query or the chip's close button removes the grouping, and
+Escape returns to commands.
 Archived loads a bounded list in most-recently-archived order only while selected.
 Search uses the existing
 ranked Active/Archived response and displays the selected groups, with six initial

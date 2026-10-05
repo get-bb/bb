@@ -1,3 +1,4 @@
+import type { ThreadListEntry } from "@bb/domain";
 import { fuzzyMatchText } from "@bb/fuzzy-match";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { SettingsNavSection } from "@/components/settings/settings-sections";
@@ -10,15 +11,33 @@ import {
   type HighlightRange,
 } from "./palette-thread-search";
 
-export type PalettePlaceKind = "page" | "setting";
+export type PaletteGroupingKind = "project" | "section" | "pinned";
 
-export interface PalettePlace {
+export type PalettePlaceKind = "page" | "setting" | PaletteGroupingKind;
+
+export interface PaletteGrouping {
+  kind: PaletteGroupingKind;
   id: string;
-  kind: PalettePlaceKind;
-  title: string;
+  name: string;
   icon: IconName;
-  run: () => void;
 }
+
+export type PalettePlace =
+  | {
+      id: string;
+      kind: "page" | "setting";
+      title: string;
+      icon: IconName;
+      run: () => void;
+      grouping: null;
+    }
+  | {
+      id: string;
+      kind: PaletteGroupingKind;
+      title: string;
+      icon: IconName;
+      grouping: PaletteGrouping;
+    };
 
 export interface PalettePlaceMatch {
   place: PalettePlace;
@@ -28,10 +47,85 @@ export interface PalettePlaceMatch {
 export const PALETTE_PLACE_KIND_LABELS: Record<PalettePlaceKind, string> = {
   page: "Page",
   setting: "Setting",
+  project: "Project",
+  section: "Section",
+  pinned: "Pinned",
 };
+
+export const PINNED_GROUPING_ID = "pinned";
 
 const SETTINGS_TITLE_SUFFIX = " settings";
 const PLUGIN_ICON: IconName = "Plug02";
+
+export function isThreadInGrouping(
+  thread: Pick<ThreadListEntry, "pinnedAt" | "projectId" | "sectionId">,
+  grouping: PaletteGrouping,
+): boolean {
+  if (grouping.kind === "project") return thread.projectId === grouping.id;
+  if (grouping.kind === "section") return thread.sectionId === grouping.id;
+  return thread.pinnedAt !== null;
+}
+
+interface PaletteGroupingSource {
+  id: string;
+  name: string;
+}
+
+interface BuildPaletteGroupingPlacesArgs {
+  projects: readonly PaletteGroupingSource[];
+  personalProject: PaletteGroupingSource | null;
+  sections: readonly PaletteGroupingSource[];
+  hasPinnedThreads: boolean;
+}
+
+export function buildPaletteGroupingPlaces({
+  projects,
+  personalProject,
+  sections,
+  hasPinnedThreads,
+}: BuildPaletteGroupingPlacesArgs): PalettePlace[] {
+  const groupings: PaletteGrouping[] = [
+    ...projects.map((project) => ({
+      kind: "project" as const,
+      id: project.id,
+      name: project.name,
+      icon: "Folder",
+    })),
+    ...(personalProject === null
+      ? []
+      : [
+          {
+            kind: "project" as const,
+            id: personalProject.id,
+            name: "Personal",
+            icon: "Folder",
+          },
+        ]),
+    ...sections.map((section) => ({
+      kind: "section" as const,
+      id: section.id,
+      name: section.name,
+      icon: "Layers",
+    })),
+    ...(hasPinnedThreads
+      ? [
+          {
+            kind: "pinned" as const,
+            id: PINNED_GROUPING_ID,
+            name: "Pinned",
+            icon: "Pin",
+          },
+        ]
+      : []),
+  ];
+  return groupings.map((grouping): PalettePlace => ({
+    id: `${grouping.kind}:${grouping.id}`,
+    kind: grouping.kind,
+    title: grouping.name,
+    icon: grouping.icon,
+    grouping,
+  }));
+}
 
 interface BuildPalettePlacesArgs {
   navigate: (path: string) => void;
@@ -61,6 +155,7 @@ export function buildPalettePlaces({
       navigate(
         getPluginPanelRoutePath({ pluginId: panel.pluginId, path: panel.path }),
       ),
+    grouping: null,
   }));
   const tools = [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills].map(
     (section): PalettePlace => ({
@@ -69,6 +164,7 @@ export function buildPalettePlaces({
       title: section.label,
       icon: section.id === "plugins" ? PLUGIN_ICON : "Zap",
       run: () => navigate(section.to),
+      grouping: null,
     }),
   );
   const settingIcons = [
@@ -87,6 +183,7 @@ export function buildPalettePlaces({
       : action.title,
     icon: settingIcons[index] ?? PLUGIN_ICON,
     run: action.run,
+    grouping: null,
   }));
   return [...pages, ...tools, ...settings];
 }
