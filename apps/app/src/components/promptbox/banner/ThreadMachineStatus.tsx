@@ -103,7 +103,7 @@ export function ThreadMachineStatusBanner({
               setIsExpanded((current) => !current);
             }}
             className={cn(
-              "flex min-w-0 cursor-pointer items-center gap-1.5 text-xs transition-colors",
+              "flex min-w-0 flex-1 cursor-pointer items-center justify-start gap-1.5 text-left text-xs transition-colors",
               PROMPT_STACK_INLAY_SEGMENT_CLASS,
               "hover:bg-state-hover",
               isExpanded ? "text-foreground" : "text-muted-foreground",

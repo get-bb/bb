@@ -220,6 +220,7 @@ function ChildThreadIcon({ className }: { className?: string }) {
 
 interface SectionToggleButtonProps {
   buttonRef: RefObject<HTMLButtonElement | null>;
+  fillRow: boolean;
   id: string;
   controlsId: string;
   ariaLabel?: string;
@@ -233,6 +234,7 @@ interface SectionToggleButtonProps {
 
 function SectionToggleButton({
   buttonRef,
+  fillRow,
   id,
   controlsId,
   ariaLabel,
@@ -257,6 +259,7 @@ function SectionToggleButton({
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
         SEGMENT_SHRINK_CLASS,
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
+        fillRow && "flex-1 justify-start text-left",
         isExpanded ? "text-foreground" : "text-muted-foreground",
       )}
     >
@@ -401,6 +404,7 @@ function ParentThreadSectionToggle({
   return (
     <SectionToggleButton
       buttonRef={buttonRef}
+      fillRow={false}
       id={SECTION_IDS.parentThread.toggle}
       controlsId={SECTION_IDS.parentThread.body}
       ariaLabel={ariaLabel}
@@ -850,6 +854,7 @@ function ReadOnlyContextBanner({
         ) : (
           <SectionToggleButton
             buttonRef={statusFocus.triggerRef}
+            fillRow
             id={SECTION_IDS.status.toggle}
             controlsId={SECTION_IDS.status.body}
             icon={statusIcon}
@@ -1090,6 +1095,7 @@ export function ThreadPromptContextBanner({
           {showGit && gitSummary ? (
             <SectionToggleButton
               buttonRef={gitFocus.triggerRef}
+              fillRow
               id={SECTION_IDS.git.toggle}
               controlsId={SECTION_IDS.git.body}
               icon={
