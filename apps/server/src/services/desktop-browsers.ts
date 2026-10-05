@@ -543,11 +543,19 @@ export async function adoptOrphanedDesktopBrowserTabs(
 ) {
   const { instances } = await listDesktopBrowserInstances(deps, scope.hostId);
   const live = new Set(instances.map((instance) => instance.instanceId));
-  if (!live.has(scope.instanceId)) return;
+  if (
+    !instances.some(
+      (instance) =>
+        instance.instanceId === scope.instanceId &&
+        instance.generation === scope.generation,
+    )
+  )
+    return;
   requirePublicThread(deps.db, scope.threadId);
   const { stored, tabs } = readStoredTabs(deps.db, scope.threadId);
   if (!stored) return;
   let adopted = false;
+  const duplicates: string[] = [];
   const next = tabs.map((previous) => {
     const tab = nativeTabs.find((value) => value.tabId === previous.id);
     if (
@@ -555,18 +563,28 @@ export async function adoptOrphanedDesktopBrowserTabs(
       tab.threadId !== scope.threadId ||
       tab.url.length > 4096 ||
       previous.kind !== "browser" ||
-      previous.desktopTarget?.hostId !== scope.hostId ||
-      live.has(previous.desktopTarget.instanceId)
+      previous.desktopTarget?.hostId !== scope.hostId
     )
       return previous;
+    if (previous.desktopTarget.instanceId === scope.instanceId) return previous;
+    if (live.has(previous.desktopTarget.instanceId)) {
+      duplicates.push(tab.tabId);
+      return previous;
+    }
     adopted = true;
     return toStoredBrowserTab(scope, tab);
   });
-  if (!adopted) return;
-  replaceStoredThreadTabs(deps.db, {
-    threadId: scope.threadId,
-    expectedRevision: stored.revision,
-    tabsJson: JSON.stringify(threadTabsSchema.parse(next)),
-  });
-  deps.hub.notifyThread(scope.threadId, ["tabs-changed"]);
+  if (adopted) {
+    replaceStoredThreadTabs(deps.db, {
+      threadId: scope.threadId,
+      expectedRevision: stored.revision,
+      tabsJson: JSON.stringify(threadTabsSchema.parse(next)),
+    });
+    deps.hub.notifyThread(scope.threadId, ["tabs-changed"]);
+  }
+  await Promise.all(
+    duplicates.map((tabId) =>
+      desktopBrowserTabAction(deps, { ...scope, tabId }, "close"),
+    ),
+  );
 }

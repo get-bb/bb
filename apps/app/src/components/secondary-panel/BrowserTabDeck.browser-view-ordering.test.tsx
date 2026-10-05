@@ -275,7 +275,9 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     const view = render(renderTargetDeck(tab));
     await screen.findByText("This tab is open on another computer");
     expect(screen.getByText("https://example.com/saved")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Open in browser" })).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open in browser" }),
+    ).not.toBeNull();
     expect(screen.getByRole("button", { name: "Copy link" })).not.toBeNull();
     expect(attachments).toEqual([]);
     view.rerender(renderTargetDeck({ ...tab, desktopTarget }));
@@ -287,7 +289,10 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     const { api, attachments } = createRecordingBrowserApi();
     api.getTarget = async () => desktopTarget;
     installDesktopBrowser(api);
-    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+    vi.spyOn(
+      sdk.experimental_desktopBrowsers,
+      "listInstances",
+    ).mockResolvedValue({
       instances: [
         { ...desktopTarget, label: "BB window 1" },
         { ...desktopTarget, instanceId: "elsewhere", label: "BB window 2" },
@@ -302,7 +307,10 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     const { api, attachments } = createRecordingBrowserApi();
     api.getTarget = async () => desktopTarget;
     installDesktopBrowser(api);
-    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+    vi.spyOn(
+      sdk.experimental_desktopBrowsers,
+      "listInstances",
+    ).mockResolvedValue({
       instances: [{ ...desktopTarget, label: "BB window 1" }],
     });
     render(renderTargetDeck(savedTab({ instanceId: "closed-window" })));
@@ -312,14 +320,19 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       url: "https://example.com/saved",
     });
     expect(attachments[0]?.existingOnly).toBeUndefined();
-    expect(screen.queryByText("This tab is open in another bb window")).toBeNull();
+    expect(
+      screen.queryByText("This tab is open in another bb window"),
+    ).toBeNull();
   });
 
   it("keeps a reopened tab visible after the server moves it to this window", async () => {
     const { api, calls } = createRecordingBrowserApi();
     api.getTarget = async () => desktopTarget;
     installDesktopBrowser(api);
-    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+    vi.spyOn(
+      sdk.experimental_desktopBrowsers,
+      "listInstances",
+    ).mockResolvedValue({
       instances: [{ ...desktopTarget, label: "BB window 1" }],
     });
     const orphan = savedTab({ instanceId: "closed-window" });
@@ -356,7 +369,10 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       .mockResolvedValue(desktopTarget);
     api.getTarget = getTarget;
     installDesktopBrowser(api);
-    vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances").mockResolvedValue({
+    vi.spyOn(
+      sdk.experimental_desktopBrowsers,
+      "listInstances",
+    ).mockResolvedValue({
       instances: [{ ...desktopTarget, label: "BB window 1" }],
     });
     render(renderTargetDeck(savedTab({ instanceId: "closed-window" })));
@@ -375,7 +391,9 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     await screen.findByText("Reconnecting to this tab", undefined, {
       timeout: 4000,
     });
-    expect(screen.queryByText("This tab is open on another computer")).toBeNull();
+    expect(
+      screen.queryByText("This tab is open on another computer"),
+    ).toBeNull();
     expect(attachments).toEqual([]);
   });
 
@@ -409,7 +427,9 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       .spyOn(sdk.experimental_desktopBrowsers, "listInstances")
       .mockRejectedValueOnce(new Error("host busy"))
       .mockRejectedValueOnce(new Error("host busy"))
-      .mockResolvedValue({ instances: [{ ...desktopTarget, label: "BB window 1" }] });
+      .mockResolvedValue({
+        instances: [{ ...desktopTarget, label: "BB window 1" }],
+      });
     render(renderTargetDeck(savedTab({ instanceId: "closed-window" })));
     await waitFor(() => expect(attachments).toHaveLength(1), { timeout: 3000 });
     expect(listInstances).toHaveBeenCalledTimes(3);
@@ -424,6 +444,23 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     await waitFor(() => expect(attachments).toHaveLength(1));
     expect(attachments[0]?.existingOnly).toBe(true);
   });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,hello",
+    "file:///tmp/private",
+  ])(
+    "shows a saved %s URL without offering to open it externally",
+    async (url) => {
+      render(renderTargetDeck({ ...savedTab({}), url }));
+      await screen.findByText("Browser tabs need the desktop app");
+      expect(screen.getByText(url)).not.toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Open in browser" }),
+      ).toBeNull();
+      expect(screen.getByRole("button", { name: "Copy link" })).not.toBeNull();
+    },
+  );
 
   it("explains that desktop tabs need the desktop app on web", async () => {
     render(renderTargetDeck(savedTab({})));

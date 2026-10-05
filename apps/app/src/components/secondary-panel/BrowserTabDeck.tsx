@@ -103,9 +103,11 @@ export function BrowserTabDeck({
   );
   const target = activeBrowserTab?.desktopTarget;
   const targetHostId = target?.hostId;
-  const [windowTarget, setWindowTarget] = useState<WindowTargetCheck>({
-    status: "pending",
-  });
+  const [windowTarget, setWindowTarget] = useState<WindowTargetCheck>(() =>
+    desktopBrowser?.getTarget === undefined
+      ? { status: "ready", target: null }
+      : { status: "pending" },
+  );
   const [checkRound, setCheckRound] = useState(0);
   const checkKey =
     target === undefined
@@ -115,10 +117,7 @@ export function BrowserTabDeck({
   useEffect(() => {
     if (targetHostId === undefined) return;
     const getTarget = desktopBrowser?.getTarget?.bind(desktopBrowser);
-    if (getTarget === undefined) {
-      setWindowTarget({ status: "ready", target: null });
-      return;
-    }
+    if (getTarget === undefined) return;
     let current = true;
     let attempt = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -304,6 +303,9 @@ function BrowserTabElsewhere({
   onRetry: (() => void) | null;
 }) {
   const copy = BROWSER_TAB_ELSEWHERE_COPY[reason];
+  const parsedUrl = URL.canParse(url) ? new URL(url) : null;
+  const canOpenExternally =
+    parsedUrl?.protocol === "https:" || parsedUrl?.protocol === "http:";
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-sidebar px-6 text-center">
       <span className="flex size-11 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground">
@@ -338,15 +340,17 @@ function BrowserTabElsewhere({
         ) : null}
         {url.length > 0 ? (
           <>
-            <Button
-              type="button"
-              variant={onRetry !== null ? "ghost" : "outline"}
-              size="sm"
-              onClick={() => openUrlInExternalBrowser(url)}
-            >
-              <Icon name="ExternalLink" aria-hidden />
-              Open in browser
-            </Button>
+            {canOpenExternally ? (
+              <Button
+                type="button"
+                variant={onRetry !== null ? "ghost" : "outline"}
+                size="sm"
+                onClick={() => openUrlInExternalBrowser(url)}
+              >
+                <Icon name="ExternalLink" aria-hidden />
+                Open in browser
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"

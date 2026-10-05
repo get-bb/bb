@@ -56,6 +56,45 @@ function createFakeWindow() {
 }
 
 describe("desktop browser broker snapshots", () => {
+  it("publishes live tab closure but preserves saved tabs during window teardown", () => {
+    let tabs = [nativeTab("thread-tab", THREAD_ID)];
+    let notifyTabsChanged: () => void = () => undefined;
+    const manager: Pick<
+      DesktopBrowserViewManager,
+      "listTabs" | "subscribeAutomationTabs"
+    > = {
+      listTabs: () => tabs,
+      subscribeAutomationTabs: (listener: () => void) => {
+        notifyTabsChanged = listener;
+        return () => undefined;
+      },
+    };
+    const broker = createDesktopBrowserBroker({
+      manager: manager as DesktopBrowserViewManager,
+      product: "Chrome/1",
+    });
+    const events: DesktopBrowserChanged[] = [];
+    broker.subscribe((event) => events.push(event));
+    const window = createFakeWindow();
+    let destroyed = false;
+    window.isDestroyed = () => destroyed;
+    broker.registerWindow(window);
+    broker.setHostId("host_local");
+    tabs = [];
+    notifyTabsChanged();
+    expect(events.at(-1)?.tabs).toEqual([]);
+    tabs = [nativeTab("thread-tab", THREAD_ID)];
+    notifyTabsChanged();
+    const beforeTeardown = events.length;
+    destroyed = true;
+    tabs = [];
+    notifyTabsChanged();
+    expect(events).toHaveLength(beforeTeardown);
+    broker.releaseWindow(window.webContents.id);
+    expect(broker.listInstances()).toEqual([]);
+    broker.dispose();
+  });
+
   it("publishes snapshots only for real threads and keeps plugin-panel tabs local", () => {
     let tabs = [
       nativeTab("thread-tab", THREAD_ID),
