@@ -10,7 +10,7 @@ import {
   type HighlightRange,
 } from "./palette-thread-search";
 
-export type PalettePlaceKind = "page" | "setting";
+type PalettePlaceKind = "page" | "setting";
 
 export interface PalettePlace {
   id: string;
