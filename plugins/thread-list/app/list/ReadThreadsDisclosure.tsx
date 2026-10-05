@@ -12,7 +12,7 @@ export function ReadThreadsDisclosure({
     <Button
       variant="ghost"
       size="sm"
-      className="font-normal"
+      className="font-normal text-subtle-foreground focus-visible:text-foreground"
       onClick={revealReadThreads}
     >
       Show {hiddenCount} read {hiddenCount === 1 ? "thread" : "threads"}
