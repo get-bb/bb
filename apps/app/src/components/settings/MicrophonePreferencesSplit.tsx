@@ -1,4 +1,4 @@
-import { Skeleton } from "@bb/shared-ui/skeleton";
+import { PickerLoadingRows } from "@/components/pickers/PickerLoadingRows";
 import { defineSplit } from "@/lib/define-split";
 
 export const MicrophonePreferencesSplit = defineSplit<{
@@ -12,7 +12,10 @@ export const MicrophonePreferencesSplit = defineSplit<{
       (module) => module.MicrophonePreferences,
     ),
   loading: () => (
-    <Skeleton className="h-24 w-full" aria-label="Loading microphones" />
+    <PickerLoadingRows
+      label="Loading microphones"
+      rowDataAttribute="data-microphone-loading-row"
+    />
   ),
   tier: "intent",
 });
