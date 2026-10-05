@@ -13,8 +13,11 @@ import {
 } from "@bb/server-archive";
 import type { ServerMoveStatus } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
+import { createServerErrorHandler } from "../../src/errors.js";
 import { createServerMoveCoordinator } from "../../src/services/server-move/coordinator.js";
+import { serverMoveFreezeMiddleware } from "../../src/services/server-move/freeze.js";
 import {
   isServerMoveFrozen,
   isServerMoveSnapshotFenced,
@@ -32,7 +35,11 @@ import {
   type FakeDaemonReply,
 } from "../helpers/server-move.js";
 import { seedHost, seedPrimaryHost } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  testLogger,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const OLD = "host-old";
 const NEW = "host-new";
@@ -632,6 +639,72 @@ describe("server move coordinator", () => {
           await readFile(join(harness.config.dataDir, "config.json"), "utf8"),
         ),
       ).toEqual({ serverUrl: CONNECT_URL, serverHeaders: grantHeaders });
+    }));
+
+  it("keeps bb connect's bb account status reads open while a bb connect move is frozen", () =>
+    withTestHarness(async (harness) => {
+      seedTopology(harness);
+      const base = createTestServerMoveEnvironment(harness);
+      const { events } = base;
+      const accountRpc = new Hono();
+      accountRpc.onError(createServerErrorHandler(testLogger));
+      accountRpc.use(
+        "/api/v1/*",
+        serverMoveFreezeMiddleware({ isFrozen: () => coordinator.isFrozen() }),
+      );
+      accountRpc.post("/api/v1/plugins/:id/rpc/:method", (context) =>
+        context.json({ ok: true, result: null }),
+      );
+      const whileFrozen: Array<[string, boolean, number]> = [];
+      const coordinator = createServerMoveCoordinator({
+        ...base.environment,
+        exportArchive: async (args) => {
+          for (const method of [
+            "bb-account.v1.waitForStatusChange",
+            "bb-account.v1.status",
+            "bb-account.v1.connectCredential",
+            "bb-account.v1.fetch",
+          ]) {
+            const response = await accountRpc.request(
+              `/api/v1/plugins/bb-account/rpc/${method}`,
+              { method: "POST", body: JSON.stringify({ afterRevision: 1 }) },
+            );
+            whileFrozen.push([method, coordinator.isFrozen(), response.status]);
+          }
+          return base.environment.exportArchive(args);
+        },
+        resolveMode: async () => ({
+          mode: "connect",
+          connectHandle: "laptop",
+          serverUrl: CONNECT_URL,
+        }),
+        resolveServerHostGrant: async () => ({
+          serverUrl: CONNECT_URL,
+          headers: { "x-bb-connect-machine": "bbcm_laptop" },
+        }),
+      });
+      registerFakeDaemon(harness, { events, hostId: OLD, handle: probeReply });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: WORKER,
+        handle: probeReply,
+      });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: NEW,
+        handle: targetReply,
+      });
+
+      await coordinator.start({ ...START_DIRECT, serverUrl: null });
+      await expect.poll(() => events.includes("retire")).toBe(true);
+
+      expect(whileFrozen).toEqual([
+        ["bb-account.v1.waitForStatusChange", true, 200],
+        ["bb-account.v1.status", true, 200],
+        ["bb-account.v1.connectCredential", true, 200],
+        ["bb-account.v1.fetch", true, 503],
+      ]);
+      expect(coordinator.getStatus()?.state).toBe("completed");
     }));
 
   it.each([

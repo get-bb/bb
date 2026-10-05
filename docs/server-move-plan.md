@@ -224,7 +224,10 @@ All refuse requests authenticated by a machine credential.
   the imported files it created.
 - **At the freeze:** running turns stop, plugin schedules pause, and every
   plugin except bb connect is suspended before the target is updated, so
-  nothing writes during the update or after the snapshot. Suspending and the
+  nothing writes during the update or after the snapshot. The read-only bb
+  account RPCs that bb connect polls (`bb-account.v1.status`,
+  `waitForStatusChange`, and `connectCredential`) stay available while frozen,
+  so the tunnel stays up. Suspending and the
   later plugin shutdown are each time-boxed at 30 seconds; on expiry the move
   logs a warning and continues, and retirement's forced exit covers a hung
   tunnel. A failed, cancelled, or abandoned move lifts the freeze at once, so
