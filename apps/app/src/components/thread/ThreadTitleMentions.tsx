@@ -894,7 +894,7 @@ interface ThreadTitleHighlightRange {
 }
 
 const THREAD_TITLE_HIGHLIGHT_CLASS =
-  "rounded-sm bg-[var(--sidebar-search-match)] px-0.5 py-px text-foreground";
+  "rounded-sm bg-[var(--sidebar-search-match)] py-px text-foreground";
 
 function highlightedText(
   text: string,
