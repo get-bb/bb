@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import supersetIcon from "../assets/competitors/superset.png";
 import { CustomizeBuild, ProviderChips } from "../landing/landing-visuals";
+import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
 import {
   AgentSplit,
   AnywhereVisual,
@@ -70,7 +71,6 @@ function price(value: string, text: string): CompareCell {
 }
 
 const SUPERSET_LOGO: BrandLogo = { kind: "image", src: supersetIcon };
-const WINDOWS_DOWNLOAD = "https://github.com/get-bb/bb/releases/latest";
 
 const BB_VS_SUPERSET: Comparison = {
   slug: "bb-vs-superset",
@@ -358,9 +358,9 @@ const BB_VS_SUPERSET: Comparison = {
               on your repo. bb is free for any team size and open source, while
               Superset charges $20 per user a month for teams. bb includes phone
               and browser access, remote machines, and automations at no cost,
-              and runs natively on Windows. When one agent starts another, the
-              new agent gets its own thread (one conversation with one agent)
-              that you can open and message.
+              and runs natively on <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>.
+              When one agent starts another, the new agent gets its own thread
+              (one conversation with one agent) that you can open and message.
             </p>
           ),
         },
@@ -381,7 +381,7 @@ const BB_VS_SUPERSET: Comparison = {
           answer: (
             <p>
               Download bb for <a href="/download/macos">macOS</a> (Apple
-              Silicon), <a href={WINDOWS_DOWNLOAD}>Windows</a>, or{" "}
+              Silicon), <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
               <a href="/download/linux">Linux</a> (alpha), or run{" "}
               <code>npx bb-app@latest</code> in a terminal on any of them,
               including Intel Macs; that needs Node.js 22.19 or later. You also
@@ -606,7 +606,7 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               Yes. Download the app for{" "}
               <a href="/download/macos">Apple Silicon Macs</a>,{" "}
-              <a href={WINDOWS_DOWNLOAD}>Windows</a>, or{" "}
+              <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
               <a href="/download/linux">Linux</a> (alpha), or run{" "}
               <code>npx bb-app@latest</code> on an Intel Mac. Superset doesn’t
               run on Windows yet.

@@ -27,7 +27,7 @@ import {
   PiIcon,
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
+import { CLI_COMMAND, DESKTOP_DOWNLOADS, WINDOWS_DOWNLOAD_URL } from "./site";
 
 const AppleSolidIcon: IconSvgElement = [
   [
@@ -97,7 +97,10 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             }
           />
           <span className="install-note">
-            Windows, Intel Macs &amp; remote machines
+            <a className="install-note-link" href={WINDOWS_DOWNLOAD_URL}>
+              Windows
+            </a>
+            , Intel Macs &amp; remote machines
           </span>
         </span>
       </div>
