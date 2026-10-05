@@ -103,23 +103,25 @@ export function PromptStackPeekLayers({
 
 export const PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS = "group/disclosure";
 
+const TRAILING_SLOT_CLASS =
+  "-mr-3 ml-auto flex w-8 shrink-0 items-center justify-center";
+const HOVER_CHEVRON_CLASS =
+  "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden";
+
 export function PromptStackHoverChevron({
   isExpanded,
-  className,
 }: {
   isExpanded: boolean;
-  className?: string;
 }) {
   if (isExpanded) return null;
   return (
-    <Icon
-      name="ChevronDown"
-      className={cn(
-        "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden",
-        className,
-      )}
-      aria-hidden="true"
-    />
+    <span className={TRAILING_SLOT_CLASS}>
+      <Icon
+        name="ChevronDown"
+        className={HOVER_CHEVRON_CLASS}
+        aria-hidden="true"
+      />
+    </span>
   );
 }
 
@@ -131,7 +133,7 @@ export function PromptStackCountWithHoverChevron({
   isExpanded: boolean;
 }) {
   return (
-    <span className="ml-auto grid shrink-0 items-center justify-items-end">
+    <span className={cn(TRAILING_SLOT_CLASS, "grid justify-items-center")}>
       <span
         className={cn(
           PROMPT_STACK_COUNT_PILL_CLASS,
@@ -142,10 +144,13 @@ export function PromptStackCountWithHoverChevron({
       >
         {`+${count}`}
       </span>
-      <PromptStackHoverChevron
-        isExpanded={isExpanded}
-        className="[grid-area:1/1]"
-      />
+      {isExpanded ? null : (
+        <Icon
+          name="ChevronDown"
+          className={cn(HOVER_CHEVRON_CLASS, "[grid-area:1/1]")}
+          aria-hidden="true"
+        />
+      )}
     </span>
   );
 }

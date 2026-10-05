@@ -237,10 +237,7 @@ export function ThreadBackgroundCommandsCard({
                 <span className="min-w-0 flex-1 truncate text-left font-medium">
                   {compactLabel}
                 </span>
-                <PromptStackHoverChevron
-                  isExpanded={isExpanded}
-                  className="ml-auto"
-                />
+                <PromptStackHoverChevron isExpanded={isExpanded} />
               </>
             ) : (
               <>

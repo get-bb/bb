@@ -283,9 +283,7 @@ function SectionToggleButton({
           {compactLabel}
         </span>
       ) : null}
-      {fillRow ? (
-        <PromptStackHoverChevron isExpanded={isExpanded} className="ml-auto" />
-      ) : null}
+      {fillRow ? <PromptStackHoverChevron isExpanded={isExpanded} /> : null}
     </button>
   );
 }

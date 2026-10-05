@@ -116,10 +116,7 @@ export function ThreadMachineStatusBanner({
           >
             <MachineIcon host={host} machineProvider={provider} />
             <span className="min-w-0 truncate">{status}</span>
-            <PromptStackHoverChevron
-              isExpanded={isExpanded}
-              className="ml-auto"
-            />
+            <PromptStackHoverChevron isExpanded={isExpanded} />
           </button>
         ) : (
           <div
