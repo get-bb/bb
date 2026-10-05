@@ -64,7 +64,7 @@ the implementation through a barrel imported by the shell.
 | Tier      | Behavior                                                                                                                   |
 | --------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `intent`  | Load when rendered, or earlier on a trigger's pointer-enter, focus, or pointer-down.                                      |
-| `preload` | Queued when the split is defined. Once route content has painted, the queue drains after two animation frames at browser idle, with a one-second timeout/fallback. Intent and rendering still load it earlier. |
+| `preload` | Queued when the split is defined. The queue drains at browser idle (one-second timeout/fallback) once no critical load is pending: the route import, the current page's split, and any split being rendered. Intent and rendering still load it earlier. |
 
 Wire intent on the actual trigger:
 
@@ -82,7 +82,9 @@ warming panel tab code when the right panel opens.
 
 A preload-tier split needs no registration: defining it queues it, and
 `RouteContentPaintSignal` in `App.tsx` starts the queue with
-`startSplitPreloading()`. Splits defined by modules that load later (a route
+`startSplitPreloading()`, and marks route content painted only after critical
+loads settle, which also defers plugin frontend boot until the page's own code
+has arrived. Splits defined by modules that load later (a route
 chunk, for example) join the queue and drain at the next idle period. Tests do
 not start the queue, so defining a split never triggers a speculative import
 there.

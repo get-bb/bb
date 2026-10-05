@@ -48,9 +48,39 @@ export async function downloadSplit(id: string): Promise<void> {
 const preloadQueue = new Set<() => Promise<void>>();
 let preloadingStarted = false;
 let drainScheduled = false;
+let pendingCriticalLoads = 0;
+const settledWaiters: Array<() => void> = [];
+
+function resolveSettledWaitersAfterRender() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (pendingCriticalLoads > 0) return;
+      for (const resolve of settledWaiters.splice(0)) resolve();
+    });
+  });
+}
+
+export function trackCriticalLoad<T>(load: Promise<T>): Promise<T> {
+  pendingCriticalLoads += 1;
+  const settle = () => {
+    pendingCriticalLoads -= 1;
+    if (pendingCriticalLoads > 0) return;
+    resolveSettledWaitersAfterRender();
+    if (preloadingStarted) scheduleDrain();
+  };
+  load.then(settle, settle);
+  return load;
+}
+
+export function whenCriticalLoadsSettled(): Promise<void> {
+  const settled = new Promise<void>((resolve) => settledWaiters.push(resolve));
+  if (pendingCriticalLoads === 0) resolveSettledWaitersAfterRender();
+  return settled;
+}
 
 function drainPreloadQueue() {
   drainScheduled = false;
+  if (pendingCriticalLoads > 0) return;
   const warmers = [...preloadQueue];
   preloadQueue.clear();
   for (const warm of warmers) void warm();

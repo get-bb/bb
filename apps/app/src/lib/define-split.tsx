@@ -1,4 +1,8 @@
-import { prepareSplitImport, queueSplitPreload } from "./split-prefetch";
+import {
+  prepareSplitImport,
+  queueSplitPreload,
+  trackCriticalLoad,
+} from "./split-prefetch";
 import {
   Component,
   lazy,
@@ -95,6 +99,7 @@ export function defineSplit<P extends object>({
       });
     return pending;
   };
+  const renderModule = () => trackCriticalLoad(loadModule());
   const warm = async () => {
     await loadModule().catch(() => undefined);
   };
@@ -106,12 +111,12 @@ export function defineSplit<P extends object>({
   function SplitContent(props: P) {
     const [attempt, setAttempt] = useState(() => ({
       number: 0,
-      View: loaded ?? lazy(loadModule),
+      View: loaded ?? lazy(renderModule),
     }));
     const retry = () => {
       setAttempt((previous) => ({
         number: previous.number + 1,
-        View: loaded ?? lazy(loadModule),
+        View: loaded ?? lazy(renderModule),
       }));
     };
     const View = attempt.View;

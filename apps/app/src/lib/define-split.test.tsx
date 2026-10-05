@@ -357,3 +357,38 @@ it.each([true, false])(
     expect(load).toHaveBeenCalledOnce();
   },
 );
+
+it("holds preload-tier work until rendered splits have loaded", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("requestIdleCallback", undefined);
+  vi.resetModules();
+  const { defineSplit: define } = await import("./define-split");
+  const { startSplitPreloading: start } = await import("./split-prefetch");
+  let finishPage!: () => void;
+  const Page = define({
+    id: "page",
+    load: () =>
+      new Promise<React.ComponentType>((resolve) => {
+        finishPage = () => resolve(() => <p>Page content</p>);
+      }),
+    loading: () => null,
+    tier: "intent",
+  });
+  const preloadLoad = vi.fn(async () => () => null);
+  define({
+    id: "later",
+    load: preloadLoad,
+    loading: () => null,
+    tier: "preload",
+  });
+  render(<Page />);
+  start();
+  await act(async () => vi.runAllTimersAsync());
+  expect(preloadLoad).not.toHaveBeenCalled();
+  await act(async () => {
+    finishPage();
+    await vi.runAllTimersAsync();
+  });
+  expect(screen.getByText("Page content")).toBeTruthy();
+  expect(preloadLoad).toHaveBeenCalledOnce();
+});
