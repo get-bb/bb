@@ -2,7 +2,7 @@
 
 How to write a good bb app theme: the design model, the full design-token
 reference (what every CSS variable drives), and how to set colors and fonts.
-Read this before authoring or editing a built-in theme or a custom stylesheet.
+Read this before authoring or editing a custom theme stylesheet.
 
 The _palette_ is global and server-stored; light/dark _mode_ is a separate
 per-client setting that the palette layers on top of. You ship one stylesheet

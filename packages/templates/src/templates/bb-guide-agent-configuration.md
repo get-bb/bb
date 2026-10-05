@@ -59,7 +59,9 @@ Skills (.bb/skills/):
   commands default to `BB_PROJECT_ID`, then the personal project; pass
   `--project` or `--environment` when a different workspace is required.
 
-  Use `bb skill search` to browse skills.sh, `bb skill registry detail
+  Use `bb skill search [query]` to browse skills.sh (no query lists what is
+  trending; `--page` starts at 0 and `--per-page` defaults to 24). JSON
+  `installs` counts the `ranking` window; `lifetimeInstalls` may be null. Use `bb skill registry detail
   <registry-skill-id>` to inspect metadata and the bounded file preview, and
   `bb skill install <registry-skill-id>` to install that canonical registry
   identity into bb user skills. Registry commands are server-wide and do not
