@@ -331,11 +331,6 @@ describe("SelectableMessageProse", () => {
   it("reports double-click selections from the message click target", async () => {
     vi.useFakeTimers();
     const onSelect = vi.fn();
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      callback(performance.now());
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
     const { getByText } = render(
       <SelectableMessageProse onSelect={onSelect}>
         Double click target paragraph text
@@ -357,6 +352,7 @@ describe("SelectableMessageProse", () => {
     expect(onSelect).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersToNextFrame();
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({
         text: "Double click target paragraph text",
@@ -393,11 +389,6 @@ describe("SelectableMessageProse", () => {
   it("cancels a delayed double-click report when a third click completes", async () => {
     vi.useFakeTimers();
     const onSelect = vi.fn();
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      callback(performance.now());
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
     const { getByText } = render(
       <SelectableMessageProse onSelect={onSelect}>
         Triple click replaces word selection
@@ -424,6 +415,7 @@ describe("SelectableMessageProse", () => {
       text: "Triple click replaces word selection",
     });
     fireEvent.click(target, { detail: 3 });
+    await vi.advanceTimersToNextFrame();
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(

@@ -310,6 +310,9 @@ describe("FilePreview", () => {
       />,
     );
 
+    await waitFor(() => {
+      expect(pierreMock.state.statsCallback).not.toBeNull();
+    });
     expect(screen.queryByTestId("pierre-file")).toBeNull();
 
     act(() => {

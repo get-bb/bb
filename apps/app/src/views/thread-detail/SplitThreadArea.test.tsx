@@ -935,7 +935,7 @@ describe("SplitThreadArea", () => {
     });
 
     expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
-    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    fireEvent.click(await screen.findByTestId("maximize-thr-a"));
 
     expect(screen.getByTestId("maximize-thr-a").textContent).toBe("restore");
     await waitFor(() => {
