@@ -563,68 +563,105 @@ export function parseShellCommandIntents(
   return intents;
 }
 
-const THREAD_TELL_FLAGS_WITH_VALUE: ReadonlySet<string> = new Set([
+const THREAD_TELL_VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--message-file",
   "--model",
   "--service-tier",
   "--reasoning-level",
   "--permission-mode",
   "--mode",
-  "--send-at",
-  "--file",
-  "--image",
 ]);
 
+const THREAD_TELL_BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  "--json",
+  "--plan",
+]);
+
+const THREAD_TELL_HINT = /\bthread\s+(?:tell|message)\b/u;
 const BB_CLI_TOKEN = /^\$\{?BB_CLI(?::-[^}]*)?\}?$/u;
 const SHELL_VARIABLE_TOKEN = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/u;
+const SHELL_EXPANSION = /[$`]/u;
 const HEREDOC_ASSIGNMENT =
-  /(?:^|\n)[ \t]*([A-Za-z_][A-Za-z0-9_]*)=\$\(cat <<-?[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2[ \t]*\n([\s\S]*?)\n[ \t]*\3[ \t]*\n[ \t]*\)/gu;
+  /^([A-Za-z_][A-Za-z0-9_]*)=\$\(cat <<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\3[ \t]*\n([\s\S]*?)\n(\t*)\4\n[ \t]*\)[ \t]*\n([^\n]*)$/u;
 const STDIN_HEREDOC =
-  /<<-?[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[ \t]*\n([\s\S]*?)\n[ \t]*\2[ \t]*(?=\n|$)/u;
+  /^([^\n]*?)<<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\3[ \t]*\n([\s\S]*?)\n(\t*)\4$/u;
 
 export interface ThreadTellCommand {
   threadId: string;
   message: string;
 }
 
-interface ThreadTellHeredocs {
+interface ThreadTellScript {
+  line: string;
   stdin: string | null;
-  variables: ReadonlyMap<string, string>;
+  variable: { name: string; value: string } | null;
 }
 
-function extractThreadTellHeredocs(script: string): {
-  heredocs: ThreadTellHeredocs;
-  script: string;
-} {
-  const variables = new Map<string, string>();
-  let stdin: string | null = null;
-  const rest = script
-    .replace(
-      HEREDOC_ASSIGNMENT,
-      (_match, name: string, _quote, _tag, body: string) => {
-        variables.set(name, body);
-        return "\n";
-      },
-    )
-    .replace(STDIN_HEREDOC, (_match, _quote, _tag, body: string) => {
-      stdin = body;
-      return "";
+interface HeredocMatch {
+  body: string;
+  dash: string;
+  quote: string;
+  terminatorTabs: string;
+}
+
+function heredocBody({
+  body,
+  dash,
+  quote,
+  terminatorTabs,
+}: HeredocMatch): string | null {
+  if (terminatorTabs !== "" && dash !== "-") return null;
+  if (quote === "" && /[$`\\]/u.test(body)) return null;
+  return dash === "-" ? body.replace(/^\t+/gmu, "") : body;
+}
+
+function splitThreadTellScript(script: string): ThreadTellScript | null {
+  let line = script.trim();
+  let variable: ThreadTellScript["variable"] = null;
+  const assignment = HEREDOC_ASSIGNMENT.exec(line);
+  if (assignment) {
+    const [, name, dash, quote, , body, terminatorTabs, rest] = assignment;
+    const value = heredocBody({
+      body: body!,
+      dash: dash!,
+      quote: quote!,
+      terminatorTabs: terminatorTabs!,
     });
-  return { heredocs: { stdin, variables }, script: rest };
+    if (value === null) return null;
+    variable = { name: name!, value };
+    line = rest!.trim();
+  }
+  let stdin: string | null = null;
+  const piped = STDIN_HEREDOC.exec(line);
+  if (piped) {
+    const [, head, dash, quote, , body, terminatorTabs] = piped;
+    stdin = heredocBody({
+      body: body!,
+      dash: dash!,
+      quote: quote!,
+      terminatorTabs: terminatorTabs!,
+    });
+    if (stdin === null) return null;
+    line = head!.trim();
+  }
+  if (line.includes("\n") || line.includes("<<")) return null;
+  return { line, stdin, variable };
 }
 
 function resolveThreadTellMessage(
   value: string,
-  variables: ReadonlyMap<string, string>,
+  variable: ThreadTellScript["variable"],
 ): string | null {
-  const variable = SHELL_VARIABLE_TOKEN.exec(value)?.[1];
-  if (variable === undefined) return value;
-  return variables.get(variable) ?? null;
+  const name = SHELL_VARIABLE_TOKEN.exec(value)?.[1];
+  if (name !== undefined) {
+    return variable !== null && variable.name === name ? variable.value : null;
+  }
+  return SHELL_EXPANSION.test(value) ? null : value;
 }
 
 function parseThreadTellSegment(
   tokens: readonly ShellToken[],
-  heredocs: ThreadTellHeredocs,
+  script: ThreadTellScript,
 ): ThreadTellCommand | null {
   const commandIndex = getCommandTokenIndex(tokens);
   const [cli, group, verb, ...argTokens] = tokens.slice(commandIndex);
@@ -648,7 +685,8 @@ function parseThreadTellSegment(
     if (!token.quoted && token.value.startsWith("-") && token.value !== "-") {
       const equals = token.value.indexOf("=");
       const flag = equals === -1 ? token.value : token.value.slice(0, equals);
-      if (!THREAD_TELL_FLAGS_WITH_VALUE.has(flag)) continue;
+      if (THREAD_TELL_BOOLEAN_FLAGS.has(flag) && equals === -1) continue;
+      if (!THREAD_TELL_VALUE_FLAGS.has(flag)) return null;
       let value: string | undefined = token.value.slice(equals + 1);
       if (equals === -1) {
         index += 1;
@@ -660,14 +698,12 @@ function parseThreadTellSegment(
     positionals.push(token.value);
   }
   const [threadId, messageArg, ...extra] = positionals;
-  const message =
-    messageArg !== undefined
-      ? messageFile === null
-        ? resolveThreadTellMessage(messageArg, heredocs.variables)
-        : null
-      : messageFile === "-"
-        ? heredocs.stdin
-        : null;
+  let message: string | null = null;
+  if (messageArg !== undefined && messageFile === null) {
+    message = resolveThreadTellMessage(messageArg, script.variable);
+  } else if (messageArg === undefined && messageFile === "-") {
+    message = script.stdin;
+  }
   if (
     extra.length > 0 ||
     threadId === undefined ||
@@ -683,16 +719,19 @@ function parseThreadTellSegment(
 export function parseThreadTellCommand(
   command: string,
 ): ThreadTellCommand | null {
+  if (!THREAD_TELL_HINT.test(command)) return null;
   const unwrapped = extractShellCommandFromString(command);
   if (unwrapped === undefined) return null;
-  const { heredocs, script } = extractThreadTellHeredocs(unwrapped);
-  const tells: ThreadTellCommand[] = [];
-  visitShellCommandSegments(script, (segment) => {
-    const tell = parseThreadTellSegment(segment, heredocs);
-    if (tell !== null) tells.push(tell);
-    return tells.length < 2;
+  const script = splitThreadTellScript(unwrapped);
+  if (script === null) return null;
+  const segments: ShellToken[][] = [];
+  visitShellCommandSegments(script.line, (segment) => {
+    segments.push(segment);
+    return segments.length < 2;
   });
-  return tells.length === 1 ? tells[0]! : null;
+  return segments.length === 1
+    ? parseThreadTellSegment(segments[0]!, script)
+    : null;
 }
 
 interface CommandCall {

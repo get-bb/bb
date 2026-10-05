@@ -1,7 +1,10 @@
 /// <reference types="node" />
 import { threadCpuUsage } from "node:process";
 import { expect, it } from "vitest";
-import { parseShellCommandIntents } from "../src/tool-call-parsing.js";
+import {
+  parseSentThreadMessage,
+  parseShellCommandIntents,
+} from "../src/tool-call-parsing.js";
 
 it("bounds intent parsing work after a script's disqualifying write", () => {
   const payload = "synthetic payload words\n".repeat(20_000);
@@ -26,4 +29,32 @@ it("bounds intent parsing work after a script's disqualifying write", () => {
   };
 
   expect(minimumCpu(writeFirst)).toBeLessThan(minimumCpu(readOnly) / 8);
+});
+
+it("keeps bb thread tell parsing linear on unterminated heredocs", () => {
+  const hostile = (lines: number): string =>
+    `bb thread tell thr_wrkr234567 --message-file - <<'EOF'\n${"x <<a\n".repeat(lines)}`;
+  const minimumCpu = (command: string): number => {
+    const samples: number[] = [];
+    for (let sample = 0; sample < 5; sample += 1) {
+      const started = threadCpuUsage();
+      for (let repeat = 0; repeat < 8; repeat += 1) {
+        parseSentThreadMessage({ command, exitCode: 0, status: "completed" });
+      }
+      const cpu = threadCpuUsage(started);
+      samples.push(cpu.user + cpu.system);
+    }
+    return Math.min(...samples);
+  };
+
+  expect(
+    parseSentThreadMessage({
+      command: hostile(4_000),
+      exitCode: 0,
+      status: "completed",
+    }),
+  ).toBeNull();
+  expect(minimumCpu(hostile(16_000))).toBeLessThan(
+    minimumCpu(hostile(4_000)) * 8,
+  );
 });
