@@ -57,7 +57,7 @@ import renderLogo from "../assets/company-logos/render.svg";
 import shopifyLogo from "../assets/company-logos/shopify.svg";
 import shortcutLogo from "../assets/company-logos/shortcut.svg";
 import simileLogo from "../assets/company-logos/simile.svg";
-import statsigLogo from "../assets/company-logos/statsig.png";
+import statsigLogo from "../assets/company-logos/statsig.svg";
 import stitchFixLogo from "../assets/company-logos/stitch-fix.png";
 import tencentLogo from "../assets/company-logos/tencent.png";
 import vercelLogo from "../assets/company-logos/vercel.svg";
@@ -117,15 +117,15 @@ const COMPANY_PROOF = [
   ["Shortcut", shortcutLogo, "tile"],
   ["Oracle", oracleLogo, "glyph"],
   ["Render", renderLogo, "glyph"],
-  ["Tencent", tencentLogo, "tile"],
+  ["Tencent", tencentLogo, "glyph"],
   ["Gusto", gustoLogo, "tile"],
   ["Simile", simileLogo, "glyph"],
   ["Browserbase", browserbaseLogo, "tile"],
   ["Kernel", kernelLogo, "tile"],
   ["Customer.io", customerIoLogo, "tile"],
-  ["Statsig", statsigLogo, "tile"],
+  ["Statsig", statsigLogo, "glyph"],
   ["Zoox", zooxLogo, "tile"],
-  ["Stitch Fix", stitchFixLogo, "tile"],
+  ["Stitch Fix", stitchFixLogo, "glyph"],
   ["Just Eat Takeaway", justEatTakeawayLogo, "glyph"],
 ] as const;
 
