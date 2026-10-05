@@ -43,8 +43,8 @@ export function MicrophonePreferences({
         if (disposed) return;
         setError(
           cause instanceof DOMException && cause.name === "NotAllowedError"
-            ? "Allow microphone access in your browser or system settings, then try again."
-            : "Could not open this microphone. Choose another microphone and try again.",
+            ? "Allow mic access in your settings."
+            : "Can't open this mic. Choose another.",
         );
       });
     return () => {
@@ -89,14 +89,14 @@ export function MicrophonePreferences({
             active={open && stream !== null}
             className="h-9 w-full"
           />
-          <p role="status" className="min-h-10 text-sm text-muted-foreground">
+          <p role="status" className="min-h-5 text-sm text-muted-foreground">
             {error ??
               (!isSupported
-                ? "Microphone access is unavailable in this browser."
+                ? "This browser can't use a mic."
                 : !stream
                   ? "Connecting to microphone…"
                   : silent
-                    ? "No audio detected. Try speaking or choose another microphone."
+                    ? "No audio detected. Try another mic."
                     : "Speak to check your microphone.")}
           </p>
         </div>
