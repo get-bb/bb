@@ -251,6 +251,7 @@ export function BottomAnchoredScrollBody({
     lastAppliedScrollTop: number | null;
   } | null>(null);
   const contentPositionHoldUntilRef = useRef(0);
+  const activeContentPositionHoldsRef = useRef(0);
   const scrollAnchorCaptureThrottleRef = useRef<{
     lastWriteAt: number;
     trailingTimeout: number | null;
@@ -441,10 +442,19 @@ export function BottomAnchoredScrollBody({
       contentPositionHoldUntilRef.current =
         window.performance.now() + CONTENT_POSITION_HOLD_MS;
       store.set(layoutAnimationInFlightCountAtom, (count) => count + 1);
+      activeContentPositionHoldsRef.current += 1;
+      scrollArea.style.overflowAnchor = "none";
       window.setTimeout(() => {
         store.set(layoutAnimationInFlightCountAtom, (count) =>
           Math.max(0, count - 1),
         );
+        activeContentPositionHoldsRef.current -= 1;
+        if (activeContentPositionHoldsRef.current === 0) {
+          const scrollTop = scrollArea.scrollTop;
+          scrollArea.style.overflowAnchor = "";
+          scrollArea.scrollTop = scrollTop > 0 ? scrollTop - 1 : scrollTop + 1;
+          scrollArea.scrollTop = scrollTop;
+        }
       }, CONTENT_POSITION_HOLD_MS);
       flushSync(() => {
         setIsAtBottom(false);

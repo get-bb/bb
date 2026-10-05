@@ -1332,4 +1332,35 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
 
     expect(scrollArea.scrollTop).toBe(860);
   });
+
+  it("suspends native scroll anchoring until overlapping holds finish", () => {
+    vi.useFakeTimers();
+    let bottomAnchor: BottomAnchorContextValue | null = null;
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      onBottomAnchor: (anchor) => {
+        bottomAnchor = anchor;
+      },
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-b"), { top: 20, bottom: 60 });
+    const hold = () =>
+      act(() => {
+        bottomAnchor?.holdContentPosition({
+          edge: "top",
+          element: getRow("row-b"),
+          update: () => {},
+        });
+      });
+
+    hold();
+    vi.advanceTimersByTime(200);
+    hold();
+    vi.advanceTimersByTime(100);
+    expect(scrollArea.style.overflowAnchor).toBe("none");
+
+    vi.advanceTimersByTime(200);
+    expect(scrollArea.style.overflowAnchor).toBe("");
+  });
 });
