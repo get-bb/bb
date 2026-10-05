@@ -28,6 +28,7 @@
         "$TURBO_ROOT$/apps/web/src/**",
         "$TURBO_ROOT$/apps/web/tsconfig.json",
         "$TURBO_ROOT$/apps/web/vite.config.ts",
+        "$TURBO_ROOT$/assets/bb-logo.svg",
         "$TURBO_ROOT$/packages/shared-ui/src/**",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/plugins/plugin-api-docs/src/**",

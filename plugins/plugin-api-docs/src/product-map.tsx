@@ -499,7 +499,13 @@ function Slide({
   );
 }
 
-function SlideTitle({ title }: { title: string }) {
+function SlideTitle({
+  title,
+  brandMark,
+}: {
+  title: string;
+  brandMark?: ReactNode;
+}) {
   const parts = title.split(/\bbb\b/);
   if (parts.length === 1) {
     return <>{title}</>;
@@ -508,7 +514,9 @@ function SlideTitle({ title }: { title: string }) {
     <>
       {parts.map((part, index) => (
         <Fragment key={index}>
-          {index > 0 ? <span className="font-bold italic">bb</span> : null}
+          {index > 0
+            ? (brandMark ?? <span className="font-bold italic">bb</span>)
+            : null}
           {part}
         </Fragment>
       ))}
@@ -617,12 +625,14 @@ export function ProductMap({
   initialSlideId,
   onSlideChange,
   onCopyForAgent,
+  brandMark,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
   renderPluginIcon?: (displayName: string) => ReactNode;
   initialSlideId?: string;
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
+  brandMark?: ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -812,7 +822,7 @@ export function ProductMap({
           >
             <div className="mb-3 border-b border-border-hairline pb-3">
               <h2 className="text-base font-semibold">
-                <SlideTitle title={slides[index].title} />
+                <SlideTitle title={slides[index].title} brandMark={brandMark} />
               </h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
                 {slides[index].blurb}

@@ -1,3 +1,4 @@
+import bbLogoUrl from "../../../../assets/bb-logo.svg?url";
 import { firstPartyPluginId } from "../../../../plugins/plugin-api-docs/src/plugin-icons";
 import { ProductMap } from "../../../../plugins/plugin-api-docs/src/product-map";
 import {
@@ -93,6 +94,13 @@ export default function PluginGuide({
       initialSlideId={initialSlideId}
       onSlideChange={onSlideChange}
       onCopyForAgent={copyForAgent}
+      brandMark={
+        <img
+          src={bbLogoUrl}
+          alt="bb"
+          className="inline-block h-[0.9em] w-auto align-[-0.1em] dark:invert"
+        />
+      }
     />
   );
 }
