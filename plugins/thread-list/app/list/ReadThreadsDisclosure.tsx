@@ -17,7 +17,7 @@ export function ReadThreadsDisclosure({
       onClick={revealReadThreads}
     >
       <Icon name="ChevronRight" aria-hidden="true" />
-      {hiddenCount} read {hiddenCount === 1 ? "thread" : "threads"}
+      {hiddenCount} read
     </Button>
   );
 }

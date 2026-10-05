@@ -105,7 +105,7 @@ Organize → Rows → Provider icons toggles the icon before each title, and
 `groupByReadStatus` defaults to `false`; Organize → Groups → By read status or
 `bb thread-list prefs set groupByReadStatus true` lists unread threads above
 read ones, keeping the selected sort within each group.
-In sections with unread threads, read threads fold behind a “N read threads”
+In sections with unread threads, read threads fold behind a “N read”
 row. Revealing them lasts until reload. Sections that start with no unread
 threads keep showing all their threads. Once a rollup starts, newly read
 threads join it even when the last unread thread becomes read. The open

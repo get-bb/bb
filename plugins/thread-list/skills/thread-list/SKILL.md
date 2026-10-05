@@ -56,7 +56,7 @@ defaults to `false`; use `bb thread-list prefs set groupByReadStatus true` to
 turn it on. Parents start collapsed while it is on, without changing
 `collapsedThreads`, and `environmentGrouping` is ignored. The open thread keeps
 its place until another thread is opened.
-In sections with unread threads, read threads fold behind a “N read threads”
+In sections with unread threads, read threads fold behind a “N read”
 row. Revealing them lasts until reload. Sections that start with no unread
 threads keep showing all their threads. Once a rollup starts, newly read
 threads join it even when the last unread thread becomes read. The open

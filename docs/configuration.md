@@ -1900,7 +1900,7 @@ icon before each thread title. Unknown provider ids have no icon.
 The `groupByReadStatus` preference defaults to `false`. Organize → Groups →
 By read status or `bb thread-list prefs set groupByReadStatus true` lists
 threads that show an unread dot above the rest, keeping the selected sort within
-each group. In sections with unread threads, read threads fold behind a “N read threads”
+each group. In sections with unread threads, read threads fold behind a “N read”
 row at the bottom. Revealing them lasts until reload. Sections that start with
 no unread threads keep showing all their threads. Once a rollup starts, newly
 read threads join it even when the last unread thread becomes read. The open
