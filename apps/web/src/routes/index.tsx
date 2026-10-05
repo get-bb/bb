@@ -35,12 +35,14 @@ import { trackLandingEvent, useInitAnalytics } from "../landing/analytics";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
 import datadogLogo from "../assets/company-logos/datadog.svg";
 import figmaLogo from "../assets/company-logos/figma.svg";
+import linearLogo from "../assets/company-logos/linear.svg";
 import metaLogo from "../assets/company-logos/meta.svg";
 import moodysLogo from "../assets/company-logos/moodys.png";
 import notionLogo from "../assets/company-logos/notion.png";
 import ownerLogo from "../assets/company-logos/owner.png";
 import pendoLogo from "../assets/company-logos/pendo.svg";
 import renderLogo from "../assets/company-logos/render.svg";
+import shopifyLogo from "../assets/company-logos/shopify.svg";
 import shortcutLogo from "../assets/company-logos/shortcut.svg";
 import simileLogo from "../assets/company-logos/simile.svg";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
@@ -89,6 +91,8 @@ const COMPANY_PROOF = [
   ["Shortcut", shortcutLogo, "tile"],
   ["Render", renderLogo, "glyph"],
   ["Simile", simileLogo, "glyph"],
+  ["Linear", linearLogo, "glyph"],
+  ["Shopify", shopifyLogo, "glyph"],
 ] as const;
 
 function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
