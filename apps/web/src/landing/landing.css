@@ -819,6 +819,20 @@ body {
   will-change: auto;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .company-proof-marquee:hover .company-proof-track {
+    animation-play-state: paused;
+  }
+
+  .company-proof:not(.is-paused) .company-proof-toggle:not(:focus-visible) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
 .company-proof-logos {
   display: flex;
   align-items: center;
