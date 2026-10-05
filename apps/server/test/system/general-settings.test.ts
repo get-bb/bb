@@ -214,3 +214,31 @@ it("persists archive confirmation opt-out and preserves it for older clients", a
     expect(getAppSettings(harness.db).confirmThreadArchive).toBe(true);
   });
 });
+
+it("preserves threadTitleInstructions for older clients and supports resetting it", async () => {
+  const key = "threadTitleInstructions";
+  await withTestHarness(async (harness) => {
+    const put = (settings: object) =>
+      harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+    const instructions = "Write a short title in French.";
+    expect(
+      (await put({ ...defaultAppSettings, [key]: instructions })).status,
+    ).toBe(200);
+    const { [key]: _omitted, ...legacy } = defaultAppSettings;
+    expect((await put(legacy)).status).toBe(200);
+    const config = systemConfigResponseSchema.parse(
+      await readJson(await harness.app.request("/api/v1/system/config")),
+    );
+    expect(config.generalSettings[key]).toBe(instructions);
+    expect((await put({ ...defaultAppSettings, [key]: " " })).status).toBe(400);
+    expect(getAppSettings(harness.db)[key]).toBe(instructions);
+    expect((await put({ ...defaultAppSettings, [key]: null })).status).toBe(
+      200,
+    );
+    expect(getAppSettings(harness.db)[key]).toBeNull();
+  });
+});

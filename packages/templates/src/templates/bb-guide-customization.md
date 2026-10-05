@@ -183,6 +183,15 @@ when they do. `test` runs a sample title or commit message through the current
 choice. Settings → AI services has the same controls. Each plugin chooses its
 own model.
 
+Settings → AI services → Thread titles → Add instructions adds your own
+instructions to bb's built-in title rules, server-wide; the field saves on
+blur. Instructions take precedence over bb's style rules, but a title stays one
+line of at most 100 display columns. bb adds the task text, so no template
+variables are needed. The `threadTitleInstructions` setting accepts 1–2,000
+characters; `null` or an empty field uses only bb's rules.
+`bb settings general threadTitleInstructions "Write titles in French."` sets
+it; the SDK uses `system.updateGeneralSettings` with the same key.
+
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.

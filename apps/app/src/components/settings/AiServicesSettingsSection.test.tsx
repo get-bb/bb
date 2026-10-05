@@ -2,6 +2,8 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultAppSettings } from "@bb/domain";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import type { SystemAiServicesResponse } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -74,6 +76,7 @@ function stubFetch(
   testResponse: () => Response = TEST_SUCCESS,
 ): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
+  let settings = { ...defaultAppSettings };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -84,6 +87,13 @@ function stubFetch(
       const url = new URL(request.url).pathname;
       const text = await request.text();
       requests.push({ url, method: request.method, body: text });
+      if (url === "/api/v1/system/config") {
+        return jsonResponse(makeSystemConfig({ generalSettings: settings }));
+      }
+      if (url === "/api/v1/settings/general") {
+        settings = { ...settings, ...JSON.parse(text) };
+        return jsonResponse(settings);
+      }
       if (url === "/api/v1/system/ai-services/selection") {
         const body = JSON.parse(text);
         return jsonResponse({
@@ -155,6 +165,55 @@ describe("AiServicesSettingsSection", () => {
       });
     });
     await vi.waitFor(() => expect(trigger.textContent).toContain("Off"));
+  });
+
+  it("adds thread title instructions, autosaves them on blur, and collapses when cleared", async () => {
+    const label = "Thread title instructions";
+    const requests = stubFetch();
+    const { wrapper } = createQueryClientTestHarness();
+    render(<AiServicesSettingsSection />, { wrapper });
+    const add = await screen.findByRole("button", {
+      name: `Add ${label.toLowerCase()}`,
+    });
+    expect(screen.queryByRole("textbox", { name: label })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /commit message instructions/iu }),
+    ).toBeNull();
+    await vi.waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+    const writes = () =>
+      requests.filter((request) => request.url === "/api/v1/settings/general");
+    fireEvent.click(add);
+    const empty = await screen.findByRole("textbox", { name: label });
+    fireEvent.blur(empty);
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: label })).toBeNull(),
+    );
+    expect(writes()).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole("button", { name: `Add ${label.toLowerCase()}` }),
+    );
+    const editor = await screen.findByRole("textbox", { name: label });
+    if (!(editor instanceof HTMLTextAreaElement))
+      throw new Error("Expected instructions textarea");
+    expect(document.activeElement).toBe(editor);
+    fireEvent.change(editor, { target: { value: "  Write in French.  " } });
+    fireEvent.blur(editor);
+    await vi.waitFor(() => {
+      expect(writes()).toHaveLength(1);
+      expect(
+        JSON.parse(writes()[0]?.body ?? "null").threadTitleInstructions,
+      ).toBe("Write in French.");
+    });
+    await vi.waitFor(() => expect(editor.value).toBe("Write in French."));
+    fireEvent.change(editor, { target: { value: " " } });
+    fireEvent.blur(editor);
+    await vi.waitFor(() => {
+      expect(writes()).toHaveLength(2);
+      expect(
+        JSON.parse(writes().at(-1)?.body ?? "null").threadTitleInstructions,
+      ).toBeNull();
+    });
+    await screen.findByRole("button", { name: `Add ${label.toLowerCase()}` });
   });
 
   it("runs a test and shows the reply", async () => {

@@ -44,6 +44,7 @@ Automatic skips it, and nothing is sent to getbb.app. It has no settings page.
 While bb cloud is on, bb sends the text of a thread's first prompt (titles), the
 changed files with a diff excerpt (commit messages), and voice recordings with
 a vocabulary hint (voice input) to getbb.app, which forwards them to OpenRouter
-model providers with zero data retention. bb stores daily usage totals and, for
-30 days, metadata about each request such as its time, model, token counts, and
-cost; it never stores prompts, recordings, or replies.
+model providers with zero data retention. Any thread title instructions the user
+adds in Settings → AI services are sent with title requests. bb stores daily usage
+totals and, for 30 days, metadata about each request such as its time, model,
+token counts, and cost; it never stores prompts, recordings, or replies.

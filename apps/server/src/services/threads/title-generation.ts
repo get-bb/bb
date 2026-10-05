@@ -1,5 +1,5 @@
 import { renderTemplate } from "@bb/templates";
-import { getThread, updateThread } from "@bb/db";
+import { getAppSettings, getThread, updateThread } from "@bb/db";
 import {
   removeCommandMentionsFromPromptInput,
   type PromptInput,
@@ -16,7 +16,7 @@ import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { runTextAiTask } from "../ai/ai-tasks.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
-const MAX_GENERATED_TITLE_WIDTH = 48;
+const MAX_GENERATED_TITLE_WIDTH = 100;
 const MAX_TITLE_FALLBACK_WIDTH = 80;
 const MAX_TITLE_PROMPT_WIDTH = 4000;
 const ELLIPSIS = "...";
@@ -171,7 +171,10 @@ export function sanitizeGeneratedBranchSlug(value: string): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-export function buildThreadTitlePrompt(input: PromptInput[]): string | null {
+export function buildThreadTitlePrompt(
+  input: PromptInput[],
+  instructions: string | null = null,
+): string | null {
   const text = cleanPromptText(input);
   if (!text) {
     return null;
@@ -179,6 +182,7 @@ export function buildThreadTitlePrompt(input: PromptInput[]): string | null {
   const commands = collectInvokedPromptCommands(input);
   const body = promptTextWithoutCommands(input, commands);
   return renderTemplate("generateThreadMetadata", {
+    ...(instructions === null ? {} : { instructions }),
     cleanedPrompt: clampToWidth(
       body.length > 0 ? body : text,
       MAX_TITLE_PROMPT_WIDTH,
@@ -203,7 +207,10 @@ export async function generateThreadMetadataWithOutcome(
     ...(reason ? { reason } : {}),
   });
 
-  const prompt = buildThreadTitlePrompt(args.input);
+  const prompt = buildThreadTitlePrompt(
+    args.input,
+    getAppSettings(deps.db).threadTitleInstructions,
+  );
   if (prompt === null) {
     return complete(null, "empty-input");
   }

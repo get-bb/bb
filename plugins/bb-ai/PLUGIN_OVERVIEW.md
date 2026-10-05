@@ -9,7 +9,7 @@ Thread titles, commit messages, and voice input from bb cloud, included with you
 
 ## How it works
 
-Sign in with your bb account. When a task uses bb cloud, bb sends its prompt to getbb.app, which forwards it to OpenRouter model providers with zero data retention: the text of a thread's first prompt for titles, the changed files with a diff excerpt for commit messages, and the recording for voice input. bb stores your daily usage totals and, for 30 days, metadata about each request such as its time, model, token counts, and cost. It never stores prompts, recordings, or replies. Turn bb cloud off with `bb ai off`; your bb account stays signed in.
+Sign in with your bb account. When a task uses bb cloud, bb sends its prompt to getbb.app, which forwards it to OpenRouter model providers with zero data retention: the text of a thread's first prompt for titles, the changed files with a diff excerpt for commit messages, and the recording for voice input. Any thread title instructions you add in Settings → AI services are sent with title requests. bb stores your daily usage totals and, for 30 days, metadata about each request such as its time, model, token counts, and cost. It never stores prompts, recordings, or replies. Turn bb cloud off with `bb ai off`; your bb account stays signed in.
 
 ## For agents
 

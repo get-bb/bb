@@ -17,10 +17,12 @@ import {
   ChoiceDropdownSetting,
   type ChoiceDropdownOption,
 } from "./ChoiceDropdownSetting";
+import { ThreadTitleInstructionsSetting } from "./ThreadTitleInstructionsSetting";
 
 type AiTaskTestResult = TestAiServiceResponse | { ok: false; message: string };
 
 const AUTOMATIC_KEY = "automatic";
+const ROW_CLASS_NAME = "space-y-2 py-4 first:pt-0 last:pb-0";
 const OFF_KEY = "off";
 
 interface AiTaskRow {
@@ -203,22 +205,23 @@ export function AiServicesSettingsSection() {
   return (
     <SettingsSection
       title="AI services"
-      description="Choose which plugin writes thread titles, commit messages, and voice transcripts. Automatic tries bb cloud first, then other services by plugin ID; a service you pick is never swapped for another."
+      description="Choose a service for each task. Add instructions to shape thread titles."
     >
-      <div className="space-y-5">
+      <div className="divide-y divide-border">
         {AI_TASK_ROWS.map((row) => {
           if (view === undefined) {
             return (
-              <ChoiceDropdownSetting
-                key={row.task}
-                label={row.label}
-                description={row.hint}
-                triggerAriaLabel={row.label}
-                options={[]}
-                selected={{ key: AUTOMATIC_KEY, title: "Loading" }}
-                onSelect={() => undefined}
-                disabled
-              />
+              <div key={row.task} className={ROW_CLASS_NAME}>
+                <ChoiceDropdownSetting
+                  label={row.label}
+                  description={row.hint}
+                  triggerAriaLabel={row.label}
+                  options={[]}
+                  selected={{ key: AUTOMATIC_KEY, title: "Loading" }}
+                  onSelect={() => undefined}
+                  disabled
+                />
+              </div>
             );
           }
           const options = aiTaskOptions(view, row);
@@ -229,43 +232,47 @@ export function AiServicesSettingsSection() {
           };
           const testTask = row.testTask;
           return (
-            <ChoiceDropdownSetting
-              key={row.task}
-              label={row.label}
-              description={rowDescription(
-                view,
-                row,
-                testTask === null ? undefined : testResults[testTask],
-              )}
-              triggerAriaLabel={row.label}
-              options={options}
-              selected={selected}
-              disabled={select.isPending}
-              onSelect={(nextKey) => {
-                const selection = selectionFromKey(view, nextKey);
-                if (selection === null) return;
-                setTestResults((current) => {
-                  if (testTask === null) return current;
-                  const { [testTask]: _cleared, ...rest } = current;
-                  return rest;
-                });
-                select.mutate({ task: row.task, selection });
-              }}
-            >
-              {testTask === null ? null : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Test ${row.label.toLowerCase()}`}
-                  disabled={test.isPending}
-                  onClick={() => test.mutate(testTask)}
-                >
-                  {test.isPending && test.variables === testTask
-                    ? "Testing…"
-                    : "Test"}
-                </Button>
-              )}
-            </ChoiceDropdownSetting>
+            <div key={row.task} className={ROW_CLASS_NAME}>
+              <ChoiceDropdownSetting
+                label={row.label}
+                description={rowDescription(
+                  view,
+                  row,
+                  testTask === null ? undefined : testResults[testTask],
+                )}
+                triggerAriaLabel={row.label}
+                options={options}
+                selected={selected}
+                disabled={select.isPending}
+                onSelect={(nextKey) => {
+                  const selection = selectionFromKey(view, nextKey);
+                  if (selection === null) return;
+                  setTestResults((current) => {
+                    if (testTask === null) return current;
+                    const { [testTask]: _cleared, ...rest } = current;
+                    return rest;
+                  });
+                  select.mutate({ task: row.task, selection });
+                }}
+              >
+                {testTask === null ? null : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Test ${row.label.toLowerCase()}`}
+                    disabled={test.isPending}
+                    onClick={() => test.mutate(testTask)}
+                  >
+                    {test.isPending && test.variables === testTask
+                      ? "Testing…"
+                      : "Test"}
+                  </Button>
+                )}
+              </ChoiceDropdownSetting>
+              {row.task === "thread-title" ? (
+                <ThreadTitleInstructionsSetting />
+              ) : null}
+            </div>
           );
         })}
       </div>
