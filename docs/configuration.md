@@ -1899,15 +1899,11 @@ icon before each thread title. Unknown provider ids have no icon.
 
 The `groupByReadStatus` preference defaults to `false`. Organize → Groups →
 By read status or `bb thread-list prefs set groupByReadStatus true` lists
-threads that show an unread dot above the rest; the selected sort applies within
-each group. Read status is the innermost grouping, so worktree rows stay
-grouped and move up when a thread in them shows the dot. Child threads don't
-show the dot, so they don't lift their parent, and parents start collapsed while
-the option is on; expanding one lasts for the session and leaves the saved
-collapsed state unchanged. The open thread keeps its place until another thread
-is opened. Pinned threads keep their manual order. By read status and By
-environment are mutually exclusive: turning on By environment turns read status
-off, and while `groupByReadStatus` is on, worktree threads are not grouped.
+threads that show an unread dot above the rest, keeping the selected sort within
+each group. Parent threads start collapsed while it is on, without changing the
+saved collapsed state. The open thread keeps its place until another thread is
+opened, and pinned threads keep their manual order. It is exclusive with By
+environment: while it is on, worktree threads are not grouped.
 
 The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with

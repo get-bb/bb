@@ -1,8 +1,5 @@
 import type { SidebarThread } from "./sidebar-thread.js";
-import type {
-  ProjectThreadItem,
-  ThreadComparator,
-} from "./project-thread-groups.js";
+import type { ThreadComparator } from "./project-thread-groups.js";
 import { isUnreadDoneThread } from "./thread-activity.js";
 
 export interface HeldReadStatus {
@@ -23,17 +20,6 @@ export function createThreadUnreadPredicate(
     );
 }
 
-function itemThread(item: ProjectThreadItem): SidebarThread | null {
-  switch (item.kind) {
-    case "thread":
-      return item.node.thread;
-    case "environment":
-      return item.group.nodes[0].thread;
-    case "section":
-      return null;
-  }
-}
-
 export function groupComparatorByReadStatus(
   compareThreads: ThreadComparator,
   isUnread: ThreadUnreadPredicate,
@@ -44,15 +30,10 @@ export function groupComparatorByReadStatus(
     compareReadStatus(left, right) || compareThreads(left, right);
   const compareItems = compareThreads.compareItems;
   if (compareItems) {
-    grouped.compareItems = (left, right) => {
-      const leftThread = itemThread(left);
-      const rightThread = itemThread(right);
-      const readStatusDelta =
-        leftThread && rightThread
-          ? compareReadStatus(leftThread, rightThread)
-          : 0;
-      return readStatusDelta || compareItems(left, right);
-    };
+    grouped.compareItems = (left, right) =>
+      (left.kind === "thread" && right.kind === "thread"
+        ? compareReadStatus(left.node.thread, right.node.thread)
+        : 0) || compareItems(left, right);
   }
   return grouped;
 }
