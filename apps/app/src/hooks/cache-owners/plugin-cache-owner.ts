@@ -3,10 +3,11 @@ import {
   pluginListQueryOptions,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
-import type { InstalledPlugin } from "@bb/server-contract";
+import type { InstalledPlugin, PluginInstallJob } from "@bb/server-contract";
 import {
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginListQueryKeyPrefix,
+  pluginInstallJobsQueryKey,
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
   pluginSafeModeQueryKey,
@@ -41,6 +42,23 @@ export function applyInstalledPlugin(args: {
       return plugins.map((candidate, index) =>
         index === existingIndex ? args.plugin : candidate,
       );
+    },
+  );
+}
+
+export function applyPluginInstallJob(args: {
+  queryClient: QueryClient;
+  job: PluginInstallJob;
+}): void {
+  args.queryClient.setQueryData<PluginInstallJob[]>(
+    pluginInstallJobsQueryKey(),
+    (current) => {
+      const jobs = current ?? [];
+      return jobs.some((candidate) => candidate.id === args.job.id)
+        ? jobs.map((candidate) =>
+            candidate.id === args.job.id ? args.job : candidate,
+          )
+        : [...jobs, args.job];
     },
   );
 }

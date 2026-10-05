@@ -110,6 +110,17 @@
     Installs from one repository and commit share a single checkout.
     A repository that has a collection manifest and is not a plugin itself
     refuses an unselected install and lists its entry names.
+    Every install (CLI, SDK, or app) is a server job. Jobs run one at a time
+    in request order and keep going when the client disconnects or the app
+    reloads; a second request for the same source or catalog entry joins the
+    active job. `--no-wait` starts the job and prints its id instead of
+    waiting.
+  - `bb plugin install-jobs` — list queued, running, and recently finished
+    installs (finished jobs stay for ten minutes; `--json` for the jobs).
+  - `bb plugin cancel-install <job-id>` — a queued install is dropped. A
+    running install kills its git/npm step and installs nothing; once it has
+    started registering the plugin, it finishes and reports success (remove
+    it afterwards if unwanted).
   - `bb plugin outdated` — check installed plugins for compatible updates
     (table; `--json` for raw results). Shows latest compatible candidate and
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate

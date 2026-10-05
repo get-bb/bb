@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InstalledPlugin } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { pluginInstallJobsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 
@@ -79,7 +80,7 @@ function LocationProbe() {
 }
 
 function renderGuide() {
-  const { wrapper } = createQueryClientTestHarness();
+  const { wrapper, queryClient } = createQueryClientTestHarness();
   render(
     <MemoryRouter initialEntries={["/plugins"]}>
       <OpenPluginGuideButton />
@@ -87,7 +88,10 @@ function renderGuide() {
     </MemoryRouter>,
     { wrapper },
   );
-  return screen.getByRole("button", { name: "Plugin Guide" });
+  return {
+    button: screen.getByRole("button", { name: "Plugin Guide" }),
+    queryClient,
+  };
 }
 
 afterEach(() => {
@@ -109,7 +113,7 @@ describe("OpenPluginGuideButton", () => {
         : Promise.resolve(jsonResponse({ plugins: [GUIDE] })),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const button = renderGuide();
+    const { button } = renderGuide();
     fireEvent.click(button);
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
@@ -136,7 +140,7 @@ describe("OpenPluginGuideButton", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    fireEvent.click(renderGuide());
+    fireEvent.click(renderGuide().button);
     await vi.waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
         "/plugins/plugin-api-docs/plugin-api",
@@ -163,7 +167,7 @@ describe("OpenPluginGuideButton", () => {
             });
       }),
     );
-    const button = renderGuide();
+    const { button } = renderGuide();
     fireEvent.click(button);
     await vi.waitFor(() =>
       expect(toast).toHaveBeenCalledWith("Could not open Plugin Guide", {
@@ -188,7 +192,7 @@ describe("OpenPluginGuideButton", () => {
         : jsonResponse({ plugins: [] }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    fireEvent.click(renderGuide());
+    fireEvent.click(renderGuide().button);
     expect(
       await screen.findByRole("dialog", { name: "Install Plugin Guide?" }),
     ).toBeTruthy();
@@ -200,14 +204,28 @@ describe("OpenPluginGuideButton", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("installs the official listing after confirmation and opens Guide after success", async () => {
+  it("installs the official listing after confirmation and opens Guide once the install succeeds", async () => {
+    const job = {
+      id: "job-guide",
+      target: {
+        kind: "catalog",
+        entryId: "plugin-api-docs",
+        marketplace: "bb-official",
+      },
+      displayName: "Plugin Guide",
+    };
     let finishInstall: (response: Response) => void = () => undefined;
-    const installResponse = new Promise<Response>((resolve) => {
+    const finishedJobs = new Promise<Response>((resolve) => {
       finishInstall = resolve;
     });
     const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/v1/plugin-catalog/install") return installResponse;
+      if (url === "/api/v1/plugin-catalog/install") {
+        return Promise.resolve(
+          jsonResponse({ ok: true, job: { ...job, state: "queued" } }, 202),
+        );
+      }
+      if (url === "/api/v1/plugins/install-jobs") return finishedJobs;
       return Promise.resolve(
         url.startsWith("/api/v1/plugin-catalog/search")
           ? jsonResponse({ results: [GUIDE_ENTRY], collections: [] })
@@ -215,24 +233,34 @@ describe("OpenPluginGuideButton", () => {
       );
     });
     vi.stubGlobal("fetch", fetchMock);
-    fireEvent.click(renderGuide());
-    const install = await screen.findByRole("button", {
-      name: "Install Plugin Guide",
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    fireEvent.click(install);
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/v1/plugin-catalog/install");
-    expect(fetchMock.mock.calls[2]?.[1]?.method).toBe("POST");
-    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
+    const { button, queryClient } = renderGuide();
+    fireEvent.click(button);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Install Plugin Guide" }),
+    );
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const installCall = fetchMock.mock.calls.find(
+      ([url]) => url === "/api/v1/plugin-catalog/install",
+    );
+    expect(installCall?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(installCall?.[1]?.body))).toEqual({
       entryId: "plugin-api-docs",
       marketplace: "bb-official",
     });
     expect(screen.getByTestId("location").textContent).toBe("/plugins");
+
+    void queryClient.invalidateQueries({
+      queryKey: pluginInstallJobsQueryKey(),
+    });
     finishInstall(
       jsonResponse({
-        ok: true,
-        plugin: { ...GUIDE, enabled: true, status: "running" },
+        jobs: [
+          {
+            ...job,
+            state: "succeeded",
+            plugin: { ...GUIDE, enabled: true, status: "running" },
+          },
+        ],
       }),
     );
     await vi.waitFor(() =>
@@ -240,6 +268,5 @@ describe("OpenPluginGuideButton", () => {
         "/plugins/plugin-api-docs/plugin-api",
       ),
     );
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

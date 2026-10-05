@@ -26,6 +26,8 @@ import type {
 } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import { PLUGIN_RPC_CALLER_HEADER } from "../services/plugins/plugin-rpc-caller.js";
+import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
+import { respondWithInstallJob } from "./plugin-install-jobs.js";
 import {
   createAppAssetCompressionCache,
   type AppAssetCompressionCache,
@@ -373,6 +375,7 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
+  installJobs: PluginInstallJobs,
   upgradeWebSocket?: UpgradeWebSocket,
 ): void {
   const appAssetCompressionCache = createAppAssetCompressionCache(
@@ -705,21 +708,16 @@ export function registerPluginRoutes(
         422,
       );
     }
-    try {
-      const plugin = await plugins.install(
-        parsed.data.source,
-        parsed.data.selection,
-      );
-      return context.json({ ok: true, plugin });
-    } catch (error) {
-      return context.json(
-        {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        422,
-      );
-    }
+    const { source, selection } = parsed.data;
+    const job = installJobs.start({
+      target: { kind: "source", source, selection },
+      displayName: source,
+      run: () => plugins.install(source, selection),
+    });
+    return respondWithInstallJob(context, installJobs, job, (error) => ({
+      ok: false,
+      error,
+    }));
   });
 
   app.get("/plugins/:id/source", async (context) => {

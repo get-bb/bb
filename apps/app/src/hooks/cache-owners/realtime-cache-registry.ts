@@ -57,6 +57,7 @@ import {
   hostsQueryKey,
   serverMoveStatusQueryKey,
   systemAppUpdateQueryKey,
+  pluginInstallJobsQueryKey,
   sidebarNavigationQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
@@ -546,6 +547,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyEnvironmentProviderQueries,
       reconcilePluginFrontendBundles,
     ],
+  },
+  "plugin-install-jobs-changed": {
+    dirty: [dirtyPluginInstallJobQueries],
   },
   "provider-registrations-changed": {
     dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
@@ -1170,6 +1174,10 @@ function dirtyServerMoveStatusQueries(): QueryKey[] {
 
 function dirtyAppUpdateStatusQueries(): QueryKey[] {
   return [systemAppUpdateQueryKey()];
+}
+
+function dirtyPluginInstallJobQueries(): QueryKey[] {
+  return [pluginInstallJobsQueryKey()];
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {

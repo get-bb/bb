@@ -48,6 +48,10 @@ import {
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
 import {
+  useCancelPluginInstallJob,
+  useCatalogEntryInstallJob,
+} from "@/hooks/queries/plugin-install-job-queries";
+import {
   catalogEntryDetailKey,
   catalogEntryInstallBlocker,
 } from "@/components/plugin/management/installed-plugin-catalog";
@@ -198,6 +202,8 @@ export function CatalogPluginDetail({
   const presentation = pluginInstallCountPresentation(entry);
   const count = presentation?.tone === "count" ? presentation : undefined;
   const installBlocker = catalogEntryInstallBlocker(entry);
+  const installJob = useCatalogEntryInstallJob(entry);
+  const { mutate: cancelInstall } = useCancelPluginInstallJob();
   const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   return (
     <ResourceDetailPage
@@ -216,6 +222,8 @@ export function CatalogPluginDetail({
           unavailableReason={installBlocker}
           count={count}
           onInstall={() => onInstall(entry)}
+          installJob={installJob}
+          onCancelInstall={cancelInstall}
         />
       }
       overflowMenu={
@@ -514,7 +522,10 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <section className="max-w-prose" data-resource-detail-section="overview">
+          <section
+            className="max-w-prose"
+            data-resource-detail-section="overview"
+          >
             <PluginOverviewLead
               description={
                 plugin.description ?? "This plugin does not describe itself."

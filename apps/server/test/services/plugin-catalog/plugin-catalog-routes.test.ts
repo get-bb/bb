@@ -5,6 +5,7 @@ import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
+import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
@@ -59,7 +60,11 @@ describe("plugin catalog routes", () => {
       ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     });
     const app = new Hono();
-    registerPluginCatalogRoutes(app, catalog);
+    registerPluginCatalogRoutes(
+      app,
+      catalog,
+      createPluginInstallJobs({ notifyChanged: () => {} }),
+    );
     return { app, catalog };
   }
 

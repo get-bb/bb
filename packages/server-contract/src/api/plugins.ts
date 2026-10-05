@@ -251,6 +251,64 @@ export const pluginCatalogInstallRequestSchema = z
   })
   .strict();
 
+export const pluginInstallJobTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("catalog"),
+      entryId: z.string().min(1),
+      marketplace: pluginMarketplaceNameSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("source"),
+      source: z.string().min(1),
+      selection: pluginSourceSelectionSchema,
+    })
+    .strict(),
+]);
+export type PluginInstallJobTarget = z.infer<
+  typeof pluginInstallJobTargetSchema
+>;
+
+const pluginInstallJobFields = {
+  id: z.string().min(1),
+  target: pluginInstallJobTargetSchema,
+  displayName: z.string().min(1),
+};
+
+export const pluginInstallJobSchema = z.discriminatedUnion("state", [
+  z.object({ ...pluginInstallJobFields, state: z.literal("queued") }),
+  z.object({ ...pluginInstallJobFields, state: z.literal("running") }),
+  z.object({ ...pluginInstallJobFields, state: z.literal("cancelling") }),
+  z.object({
+    ...pluginInstallJobFields,
+    state: z.literal("succeeded"),
+    plugin: installedPluginSchema,
+  }),
+  z.object({
+    ...pluginInstallJobFields,
+    state: z.literal("failed"),
+    error: z.string(),
+  }),
+  z.object({ ...pluginInstallJobFields, state: z.literal("cancelled") }),
+]);
+export type PluginInstallJob = z.infer<typeof pluginInstallJobSchema>;
+export type PluginInstallJobState = PluginInstallJob["state"];
+
+export const pluginInstallJobStartResponseSchema = z.object({
+  ok: z.literal(true),
+  job: pluginInstallJobSchema,
+});
+
+export const pluginInstallJobResponseSchema = z.object({
+  job: pluginInstallJobSchema,
+});
+
+export const pluginInstallJobListResponseSchema = z.object({
+  jobs: z.array(pluginInstallJobSchema),
+});
+
 export const pluginReloadResponseSchema = z.object({
   ok: z.literal(true),
   plugins: z.array(installedPluginSchema),

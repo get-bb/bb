@@ -48,6 +48,7 @@ import type {
   InstallRegistrationIdentity,
   RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
+import { commitInstall } from "./install-cancellation.js";
 import type { PluginServiceDeps } from "./plugin-service-internal.js";
 import {
   gitResolvedVersion,
@@ -359,6 +360,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       ? initialManifest
       : await validateInstallDir(args);
     let isFreshInstall = false;
+    commitInstall();
     await withLifecycleLock(manifest.id, async () => {
       const existing = getInstalledPlugin(deps.db, manifest.id);
       isFreshInstall = existing === undefined;
