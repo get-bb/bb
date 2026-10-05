@@ -257,6 +257,8 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
     systemVersion: {
       currentVersion: "0.0.5",
       latestVersion: "0.0.5",
+      currentCommit: null,
+      installKind: "npm",
       source: "npm",
       updateAvailable: false,
       isDevelopment: false,
@@ -333,6 +335,8 @@ function useWebApp(): void {
     currentVersion: "0.0.5",
     isDevelopment: false,
     latestVersion: "0.0.6",
+    currentCommit: null,
+    installKind: "npm",
     source: "npm",
     updateAvailable: true,
     upgradeCommand: "npx bb-app@latest",
@@ -1259,7 +1263,9 @@ The canonical release summary.
       </TooltipProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Retry on homelab now" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry on homelab now" }),
+    );
 
     expect(onClick).not.toHaveBeenCalled();
   });
@@ -1430,6 +1436,8 @@ The canonical release summary.
     const availableVersion = {
       currentVersion: "0.0.5",
       latestVersion: "0.0.6",
+      currentCommit: null,
+      installKind: "npm" as const,
       source: "npm" as const,
       updateAvailable: true,
       isDevelopment: false,
@@ -1505,6 +1513,75 @@ The canonical release summary.
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
     });
     expect(sdk.system.version).not.toHaveBeenCalled();
+  });
+
+  it("explains an unknown desktop release and retries through the desktop bridge", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      downloadState: "idle",
+      lastCheckedAt: "2026-07-19T00:00:00.000Z",
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.5",
+    };
+    const checkForUpdates = vi.fn().mockResolvedValue(desktopInfo);
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
+      desktopInfo,
+      isDesktop: true,
+    });
+    useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
+
+    renderSection();
+    await waitFor(() => {
+      expect(checkForUpdates).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Retry the desktop release check/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+    expect(
+      screen.getByText("Couldn't determine the latest desktop release."),
+    ).toBeTruthy();
+
+    let finishCheck: (() => void) | undefined;
+    checkForUpdates.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCheck = resolve;
+        }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Retry the desktop release check/ }),
+    );
+    await waitFor(() => {
+      expect(checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Retry the desktop release check/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+    });
+    expect(
+      screen.getByText("Checking for a newer desktop release…"),
+    ).toBeTruthy();
+    await act(async () => finishCheck?.());
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Retry the desktop release check/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
   });
 
   it("does not claim a legacy desktop shell is downloading an available update", () => {
@@ -1745,6 +1822,69 @@ The canonical release summary.
     });
   });
 
+  it("retries an unavailable release check from the app row", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        available: null,
+        blocked: {
+          reason: "fetch-failed",
+          message: "Couldn't check npm for a newer release.",
+        },
+      }),
+    );
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        systemVersion: {
+          currentVersion: "0.0.5",
+          currentCommit: null,
+          installKind: "npm",
+          source: "npm",
+          latestVersion: null,
+          updateAvailable: false,
+          isDevelopment: false,
+          upgradeCommand: "npx bb-app@latest",
+        },
+      }),
+    );
+    renderSection();
+    const retry = await screen.findByRole("button", {
+      name: "Latest unknown · Retry the release check",
+    });
+    expect(
+      screen.getByText("Couldn't check npm for a newer release."),
+    ).toBeDefined();
+    expect(retry.querySelector('[data-icon="CircleQuestion"]')).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", {
+            name: "Latest unknown · Retry the release check",
+          })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    vi.mocked(sdk.system.version).mockClear();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ available: null, blocked: null }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Latest unknown · Retry the release check",
+      }),
+    );
+    await waitFor(() =>
+      expect(sdk.system.version).toHaveBeenCalledWith({ force: true }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: "Latest unknown · Retry the release check",
+        }),
+      ).toBeNull(),
+    );
+  });
+
   it("shows why a source checkout could not check for updates", async () => {
     useWebApp();
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
@@ -1827,41 +1967,144 @@ The canonical release summary.
     expect(document.querySelector('[data-update-state="failed"]')).toBeNull();
   });
 
-  it("explains why a source checkout cannot update instead of offering a button", async () => {
-    useWebApp();
-    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
-      makeAppUpdateStatus({
-        available: {
-          channel: "main",
-          commit: "b".repeat(40),
-          commitCount: 3,
-          subjects: ["Fix bug"],
-          version: "0.0.5",
-        },
-        blocked: {
-          message:
-            "The checkout is on feature. Only main can be updated from the app.",
-          reason: "not-on-main",
-        },
-        current: { commit: "a".repeat(40), version: "0.0.5" },
-        support: { kind: "supported", mode: "source" },
-      }),
-    );
+  it.each([
+    {
+      installKind: "source" as const,
+      currentCommit: "a".repeat(40),
+      latestVersion: "9.9.9",
+      updateAvailable: true,
+    },
+    {
+      installKind: "source" as const,
+      currentCommit: null,
+      latestVersion: null,
+      updateAvailable: false,
+    },
+    {
+      installKind: "npm" as const,
+      currentCommit: null,
+      latestVersion: null,
+      updateAvailable: false,
+    },
+  ])(
+    "does not claim freshness without a relevant check: %j",
+    async (version) => {
+      useWebApp();
+      useUpdateInventoryMock.mockReturnValue(
+        makeInventory({
+          machines: [
+            {
+              ...makeMachine({
+                host: makeHost({ id: "host_primary", name: "workstation" }),
+                isPrimary: true,
+              }),
+              providerStatus: null,
+            },
+          ],
+          systemVersion: {
+            currentVersion: "0.0.5",
+            source: "npm",
+            isDevelopment: false,
+            upgradeCommand: "npx bb-app@latest",
+            ...version,
+          },
+        }),
+      );
 
-    renderSection();
+      renderSection();
 
-    expect(
-      await screen.findByText(
-        "The checkout is on feature. Only main can be updated from the app.",
-      ),
-    ).toBeDefined();
-    expect(screen.getByText("bbbbbbb (+3 commits)")).toBeDefined();
-    expect(
-      screen.queryByRole("button", {
-        name: "Update available · Download the update and restart bb",
-      }),
-    ).toBeNull();
-  });
+      await screen.findByText("bb app");
+      expect(screen.queryByText("Latest unknown")).toBeNull();
+      expect(document.querySelector('[data-icon="CircleQuestion"]')).toBeNull();
+      expect(screen.queryByText("Up to date")).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: "Update available · Copy the upgrade command",
+        }),
+      ).toBeNull();
+      if (version.installKind === "npm") {
+        expect(
+          await screen.findByText("Couldn't check npm for a newer release."),
+        ).toBeDefined();
+      }
+      if (version.installKind === "source") {
+        expect(
+          screen.queryByText(
+            "Update this checkout with Git. Automatic update checks are off.",
+          ),
+        ).toBeNull();
+        expect(screen.getByText("Source checkout")).toBeDefined();
+        expect(
+          screen.getByText(
+            version.currentCommit === null ? "Build 0.0.5" : "aaaaaaa",
+          ),
+        ).toBeDefined();
+        expect(screen.queryByText(/9.9.9/)).toBeNull();
+      }
+    },
+  );
+
+  it.each([true, false])(
+    "explains why a source checkout cannot update without an action (incoming: %s)",
+    async (incoming) => {
+      useWebApp();
+      useUpdateInventoryMock.mockReturnValue(
+        makeInventory({
+          systemVersion: {
+            currentVersion: "0.0.5",
+            latestVersion: null,
+            source: "npm",
+            currentCommit: null,
+            installKind: "source",
+            updateAvailable: false,
+            isDevelopment: false,
+            upgradeCommand: "npx bb-app@latest",
+          },
+        }),
+      );
+      vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+        makeAppUpdateStatus({
+          available: incoming
+            ? {
+                channel: "main",
+                commit: "b".repeat(40),
+                commitCount: 3,
+                subjects: ["Fix bug"],
+                version: "0.0.5",
+              }
+            : null,
+          blocked: {
+            message:
+              "The checkout is on feature. Only main can be updated from the app.",
+            reason: "not-on-main",
+          },
+          current: { commit: "a".repeat(40), version: "0.0.5" },
+          support: { kind: "supported", mode: "source" },
+        }),
+      );
+
+      renderSection();
+
+      expect(
+        await screen.findByText(
+          "The checkout is on feature. Only main can be updated from the app.",
+        ),
+      ).toBeDefined();
+      if (incoming)
+        expect(screen.getByText("bbbbbbb (+3 commits)")).toBeDefined();
+      else expect(screen.queryByText("bbbbbbb (+3 commits)")).toBeNull();
+      expect(document.querySelector('[data-icon="Terminal"]')).toBeNull();
+      expect(
+        document.querySelector('[data-update-state="update-available"]'),
+      ).toBeNull();
+      expect(screen.getByText("Source checkout")).toBeDefined();
+      expect(
+        screen.queryByRole("button", {
+          name: "Update available · Download the update and restart bb",
+        }),
+      ).toBeNull();
+    },
+  );
 
   function useDesktopApp(): { checkForUpdates: ReturnType<typeof vi.fn> } {
     const desktopInfo: BbDesktopInfo = {

@@ -80,6 +80,8 @@ describe("resolveAppUpdateAvailable", () => {
     currentVersion: "1.0.0",
     isDevelopment: false,
     latestVersion: "1.1.0",
+    currentCommit: null,
+    installKind: "npm",
     source: "npm",
     updateAvailable: true,
     upgradeCommand: "npx bb-app@latest",

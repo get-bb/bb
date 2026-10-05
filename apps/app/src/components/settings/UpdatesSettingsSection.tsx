@@ -801,6 +801,7 @@ interface BbAppUpdateRowsProps {
   desktopInfo: BbDesktopInfo | null;
   isDesktop: boolean;
   onApplyAppUpdate?: (() => void) | null;
+  onRetryAppCheck?: (() => void) | null;
   onRelaunchDesktop: (() => void) | null;
   onRetryDesktop: (() => void) | null;
   onShowAppUpdateResult?: ((result: SystemAppUpdateResult) => void) | null;
@@ -815,6 +816,7 @@ export function BbAppUpdateRows({
   desktopInfo,
   isDesktop,
   onApplyAppUpdate = null,
+  onRetryAppCheck = null,
   onRelaunchDesktop,
   onRetryDesktop,
   onShowAppUpdateResult = null,
@@ -825,6 +827,16 @@ export function BbAppUpdateRows({
   ) : (
     <RowStateControl state="up-to-date" />
   );
+  const unavailableCheckControl =
+    onRetryAppCheck === null ? null : (
+      <RowStateControl
+        state="latest-unknown"
+        buttonLabel="Retry"
+        actionLabel="Retry the release check"
+        loading={isChecking}
+        onClick={onRetryAppCheck}
+      />
+    );
   const row: BbAppRowRenderer = (name, indicator, caption, description) => (
     <UpdatesRow
       leading={
@@ -893,6 +905,36 @@ export function BbAppUpdateRows({
     if (desktopInfo.updateAvailable) {
       return row(name, <RowStateControl state="update-available" />);
     }
+    if (desktopInfo.latestVersion === null) {
+      const checkDesktop = onRetryAppCheck ?? onRetryDesktop;
+      const unchecked = desktopInfo.lastCheckedAt === null;
+      return row(
+        name,
+        checkDesktop === null ? (
+          isChecking ? (
+            settledStatus
+          ) : null
+        ) : (
+          <RowStateControl
+            state="latest-unknown"
+            buttonLabel={unchecked ? "Check" : "Retry"}
+            actionLabel={
+              unchecked
+                ? "Check for desktop releases"
+                : "Retry the desktop release check"
+            }
+            loading={isChecking}
+            onClick={checkDesktop}
+          />
+        ),
+        undefined,
+        isChecking
+          ? "Checking for a newer desktop release…"
+          : unchecked
+            ? "Desktop updates haven't been checked yet."
+            : "Couldn't determine the latest desktop release.",
+      );
+    }
     return row(name, settledStatus);
   }
 
@@ -900,9 +942,11 @@ export function BbAppUpdateRows({
     return (
       <InAppUpdateRow
         name={rowName}
+        installKind={systemVersion?.installKind ?? null}
         status={appUpdate}
         applyPending={applyPending}
         settledStatus={settledStatus}
+        unavailableCheckControl={unavailableCheckControl}
         row={row}
         onApply={onApplyAppUpdate}
         onShowResult={onShowAppUpdateResult}
@@ -914,6 +958,26 @@ export function BbAppUpdateRows({
     return row(
       <RowName name={rowName} current={null} latest={null} />,
       <RowStateControl state="in-progress" />,
+    );
+  }
+
+  if (systemVersion.installKind === "source") {
+    return row(
+      <RowName
+        name={rowName}
+        detail={
+          <span className="shrink-0 text-2xs text-muted-foreground">
+            Source checkout
+          </span>
+        }
+        current={
+          systemVersion.currentCommit === null
+            ? `Build ${systemVersion.currentVersion}`
+            : systemVersion.currentCommit.slice(0, 7)
+        }
+        latest={null}
+      />,
+      null,
     );
   }
 
@@ -952,6 +1016,16 @@ export function BbAppUpdateRows({
     );
   }
 
+  if (systemVersion.latestVersion === null) {
+    return row(
+      name,
+      unavailableCheckControl,
+      undefined,
+      isChecking
+        ? "Checking npm for a newer release…"
+        : "Couldn't check npm for a newer release.",
+    );
+  }
   return row(name, settledStatus);
 }
 
@@ -965,16 +1039,20 @@ type BbAppRowRenderer = (
 function InAppUpdateRow({
   name: rowName,
   status,
+  installKind,
   applyPending,
   settledStatus,
+  unavailableCheckControl,
   row,
   onApply,
   onShowResult,
 }: {
   name: string;
   status: SystemAppUpdateStatus;
+  installKind: SystemVersionResponse["installKind"];
   applyPending: boolean;
   settledStatus: ReactNode;
+  unavailableCheckControl: ReactNode;
   row: BbAppRowRenderer;
   onApply: (() => void) | null;
   onShowResult: ((result: SystemAppUpdateResult) => void) | null;
@@ -984,8 +1062,7 @@ function InAppUpdateRow({
     <RowName
       name={rowName}
       detail={
-        status.support.kind === "supported" &&
-        status.support.mode === "source" ? (
+        installKind === "source" ? (
           <span className="shrink-0 text-2xs text-muted-foreground">
             Source checkout
           </span>
@@ -1038,22 +1115,18 @@ function InAppUpdateRow({
         reason="Last update failed"
         openLabel="View the failed bb update"
         openTooltip="View details"
-        onOpen={
-          onShowResult === null ? undefined : () => onShowResult(failure)
-        }
+        onOpen={onShowResult === null ? undefined : () => onShowResult(failure)}
       />,
     );
   }
   if (status.blocked !== null) {
     return row(
       name,
-      available !== null ? (
-        <RowStateControl state="update-available" />
-      ) : status.blocked.reason === "fetch-failed" ? (
-        <RowStateControl state="latest-unknown" />
-      ) : (
-        settledStatus
-      ),
+      status.support.kind === "supported" &&
+        status.support.mode === "npm" &&
+        status.blocked.reason === "fetch-failed"
+        ? unavailableCheckControl
+        : null,
       undefined,
       status.blocked.message,
     );
@@ -1061,7 +1134,14 @@ function InAppUpdateRow({
   if (updateButton !== null) {
     return row(name, updateButton);
   }
-  return row(name, settledStatus);
+  return row(
+    name,
+    available === null ? (
+      settledStatus
+    ) : (
+      <RowStateControl state="update-available" />
+    ),
+  );
 }
 
 interface MachineUpdatesRowsProps {
@@ -1596,6 +1676,7 @@ export function UpdatesSettingsSection({
       isDesktop={isDesktop}
       isChecking={isChecking}
       onApplyAppUpdate={startAppUpdate}
+      onRetryAppCheck={handleCheckForUpdates}
       onShowAppUpdateResult={openAppUpdateResultDetails}
       onRelaunchDesktop={relaunchDesktop}
       onRetryDesktop={retryDesktop}
@@ -1611,6 +1692,7 @@ export function UpdatesSettingsSection({
       isDesktop={false}
       isChecking={isChecking}
       onApplyAppUpdate={startAppUpdate}
+      onRetryAppCheck={handleCheckForUpdates}
       onShowAppUpdateResult={openAppUpdateResultDetails}
       onRelaunchDesktop={null}
       onRetryDesktop={null}
@@ -1623,6 +1705,7 @@ export function UpdatesSettingsSection({
       desktopInfo={desktopInfo}
       isDesktop={isDesktop}
       isChecking={isChecking}
+      onRetryAppCheck={handleCheckForUpdates}
       onRelaunchDesktop={relaunchDesktop}
       onRetryDesktop={retryDesktop}
     />

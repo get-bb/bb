@@ -258,6 +258,11 @@ export const themeCatalogResponseSchema = z.object({
 export type ThemeCatalogResponse = z.infer<typeof themeCatalogResponseSchema>;
 
 export const systemVersionResponseSchema = z.object({
+  currentCommit: z
+    .string()
+    .regex(/^[a-f0-9]{40}$/i)
+    .nullable(),
+  installKind: z.enum(["desktop", "npm", "source"]).nullable(),
   currentVersion: z.string(),
   latestVersion: z.string().nullable(),
   source: z.literal("npm"),

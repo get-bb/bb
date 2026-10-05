@@ -238,11 +238,17 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   setPluginToolCallRegistry(new PluginToolCallRegistry({ logger }));
 
   const appVersion = createAppVersionService({
+    installKind: serverConfig.BB_APP_INSTALL_KIND ?? null,
+    sourceCommit: serverConfig.BB_APP_SOURCE_COMMIT ?? null,
     config: runtimeConfig,
     logger,
   });
   const appUpdateMode = serverConfig.BB_APP_UPDATE_MODE ?? null;
   const appUpdate = createAppUpdateService({
+    currentCommit:
+      serverConfig.BB_APP_INSTALL_KIND === "source"
+        ? (serverConfig.BB_APP_SOURCE_COMMIT ?? null)
+        : null,
     appSurface: serverConfig.BB_APP_SURFACE,
     appVersion,
     config: runtimeConfig,

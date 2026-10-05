@@ -337,3 +337,8 @@ owner must be live; other projects, environments and hosts are allowed.
 Ownership is immutable. Stop does not cascade. Archive retains history; delete
 waits for dependent storage cleanup with durable retries. Unarchive the owner
 before explicitly unarchiving dependents.
+
+For source installs, `bb updates` shows the checkout commit and explains manual
+Git updates when no update shim is running. It does not compare that checkout
+with npm releases. Failed or unavailable release checks show “Latest unknown”;
+“Up to date” requires a successful check.

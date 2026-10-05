@@ -210,6 +210,8 @@ const systemConfig = makeSystemConfig({
 const systemVersion = {
   currentVersion: "0.39.0",
   latestVersion: "0.39.0",
+  currentCommit: null,
+  installKind: "npm",
   source: "npm",
   updateAvailable: false,
   isDevelopment: false,

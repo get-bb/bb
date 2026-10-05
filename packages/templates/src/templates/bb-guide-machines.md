@@ -459,3 +459,8 @@ providers do not implicitly choose an environment.
 `bb machine show` includes `threadStorageRootPath` from the latest daemon session
 without waking the machine. It works offline and with no live threads; the path
 is null before the first session. Reading details does not create directories.
+
+For source installs, `bb updates` shows the checkout commit and explains manual
+Git updates when no update shim is running. It does not compare that checkout
+with npm releases. Failed or unavailable release checks show “Latest unknown”;
+“Up to date” requires a successful check.
