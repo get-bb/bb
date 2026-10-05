@@ -1,5 +1,4 @@
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
@@ -202,10 +201,6 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         <h1>{comparison.headline}</h1>
         <p className="sub">{comparison.sub}</p>
         <InstallOptions placement="hero" />
-        <a className="cmp-switch" href={comparison.switchGuide.href}>
-          {comparison.switchGuide.label}
-          <HugeiconsIcon icon={ArrowRight01Icon} className="cmp-switch-arrow" />
-        </a>
       </header>
 
       <section className="cmp-team" data-reveal>

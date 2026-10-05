@@ -53,7 +53,6 @@ export type Comparison = {
   competitor: { name: string; logo: BrandLogo };
   headline: string;
   sub: string;
-  switchGuide: { label: string; href: string };
   highlights: CompareHighlight[];
   tableNote: string;
   table: CompareGroup[];
@@ -81,10 +80,6 @@ const BB_VS_SUPERSET: Comparison = {
   competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The free, open-source Superset alternative",
   sub: "Get Claude Code, Codex or any agent working together on the same task, and approve from your phone.",
-  switchGuide: {
-    label: "Switching from Superset? Read the guide",
-    href: "/guides/move-from-superset-to-bb",
-  },
   highlights: [
     {
       title: "Agents that work together like a team",
@@ -388,12 +383,10 @@ const BB_VS_SUPERSET: Comparison = {
           question: "How do I switch from Superset to bb?",
           answer: (
             <p>
-              Install bb and add the same repo folder. Your branches and
-              Superset’s worktrees are plain Git, so bb picks up unfinished work
-              where it is, and your setup scripts map to bb’s setup files. Chats
-              don’t carry over, and Superset keeps working while you try bb.
-              Follow the{" "}
-              <a href="/guides/move-from-superset-to-bb">step-by-step guide</a>.
+              There’s nothing to migrate. Install bb and add the same repo
+              folder. Your branches and Superset’s worktrees are plain Git, so
+              bb picks up unfinished work where it is, and Superset keeps
+              working while you try bb.
             </p>
           ),
         },

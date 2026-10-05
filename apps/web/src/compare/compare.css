@@ -39,28 +39,8 @@
   color: var(--subtle);
 }
 
-.cmp-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 28px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--dim);
-  transition: color 0.15s ease;
-}
-
-.cmp-switch:hover {
-  color: var(--heading);
-}
-
-.cmp-switch-arrow {
-  width: 16px;
-  height: 16px;
-}
-
 .cmp-team {
-  padding: 8px 0 64px;
+  padding: 40px 0 64px;
   text-align: center;
 }
 
@@ -830,10 +810,6 @@
 
   .cmp-page .band h2 {
     font-size: 26px;
-  }
-
-  .cmp-switch {
-    margin-top: 20px;
   }
 
   .cmp-section {
