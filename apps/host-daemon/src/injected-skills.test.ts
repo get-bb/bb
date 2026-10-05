@@ -339,6 +339,85 @@ describe("injected skill staging", () => {
     ).resolves.toBe("keep\n");
   });
 
+  it.runIf(process.platform === "win32")(
+    "retries a tree install while Windows briefly locks the new files",
+    async () => {
+      const dataDir = await makeTempDir();
+      const payload = createTreePayload("locked-skill");
+      const realRename = fs.rename.bind(fs);
+      let deniedRenames = 0;
+      const renameSpy = vi
+        .spyOn(fs, "rename")
+        .mockImplementation(async (sourcePath, destinationPath) => {
+          if (deniedRenames < 2) {
+            deniedRenames += 1;
+            throw Object.assign(new Error("EPERM: operation not permitted"), {
+              code: "EPERM",
+            });
+          }
+          return realRename(sourcePath, destinationPath);
+        });
+      try {
+        const staged = await stageInjectedSkillSources({
+          dataDir,
+          fetchSkillTree: async () => payload,
+          injectedSkillSources: [
+            createTreeSource("locked-skill", payload.treeHash),
+          ],
+        });
+        await expect(
+          readFile(
+            path.join(
+              requireSkillRoot(staged.skillRoots).path,
+              "locked-skill",
+              "scripts",
+              "run.sh",
+            ),
+            "utf8",
+          ),
+        ).resolves.toBe("#!/bin/sh\necho synced\n");
+        expect(deniedRenames).toBe(2);
+      } finally {
+        renameSpy.mockRestore();
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "gives up on a persistent Windows rename denial without publishing a tree",
+    async () => {
+      const dataDir = await makeTempDir();
+      const payload = createTreePayload("denied-skill");
+      let now = 1_781_053_873_372;
+      const clock = vi.spyOn(Date, "now").mockImplementation(() => {
+        now += 1_000;
+        return now;
+      });
+      const renameSpy = vi.spyOn(fs, "rename").mockRejectedValue(
+        Object.assign(new Error("EPERM: operation not permitted"), {
+          code: "EPERM",
+        }),
+      );
+      try {
+        await expect(
+          stageInjectedSkillSources({
+            dataDir,
+            fetchSkillTree: async () => payload,
+            injectedSkillSources: [
+              createTreeSource("denied-skill", payload.treeHash),
+            ],
+          }),
+        ).rejects.toMatchObject({ code: "EPERM" });
+        await expect(
+          readdir(path.join(dataDir, "runtime", "skill-store")),
+        ).resolves.toEqual([]);
+      } finally {
+        renameSpy.mockRestore();
+        clock.mockRestore();
+      }
+    },
+  );
+
   it("surfaces a failed required tree pull instead of silently skipping it", async () => {
     const dataDir = await makeTempDir();
     const payload = createTreePayload("failed-pull");
@@ -730,6 +809,57 @@ describe("injected skill staging", () => {
     } finally {
       fixedTime.mockRestore();
     }
+  });
+
+  it("replaces a staged catalog directory that lost its catalog file", async () => {
+    const dataDir = await makeTempDir();
+    const skillRootPath = await writeSkill({
+      rootPath: path.join(dataDir, "source-skills"),
+      name: "release-notes",
+    });
+    const source = createDataDirSource({
+      dataDir,
+      skillName: "release-notes",
+      skillRootPath,
+    });
+    const first = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [source],
+    });
+    const stageRootPath = path.join(
+      dataDir,
+      "runtime",
+      "global-skills",
+      first.catalogHash,
+    );
+    await rm(path.join(stageRootPath, "catalog.json"));
+    await rm(
+      path.join(stageRootPath, "skills", "release-notes", "references"),
+      {
+        recursive: true,
+      },
+    );
+
+    const second = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [source],
+    });
+
+    expect(second.catalogHash).toBe(first.catalogHash);
+    await expect(
+      readFile(
+        path.join(
+          requireSkillRoot(second.skillRoots).path,
+          "release-notes",
+          "references",
+          "notes.md",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("supporting notes\n");
+    await expect(
+      access(path.join(stageRootPath, "catalog.json")),
+    ).resolves.toBeUndefined();
   });
 
   it("skips symlinked files during staging", async () => {
