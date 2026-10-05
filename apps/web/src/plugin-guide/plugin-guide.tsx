@@ -1,5 +1,4 @@
 import bbLogoUrl from "../../../../assets/bb-logo.svg?url";
-import { firstPartyPluginId } from "../../../../plugins/plugin-api-docs/src/plugin-icons";
 import { ProductMap } from "../../../../plugins/plugin-api-docs/src/product-map";
 import {
   GROUP_BY_SURFACE_ID,
@@ -26,9 +25,20 @@ const BRAND_ICON_URL_BY_NAME: ReadonlyMap<string, string> = new Map(
   }),
 );
 
-function marketplaceHref(displayName: string): string | null {
-  const id = firstPartyPluginId(displayName);
-  return id === null ? null : `/marketplace/${encodeURIComponent(id)}`;
+const PLUGIN_SOURCE_ROOT = "https://github.com/get-bb/bb/tree/main/plugins/";
+
+const PLUGIN_DIR_BY_NAME: ReadonlyMap<string, string> = new Map(
+  Object.entries(PLUGIN_BRANDING).flatMap(([manifestPath, bb]) => {
+    const dir = /\/plugins\/([^/]+)\/package\.json$/.exec(manifestPath)?.[1];
+    return bb?.name && dir ? [[bb.name, dir] as const] : [];
+  }),
+);
+
+function pluginSourceHref(displayName: string): string | null {
+  const dir = PLUGIN_DIR_BY_NAME.get(displayName);
+  return dir === undefined
+    ? null
+    : `${PLUGIN_SOURCE_ROOT}${encodeURIComponent(dir)}`;
 }
 
 function renderBrandIcon(displayName: string) {
@@ -89,7 +99,7 @@ export default function PluginGuide({
 }) {
   return (
     <ProductMap
-      pluginPageHref={marketplaceHref}
+      pluginPageHref={pluginSourceHref}
       renderPluginIcon={renderBrandIcon}
       initialSlideId={initialSlideId}
       onSlideChange={onSlideChange}
