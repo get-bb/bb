@@ -32,27 +32,31 @@ the same change.
 
 ### Start, package, and release
 
-- Read references/quickstart.md for package structure, manifest fields,
-  scaffold output, build, install, and the first plugin.
-- Read references/distribution.md for exact API lookup, Git or npm release,
-  multi-plugin repositories, and custom marketplaces.
+- Read references/quickstart.md for the first plugin, manifest fields,
+  branding, plugin ids, builds, installs, and dependencies.
+- Read references/distribution.md for exact API lookup, updates, Git or npm
+  release, multi-plugin repositories, custom marketplaces, and store text.
 
 ### Backend
 
-- Read references/backend-foundation.md for the factory, logging, settings,
-  storage, server information, and host access.
-- Read references/backend-sdk.md for projects, environments, threads,
-  interactions, provider models, browser sessions, event history, and calls to
-  another plugin's RPC.
+- Read references/backend-foundation.md for the factory (and which reference
+  covers each `bb.*` member), logging, settings, storage, server information,
+  and host entries.
+- Read references/backend-sdk.md for the `bb.sdk` area map, threads, plugin
+  metadata, files, terminals, attachments, and calls to another plugin's RPC.
 - Read references/backend-api-index.md to check every public backend, host,
   AI-service, and test export.
-- Read references/backend-events.md for lifecycle events, environment providers,
-  HTTP, RPC, realtime, background services, and schedules.
+- Read references/backend-events.md for lifecycle events, the dispatch hook,
+  environment providers, HTTP, RPC, realtime, background services, and
+  schedules.
 - Read references/backend-machines.md for machine providers, core project source
   setup, enrollment/bootstrap helpers, and server access.
 - Read references/backend-cli-agents.md for CLI commands, input forms, agent
   tools, agent configuration, and helper AI services.
-- Read references/providers.md only when the plugin registers an agent provider.
+- Read references/providers.md only when the plugin registers an agent
+  provider or contributes provider environment variables. Its contract lives
+  in docs/provider-plugin-api.md and docs/provider-bridge-protocol.md in the
+  bb repository.
 - Read references/provider-bridge-api-index.md to check every public provider
   bridge, bridge-test, and ACP export.
 - Read references/backend-ui-lifecycle.md for host-rendered UI, status, cleanup,
@@ -60,25 +64,28 @@ the same change.
 
 ### Frontend
 
-- Read references/frontend-registration.md for definePluginApp, thread header,
-  sidebar replacement, providers, and top-level registration.
+- Read references/frontend-registration.md for definePluginApp, thread header
+  and Browser toolbar controls, sidebar replacement, and the provider
+  directory.
 - Read references/frontend-api-index.md to check every public frontend
   runtime value and type export.
 - Read references/frontend-core-slots.md for trusted content scripts, homepage,
-  settings, navigation, thread panels, interactions, sidebar actions, and file
-  openers.
+  settings, navigation, thread panels, environment and machine provider
+  inputs, interactions, sidebar actions, and file openers.
 - Read references/frontend-renderer-slots.md for source, diff, message,
   timeline, palette, and provider-icon renderers or actions.
 - Read references/frontend-components.md for ThreadChat, provider controls,
-  source and diff viewers, links, panels, and the new-thread composer.
+  source and diff viewers, links, panels, the new-thread composer, and shared
+  icons.
 - Read references/frontend-hooks-and-ui.md for hooks, composer customization,
-  vendored components, runtime shims, styling, and crash isolation.
+  vendored components, runtime shims, crash isolation, and styling.
 
 ### Testing
 
 - Read references/frontend-testing-api-index.md to check every frontend test
   runtime value and type export.
-- Read references/testing.md before you add tests or run a live plugin loop.
+- Read references/testing.md before you add tests or run a live plugin loop,
+  and for reference plugins to copy from.
 
 ## Contract rules
 

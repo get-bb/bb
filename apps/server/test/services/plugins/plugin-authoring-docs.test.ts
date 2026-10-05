@@ -689,6 +689,39 @@ describe("bb-plugin-authoring skill", () => {
     }
   });
 
+  it("keeps environment app symbols and composer and event guidance current", () => {
+    const frontendIndex = readReference("frontend-api-index.md");
+    const backendIndex = readReference("backend-api-index.md");
+    const appSymbols = [
+      "experimental_BranchPicker",
+      "BranchPickerProps",
+      "experimental_useBranches",
+      "UseBranchesArgs",
+      "BranchesState",
+      "experimental_useCheckoutState",
+      "UseCheckoutStateArgs",
+      "CheckoutState",
+      "PluginEnvironmentProviderInputsChange",
+      "PluginEnvironmentProviderInputsProps",
+      "PluginEnvironmentProviderInputsRegistration",
+    ];
+    for (const symbol of appSymbols) {
+      expect(frontendIndex).toContain(`\`${symbol}\``);
+      expect(backendIndex).not.toContain(`\`${symbol}\``);
+    }
+
+    expect(readReference("frontend-components.md")).not.toContain(
+      'workspace: { type: "personal" }',
+    );
+    expect(readReference("backend-events.md")).toContain("Fifteen events.");
+    expect(readReference("backend-events.md")).toContain(
+      "The seven `thread.*` ones",
+    );
+    expect(readReference("testing.md")).toContain(
+      "Thread events are observe-only; there are exactly seven",
+    );
+  });
+
   it("documents every navPanel registration field", () => {
     for (const field of NAV_PANEL_REGISTRATION_FIELDS) {
       expect(
