@@ -22,6 +22,7 @@ export interface PaletteThreadSearchRow {
   highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   secondaryTitle: string | null;
   projectName: string | null;
+  projectHighlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   relativeTime: string;
   projectId: string;
   threadId: string;
@@ -82,6 +83,7 @@ function serverRow(
     highlightRanges: primaryMatch?.highlightRanges ?? [],
     secondaryTitle: snippetMatch === undefined ? null : title,
     projectName: projectMetadata(thread.projectId, projectNamesById),
+    projectHighlightRanges: [],
     relativeTime: formatRelativeTime({ timestamp: thread.updatedAt, now }),
     projectId: thread.projectId,
     threadId: thread.id,
@@ -103,13 +105,16 @@ function positionsToRanges(positions: readonly number[]): HighlightRange[] {
   return ranges;
 }
 
-function projectNameMatches(name: string, query: string): boolean {
+function projectNameMatch(name: string, query: string): HighlightRange | null {
   const needle = query.toLowerCase();
   const haystack = name.toLowerCase();
-  return (
-    haystack.startsWith(needle) ||
-    haystack.split(/[^\p{L}\p{N}]+/u).some((word) => word.startsWith(needle))
-  );
+  if (haystack.startsWith(needle)) return { start: 0, end: needle.length };
+  for (const word of haystack.matchAll(/[\p{L}\p{N}]+/gu)) {
+    if (word[0].startsWith(needle)) {
+      return { start: word.index, end: word.index + needle.length };
+    }
+  }
+  return null;
 }
 
 function localMatchRows(
@@ -134,13 +139,22 @@ function localMatchRows(
     }));
   const titleMatchIds = new Set(titleRows.map((row) => row.threadId));
   const projectRows = threads
-    .filter(
-      (thread) =>
-        !titleMatchIds.has(thread.id) &&
-        projectNameMatches(projectNamesById.get(thread.projectId) ?? "", query),
-    )
+    .filter((thread) => !titleMatchIds.has(thread.id))
     .sort((left, right) => right.updatedAt - left.updatedAt)
-    .map((thread) => serverRow(thread, [], "active", projectNamesById, now));
+    .flatMap((thread) => {
+      const match = projectNameMatch(
+        projectNamesById.get(thread.projectId) ?? "",
+        query,
+      );
+      if (match === null) return [];
+      const row = serverRow(thread, [], "active", projectNamesById, now);
+      return [
+        {
+          ...row,
+          projectHighlightRanges: row.projectName === null ? [] : [match],
+        },
+      ];
+    });
   return [...titleRows, ...projectRows].slice(0, PALETTE_RESULT_LIMIT);
 }
 

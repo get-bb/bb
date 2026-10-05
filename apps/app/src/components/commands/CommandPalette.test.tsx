@@ -1412,6 +1412,20 @@ describe("CommandPalette", () => {
     await screen.findByText("Couldn’t load threads");
   });
 
+  it("highlights the project name for threads listed by project", async () => {
+    modeState.activeRecents = [makeThread("other", { title: "Unrelated" })];
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "pal" } });
+    const metadata = screen
+      .getByRole("option", { name: /Unrelated/ })
+      .querySelector("[data-palette-thread-metadata]");
+    expect(metadata?.querySelector("mark")?.textContent).toBe("Pal");
+  });
+
   it.each([
     [["active"], "No matching threads"],
     [["archived"], "Type at least 2 characters"],

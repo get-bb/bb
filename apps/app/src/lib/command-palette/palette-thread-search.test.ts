@@ -292,6 +292,20 @@ describe("buildPaletteThreadSearchRows", () => {
         "in-project",
       ]);
       expect(result.rows[1]?.highlightRanges).toEqual([]);
+      expect(result.rows[0]?.projectHighlightRanges).toEqual([]);
+      expect(result.rows[1]?.projectHighlightRanges).toEqual([
+        { start: 0, end: 3 },
+      ]);
+    });
+
+    it("highlights the project-name word that starts with the query", () => {
+      const result = build({
+        query: "proj",
+        recentThreads: [titled("in-project", "Unrelated")],
+      });
+      expect(result.rows[0]?.projectHighlightRanges).toEqual([
+        { start: 8, end: 12 },
+      ]);
     });
 
     it("does not match a project on letters inside a word", () => {

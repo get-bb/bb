@@ -17,6 +17,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { threadListIndicatorStateForThread } from "@bb/client-core";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
+  highlightedText,
   ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
@@ -538,7 +539,8 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
                   className="mr-1 inline-block size-3.5 align-text-bottom"
                   aria-hidden
                 />
-                {`${row.projectName} · `}
+                {highlightedText(row.projectName, 0, row.projectHighlightRanges)}
+                {" · "}
               </>
             )}
             {row.relativeTime}

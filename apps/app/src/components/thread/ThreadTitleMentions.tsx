@@ -896,7 +896,7 @@ interface ThreadTitleHighlightRange {
 const THREAD_TITLE_HIGHLIGHT_CLASS =
   "rounded-sm bg-[var(--sidebar-search-match)] py-px text-foreground";
 
-function highlightedText(
+export function highlightedText(
   text: string,
   offset: number,
   ranges: readonly ThreadTitleHighlightRange[],
