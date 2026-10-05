@@ -38,7 +38,7 @@ export function ResourceSidebar({
       backTo={appRoutePath}
       isResizing={isResizing}
       mobileHosted={mobileHosted}
-      navRailTitle={navRailHosted ? title : undefined}
+      navRailHosted={navRailHosted}
       onResizeMouseDown={onResizeMouseDown}
       testIdPrefix={workspace}
     >

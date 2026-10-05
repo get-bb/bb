@@ -49,7 +49,7 @@ export function SettingsSidebarContent({
       backTo={appRoutePath}
       isResizing={isResizing}
       mobileHosted={mobileHosted}
-      navRailTitle={navRailHosted ? "Settings" : undefined}
+      navRailHosted={navRailHosted}
       onResizeMouseDown={onResizeMouseDown}
       testIdPrefix={testIdPrefix}
     >
