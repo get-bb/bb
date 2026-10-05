@@ -49,11 +49,7 @@ function PluginGuideRoute() {
         <SiteNav current="plugin-guide" />
         <header className="page-head">
           <h1>Plugin Guide</h1>
-          <p className="sub">
-            Every place a plugin can extend bb, mapped onto the product. Pick a
-            numbered region to see what a plugin can add there and which
-            built-in plugins already use it.
-          </p>
+          <p className="sub">Every place a plugin can extend bb.</p>
         </header>
       </div>
       <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 sm:px-7">
