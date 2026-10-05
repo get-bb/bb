@@ -83,7 +83,9 @@ export function SidebarHeaderControls({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          align="end"
+          side="right"
+          align="start"
+          sideOffset={8}
           onCloseAutoFocus={onCloseAutoFocus}
           mobileTitle={
             page === "organize"
