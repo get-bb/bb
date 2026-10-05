@@ -23,7 +23,6 @@ describe("VoiceInputSettingsSectionContent", () => {
           errorMessage={null}
           isLoading={false}
           isSupported={true}
-          onDeviceChange={() => undefined}
           onRefresh={() => undefined}
           preferredDeviceId={null}
         />
@@ -46,7 +45,6 @@ describe("VoiceInputSettingsSectionContent", () => {
           errorMessage={null}
           isLoading={false}
           isSupported={true}
-          onDeviceChange={() => undefined}
           onRefresh={() => undefined}
           preferredDeviceId="studio-mic"
         />
@@ -65,7 +63,7 @@ describe("VoiceInputSettingsSectionContent", () => {
     );
     expect(
       screen.getByText(
-        "Preferred microphone is disconnected. Using the system default until it reconnects.",
+        "Preferred microphone is disconnected. Using another input until it reconnects.",
       ),
     ).toBeDefined();
 
@@ -88,7 +86,6 @@ describe("VoiceInputSettingsSectionContent", () => {
           errorMessage="Microphone permission denied"
           isLoading={false}
           isSupported={true}
-          onDeviceChange={() => undefined}
           onRefresh={() => undefined}
           preferredDeviceId={null}
         />
@@ -106,7 +103,6 @@ describe("VoiceInputSettingsSectionContent", () => {
           errorMessage={null}
           isLoading={false}
           isSupported={true}
-          onDeviceChange={() => undefined}
           onRefresh={onRefresh}
           preferredDeviceId={null}
         />

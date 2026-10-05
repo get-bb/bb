@@ -303,8 +303,8 @@ without build-number reporting cannot determine update status. Installed version
 and build are device-local; CLI and SDK release metadata report the published APK.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
-Right-clicking the composer microphone or pressing Shift+F10 opens
-client-local voice preferences: a desktop popover or mobile drawer. Opening it
+Right-clicking the composer microphone, pressing Shift+F10, or clicking the
+Microphone control in Settings → Voice Input opens client-local voice preferences: a desktop popover or mobile drawer. Opening it
 starts a local waveform preview; select an input directly from the list. Closing
 the picker stops the preview. The recording row has no microphone menu.
 Missing or unreadable inputs fall back automatically; a missing preference alone

@@ -33,7 +33,7 @@ import {
 } from "../../.ladle/settings-story-fixtures";
 import type { ThemePreference } from "@/hooks/useTheme";
 import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
-import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
+import { useAudioInputDevicePreferenceValue } from "@/lib/audio-input-device-preference";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PROJECT_ROUTE_PATH,
@@ -129,8 +129,6 @@ function useSettingsStoryState() {
     defaultAppSettings.managedBranchPrefix,
   );
   const [showDiagnosticEvents, setShowDiagnosticEvents] = useState(false);
-  const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
-    useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
@@ -146,7 +144,6 @@ function useSettingsStoryState() {
     managedBranchPrefix,
     navigateToThreadAfterCreate,
     openLinksInAppBrowser,
-    preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
     steerActiveThreadOnEnter,
     showGitChanges,
@@ -164,7 +161,6 @@ function useSettingsStoryState() {
     setManagedBranchPrefix,
     setNavigateToThreadAfterCreate,
     setOpenLinksInAppBrowser,
-    setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
     setSteerActiveThreadOnEnter,
     setStreamerMode,
@@ -175,7 +171,7 @@ function useSettingsStoryState() {
 }
 
 function VoiceInputStory() {
-  const state = useSettingsStoryState();
+  const preferredDeviceId = useAudioInputDevicePreferenceValue();
 
   return (
     <VoiceInputSettingsSectionContent
@@ -183,9 +179,8 @@ function VoiceInputStory() {
       errorMessage={null}
       isLoading={false}
       isSupported={true}
-      onDeviceChange={state.setPreferredAudioInputDeviceId}
       onRefresh={() => undefined}
-      preferredDeviceId={state.preferredAudioInputDeviceId}
+      preferredDeviceId={preferredDeviceId}
     />
   );
 }

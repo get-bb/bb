@@ -75,12 +75,12 @@ export function MicrophonePreferences({
           aria-label="Live microphone preview"
         >
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span className="font-medium">Live preview</span>
-            <span>
+            <span className="shrink-0 font-medium">Live preview</span>
+            <span className="min-w-0 truncate" title={activeLabel}>
               {error || !isSupported
                 ? "Unavailable"
                 : stream
-                  ? "Listening"
+                  ? activeLabel || "Listening"
                   : "Connecting…"}
             </span>
           </div>
@@ -147,14 +147,6 @@ export function MicrophonePreferences({
           ))}
         </div>
       </div>
-      {open ? (
-        <p
-          className="truncate border-t pt-3 text-xs text-muted-foreground"
-          title={activeLabel}
-        >
-          {activeLabel ? `Using: ${activeLabel}` : "\u00a0"}
-        </p>
-      ) : null}
       {preferredMissing ? (
         <p className="text-xs text-muted-foreground">
           Preferred microphone unavailable. Using another input until it
