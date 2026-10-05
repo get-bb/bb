@@ -263,6 +263,19 @@ export function AppNavRail({
   const { items, activeItemId } = useSidebarNavigation();
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const customizeAfterMenuCloseRef = useRef(false);
+  const customizeAnchorRectRef = useRef<DOMRect | null>(null);
+  const [customizeAnchor] = useState(() => ({
+    current: {
+      getBoundingClientRect: () => {
+        customizeAnchorRectRef.current ??=
+          moreButtonRef.current?.getBoundingClientRect() ?? new DOMRect();
+        return customizeAnchorRectRef.current;
+      },
+    },
+  }));
+  useEffect(() => {
+    if (!customize.isOpen) customizeAnchorRectRef.current = null;
+  }, [customize.isOpen]);
   const location = useLocation();
   const navigate = useNavigate();
   const settingsShortcut = useAppCommandShortcut("settings.open");
@@ -340,16 +353,13 @@ export function AppNavRail({
             open={customize.isOpen}
             onOpenChange={customize.onOpenChange}
           >
-            <PopoverAnchor asChild>
-              <span className="flex">
-                <RailMoreMenu
-                  buttonRef={moreButtonRef}
-                  hidden={hidden}
-                  onCustomize={requestCustomize}
-                  onMenuCloseAutoFocus={handleMenuCloseAutoFocus}
-                />
-              </span>
-            </PopoverAnchor>
+            <RailMoreMenu
+              buttonRef={moreButtonRef}
+              hidden={hidden}
+              onCustomize={requestCustomize}
+              onMenuCloseAutoFocus={handleMenuCloseAutoFocus}
+            />
+            <PopoverAnchor virtualRef={customizeAnchor} />
             <PopoverContent
               side="right"
               align="start"
