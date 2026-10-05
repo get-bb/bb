@@ -1,9 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
-import StarterKit from "@tiptap/starter-kit";
+import { promptEditorExtensions } from "./prompt-editor-extensions";
 import { Node } from "@tiptap/pm/model";
-import { PromptMentionExtension } from "./prompt-mention-extension";
 import {
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
@@ -17,26 +16,7 @@ import { generateMinifiedJsFixture } from "@/test/fixtures/minified-js-paste-fix
 
 const PERF_ENABLED = process.env.PROMPTBOX_PERF === "1";
 
-const schema = getSchema([
-  StarterKit.configure({
-    blockquote: {},
-    bold: {},
-    bulletList: {},
-    code: {},
-    codeBlock: false,
-    dropcursor: false,
-    gapcursor: false,
-    heading: {},
-    horizontalRule: false,
-    italic: {},
-    link: false,
-    listItem: {},
-    orderedList: {},
-    strike: false,
-    underline: false,
-  }),
-  PromptMentionExtension,
-]);
+const schema = getSchema(promptEditorExtensions({ getPlaceholder: () => "" }));
 
 const TRIGGERS: readonly TypeaheadTrigger[] = [
   { char: "@", kind: "mention" },
@@ -90,11 +70,9 @@ describe.runIf(PERF_ENABLED)("composer large minified-JS paste", () => {
         `paste: inline content (plain)          ${formatMs(plainPasteMs)}ms`,
       );
 
-      const richMs = measureMs(3, () =>
-        promptEditorContentFromValue(value, { richTextMarkdown: true }),
-      );
+      const contentMs = measureMs(3, () => promptEditorContentFromValue(value));
       lines.push(
-        `paste/mount: content (richTextMarkdown) ${formatMs(richMs)}ms`,
+        `paste/mount: content                   ${formatMs(contentMs)}ms`,
       );
 
       const doc = Node.fromJSON(schema, {
