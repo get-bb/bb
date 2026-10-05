@@ -11,10 +11,9 @@ import {
   ThreadWorkflowSummary,
 } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import {
-  PROMPT_STACK_COUNT_PILL_CLASS,
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
-  PromptStackHoverChevron,
+  PromptStackCountWithHoverChevron,
   PromptStackPeekLayers,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
@@ -65,10 +64,10 @@ export function ThreadWorkflowStack({
             )}
           >
             <ThreadWorkflowSummary workflow={front} />
-            <span className={PROMPT_STACK_COUNT_PILL_CLASS}>
-              +{running.length - 1}
-            </span>
-            <PromptStackHoverChevron isExpanded={false} />
+            <PromptStackCountWithHoverChevron
+              count={running.length - 1}
+              isExpanded={false}
+            />
           </button>
         </PromptStackCard>
       </PromptStackPeekLayers>

@@ -20,9 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import {
-  PROMPT_STACK_COUNT_PILL_CLASS,
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
+  PromptStackCountWithHoverChevron,
   PromptStackHoverChevron,
   PromptStackPeekLayers,
   useDisclosureFocusHandoff,
@@ -766,10 +766,10 @@ function WorkflowStackFront({
           )}
         >
           <WorkflowComposerSummary run={front} />
-          <span className={PROMPT_STACK_COUNT_PILL_CLASS}>
-            +{runs.length - 1}
-          </span>
-          <PromptStackHoverChevron isExpanded={false} />
+          <PromptStackCountWithHoverChevron
+            count={runs.length - 1}
+            isExpanded={false}
+          />
         </button>
       </section>
     </PromptStackPeekLayers>

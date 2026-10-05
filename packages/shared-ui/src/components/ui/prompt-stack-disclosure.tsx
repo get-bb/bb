@@ -122,3 +122,30 @@ export function PromptStackHoverChevron({
     />
   );
 }
+
+export function PromptStackCountWithHoverChevron({
+  count,
+  isExpanded,
+}: {
+  count: number;
+  isExpanded: boolean;
+}) {
+  return (
+    <span className="ml-auto grid shrink-0 items-center justify-items-end">
+      <span
+        className={cn(
+          PROMPT_STACK_COUNT_PILL_CLASS,
+          "[grid-area:1/1] transition-opacity",
+          !isExpanded &&
+            "group-hover/disclosure:opacity-0 group-focus-visible/disclosure:opacity-0 [@media(hover:none)]:opacity-100",
+        )}
+      >
+        {`+${count}`}
+      </span>
+      <PromptStackHoverChevron
+        isExpanded={isExpanded}
+        className="[grid-area:1/1]"
+      />
+    </span>
+  );
+}
