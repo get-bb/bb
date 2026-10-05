@@ -86,6 +86,12 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Find in window",
         "Search the text shown in the current bb desktop window.",
       ),
+      command("history.back", "Go back", "Go back in this window's history."),
+      command(
+        "history.forward",
+        "Go forward",
+        "Go forward in this window's history.",
+      ),
       command(
         "app.back",
         "Back to app",
