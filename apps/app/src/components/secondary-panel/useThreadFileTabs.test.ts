@@ -1017,6 +1017,67 @@ describe("useThreadFileTabs active owners", () => {
 });
 
 describe("useThreadFileTabs plugin panel tabs", () => {
+  it("consumes the launcher when its action focuses an existing plugin tab", () => {
+    const threadId = "plugin-panel-reopen-from-new-tab";
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab({
+        panelStateId: threadId,
+        syncThreadId: threadId,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    const action = {
+      pluginId: "demo",
+      actionId: "issue",
+      title: "Issue",
+      paramsJson: '{"n":1}',
+    };
+    act(() => result.current.openPluginPanel(action));
+    const originalTab = result.current.activeTab;
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.openPluginPanel({ ...action, title: "Renamed issue" }),
+    );
+
+    expect(result.current.orderedSecondaryFileTabs).toEqual([
+      { ...originalTab, title: "Renamed issue" },
+    ]);
+    expect(result.current.activeTab?.id).toBe(originalTab?.id);
+    expect(syncMocks.scheduleThreadTabsPersistence).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        threadId,
+        tabs: [{ ...originalTab, title: "Renamed issue" }],
+      }),
+    );
+  });
+
+  it("replaces the browser launcher while preserving existing browser tabs", () => {
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab({
+        panelStateId: "browser-replace-new-tab",
+        syncThreadId: null,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    act(() =>
+      result.current.openTab({ kind: "browser", url: "https://example.com" }),
+    );
+    const originalTab = result.current.activeTab;
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() => result.current.openTab({ kind: "browser", url: "" }));
+
+    expect(result.current.orderedSecondaryFileTabs).toEqual([
+      originalTab,
+      expect.objectContaining({ kind: "browser", url: "" }),
+    ]);
+    expect(result.current.activeTab?.kind).toBe("browser");
+    expect(result.current.activeTab?.id).not.toBe(originalTab?.id);
+  });
+
   it("opens, focuses identical re-opens (title refreshed), and opens siblings for new params", () => {
     const threadId = "plugin-panel-open";
     const { result } = renderThreadHook(() =>
