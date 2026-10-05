@@ -1905,7 +1905,9 @@ grouped and move up when a thread in them shows the dot. Child threads don't
 show the dot, so they don't lift their parent, and parents start collapsed while
 the option is on; expanding one lasts for the session and leaves the saved
 collapsed state unchanged. The open thread keeps its place until another thread
-is opened. Pinned threads keep their manual order.
+is opened. Pinned threads keep their manual order. By read status and By
+environment are mutually exclusive: turning on By environment turns read status
+off, and while `groupByReadStatus` is on, worktree threads are not grouped.
 
 The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with

@@ -211,6 +211,7 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
             onSelect={(event) => {
               event.preventDefault();
               setEnvironmentGrouping(!groupByEnvironment);
+              if (!groupByEnvironment) setGroupByReadStatus(false);
             }}
           >
             By environment
