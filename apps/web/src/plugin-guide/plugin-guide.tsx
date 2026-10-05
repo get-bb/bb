@@ -94,6 +94,7 @@ export default function PluginGuide({
       initialSlideId={initialSlideId}
       onSlideChange={onSlideChange}
       onCopyForAgent={copyForAgent}
+      mobileOnlyOnCompactViewport
       brandMark={
         <img
           src={bbLogoUrl}

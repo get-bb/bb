@@ -473,7 +473,7 @@ function Slide({
     return (
       <div
         data-guide-responsive-strategy="mobile"
-        className="mx-auto w-full max-w-[430px]"
+        className="mx-auto w-full max-w-[390px]"
       >
         <SlideContent group={group} mobile />
       </div>
@@ -489,7 +489,7 @@ function Slide({
   return (
     <>
       <SpatialFixture
-        band={mobile ? { min: 430, max: 430 } : FIXTURE_WIDTH_BANDS[group.groupId]}
+        band={mobile ? { min: 390, max: 390 } : FIXTURE_WIDTH_BANDS[group.groupId]}
         maxScale={mobile ? 1 : MAX_FIXTURE_SCALE}
       >
         <SlideContent group={group} mobile={mobile} />
@@ -626,6 +626,7 @@ export function ProductMap({
   onSlideChange,
   onCopyForAgent,
   brandMark,
+  mobileOnlyOnCompactViewport = false,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
   renderPluginIcon?: (displayName: string) => ReactNode;
@@ -633,6 +634,7 @@ export function ProductMap({
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
   brandMark?: ReactNode;
+  mobileOnlyOnCompactViewport?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -651,8 +653,10 @@ export function ProductMap({
   const [displayMode, setDisplayMode] = useState<"mobile" | "desktop" | null>(
     null,
   );
+  const desktopLocked = mobileOnlyOnCompactViewport && viewportMobile;
   const mobile =
-    displayMode === null ? viewportMobile : displayMode === "mobile";
+    desktopLocked ||
+    (displayMode === null ? viewportMobile : displayMode === "mobile");
   const slides = mobile ? MOBILE_SLIDES : DESKTOP_SLIDES;
   const numbers = useMemo(() => new Map(
     slides.filter((slide) => slide.groupId !== "headless").flatMap((slide) =>
@@ -943,16 +947,21 @@ export function ProductMap({
                       mode === "mobile" ? "Mobile layout" : "Desktop layout"
                     }
                     title={
-                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                      mode === "mobile"
+                        ? "Mobile layout"
+                        : desktopLocked
+                          ? "Desktop layout is available on wider screens"
+                          : "Desktop layout"
                     }
                     aria-pressed={(mobile ? "mobile" : "desktop") === mode}
+                    disabled={mode === "desktop" && desktopLocked}
                     onClick={() => setDisplayMode(mode)}
                     className={cn(
-                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md",
+                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-40",
                       FOCUS_RING_CLASS,
                       (mobile ? "mobile" : "desktop") === mode
                         ? "bg-surface-selected text-foreground"
-                        : "text-muted-foreground hover:bg-state-hover",
+                        : "text-muted-foreground enabled:hover:bg-state-hover",
                     )}
                   >
                     <HugeiconsIcon
