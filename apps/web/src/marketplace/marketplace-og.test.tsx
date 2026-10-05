@@ -158,6 +158,10 @@ describe("marketplace share cards", () => {
       const response = await serveMarketplaceOg(
         { status: "available", manifest, stats: null },
         entry.id,
+        async (url) =>
+          url === manifest.plugins[0]!.screenshots[0]
+            ? fetch(url)
+            : new Response(null, { status: 404 }),
       );
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("image/png");
@@ -180,6 +184,7 @@ describe("marketplace share cards", () => {
         stats: null,
       },
       entry.id,
+      async () => new Response(null, { status: 404 }),
     );
     expect(response.headers.get("content-type")).toBe("image/png");
     const bytes = new Uint8Array(await response.arrayBuffer());

@@ -22,7 +22,7 @@ it("reproduces seeded file order while running isolated files before shared file
     );
   }
 
-  async function orderedFiles(seed) {
+  async function orderedFiles(seed, rotateDiscovery = false) {
     const context = await createVitest("test", {
       root,
       config: false,
@@ -36,6 +36,8 @@ it("reproduces seeded file order while running isolated files before shared file
     });
     try {
       const specifications = await context.globTestSpecifications();
+      specifications.sort((a, b) => a.moduleId.localeCompare(b.moduleId));
+      if (rotateDiscovery) specifications.push(specifications.shift());
       const sorted = await new SharedWorkerSequencer(context).sort(
         specifications,
       );
@@ -52,6 +54,6 @@ it("reproduces seeded file order while running isolated files before shared file
   }
 
   const first = await orderedFiles(4721);
-  expect(await orderedFiles(4721)).toEqual(first);
+  expect(await orderedFiles(4721, true)).toEqual(first);
   expect(await orderedFiles(3638)).not.toEqual(first);
 });

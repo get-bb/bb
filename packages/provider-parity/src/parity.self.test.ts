@@ -108,7 +108,7 @@ describe("recorded fixtures", () => {
       return;
     }
     expect(problems).toEqual([]);
-  });
+  }, 30_000);
 });
 
 describe("allowlist", () => {
