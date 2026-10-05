@@ -196,6 +196,16 @@ const BB_VS_SUPERSET: Comparison = {
           competitor: cell("partial", "Via Superset relay", true),
         },
         {
+          feature: "Self-host on your own server",
+          bb: cell("yes", "Home server or VM, your network"),
+          competitor: cell("partial", "Hosts go through Superset relay", true),
+        },
+        {
+          feature: "Cloud sandboxes",
+          bb: cell("yes", "Modal plugin, experimental"),
+          competitor: cell("partial", "When enabled for your account"),
+        },
+        {
           feature: "Scheduled automations",
           bb: cell("yes", "Cron, one-shot, scripts"),
           competitor: cell("partial", "Recurring only", true),
@@ -465,15 +475,15 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
-          question: "What happens when an agent hits its usage limit?",
+          question: "Can bb switch accounts when I hit a usage limit?",
           answer: (
             <p>
-              Turn on Account Pooler, an experimental plugin built into bb, and
-              add the Claude Code and Codex accounts you own. When one account
-              hits its limit, bb moves the thread’s requests to the next one, so
-              it keeps running. Superset can hold several accounts, but you pick
-              the default yourself, and a running agent keeps its account until
-              you relaunch it.
+              Yes, with Account Pooler, an experimental plugin built into bb.
+              Turn it on and add the Claude Code and Codex accounts you own.
+              When one account hits its limit, bb moves the thread’s requests to
+              the next one, so it keeps running. Superset can hold several
+              accounts, but you pick the default yourself, and a running agent
+              keeps its account until you relaunch it.
             </p>
           ),
         },
