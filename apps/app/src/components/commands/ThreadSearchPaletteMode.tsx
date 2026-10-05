@@ -106,6 +106,7 @@ export function ThreadSearchPaletteMode({
   if (previousFilterKey !== filterKey) {
     setPreviousFilterKey(filterKey);
     setExpandedGroups([]);
+    setHighlightedKey(null);
   }
   const [now] = useState(() => Date.now());
   const navigation = useSidebarNavigation();
@@ -162,13 +163,18 @@ export function ThreadSearchPaletteMode({
   const options = useMemo(() => {
     return lifecycles.flatMap((lifecycle) => {
       const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
+      const limit =
+        lifecycle === "archived" && lifecycles.includes("active")
+          ? ARCHIVED_BESIDE_ACTIVE_LIMIT
+          : GROUP_LIMIT;
       const visible = expandedGroups.includes(lifecycle)
         ? rows
         : rows.slice(
             0,
-            lifecycle === "archived" && lifecycles.includes("active")
-              ? ARCHIVED_BESIDE_ACTIVE_LIMIT
-              : GROUP_LIMIT,
+            Math.max(
+              limit,
+              rows.findIndex((row) => row.id === highlightedKey) + 1,
+            ),
           );
       const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
         lifecycle,
@@ -178,7 +184,7 @@ export function ThreadSearchPaletteMode({
         groupOptions.push({ row: null, lifecycle });
       return groupOptions;
     });
-  }, [expandedGroups, lifecycles, result]);
+  }, [expandedGroups, highlightedKey, lifecycles, result]);
   const retainedIndex = options.findIndex(
     (option) => optionKey(option) === highlightedKey,
   );

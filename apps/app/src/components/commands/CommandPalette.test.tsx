@@ -1397,6 +1397,53 @@ describe("CommandPalette", () => {
     );
   });
 
+  it("keeps a highlighted row below the first three when server rows merge in", async () => {
+    modeState.activeRecents = Array.from({ length: 6 }, (_, index) =>
+      makeThread(`fix-${index}`, {
+        title: `Fix ${index}`,
+        lastReadAt: Date.now(),
+        updatedAt: Date.now() - index,
+      }),
+    );
+    const { rerenderPalette } = renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "fix" } });
+    for (let index = 0; index < 5; index++)
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    expectText(selectedOption(), "Fix 5");
+    modeState.searchResponse = {
+      active: {
+        total: 1,
+        results: [
+          {
+            thread: makeThread("message-only", { title: "Weekly sync" }),
+            matches: [
+              {
+                sourceKind: "assistant_message",
+                text: "we should fix it",
+                highlightRanges: [{ start: 10, end: 13 }],
+                sourceSeq: 7,
+              },
+            ],
+          },
+        ],
+      },
+      archived: { total: 0, results: [] },
+    };
+    rerenderPalette();
+    expectText(selectedOption(), "Fix 5");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(routeNavigateMock).toHaveBeenCalledWith(
+        "/projects/project-1/threads/fix-5",
+        { state: undefined },
+      ),
+    );
+  });
+
   it("keeps loaded matches when the server search fails", async () => {
     modeState.activeRecents = [makeThread("fix", { title: "Fix it" })];
     modeState.searchError = true;

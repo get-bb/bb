@@ -123,39 +123,45 @@ function localMatchRows(
   projectNamesById: ReadonlyMap<string, string>,
   now: number,
 ): PaletteThreadSearchRow[] {
-  const titleRows = fuzzyMatchText({
+  const titleMatches = fuzzyMatchText({
     items: threads,
     query,
     getText: getThreadDisplayTitle,
     limit: threads.length,
-  })
-    .sort(
-      (left, right) =>
-        right.score - left.score || right.item.updatedAt - left.item.updatedAt,
-    )
+  }).sort(
+    (left, right) =>
+      right.score - left.score || right.item.updatedAt - left.item.updatedAt,
+  );
+  const titleRows = titleMatches
+    .slice(0, PALETTE_RESULT_LIMIT)
     .map((match) => ({
       ...serverRow(match.item, [], "active", projectNamesById, now),
       highlightRanges: positionsToRanges(match.positions),
     }));
-  const titleMatchIds = new Set(titleRows.map((row) => row.threadId));
+  const remaining = PALETTE_RESULT_LIMIT - titleRows.length;
+  if (remaining <= 0) return titleRows;
+  const projectMatches = new Map<string, HighlightRange>();
+  for (const [projectId, name] of projectNamesById) {
+    if (projectId === PERSONAL_PROJECT_ID) continue;
+    const match = projectNameMatch(name, query);
+    if (match !== null) projectMatches.set(projectId, match);
+  }
+  if (projectMatches.size === 0) return titleRows;
+  const titleMatchIds = new Set(titleMatches.map((match) => match.item.id));
   const projectRows = threads
-    .filter((thread) => !titleMatchIds.has(thread.id))
-    .sort((left, right) => right.updatedAt - left.updatedAt)
     .flatMap((thread) => {
-      const match = projectNameMatch(
-        projectNamesById.get(thread.projectId) ?? "",
-        query,
-      );
-      if (match === null) return [];
-      const row = serverRow(thread, [], "active", projectNamesById, now);
-      return [
-        {
-          ...row,
-          projectHighlightRanges: row.projectName === null ? [] : [match],
-        },
-      ];
-    });
-  return [...titleRows, ...projectRows].slice(0, PALETTE_RESULT_LIMIT);
+      const match = titleMatchIds.has(thread.id)
+        ? undefined
+        : projectMatches.get(thread.projectId);
+      return match === undefined ? [] : [{ thread, match }];
+    })
+    .sort((left, right) => right.thread.updatedAt - left.thread.updatedAt)
+    .slice(0, remaining)
+    .map(({ thread, match }) => ({
+      ...serverRow(thread, [], "active", projectNamesById, now),
+      projectHighlightRanges: [match],
+    }));
+  return [...titleRows, ...projectRows];
 }
 
 function mergeActiveRows(

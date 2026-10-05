@@ -308,6 +308,51 @@ describe("buildPaletteThreadSearchRows", () => {
       ]);
     });
 
+    it("does not list Personal threads by the Personal project's hidden name", () => {
+      expect(
+        build({
+          query: "pers",
+          projectNamesById: new Map([[PERSONAL_PROJECT_ID, "Personal"]]),
+          recentThreads: [
+            makeThread("personal", {
+              projectId: PERSONAL_PROJECT_ID,
+              title: "Unrelated",
+            }),
+          ],
+        }).rows,
+      ).toEqual([]);
+    });
+
+    it("fills only the rows left after title matches with project matches", () => {
+      const result = build({
+        query: "fix",
+        projectNamesById: new Map([
+          ["project-1", "Palette project"],
+          ["project-2", "Fixtures"],
+        ]),
+        recentThreads: [
+          ...Array.from({ length: 48 }, (_, index) =>
+            titled(`title-${index}`, `Fix ${index}`),
+          ),
+          ...[1, 3, 2].map((updatedAt) =>
+            makeThread(`fixtures-${updatedAt}`, {
+              projectId: "project-2",
+              title: "Unrelated",
+              updatedAt,
+            }),
+          ),
+        ],
+      });
+      expect(result.rows).toHaveLength(50);
+      expect(result.rows.slice(48).map((row) => row.threadId)).toEqual([
+        "fixtures-3",
+        "fixtures-2",
+      ]);
+      expect(result.rows[48]?.projectHighlightRanges).toEqual([
+        { start: 0, end: 3 },
+      ]);
+    });
+
     it("does not match a project on letters inside a word", () => {
       expect(
         build({
