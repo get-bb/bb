@@ -182,9 +182,14 @@ describe("prompt library server", () => {
     });
   });
 
-  it.each(["localFile", "localImage"] as const)(
-    "preserves extra fields on cross-project history attachments through RPC (%s)",
-    async (type) => {
+  it.each([
+    { type: "localFile", ownership: { sourceProjectId: "proj_b" } },
+    { type: "localImage", ownership: { sourceProjectId: "proj_b" } },
+    { type: "localFile", ownership: { hostId: "machine_b" } },
+    { type: "localImage", ownership: { hostId: "machine_b" } },
+  ] as const)(
+    "preserves extra fields on cross-project history attachments through RPC ($type, $ownership)",
+    async ({ type, ownership }) => {
       const foreign = entry("foreign", 1, "@project:proj_b review", {
         projectId: "proj_b",
       });
@@ -193,6 +198,7 @@ describe("prompt library server", () => {
         path: ".bb/attachments/private.txt",
         name: "private.txt",
         sizeBytes: 42,
+        ...ownership,
         futureOwnership: { project: "proj_b", token: "portable" },
       };
       foreign.input = [

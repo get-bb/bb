@@ -55,22 +55,34 @@ function validMentionRanges(prompt: z.infer<typeof draftSchema>): boolean {
   );
 }
 
+export const attachmentSchema = z.union([
+  z
+    .object({
+      type: z.enum(["localImage", "localFile"]),
+      path: z.string(),
+      name: z.string(),
+      sizeBytes: z.number().nonnegative().optional(),
+      mimeType: z.string().optional(),
+      sourceProjectId: z.string().optional(),
+      hostId: z.never().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.enum(["localImage", "localFile"]),
+      path: z.string(),
+      name: z.string(),
+      sizeBytes: z.number().nonnegative().optional(),
+      mimeType: z.string().optional(),
+      sourceProjectId: z.never().optional(),
+      hostId: z.string(),
+    })
+    .passthrough(),
+]);
+
 export const promptSchema = draftSchema
   .extend({
-    attachments: z
-      .array(
-        z
-          .object({
-            type: z.enum(["localImage", "localFile"]),
-            path: z.string(),
-            name: z.string(),
-            sizeBytes: z.number().nonnegative(),
-            mimeType: z.string().optional(),
-          })
-          .passthrough(),
-      )
-      .readonly()
-      .optional(),
+    attachments: z.array(attachmentSchema).readonly().optional(),
   })
   .refine(
     validMentionRanges,

@@ -1,9 +1,7 @@
-import type {
-  BbPluginApi,
-  ComposerAttachment,
-  ComposerDraftReplacement,
-  ComposerMention,
-} from "@get-bb/plugin-sdk";
+import type { BbPluginApi, ComposerMention } from "@get-bb/plugin-sdk";
+
+import { z } from "zod";
+import { attachmentSchema, promptSchema } from "./contract.js";
 
 export type HistoryEntry = Awaited<
   ReturnType<BbPluginApi["sdk"]["experimental_promptHistory"]["list"]>
@@ -37,10 +35,10 @@ function fileName(path: string): string {
 
 export function promptFromHistory(
   input: readonly HistoryInput[],
-): ComposerDraftReplacement {
+): z.infer<typeof promptSchema> {
   const segments: string[] = [];
   const mentions: ComposerMention[] = [];
-  const attachments: ComposerAttachment[] = [];
+  const attachments: z.infer<typeof attachmentSchema>[] = [];
   let offset = 0;
   for (const chunk of input) {
     if (chunk.type === "text") {
@@ -57,17 +55,21 @@ export function promptFromHistory(
       segments.push(chunk.text);
       offset += chunk.text.length;
     } else if (chunk.type === "localImage") {
-      attachments.push({
-        name: fileName(chunk.path),
-        sizeBytes: 0,
-        ...chunk,
-      });
+      attachments.push(
+        attachmentSchema.parse({
+          name: fileName(chunk.path),
+          sizeBytes: 0,
+          ...chunk,
+        }),
+      );
     } else if (chunk.type === "localFile") {
-      attachments.push({
-        ...chunk,
-        name: chunk.name ?? fileName(chunk.path),
-        sizeBytes: chunk.sizeBytes ?? 0,
-      });
+      attachments.push(
+        attachmentSchema.parse({
+          ...chunk,
+          name: chunk.name ?? fileName(chunk.path),
+          sizeBytes: chunk.sizeBytes ?? 0,
+        }),
+      );
     }
   }
   return { text: segments.join("\n\n"), mentions, attachments };
