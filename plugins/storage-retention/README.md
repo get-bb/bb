@@ -15,7 +15,7 @@ small files, from archived, stopped, unpinned threads in the scan. Bulk clearing
 keeps conversations and uploaded attachments and requires confirmation. The
 matching CLI command is `bb storage clear-archived-files --machine HOST_ID --yes`.
 
-The development section offers Remove instances for `~/.bb-dev` entries whose
+The Clean up section offers Remove instances for `~/.bb-dev` entries whose
 source checkout no longer exists. The host re-verifies each checkout is missing,
 stops processes whose working directory is inside it, then removes the entry. The
 matching CLI command is `bb storage remove-dev-instances --machine HOST_ID --yes`.

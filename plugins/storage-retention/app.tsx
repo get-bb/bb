@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   definePluginApp,
   experimental_Icon as PluginIcon,
@@ -235,6 +241,14 @@ function StoragePage({
     (state.policy.archiveAfterDays !== null ||
       state.policy.deleteAfterDays !== null);
   const report = detail?.report;
+  const missingDev =
+    report?.developerStorage?.entries.filter(
+      (entry) => entry.sourcePathState === "missing",
+    ) ?? [];
+  const missingDevBytes = missingDev.reduce(
+    (total, entry) => total + entry.sizeBytes,
+    0,
+  );
   const threadsExpanded = hostId !== null && expandedThreadsHostId === hostId;
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
@@ -248,6 +262,34 @@ function StoragePage({
     policy !== null &&
     (policy.archiveAfterDays !== state.policy.archiveAfterDays ||
       policy.deleteAfterDays !== state.policy.deleteAfterDays);
+  function devInstancesCleanup(target: string, selection: DevSelection) {
+    return {
+      key:
+        selection.kind === "all"
+          ? "dev-instances"
+          : `dev-instance:${selection.name}`,
+      ...(selection.kind === "all"
+        ? {
+            action: "Remove instances",
+            title: `Remove ${plural(selection.count, "development instance")} (${bytes(selection.bytes)})?`,
+            detail:
+              "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
+          }
+        : {
+            action: "Remove instance",
+            title: `Remove development instance “${selection.label}” (${bytes(selection.bytes)})?`,
+            detail:
+              "Delete this development instance’s database, logs, and thread files. Its source checkout no longer exists. Development servers still running from it are stopped first. This can’t be undone.",
+          }),
+      run: async () => {
+        const result = await rpc.call("removeMissingDevInstances", {
+          hostId: target,
+          names: selection.kind === "all" ? null : [selection.name],
+        });
+        return `Removed ${plural(result.removedCount, "development instance")} · ${bytes(result.removedBytes)} freed${result.stoppedProcessCount ? ` · stopped ${plural(result.stoppedProcessCount, "process", "processes")}` : ""}${result.skippedCount ? ` · ${result.skippedCount.toLocaleString()} skipped` : ""}`;
+      },
+    };
+  }
   function largeFilesCleanup(target: string | null, totals: LargeFileTotals) {
     return {
       key: "large-files",
@@ -564,173 +606,114 @@ function StoragePage({
                         {bytes(report.disk.totalBytes)}
                       </p>
                     )}
-                    <p>Scanned {new Date(report.scannedAt).toLocaleString()}</p>
+                    <p title={new Date(report.scannedAt).toLocaleString()}>
+                      Scanned {ago(report.scannedAt)}
+                    </p>
                     {scanNotice}
                   </div>
                 </section>
                 <ProjectWorktrees report={report} />
                 <section className="space-y-3">
-                  <h2 className="text-sm font-semibold">Clean up</h2>
+                  <SectionHeading title="Clean up" />
                   <div className="divide-y divide-border rounded-lg border border-border bg-card">
-                    <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm">
-                            All files in archived threads{" "}
-                            <StorageSize value={report.archivedFiles.bytes} />
-                          </p>
-                          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            Clear stored files of any size from{" "}
-                            {plural(
-                              report.archivedFiles.threadCount,
-                              "archived thread",
-                            )}
-                            . Pinned and running threads are skipped.
-                            Conversations and uploaded attachments are kept.
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={
-                            locked ||
-                            report.archivedFiles.threadCount === 0 ||
-                            cleanup !== null
-                          }
-                          onClick={() =>
-                            setCleanup({
-                              key: "archived-files",
-                              title: "Clear all archived thread files?",
-                              action: "Clear archived files",
-                              detail: `Delete ${bytes(report.archivedFiles.bytes)} of stored files from ${plural(report.archivedFiles.threadCount, "archived thread")} on this machine. This includes small files. Conversations and uploaded attachments will be kept. Pinned and running threads are skipped. This can’t be undone.`,
-                              run: async () => {
-                                const result = await rpc.call(
-                                  "clearArchivedFiles",
-                                  { hostId: report.hostId },
-                                );
-                                return `Cleared ${bytes(result.clearedBytes)} from ${plural(result.clearedThreads, "archived thread")}.`;
-                              },
-                            })
-                          }
-                        >
-                          Clear archived files
-                        </Button>
-                      </div>
+                    <CleanupRow
+                      title="All files in archived threads"
+                      size={report.archivedFiles.bytes}
+                      description={`Clear stored files of any size from ${plural(report.archivedFiles.threadCount, "archived thread")}. Pinned and running threads are skipped. Conversations and uploaded attachments are kept.`}
+                      action="Clear archived files"
+                      disabled={
+                        locked ||
+                        report.archivedFiles.threadCount === 0 ||
+                        cleanup !== null
+                      }
+                      onAction={() =>
+                        setCleanup({
+                          key: "archived-files",
+                          title: "Clear all archived thread files?",
+                          action: "Clear archived files",
+                          detail: `Delete ${bytes(report.archivedFiles.bytes)} of stored files from ${plural(report.archivedFiles.threadCount, "archived thread")} on this machine. This includes small files. Conversations and uploaded attachments will be kept. Pinned and running threads are skipped. This can’t be undone.`,
+                          run: async () => {
+                            const result = await rpc.call(
+                              "clearArchivedFiles",
+                              { hostId: report.hostId },
+                            );
+                            return `Cleared ${bytes(result.clearedBytes)} from ${plural(result.clearedThreads, "archived thread")}.`;
+                          },
+                        })
+                      }
+                    >
                       {cleanup?.key === "archived-files" && cleanupConfirmation}
-                    </div>
-                    <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-normal">
-                            Large files in archived threads{" "}
-                            <StorageSize
-                              value={report.archivedLargeFiles.bytes}
-                            />
-                          </p>
-                          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            {report.archivedLargeFiles.fileCount
-                              ? `${plural(report.archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more across ${plural(report.archivedLargeFiles.threadCount, "archived thread")}. Smaller files and conversation history are kept.`
-                              : `No files of ${bytes(LARGE_FILE_MIN_BYTES)} or more in archived threads.`}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={
-                            locked ||
-                            report.archivedLargeFiles.fileCount === 0 ||
-                            cleanup !== null
-                          }
-                          onClick={() =>
-                            setCleanup(
-                              largeFilesCleanup(
-                                report.hostId,
-                                report.archivedLargeFiles,
-                              ),
-                            )
-                          }
-                        >
-                          Delete large files
-                        </Button>
-                      </div>
+                    </CleanupRow>
+                    <CleanupRow
+                      title="Large files in archived threads"
+                      size={report.archivedLargeFiles.bytes}
+                      description={
+                        report.archivedLargeFiles.fileCount
+                          ? `${plural(report.archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more across ${plural(report.archivedLargeFiles.threadCount, "archived thread")}. Smaller files and conversation history are kept.`
+                          : `No files of ${bytes(LARGE_FILE_MIN_BYTES)} or more in archived threads.`
+                      }
+                      action="Delete large files"
+                      disabled={
+                        locked ||
+                        report.archivedLargeFiles.fileCount === 0 ||
+                        cleanup !== null
+                      }
+                      onAction={() =>
+                        setCleanup(
+                          largeFilesCleanup(
+                            report.hostId,
+                            report.archivedLargeFiles,
+                          ),
+                        )
+                      }
+                    >
                       {cleanup?.key === "large-files" && cleanupConfirmation}
                       {cleanupStatus}
-                    </div>
-                    <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-normal">
-                            Orphaned storage{" "}
-                            <StorageSize value={report.orphanBytes} />
-                          </p>
-                          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            Files left behind by deleted threads. BB cleans
-                            these up automatically while idle.
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={
-                            locked ||
-                            report.orphanCount === 0 ||
-                            cleanup !== null
-                          }
-                          onClick={() =>
-                            setCleanup({
-                              key: "orphans",
-                              action: "Remove orphans",
-                              title: `Remove ${bytes(report.orphanBytes)} of orphaned storage?`,
-                              detail:
-                                "Delete folders no longer attached to a thread. Existing threads and their files will be kept. This can’t be undone.",
-                              run: async () => {
-                                const removed = await rpc.call(
-                                  "removeOrphans",
-                                  { hostId: report.hostId },
-                                );
-                                return `Removed ${bytes(removed.removedBytes)} of orphaned storage.`;
-                              },
-                            })
-                          }
-                        >
-                          Remove orphans
-                        </Button>
-                      </div>
+                    </CleanupRow>
+                    <CleanupRow
+                      title="Orphaned storage"
+                      size={report.orphanBytes}
+                      description="Files left behind by deleted threads. BB cleans these up automatically while idle."
+                      action="Remove orphans"
+                      disabled={
+                        locked || report.orphanCount === 0 || cleanup !== null
+                      }
+                      onAction={() =>
+                        setCleanup({
+                          key: "orphans",
+                          action: "Remove orphans",
+                          title: `Remove ${bytes(report.orphanBytes)} of orphaned storage?`,
+                          detail:
+                            "Delete folders no longer attached to a thread. Existing threads and their files will be kept. This can’t be undone.",
+                          run: async () => {
+                            const removed = await rpc.call("removeOrphans", {
+                              hostId: report.hostId,
+                            });
+                            return `Removed ${bytes(removed.removedBytes)} of orphaned storage.`;
+                          },
+                        })
+                      }
+                    >
                       {cleanup?.key === "orphans" && cleanupConfirmation}
-                    </div>
-                    <div className="space-y-3 px-4 py-3.5">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-normal">
-                            Leftover worktrees{" "}
-                            <StorageSize value={report.leftoverWorktreeBytes} />
-                          </p>
-                          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                            Checkouts BB could not remove after their threads
-                            were archived. BB retries automatically.
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={
-                            locked || report.leftoverWorktrees.length === 0
-                          }
-                          onClick={() =>
-                            void perform(
-                              async () => {
-                                await rpc.call("retryWorktreeCleanup", {
-                                  hostId,
-                                });
-                              },
-                              () =>
-                                "Cleanup requested. Rescan after it finishes to update usage.",
-                            )
-                          }
-                        >
-                          Retry cleanup
-                        </Button>
-                      </div>
+                    </CleanupRow>
+                    <CleanupRow
+                      title="Leftover worktrees"
+                      size={report.leftoverWorktreeBytes}
+                      description="Checkouts BB could not remove after their threads were archived. BB retries automatically."
+                      action="Retry cleanup"
+                      disabled={locked || report.leftoverWorktrees.length === 0}
+                      onAction={() =>
+                        void perform(
+                          async () => {
+                            await rpc.call("retryWorktreeCleanup", {
+                              hostId,
+                            });
+                          },
+                          () =>
+                            "Cleanup requested. Rescan after it finishes to update usage.",
+                        )
+                      }
+                    >
                       {report.leftoverWorktrees.length > 0 && (
                         <details className="text-xs text-muted-foreground">
                           <summary className="cursor-pointer">
@@ -757,7 +740,30 @@ function StoragePage({
                           </div>
                         </details>
                       )}
-                    </div>
+                    </CleanupRow>
+                    {report.developerStorage && (
+                      <CleanupRow
+                        title="Development instances without a checkout"
+                        size={missingDevBytes}
+                        description={`${plural(missingDev.length, "development instance")} in ~/.bb-dev whose source checkout no longer exists. Servers still running from them are stopped before removal.`}
+                        action="Remove instances"
+                        disabled={
+                          locked || missingDev.length === 0 || cleanup !== null
+                        }
+                        onAction={() =>
+                          setCleanup(
+                            devInstancesCleanup(report.hostId, {
+                              kind: "all",
+                              count: missingDev.length,
+                              bytes: missingDevBytes,
+                            }),
+                          )
+                        }
+                      >
+                        {cleanup?.key === "dev-instances" &&
+                          cleanupConfirmation}
+                      </CleanupRow>
+                    )}
                   </div>
                 </section>
                 <section className="space-y-3">
@@ -779,65 +785,90 @@ function StoragePage({
                       return (
                         <div
                           key={thread.threadId}
-                          className="flex flex-col gap-2 px-4 py-2"
+                          className="flex items-start justify-between gap-3 px-4 py-2.5"
                         >
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
-                            <div className="w-full min-w-0 sm:w-auto sm:flex-1">
-                              <ThreadTitle
-                                title={thread.title}
-                                pills={[
-                                  ...(thread.hidden ? ["hidden"] : []),
-                                  ...(thread.running
-                                    ? ["running"]
-                                    : thread.archivedAt !== null
-                                      ? ["archived"]
-                                      : []),
-                                ]}
-                                onOpen={() =>
-                                  navigate.toThread(thread.threadId)
-                                }
-                              />
-                            </div>
-                            <span className="mr-auto shrink-0 text-xs tabular-nums text-muted-foreground sm:mr-0">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <ThreadTitle
+                              title={thread.title}
+                              pills={[
+                                ...(thread.hidden ? ["hidden"] : []),
+                                ...(thread.running
+                                  ? ["running"]
+                                  : thread.archivedAt !== null
+                                    ? ["archived"]
+                                    : []),
+                              ]}
+                              onOpen={() => navigate.toThread(thread.threadId)}
+                            />
+                            {clear?.state === "clearing" && (
+                              <p
+                                role="status"
+                                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                              >
+                                <Icon
+                                  name="Spinner"
+                                  className="size-3 animate-spin"
+                                />
+                                Clearing files…
+                              </p>
+                            )}
+                            {clear?.state === "failed" && (
+                              <p
+                                role="alert"
+                                className="text-xs text-destructive"
+                              >
+                                {clear.message}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="text-xs tabular-nums text-muted-foreground">
                               {bytes(thread.sizeBytes)}
                             </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="shrink-0"
-                              disabled={
-                                busy ||
-                                scanning ||
-                                offline ||
-                                thread.running ||
-                                cleanup !== null ||
-                                clear?.state === "clearing"
-                              }
-                              onClick={() => void clearThread(thread.threadId)}
-                            >
-                              {clear?.state === "clearing" ? (
-                                <>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="-my-1.5 size-7"
+                                  aria-label={`Actions for ${thread.title}`}
+                                >
                                   <Icon
-                                    name="Spinner"
-                                    className="size-4 animate-spin"
+                                    name="MoreHorizontal"
+                                    className="size-4"
                                   />
-                                  Clearing…
-                                </>
-                              ) : clear?.state === "failed" ? (
-                                "Retry"
-                              ) : (
-                                "Clear files"
-                              )}
-                            </Button>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    navigate.toThread(thread.threadId)
+                                  }
+                                >
+                                  Open thread
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={
+                                    busy ||
+                                    scanning ||
+                                    offline ||
+                                    thread.running ||
+                                    cleanup !== null ||
+                                    clear?.state === "clearing"
+                                  }
+                                  onSelect={() =>
+                                    void clearThread(thread.threadId)
+                                  }
+                                >
+                                  {clear?.state === "failed"
+                                    ? "Retry clearing files"
+                                    : "Clear files"}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                          {clear?.state === "failed" && (
-                            <p
-                              role="alert"
-                              className="pb-2 text-xs text-destructive"
-                            >
-                              {clear?.message}
-                            </p>
-                          )}
                         </div>
                       );
                     })}
@@ -863,29 +894,7 @@ function StoragePage({
                     confirmationKey={cleanup?.key ?? null}
                     confirmation={cleanupConfirmation}
                     onRemove={(selection) =>
-                      setCleanup({
-                        key: selection.key,
-                        ...(selection.names === null
-                          ? {
-                              action: "Remove instances",
-                              title: `Remove ${plural(selection.count, "development instance")} (${bytes(selection.bytes)})?`,
-                              detail:
-                                "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
-                            }
-                          : {
-                              action: "Remove instance",
-                              title: `Remove development instance “${selection.label}” (${bytes(selection.bytes)})?`,
-                              detail:
-                                "Delete this development instance’s database, logs, and thread files. Its source checkout no longer exists. Development servers still running from it are stopped first. This can’t be undone.",
-                            }),
-                        run: async () => {
-                          const result = await rpc.call(
-                            "removeMissingDevInstances",
-                            { hostId: report.hostId, names: selection.names },
-                          );
-                          return `Removed ${plural(result.removedCount, "development instance")} · ${bytes(result.removedBytes)} freed${result.stoppedProcessCount ? ` · stopped ${plural(result.stoppedProcessCount, "process", "processes")}` : ""}${result.skippedCount ? ` · ${result.skippedCount.toLocaleString()} skipped` : ""}`;
-                        },
-                      })
+                      setCleanup(devInstancesCleanup(report.hostId, selection))
                     }
                   />
                 )}
@@ -1229,12 +1238,12 @@ function ThreadTitle({
     >
       <span className="group-hover:underline">{title}</span>
       {pills.map((pill) => (
-        <Pill
-          key={pill}
-          className="ml-1.5 inline-block whitespace-nowrap align-middle"
-        >
-          {pill}
-        </Pill>
+        <Fragment key={pill}>
+          {" "}
+          <Pill className="inline-block whitespace-nowrap align-middle">
+            {pill}
+          </Pill>
+        </Fragment>
       ))}
     </button>
   );
@@ -1269,10 +1278,54 @@ function SectionHeading({
   );
 }
 
+function CleanupRow({
+  title,
+  size,
+  description,
+  action,
+  disabled,
+  onAction,
+  children,
+}: {
+  title: string;
+  size: number;
+  description: string;
+  action: string;
+  disabled: boolean;
+  onAction: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="space-y-3 px-4 py-3.5">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-normal">
+            {title}
+            {size > 0 && " "}
+            <StorageSize value={size} />
+          </p>
+          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+            {description}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={onAction}
+        >
+          {action}
+        </Button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function StorageSize({ value }: { value: number }) {
   if (value === 0) return null;
   return (
-    <span className="ml-2 inline-flex rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-normal tabular-nums text-muted-foreground">
+    <span className="inline-flex whitespace-nowrap rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-normal tabular-nums text-muted-foreground">
       {bytes(value)}
     </span>
   );
@@ -1327,7 +1380,9 @@ function MachineRow({
     ? [
         `${bytes(threadStorageBytes(report))} in ${plural(report.threadsWithStorageCount, "thread")}`,
         ...(report.developerStorage
-          ? [`${bytes(report.developerStorage.sizeBytes)} dev`]
+          ? [
+              `${bytes(report.developerStorage.sizeBytes)} in ${plural(report.developerStorage.entries.length, "dev instance")}`,
+            ]
           : []),
         ...(report.disk ? [`${bytes(report.disk.freeBytes)} free`] : []),
       ]
@@ -1513,6 +1568,10 @@ function ProjectWorktrees({
   );
 }
 
+type DevSelection =
+  | { kind: "all"; count: number; bytes: number }
+  | { kind: "one"; name: string; label: string; bytes: number };
+
 type DeveloperEntry = NonNullable<
   NonNullable<HostReport["report"]>["developerStorage"]
 >["entries"][number];
@@ -1567,13 +1626,7 @@ function DeveloperStorage({
   removeDisabled: boolean;
   confirmationKey: string | null;
   confirmation: ReactNode;
-  onRemove: (selection: {
-    key: string;
-    names: string[] | null;
-    label: string;
-    count: number;
-    bytes: number;
-  }) => void;
+  onRemove: (selection: DevSelection) => void;
 }) {
   const navigate = useBbNavigate();
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
@@ -1586,10 +1639,6 @@ function DeveloperStorage({
   } | null>(null);
   const missing = storage.entries.filter(
     (entry) => entry.sourcePathState === "missing",
-  );
-  const missingBytes = missing.reduce(
-    (total, entry) => total + entry.sizeBytes,
-    0,
   );
   const unlinked = storage.entries.filter(
     (entry) => entry.sourcePath !== null && entry.threads.length === 0,
@@ -1679,37 +1728,6 @@ function DeveloperStorage({
             </SelectContent>
           </Select>
         </div>
-        {missing.length > 0 && (
-          <div className="space-y-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-              <p className="min-w-0 flex-1 text-xs leading-snug text-subtle-foreground">
-                <span className="text-foreground">
-                  {bytes(missingBytes)} in {plural(missing.length, "instance")}
-                </span>{" "}
-                whose source checkout no longer exists. Servers still running
-                from them are stopped before removal.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                disabled={removeDisabled}
-                onClick={() =>
-                  onRemove({
-                    key: "dev-instances",
-                    names: null,
-                    label: plural(missing.length, "instance"),
-                    count: missing.length,
-                    bytes: missingBytes,
-                  })
-                }
-              >
-                Remove instances
-              </Button>
-            </div>
-            {confirmationKey === "dev-instances" && confirmation}
-          </div>
-        )}
         <div className="divide-y divide-border border-t border-border">
           {groups
             .filter((group) => group.entries.length > 0)
@@ -1717,7 +1735,7 @@ function DeveloperStorage({
               <div key={group.title} className="py-3">
                 <h3 className="text-xs font-medium text-muted-foreground">
                   {group.title}{" "}
-                  <span className="ml-1 font-normal tabular-nums text-muted-foreground">
+                  <span className="font-normal tabular-nums text-muted-foreground">
                     ({group.entries.length.toLocaleString()})
                   </span>
                 </h3>
@@ -1734,7 +1752,7 @@ function DeveloperStorage({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1 space-y-1">
                             {entry.threads.length > 0 ? (
-                              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                              <div className="flex flex-col items-start gap-1">
                                 {entry.threads.map((thread) => (
                                   <ThreadTitle
                                     key={thread.threadId}
@@ -1826,10 +1844,9 @@ function DeveloperStorage({
                                       disabled={removeDisabled}
                                       onSelect={() =>
                                         onRemove({
-                                          key: removeKey,
-                                          names: [entry.name],
+                                          kind: "one",
+                                          name: entry.name,
                                           label,
-                                          count: 1,
                                           bytes: entry.sizeBytes,
                                         })
                                       }
