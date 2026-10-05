@@ -2150,15 +2150,19 @@ function runTurn(
           "ACP turn failed before the steer was sent",
         );
         session.cancelRequested = false;
-        if (!session.stopping && !session.connection.exited) {
-          emitSessionError(
-            session,
-            error instanceof Error ? error.message : String(error),
-          );
+        if (!session.stopping) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (!session.connection.exited) {
+            emitSessionError(session, message);
+          } else if (session.activePromptKind === "turn") {
+            emitForSession(session, "error", {
+              threadId: session.bbThreadId,
+              message,
+            });
+          }
         }
-        if (session.stopping || !session.connection.exited) {
-          session.activePromptKind = null;
-        }
+        session.activePromptKind = null;
         return;
       }
       session.promptRequestPending = false;

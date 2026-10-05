@@ -3563,7 +3563,13 @@ describe("acp bridge", () => {
       }),
     );
     expect(response.error).toBeUndefined();
-    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    await waitFor(
+      () => threadEventsOfType("turn/completed")[1],
+      "recovered turn completion",
+    );
+    expect(
+      threadEventsOfType("turn/completed").map((event) => event.status),
+    ).toEqual(["failed", "completed"]);
     expect(agentMessageTexts()).toContain("echo:after");
   });
 
@@ -3618,7 +3624,7 @@ describe("acp bridge", () => {
       );
       expect(error.params).toMatchObject({
         threadId: bbThreadId,
-        message: expect.stringContaining("(code 0)"),
+        message: expect.stringContaining("exited unexpectedly"),
       });
       expect(notifications("error")).toHaveLength(1);
       if (activeTurn) {
@@ -3657,6 +3663,51 @@ describe("acp bridge", () => {
       }
     },
   );
+
+  it("fails the interrupted turn and accepts the next message while an exited agent's process tree is still being cleaned up", async () => {
+    const readyFile = join(workspaceDir, "agent-ready");
+    const promptLog = join(workspaceDir, "prompts.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_LINGERING_DESCENDANT: "1",
+        FAKE_ACP_READY_FILE: readyFile,
+        FAKE_ACP_PROMPT_LOG: promptLog,
+      },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    await waitFor(
+      () => loggedPrompts(promptLog).includes("hang") || undefined,
+      "pending prompt before exit",
+    );
+    process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+    await waitForAgentExit(readyFile);
+
+    const steer = await waitForResponse(
+      sendTurnRequest("turn/steer", providerThreadId, {
+        expectedTurnId: "turn-1",
+        input: [{ type: "text", text: "late steer", mentions: [] }],
+      }),
+    );
+    expect(steer.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN);
+    const response = await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "after", mentions: [] }],
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    await waitFor(
+      () => threadEventsOfType("turn/completed")[1],
+      "recovered turn completion",
+    );
+    expect(
+      threadEventsOfType("turn/completed").map((event) => event.status),
+    ).toEqual(["failed", "completed"]);
+    expect(loggedPrompts(promptLog)).toEqual(["hang", "after"]);
+  });
 
   it("releases a session still under construction: the agent is reaped and the pending thread/start fails", async () => {
     const readyFile = join(workspaceDir, "agent-ready");

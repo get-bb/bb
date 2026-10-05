@@ -59,6 +59,9 @@
  *                              session/fork responses
  * - FAKE_ACP_IGNORE_CANCEL=1 → never answer a prompt after session/cancel
  * - FAKE_ACP_READY_FILE      → written once the agent process is up
+ * - FAKE_ACP_LINGERING_DESCENDANT=1
+ *                            → spawn a descendant that ignores SIGTERM, so
+ *                              process-tree cleanup outlasts the agent's exit
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
@@ -70,6 +73,7 @@
  *                            → stop reason returned for /compact
  */
 
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { appendFileSync, writeFileSync } from "node:fs";
 
@@ -152,6 +156,14 @@ for (let i = fakeModels.length; i < modelCount; i += 1) {
 process.on("SIGTERM", () => {
   process.exit(0);
 });
+
+if (process.env.FAKE_ACP_LINGERING_DESCENDANT === "1") {
+  spawn(
+    process.execPath,
+    ["-e", "process.on('SIGTERM', () => {}); setTimeout(() => {}, 5000);"],
+    { stdio: "ignore" },
+  );
+}
 
 if (process.env.FAKE_ACP_READY_FILE) {
   writeFileSync(process.env.FAKE_ACP_READY_FILE, String(process.pid));
