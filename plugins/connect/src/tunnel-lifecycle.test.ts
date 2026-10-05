@@ -3,6 +3,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { ShareHostResolver } from "./hosts.js";
 import { ShareRegistry } from "./shares.js";
 import { TEST_ACCOUNT } from "./testing/fake-account.js";
+import { HEARTBEAT_RESPONSE } from "@bb/tunnel-contract";
 
 interface FakeWebSocketOptions {
   handshakeTimeout?: number;
@@ -44,6 +45,8 @@ vi.mock("ws", async (importOriginal) => {
     terminate(): void {
       this.readyState = 3;
     }
+
+    send(): void {}
   }
 
   return { ...actual, WebSocket: FakeWebSocket };
@@ -337,6 +340,65 @@ describe("ConnectTunnel socket lifecycle", () => {
       expect(fakeWebSockets.instances).toHaveLength(2);
     } finally {
       tunnel.stop();
+      vi.useRealTimers();
+      await fakeHost.harness.dispose();
+    }
+  });
+
+  it("logs the transport error and heartbeat age for each connection without carrying them across retries", async () => {
+    vi.useFakeTimers();
+    const monotonicClock = vi
+      .spyOn(performance, "now")
+      .mockImplementation(() => Date.now());
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      await vi.advanceTimersByTimeAsync(0);
+      const socket = fakeWebSockets.instances[0]!;
+      socket.readyState = 1;
+      socket.emit("open");
+      await vi.advanceTimersByTimeAsync(10_000);
+      socket.emit("message", Buffer.from(HEARTBEAT_RESPONSE), false);
+
+      vi.setSystemTime(Date.now() + 90_000);
+      await vi.advanceTimersByTimeAsync(20_000);
+      socket.emit(
+        "error",
+        Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
+      );
+      socket.emit("close", 1006, Buffer.from(""));
+
+      const disconnect = fakeHost.harness.logEntries.find((entry) =>
+        entry.message.startsWith("tunnel closed"),
+      );
+      expect(disconnect).toMatchObject({
+        level: "warn",
+        message: expect.stringContaining(
+          '"transportError":{"message":"read ECONNRESET","code":"ECONNRESET"}',
+        ),
+      });
+      expect(disconnect?.message).toContain('"connectedDurationMs":120000');
+      expect(disconnect?.message).toContain('"lastHeartbeatAckAgeMs":110000');
+
+      await vi.advanceTimersByTimeAsync(
+        tunnel.status().nextRetryAt! - Date.now(),
+      );
+      const next = fakeWebSockets.instances[1]!;
+      next.readyState = 1;
+      next.emit("open");
+      await vi.advanceTimersByTimeAsync(1_000);
+      next.emit("close", 1006, Buffer.from(""));
+
+      expect(fakeHost.harness.logEntries.at(-1)).toMatchObject({
+        level: "warn",
+        message: expect.stringContaining(
+          '"transportError":null,"connectedDurationMs":1000,"lastHeartbeatAckAgeMs":null',
+        ),
+      });
+    } finally {
+      tunnel.stop();
+      monotonicClock.mockRestore();
       vi.useRealTimers();
       await fakeHost.harness.dispose();
     }
