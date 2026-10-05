@@ -22,6 +22,50 @@ describe("bb thread action command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  it.each([false, true])(
+    "previews archive targets without a mutation (json: %s)",
+    async (json) => {
+      const archiveThreads = [
+        {
+          id: "thr_child",
+          title: "Child",
+          titleFallback: null,
+          projectId: "proj_test",
+          status: "idle",
+          createdAt: 1700000000000,
+          visibility: "hidden",
+        },
+      ];
+      const summaryGet = vi.fn(async () => ({
+        nonDeletedChildCount: 1,
+        unarchivedDescendantCount: 0,
+        archiveThreads,
+      }));
+      const archivePost = vi.fn();
+      stubServerApi({
+        "v1.threads.:id.child-summary.$get": summaryGet,
+        "v1.threads.:id.archive-all.$post": archivePost,
+      });
+      await runCommand(
+        [
+          "thread",
+          "archive-preview",
+          "thr_parent",
+          ...(json ? ["--json"] : []),
+        ],
+        register,
+      );
+      expect(summaryGet).toHaveBeenCalledWith({ param: { id: "thr_parent" } });
+      expect(archivePost).not.toHaveBeenCalled();
+      const output = String(vi.mocked(console.log).mock.calls[0]?.[0]);
+      if (json) expect(JSON.parse(output)).toEqual({ archiveThreads });
+      else
+        expect(output).toBe(
+          "Child | idle | Created 2023-11-14T22:13:20.000Z | @thread:thr_child",
+        );
+    },
+  );
+
   it("bb thread archive sends the thread id from args", async () => {
     const archivePost = vi.fn(async () => ({
       ok: true,

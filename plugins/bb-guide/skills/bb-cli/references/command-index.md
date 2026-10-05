@@ -191,6 +191,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb thread tabs show`
 - `bb thread tabs set`
 - `bb thread update`
+- `bb thread archive-preview`
 - `bb thread archive`
 - `bb thread unarchive`
 - `bb thread restore-environment`

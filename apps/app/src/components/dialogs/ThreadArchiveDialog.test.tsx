@@ -21,28 +21,74 @@ function renderDialog({
   const onArchive = vi.fn();
   const onOpenChange = vi.fn();
   const thread = makeThread({ status });
+  const archiveThreads = [
+    thread,
+    ...Array.from({ length: childThreadCount }, (_, i) =>
+      makeThread({ id: `thr_child_${i}`, title: `Child ${i}`, status: "idle" }),
+    ),
+  ];
   const view = render(
     <ThreadArchiveDialog
-      target={{ thread, childThreadCount }}
+      target={{ thread, archiveThreads }}
       pending={pending}
       onOpenChange={onOpenChange}
       onArchive={onArchive}
     />,
   );
-  return { onArchive, onOpenChange, thread, view };
+  return { onArchive, onOpenChange, thread, archiveThreads, view };
 }
 
 describe("ThreadArchiveDialog", () => {
+  it("shows every linked title, status and exact creation date without confirming", () => {
+    const { archiveThreads, onArchive } = renderDialog({ childThreadCount: 2 });
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(3);
+    archiveThreads.forEach((thread, index) => {
+      expect(links[index]?.getAttribute("href")).toBe(
+        `/projects/${thread.projectId}/threads/${thread.id}`,
+      );
+    });
+    expect(document.querySelectorAll("time")).toHaveLength(3);
+    expect(document.querySelector("time")?.getAttribute("datetime")).toBe(
+      new Date(archiveThreads[0]!.createdAt).toISOString(),
+    );
+    expect(onArchive).not.toHaveBeenCalled();
+  });
+
+  it("warns about an active hidden dependent even when the parent is idle", () => {
+    const thread = makeThread({ status: "idle" });
+    render(
+      <ThreadArchiveDialog
+        target={{
+          thread,
+          archiveThreads: [
+            thread,
+            makeThread({
+              id: "thr_hidden",
+              title: "Side chat",
+              status: "active",
+              visibility: "hidden",
+            }),
+          ],
+        }}
+        pending={false}
+        onOpenChange={vi.fn()}
+        onArchive={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/This will stop current work/)).toBeTruthy();
+    expect(screen.getByText(/active · Hidden/)).toBeTruthy();
+  });
   it("announces the cascade with singular and plural child counts", () => {
     const { view } = renderDialog({ childThreadCount: 1 });
     expect(
-      screen.getByText(/1 child thread will be archived with this thread\./),
+      screen.getByText(/1 related thread will be archived with this thread\./),
     ).toBeTruthy();
 
     view.unmount();
     renderDialog({ childThreadCount: 3 });
     expect(
-      screen.getByText(/3 child threads will be archived with this thread\./),
+      screen.getByText(/3 related threads will be archived with this thread\./),
     ).toBeTruthy();
   });
 
@@ -91,7 +137,7 @@ describe("ThreadArchiveDialog", () => {
   });
 
   it("archives only when confirmation is accepted", () => {
-    const { onArchive, onOpenChange, thread } = renderDialog({
+    const { onArchive, onOpenChange, archiveThreads, thread } = renderDialog({
       childThreadCount: 2,
     });
 
@@ -100,6 +146,6 @@ describe("ThreadArchiveDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive 3 threads" }));
-    expect(onArchive).toHaveBeenCalledWith({ thread, childThreadCount: 2 });
+    expect(onArchive).toHaveBeenCalledWith({ thread, archiveThreads });
   });
 });
