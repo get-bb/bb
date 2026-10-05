@@ -100,18 +100,8 @@ Enabled provider plugins also contribute skills to the selected provider's `/`
 command menu. `bb skill list` shows native skills for Claude Code, Codex, and
 Cursor.
 
-ACP providers discover models from the agent itself. For acp-opencode, the
-list mirrors the OpenCode catalog, so a custom model from the OpenCode config
-appears automatically. Discover and select one with:
-
-  bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID"
-  bb thread spawn --provider acp-opencode --model <provider/model>
-
-bb applies the selected model to the ACP session before the first prompt.
-
-An OpenCode agent (build, plan, or a custom primary agent) is a session mode,
-not a model; bb does not select it, so configure the default agent in the
-OpenCode config.
+ACP agents (acp-*), including custom agents set in the ACP providers plugin's
+customAgents setting, are documented in the acp-provider skill.
 
 Top-level customModels in the app data-dir config.json adds extra picker
 entries. Each entry has a providerId (a built-in provider id or any acp-*
@@ -124,26 +114,6 @@ model to the OpenCode config instead. Edit the JSON and run bb-app config
 refresh; there is no set/unset CLI surface. The streamerMode
 General setting hides every entry from these lists; see the customization
 chapter.
-
-Custom ACP agents live in the ACP providers plugin's customAgents setting, a
-JSON array. Set it with bb plugin config provider-acp set customAgents '[...]'.
-Each entry needs id (lowercase letters, digits and dashes), displayName, and
-command. bb derives provider id acp-<id> from the slug id. The id is permanent.
-The id cursor is reserved because bb always lists that agent. The ids opencode,
-omp, grok and hermes-agent are not reserved, so an entry with one of those ids
-replaces the shipped agent. Use args, env, and cwd for the launch, modelCli
-for CLI model listing/selection, reasoningCli for launch-time reasoning flags,
-nativeReasoning for ACP session/set_config_option reasoning, permissionCli for
-permission-mode launch flags, and dialect (cursor, opencode, omp, or grok) for
-the vendor side channels bb reads. Use nativeSkillRoots to add native skills to
-the composer.
-Give it a user list and a project list. User roots resolve from the target host
-home directory. Project roots resolve from the selected workspace. Each root
-must use a relative path without dot segments. Set supportsManualCompaction to true only
-if the agent accepts an explicit compaction request; it defaults to false, and
-bb hides the /compact command for agents that do not declare it. The plugin
-re-registers its providers as soon as the setting changes, so no restart or
-config refresh is needed.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots

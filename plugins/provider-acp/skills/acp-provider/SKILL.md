@@ -19,11 +19,18 @@ background capability probing. `bb provider list --all` includes disabled agents
 Cursor project skills come from `.cursor/skills`, which can link to
 `.agents/skills`. BB lists these linked skills as read-only under `cursor-project`.
 
-ACP agents may reject unlisted model IDs. OpenCode requires models in its own
-configuration; BB discovers them there. OpenCode agents are session modes, not
-models selectable through BB's model field. Grok Build advertises models and
-`thought_level` options over ACP, so the picker follows the connected agent
-(including `xhigh` on grok-4.6).
+ACP agents report their own models and may reject unlisted model IDs.
+For `acp-opencode` the list mirrors the OpenCode catalog, so add a model to
+the OpenCode config rather than bb's `customModels`:
+
+```sh
+bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID"
+bb thread spawn --provider acp-opencode --model <provider/model>
+```
+
+OpenCode agents are session modes, not models selectable through BB's model
+field. Grok Build advertises models and `thought_level` options over ACP, so
+the picker follows the connected agent (including `xhigh` on grok-4.6).
 
 BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
 `OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
@@ -58,3 +65,28 @@ environment. A custom OpenCode wrapper must declare
 `dialect: "opencode"` and `providerUsage: true` to expose its usage.
 Missing credentials, rejected keys, and collection errors remain unavailable
 states rather than zero usage. Never print API keys when diagnosing setup.
+
+## Custom ACP agents
+
+Register another ACP agent in the ACP providers plugin's `customAgents`
+setting, a JSON array:
+`bb plugin config provider-acp set customAgents '[...]'`. The plugin
+re-registers its providers as soon as the setting changes; no restart is
+needed.
+
+- Required: `id` (lowercase letters, digits, and dashes; permanent),
+  `displayName`, and `command`. The provider id is `acp-<id>`. `cursor` is
+  reserved; an entry with id `opencode`, `omp`, `grok`, or `hermes-agent`
+  replaces the shipped agent.
+- Launch: `args`, `env`, and `cwd`.
+- `modelCli` for CLI model listing and selection, `reasoningCli` for
+  launch-time reasoning flags, `nativeReasoning` for ACP
+  `session/set_config_option` reasoning, and `permissionCli` for
+  permission-mode launch flags.
+- `dialect` (`cursor`, `opencode`, `omp`, or `grok`) selects the vendor side
+  channels bb reads.
+- `nativeSkillRoots` adds native skills to the composer: a `user` list resolved
+  from the target host's home directory and a `project` list resolved from the
+  workspace, each a relative path without dot segments.
+- `supportsManualCompaction` (default `false`) shows `/compact` only for agents
+  that accept an explicit compaction request.
