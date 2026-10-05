@@ -3666,10 +3666,11 @@ describe("acp bridge", () => {
 
   it("fails the interrupted turn and accepts the next message while an exited agent's process tree is still being cleaned up", async () => {
     const readyFile = join(workspaceDir, "agent-ready");
+    const descendantPidFile = join(workspaceDir, "descendant-pid");
     const promptLog = join(workspaceDir, "prompts.jsonl");
     const { providerThreadId } = await startThread({
       envVars: {
-        FAKE_ACP_LINGERING_DESCENDANT: "1",
+        FAKE_ACP_LINGERING_DESCENDANT_PID_FILE: descendantPidFile,
         FAKE_ACP_READY_FILE: readyFile,
         FAKE_ACP_PROMPT_LOG: promptLog,
       },
@@ -3683,8 +3684,10 @@ describe("acp bridge", () => {
       () => loggedPrompts(promptLog).includes("hang") || undefined,
       "pending prompt before exit",
     );
+    const descendantPid = Number(readFileSync(descendantPidFile, "utf8"));
     process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
-    await waitForAgentExit(readyFile);
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
+    expect(process.kill(descendantPid, 0)).toBe(true);
 
     const steer = await waitForResponse(
       sendTurnRequest("turn/steer", providerThreadId, {
