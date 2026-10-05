@@ -3049,7 +3049,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 /* ── Reduced motion ─────────────────────────────────────────────── */
 
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: reduce), (min-width: 821px) {
   .company-proof-toggle {
     display: none;
   }
@@ -3070,13 +3070,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     width: 100%;
     flex-wrap: wrap;
     justify-content: center;
+    row-gap: 20px;
     padding: 0 28px;
   }
 
   .company-proof-logos[aria-hidden="true"] {
     display: none;
   }
+}
 
+@media (prefers-reduced-motion: reduce) {
   .nav,
   .hero > * {
     animation: none;
