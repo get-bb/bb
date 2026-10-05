@@ -705,7 +705,16 @@ both public links. Add `--details --json` or call `system.mobileAppReleases()`
 upload date. The server fetches only public metadata, caches it for five minutes,
 and returns `android: null` if unavailable or inconsistent. Download links remain
 usable during metadata failures. iOS version and release date are shown in TestFlight.
-Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+The nightly release pipeline builds and publishes an Android preview APK after
+a successful npm nightly publication, alongside the iOS build. This runs on the
+daily 3 AM America/Los_Angeles schedule, a manual nightly publish, and the
+nightly publication following a stable release. Successful builds replace the
+APK and version metadata used by Settings → Mobile. These builds do not submit
+to Google Play.
+
+For an immediate update, run **Mobile Android (EAS)**, profile `preview`,
+**publish** on, or
+`gh workflow run mobile-android-eas.yml --ref main -f profile=preview -f publish=true -f submit=false`.
 The preview Gradle command builds `arm64-v8a` and `armeabi-v7a`, supporting
 both 64-bit and 32-bit ARM phones. It omits Intel x86/x86_64 libraries to reduce
 the direct download; Intel devices and x86 emulators cannot install this APK.

@@ -17,6 +17,22 @@ on:
         description: Upload production AAB to the Google Play internal track as a draft
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      profile:
+        required: true
+        type: string
+      publish:
+        required: true
+        type: boolean
+      submit:
+        required: true
+        type: boolean
+    secrets:
+      EXPO_TOKEN:
+        required: true
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:
+        required: false
 
 permissions:
   contents: read
