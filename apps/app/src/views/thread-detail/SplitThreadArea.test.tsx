@@ -979,7 +979,7 @@ describe("SplitThreadArea", () => {
     await waitFor(() => expect(hiddenScroller.scrollTop).toBe(0));
   });
 
-  it("stops the restore loop once positions settle instead of burning 30 frames", () => {
+  it("stops the restore loop once positions settle instead of burning 30 frames", async () => {
     const frames = new Map<number, FrameRequestCallback>();
     let frameId = 0;
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -1004,7 +1004,7 @@ describe("SplitThreadArea", () => {
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
     });
-    const hiddenScroller = screen.getByTestId("scroll-thr-b");
+    const hiddenScroller = await screen.findByTestId("scroll-thr-b");
     hiddenScroller.scrollTop = 12;
     fireEvent.scroll(hiddenScroller);
 
@@ -2892,7 +2892,7 @@ describe("SplitThreadArea", () => {
       externalTo: threadPath("thr-c"),
     });
 
-    expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+    expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
     fireEvent.click(screen.getByTestId("external-nav"));
 
     expect(await screen.findByTestId("pane-thr-c")).toBeTruthy();

@@ -463,7 +463,7 @@ describe("FilePreview", () => {
     expect(screen.queryByRole("button", { name: "Load full file" })).toBeNull();
   });
 
-  it("caps code previews by size even when they have few lines", () => {
+  it("caps code previews by size even when they have few lines", async () => {
     const longLine = "x".repeat(200_000);
     const contents = [longLine, longLine, longLine, "tail"].join("\n");
 
@@ -480,10 +480,12 @@ describe("FilePreview", () => {
       />,
     );
 
+    expect(
+      await screen.findByRole("button", { name: "Load full file" }),
+    ).toBeTruthy();
     expect(pierreMock.state.lastFile?.contents).toBe(
       [longLine, longLine].join("\n"),
     );
-    expect(screen.getByRole("button", { name: "Load full file" })).toBeTruthy();
   });
 
   it("shows the whole file when a line link points past the capped prefix", async () => {
