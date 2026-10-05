@@ -87,29 +87,25 @@ const MARKS: Record<
 
 function Cell({ cell, us }: { cell: CompareCell; us: boolean }) {
   const mark = cell.mark ? MARKS[cell.mark] : null;
-  const classes = ["cmp-cell", mark ? "" : "cmp-cell-text", us ? "cmp-us" : ""]
-    .filter(Boolean)
-    .join(" ");
   return (
-    <td role="cell" className={classes}>
-      <span className="cmp-cell-inner">
+    <td role="cell" className={us ? "cmp-cell cmp-us" : "cmp-cell"}>
+      <span className="cmp-cell-main">
         {mark ? (
           <span className={mark.className}>
             <HugeiconsIcon icon={mark.icon} aria-hidden="true" />
             <span className="cmp-sr">{mark.label}</span>
           </span>
         ) : null}
-        {cell.text || cell.pro ? (
-          <span className="cmp-cell-note">
-            {cell.text}
-            {cell.pro ? (
-              <span className={cell.text ? "cmp-pro" : "cmp-pro cmp-pro-solo"}>
-                $ Pro<span className="cmp-sr"> plan only</span>
-              </span>
-            ) : null}
+        {cell.value ? (
+          <span className="cmp-cell-value">{cell.value}</span>
+        ) : null}
+        {cell.pro ? (
+          <span className="cmp-pro">
+            $ Pro<span className="cmp-sr"> plan only</span>
           </span>
         ) : null}
       </span>
+      {cell.text ? <span className="cmp-cell-note">{cell.text}</span> : null}
     </td>
   );
 }
@@ -251,8 +247,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         </h2>
         <p className="cmp-table-sub">Feature by feature</p>
         <p className="cmp-table-note">
-          <span className="cmp-pro cmp-pro-solo">$ Pro</span>{" "}
-          {comparison.tableNote}
+          <span className="cmp-pro">$ Pro</span> {comparison.tableNote}
         </p>
         <CompareTable comparison={comparison} />
       </section>

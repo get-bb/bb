@@ -13,6 +13,7 @@ export type Mark = "yes" | "partial" | "no";
 
 export type CompareCell = {
   mark: Mark | null;
+  value: string;
   text: string;
   pro: boolean;
 };
@@ -62,7 +63,11 @@ export type Comparison = {
 };
 
 function cell(mark: Mark | null, text = "", pro = false): CompareCell {
-  return { mark, text, pro };
+  return { mark, value: "", text, pro };
+}
+
+function price(value: string, text: string): CompareCell {
+  return { mark: null, value, text, pro: false };
 }
 
 const SUPERSET_LOGO: BrandLogo = { kind: "image", src: supersetIcon };
@@ -167,17 +172,17 @@ const BB_VS_SUPERSET: Comparison = {
     "marks features that need a paid Superset plan, from $20 per user / month.",
   table: [
     {
-      title: "Agents",
+      title: "Price and license",
       rows: [
         {
-          feature: "Multi-agent support",
-          bb: cell("yes", "Plus any you add"),
-          competitor: cell("yes", "Any CLI agent"),
+          feature: "Pricing",
+          bb: price("$0", "Any team size"),
+          competitor: price("$0 solo", "$20 per user / month for teams"),
         },
         {
-          feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Spawn, message, wait"),
-          competitor: cell("yes", "Via a coordinator skill"),
+          feature: "Open-source license",
+          bb: cell("yes", "MIT"),
+          competitor: cell("no", "Elastic License 2.0"),
         },
       ],
     },
@@ -202,7 +207,57 @@ const BB_VS_SUPERSET: Comparison = {
       ],
     },
     {
-      title: "Worktrees and review",
+      title: "Agents",
+      rows: [
+        {
+          feature: "Multi-agent support",
+          bb: cell("yes", "Plus any you add"),
+          competitor: cell("yes", "Any CLI agent"),
+        },
+        {
+          feature: "Agent-to-agent handoff",
+          bb: cell("yes", "Spawn, message, wait"),
+          competitor: cell("yes", "Via a coordinator skill"),
+        },
+      ],
+    },
+    {
+      title: "Integrations",
+      rows: [
+        {
+          feature: "Plugin marketplace",
+          bb: cell("yes", "Gallery or agent-built"),
+          competitor: cell("partial", "Themes and integrations"),
+        },
+        {
+          feature: "Linear integration",
+          bb: cell("yes", "Community plugin"),
+          competitor: cell("partial", "", true),
+        },
+        {
+          feature: "Slack integration",
+          bb: cell("no"),
+          competitor: cell("partial", "@superset agent bot", true),
+        },
+      ],
+    },
+    {
+      title: "Platforms",
+      rows: [
+        {
+          feature: "Windows support",
+          bb: cell("yes", "Through WSL2"),
+          competitor: cell("no", "Planned, no date"),
+        },
+        {
+          feature: "Linux support",
+          bb: cell("partial", "Alpha"),
+          competitor: cell("partial", "Experimental AppImage"),
+        },
+      ],
+    },
+    {
+      title: "Workspace and teams",
       rows: [
         {
           feature: "Git worktrees",
@@ -229,60 +284,10 @@ const BB_VS_SUPERSET: Comparison = {
           bb: cell("no"),
           competitor: cell("yes", "View, kill, group"),
         },
-      ],
-    },
-    {
-      title: "Integrations",
-      rows: [
-        {
-          feature: "Plugin marketplace",
-          bb: cell("yes", "Gallery or agent-built"),
-          competitor: cell("partial", "Themes and integrations"),
-        },
-        {
-          feature: "Linear integration",
-          bb: cell("yes", "Community plugin"),
-          competitor: cell("partial", "", true),
-        },
-        {
-          feature: "Slack integration",
-          bb: cell("no"),
-          competitor: cell("partial", "@superset agent bot", true),
-        },
-      ],
-    },
-    {
-      title: "Platform and license",
-      rows: [
-        {
-          feature: "Windows support",
-          bb: cell("yes", "Through WSL2"),
-          competitor: cell("no", "Planned, no date"),
-        },
-        {
-          feature: "Linux support",
-          bb: cell("partial", "Alpha"),
-          competitor: cell("partial", "Experimental AppImage"),
-        },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("no", "Elastic License 2.0"),
-        },
-      ],
-    },
-    {
-      title: "Teams and price",
-      rows: [
         {
           feature: "Team plans and SSO",
           bb: cell("no"),
           competitor: cell("partial", "SSO on Enterprise", true),
-        },
-        {
-          feature: "Pricing",
-          bb: cell(null, "$0, any team size"),
-          competitor: cell(null, "$0 solo, $20/user/mo"),
         },
       ],
     },

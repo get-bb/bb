@@ -547,11 +547,6 @@
   color: var(--subtle);
 }
 
-.cmp-us .cmp-cell-note {
-  color: var(--add);
-  font-weight: 500;
-}
-
 .cmp-table {
   width: 100%;
   max-width: 820px;
@@ -597,16 +592,17 @@
 }
 
 .cmp-group th {
-  padding: 28px 12px 10px 0;
+  padding: 34px 12px 10px 0;
+  border-bottom: 1px solid var(--border);
   text-align: left;
-  font-size: var(--text-label-small);
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--subtle);
+  color: var(--heading-sub);
 }
 
-.cmp-table tbody tr:not(.cmp-group) {
+.cmp-table tbody tr:not(.cmp-group) + tr {
   border-top: 1px solid var(--border-soft);
 }
 
@@ -625,10 +621,17 @@
   vertical-align: top;
 }
 
-.cmp-cell-inner {
+.cmp-cell-main {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.cmp-cell-value {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--heading);
 }
 
 .cmp-mark {
@@ -662,20 +665,15 @@
 }
 
 .cmp-cell-note {
-  padding-top: 1px;
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--dim);
-}
-
-.cmp-cell-text .cmp-cell-note {
-  font-weight: 600;
-  color: var(--heading-sub);
+  display: block;
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--subtle);
 }
 
 .cmp-pro {
   display: inline-block;
-  margin-left: 6px;
   padding: 1px 7px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -686,8 +684,9 @@
   vertical-align: 1px;
 }
 
-.cmp-pro-solo {
-  margin-left: 0;
+.cmp-us,
+.cmp-table thead th.cmp-us {
+  background: color-mix(in oklab, var(--ink) 2.5%, var(--bg));
 }
 
 .cmp-sr {
@@ -849,15 +848,6 @@
 
   .cmp-cell {
     padding: 14px 6px;
-  }
-
-  .cmp-cell-inner {
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .cmp-cell-note {
-    font-size: 12.5px;
   }
 
   .cmp-faq-item summary {
@@ -1401,15 +1391,6 @@
     padding: 10px 0;
   }
 
-  .cmp-pro {
-    margin-left: 6px;
-    margin-top: 0;
-  }
-
-  .cmp-pro-solo {
-    margin-left: 0;
-  }
-
   .cmp-feature {
     grid-column: 1 / -1;
     padding: 0 0 8px;
@@ -1418,11 +1399,6 @@
   .cmp-cell {
     padding: 6px 8px;
     border-radius: 8px;
-  }
-
-  .cmp-cell-inner {
-    flex-direction: row;
-    gap: 8px;
   }
 }
 
