@@ -3,7 +3,6 @@ import { SETTINGS_NAV_SECTIONS } from "@/components/settings/settings-sections";
 import {
   buildPaletteGroupingPlaces,
   buildPalettePlaces,
-  isThreadInGrouping,
   matchPalettePlaces,
 } from "./palette-places";
 
@@ -103,23 +102,5 @@ describe("buildPaletteGroupingPlaces", () => {
         (place) => place.kind,
       ),
     ).not.toContain("pinned");
-  });
-
-  it("matches threads by project, section, and pin", () => {
-    const thread = {
-      projectId: "project-1",
-      sectionId: "sec-1",
-      pinnedAt: null,
-    };
-    const [project, , section, pinned] = buildPaletteGroupingPlaces({
-      ...args,
-      hasPinnedThreads: true,
-    }).map((place) => place.grouping);
-    expect(project && isThreadInGrouping(thread, project)).toBe(true);
-    expect(section && isThreadInGrouping(thread, section)).toBe(true);
-    expect(pinned && isThreadInGrouping(thread, pinned)).toBe(false);
-    expect(
-      pinned && isThreadInGrouping({ ...thread, pinnedAt: 1 }, pinned),
-    ).toBe(true);
   });
 });

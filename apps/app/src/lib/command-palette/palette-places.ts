@@ -11,7 +11,7 @@ import {
   type HighlightRange,
 } from "./palette-thread-search";
 
-export type PaletteGroupingKind = "project" | "section" | "pinned";
+type PaletteGroupingKind = "project" | "section" | "pinned";
 
 export type PalettePlaceKind = "page" | "setting" | PaletteGroupingKind;
 
@@ -52,7 +52,7 @@ export const PALETTE_PLACE_KIND_LABELS: Record<PalettePlaceKind, string> = {
   pinned: "Pinned",
 };
 
-export const PINNED_GROUPING_ID = "pinned";
+const PINNED_GROUPING_ID = "pinned";
 
 const SETTINGS_TITLE_SUFFIX = " settings";
 const PLUGIN_ICON: IconName = "Plug02";
