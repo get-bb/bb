@@ -104,25 +104,36 @@ export function PromptStackPeekLayers({
 export const PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS = "group/disclosure";
 
 const TRAILING_SLOT_CLASS =
-  "-mr-3 ml-auto flex w-8 shrink-0 items-center justify-center";
+  "-mr-3 flex w-8 shrink-0 items-center justify-center";
 const HOVER_CHEVRON_CLASS =
   "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden";
+
+function HoverChevronSlot({
+  isExpanded,
+  className,
+}: {
+  isExpanded: boolean;
+  className?: string;
+}) {
+  return (
+    <span className={cn(TRAILING_SLOT_CLASS, className)}>
+      {isExpanded ? null : (
+        <Icon
+          name="ChevronDown"
+          className={HOVER_CHEVRON_CLASS}
+          aria-hidden="true"
+        />
+      )}
+    </span>
+  );
+}
 
 export function PromptStackHoverChevron({
   isExpanded,
 }: {
   isExpanded: boolean;
 }) {
-  if (isExpanded) return null;
-  return (
-    <span className={TRAILING_SLOT_CLASS}>
-      <Icon
-        name="ChevronDown"
-        className={HOVER_CHEVRON_CLASS}
-        aria-hidden="true"
-      />
-    </span>
-  );
+  return <HoverChevronSlot isExpanded={isExpanded} className="ml-auto" />;
 }
 
 export function PromptStackCountWithHoverChevron({
@@ -133,24 +144,11 @@ export function PromptStackCountWithHoverChevron({
   isExpanded: boolean;
 }) {
   return (
-    <span className={cn(TRAILING_SLOT_CLASS, "grid justify-items-center")}>
-      <span
-        className={cn(
-          PROMPT_STACK_COUNT_PILL_CLASS,
-          "[grid-area:1/1] transition-opacity",
-          !isExpanded &&
-            "group-hover/disclosure:opacity-0 group-focus-visible/disclosure:opacity-0 [@media(hover:none)]:opacity-100",
-        )}
-      >
+    <>
+      <span className={cn(PROMPT_STACK_COUNT_PILL_CLASS, "ml-auto")}>
         {`+${count}`}
       </span>
-      {isExpanded ? null : (
-        <Icon
-          name="ChevronDown"
-          className={cn(HOVER_CHEVRON_CLASS, "[grid-area:1/1]")}
-          aria-hidden="true"
-        />
-      )}
-    </span>
+      <HoverChevronSlot isExpanded={isExpanded} />
+    </>
   );
 }
