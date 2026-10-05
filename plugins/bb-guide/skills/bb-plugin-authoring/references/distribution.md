@@ -32,8 +32,13 @@ does not cover:
      That layout still works for existing entries, but migrate before adding
      `bb.host` so the `/host` and `/testing/host` subpaths are present; `bb
 plugin migrate` converts such a plugin to the npm package (it prints the plan
-     and asks first, and needs `--yes` when stdin is not a terminal). Never
-     migrate a plugin the user did not ask you to migrate.
+     and asks first, and needs `--yes` when stdin is not a terminal). It pins
+     the SDK devDependency (moving it out of `dependencies` and raising an
+     older `engines.bbPluginSdk` floor), drops the tsconfig path map, deletes
+     the vendored declarations (keeping `types/` if it holds your own files),
+     and rewrites `@bb/plugin-sdk` imports; rerunning is a no-op, and you run
+     `npm install` after. Never migrate a plugin the user did not ask you to
+     migrate.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
    a reference implementation: `packages/plugin-sdk/src/`,
    `apps/server/src/services/plugins/`, `plugins/`.
@@ -140,9 +145,12 @@ installing an entry runs the same install pipeline a direct install runs.
 }
 ```
 
-The schema is strict: an unknown field rejects the whole document, and the
-last catalog bb validated keeps serving. `name` is the marketplace's identity
-and must be unique on the user's machine; `bb-community` is reserved.
+Schema version 1 is strict: an unknown field rejects the whole document.
+Version 2 ignores unknown fields except inside npm and git source objects,
+where an unknown key is rejected because it would change the installed code.
+A rejected manifest leaves the last catalog bb validated serving. `name` is the
+marketplace's identity and must be unique on the user's machine;
+`bb-official` and `bb-community` are reserved.
 Compatibility belongs in each plugin package manifest. Icons are `.svg`,
 `.png`, or `.webp`, either an absolute https URL or a path relative to the
 manifest — bb fetches and validates them server-side and serves them from its

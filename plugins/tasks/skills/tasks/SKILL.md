@@ -27,8 +27,9 @@ For task dispatch and execution presets, read
 
    For project-wide discovery, `bb tasks list` returns at most 100 rows by
    default. Pass `--limit 1-500`; in JSON, continue with `nextCursor` via the
-   same filters/sort and `--cursor <value>`. A task-list mutation makes an old
-   cursor stale, so restart without it.
+   same filters/sort and `--cursor <value>` (human output prints the exact
+   continuation option). A task-list mutation makes an old cursor stale, so
+   restart without it.
 
 2. Fetch every relevant attachment before making assumptions about it:
 
@@ -90,8 +91,9 @@ For task dispatch and execution presets, read
    ```
 
    When a thread is done with a task (hand-off, respawned replacement, or a
-   predecessor that died), detach it so `bb tasks threads ABC-12` stays
-   accurate. Omit `--thread` to detach the current thread:
+   predecessor that died), detach it so `bb tasks threads ABC-12` (live threads
+   first, newest first) stays accurate. Omit `--thread` to detach the current
+   thread:
 
    ```sh
    bb tasks detach ABC-12 --thread thr_dead_predecessor

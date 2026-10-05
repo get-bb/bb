@@ -1,28 +1,37 @@
 ---
 name: provider-retry
-description: "Diagnose automatic retries of BB turns after provider subscription-window limits."
+description: "Diagnose automatic retries of BB turns after provider overloads and subscription-window limits."
 ---
 
 # Provider retry
 
-The plugin is enabled on fresh installations. When a turn fails on a structured
-Codex or Claude Code subscription-window limit with a reset time, it queues the
-failed turn for after the window opens. Core continues accepted input or re-sends input the provider never accepted.
+The plugin is enabled on fresh installations. It reacts only to failed Codex
+and Claude Code turns and never blocks a send; prior output or tool activity
+does not prevent a retry. It queues the original input verbatim, marked
+agent-only, for one of two failures:
 
-A pending retry is an ordinary durable queued row and survives restart. Inspect
-it with `bb thread queue list <thread-id>` and inspect the failed turn before
-manually retrying it; avoid duplicating an existing queued retry.
+- A structured provider overload: retried after a short delay that doubles on
+  each attempt.
+- A subscription-window limit with a reported reset time: retried shortly
+  after the window opens, with random spread so threads on one account do not
+  wake together. Credit and spend limits are not retried.
 
-Use the core `bb thread retry` command for an intentional manual retry. Follow
-its live help for selection and scheduling flags.
+A turn gets at most four automatic retries. The `maximumWait` setting
+(`6 hours` by default, or `24 hours` or `No limit`) skips a subscription-limit
+retry whose reset is farther away:
+`bb plugin config provider-retry set maximumWait "24 hours"`.
 
-For Account Pooler routes, retry timing comes from the pool’s earliest usable
-account for the failed model, including parent pools. A generic provider 429
-without quota windows can therefore still schedule a retry. Unknown resets,
-authentication failures, and unavailable pool sources do not schedule retries.
+A pending retry is an ordinary durable queued row, shown on the thread's queue
+card with its reason and time, and survives restart.
 
-Use `bb provider-retry explain [thread-id] [--json]` to inspect the last
-recorded decision and why it was skipped. This historical diagnostic survives
-restart but does not imply a retry is still pending; use `status` for that.
-The plugin RPC `decision.get` accepts `{ threadId }` and returns the same
-nullable diagnostic. Decisions before this version was loaded are not backfilled.
+```sh
+bb provider-retry status [thread-id] [--json]
+bb provider-retry retry <thread-id> [--json]
+bb provider-retry cancel <thread-id> [--json]
+```
+
+`status` defaults to the current thread and lists every thread outside one.
+`retry` sends the pending row now; `cancel` deletes it. Inspect the failed turn
+before retrying manually, and avoid duplicating an existing queued retry. Use
+the core `bb thread retry` command for an intentional manual retry of a turn
+with no pending row; follow its live help for selection and scheduling flags.
