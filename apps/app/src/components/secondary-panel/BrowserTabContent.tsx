@@ -447,6 +447,7 @@ export function BrowserTabContent({
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
+  const [isPageFocusPending, setIsPageFocusPending] = useState(false);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const isFindOpenRef = useRef(false);
   isFindOpenRef.current = isFindOpen;
@@ -675,6 +676,31 @@ export function BrowserTabContent({
     visibilityCoordinator.hide(tabId);
   }, [visibilityCoordinator, tabId, isViewVisible, syncBounds]);
 
+  useLayoutEffect(() => {
+    if (!isPageFocusPending) return;
+    if (
+      !canShowNativeBrowserView ||
+      !canHandleBrowserCommands ||
+      hasPageLoadError ||
+      isBrowserDimmingModalOpen
+    ) {
+      setIsPageFocusPending(false);
+      return;
+    }
+    if (!isViewVisible) return;
+    setIsPageFocusPending(false);
+    desktopBrowser?.focus?.(tabId);
+  }, [
+    isPageFocusPending,
+    canShowNativeBrowserView,
+    canHandleBrowserCommands,
+    hasPageLoadError,
+    isBrowserDimmingModalOpen,
+    isViewVisible,
+    desktopBrowser,
+    tabId,
+  ]);
+
   useEffect(() => {
     if (desktopBrowser?.onFocus === undefined || onNativeFocus === undefined) {
       return;
@@ -720,7 +746,9 @@ export function BrowserTabContent({
       }
       setCurrentUrl(url);
       setIsEditing(false);
+      addressInputRef.current?.blur();
       desktopBrowser?.navigate({ tabId, url });
+      setIsPageFocusPending(true);
     },
     [desktopBrowser, tabId],
   );
