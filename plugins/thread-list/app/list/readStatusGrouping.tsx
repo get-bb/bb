@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { atom } from "jotai";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { ThreadUnreadPredicate } from "../model/project-thread-groups.js";
 import { isUnreadDoneThread } from "../model/thread-activity.js";
@@ -9,6 +10,25 @@ interface HeldReadStatus {
 }
 
 let lastHeldReadStatus: HeldReadStatus | null = null;
+
+export const threadsExpandedWhileGroupedAtom = atom<readonly string[]>([]);
+
+export function collapseParentThreads(
+  threads: readonly SidebarThread[],
+  expandedThreadIds: readonly string[],
+): Set<string> {
+  const expanded = new Set(expandedThreadIds);
+  const collapsed = new Set<string>();
+  for (const thread of threads) {
+    if (
+      thread.parentThreadId !== null &&
+      !expanded.has(thread.parentThreadId)
+    ) {
+      collapsed.add(thread.parentThreadId);
+    }
+  }
+  return collapsed;
+}
 
 export function useHeldReadStatus(
   threads: readonly SidebarThread[],

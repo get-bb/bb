@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { makeSidebarThread } from "../model/fixtures.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import {
+  collapseParentThreads,
   createThreadUnreadPredicate,
   useHeldReadStatus,
 } from "./readStatusGrouping.js";
@@ -104,5 +105,22 @@ describe("createThreadUnreadPredicate", () => {
     });
 
     expect(isUnread(markedRead)).toBe(true);
+  });
+});
+
+describe("collapseParentThreads", () => {
+  it("collapses every parent except the ones expanded while grouped", () => {
+    const threads = [
+      makeSidebarThread({ id: "parent" }),
+      makeSidebarThread({ id: "child", parentThreadId: "parent" }),
+      makeSidebarThread({ id: "grandchild", parentThreadId: "child" }),
+      makeSidebarThread({ id: "other-parent" }),
+      makeSidebarThread({ id: "other-child", parentThreadId: "other-parent" }),
+      makeSidebarThread({ id: "leaf" }),
+    ];
+
+    expect(
+      [...collapseParentThreads(threads, ["other-parent"])].sort(),
+    ).toEqual(["child", "parent"]);
   });
 });

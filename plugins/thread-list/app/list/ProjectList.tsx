@@ -121,7 +121,9 @@ import {
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList.js";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder.js";
 import {
+  collapseParentThreads,
   createThreadUnreadPredicate,
+  threadsExpandedWhileGroupedAtom,
   useHeldReadStatus,
 } from "./readStatusGrouping.js";
 import { haveSameOrder } from "../model/stored-order.js";
@@ -1571,9 +1573,20 @@ function ProjectListComponent({
       ? groupComparatorByReadStatus(comparator, threadUnreadPredicate)
       : comparator;
   }, [chronologicalSort, sortDirection, activeRename, threadUnreadPredicate]);
+  const [threadsExpandedWhileGrouped, setThreadsExpandedWhileGrouped] = useAtom(
+    threadsExpandedWhileGroupedAtom,
+  );
   const collapsedThreadIds = useMemo(
-    () => new Set(collapsedThreadIdList),
-    [collapsedThreadIdList],
+    () =>
+      groupByReadStatus
+        ? collapseParentThreads(threads, threadsExpandedWhileGrouped)
+        : new Set(collapsedThreadIdList),
+    [
+      collapsedThreadIdList,
+      groupByReadStatus,
+      threads,
+      threadsExpandedWhileGrouped,
+    ],
   );
   const collapsedEnvironmentIds = useMemo(
     () => new Set(collapsedEnvironmentIdList),
@@ -1622,11 +1635,23 @@ function ProjectListComponent({
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
   const toggleThreadCollapsed = useCallback<ToggleCollapsedId>(
     (threadId) => {
+      if (groupByReadStatus) {
+        setThreadsExpandedWhileGrouped((current) =>
+          current.includes(threadId)
+            ? current.filter((id) => id !== threadId)
+            : [...current, threadId],
+        );
+        return;
+      }
       setCollapsedThreadIdList((current) => {
         return toggleCollapsedIdList({ current, id: threadId });
       });
     },
-    [setCollapsedThreadIdList],
+    [
+      groupByReadStatus,
+      setCollapsedThreadIdList,
+      setThreadsExpandedWhileGrouped,
+    ],
   );
 
   const toggleEnvironmentCollapsed = useCallback<ToggleCollapsedId>(
