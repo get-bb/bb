@@ -1,15 +1,11 @@
-import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { DetailRow } from "@/components/ui/detail-card.js";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
-import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  ChangedFilesBucketMenu,
+  useChangedFilesBucket,
+} from "@/components/workspace/ChangedFilesBucketMenu";
 import {
   renderChangeSummary,
   toChangeTally,
@@ -36,15 +32,10 @@ export function ChangedFilesDetailRow({
   labelClassName,
   limit,
 }: ChangedFilesDetailRowProps) {
-  const [selectedKind, setSelectedKind] = useState<
-    WorkspaceChangedFilesSection["kind"] | null
-  >(null);
+  const { activeSection, selectKind } = useChangedFilesBucket(sections);
 
-  if (sections.length === 0) return null;
+  if (activeSection === undefined) return null;
 
-  const activeSection =
-    sections.find((candidate) => candidate.kind === selectedKind) ??
-    sections[0];
   const tally = toChangeTally(activeSection.stats);
   const hasMultipleBuckets = sections.length > 1;
 
@@ -57,8 +48,11 @@ export function ChangedFilesDetailRow({
   const label = hasMultipleBuckets ? (
     <span className="flex items-baseline gap-x-3">
       <span className="flex min-w-[var(--detail-label-width,96px)] items-baseline">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <ChangedFilesBucketMenu
+          sections={sections}
+          activeSection={activeSection}
+          onSelect={selectKind}
+          trigger={
             <Button
               type="button"
               variant="ghost"
@@ -72,28 +66,8 @@ export function ChangedFilesDetailRow({
                 className="size-3 shrink-0 text-muted-foreground"
               />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {sections.map((option) => (
-              <DropdownMenuItem
-                key={option.kind}
-                onSelect={() => setSelectedKind(option.kind)}
-                className="flex items-center justify-between gap-2"
-              >
-                <span className="truncate">{option.label}</span>
-                <Icon
-                  name="Check"
-                  className={cn(
-                    "size-3.5 shrink-0",
-                    option.kind === activeSection.kind
-                      ? "opacity-100"
-                      : "opacity-0",
-                  )}
-                />
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          }
+        />
       </span>
       {aggregate}
     </span>

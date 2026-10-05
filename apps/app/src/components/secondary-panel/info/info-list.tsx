@@ -1,12 +1,16 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useState, type ComponentProps, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
 
-export const INFO_LIST_SLOT_CLASS =
+export const INFO_LIST_LEADING_CLASS =
   "flex size-3 shrink-0 items-center justify-center";
+
+export const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
+
+export const INFO_LIST_DEFAULT_LIMIT = 5;
 
 const INFO_LIST_ROW_CLASS =
   "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors hover:bg-state-hover";
@@ -14,7 +18,8 @@ const INFO_LIST_ROW_CLASS =
 const INFO_LIST_PRIMARY_CLASS =
   "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
 
-export const INFO_LIST_DEFAULT_LIMIT = 5;
+const INFO_LIST_QUIET_CONTROL_CLASS =
+  "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function InfoCountPill({ count }: { count: number }) {
   return (
@@ -24,23 +29,62 @@ export function InfoCountPill({ count }: { count: number }) {
   );
 }
 
+export interface InfoSectionHeadingProps {
+  label: string;
+  count?: number;
+  accessory?: ReactNode;
+  trailing?: ReactNode;
+}
+
 export function InfoSectionHeading({
   label,
   count,
+  accessory,
   trailing,
-}: {
-  label: ReactNode;
-  count?: number;
-  trailing?: ReactNode;
-}) {
+}: InfoSectionHeadingProps) {
   return (
     <div className="mb-1 flex h-5 min-w-0 items-center justify-between gap-3">
-      <h3 className="m-0 flex min-w-0 items-center text-xs font-medium leading-5 text-muted-foreground">
-        {label}
+      <div className="flex min-w-0 items-center">
+        <h3 className="m-0 text-xs font-medium leading-5 text-muted-foreground">
+          {label}
+        </h3>
         {count === undefined ? null : <InfoCountPill count={count} />}
-      </h3>
+        {accessory}
+      </div>
       {trailing}
     </div>
+  );
+}
+
+export interface InfoSectionProps extends InfoSectionHeadingProps {
+  children: ReactNode;
+}
+
+export function InfoSection({ children, ...heading }: InfoSectionProps) {
+  return (
+    <section className="min-w-0">
+      <InfoSectionHeading {...heading} />
+      {children}
+    </section>
+  );
+}
+
+export function InfoMenuTrigger({
+  children,
+  ...buttonProps
+}: ComponentProps<"button">) {
+  return (
+    <button
+      type="button"
+      {...buttonProps}
+      className={cn(
+        INFO_LIST_QUIET_CONTROL_CLASS,
+        "ml-1.5 inline-flex h-5 items-center gap-0.5 px-0.5 data-[state=open]:text-foreground",
+      )}
+    >
+      {children}
+      <Icon name="ChevronDown" className={INFO_LIST_CARET_CLASS} aria-hidden />
+    </button>
   );
 }
 
@@ -48,25 +92,27 @@ export type InfoListRowTarget =
   | { kind: "button"; onSelect: () => void }
   | { kind: "link"; to: string };
 
-export function InfoListRow({
-  slot,
-  name,
-  title,
-  target,
-  context,
-  action,
-  meta,
-  selected = false,
-}: {
-  slot: ReactNode;
+export interface InfoListRowProps {
+  leading: ReactNode;
   name: ReactNode;
-  title?: string;
   target: InfoListRowTarget | null;
+  title?: string;
   context?: string | null;
   action?: ReactNode;
-  meta?: ReactNode;
+  trailing?: ReactNode;
   selected?: boolean;
-}) {
+}
+
+export function InfoListRow({
+  leading,
+  name,
+  target,
+  title,
+  context,
+  action,
+  trailing,
+  selected = false,
+}: InfoListRowProps) {
   const primary =
     target === null ? (
       <span className="min-w-0 truncate text-xs leading-5 text-foreground">
@@ -91,7 +137,7 @@ export function InfoListRow({
       className={cn(INFO_LIST_ROW_CLASS, selected && "bg-state-active")}
       aria-current={selected ? "true" : undefined}
     >
-      <span className={INFO_LIST_SLOT_CLASS}>{slot}</span>
+      <span className={INFO_LIST_LEADING_CLASS}>{leading}</span>
       <span className="flex min-w-0 flex-1 items-center gap-1 pr-6">
         {primary}
         {context ? (
@@ -101,7 +147,7 @@ export function InfoListRow({
         ) : null}
         {action}
       </span>
-      {meta}
+      {trailing}
     </li>
   );
 }
@@ -134,12 +180,12 @@ export function InfoRowAction({
 
 export function InfoRowTime({
   timestamp,
-  now,
   detail,
+  now = Date.now(),
 }: {
   timestamp: number;
-  now: number;
   detail?: string;
+  now?: number;
 }) {
   const date = new Date(timestamp);
   const fullDate = date.toLocaleString();
@@ -154,19 +200,21 @@ export function InfoRowTime({
   );
 }
 
+export interface InfoListProps<T> {
+  items: readonly T[];
+  getKey: (item: T) => string;
+  renderItem: (item: T) => ReactNode;
+  limit?: number;
+  rail?: boolean;
+}
+
 export function InfoList<T>({
   items,
   getKey,
   renderItem,
   limit = INFO_LIST_DEFAULT_LIMIT,
   rail = false,
-}: {
-  items: readonly T[];
-  getKey: (item: T) => string;
-  renderItem: (item: T) => ReactNode;
-  limit?: number;
-  rail?: boolean;
-}) {
+}: InfoListProps<T>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const canToggle = items.length > limit + 1;
   const visibleItems = canToggle && !isExpanded ? items.slice(0, limit) : items;
@@ -187,13 +235,16 @@ export function InfoList<T>({
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded((value) => !value)}
-            className="-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 items-center gap-1.5 rounded px-1 text-left text-2xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(
+              INFO_LIST_QUIET_CONTROL_CLASS,
+              "-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 items-center gap-1.5 px-1 text-left hover:bg-state-hover",
+            )}
           >
-            <span className={INFO_LIST_SLOT_CLASS}>
+            <span className={INFO_LIST_LEADING_CLASS}>
               <Icon
                 name="ChevronDown"
                 className={cn(
-                  "size-3 transition-transform",
+                  INFO_LIST_CARET_CLASS,
                   isExpanded && "rotate-180",
                 )}
                 aria-hidden

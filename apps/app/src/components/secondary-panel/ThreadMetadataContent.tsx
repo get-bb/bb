@@ -7,13 +7,13 @@ import {
   type ReactNode,
   type UIEvent,
 } from "react";
+import { ChangesSection } from "./info/ChangesSection";
+import { CommitsSection } from "./info/CommitsSection";
+import { ForksSection } from "./info/RelatedThreadsSection";
 import {
-  ChangesSection,
-  CommitsSection,
-  ForksSection,
   ThreadStorageSection,
   type ThreadStorageSectionProps,
-} from "./ThreadInfoSections";
+} from "./info/ThreadStorageSection";
 import { Link } from "react-router-dom";
 import type {
   Environment,
@@ -867,7 +867,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
 
   const isHostActive =
     environment === null || environment.hostLifecycle === "active";
-  const now = Date.now();
 
   return (
     <ThreadMetadataCard>
@@ -929,13 +928,12 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
           <PullRequestRow pullRequest={pullRequest} />
           <ArchivedRow thread={thread} />
         </div>
-        <ForksSection thread={thread} now={now} />
+        <ForksSection thread={thread} />
         {isHostActive ? (
           <>
             <CommitsSection
               workspaceStatus={workspaceStatus}
               onCommitClick={onCommitClick}
-              now={now}
             />
             <ChangesSection
               workspaceStatus={workspaceStatus}
