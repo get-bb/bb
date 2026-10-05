@@ -28,8 +28,8 @@ describe("site navigation", () => {
     const html = renderToStaticMarkup(<SiteNav current="changelog" />);
     expect(html).toContain('class="nav-current" href="/changelog">Changelog');
     expect(html).not.toContain('class="nav-current" href="/marketplace"');
-    expect(renderToStaticMarkup(<SiteFooter />)).toContain(
-      'href="/changelog">Changelog',
-    );
+    const footer = renderToStaticMarkup(<SiteFooter />);
+    expect(footer).toContain('href="/changelog">Changelog');
+    expect(footer).toContain('href="/plugin-guide">Plugin Guide');
   });
 });

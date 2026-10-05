@@ -65,6 +65,8 @@ export function SiteFooter() {
         {" · "}
         <a href="/changelog">Changelog</a>
         {" · "}
+        <a href="/plugin-guide">Plugin Guide</a>
+        {" · "}
         <a href="/privacy">Privacy</a>
         {" · "}
         <GitHubLink placement="footer">GitHub</GitHubLink>
