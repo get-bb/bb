@@ -39,10 +39,6 @@
   color: var(--subtle);
 }
 
-.cmp-page {
-  --glint: oklch(0.86 0.17 95);
-}
-
 .cmp-team {
   padding: 8px 0 56px;
   text-align: center;
@@ -355,17 +351,9 @@
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  --glint-white: var(--bg);
-  --glint-soft: color-mix(in oklab, var(--glint) 22%, var(--glint-white));
-  background: var(--accent);
-  box-shadow:
-    0 0 0 1.5px var(--glint-soft),
-    0 0 8px 3px var(--glint-soft);
+  background: var(--ok);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--ok) 60%, transparent);
   animation: cmp-flow-down 3.3s linear infinite backwards;
-}
-
-.dark .cmp-flow-packet {
-  --glint-white: var(--heading);
 }
 
 .cmp-flow-packet-up {
