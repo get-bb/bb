@@ -95,10 +95,6 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
   - Save `composer.draft`, then restore it with `composer.replace(saved)`.
     For an LLM rewrite, map preserved mention placeholders to explicit ranges
     in the resulting text and replace text and mentions together.
-  - `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
-    `removeMention` are runtime-only compatibility methods and are absent
-    from published types. Use `insert` or `replace` in new code. Legacy text
-    setters retain automatic mention reconciliation; legacy `insertMention` retains its bare-label formatting.
   - `submit({ sendAt? , experimental_data? })` submits exactly as pressing
     Enter would (send, or queue while the thread is busy). It waits for
     uploads in progress, then rejects with `submittingBlockedReason` when the
@@ -116,11 +112,13 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
     still land there. Once a queued-message or sent-message editor closes,
     `insert`, `replace`, `submit` and `setSelection` throw and the older
     text methods warn and do nothing.
-  - Deprecated, still working for plugins built against older SDKs but gone
-    from the types: `useComposerView()` (use `useComposer()`), the
-    `experimental_submit`, `experimental_setSelection`,
-    `experimental_onSubmitted` and `experimental_removeMention` names, and
-    `richText.onDraftChange` (read `draft` instead).
+  - Older names still work at runtime but are absent from the published
+    types: `useComposerView()` (use `useComposer()`); the handle's `setText`,
+    `updateText`, `clear`, `addQuote`, `insertMention`, and `removeMention`
+    (use `insert` or `replace`); the `experimental_submit`,
+    `experimental_setSelection`, `experimental_onSubmitted`, and
+    `experimental_removeMention` names; and `richText.onDraftChange` (read
+    `draft` instead).
 - `useComposers()` → a handle for every composer on screen that composer
   customizations mount in (thread page, `ThreadChat`, new-thread, open
   queued-message editors), oldest first. Use it from a panel or page that
@@ -172,15 +170,34 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
 - A `messageAction`'s `run` receives `context.composer`: the composer of the
   message's thread, or null.
+- Composer popups register `[{ id, label, component }]` through `experimental_popups`.
+  Popup ids must be unique across the plugin's composer customizations.
+  Open by popup id with `composer.experimental_openPopup(id)`, from a
+  `plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
+  `app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
+  A composer command is listed and rebindable like any plugin command and shares
+  the `app.commands` ID namespace, but `run` receives `{ composer }` for the
+  composer that handles it, through the same path as bb's own "Focus composer"
+  command: the composer holding the caret, or with the caret outside every
+  composer, the focused pane's primary composer. Its shortcut is inactive while
+  a terminal, browser tab or modal has focus, and the palette lists it only when
+  some composer would run it. The host
+  shares mention-menu placement and dismissal, and uses a persistent responsive
+  drawer for compact interactive popups. Inside the component, `useComposer()`
+  is bound to the opening composer; its `experimental_closePopup()` closes only
+  that plugin's popup and restores editor focus. Components own their search
+  input and result navigation. Opening returns false when the target or scoped
+  registration is unavailable; closing returns false if that plugin has no open
+  popup.
 - Use a vendored BB prompt icon-button recipe for native-matching action chrome
   and provide an accessible label. Each component/callback is isolated so one
   failing customization does not degrade the native composer. Complete
   reference: `examples/plugins/composer-customization`.
 
-UI components use vendored shadcn source that you own. The former general host
-component kit is removed. The app module still exports focused BB capability
-components such as `ThreadChat`, `Markdown`, file links, pickers, source and
-diff viewers, and the new-thread composer.
+UI components use vendored shadcn source that you own. The app module exports
+only focused BB capability components (frontend-components.md): `ThreadChat`,
+`Markdown`, file links, pickers, source and diff viewers, and the new-thread
+composer.
 
 - Most builtin plugins in this repo import shared UI from `@bb/shared-ui`
   (the single source of truth the app also consumes and the registry
@@ -213,13 +230,9 @@ diff viewers, and the new-thread composer.
   `-tooltip`, `-navigation-menu`), `sonner`, `vaul`, `@pierre/diffs` (+
   `/react`). Your vendored overlays therefore share the host's
   dismissable-layer/focus/scroll-lock world — stacking against host
-  overlays behaves correctly. "Import freely" is about the bundle: `tsc`
-  still needs each one's declarations in `node_modules`, so every shimmed
-  package is a **type-only `devDependencies` entry at the host's version**
-  (the scaffold declares all of them; `bb plugin types` repins them; `bb
-plugin types --check` reports drift). Never list one in `dependencies` —
-  the build would not read it, and a git install would bundle a second
-  copy of a singleton.
+  overlays behaves correctly. Each shimmed package you import is a type-only
+  `devDependencies` entry at the host's version, never a dependency (see
+  "Builds, installs, and dependencies" in quickstart.md).
 - Also never bundled, for size rather than singleton reasons: `clsx`,
   `tailwind-merge`, and `class-variance-authority`. Your app bundle uses the
   host's installed copies (tailwind-merge ^3, clsx ^2, cva ^0.7), so keep
@@ -228,7 +241,7 @@ plugin types --check` reports drift). Never list one in `dependencies` —
   `node_modules` in both `app.tsx` and `server.ts`, so keep it in
   `dependencies`.
 - Source and diffs: use the host components
-  `experimental_SourceCode` / `experimental_Diff` (see "Host components"),
+  `experimental_SourceCode` / `experimental_Diff` (frontend-components.md),
   NOT a direct
   `@pierre/diffs` import. The shim stays for compatibility, but hand-rolled
   Pierre usage means owning patch normalization and the code theme yourself,
@@ -238,9 +251,9 @@ plugin types --check` reports drift). Never list one in `dependencies` —
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
   npm. Managed source installs run bb's bundled npm.
-- `EmptyState` ships as `npx shadcn add @bb/empty-state`. The other old bb
-  extras (`PageBody`, `Spinner`) are gone — write your own (each is a few
-  lines; see `plugins/github/components/` for reference implementations).
+- `EmptyState` ships as `npx shadcn add @bb/empty-state`. There is no
+  `PageBody` or `Spinner`; write your own (each is a few lines; see
+  `plugins/github/components/` for reference implementations).
 
 One deviation from stock shadcn: `Dialog` renders as a bottom drawer on
 compact viewports (the host's responsive behavior) — same API.
@@ -249,14 +262,6 @@ Crash isolation stays local to the slot. Additive slots can show a crash chip
 or nothing. Replacement slots fall back to the native list or renderer.
 `messageDirective` falls back to the original source text.
 
-The `run` pattern (threadPanelAction): `run` is the place to resolve
-server state before deciding what to open — e.g. call a backend rpc, then
-`openPanel({ title: issue.title, params: { issueId: issue.id } })`, or
-`toast.error("No linked issue")` and open nothing. The panel component
-should treat `params` as untrusted input (it round-trips through
-persistence) and re-fetch fresh data by id rather than embedding whole
-payloads in params.
-
 Styling: Tailwind classes compile against the host theme's live CSS
 variables — use host token classes (`bg-card`, `text-foreground`,
 `text-muted-foreground`, `border-border`, `text-destructive`, …). Never
@@ -264,23 +269,3 @@ define custom `@theme` colors and never hand-set `oklch(...)`/gray
 literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
-
-Composer popups register `[{ id, label, component }]` through `experimental_popups`.
-Popup ids must be unique across the plugin's composer customizations.
-Open by popup id with `composer.experimental_openPopup(id)`, from a
-`plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
-`app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
-A composer command is listed and rebindable like any plugin command and shares
-the `app.commands` ID namespace, but `run` receives `{ composer }` for the
-composer that handles it, through the same path as bb's own "Focus composer"
-command: the composer holding the caret, or with the caret outside every
-composer, the focused pane's primary composer. Its shortcut is inactive while
-a terminal, browser tab or modal has focus, and the palette lists it only when
-some composer would run it. The host
-shares mention-menu placement and dismissal, and uses a persistent responsive
-drawer for compact interactive popups. Inside the component, `useComposer()`
-is bound to the opening composer; its `experimental_closePopup()` closes only
-that plugin's popup and restores editor focus. Components own their search
-input and result navigation. Opening returns false when the target or scoped
-registration is unavailable; closing returns false if that plugin has no open
-popup.

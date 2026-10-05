@@ -1,11 +1,14 @@
 # Provider plugin API
 
-This document is the reference for BB's provider plugin surface — what "a
-provider is a plugin" means. It has no phases: every change that touches this
-surface keeps it true, and a test (`packages/plugin-sdk/src/__tests__/
-provider-plugin-doc.test.ts`) checks its code blocks against the real types.
-Members that still carry the `experimental_` prefix are named with it here;
-each has an entry in [api_to_audit.md](api_to_audit.md) saying why.
+This document is the contract for BB's provider plugin surface — what "a
+provider is a plugin" means. Every change that touches this surface keeps it
+true, and a test (`packages/plugin-sdk/src/__tests__/provider-plugin-doc.test.ts`)
+checks its code blocks against the real types. Members that still carry the
+`experimental_` prefix are named with it here; each has an entry in
+[api_to_audit.md](api_to_audit.md) saying why. How to build, test, and ship a
+provider plugin is in the bb-plugin-authoring skill
+(`plugins/bb-guide/skills/bb-plugin-authoring/references/providers.md`); the
+wire grammar is [provider-bridge-protocol.md](provider-bridge-protocol.md).
 
 A "provider" is a coding agent BB can run a thread on (Claude Code, Codex, Pi,
 ACP agents such as Cursor or Amp). The design goal is that **everything a
@@ -96,56 +99,85 @@ without the field accepts every declared tier. The server rejects an explicit
 tier the declaration does not list and passes the chosen id to the bridge as
 `serviceTier`.
 
-bb keeps each machine's last successful `model/list` answer per
+`models.fallback` is shown only until the first `model/list` probe completes,
+or when a probe fails transiently; a non-empty list has exactly one
+`isDefault`. bb keeps each machine's last successful `model/list` answer per
 `models.scope` across daemon reconnects and server restarts, serves it
-immediately, and refreshes it in the background once it is 10 minutes old. A
-stored answer is discarded when the bridge fingerprint changes (plugin bundle
-digest, bridge options, env passthrough). A list that depends on login state,
-CLI version, or environment values is corrected only by the next refresh.
+immediately, and refreshes it in the background once it is 10 minutes old.
+`"host"` scope means the bridge answers from account or agent state and
+ignores the workspace path, so bb probes once per machine. A stored answer is
+discarded when the bridge fingerprint changes (plugin bundle digest, bridge
+options, env passthrough). A list that depends on login state, CLI version, or
+environment values is corrected only by the next refresh.
+
+`env.passthrough` names the daemon environment variables the bridge may read:
+provider processes are spawned with inherited `BB_*` variables stripped, and
+exactly these are forwarded. `deriveProviderOptions` runs synchronously on
+every session and turn command; its plain JSON result (at most 64 KiB) reaches
+the bridge as `options.providerOptions`, merged over
+`experimental_bridgeOptions` (a derived key replaces its static key), and core
+never reads it. `ctx.settings` holds the plugin's own non-secret
+`bb.settings` values.
 
 Still experimental on the declaration (see api_to_audit.md):
-`experimental_visibility` (`"installed"` hides the row until the bridge's
-health probe finds the agent), `experimental_bridgeOptions` (immutable JSON
-forwarded opaquely to the bridge), `experimental_nativeSkillRoots` and
-`experimental_nativeCommandRoots` (where the agent keeps its own skills and
-slash commands; each root is a path or `{ path, recursive?, ancestors?,
-namePrefix?, skipIfManifest? }`, where `recursive` scans nested skill
-directories, `ancestors` (project roots only) also scans the same relative
-directory in every ancestor of the workspace up to the repository root,
-`namePrefix` is prepended to every name under the root, and `skipIfManifest`
-names the marker file whose presence makes bb skip a directory as a vendor
-plugin rather than a skill; a symlink out of a project root is followed
-within the workspace for a plain root and within the repository root for a
-root that walks ancestors or that the plugin resolved) and
-`experimental_resolvesNativeRoots` (the plugin's `bb.host`
-entry answers `resolveNativeRoots({ providerId, cwd })` with the roots only
-that host and workspace know: a moved config directory, installed vendor
-plugins, config-file entries; an answer lists each path once per side, and
-the `@get-bb/plugin-sdk/host` vendor-plugin readers keep the first root per
-path in answer order). Declared roots are relative to the host home
-(`user`) or the workspace (`project`) only; a host-absolute directory is
-always the resolver's answer. bb scans each absolute path once per provider
-across the declared and resolved roots: the first root in declaration order
-wins — declared skills (project, then user), declared commands, then the
-resolved skills and commands, each in the order given — and a later root with
-the same path is dropped, so a resolved root that repeats a declared one is
-listed under the declared root's identity.
+
+- `experimental_bridgeOptions` — a plain JSON object of at most 64 KiB,
+  validated and frozen at registration and carried on every bridge request.
+  Use it for immutable launch facts shared by all hosts, not user settings or
+  machine-local state. It participates in bridge process identity, so
+  changing it starts a new bridge process for the next runtime.
+- `experimental_visibility` — `"always"` (default) or `"installed"`, which
+  lists the provider on a host only when its bridge's `provider/health` status
+  is not `not_installed`. Such a declaration must support health; bridge
+  failures hide only that provider.
+- `experimental_nativeSkillRoots` and `experimental_nativeCommandRoots` —
+  where the agent keeps its own skills and slash commands, at most 32 roots
+  per side. Each root is a path or `{ path, recursive?, ancestors?,
+  namePrefix?, skipIfManifest? }`: `recursive` scans nested skill
+  directories, `ancestors` (project roots only) also scans the same relative
+  directory in every ancestor of the workspace up to the repository root,
+  `namePrefix` is prepended to every name under the root, and `skipIfManifest`
+  names the marker file whose presence makes bb skip a directory as a vendor
+  plugin rather than a skill. A symlink out of a project root is followed
+  within the workspace for a plain root and within the repository root for a
+  root that walks ancestors or that the plugin resolved. Declared roots are
+  relative to the host home (`user`) or the workspace (`project`) only.
+- `experimental_resolvesNativeRoots` — the plugin's `bb.host` entry answers
+  `resolveNativeRoots({ providerId, cwd })` with the roots only that host
+  and workspace know: a moved config directory, installed vendor plugins,
+  config-file entries. A host-absolute directory is always the resolver's
+  answer. An answer lists each path once per side, and the
+  `@get-bb/plugin-sdk/host` vendor-plugin readers keep the first root per path
+  in answer order. bb scans each absolute path once per provider across the
+  declared and resolved roots: the first root in declaration order wins —
+  declared skills (project, then user), declared commands, then the resolved
+  skills and commands, each in the order given — and a later root with the
+  same path is dropped, so a resolved root that repeats a declared one is
+  listed under the declared root's identity.
 
 Rules:
 
+- Ids are flat and collision-rejected: the first live registration of an id
+  wins, a later one from another plugin fails that plugin's load, and no id is
+  reserved ahead of time. Registrations replace wholesale on reload. Disabling
+  the plugin removes the provider; open threads show a provider-unavailable
+  state instead of erroring.
 - Capabilities project to exactly one client shape, `ProviderInfo`.
-  `ProviderInfo.maintenance` is the one shape of the three maintenance facts;
-  clients ship with the server, so nothing is served beside it.
+  `ProviderInfo.maintenance` is the one shape of the three maintenance facts.
 - The plugin learns per-instance truth itself (probe through its own host RPC,
   register conservatively while the host is offline, re-register on connect).
-- Picker order and the default provider are user settings; the initial default
-  is plugin install order. First-party plugins install first at bootstrap.
+- Picker order and the default provider are user settings (Settings →
+  Providers, `bb settings general providerOrder '["my-agent","codex"]'`,
+  `bb settings general defaultProviderId my-agent`); the initial order is
+  plugin install order, bundled first-party plugins first.
 - `completedTurnDisplay` is the provider's default for finished turns in the
   thread timeline. `"collapse"` folds a finished turn's work into one "Worked
   for" row beside the final answer; `"flat"` keeps every row visible, as while
-  the turn ran. The user overrides it per provider in Settings → Providers or
-  with `bb settings completed-turns`, and the server applies the result to the
-  timeline, turn details, conversation outline, and `bb thread log`.
+  the turn ran — pick it when the agent narrates its work in text the user
+  should keep reading. The user overrides it per provider in Settings →
+  Providers or with `bb settings completed-turns <provider> <mode>`, and the
+  server applies the result to the timeline, turn details, conversation
+  outline, and `bb thread log`.
 - Third-party ACP agents (for example Amp) register the same way, with a
   bridge built from the published ACP kit.
 
@@ -157,15 +189,18 @@ export const experimental_providerBridge = experimental_defineProviderBridge({
 })
 ```
 
-The export name and `experimental_defineProviderBridge` / `experimental_apiVersion`
-are the artifact contract the daemon bootstrap reads from every installed
-plugin; they keep their prefix until the bridge-kit audit settles the
-deprecation window between independently-updating artifacts and daemons.
+The export name and `experimental_defineProviderBridge` are the artifact
+contract the daemon's bootstrap reads from every installed plugin. The
+bootstrap owns the process boundary — argv, the plugin-scoped
+`dataDir`/`tempDir`, bounded stdin framing, and signals — so importing the
+module must start nothing.
 
 One process per provider artifact; the bridge supervises any child processes.
 The runtime never scopes processes per thread and never matches error text.
 
-**Handshake** (reported per session at `initialize`, never declared):
+**Handshake** (reported per session at `initialize`, never declared; field
+semantics in [provider-bridge-protocol.md](provider-bridge-protocol.md),
+"Versioning and capabilities"):
 
 ```ts
 {
@@ -181,13 +216,7 @@ The runtime never scopes processes per thread and never matches error text.
 }
 ```
 
-`steerMode` names how the bridge delivers `turn/steer` while a turn is live
-(`inject` feeds it into the running model loop, `queue` holds it for the next
-prompt boundary), but nothing in the runtime, server or clients reads it yet:
-the runtime sends `turn/steer` either way, and a steer whose turn is gone is
-dropped on the bridge's `staleTurn` recovery hint whatever the mode.
-
-**Runtime → bridge**: `model/list`,
+**Runtime → bridge**: `initialize`, `model/list`,
 `thread/{start,resume,fork,stop,discard,archive,unarchive,name/set,goal/clear}`,
 `turn/{start,steer}`, `skills/configure {roots}` (only when the handshake
 declares `skills.configure`),
@@ -200,9 +229,10 @@ Execution options ride every command and carry no provider-named field:
   providerOptions: JsonValue } & PermissionPolicy
 ```
 
-**Bridge → runtime**: `thread/delta` (one streaming dialect, one usage
-dialect), `provider/recovery`, `session/replaced`, plus the request channels
-`item/tool/call` and `interaction/request`.
+**Bridge → runtime**: notifications `thread/delta` (one streaming dialect, one
+usage dialect), `thread/identity`, `session/replaced`, `provider/recovery`,
+`provider/raw`, and `error`, plus the request channels `item/tool/call` and
+`interaction/request`.
 
 Recovery is typed, never text-matched:
 
@@ -214,28 +244,28 @@ Recovery is typed, never text-matched:
 ```
 
 See [provider-bridge-protocol.md](provider-bridge-protocol.md), "Recovery
-hints", for the per-kind runtime actions and the carrier rule (a rejected
-request carries the hint as `error.data.recovery`; an unsolicited one rides
-the `provider/recovery` notification; never both for one event).
+hints", for the per-kind runtime actions and the carrier rule.
 
-The delta assembler stays in the daemon, is generic for extension kinds, and
+The delta assembler runs in the daemon and is generic for extension kinds. It
 ships with the conformance kit and JSON-RPC harness as
-`@get-bb/plugin-sdk/provider-bridge/testing`. The ACP bridge ships as
-`@get-bb/plugin-sdk/provider-bridge/acp`; the first-party ACP plugin consumes
-the same kit.
+`@get-bb/plugin-sdk/provider-bridge/testing`; the ACP bridge ships as
+`@get-bb/plugin-sdk/provider-bridge/acp`.
 
 ## 3. Vocabulary
 
 **Core item kinds** — the kinds core acts on:
 
 ```
-message · reasoning · command · fileChange · fileRead · search · webSearch
-webFetch · imageView · delegation · planSteps · compaction · tool
+message · reasoning · plan · command · fileChange · fileRead · search
+webSearch · webFetch · imageView · imageGeneration · backgroundTask
+delegation · planSteps · compaction · tool
 ```
 
-**Extension item kinds** — `"<pluginId>/<name>"`, plugin-declared schema,
-validated at server ingest. Only the declaring plugin's own providers may emit
-a kind: a thread whose provider another plugin registered gets a
+**Extension item kinds** — `"<pluginId>/<name>"`, declared in
+`extensionKinds` with an item schema, a state schema, or both, and validated
+at server ingest; a payload that fails validation persists as a
+`provider/unhandled`. Only the declaring plugin's own providers may emit a
+kind: a thread whose provider another plugin registered gets a
 `provider/unhandled` in its place, as it would for a foreign presentation
 glyph.
 
@@ -243,7 +273,7 @@ glyph.
 `modelFallback`, `contextCleared`. Extension: `"<pluginId>/<name>"`, latest
 snapshot wins per kind, same schema and emitter rules as extension items.
 
-**Delegation** — one kind replaces three encodings and `thread/openWork`:
+**Delegation** — one kind for every sub-agent encoding:
 
 ```ts
 { childRef: string, label: string, status: ItemStatus,
@@ -267,16 +297,14 @@ presentation: {
 `icon.glyph` is a name, never bytes or a path: a host glyph (`"FileText"`)
 or one of the plugin's own declared icons by its namespaced glyph
 (`"<pluginId>/<name>"`, an entry of the manifest's
-`bb.branding.experimental_icons` map of name → plugin-relative SVG). The
-server rejects at ingest a namespaced glyph that is not the emitting
-plugin's declared icon (`provider/unhandled`, reason naming the glyph); for
-a `server: "bb"` tool row the emitting plugin is the one that registered
-the tool, whose presentation the bridge stamps as handed to it. Clients
-resolve the name against the plugin inventory they hold and draw
-the SVG tinted with `currentColor`. If the plugin is gone or the name
-unknown when the row renders, the icon is simply not found and the per-kind
-fallback glyph draws — rows are never rewritten when a plugin changes its
-map.
+`bb.branding.experimental_icons`). The server rejects at ingest a namespaced
+glyph that is not the emitting plugin's declared icon (`provider/unhandled`,
+reason naming the glyph); for a `server: "bb"` tool row the emitting plugin is
+the one that registered the tool, whose presentation the bridge stamps as
+handed to it. Clients resolve the name against the plugin inventory they hold
+and draw the SVG tinted with `currentColor`. If the plugin is gone or the name
+unknown when the row renders, the per-kind fallback glyph draws — rows are
+never rewritten when a plugin changes its map.
 
 `tint` is a plain CSS colour per theme, and the forms every client paints are
 hex, `rgb()`/`rgba()`/`hsl()`/`hsla()`/`hwb()` with a numeric alpha, and named
@@ -284,19 +312,10 @@ colours. The web also paints `oklch()`, `lab()`, `lch()`, `color()` and a
 percentage alpha through CSS; React Native's colour parser does not, so on
 mobile such a tint falls back to the neutral row colour (never to black).
 
-
 Genericity rule: model fallback, context cleared, compaction skipped, and
-background work stay core. Codex goals and the Codex `macos` permission
-profile are codex extension kinds, with read-time conversion of persisted
-rows.
-
-Core keeps no table of tool names. The one exception is a quarantined
-legacy-data adapter in `packages/domain/src/legacy-thread-events.ts`: a
-`toolCall` row persisted before bridges stamped `presentation` upgrades at
-read time to the item the bridge emits today (`fileRead` / `search`, a
-suppressed bookkeeping call, a trimmed agent result). It is keyed on the
-absence of `presentation`, never on a provider id, and is deleted by the
-one-time backfill migration it names.
+background work stay core. Provider-specific concepts (Codex goals, the Codex
+`macos` permission profile) are that plugin's extension kinds. Core keeps no
+table of tool names.
 
 ## 4. Interactions
 
@@ -313,35 +332,27 @@ A `tool_use` approval is any tool call with no core kind (an MCP tool, a
 provider-native tool). Its `presentation` — the same label, glyph, tint,
 headline, and detail its timeline row carries — is the whole description
 of the ask: the app, mobile, CLI, and the child-thread blocker summary render
-it from `presentation` alone (`describePendingInteractionToolUse` in
-`@bb/core-ui`), never from a tool-name table. `detail` is agent-authored
-Markdown on every surface it reaches (the row body, the approval banner, on
-the web and on mobile): an image in it renders as its alt text, never as a
-fetch the user did not decide on.
+it from `presentation` alone, never from a tool-name table. `detail` is
+agent-authored Markdown on every surface it reaches (the row body, the
+approval banner, on the web and on mobile): an image in it renders as its alt
+text, never as a fetch the user did not decide on.
 
 **Requests** (open): `userQuestion` and `planReview` render with core
 renderers; `"<pluginId>/<kind>"` renders with the plugin through the existing
-`pendingInteraction` slot. Any bridge may raise any kind. One
-interaction-lifecycle event type; the server fabricates no placeholder items.
+`pendingInteraction` slot. Any bridge may raise any kind. The server
+fabricates no placeholder items.
 
-The one event is `system/interaction/lifecycle`. Every status change of every
-interaction — any approval subject, a user question, a plugin request —
-appends one, carrying the interaction's lifecycle record (`@bb/domain`
-`interactionLifecycleSchema`): id, status, origin, the ask, and the answer,
-with the payload and the resolution paired by kind so the event cannot hold
-an approval subject beside a user answer. The record keeps what a reader
-needs to understand the ask and never the live ask's options
+Every status change of every interaction — any approval subject, a user
+question, a plugin request — appends one `system/interaction/lifecycle`
+event carrying the interaction's lifecycle record: id, status, origin, the
+ask, and the answer, with the payload and the resolution paired by kind so the
+event cannot hold an approval subject beside a user answer. The record keeps
+what a reader needs to understand the ask and never the live ask's options
 (`availableDecisions`) or a plugin form's data. The projection decides what
 shows: a permission grant and a user question get a row; a command or
 file-change approval shows on the provider's item, a plan review on the plan
 tool call, a tool use on the tool call, a plugin request on the plugin's
-form. Rows persisted under the earlier per-shape events
-(`system/permissionGrant/lifecycle`, `system/userQuestion/lifecycle`) decode
-into this event at read time (`convertLegacyStoredThreadEvent`). The
-conversion is one-way: a server rolled back to a build before this event
-fails to decode `system/interaction/lifecycle` rows, so the interactions
-recorded since the upgrade lose their timeline rows until the server moves
-forward again.
+form.
 
 A bridge that keeps the payload it raised parses the wire resolution together
 with it (`providerInteractionOutcomeSchema`), so its response encoder narrows
@@ -393,37 +404,32 @@ deferred boot pass after the first route paints, not on first paint and not
 only when one of its providers is in use. Everything its `app.tsx` registers —
 a settings section, nav panel, palette action, provider icon,
 pending-interaction form, or `app.composer.customize` chrome — is present from
-that boot pass on, including on the New Thread page. Keep the bundle small: it
-ships to every window whether or not the provider is selected. Mobile renders
-the declarative base for every kind.
+that boot pass on, including on the New Thread page; until then the served
+logo stands in for a registered provider icon. Keep the bundle small: it ships
+to every window whether or not the provider is selected. Mobile renders the
+declarative base for every kind.
 
 The provider directory is available to plugins through
 `app.experimental_useProviders()` (frontend) and `bb.sdk.providers`
 (backend); no plugin re-vendors provider names or icons. Every provider's
-mark is the logo its plugin declared, served as `logoUrl` and drawn as a
-`currentColor` mask; core vendors no brand marks. A plugin's declared icons
-(`bb.branding.experimental_icons`) reach clients the same way: the plugins
-inventory carries each plugin's `icons` (name → hashed SVG URL), and both
-the web timeline and mobile resolve a row's `"<pluginId>/<name>"` glyph
-against it before drawing, falling back to the per-kind glyph when the name
-is not found.
+mark is the icon its plugin declared — a path or declared icon served as
+`logoUrl` and drawn as a `currentColor` mask, or a host glyph name; core
+vendors no brand marks.
 
 ## 6. Distribution
 
-Bridges are delivered as content-addressed plugin artifacts the daemon caches
-by verified hash. There is no daemon-bundled provider path: a first-party
-provider ships the same way a marketplace provider does. Trust is installation
-trust, identical to every other plugin.
+Bridges are delivered as content-addressed plugin artifacts. On install or
+reload the server builds `dist/host.js` and records its digest; thread
+commands carry `{pluginId, digest}`, and the host daemon downloads the
+bytes, verifies the digest before caching them, and runs the artifact with
+its own node. It is the same artifact and cache as the plugin's host RPC
+entry. There is no daemon-bundled provider path: a first-party provider ships
+the same way a marketplace provider does. Trust is installation trust,
+identical to every other plugin: a bridge runs only for an installed, enabled
+plugin, and only on hosts its server instructs.
 
 ## 7. AI services
 
-bb's helper tasks (thread titles, commit messages, voice transcripts) are
-plugin-served too. A plugin registers
-`bb.experimental_aiServices.register({ id, displayName, complete, transcribe, status })`
-from its server entry: `complete(prompt) → Promise<string>` and
-`transcribe(audio) → Promise<string>`, each with an abort signal. The user picks
-a service per task in Settings → AI services; Automatic tries bb cloud first,
-then all other compatible registered services by plugin id and service id in
-lexicographic order, including third-party plugins. The codex
-plugin serves `codex` by calling its own `bb.host` entry for the Codex CLI
-login on the primary machine. See `docs/api_to_audit.md` for the audit items.
+Helper tasks (thread titles, commit messages, voice transcripts) are
+plugin-served through `bb.experimental_aiServices`, documented in the
+bb-plugin-authoring skill's `backend-cli-agents.md`.

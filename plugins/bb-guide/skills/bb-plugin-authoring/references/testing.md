@@ -79,11 +79,18 @@ members. Use them in behavioral tests so a new required contract field changes
 one shared default. Keep schema, serialization, and command-output fixtures
 explicit when their exact complete shape is the assertion.
 
-New tests should use the named views: `harness.behavior` drives host inputs,
+Use the named views: `harness.behavior` drives host inputs,
 `harness.inspection` exposes observable state, and `harness.lifecycle` owns
-atomic reload/disposal. Direct members remain aliases for compatibility.
-`lifecycle.reload(factory)` preserves settings/KV/database state; a throwing
-replacement leaves the current registrations and API live.
+install, atomic reload, and disposal (direct harness members are older
+aliases). `lifecycle.reload(factory)` preserves settings/KV/database state; a
+throwing replacement leaves the current registrations and API live.
+`lifecycle.install()` runs `bb.onInstall` handlers as a fresh install does; a
+throwing handler is logged at warn. `emitThreadEvent` accepts the event
+names `bb.events.on` does.
+Thread events are observe-only; there are exactly seven `thread.*` events
+(`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
+`thread.archived`, `thread.unarchived`, `thread.deleted`), and handler return
+values are ignored.
 
 Inspect: `harness.inspection.sdk.calls` /
 `harness.inspection.sdk.callsTo("threads.spawn")` (every
@@ -108,10 +115,10 @@ or replace a method after creation. An unstubbed call throws and names the
 missing path. The fake applies the host's plugin attribution to
 `threads.spawn` and `threads.fork`: a `pluginMetadata` seed forces
 `origin: "plugin"` and the plugin's id. The fake defaults `pluginId` for
-`threads.getPluginMetadata` and `threads.updatePluginMetadata`. Since SDK
-0.4.86, recorded `threads.fork` calls also carry the `origin: "plugin"` and
-`originPluginId` defaults that `threads.spawn` calls already had, so
-exact-argument fork assertions must include those fields. Invalid
+`threads.getPluginMetadata` and `threads.updatePluginMetadata`. Recorded
+`threads.spawn` and `threads.fork` calls carry the `origin: "plugin"` and
+`originPluginId` defaults, so exact-argument assertions must include those
+fields. Invalid
 metadata returns a rejected promise and the call is not recorded.
 `harness.behavior.resolveAgentConfiguration` passes configure a copy of the
 context with a validated, deep-frozen `pluginMetadata` clone and rejects
@@ -254,54 +261,3 @@ Remaining reference examples in `examples/plugins/`:
 
 Thread Hover Cards, an out-of-repo example, installs from the BB Community
 marketplace (source: https://github.com/brsbl/bb-plugins).
-
-## Gotchas
-
-- `bb.sdk` is bind-gated: the real server binds it before plugins load, so
-  factories can use it there, but isolated harnesses may not — prefer
-  handlers, services, and timers.
-- kv values cap at 256KB; put caches and datasets in `storage.database()`.
-- `storage.migrate` is append-only by statement index.
-- Settings saves do not reload healthy or degraded plugins; live `onChange`
-  listeners receive those updates. A save automatically retries load when the
-  plugin is `needs-configuration`; `bb plugin reload <id>` remains available
-  for other recovery cases.
-- Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly seven
-  (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
-  `thread.archived`, `thread.unarchived`, `thread.deleted`).
-- Service throw of NeedsConfigurationError changes plugin status; schedule
-  throws only set the schedule's last_error. Name-matching means no import
-  is needed for the error class.
-- Schedules only fire while the plugin is loaded (rows are durable, the
-  runner is not).
-- CLI `run(argv)` argv excludes the command name; core bb command names
-  are reserved; workspace-sandboxed agent threads (Accept Edits / Approve
-  for me) may fail to reach the bb CLI when the provider sandbox blocks
-  loopback network (Claude's macOS sandbox permits it; Linux and other
-  providers may not).
-- Mention `search` is 2s-time-boxed; mention `resolve` runs at send time
-  and a throw blocks the send.
-- Agent tool and instruction changes apply on the next session start, not
-  mid-session; cross-plugin tool-name collisions drop the later registration.
-- RPC results must be strict JSON values and pass their output schema;
-  realtime payloads must survive JSON.stringify.
-- Handler stats shown by `bb plugin list` persist across reloads (reset on
-  remove).
-- The frontend Tailwind pass emits default-theme utilities only — style
-  with host token classes, no custom `@theme` colors, no hand-set oklch.
-- `onDispose` hooks run LIFO; stale `bb` handles from before a reload throw
-  on use.
-- `harness.lifecycle.install()` runs `bb.onInstall`
-  handlers as a fresh install does; a throwing handler is logged at warn.
-- Backend API imports normally remain type-only. The root runtime exports
-  `defineRpcContract`, `experimental_defineHostEntry`, and
-  `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are plugin dependencies. The
-  scaffold tsconfig typechecks both `server.ts` and `app.tsx`.
-- The declarations you read are pinned to one SDK version, not a live view:
-  new plugins get them from the exact `@get-bb/plugin-sdk` devDependency, older
-  ones from a vendored `types/*.d.ts` copy. Run `bb plugin types` before
-  trusting either — it repins the devDependency or rewrites `types/` as
-  appropriate — and never fall back to a minified `dist/` bundle — see
-  "Looking up the exact API". `bb plugin migrate` moves an older plugin off the
-  vendored copy, but only when the user asks for it.

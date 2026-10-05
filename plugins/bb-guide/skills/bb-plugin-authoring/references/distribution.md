@@ -6,42 +6,38 @@ This skill is a guide, not the contract. For an exact signature or a symbol it
 does not cover:
 
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
-   syncs that plugin's SDK surface to the running bb — no server needed. For a
-   plugin that depends on the npm package it repins the exact
-   `@get-bb/plugin-sdk` devDependency to this bb's SDK version and brings the
-   declared runtime-shimmed packages' type-only devDependencies (sonner, vaul, the
-   portal radix families, ...) to the versions this bb ships, moving them out
-   of `dependencies` when needed. Unused packages may be removed; neither
-   updates nor `--check` require undeclared shim packages (run
-   `npm install` after); for an older plugin that still vendors `types/*.d.ts`
-   it rewrites those declarations. Either way a cloned or older plugin can be
-   thousands of lines behind. `--check` compares declared files and package
-   pins without writing. Build and dev refresh legacy declarations and warn
-   about stale package pins; they do not repin installed packages or lockfiles.
-2. **Read the bundled declarations** — the authoritative surface, ~13,000
-   lines of readable declarations with doc comments:
-   - plugins scaffolded by a current bb depend on the npm package, so after
-     `npm install` read
+   syncs that plugin's SDK surface to the running bb — no server needed. It
+   repins the exact `@get-bb/plugin-sdk` devDependency to this bb's SDK
+   version and brings the declared runtime-shimmed packages' type-only
+   devDependencies to the versions this bb ships, moving them out of
+   `dependencies` when needed (run `npm install` after). For an older plugin
+   that still vendors `types/*.d.ts` it rewrites those declarations instead.
+   `--check` compares declared files and package pins without writing. Build
+   and dev refresh vendored declarations and warn about stale package pins;
+   they do not repin installed packages or lockfiles.
+2. **Read the bundled declarations** — the authoritative surface, with doc
+   comments:
+   - a plugin that depends on the npm package (every current scaffold) has
+     them after `npm install` at
      `node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts`
      (`bb-plugin-sdk-app.d.ts` for frontend symbols and
      `bb-plugin-sdk-host.d.ts` for the host entry);
-   - plugins scaffolded before that still carry the root declaration in
-     `types/bb-plugin-sdk.d.ts` (plus `types/bb-plugin-sdk-app.d.ts` for an
-     app), which the plugin's `tsconfig.json` maps
-     `@get-bb/plugin-sdk` onto. Read whichever the plugin in front of you has.
-     That layout still works for existing entries, but migrate before adding
-     `bb.host` so the `/host` and `/testing/host` subpaths are present; `bb
-plugin migrate` converts such a plugin to the npm package (it prints the plan
-     and asks first, and needs `--yes` when stdin is not a terminal). It pins
-     the SDK devDependency (moving it out of `dependencies` and raising an
-     older `engines.bbPluginSdk` floor), drops the tsconfig path map, deletes
-     the vendored declarations (keeping `types/` if it holds your own files),
-     and rewrites `@bb/plugin-sdk` imports; rerunning is a no-op, and you run
+   - an older plugin carries `types/bb-plugin-sdk.d.ts` (plus
+     `types/bb-plugin-sdk-app.d.ts` for an app), which its `tsconfig.json`
+     maps `@get-bb/plugin-sdk` onto. That layout lacks the `/host` and
+     `/testing/host` subpaths, so migrate before adding `bb.host`.
+     `bb plugin migrate` converts such a plugin to the npm package: it prints
+     the plan and asks first (`--yes` when stdin is not a terminal), pins the
+     SDK devDependency (moving it out of `dependencies` and raising an older
+     `engines.bbPluginSdk` floor), drops the tsconfig path map, deletes the
+     vendored declarations (keeping `types/` if it holds your own files), and
+     rewrites `@bb/plugin-sdk` imports; rerunning is a no-op, and you run
      `npm install` after. Never migrate a plugin the user did not ask you to
      migrate.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
    a reference implementation: `packages/plugin-sdk/src/`,
-   `apps/server/src/services/plugins/`, `plugins/`.
+   `apps/server/src/services/plugins/`, `plugins/`, and the provider contract
+   in `docs/provider-plugin-api.md` and `docs/provider-bridge-protocol.md`.
 
 Never answer an API question from a generated bundle. The app bundle is
 minified. Server and host bundles have source maps, but the declarations and
@@ -64,7 +60,21 @@ A bare HTTP(S) repository URL tracks its default branch. Use the `git:` form
 with an explicit branch, tag, or commit when that tracking intent matters.
 Install and update run third-party code with full trust. Interactive commands
 show the resolved source and ask for confirmation. Pass `--yes` only after the
-user confirms that exact source and version.
+user confirms that exact source and version. quickstart.md covers what each
+install builds and which files an npm package must publish.
+
+### Updates
+
+`bb plugin outdated` checks tracking sources and `bb plugin update` applies
+compatible candidates; installing an already-installed managed plugin again is
+refused. Updates select only candidates whose `engines.bb` and
+`engines.bbPluginSdk` ranges the host satisfies, and report newer
+incompatible releases as blocked. Checking reads the candidate's manifest and
+never installs dependencies or builds, so a candidate that fails to build is
+reported as available and fails when applied. A failed activation rolls back
+to the previous state snapshot and records the failure for the user. Keep the
+`engines` ranges honest and ship load-safe factories so an update never
+strands users.
 
 ### Releasing a git plugin with semver tags
 
@@ -172,17 +182,17 @@ icons without installing code. `remove` forgets the catalog, while installed
 plugins continue as direct installs.
 
 An https marketplace is re-read with a conditional request; a git one is
-cloned into a throwaway checkout each refresh, with `marketplace.json` and any
+read from a fresh checkout on each refresh, with `marketplace.json` and any
 relative icons read from the repository root. Prefer git tag ranges over
 pinned refs so a release reaches users without a catalog change. Before
-installing from a marketplace that is not `bb-community`, bb resolves and shows
-the true source — including the exact release tag and commit a range lands
-on — so keep your listed URL, subdirectory, and range honest.
+installing from a marketplace that does not ship with bb, bb resolves and
+shows the true source — including the exact release tag and commit a range
+lands on — so keep your listed URL, subdirectory, and range honest.
 
-BB's own official plugins are separate: inclusion in the `bb-community`
-marketplace is a BB release decision, not part of the plugin authoring
-workflow, and the bundled official plugins ship inside the app itself and
-install from that local copy with no network fetch.
+Two marketplaces ship with bb. `bb-official` lists the plugins bundled inside
+the app, which install from that local copy with no network fetch; inclusion
+there is a BB release decision. `bb-community` lists public third-party
+plugins; to list one there, use the `submit-a-plugin` skill.
 
 ### Store listing text
 

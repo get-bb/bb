@@ -7,11 +7,18 @@ run on a **provider bridge** the plugin ships. The working reference is
 `examples/plugins/echo-provider` — declaration, bridge, and conformance test
 in one small package.
 
+The contract lives in two documents in the bb repository (see
+distribution.md for getting a checkout): `docs/provider-plugin-api.md` (the
+declaration fields and their limits, handshake, vocabulary, presentation,
+interactions, rendering, and delivery) and `docs/provider-bridge-protocol.md`
+(the JSON-RPC wire grammar). This reference covers how to build, test, and
+ship a provider plugin.
+
 ```ts
 bb.providers.register({
   id: "echo-agent", // stable public id; thread rows persist it
   displayName: "Echo Agent", // 1-80 chars, shown in the picker
-  icon: "./icons/echo.svg", // optional; the bb.branding.icon forms plus a declared icon
+  icon: "./icons/echo.svg", // optional; see "The icon" below
   family: "echo", // optional grouping key for related providers
   // Copy core surfaces render (usage banners, pickers, the guide).
   strings: {
@@ -23,14 +30,9 @@ bb.providers.register({
     planModeCopy: "Echo will plan without executing.", // optional
     iconTint: { light: "#334155", dark: "#CBD5E1" }, // optional
   },
-  // Optional immutable JSON forwarded opaquely to this plugin's bridge.
   experimental_bridgeOptions: { launch: { command: "echo-agent" } },
-  // "installed" hides the row until provider/health finds the executable.
-  experimental_visibility: "always", // default
-  // Sessionless maintenance support (each defaults to false) so bb can skip
-  // unsupported host probes and hide providers that never expose usage. A
-  // shared bridge that declares usage may still return no windows or
-  // supported: false for one id.
+  experimental_visibility: "always", // default; "installed" needs health
+  // Which sessionless provider/* methods the bridge supports.
   maintenance: { health: false, usage: false, installation: false },
   capabilities: {
     supportsServiceTier: false,
@@ -42,33 +44,11 @@ bb.providers.register({
     permissionModes: ["full"], // non-empty, no duplicates
     reasoningLevels: ["medium"], // coarse fallback ladder
   },
-  // Labelled picker options; the coarse ladder above is labelled for you
-  // when these are omitted. `model/list` is precise per model at runtime.
-  reasoningLevels: [{ id: "medium", label: "Medium" }],
-  // Service tiers are open ids: declare every tier the provider accepts,
-  // e.g. [{ id: "default", label: "Default" }, { id: "fast", label: "Fast" }].
-  // The bridge receives the chosen id as `serviceTier`; "default" means the
-  // provider's standard tier. A `model/list` entry may narrow the list with
-  // `supportedServiceTiers: [{ id, label?, description? }]` (an empty array
-  // hides the picker for that model; omit it to accept every declared tier).
-  serviceTiers: undefined,
+  reasoningLevels: [{ id: "medium", label: "Medium" }], // labelled picker options
+  serviceTiers: undefined, // e.g. [{ id: "default", label: "Default" }, { id: "fast", label: "Fast" }]
   composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
-  // Cold-cache fallback models: shown only until the first model/list probe
-  // completes, or when a probe fails transiently. A non-empty list has
-  // exactly one isDefault; an empty or omitted list is valid.
-  // `scope` says how far one model/list answer travels: "host" when the
-  // bridge answers from account or agent state and ignores the workspace
-  // path (bb then probes once per machine), "workspace" (the default) when
-  // project configuration can change the answer.
   models: { fallback: [], scope: "workspace" },
-  // Daemon env vars the bridge may read. Provider processes are spawned with
-  // inherited BB_* variables stripped; exactly these are forwarded.
   env: { passthrough: ["BB_ECHO_AGENT_EXECUTABLE"] },
-  // Called by the server on EVERY session and turn command. The returned
-  // JSON reaches the bridge as `options.providerOptions`; core never reads
-  // it. This is where the provider's own knobs travel — read them from the
-  // plugin's own `bb.settings.define` values in `ctx.settings` (secrets are
-  // omitted). `ctx.promptMode` is "plan" when the prompt entered plan mode.
   deriveProviderOptions(ctx) {
     return {
       verbose: ctx.settings.verbose === true,
@@ -78,6 +58,13 @@ bb.providers.register({
 });
 ```
 
+Put the provider's own knobs in the plugin's `bb.settings.define` values and
+pass them to the bridge through `deriveProviderOptions`. Use
+`experimental_bridgeOptions` for immutable launch facts, `extensionKinds` for
+provider-specific item or state payloads, and `completedTurnDisplay: "flat"`
+when your agent narrates its work in text the user should keep reading. Each
+field's contract and limits are in `docs/provider-plugin-api.md` §1.
+
 **The icon.** `icon` takes the two shapes of `bb.branding.icon` — a named
 host glyph (`"Zap"`) or a plugin-relative SVG path (`"./icons/echo.svg"`) —
 plus one `bb.branding.icon` itself refuses: one of the plugin's declared
@@ -86,15 +73,14 @@ icons by its namespaced glyph (`"<pluginId>/<name>"`, an entry of
 the name declared, else the plugin fails to load). A path-shaped SVG is
 served as declared behind `nosniff` and a `default-src 'none'` CSP; it is
 not in the manifest, so `bb plugin build` cannot check it — keep it free of
-the script vectors the build refuses in a logo. A path or a declared
-icon is served to clients as a `logoUrl` and drawn as a `currentColor`
-mask, so a monochrome mark follows the bb theme (and the declared
-`strings.iconTint`) with no frontend bundle — this is how every provider bb
-ships gets its brand mark; core vendors none. A full-colour logo renders as a silhouette. A glyph name carries no
-bytes, so there is no `logoUrl` and clients draw the glyph from the shared
-icon set. A plugin that wants custom inline React for its mark can still
-register `app.slots.experimental_providerIcon({ providerKind, providerId, icon })` from
-an `app.tsx`. Example:
+the script vectors the build refuses in a logo. A path or a declared icon is
+served to clients as a `logoUrl` and drawn as a `currentColor` mask, so a
+monochrome mark follows the bb theme (and the declared `strings.iconTint`)
+with no frontend bundle; a full-colour logo renders as a silhouette. A glyph
+name carries no bytes, so there is no `logoUrl` and clients draw the glyph
+from the shared icon set. For custom inline React, register
+`app.slots.experimental_providerIcon({ providerKind, providerId, icon })`
+from an `app.tsx`:
 
 ```tsx
 // app.tsx
@@ -117,46 +103,8 @@ export default definePluginApp((app) => {
 });
 ```
 
-(The four first-party provider plugins ship no `app.tsx`: bb vendors their
-marks itself, so an icon-only bundle would only add fetches at boot.)
-
-A provider plugin's `app.tsx` loads in the same deferred boot pass as every
-other plugin's, whether or not one of its providers is selected: everything
-it registers — this icon, a settings section, a nav panel, a palette action,
-a pending-interaction form, composer chrome — is present from that pass on,
-including on the New Thread page. Until the pass runs the served logo stands
-in for the icon. Keep the bundle small; it ships to every window.
-
-Ids are flat and collision-rejected: the first live registration of an id
-wins and a later one from another plugin fails that plugin's load; no id is
-reserved ahead of time. Registrations replace wholesale on reload like every
-other surface. Disabling the plugin removes the provider (open threads show a
-provider-unavailable state instead of erroring). The provider picker lists
-providers in plugin install order (bundled first-party plugins first); the
-user reorders them and picks a default in Settings → Providers
-(`bb settings general providerOrder '["my-agent","codex"]'` and
-`bb settings general defaultProviderId my-agent`).
-
-`completedTurnDisplay` sets how the timeline shows your provider's finished
-turns by default: `"collapse"` (the default) folds the work into one "Worked
-for" row and keeps the final answer visible, and `"flat"` keeps every row
-visible. Pick `"flat"` when your agent narrates its work in text the user
-should keep reading after the turn ends. The user can override it per
-provider (`bb settings completed-turns my-agent collapse`).
-
-`experimental_bridgeOptions` must be a plain JSON object no larger than 64
-KiB. It is validated and frozen at registration, then carried on every bridge
-request as provider-scoped static options. Use it for immutable launch facts
-shared by all hosts, not user settings or machine-local state. It participates
-in bridge process identity, so changing it causes the next runtime to use a
-new bridge process. `experimental_visibility: "installed"` makes the provider
-host-dependent: BB asks that provider's bridge for `provider/health` and lists
-it only when the status is not `not_installed`. Such a declaration must support
-health; bridge failures hide only that provider.
-
-`deriveProviderOptions` runs synchronously for each session and turn command.
-Its plain JSON result has the same 64 KiB limit. The runtime merges the result
-over `experimental_bridgeOptions`; a derived key replaces its static key.
+A provider plugin's `app.tsx` loads in the deferred boot pass like every
+other plugin's (`docs/provider-plugin-api.md` §5), so keep it small.
 
 ### `bb.providers.experimental_contributeEnv` — per-command provider environment
 
@@ -198,24 +146,24 @@ provider bridge reports `unauthenticated` or `expired`, and only when the same
 plugin registered an env resolver for that provider. Installation and unknown
 failures are preserved.
 
-Use `extensionKinds` to declare provider-specific item or state payloads. Each
-kind needs an item schema, a state schema, or both. The server validates each
-payload at ingest. It persists an unhandled-provider event when validation
-fails.
+### Native skill and command roots
 
-Use `experimental_nativeSkillRoots` and
-`experimental_nativeCommandRoots` for fixed host-home or workspace-relative
-roots. Each side can have 32 roots. Set `experimental_resolvesNativeRoots`
-when the host must inspect local configuration. Implement
-`experimental_nativeRootsHostContract` in the host entry. Return absolute
-paths with a `user` or `project` origin. Run
-`experimental_filterResolvedNativeRoots` before return, so one bad root does
-not reject the complete answer. The contract limits each returned side and
-applies the correct skill or command shape.
+Declare fixed host-home or workspace-relative roots with
+`experimental_nativeSkillRoots` and `experimental_nativeCommandRoots`. When
+only the host can find them (a moved config directory, installed vendor
+plugins), set `experimental_resolvesNativeRoots` and implement
+`experimental_nativeRootsHostContract` from `@get-bb/plugin-sdk/host` in the
+host entry. Return absolute paths with a `user` or `project` origin, and run
+`experimental_filterResolvedNativeRoots` before returning so one bad root does
+not reject the complete answer; it limits each side and applies the correct
+skill or command shape. Root semantics and precedence are in
+`docs/provider-plugin-api.md` §1.
 
-**The bridge.** A provider bridge ships inside the plugin's `bb.host`
-artifact — the same artifact a host RPC entry ships in, and a plugin may have
-both. Export it by name:
+### The bridge
+
+A provider bridge ships inside the plugin's `bb.host` artifact — the same
+artifact a host RPC entry ships in, and a plugin may have both. Export it by
+name:
 
 ```ts
 // host.ts (bb.host)
@@ -234,61 +182,52 @@ export const experimental_providerBridge = experimental_defineProviderBridge({
 });
 ```
 
-Do NOT start the bridge yourself: the daemon owns the process boundary (argv,
-plugin-scoped directories, bounded stdin framing, signals) and imports this
-export out of the artifact. Importing the module must start nothing, which is
-also what lets your conformance test drive `handleLine` in-process.
+Do not start the bridge yourself: the server builds and delivers the
+artifact, and the daemon imports this export and owns the process
+(`docs/provider-plugin-api.md` §2, §6). Importing the module must start
+nothing, which is also what lets your conformance test drive `handleLine`
+in-process. A bridge runs only for an installed, enabled plugin.
 
 Everything a bridge compiles against is published at
 `@get-bb/plugin-sdk/provider-bridge` — protocol schemas including the
-`thread/delta` grammar, and the bridge kit — so add `@get-bb/plugin-sdk` to
-`dependencies` (not just `devDependencies`): the host builder bundles that
-subpath from the plugin's own SDK install, and managed Git installs run
-`npm install --omit=dev`, so a devDependency-only SDK is absent when the
-artifact is built. This is the exception to the devDependency rule under
-"bb.hosts"; the echo example's `package.json` shows the shape. A `bb.host`
-artifact cannot import bb's private `@bb/*` workspace packages; an installed
-plugin could not resolve them.
+`thread/delta` grammar, method maps, and the bridge kit — so list
+`@get-bb/plugin-sdk` under `dependencies`, not just `devDependencies` (see
+the host-entry dependency rule in backend-foundation.md; the echo example's
+`package.json` shows the shape). A `bb.host` artifact cannot import bb's
+private `@bb/*` workspace packages; an installed plugin could not resolve
+them.
 
-The bridge speaks the canonical Provider Bridge Protocol — line-delimited
-JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
-Minimum correct surface: the `initialize` handshake
-(`{protocolVersion, capabilities}`, protocol version 2 — the runtime rejects
-any other version at spawn), `thread/start` / `thread/resume` answering
-`{providerThreadId}` after a `thread/identity` notification and then a
-`session.reset` delta (every session construction is a provider id-space
-boundary), `turn/start` driving the delta grammar as batched `thread/delta`
-notifications (`input.accepted` → `turn.open` → item/message deltas →
-`turn.boundary`), `thread/stop` honoring both intents (`release` must
-fabricate nothing), and reply hygiene: unknown method → `-32601`, invalid
-params → `-32602` with the issues, never a silent drop. The bridge emits
-parsed semantic deltas keyed by provider-native ids (tool-call ids, stream
-keys, parent refs); the runtime's delta assembler — never the bridge —
-mints every bb turn and item id and constructs the canonical timeline
-events.
+The bridge speaks the Provider Bridge Protocol, line-delimited JSON-RPC 2.0
+over stdio. It emits parsed semantic deltas keyed by provider-native ids; the
+runtime's delta assembler, never the bridge, mints every bb turn and item id.
+Implement, following `docs/provider-bridge-protocol.md`:
 
-The runtime can send these requests: `initialize`, `model/list`,
-`provider/health`, `provider/usage`, `provider/installation/status`,
-`provider/installation/run`, `thread/start`, `thread/resume`, `thread/fork`,
-`thread/stop`, `thread/discard`, `thread/name/set`, `thread/archive`,
-`thread/unarchive`, `thread/goal/clear`, `turn/start`, `turn/steer`, and
-`skills/configure`. A bridge can call `item/tool/call` and
-`interaction/request` on the runtime. Bridge notifications are
-`thread/delta`, `thread/identity`, `session/replaced`, `provider/raw`,
-`provider/recovery`, and `error`. Use the exported method maps and schemas.
+- the `initialize` handshake ("Versioning and capabilities");
+- `thread/start` / `thread/resume` / `thread/fork` with `thread/identity` and
+  `session.reset` ("Identifiers", "Sessions");
+- `turn/start` driving `thread/delta` batches ("The timeline lane", "Turn
+  lifecycle", "Item lifecycle");
+- `thread/stop` for both intents ("Turn lifecycle");
+- reply hygiene for unknown methods and invalid params ("Transport");
+- recovery hints where your provider fails recoverably ("Recovery hints").
 
 The bridge package also exports helpers for JSON-RPC transport, child process
 and environment setup, installation and version checks, tool presentation,
-bounded output, and recording. Read `provider-bridge-api-index.md` for every
-symbol, then read the installed declaration for its exact signature.
+bounded output, and recording. Launch the provider CLI by name with
+`experimental_spawnPortableProcess` (it resolves `PATH`/`PATHEXT` and npm
+`.cmd` shims on Windows) and end it with `experimental_killPortableProcess`
+(it terminates the whole process tree on Windows). Read
+`provider-bridge-api-index.md` for every symbol, then read the installed
+declaration for its exact signature.
 
 For an ACP agent, use `@get-bb/plugin-sdk/provider-bridge/acp`. Re-export
 `experimental_acpProviderBridge` as `experimental_providerBridge`. Supply a
 validated `acpLaunchSpec` and an ACP dialect in the static bridge options. The
 public ACP entrypoint includes the bridge, launch schema, agent probe, model
 catalog, tool, and dialect contracts. It supports the `generic`, `cursor`, and
-`grok` dialects. Read `provider-bridge-api-index.md` for the complete export
-list.
+`grok` dialects.
+
+### Testing a bridge
 
 **Conformance.** Ship a test that drives the published kit,
 `@get-bb/plugin-sdk/provider-bridge/testing`, against your bridge
@@ -301,40 +240,28 @@ assert every scenario passes (see
 `examples/plugins/echo-provider/provider-bridge.conformance.test.ts`). The
 same kit assembles your deltas into canonical events, so a second test can
 assert what each row becomes
-(`examples/plugins/echo-provider/provider-bridge.stream.test.ts`). Never
-import a private `@bb/*` package from a plugin: an installed plugin cannot
-resolve it.
+(`examples/plugins/echo-provider/provider-bridge.stream.test.ts`). The kit
+also provides the JSON-RPC harness, calibration checks, and recorded-cell
+checks for parsing, request replies, semantic timeline output, and error
+cases.
 
-The test package also provides the production delta assembler, JSON-RPC
-harness, calibration checks, and recorded-cell checks. Use these contracts to
-test parsing, request replies, semantic timeline output, and error cases.
-
-**Recorded replay.** The same kit ships the regression oracle the first-party
-bridges use. Record a real session: start the host daemon with
-`BB_PROVIDER_BRIDGE_RECORD_DIR=<dir>` in its environment, run a thread on
-your provider, and bb writes `<dir>/<providerId>/<threadId>/<direction>.ndjson`
-(a bridge that spawns a CLI also calls `experimental_recordProviderChildIo`
-right after `spawn()`). Commit the lanes under your plugin, then replay them in
-a test: `experimental_resolveProviderBridgeLaunch({ modulePath, pluginId })`
-builds the bridge process exactly as the runtime spawns it,
+**Recorded replay.** Record a real session: start the host daemon with
+`BB_PROVIDER_BRIDGE_RECORD_DIR=<dir>` in its environment and run a thread on
+your provider (a bridge that spawns a CLI also calls
+`experimental_recordProviderChildIo` right after `spawn()`); the layout is in
+`docs/provider-bridge-protocol.md`, "Record mode". Redact and commit the lanes
+under your plugin, then replay them in a test:
+`experimental_resolveProviderBridgeLaunch({ modulePath, pluginId })` builds
+the bridge process exactly as the runtime spawns it,
 `experimental_replayRecording` drives the recorded runtime lane into it and
 answers its requests with the recorded answers, and
 `experimental_compareParity` diffs the assembled events against the
-recording's own (`experimental_assembleRecordedEvents`); `experimental_checkRecordedCellReplay`
-adds the recorded-cell conformance verdicts. A bridge with a provider child
-passes a `ReplayProviderProfile` whose `env` (or `rewriteRuntimeLine`) points
-the child at the kit's replay script. When a deliberate bridge change alters
-the stream, `experimental_rerecordCurrentBridgeLane` writes the new
-expectation beside the recording (`bridge→runtime.current.ndjson`); the
-recording itself is never rewritten. See
+recording's own (`experimental_assembleRecordedEvents`);
+`experimental_checkRecordedCellReplay` adds the recorded-cell conformance
+verdicts. A bridge with a provider child passes a `ReplayProviderProfile`
+whose `env` (or `rewriteRuntimeLine`) points the child at the kit's replay
+script. When a deliberate bridge change alters the stream,
+`experimental_rerecordCurrentBridgeLane` writes the new expectation beside
+the recording (`bridge→runtime.current.ndjson`); the recording itself is
+never rewritten. See
 `examples/plugins/echo-provider/provider-bridge.parity.test.ts`.
-
-**Delivery.** On install/reload the server builds `dist/host.js` and records
-its digest. Thread commands for the provider carry `{pluginId, digest}` to the
-host daemon, which downloads the bytes from the server, verifies the digest
-before caching them, and runs the artifact with its own node — it never
-executes unverified bytes. It is one cache and one route with the host RPC
-worker, because it is one artifact.
-Trust model: installation trust, exactly like every other plugin surface. A
-bridge runs only for an installed, enabled plugin, and only on hosts whose
-server instructs it.
