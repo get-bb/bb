@@ -46,7 +46,7 @@ function PluginGuideRoute() {
   return (
     <>
       <div className="wrap">
-        <SiteNav />
+        <SiteNav current="plugin-guide" />
         <header className="page-head">
           <h1>Plugin Guide</h1>
           <p className="sub">
