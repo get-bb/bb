@@ -1,8 +1,5 @@
 import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
-import {
-  adoptOrphanedDesktopBrowserTabs,
-  syncDesktopBrowserTabs,
-} from "../services/desktop-browsers.js";
+import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
 import {
   hasHostDaemonWebSocketProtocol,
@@ -262,21 +259,9 @@ export function onDaemonSocketMessage(
             "Dropping desktop browser snapshot the server cannot apply",
           );
         };
-        try {
-          const { claimedByOtherWindow } = syncDesktopBrowserTabs(
-            deps,
-            scope,
-            message.tabs,
-          );
-          if (claimedByOtherWindow)
-            void adoptOrphanedDesktopBrowserTabs(
-              deps,
-              scope,
-              message.tabs,
-            ).catch(logDropped);
-        } catch (error) {
-          logDropped(error);
-        }
+        void syncDesktopBrowserTabs(deps, scope, message.tabs).catch(
+          logDropped,
+        );
         return;
       }
       if (message.type === "plugin-host.worker-exited") {

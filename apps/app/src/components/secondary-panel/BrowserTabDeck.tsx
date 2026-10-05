@@ -112,7 +112,7 @@ export function BrowserTabDeck({
   const checkKey =
     target === undefined
       ? null
-      : `${checkRound}:${target.hostId}:${target.instanceId}:${target.generation}`;
+      : `${activeBrowserTab?.id}:${checkRound}:${target.hostId}:${target.instanceId}:${target.generation}`;
   const [stoppedCheckKey, setStoppedCheckKey] = useState<string | null>(null);
   useEffect(() => {
     if (targetHostId === undefined) return;
@@ -154,10 +154,7 @@ export function BrowserTabDeck({
   ]);
 
   const placement = resolveBrowserTabPlacement(target, windowTarget);
-  const savedWindowKey =
-    placement === "check-saved-window" && target !== undefined
-      ? `${target.hostId}:${target.instanceId}`
-      : null;
+  const savedWindowKey = placement === "check-saved-window" ? checkKey : null;
   const [savedWindowCheck, setSavedWindowCheck] =
     useState<SavedWindowCheck | null>(null);
   const savedInstanceId = target?.instanceId;
@@ -225,7 +222,9 @@ export function BrowserTabDeck({
       <BrowserTabElsewhere
         url={activeBrowserTab.url}
         onRetry={
-          checksStopped ? () => setCheckRound((round) => round + 1) : null
+          checksStopped || savedWindowStatus === "live"
+            ? () => setCheckRound((round) => round + 1)
+            : null
         }
         reason={
           desktopBrowser === null

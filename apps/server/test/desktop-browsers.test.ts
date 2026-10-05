@@ -942,6 +942,53 @@ describe("desktop browser public API", () => {
     });
   });
 
+  it.each(["closed", "updated"] as const)(
+    "ignores a pending restore snapshot after the native tab is %s",
+    async (change) => {
+      await withBrowserTest(async (test) => {
+        const tab = test.tab();
+        test.change({ instanceId: "closed-window" }, [tab]);
+        const listed = deferred<HostRpcHandlerResult>();
+        const list = vi.fn(() => listed.promise);
+        test.intercept(({ command }) =>
+          command.type === "desktop.browser.list_instances" ? list() : null,
+        );
+        test.change({}, [tab]);
+        await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+        const updated = {
+          ...tab,
+          url: "https://example.com/new",
+          title: "New",
+        };
+        test.change({}, change === "closed" ? [] : [updated]);
+        listed.resolve({
+          ok: true,
+          result: {
+            instances: [
+              {
+                instanceId: test.scope.instanceId,
+                generation: test.scope.generation,
+                label: "Desktop",
+              },
+            ],
+          },
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(test.stored()).toEqual([
+          expect.objectContaining({
+            id: tab.tabId,
+            url: change === "closed" ? tab.url : updated.url,
+            title: change === "closed" ? tab.title : updated.title,
+            desktopTarget: expect.objectContaining({
+              instanceId:
+                change === "closed" ? "closed-window" : test.scope.instanceId,
+            }),
+          }),
+        ]);
+      });
+    },
+  );
+
   it("moves a tab to the live window that reopened it after its old window closed", async () => {
     await withBrowserTest(async (test) => {
       const tab = test.tab();

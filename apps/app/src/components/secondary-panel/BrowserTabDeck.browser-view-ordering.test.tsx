@@ -303,6 +303,40 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     expect(attachments).toEqual([]);
   });
 
+  it.each(["select another tab", "retry"] as const)(
+    "rechecks a previously live window when users %s after it closes",
+    async (action) => {
+      const { api, attachments } = createRecordingBrowserApi();
+      api.getTarget = async () => desktopTarget;
+      installDesktopBrowser(api);
+      const list = vi.spyOn(sdk.experimental_desktopBrowsers, "listInstances");
+      list.mockResolvedValue({
+        instances: [
+          { ...desktopTarget, label: "Current" },
+          { ...desktopTarget, instanceId: "elsewhere", label: "Other" },
+        ],
+      });
+      const tab = savedTab({ instanceId: "elsewhere" });
+      const view = render(renderTargetDeck(tab));
+      await screen.findByText("This tab is open in another bb window");
+      expect(attachments).toEqual([]);
+      list.mockResolvedValue({
+        instances: [{ ...desktopTarget, label: "Current" }],
+      });
+      const selected =
+        action === "retry" ? tab : { ...tab, id: "another-saved-tab" };
+      if (action === "retry")
+        fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+      else view.rerender(renderTargetDeck(selected));
+      await waitFor(() => expect(attachments).toHaveLength(1));
+      expect(attachments[0]).toMatchObject({
+        tabId: selected.id,
+        url: selected.url,
+      });
+      expect(attachments[0]?.existingOnly).toBeUndefined();
+    },
+  );
+
   it("reopens the saved URL when the window that owned the tab is gone", async () => {
     const { api, attachments } = createRecordingBrowserApi();
     api.getTarget = async () => desktopTarget;

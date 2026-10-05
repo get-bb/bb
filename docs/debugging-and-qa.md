@@ -27,12 +27,15 @@ suppresses teardown snapshots from destroyed windows so closing a window does
 not delete its saved tabs before another window can recover them. The server adopts
 the restored tab from the window's browser snapshot and closes competing restored
 views if two windows reopen it concurrently. Snapshots from a stale restoring
-generation cannot adopt the tab.
+generation cannot adopt the tab. A newer snapshot from the same window and
+thread cancels a pending adoption, including when the newer snapshot is empty.
 
 Web clients, other hosts, and other live windows show the saved URL and its
 availability instead of attaching a native view. Copy link remains available;
 Open in browser accepts only HTTP(S) URLs. The panel's tab close control also
-works in this state. Inspect the persisted owner with
+works in this state. Selecting another saved tab rechecks its owning window;
+Try again also rechecks a window previously reported as live after it closes.
+Inspect the persisted owner with
 `bb thread tabs show <threadId> --json` or `sdk.threads.tabs.get`, and compare it
 with `bb browser instances --host <hostId> --json` or
 `sdk.experimental_desktopBrowsers.listInstances`. Recovery uses the existing
