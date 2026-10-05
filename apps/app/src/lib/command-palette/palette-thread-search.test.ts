@@ -280,7 +280,7 @@ describe("buildPaletteThreadSearchRows", () => {
       expect(result.previousThreadId).toBe("a");
     });
 
-    it("lists up to three threads that need you above the previous thread, newest attention first", () => {
+    it("lists the previous thread first, then up to three threads that need you, newest attention first", () => {
       const result = build({
         query: "",
         currentThreadId: "b",
@@ -304,10 +304,10 @@ describe("buildPaletteThreadSearchRows", () => {
         ],
       });
       expect(ids(result)).toEqual([
+        "a",
         "w2",
         "u3",
         "e4",
-        "a",
         "b",
         "w1",
         "w5",
@@ -323,7 +323,7 @@ describe("buildPaletteThreadSearchRows", () => {
         visitedThreadIds: ["b", "a"],
         recentThreads: [waiting("a", 100), waiting("b", 90), waiting("c", 1)],
       });
-      expect(ids(result)).toEqual(["c", "a", "b"]);
+      expect(ids(result)).toEqual(["a", "c", "b"]);
     });
 
     it("highlights the last thread when no thread is current", () => {
