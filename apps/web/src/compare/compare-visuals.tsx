@@ -36,12 +36,11 @@ export function BrandMark({
 
 function ThreadPill({
   title,
-  agent,
+  icon: Icon,
 }: {
   title: string;
-  agent: "claude" | "codex";
+  icon: typeof ClaudeIcon;
 }) {
-  const Icon = agent === "claude" ? ClaudeIcon : OpenAiIcon;
   return (
     <span className="cmp-pill">
       <Icon className="cmp-pill-ic" />
@@ -160,7 +159,10 @@ export function AgentSplit() {
                     className="cmp-message-ic"
                   />
                   <span className="cmp-message-label">Message from</span>
-                  <ThreadPill title="Review the rate limiter" agent="codex" />
+                  <ThreadPill
+                    title="Review the rate limiter"
+                    icon={OpenAiIcon}
+                  />
                 </span>
                 <span className="cmp-message-body">
                   Found 2 issues: the limiter keys on the socket IP, not
@@ -217,7 +219,7 @@ export function AgentSplit() {
                   Write release notes for{" "}
                   <ThreadPill
                     title="Add rate limiting to uploads"
-                    agent="claude"
+                    icon={ClaudeIcon}
                   />
                 </span>
                 <span className="composer-row">
@@ -261,7 +263,7 @@ export function AgentSplit() {
                   Found 2 issues. Sent them to{" "}
                   <ThreadPill
                     title="Add rate limiting to uploads"
-                    agent="claude"
+                    icon={ClaudeIcon}
                   />
                   .
                 </li>
