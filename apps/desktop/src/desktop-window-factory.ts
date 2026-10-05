@@ -171,7 +171,7 @@ function createWindowOptions(
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
         }
-      : {}),
+      : { autoHideMenuBar: true }),
     height: args.bounds.height,
     icon: args.icon,
     minHeight: MIN_WINDOW_HEIGHT,
