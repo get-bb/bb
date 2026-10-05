@@ -19,6 +19,7 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  PROMPT_STACK_COUNT_PILL_CLASS,
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
@@ -238,8 +239,8 @@ export function ThreadBackgroundCommandsCard({
             ) : (
               <>
                 <BackgroundActivitySummary row={primary} showDuration={false} />
-                <span className={activityMetaClass("active", "shrink-0")}>
-                  +{others.length} more
+                <span className={PROMPT_STACK_COUNT_PILL_CLASS}>
+                  {`+${others.length}`}
                 </span>
               </>
             )}

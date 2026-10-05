@@ -459,7 +459,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain(
       "2 active child threads: Investigate failing checks",
     );
-    expect(markup).toContain("+1 more");
+    expect(markup).toContain(">+1<");
   });
 
   it("lets combined child and context cards shrink inside the composer stack", () => {
