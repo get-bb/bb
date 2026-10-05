@@ -1,5 +1,6 @@
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Fragment } from "react";
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import { CONTENT_LINK_GROUPS } from "./content-links";
@@ -60,36 +61,37 @@ export function SiteFooter() {
   const platform = useDesktopPlatform();
   return (
     <footer className="footer">
-      <nav className="footer-groups" aria-label="Comparisons and guides">
-        {CONTENT_LINK_GROUPS.map((group) => (
-          <div key={group.title} className="footer-group">
-            <span className="footer-group-title">{group.title}</span>
-            {group.links.map((link) => (
-              <a key={link.href} href={link.href}>
-                {link.label}
-              </a>
-            ))}
-          </div>
-        ))}
-      </nav>
       <span>bb is free and open source (MIT)</span>
-      <span>
-        <a href="/blog">Blog</a>
-        {" · "}
-        <a href="/changelog">Changelog</a>
-        {" · "}
-        <a href="/privacy">Privacy</a>
-        {" · "}
-        <GitHubLink placement="footer">GitHub</GitHubLink>
-        {" · "}
-        <XLink placement="footer">X</XLink>
-        {" · "}
-        <DiscordLink placement="footer">Discord</DiscordLink>
-        {" · "}
-        <DownloadLink placement="footer" platform={platform}>
-          Download
-        </DownloadLink>
-      </span>
+      <div className="footer-links">
+        <span>
+          <a href="/blog">Blog</a>
+          {" · "}
+          <a href="/changelog">Changelog</a>
+          {" · "}
+          <a href="/privacy">Privacy</a>
+          {" · "}
+          <GitHubLink placement="footer">GitHub</GitHubLink>
+          {" · "}
+          <XLink placement="footer">X</XLink>
+          {" · "}
+          <DiscordLink placement="footer">Discord</DiscordLink>
+          {" · "}
+          <DownloadLink placement="footer" platform={platform}>
+            Download
+          </DownloadLink>
+        </span>
+        {CONTENT_LINK_GROUPS.map((group) => (
+          <span key={group.title}>
+            {group.title}:{" "}
+            {group.links.map((link, index) => (
+              <Fragment key={link.href}>
+                {index > 0 ? " · " : null}
+                <a href={link.href}>{link.label}</a>
+              </Fragment>
+            ))}
+          </span>
+        ))}
+      </div>
     </footer>
   );
 }
