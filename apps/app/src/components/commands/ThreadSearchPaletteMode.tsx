@@ -56,6 +56,14 @@ import {
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import { readPaletteThreadVisits } from "@/lib/command-palette/palette-visits";
 import {
+  buildPaletteGroupings,
+  isThreadInGrouping,
+  matchPaletteGroupings,
+  PALETTE_GROUPING_KIND_LABELS,
+  type PaletteGrouping,
+  type PaletteGroupingMatch,
+} from "@/lib/command-palette/palette-groupings";
+import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
   PaletteShortcut,
@@ -65,14 +73,27 @@ const GROUP_LIMIT = 6;
 const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
 
 const NO_MATCHING_THREADS_MESSAGE = "No matching threads";
+const NO_PROJECT_NAMES: ReadonlyMap<string, string> = new Map();
 
-interface ThreadSearchOption {
-  lifecycle: ThreadArchiveFilter;
-  row: PaletteThreadSearchRow | null;
-}
+type PaletteGroup = ThreadArchiveFilter | "groupings";
+
+const PALETTE_GROUPS: readonly { value: PaletteGroup; label: string }[] = [
+  THREAD_LIFECYCLE_OPTIONS[0],
+  { value: "groupings", label: "Projects & sections" },
+  THREAD_LIFECYCLE_OPTIONS[1],
+];
+
+type ThreadSearchOption =
+  | { type: "thread"; group: ThreadArchiveFilter; row: PaletteThreadSearchRow }
+  | { type: "grouping"; group: "groupings"; match: PaletteGroupingMatch }
+  | { type: "more"; group: PaletteGroup };
 
 function optionKey(option: ThreadSearchOption): string {
-  return option.row?.id ?? `more:${option.lifecycle}`;
+  if (option.type === "thread") return option.row.id;
+  if (option.type === "grouping") {
+    return `grouping:${option.match.grouping.kind}:${option.match.grouping.id}`;
+  }
+  return `more:${option.group}`;
 }
 
 export function ThreadSearchPaletteMode({
@@ -95,15 +116,21 @@ export function ThreadSearchPaletteMode({
   const [selectedLifecycles, setLifecycles] = useAtom(
     paletteThreadLifecyclesAtom,
   );
-  const lifecycles = useMemo(
+  const [grouping, setGrouping] = useState<PaletteGrouping | null>(null);
+  const filterLifecycles = useMemo(
     () => normalizeThreadLifecycleFilter(selectedLifecycles),
     [selectedLifecycles],
+  );
+  const lifecycles = useMemo(
+    (): readonly ThreadArchiveFilter[] =>
+      grouping === null ? filterLifecycles : ["active"],
+    [filterLifecycles, grouping],
   );
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [followPreviousThread, setFollowPreviousThread] = useState(true);
-  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<PaletteGroup[]>([]);
   const filterKey = lifecycles.join(",");
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
   if (previousFilterKey !== filterKey) {
@@ -113,12 +140,13 @@ export function ThreadSearchPaletteMode({
   const [now] = useState(() => Date.now());
   const [visitedThreadIds] = useState(readPaletteThreadVisits);
   const navigation = useSidebarNavigation();
-  const threadSearch = useThreadSearch({ active: true, query });
+  const threadSearch = useThreadSearch({ active: grouping === null, query });
   const trimmedQuery = query.trim();
   const archived = usePaletteRecentArchivedThreads({
     enabled: trimmedQuery.length === 0 && lifecycles.includes("archived"),
   });
-  const searchable = hasThreadSearchableQuery(trimmedQuery);
+  const searchable =
+    grouping === null && hasThreadSearchableQuery(trimmedQuery);
   const searchResultsAreCurrent =
     !searchable || threadSearch.debouncedQuery === trimmedQuery;
 
@@ -131,16 +159,25 @@ export function ThreadSearchPaletteMode({
     ].map((project) => [project.id, project.name] as const);
     return new Map(entries);
   }, [navigation.data]);
-  const recentThreads = useMemo(
+  const activeThreads = useMemo(
     () => [
-      ...[
-        ...(navigation.data?.projects.flatMap((project) => project.threads) ??
-          []),
-        ...(navigation.data?.personalProject.threads ?? []),
-      ],
-      ...(lifecycles.includes("archived") ? (archived.data ?? []) : []),
+      ...(navigation.data?.projects.flatMap((project) => project.threads) ??
+        []),
+      ...(navigation.data?.personalProject.threads ?? []),
     ],
-    [archived.data, lifecycles, navigation.data],
+    [navigation.data],
+  );
+  const recentThreads = useMemo(
+    () =>
+      grouping === null
+        ? [
+            ...activeThreads,
+            ...(lifecycles.includes("archived") ? (archived.data ?? []) : []),
+          ]
+        : activeThreads.filter((thread) =>
+            isThreadInGrouping(thread, grouping),
+          ),
+    [activeThreads, archived.data, grouping, lifecycles],
   );
   const result = useMemo(
     () =>
@@ -148,15 +185,17 @@ export function ThreadSearchPaletteMode({
         currentThreadId,
         lifecycles,
         now,
-        projectNamesById,
+        projectNamesById:
+          grouping?.kind === "project" ? NO_PROJECT_NAMES : projectNamesById,
         query,
         recentThreads,
-        searchResponse: threadSearch.data,
+        searchResponse: grouping === null ? threadSearch.data : undefined,
         searchResultsAreCurrent,
         visitedThreadIds,
       }),
     [
       currentThreadId,
+      grouping,
       lifecycles,
       now,
       projectNamesById,
@@ -167,30 +206,60 @@ export function ThreadSearchPaletteMode({
       visitedThreadIds,
     ],
   );
+  const groupingMatches = useMemo(
+    () =>
+      grouping === null
+        ? matchPaletteGroupings(
+            buildPaletteGroupings({
+              projects: navigation.data?.projects ?? [],
+              personalProject: navigation.data?.personalProject ?? null,
+              sections: navigation.data?.sections ?? [],
+              hasPinnedThreads: activeThreads.some(
+                (thread) => thread.pinnedAt !== null,
+              ),
+            }),
+            trimmedQuery,
+          )
+        : [],
+    [activeThreads, grouping, navigation.data, trimmedQuery],
+  );
   const options = useMemo(() => {
-    return lifecycles.flatMap((lifecycle) => {
-      const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
-      const visible = expandedGroups.includes(lifecycle)
-        ? rows
-        : rows.slice(
+    return PALETTE_GROUPS.flatMap(({ value: group }): ThreadSearchOption[] => {
+      const all: ThreadSearchOption[] =
+        group === "groupings"
+          ? groupingMatches.map((match): ThreadSearchOption => ({
+              type: "grouping",
+              group,
+              match,
+            }))
+          : lifecycles.includes(group)
+            ? result.rows
+                .filter((row) => row.lifecycle === group)
+                .map((row): ThreadSearchOption => ({
+                  type: "thread",
+                  group,
+                  row,
+                }))
+            : [];
+      const visible = expandedGroups.includes(group)
+        ? all
+        : all.slice(
             0,
-            lifecycle === "archived" && lifecycles.includes("active")
+            group === "archived" && lifecycles.includes("active")
               ? ARCHIVED_BESIDE_ACTIVE_LIMIT
               : GROUP_LIMIT,
           );
-      const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
-        lifecycle,
-        row,
-      }));
-      if (visible.length < rows.length)
-        groupOptions.push({ row: null, lifecycle });
-      return groupOptions;
+      return visible.length < all.length
+        ? [...visible, { type: "more", group }]
+        : visible;
     });
-  }, [expandedGroups, lifecycles, result]);
+  }, [expandedGroups, groupingMatches, lifecycles, result]);
   const previousThreadIndex =
     followPreviousThread && result.previousThreadId !== null
       ? options.findIndex(
-          (option) => option.row?.threadId === result.previousThreadId,
+          (option) =>
+            option.type === "thread" &&
+            option.row.threadId === result.previousThreadId,
         )
       : -1;
   const retainedIndex = options.findIndex(
@@ -233,7 +302,9 @@ export function ThreadSearchPaletteMode({
     !hasLoadError;
   const activeDescendantId =
     activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
-  const activeRow = options[activeIndex]?.row;
+  const activeOption = options[activeIndex];
+  const activeRow =
+    activeOption?.type === "thread" ? activeOption.row : undefined;
   const canSplit =
     activeRow != null &&
     !isCompact &&
@@ -256,17 +327,33 @@ export function ThreadSearchPaletteMode({
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, options]);
 
+  const resetView = useCallback((nextGrouping: PaletteGrouping | null) => {
+    setGrouping(nextGrouping);
+    setQuery("");
+    setFollowPreviousThread(true);
+    setExpandedGroups([]);
+    setHighlightedIndex(0);
+    setHighlightedKey(null);
+    if (listRef.current !== null) listRef.current.scrollTop = 0;
+    inputRef.current?.focus();
+  }, []);
+
   const selectOption = useCallback(
-    ({ row, lifecycle }: ThreadSearchOption, index: number, split = false) => {
-      if (row === null) {
+    (option: ThreadSearchOption, index: number, split = false) => {
+      if (option.type === "more") {
         scrollOnNextHighlightRef.current = true;
         setFollowPreviousThread(false);
-        setExpandedGroups((current) => [...current, lifecycle]);
+        setExpandedGroups((current) => [...current, option.group]);
         setHighlightedIndex(index);
         setHighlightedKey(null);
         inputRef.current?.focus();
         return;
       }
+      if (option.type === "grouping") {
+        resetView(option.match.grouping);
+        return;
+      }
+      const { row } = option;
       runAfterClose(() => {
         const state =
           row.messageSeq === null
@@ -295,7 +382,7 @@ export function ThreadSearchPaletteMode({
         );
       });
     },
-    [isCompact, navigate, runAfterClose, store],
+    [isCompact, navigate, resetView, runAfterClose, store],
   );
 
   const handleInputKeyDown = useCallback(
@@ -304,7 +391,8 @@ export function ThreadSearchPaletteMode({
       if (event.key === "Backspace" && query.length === 0) {
         event.preventDefault();
         event.stopPropagation();
-        onExit();
+        if (grouping === null) onExit();
+        else resetView(null);
         return;
       }
       if (event.key === "Escape") {
@@ -339,7 +427,16 @@ export function ThreadSearchPaletteMode({
         selectOption(option, activeIndex, event.metaKey || event.ctrlKey);
       }
     },
-    [activeIndex, highlightOption, onExit, options, query.length, selectOption],
+    [
+      activeIndex,
+      grouping,
+      highlightOption,
+      onExit,
+      options,
+      query.length,
+      resetView,
+      selectOption,
+    ],
   );
 
   const isLoading =
@@ -348,7 +445,7 @@ export function ThreadSearchPaletteMode({
       threadSearch.isDebouncing ||
       threadSearch.isLoading);
   let emptyMessage: string | null = null;
-  if (result.rows.length === 0) {
+  if (result.rows.length === 0 && groupingMatches.length === 0) {
     emptyMessage =
       isLoading || isRecentLoading
         ? result.isRecent
@@ -373,21 +470,36 @@ export function ThreadSearchPaletteMode({
       }
       inputLabel="Search threads"
       inputAccessory={
-        <div className="max-w-[45%] shrink-0">
-          <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
-        </div>
+        grouping === null ? (
+          <div className="max-w-[45%] shrink-0">
+            <ThreadLifecycleFilter
+              value={filterLifecycles}
+              onChange={setLifecycles}
+            />
+          </div>
+        ) : null
       }
       inputRef={inputRef}
       listId={listId}
       listLabel="Threads"
       listRef={listRef}
-      modeChip={{
-        icon: "Search",
-        label: "Threads",
-        clearLabel: "Return to commands",
-        onClear: onExit,
-        hideShortcut: isCompact,
-      }}
+      modeChip={
+        grouping === null
+          ? {
+              icon: "Search",
+              label: "Threads",
+              clearLabel: "Return to commands",
+              onClear: onExit,
+              hideShortcut: isCompact,
+            }
+          : {
+              icon: grouping.icon,
+              label: grouping.name,
+              clearLabel: "Remove filter",
+              onClear: () => resetView(null),
+              hideShortcut: true,
+            }
+      }
       onInputChange={(value) => {
         setQuery(value);
         setFollowPreviousThread(value.trim().length === 0);
@@ -397,18 +509,22 @@ export function ThreadSearchPaletteMode({
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
-      placeholder="Search title, project, or message…"
+      placeholder={
+        grouping === null
+          ? "Search title, project, or message…"
+          : `Search ${grouping.name} threads…`
+      }
       value={query}
     >
       {emptyMessage === null ? (
-        THREAD_LIFECYCLE_OPTIONS.map(({ value: lifecycle, label }) => {
-          if (!result.rows.some((row) => row.lifecycle === lifecycle)) {
+        PALETTE_GROUPS.map(({ value: group, label }) => {
+          if (!options.some((option) => option.group === group)) {
             return null;
           }
-          const labelId = `${optionIdPrefix}-${lifecycle}-label`;
+          const labelId = `${optionIdPrefix}-${group}-label`;
           return (
             <div
-              key={lifecycle}
+              key={group}
               role="group"
               aria-labelledby={labelId}
               className="not-last:mb-2"
@@ -417,12 +533,12 @@ export function ThreadSearchPaletteMode({
                 {label}
               </div>
               {options.map((option, index) =>
-                option.lifecycle !== lifecycle ? null : (
+                option.group !== group ? null : (
                   <div
                     key={
-                      option.row === null
-                        ? `more:${lifecycle}`
-                        : `${option.row.id}:${option.row.primaryText}`
+                      option.type === "thread"
+                        ? `${option.row.id}:${option.row.primaryText}`
+                        : optionKey(option)
                     }
                     className={cn(
                       "flex min-w-0 items-center rounded-md",
@@ -435,21 +551,25 @@ export function ThreadSearchPaletteMode({
                       role="option"
                       aria-selected={index === activeIndex}
                       aria-label={
-                        option.row !== null
+                        option.type !== "more"
                           ? undefined
-                          : lifecycle === "archived"
+                          : group === "archived"
                             ? "Show more archived threads"
-                            : "Show more threads"
+                            : group === "groupings"
+                              ? "Show more projects and sections"
+                              : "Show more threads"
                       }
                       className={cn(
                         "flex min-w-0 flex-1 cursor-pointer items-center rounded-md px-2 py-1.5",
-                        option.row === null
+                        option.type === "more"
                           ? "gap-1.5 text-xs text-subtle-foreground"
-                          : "min-h-11 gap-3 text-left text-sm",
+                          : option.type === "grouping"
+                            ? "gap-3 text-left text-sm"
+                            : "min-h-11 gap-3 text-left text-sm",
                       )}
                       onClick={() => selectOption(option, index)}
                     >
-                      {option.row === null ? (
+                      {option.type === "more" ? (
                         <>
                           Show more
                           <Icon
@@ -458,6 +578,8 @@ export function ThreadSearchPaletteMode({
                             aria-hidden
                           />
                         </>
+                      ) : option.type === "grouping" ? (
+                        <GroupingPaletteRow match={option.match} />
                       ) : (
                         <ThreadSearchPaletteRow row={option.row} />
                       )}
@@ -491,6 +613,26 @@ export function ThreadSearchPaletteMode({
         </p>
       )}
     </PaletteShell>
+  );
+}
+
+function GroupingPaletteRow({ match }: { match: PaletteGroupingMatch }) {
+  return (
+    <>
+      <Icon
+        name={match.grouping.icon}
+        className="size-4 shrink-0 text-subtle-foreground"
+        aria-hidden
+      />
+      <ThreadTitle
+        title={match.grouping.name}
+        highlightRanges={match.highlightRanges}
+        className="min-w-0 flex-1 text-foreground"
+      />
+      <span className="shrink-0 text-xs text-subtle-foreground">
+        {PALETTE_GROUPING_KIND_LABELS[match.grouping.kind]}
+      </span>
+    </>
   );
 }
 

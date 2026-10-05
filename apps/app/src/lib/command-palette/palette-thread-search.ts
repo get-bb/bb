@@ -49,7 +49,7 @@ export interface PaletteThreadSearchRowsResult {
   rows: PaletteThreadSearchRow[];
 }
 
-type HighlightRange = PaletteThreadSearchRow["highlightRanges"][number];
+export type HighlightRange = PaletteThreadSearchRow["highlightRanges"][number];
 
 const RECENT_THREAD_LIMIT = 20;
 const NEEDS_YOU_LIMIT = 3;
@@ -103,7 +103,9 @@ function serverRow(
   };
 }
 
-function positionsToRanges(positions: readonly number[]): HighlightRange[] {
+export function positionsToRanges(
+  positions: readonly number[],
+): HighlightRange[] {
   const ranges: HighlightRange[] = [];
   for (const position of [...new Set(positions)].sort((a, b) => a - b)) {
     const last = ranges.at(-1);

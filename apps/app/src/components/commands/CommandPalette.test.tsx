@@ -119,6 +119,13 @@ const testState = vi.hoisted(() => ({
 }));
 const modeState = vi.hoisted(() => ({
   activeRecents: [] as ThreadListEntry[],
+  personalThreads: [] as ThreadListEntry[],
+  sections: [] as Array<{
+    id: string;
+    name: string;
+    createdAt: number;
+    updatedAt: number;
+  }>,
   archivedRecents: [] as ThreadListEntry[],
   threadDraftIds: new Set<string>(),
   searchResponse: undefined as ThreadSearchResponse | undefined,
@@ -235,7 +242,12 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
           threads: modeState.activeRecents,
         },
       ],
-      personalProject: { id: "proj_personal", name: "Personal", threads: [] },
+      personalProject: {
+        id: "proj_personal",
+        name: "Personal",
+        threads: modeState.personalThreads,
+      },
+      sections: modeState.sections,
     },
     isLoading: modeState.recentLoading,
     isError: modeState.recentError,
@@ -419,6 +431,8 @@ afterEach(() => {
   testState.showKeyboardHints = true;
   testState.plugins.length = 0;
   modeState.activeRecents = [];
+  modeState.personalThreads = [];
+  modeState.sections = [];
   modeState.archivedRecents = [];
   modeState.threadDraftIds.clear();
   modeState.searchResponse = undefined;
@@ -2290,5 +2304,111 @@ describe("CommandPalette", () => {
     expectClasses(screen.getByText("No matching commands"), "px-3", "py-4");
     fireEvent.keyDown(searchField(), { key: "Enter" });
     expect(testState.calls).toEqual([]);
+  });
+});
+
+async function narrowTo(query: string, name: RegExp) {
+  const input = await screen.findByRole("combobox", { name: "Search threads" });
+  fireEvent.change(input, { target: { value: query } });
+  const groupings = await screen.findByRole("group", {
+    name: "Projects & sections",
+  });
+  fireEvent.click(within(groupings).getByRole("option", { name }));
+  return input;
+}
+
+describe("Search threads narrowing", () => {
+  it("narrows to a project's threads, matches titles locally, and steps back with Backspace", async () => {
+    modeState.activeRecents = [
+      makeThread("alpha", { title: "Alpha work" }),
+      makeThread("beta", { title: "Beta work" }),
+    ];
+    modeState.personalThreads = [
+      makeThread("solo", { projectId: "proj_personal", title: "Solo work" }),
+    ];
+    modeState.searchResponse = {
+      active: {
+        total: 1,
+        results: [{ thread: modeState.personalThreads[0], matches: [] }],
+      },
+      archived: { total: 0, results: [] },
+    };
+    renderPalette();
+    openThreadSearch();
+    const input = await narrowTo("palette", /^Palette projectProject$/);
+
+    expect(input.getAttribute("placeholder")).toBe(
+      "Search Palette project threads…",
+    );
+    expect((input as HTMLInputElement).value).toBe("");
+    expect(
+      screen.getByRole("button", { name: "Palette project search" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove filter" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Filter:/ })).toBeNull();
+    expect(optionTitles()).toEqual([
+      expect.stringContaining("Alpha work"),
+      expect.stringContaining("Beta work"),
+    ]);
+    expect(optionTitles().join()).not.toContain("Palette project");
+    expect(routeNavigateMock).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "work" } });
+    expect(optionTitles()).toHaveLength(2);
+    expect(optionTitles().join()).not.toContain("Solo work");
+    fireEvent.change(input, { target: { value: "palette" } });
+    expect(
+      screen.queryByRole("group", { name: "Projects & sections" }),
+    ).toBeNull();
+    await screen.findByText("No matching threads");
+
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.keyDown(input, { key: "Backspace" });
+    expect(screen.getByRole("button", { name: "Threads search" })).toBeTruthy();
+    expect(input.getAttribute("placeholder")).toBe(
+      "Search title, project, or message…",
+    );
+    expect(optionTitles()).toEqual(
+      expect.arrayContaining([expect.stringContaining("Solo work")]),
+    );
+    fireEvent.keyDown(input, { key: "Backspace" });
+    await screen.findByRole("combobox", { name: "Search commands" });
+  });
+
+  it("narrows to a sidebar section by the thread's section", async () => {
+    modeState.sections = [
+      { id: "sec-1", name: "Launch", createdAt: 1, updatedAt: 1 },
+    ];
+    modeState.activeRecents = [
+      makeThread("in", { title: "Inside", sectionId: "sec-1" }),
+      makeThread("out", { title: "Outside" }),
+    ];
+    renderPalette();
+    openThreadSearch();
+    await narrowTo("launch", /^LaunchSection$/);
+
+    expect(optionTitles()).toEqual([expect.stringContaining("Inside")]);
+    expect(optionTitles()[0]).toContain("Palette project");
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter" }));
+    expect(screen.getByRole("button", { name: "Threads search" })).toBeTruthy();
+  });
+
+  it("offers Pinned only when an active thread is pinned", async () => {
+    modeState.activeRecents = [makeThread("plain", { title: "Plain" })];
+    const { rerenderPalette } = renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "pinned" } });
+    expect(screen.queryByRole("option", { name: /^PinnedPinned$/ })).toBeNull();
+
+    modeState.activeRecents = [
+      makeThread("plain", { title: "Plain" }),
+      makeThread("pin", { title: "Kept", pinnedAt: 1 }),
+    ];
+    rerenderPalette();
+    await narrowTo("pinned", /^PinnedPinned$/);
+    expect(optionTitles()).toEqual([expect.stringContaining("Kept")]);
   });
 });

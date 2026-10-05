@@ -965,6 +965,10 @@ and after typing. It defaults to Active and remembers its selection in this
 browser only; it is not configurable through SDK/CLI.
 Active includes threads with saved messages. Search threads retains the existing
 title and conversation search behavior and opens the owning thread.
+Once you type, a Projects & sections group lists matching projects (including
+Personal), sidebar sections, and Pinned; choosing one narrows the palette to
+that grouping's active threads, matched by title only, until Backspace on an
+empty query or the chip's close button removes it.
 Archived loads a bounded list in most-recently-archived order only while selected.
 Search uses the existing
 ranked Active/Archived response and displays the selected groups, with six initial
