@@ -3,10 +3,10 @@ import { CONTEXT_CARD_CLASS } from "./chrome-style-tokens";
 import { Icon } from "./icon";
 import { cn } from "../../lib/utils";
 
-export const PROMPT_STACK_COLLAPSE_ROW_CLASS =
+const COLLAPSE_ROW_CLASS =
   "flex min-h-6 w-full cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground";
 
-export const PROMPT_STACK_COUNT_PILL_CLASS =
+const COUNT_PILL_CLASS =
   "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground";
 
 const PEEK_LAYER_CLASSES: Record<number, readonly string[]> = {
@@ -15,16 +15,10 @@ const PEEK_LAYER_CLASSES: Record<number, readonly string[]> = {
 };
 const PEEK_PADDING_CLASS: Record<number, string> = { 1: "pb-1", 2: "pb-2" };
 
-export interface DisclosureFocusHandoff {
-  triggerRef: RefObject<HTMLButtonElement | null>;
-  collapseRef: RefObject<HTMLButtonElement | null>;
-  focusCollapseAfterToggle: () => void;
-  focusTriggerAfterToggle: () => void;
-}
-
 export function useDisclosureFocusHandoff(
   isExpanded: boolean,
-): DisclosureFocusHandoff {
+  toggle: () => void,
+) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const collapseRef = useRef<HTMLButtonElement>(null);
   const pendingFocus = useRef<"trigger" | "collapse" | null>(null);
@@ -41,11 +35,13 @@ export function useDisclosureFocusHandoff(
   return {
     triggerRef,
     collapseRef,
-    focusCollapseAfterToggle: () => {
-      pendingFocus.current = "collapse";
+    onTriggerClick: () => {
+      if (!isExpanded) pendingFocus.current = "collapse";
+      toggle();
     },
-    focusTriggerAfterToggle: () => {
+    onCollapseClick: () => {
       pendingFocus.current = "trigger";
+      toggle();
     },
   };
 }
@@ -55,13 +51,11 @@ export function PromptStackCollapseRow({
   controlsId,
   label,
   onCollapse,
-  className,
 }: {
   buttonRef: RefObject<HTMLButtonElement | null>;
   controlsId: string;
   label: string;
   onCollapse: () => void;
-  className?: string;
 }) {
   return (
     <button
@@ -71,7 +65,7 @@ export function PromptStackCollapseRow({
       aria-controls={controlsId}
       aria-label={label}
       onClick={onCollapse}
-      className={cn(PROMPT_STACK_COLLAPSE_ROW_CLASS, className)}
+      className={COLLAPSE_ROW_CLASS}
     >
       <Icon name="ChevronUp" className="size-3.5" aria-hidden="true" />
     </button>
@@ -104,19 +98,17 @@ export function PromptStackPeekLayers({
 export const PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS = "group/disclosure";
 
 const TRAILING_SLOT_CLASS =
-  "-mr-3 flex w-8 shrink-0 items-center justify-center";
+  "-mr-3 ml-auto flex w-8 shrink-0 items-center justify-center";
 const HOVER_CHEVRON_CLASS =
   "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden";
 
-function HoverChevronSlot({
+export function PromptStackHoverChevron({
   isExpanded,
-  className,
 }: {
   isExpanded: boolean;
-  className?: string;
 }) {
   return (
-    <span className={cn(TRAILING_SLOT_CLASS, className)}>
+    <span className={TRAILING_SLOT_CLASS}>
       {isExpanded ? null : (
         <Icon
           name="ChevronDown"
@@ -128,18 +120,10 @@ function HoverChevronSlot({
   );
 }
 
-export function PromptStackHoverChevron({
-  isExpanded,
-}: {
-  isExpanded: boolean;
-}) {
-  return <HoverChevronSlot isExpanded={isExpanded} className="ml-auto" />;
-}
-
 export function PromptStackCountSlot({ count }: { count: number }) {
   return (
-    <span className={cn(TRAILING_SLOT_CLASS, "ml-auto")}>
-      <span className={PROMPT_STACK_COUNT_PILL_CLASS}>{`+${count}`}</span>
+    <span className={TRAILING_SLOT_CLASS}>
+      <span className={COUNT_PILL_CLASS}>{`+${count}`}</span>
     </span>
   );
 }

@@ -34,19 +34,16 @@ describe("ThreadWorkflowCard", () => {
     });
     const body = document.getElementById(header.getAttribute("aria-controls")!);
     expect(body?.getAttribute("aria-labelledby")).toBe(header.id);
-    expect(body?.hasAttribute("inert")).toBe(true);
 
     fireEvent.click(header);
     const collapse = screen.getByRole("button", {
       name: "Collapse workflow release-review",
     });
     expect(header.getAttribute("aria-expanded")).toBe("true");
-    expect(body?.hasAttribute("inert")).toBe(false);
     expect(document.activeElement).toBe(collapse);
 
     fireEvent.click(collapse);
     expect(header.getAttribute("aria-expanded")).toBe("false");
-    expect(body?.hasAttribute("inert")).toBe(true);
     expect(document.activeElement).toBe(header);
   });
 });

@@ -55,7 +55,6 @@ import {
   PromptStackCountSlot,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
-  type DisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import {
   BannerActionSlot,
@@ -286,23 +285,6 @@ function SectionToggleButton({
       {fillRow ? <PromptStackHoverChevron isExpanded={isExpanded} /> : null}
     </button>
   );
-}
-
-function sectionDisclosure(
-  focus: DisclosureFocusHandoff,
-  isExpanded: boolean,
-  toggle: () => void,
-) {
-  return {
-    onToggle: () => {
-      if (!isExpanded) focus.focusCollapseAfterToggle();
-      toggle();
-    },
-    onCollapse: () => {
-      focus.focusTriggerAfterToggle();
-      toggle();
-    },
-  };
 }
 
 const PARENT_SECTION_COPY: Record<
@@ -704,7 +686,7 @@ function ActiveChildThreadsCard({
   );
   const primary = items[0];
   const primaryTitle = useThreadTitleDisplayText(primary?.title ?? "");
-  const focus = useDisclosureFocusHandoff(isExpanded);
+  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
   if (!primary) {
     return null;
   }
@@ -717,7 +699,6 @@ function ActiveChildThreadsCard({
     pendingCount,
   });
   const needsApproval = pendingCount > 0;
-  const disclosure = sectionDisclosure(focus, isExpanded, onToggle);
   return (
     <PromptStackCard
       ariaLabel="Child threads"
@@ -732,7 +713,7 @@ function ActiveChildThreadsCard({
           aria-expanded={isExpanded}
           aria-controls={SECTION_IDS.childThreads.body}
           aria-label={`${groupLabel}: ${primaryTitle}`}
-          onClick={disclosure.onToggle}
+          onClick={focus.onTriggerClick}
           className={cn(
             needsApproval
               ? PROMPT_STACK_CARD_HEADER_BUTTON_CLASS
@@ -776,7 +757,7 @@ function ActiveChildThreadsCard({
         isExpanded={isExpanded}
         collapseLabel="Collapse child threads"
         collapseRef={focus.collapseRef}
-        onCollapse={disclosure.onCollapse}
+        onCollapse={focus.onCollapseClick}
       >
         <ChildThreadsBody items={items} />
       </AnimatedDisclosureBody>
@@ -806,17 +787,11 @@ function ReadOnlyContextBanner({
   const isParentThreadExpanded =
     expandedSection === "parentThread" && parentThreadSection !== null;
   const isStatusExpanded = expandedSection === "status" && description !== null;
-  const parentFocus = useDisclosureFocusHandoff(isParentThreadExpanded);
-  const statusFocus = useDisclosureFocusHandoff(isStatusExpanded);
-  const parentDisclosure = sectionDisclosure(
-    parentFocus,
-    isParentThreadExpanded,
-    () => onToggleSection("parentThread"),
+  const parentFocus = useDisclosureFocusHandoff(isParentThreadExpanded, () =>
+    onToggleSection("parentThread"),
   );
-  const statusDisclosure = sectionDisclosure(
-    statusFocus,
-    isStatusExpanded,
-    () => onToggleSection("status"),
+  const statusFocus = useDisclosureFocusHandoff(isStatusExpanded, () =>
+    onToggleSection("status"),
   );
   const hasMultipleSegments = parentThreadSection !== null;
   const statusIcon = (
@@ -840,7 +815,7 @@ function ReadOnlyContextBanner({
             section={parentThreadSection}
             buttonRef={parentFocus.triggerRef}
             isExpanded={isParentThreadExpanded}
-            onToggle={parentDisclosure.onToggle}
+            onToggle={parentFocus.onTriggerClick}
           />
         ) : null}
         {description === null ? (
@@ -867,7 +842,7 @@ function ReadOnlyContextBanner({
             label={statusLabel}
             hideLabelInCompact={false}
             isExpanded={isStatusExpanded}
-            onToggle={statusDisclosure.onToggle}
+            onToggle={statusFocus.onTriggerClick}
           />
         )}
         {showStatusAction ? (
@@ -882,7 +857,7 @@ function ReadOnlyContextBanner({
           isExpanded={isStatusExpanded}
           collapseLabel={`Collapse ${statusLabel.toLowerCase()}`}
           collapseRef={statusFocus.collapseRef}
-          onCollapse={statusDisclosure.onCollapse}
+          onCollapse={statusFocus.onCollapseClick}
         >
           <p className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
             {description}
@@ -894,7 +869,7 @@ function ReadOnlyContextBanner({
           section={parentThreadSection}
           isExpanded={isParentThreadExpanded}
           collapseRef={parentFocus.collapseRef}
-          onCollapse={parentDisclosure.onCollapse}
+          onCollapse={parentFocus.onCollapseClick}
         />
       ) : null}
     </PromptStackCard>
@@ -912,9 +887,12 @@ export function ThreadPromptContextBanner({
   expandedSection,
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
-  const gitFocus = useDisclosureFocusHandoff(expandedSection === "git");
+  const gitFocus = useDisclosureFocusHandoff(expandedSection === "git", () =>
+    onToggleSection("git"),
+  );
   const parentFocus = useDisclosureFocusHandoff(
     expandedSection === "parentThread",
+    () => onToggleSection("parentThread"),
   );
   if (archivedSection || environmentGoneSection) {
     const environmentGone = environmentGoneSection !== null;
@@ -970,14 +948,6 @@ export function ThreadPromptContextBanner({
     expandedSection === "parentThread" && showParentThread;
   const isChildThreadsExpanded =
     expandedSection === "childThreads" && showChildThreads;
-  const gitDisclosure = sectionDisclosure(gitFocus, isGitExpanded, () =>
-    onToggleSection("git"),
-  );
-  const parentDisclosure = sectionDisclosure(
-    parentFocus,
-    isParentThreadExpanded,
-    () => onToggleSection("parentThread"),
-  );
   const activeChildThreadsCard =
     showChildThreads && childThreadsSection ? (
       <ActiveChildThreadsCard
@@ -1087,7 +1057,7 @@ export function ThreadPromptContextBanner({
               section={parentThreadSection}
               buttonRef={parentFocus.triggerRef}
               isExpanded={isParentThreadExpanded}
-              onToggle={parentDisclosure.onToggle}
+              onToggle={parentFocus.onTriggerClick}
             />
           ) : null}
           {showPullRequest && pullRequest ? (
@@ -1116,7 +1086,7 @@ export function ThreadPromptContextBanner({
               hideLabelInCompact={visibleSegmentCount > 2}
               ariaLabel={`Changed files: ${gitSummaryPrefix}, ${gitSummaryText}`}
               isExpanded={isGitExpanded}
-              onToggle={gitDisclosure.onToggle}
+              onToggle={gitFocus.onTriggerClick}
             />
           ) : null}
           {pullRequestAction}
@@ -1127,7 +1097,7 @@ export function ThreadPromptContextBanner({
             section={parentThreadSection}
             isExpanded={isParentThreadExpanded}
             collapseRef={parentFocus.collapseRef}
-            onCollapse={parentDisclosure.onCollapse}
+            onCollapse={parentFocus.onCollapseClick}
           />
         ) : null}
         {showGit ? (
@@ -1138,7 +1108,7 @@ export function ThreadPromptContextBanner({
             isExpanded={isGitExpanded}
             collapseLabel="Collapse changed files"
             collapseRef={gitFocus.collapseRef}
-            onCollapse={gitDisclosure.onCollapse}
+            onCollapse={gitFocus.onCollapseClick}
           >
             <WorkspaceChangesList
               files={gitSection.changedFiles.files}

@@ -34,7 +34,7 @@ export function ThreadWorkflowStack({
   onToggleWorkflow,
 }: ThreadWorkflowStackProps) {
   const listId = useId();
-  const focus = useDisclosureFocusHandoff(isStackExpanded);
+  const focus = useDisclosureFocusHandoff(isStackExpanded, onToggleStack);
   const running = workflows.filter((workflow) => workflow.status === "pending");
   const front = running[0];
   if (!front) {
@@ -54,10 +54,7 @@ export function ThreadWorkflowStack({
             type="button"
             aria-expanded="false"
             aria-label={`${running.length} workflows running. Show all`}
-            onClick={() => {
-              focus.focusCollapseAfterToggle();
-              onToggleStack();
-            }}
+            onClick={focus.onTriggerClick}
             className={cn(
               PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
               PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
@@ -87,10 +84,7 @@ export function ThreadWorkflowStack({
           buttonRef={focus.collapseRef}
           controlsId={listId}
           label={`Collapse ${running.length} workflows`}
-          onCollapse={() => {
-            focus.focusTriggerAfterToggle();
-            onToggleStack();
-          }}
+          onCollapse={focus.onCollapseClick}
         />
       ) : null}
     </div>

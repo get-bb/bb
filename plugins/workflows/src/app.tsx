@@ -659,7 +659,9 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
   const bodyId = useId();
   const toggleId = useId();
   const shared = buildSharedWorkflowView(run);
-  const focus = useDisclosureFocusHandoff(expanded);
+  const focus = useDisclosureFocusHandoff(expanded, () =>
+    setExpanded((value) => !value),
+  );
 
   return (
     <section
@@ -679,10 +681,7 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           aria-expanded={expanded}
           aria-controls={bodyId}
           aria-label={`Workflow: ${run.name}`}
-          onClick={() => {
-            if (!expanded) focus.focusCollapseAfterToggle();
-            setExpanded((value) => !value);
-          }}
+          onClick={focus.onTriggerClick}
           className={cn(
             WORKFLOW_HEADER_BUTTON_CLASS,
             PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
@@ -729,10 +728,7 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
               buttonRef={focus.collapseRef}
               controlsId={bodyId}
               label={`Collapse workflow ${run.name}`}
-              onCollapse={() => {
-                focus.focusTriggerAfterToggle();
-                setExpanded(false);
-              }}
+              onCollapse={focus.onCollapseClick}
             />
           </div>
         </div>
@@ -782,7 +778,9 @@ function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
   const state = useActiveWorkflowRuns(threadId);
   const [stackExpanded, setStackExpanded] = useState(false);
   const listId = useId();
-  const focus = useDisclosureFocusHandoff(stackExpanded);
+  const focus = useDisclosureFocusHandoff(stackExpanded, () =>
+    setStackExpanded((value) => !value),
+  );
 
   if (stackExpanded && state.status === "ready" && state.runs.length < 2) {
     setStackExpanded(false);
@@ -797,10 +795,7 @@ function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
         <WorkflowStackFront
           runs={runs}
           buttonRef={focus.triggerRef}
-          onExpand={() => {
-            focus.focusCollapseAfterToggle();
-            setStackExpanded(true);
-          }}
+          onExpand={focus.onTriggerClick}
         />
       ) : null}
       <div hidden={collapsed} className="flex flex-col gap-1">
@@ -814,10 +809,7 @@ function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
             buttonRef={focus.collapseRef}
             controlsId={listId}
             label={`Collapse ${runs.length} workflows`}
-            onCollapse={() => {
-              focus.focusTriggerAfterToggle();
-              setStackExpanded(false);
-            }}
+            onCollapse={focus.onCollapseClick}
           />
         ) : null}
       </div>
