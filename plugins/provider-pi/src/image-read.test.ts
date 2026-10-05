@@ -1,8 +1,10 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { createPiDeltaTranslator } from "./delta-translation.js";
+
+const workspace = resolve("/workspace");
 
 const imageBlock = {
   type: "image",
@@ -33,27 +35,27 @@ describe("Pi native image read completion", () => {
   it.each([
     {
       name: "successful image read",
-      args: { path: "/workspace/asset.png" },
+      args: { path: join(workspace, "asset.png") },
       result: { content: [imageBlock] },
-      imagePath: "/workspace/asset.png",
+      imagePath: join(workspace, "asset.png"),
     },
     {
       name: "mixed text and image",
-      args: { path: "/workspace/asset.PNG" },
+      args: { path: join(workspace, "asset.PNG") },
       result: { content: [{ type: "text", text: "scaled" }, imageBlock] },
-      imagePath: "/workspace/asset.PNG",
+      imagePath: join(workspace, "asset.PNG"),
     },
     {
       name: "cwd-relative image path",
       args: { path: "shots/../shots/asset.jpg" },
       result: { content: [imageBlock] },
-      imagePath: "/workspace/shots/asset.jpg",
+      imagePath: join(workspace, "shots", "asset.jpg"),
     },
     {
       name: "at-prefixed image path",
       args: { path: "@shots/asset.webp" },
       result: { content: [imageBlock] },
-      imagePath: "/workspace/shots/asset.webp",
+      imagePath: join(workspace, "shots", "asset.webp"),
     },
     {
       name: "home-relative image path",
@@ -80,7 +82,7 @@ describe("Pi native image read completion", () => {
       {
         name: "image content without an image extension",
         result: { content: [imageBlock] },
-        args: { path: "/workspace/asset" },
+        args: { path: join(workspace, "asset") },
         opensAtStart: true,
       },
       {
@@ -129,14 +131,14 @@ describe("Pi native image read completion", () => {
       { name: "malformed content", result: { content: "image" } },
       { name: "null block", result: { content: [null] } },
     ].map((control) => ({
-      args: { path: "/workspace/asset.png" },
+      args: { path: join(workspace, "asset.png") },
       imagePath: null,
       ...control,
     })),
   ])("settles $name once with the correct item shape", (scenario) => {
     const toolName = "toolName" in scenario ? scenario.toolName : "read";
     const isError = "isError" in scenario ? scenario.isError : false;
-    const cwd = "cwd" in scenario ? scenario.cwd : "/workspace";
+    const cwd = "cwd" in scenario ? scenario.cwd : workspace;
     const translate = createHarness();
     translate({ type: "agent_start" });
     const startEvents = translate(
@@ -198,7 +200,7 @@ describe("Pi native image read completion", () => {
           args: { path: "asset.png" },
         },
         threadId,
-        `/workspace/${threadId}`,
+        join(workspace, threadId),
       );
     }
     for (const threadId of ["thread-b", "thread-a"]) {
@@ -211,12 +213,12 @@ describe("Pi native image read completion", () => {
           isError: false,
         },
         threadId,
-        `/workspace/${threadId}`,
+        join(workspace, threadId),
       ).filter((event) => event.type === "item/completed");
       expect(completed).toHaveLength(1);
       expect(completed[0]?.item).toMatchObject({
         type: "imageView",
-        path: `/workspace/${threadId}/asset.png`,
+        path: join(workspace, threadId, "asset.png"),
       });
     }
   });
