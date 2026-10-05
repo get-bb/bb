@@ -1,3 +1,4 @@
+import AiBrain01Icon from "@hugeicons/core-free-icons/AiBrain01Icon";
 import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import Archive03Icon from "@hugeicons/core-free-icons/Archive03Icon";
@@ -13,6 +14,7 @@ import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
 import Coffee02Icon from "@hugeicons/core-free-icons/Coffee02Icon";
+import ComputerCloudIcon from "@hugeicons/core-free-icons/ComputerCloudIcon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Database01Icon from "@hugeicons/core-free-icons/Database01Icon";
@@ -36,8 +38,8 @@ import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
 import SentIcon from "@hugeicons/core-free-icons/SentIcon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
-import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import SourceCodeIcon from "@hugeicons/core-free-icons/SourceCodeIcon";
+import UserIcon from "@hugeicons/core-free-icons/UserIcon";
 import UserSwitchIcon from "@hugeicons/core-free-icons/UserSwitchIcon";
 import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
@@ -45,6 +47,7 @@ import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
 import type { IconSvgElement } from "@hugeicons/react";
 
 const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
+  AiBrain01: AiBrain01Icon,
   AiContentGenerator01: AiContentGenerator01Icon,
   AlertCircle: AlertCircleIcon,
   AppWindow: BrowserIcon,
@@ -60,6 +63,7 @@ const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
   Cloud: CloudIcon,
   Code: SourceCodeIcon,
   Coffee: Coffee02Icon,
+  ComputerCloud: ComputerCloudIcon,
   Copy: Copy01Icon,
   Database: Database01Icon,
   EditFile: Edit04Icon,
@@ -84,8 +88,8 @@ const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
   Repeat: RepeatIcon,
   SlidersHorizontal: SlidersHorizontalIcon,
   SideChat: SentIcon,
-  Smartphone: SmartPhone01Icon,
   Terminal: ComputerTerminal01Icon,
+  UserRound: UserIcon,
   UserSwitch: UserSwitchIcon,
   Workflow: WorkflowCircle03Icon,
   Zap: ZapIcon,

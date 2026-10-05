@@ -12,6 +12,7 @@ import {
   UNLISTED_BUNDLED_PLUGINS,
   withBundledPlugins,
 } from "./bundled-marketplace.js";
+import { marketplacePluginIcon } from "./marketplace-icons.js";
 import { MARKETPLACE_V2_FIXTURE } from "./marketplace-v2.fixture.js";
 import type {
   MarketplaceV2Entry,
@@ -83,28 +84,18 @@ describe("withBundledPlugins", () => {
       "/assets/guide-abc.svg",
   });
 
-  it("renames ids that clash with community plugins and drops unlisted ones", () => {
+  it("keeps the community plugin on an id clash and drops unlisted plugins", () => {
     const bundledIds = merged.plugins
       .filter((entry) => "bundled" in entry.source)
       .map((entry) => entry.id);
-    expect(bundledIds).toEqual(["memory", "promptlibrary", "guide"]);
+    expect(bundledIds).toEqual(["memory", "guide"]);
     expect(
       merged.plugins.filter((entry) => entry.id === "prompt-library"),
-    ).toHaveLength(1);
-  });
-
-  it("skips a bundled plugin whose compact id also clashes", () => {
-    const community = {
-      ...MARKETPLACE_V2_FIXTURE,
-      plugins: [
-        ...MARKETPLACE_V2_FIXTURE.plugins,
-        { ...MARKETPLACE_V2_FIXTURE.plugins[0]!, id: "promptlibrary" },
-      ],
-    };
-    const ids = withBundledPlugins(community, BUNDLED_FIXTURE, {}).plugins.map(
-      (entry) => entry.id,
+    ).toEqual(
+      MARKETPLACE_V2_FIXTURE.plugins.filter(
+        (entry) => entry.id === "prompt-library",
+      ),
     );
-    expect(ids.filter((id) => id === "promptlibrary")).toHaveLength(1);
   });
 
   it("places the bundled shelf before the community collections", () => {
@@ -112,11 +103,7 @@ describe("withBundledPlugins", () => {
       "bb-official",
       "new-and-notable",
     ]);
-    expect(merged.collections[0]?.pluginIds).toEqual([
-      "memory",
-      "promptlibrary",
-      "guide",
-    ]);
+    expect(merged.collections[0]?.pluginIds).toEqual(["memory", "guide"]);
   });
 
   it("adds only missing categories that listed bundled plugins use", () => {
@@ -142,17 +129,38 @@ describe("withBundledPlugins", () => {
 
 describe("bundled plugin setup", () => {
   it("matches how the server registry installs and enables each plugin", () => {
-    for (const plugin of OFFICIAL_PLUGINS) {
-      expect(INSTALL_ON_REQUEST_BUNDLED_PLUGINS.has(plugin.name)).toBe(
-        !UNLISTED_BUNDLED_PLUGINS.has(plugin.name),
-      );
-    }
-    for (const plugin of BUILTIN_PLUGINS) {
-      if (UNLISTED_BUNDLED_PLUGINS.has(plugin.name)) continue;
-      expect(OFF_BY_DEFAULT_BUNDLED_PLUGINS.has(plugin.name)).toBe(
-        !plugin.defaultEnabled,
-      );
-    }
+    const listed = (plugins: readonly { name: string }[]) =>
+      plugins
+        .map((plugin) => plugin.name)
+        .filter((name) => !UNLISTED_BUNDLED_PLUGINS.has(name))
+        .sort();
+    expect([...INSTALL_ON_REQUEST_BUNDLED_PLUGINS].sort()).toEqual(
+      listed(OFFICIAL_PLUGINS),
+    );
+    expect([...OFF_BY_DEFAULT_BUNDLED_PLUGINS].sort()).toEqual(
+      listed(BUILTIN_PLUGINS.filter((plugin) => !plugin.defaultEnabled)),
+    );
+  });
+
+  it("has a web icon for every listed plugin", () => {
+    const declared = new Map(
+      bundledMarketplace().plugins.map((entry) => [entry.id, entry.icon]),
+    );
+    const listed = withBundledPlugins(
+      { ...MARKETPLACE_V2_FIXTURE, plugins: [], collections: [] },
+      bundledMarketplace(),
+    ).plugins;
+    const fallback = marketplacePluginIcon("Puzzle");
+    expect(
+      listed
+        .filter((entry) => {
+          const icon = declared.get(entry.id);
+          return typeof icon === "string"
+            ? icon !== "Puzzle" && marketplacePluginIcon(icon) === fallback
+            : typeof entry.icon === "string";
+        })
+        .map((entry) => entry.id),
+    ).toEqual([]);
   });
 
   it("uses the source name for install commands", () => {
