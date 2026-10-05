@@ -782,22 +782,21 @@ function StoragePage({
                           className="flex flex-col gap-2 px-4 py-2"
                         >
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
-                            <div className="flex w-full min-w-0 items-center gap-1.5 sm:w-auto sm:flex-1">
-                              <button
-                                className="line-clamp-2 min-w-0 text-left text-sm font-normal hover:underline sm:truncate"
+                            <div className="w-full min-w-0 sm:w-auto sm:flex-1">
+                              <ThreadTitle
                                 title={thread.title}
-                                onClick={() =>
+                                pills={[
+                                  ...(thread.hidden ? ["hidden"] : []),
+                                  ...(thread.running
+                                    ? ["running"]
+                                    : thread.archivedAt !== null
+                                      ? ["archived"]
+                                      : []),
+                                ]}
+                                onOpen={() =>
                                   navigate.toThread(thread.threadId)
                                 }
-                              >
-                                {thread.title}
-                              </button>
-                              {thread.hidden && <Pill>hidden</Pill>}
-                              {thread.running ? (
-                                <Pill>running</Pill>
-                              ) : thread.archivedAt !== null ? (
-                                <Pill>archived</Pill>
-                              ) : null}
+                              />
                             </div>
                             <span className="mr-auto shrink-0 text-xs tabular-nums text-muted-foreground sm:mr-0">
                               {bytes(thread.sizeBytes)}
@@ -1194,11 +1193,50 @@ function StorageSkeleton({ detail }: { detail: boolean }) {
   );
 }
 
-function Pill({ children }: { children: string }) {
+function Pill({
+  children,
+  className,
+}: {
+  children: string;
+  className?: string;
+}) {
   return (
-    <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground">
+    <span
+      className={cn(
+        "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground",
+        className,
+      )}
+    >
       {children}
     </span>
+  );
+}
+
+function ThreadTitle({
+  title,
+  pills,
+  onOpen,
+}: {
+  title: string;
+  pills: string[];
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      className="group min-w-0 break-words text-left text-sm font-normal"
+      title={title}
+      onClick={onOpen}
+    >
+      <span className="group-hover:underline">{title}</span>
+      {pills.map((pill) => (
+        <Pill
+          key={pill}
+          className="ml-1.5 inline-block whitespace-nowrap align-middle"
+        >
+          {pill}
+        </Pill>
+      ))}
+    </button>
   );
 }
 
@@ -1698,20 +1736,14 @@ function DeveloperStorage({
                             {entry.threads.length > 0 ? (
                               <div className="flex flex-wrap gap-x-3 gap-y-1">
                                 {entry.threads.map((thread) => (
-                                  <button
+                                  <ThreadTitle
                                     key={thread.threadId}
-                                    className="text-left text-sm hover:underline"
-                                    onClick={() =>
+                                    title={thread.title}
+                                    pills={thread.archived ? ["archived"] : []}
+                                    onOpen={() =>
                                       navigate.toThread(thread.threadId)
                                     }
-                                  >
-                                    {thread.title}
-                                    {thread.archived && (
-                                      <span className="ml-1.5 text-xs text-muted-foreground">
-                                        archived
-                                      </span>
-                                    )}
-                                  </button>
+                                  />
                                 ))}
                               </div>
                             ) : (
