@@ -210,7 +210,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Show live state for the thread on screen, not just a static button",
           "Sit in the same row as bb's own header controls",
         ],
-        apiSymbols: ["PluginThreadHeaderActionRegistration"],
+        apiSymbols: [
+          "PluginThreadHeaderActionRegistration",
+          "PluginThreadHeaderActionProps",
+        ],
         experimental: true,
       },
       {
@@ -225,7 +228,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginTimelineRendererRegistration",
           "PluginTimelineRendererProps",
-          "PluginThreadHeaderActionProps",
         ],
         experimental: true,
       },
@@ -239,7 +241,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Show charts, task lists, or previews inline in the conversation",
           "Open workspace files when someone clicks the embed",
         ],
-        apiSymbols: ["PluginMessageDirectiveRegistration"],
+        apiSymbols: [
+          "PluginMessageDirectiveRegistration",
+          "PluginMessageDirectiveProps",
+          "PluginMessageDirectiveOpenWorkspaceFile",
+        ],
         firstParty: [
           "Browser Automation",
           "Docs",
@@ -261,8 +267,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginMessageActionRegistration",
           "PluginMessageActionContext",
-          "PluginMessageDirectiveProps",
-          "PluginMessageDirectiveOpenWorkspaceFile",
         ],
         firstParty: ["Side chat"],
       },
@@ -335,7 +339,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Know which thread it was opened from",
           "Open from a [message action](message-actions), the side panel's + button, or plugin code",
         ],
-        apiSymbols: ["PluginThreadPanelActionRegistration"],
+        apiSymbols: [
+          "PluginThreadPanelActionRegistration",
+          "BbNavigate.openThreadPanel",
+          "PluginThreadPanelProps",
+          "PluginThreadPanelActionContext",
+        ],
         firstParty: ["Docs", "GitHub", "Side chat", "Tasks", "Workflows"],
       },
       {
@@ -352,9 +361,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginFileOpenerRegistration",
           "PluginFileOpenerProps",
           "PluginFileOpenerSource",
-          "BbNavigate.openThreadPanel",
-          "PluginThreadPanelProps",
-          "PluginThreadPanelActionContext",
         ],
         firstParty: ["Docs", "File Editor", "PDF preview"],
       },
@@ -598,7 +604,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Show shortcuts, pinned work, or recent activity before any thread exists",
           "Span the full width below the composer on desktop",
         ],
-        apiSymbols: ["PluginHomepageSectionRegistration"],
+        apiSymbols: [
+          "PluginHomepageSectionRegistration",
+          "PluginHomepageSectionProps",
+        ],
       },
       {
         id: "new-thread-panel",
@@ -609,7 +618,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Help people set up work while they write the first prompt",
           "Use the project selected in the prompt box",
         ],
-        apiSymbols: ["PluginNewThreadPanelActionRegistration"],
+        apiSymbols: [
+          "PluginNewThreadPanelActionRegistration",
+          "PluginNewThreadPanelProps",
+        ],
         experimental: true,
       },
     ],
@@ -638,8 +650,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSettingsState",
           "useSettings",
           "PluginSettingsValues",
-          "PluginHomepageSectionProps",
-          "PluginNewThreadPanelProps",
         ],
         firstParty: [
           "ACP providers",

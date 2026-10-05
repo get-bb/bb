@@ -1714,9 +1714,12 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             <RegionMark
               id="mention-provider"
               label="Plugin mention results in the @ typeahead"
-              className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+              className={cn(
+                "flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5",
+                mention.outlined && "relative z-[61]",
+              )}
               chip="outside-above"
-              showChip={!plus.outlined && !mention.outlined}
+              showChip={!plus.outlined}
             >
               <span aria-hidden>@release-notes</span>
             </RegionMark>
