@@ -119,7 +119,7 @@ describe("telemetry service", () => {
     });
   });
 
-  it("tags events with how bb was installed, never sending a fork's commit", async () => {
+  it("tags events with how bb was installed without sending any commits", async () => {
     const commit = "a".repeat(40);
     const installs = [
       appInstallFromServerConfig({}),
@@ -162,14 +162,16 @@ describe("telemetry service", () => {
     expect(properties[1]).toMatchObject({ install_kind: "npm" });
     expect(properties[2]).toMatchObject({
       install_kind: "source",
-      source_commit: commit,
       source_origin: "official",
     });
     expect(properties[3]).toMatchObject({
       install_kind: "source",
       source_origin: "fork",
     });
-    expect(properties[3]).not.toHaveProperty("source_commit");
+    for (const payload of properties) {
+      expect(payload).not.toHaveProperty("source_commit");
+      expect(JSON.stringify(payload)).not.toContain(commit);
+    }
   });
 
   it("reuses the persisted install id across restarts", async () => {

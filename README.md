@@ -88,9 +88,9 @@ Production runs (the desktop app, `npx bb-app`, and `pnpm start` checkouts) send
 anonymous usage telemetry (app starts, thread creation counts, user message
 counts, and plugin installs) to help us understand adoption. Each event carries
 the app version, how bb was installed (desktop, npm, or source checkout), and
-the OS release, CPU architecture, and Node version. A source checkout reports its commit only when its
-`origin` is `github.com/get-bb/bb`; forks report only that they are forks, never
-a remote URL or commit. Identification is a random per-install
+the OS release, CPU architecture, and Node version. Source checkouts report whether
+`origin` points to `github.com/get-bb/bb`, another repository, or is unavailable.
+Telemetry never includes Git commit hashes or remote URLs. Identification is a random per-install
 id stored in your data dir — no user, host, project, workspace, or message
 content is ever attached. Plugin install events name only public plugins
 (bundled plugins and `bb-community` marketplace entries); installs from a local

@@ -98,13 +98,7 @@ export function appInstallFromServerConfig(
 function appInstallProperties(install: AppInstall | null) {
   if (install === null) return { install_kind: "unmanaged" };
   if (install.kind !== "source") return { install_kind: install.kind };
-  return install.origin === "official"
-    ? {
-        install_kind: "source",
-        source_commit: install.commit,
-        source_origin: "official",
-      }
-    : { install_kind: "source", source_origin: install.origin };
+  return { install_kind: "source", source_origin: install.origin };
 }
 
 export function runWithTelemetryAppSurface<T>(
