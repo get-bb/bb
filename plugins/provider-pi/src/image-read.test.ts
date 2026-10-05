@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { createPiDeltaTranslator } from "./delta-translation.js";
@@ -17,10 +19,13 @@ function createHarness() {
     entropyPrefix: "image-read",
     textDeltaFlushMs: 0,
   });
-  return (event: unknown, threadId = "thread-a") =>
+  return (event: unknown, threadId = "thread-a", cwd?: string) =>
     assembler.assemble({
       threadId,
-      deltas: translator.translate(event, { threadId }),
+      deltas: translator.translate(event, {
+        threadId,
+        ...(cwd === undefined ? {} : { cwd }),
+      }),
     });
 }
 
@@ -30,17 +35,31 @@ describe("Pi native image read completion", () => {
       name: "successful image read",
       args: { path: "/workspace/asset.png" },
       result: { content: [imageBlock] },
-      toolName: "read",
-      isError: false,
       imagePath: "/workspace/asset.png",
     },
     {
-      name: "mixed text and image without an image extension",
-      args: { path: "/workspace/asset" },
+      name: "mixed text and image",
+      args: { path: "/workspace/asset.PNG" },
       result: { content: [{ type: "text", text: "scaled" }, imageBlock] },
-      toolName: "read",
-      isError: false,
-      imagePath: "/workspace/asset",
+      imagePath: "/workspace/asset.PNG",
+    },
+    {
+      name: "cwd-relative image path",
+      args: { path: "shots/../shots/asset.jpg" },
+      result: { content: [imageBlock] },
+      imagePath: "/workspace/shots/asset.jpg",
+    },
+    {
+      name: "at-prefixed image path",
+      args: { path: "@shots/asset.webp" },
+      result: { content: [imageBlock] },
+      imagePath: "/workspace/shots/asset.webp",
+    },
+    {
+      name: "home-relative image path",
+      args: { path: "~/asset.gif" },
+      result: { content: [imageBlock] },
+      imagePath: join(homedir(), "asset.gif"),
     },
     ...[
       {
@@ -56,22 +75,44 @@ describe("Pi native image read completion", () => {
         name: "unrelated image tool",
         result: { content: [imageBlock] },
         toolName: "inspect",
+        opensAtStart: true,
       },
-      { name: "missing path", result: { content: [imageBlock] }, args: {} },
+      {
+        name: "image content without an image extension",
+        result: { content: [imageBlock] },
+        args: { path: "/workspace/asset" },
+        opensAtStart: true,
+      },
+      {
+        name: "relative path without a session cwd",
+        result: { content: [imageBlock] },
+        args: { path: "asset.png" },
+        cwd: undefined,
+        opensAtStart: true,
+      },
+      {
+        name: "URL path",
+        result: { content: [imageBlock] },
+        args: { path: "file:///workspace/asset.png" },
+        opensAtStart: true,
+      },
+      {
+        name: "missing path",
+        result: { content: [imageBlock] },
+        args: {},
+        opensAtStart: true,
+      },
       {
         name: "non-string path",
         result: { content: [imageBlock] },
         args: { path: 123 },
-      },
-      {
-        name: "empty path",
-        result: { content: [imageBlock] },
-        args: { path: "" },
+        opensAtStart: true,
       },
       {
         name: "whitespace path",
         result: { content: [imageBlock] },
         args: { path: " " },
+        opensAtStart: true,
       },
       {
         name: "missing image data",
@@ -88,45 +129,59 @@ describe("Pi native image read completion", () => {
       { name: "malformed content", result: { content: "image" } },
       { name: "null block", result: { content: [null] } },
     ].map((control) => ({
-      toolName: "read",
       args: { path: "/workspace/asset.png" },
-      isError: false,
       imagePath: null,
       ...control,
     })),
-  ])("preserves the correct item shape for $name", (scenario) => {
+  ])("settles $name once with the correct item shape", (scenario) => {
+    const toolName = "toolName" in scenario ? scenario.toolName : "read";
+    const isError = "isError" in scenario ? scenario.isError : false;
+    const cwd = "cwd" in scenario ? scenario.cwd : "/workspace";
     const translate = createHarness();
     translate({ type: "agent_start" });
-    const started = translate({
-      type: "tool_execution_start",
-      toolCallId: "read-1",
-      toolName: scenario.toolName,
-      args: scenario.args,
-    }).find((event) => event.type === "item/started");
-    expect(started).toMatchObject({
-      item: { type: "toolCall", tool: scenario.toolName, status: "pending" },
-    });
-    const completed = translate({
-      type: "tool_execution_end",
-      toolCallId: "read-1",
-      toolName: scenario.toolName,
-      result: scenario.result,
-      isError: scenario.isError,
-    })
-      .filter((event) => event.type === "item/completed")
-      .at(-1);
-    expect(completed?.item.id).toBe(started?.item.id);
+    const startEvents = translate(
+      {
+        type: "tool_execution_start",
+        toolCallId: "read-1",
+        toolName,
+        args: scenario.args,
+      },
+      "thread-a",
+      cwd,
+    );
+    const endEvents = translate(
+      {
+        type: "tool_execution_end",
+        toolCallId: "read-1",
+        toolName,
+        result: scenario.result,
+        isError,
+      },
+      "thread-a",
+      cwd,
+    );
+    const events = [...startEvents, ...endEvents];
+    const started = events.filter((event) => event.type === "item/started");
+    const completed = events.filter((event) => event.type === "item/completed");
+    expect(started).toHaveLength(1);
+    expect(completed).toHaveLength(1);
+    expect(startEvents.some((event) => event.type === "item/started")).toBe(
+      "opensAtStart" in scenario,
+    );
+    const id = started[0]?.item.id;
     if (scenario.imagePath !== null) {
-      expect(completed?.item).toEqual({
+      expect(started[0]?.item).toEqual({
         type: "imageView",
-        id: started?.item.id,
+        id,
         path: scenario.imagePath,
       });
+      expect(completed[0]?.item).toEqual(started[0]?.item);
     } else {
-      expect(completed?.item).toMatchObject({
+      expect(completed[0]?.item).toMatchObject({
         type: "toolCall",
-        tool: scenario.toolName,
-        status: scenario.isError ? "failed" : "completed",
+        id,
+        tool: toolName,
+        status: isError ? "failed" : "completed",
       });
     }
   });
@@ -140,9 +195,10 @@ describe("Pi native image read completion", () => {
           type: "tool_execution_start",
           toolCallId: "shared-read",
           toolName: "read",
-          args: { path: `/workspace/${threadId}.png` },
+          args: { path: "asset.png" },
         },
         threadId,
+        `/workspace/${threadId}`,
       );
     }
     for (const threadId of ["thread-b", "thread-a"]) {
@@ -155,12 +211,12 @@ describe("Pi native image read completion", () => {
           isError: false,
         },
         threadId,
-      )
-        .filter((event) => event.type === "item/completed")
-        .at(-1);
-      expect(completed?.item).toMatchObject({
+        `/workspace/${threadId}`,
+      ).filter((event) => event.type === "item/completed");
+      expect(completed).toHaveLength(1);
+      expect(completed[0]?.item).toMatchObject({
         type: "imageView",
-        path: `/workspace/${threadId}.png`,
+        path: `/workspace/${threadId}/asset.png`,
       });
     }
   });
@@ -174,10 +230,9 @@ describe("Pi native image read completion", () => {
       toolName: "read",
       result: { content: [imageBlock] },
       isError: false,
-    })
-      .filter((event) => event.type === "item/completed")
-      .at(-1);
-    expect(completed?.item).toMatchObject({
+    }).filter((event) => event.type === "item/completed");
+    expect(completed).toHaveLength(1);
+    expect(completed[0]?.item).toMatchObject({
       type: "toolCall",
       tool: "read",
       status: "completed",
