@@ -24,6 +24,7 @@ export interface MarketplaceShelf {
   description?: string;
   kind: "collection" | "category" | "uncategorized";
   entries: MarketplaceV2Entry[];
+  totalCount: number;
 }
 
 export interface MarketplaceCategoryOption {
@@ -59,6 +60,7 @@ export function marketplaceShelves(
             label: collection.displayName,
             kind: "collection" as const,
             entries: collectionEntries,
+            totalCount: collectionEntries.length,
           },
         ];
   });
@@ -67,15 +69,15 @@ export function marketplaceShelves(
       ? collectionShelves.flatMap((shelf) => shelf.entries)
       : [],
   );
-  const categorizedEntries = entries.filter(
-    (entry) => !collectionMembers.has(entry),
-  );
   const categoryIds = new Set(
     manifest.categories.map((category) => category.id),
   );
   const categoryShelves = manifest.categories.flatMap((category) => {
-    const categoryEntries = categorizedEntries.filter(
+    const allCategoryEntries = entries.filter(
       (entry) => entry.category === category.id,
+    );
+    const categoryEntries = allCategoryEntries.filter(
+      (entry) => !collectionMembers.has(entry),
     );
     return categoryEntries.length === 0
       ? []
@@ -86,11 +88,15 @@ export function marketplaceShelves(
             description: category.description,
             kind: "category" as const,
             entries: categoryEntries,
+            totalCount: allCategoryEntries.length,
           },
         ];
   });
-  const uncategorizedEntries = categorizedEntries.filter(
+  const allUncategorizedEntries = entries.filter(
     (entry) => entry.category === undefined || !categoryIds.has(entry.category),
+  );
+  const uncategorizedEntries = allUncategorizedEntries.filter(
+    (entry) => !collectionMembers.has(entry),
   );
   const uncategorizedShelves: MarketplaceShelf[] =
     uncategorizedEntries.length === 0
@@ -101,6 +107,7 @@ export function marketplaceShelves(
             label: "More plugins",
             kind: "uncategorized",
             entries: uncategorizedEntries,
+            totalCount: allUncategorizedEntries.length,
           },
         ];
   return [...collectionShelves, ...categoryShelves, ...uncategorizedShelves];

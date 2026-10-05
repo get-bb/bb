@@ -370,7 +370,7 @@ function Shelf({
         <div>
           <h2>
             {shelf.label}{"\u00a0"}
-            <span>{shelf.entries.length}</span>
+            <span>{shelf.totalCount}</span>
           </h2>
           {description === undefined ? null : <p>{description}</p>}
         </div>

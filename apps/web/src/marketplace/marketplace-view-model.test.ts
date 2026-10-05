@@ -47,6 +47,9 @@ describe("public marketplace view model", () => {
       ["Code & Reviews", ["review-notes"]],
       ["More plugins", ["orphan-tool"]],
     ]);
+    expect(
+      shelves.find((shelf) => shelf.label === "Code & Reviews")?.totalCount,
+    ).toBe(2);
   });
 
   it("sorts undated and uncounted entries last", () => {
