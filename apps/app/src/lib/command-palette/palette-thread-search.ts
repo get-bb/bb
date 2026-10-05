@@ -179,14 +179,23 @@ function orderArchivedRecents(
   return ordered;
 }
 
-function localTitleRows(
+function projectNameMatches(name: string, query: string): boolean {
+  const needle = query.toLowerCase();
+  const haystack = name.toLowerCase();
+  return (
+    haystack.startsWith(needle) ||
+    haystack.split(/[^\p{L}\p{N}]+/u).some((word) => word.startsWith(needle))
+  );
+}
+
+function localMatchRows(
   threads: readonly ThreadListEntry[],
   query: string,
   visitRankOf: (thread: ThreadListEntry) => number,
   projectNamesById: ReadonlyMap<string, string>,
   now: number,
 ): PaletteThreadSearchRow[] {
-  return fuzzyMatchText({
+  const titleRows = fuzzyMatchText({
     items: threads,
     query,
     getText: getThreadDisplayTitle,
@@ -198,11 +207,24 @@ function localTitleRows(
         visitRankOf(left.item) - visitRankOf(right.item) ||
         right.item.updatedAt - left.item.updatedAt,
     )
-    .slice(0, PALETTE_RESULT_LIMIT)
     .map((match) => ({
       ...serverRow(match.item, [], "active", projectNamesById, now),
       highlightRanges: positionsToRanges(match.positions),
     }));
+  const titleMatchIds = new Set(titleRows.map((row) => row.threadId));
+  const projectRows = threads
+    .filter(
+      (thread) =>
+        !titleMatchIds.has(thread.id) &&
+        projectNameMatches(projectNamesById.get(thread.projectId) ?? "", query),
+    )
+    .sort(
+      (left, right) =>
+        visitRankOf(left) - visitRankOf(right) ||
+        right.updatedAt - left.updatedAt,
+    )
+    .map((thread) => serverRow(thread, [], "active", projectNamesById, now));
+  return [...titleRows, ...projectRows].slice(0, PALETTE_RESULT_LIMIT);
 }
 
 function mergeActiveRows(
@@ -301,7 +323,7 @@ export function buildPaletteThreadSearchRows({
     }
     if (lifecycle === "archived") return serverRowsFor(lifecycle);
     return mergeActiveRows(
-      localTitleRows(threads, trimmedQuery, visitRankOf, projectNamesById, now),
+      localMatchRows(threads, trimmedQuery, visitRankOf, projectNamesById, now),
       serverRowsFor(lifecycle),
     );
   };

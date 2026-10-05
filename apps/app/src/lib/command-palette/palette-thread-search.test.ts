@@ -404,10 +404,30 @@ describe("buildPaletteThreadSearchRows", () => {
       });
     });
 
-    it("does not match project names locally", () => {
+    it("lists a project's threads after title matches when a word in its name starts with the query", () => {
+      const result = build({
+        query: "pal",
+        projectNamesById: new Map([
+          ["project-1", "Palette project"],
+          ["project-2", "Other"],
+        ]),
+        recentThreads: [
+          titled("in-project", "Unrelated"),
+          titled("title-hit", "Pale ale"),
+          makeThread("elsewhere", { projectId: "project-2", title: "Nothing" }),
+        ],
+      });
+      expect(result.rows.map((row) => row.threadId)).toEqual([
+        "title-hit",
+        "in-project",
+      ]);
+      expect(result.rows[1]?.highlightRanges).toEqual([]);
+    });
+
+    it("does not match a project on letters inside a word", () => {
       expect(
         build({
-          query: "palette",
+          query: "lette",
           recentThreads: [titled("a", "Unrelated")],
         }).rows,
       ).toEqual([]);
