@@ -348,8 +348,8 @@ describe("app keybindings", () => {
         },
       ]);
       for (const [command, key] of [
-        ["thread.back", "["],
-        ["thread.forward", "]"],
+        ["history.back", "["],
+        ["history.forward", "]"],
       ] as const) {
         expect(
           assignedDefaultKeybindings
@@ -631,8 +631,8 @@ describe("app keybindings", () => {
         "thread.new",
         "thread.previous",
         "thread.next",
-        "thread.back",
-        "thread.forward",
+        "history.back",
+        "history.forward",
         ...THREAD_JUMP_APP_COMMAND_IDS,
         ...PANE_FOCUS_APP_COMMAND_IDS,
         "panel.reopenClosedTab",
