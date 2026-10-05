@@ -68,6 +68,5 @@ Run `bb guide <chapter>` for command details:
                        sidebar preferences, host files, voice
   plugins              Installing plugins, plugin marketplaces, bundled
                        plugins, and their contributed bb commands
-  automations          Scheduling and editing recurring or one-shot work
   json                 The --json contract: output shapes and the error envelope
   commands [group]     Every core command on one page; add a group for options

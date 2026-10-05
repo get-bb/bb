@@ -33,7 +33,7 @@ bb status --json
 | Settings, keyboard shortcuts, sidebar preferences, themes, files, voice | `bb guide customization` |
 | `AGENTS.md` and skills | `bb guide agent-configuration` |
 | Plugins and marketplaces | `bb guide plugins` |
-| Scheduled work | `bb guide automations` |
+| Scheduled work | the `automations` skill |
 | Built-in browser tabs | `bb guide browser` |
 | `--json` output shapes and the error envelope | `bb guide json` |
 | Writing theme CSS | references/theming.md |
