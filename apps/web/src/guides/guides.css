@@ -1,6 +1,3 @@
-/* Comparison pages and guides — loads after blog.css and adds what long-form
-   reference pages need: tables, linked headings, inline links, and clips. */
-
 .guide-body a {
   color: var(--ink);
   text-decoration: underline;

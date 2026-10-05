@@ -516,8 +516,7 @@ const BB_VS_SUPERSET: Comparison = {
               worktree, waits, and applies the fixes. Codex shows up as its own
               thread, so you can read the exact prompt Claude sent, watch it
               work, and message it mid-run. Any other pair works the same way,
-              like Cursor and OpenCode.{" "}
-              <a href="/guides/claude-code-and-codex-together">See how</a>.
+              like Cursor and OpenCode.
             </p>
           ),
         },
@@ -573,11 +572,7 @@ const BB_VS_SUPERSET: Comparison = {
               through TestFlight (Apple’s beta testing app) and in alpha on
               Android, or open bb in any browser through bb Connect, bb’s free
               remote access. Superset’s iPhone app needs Pro and iOS 26, its
-              Android app is a waitlist, and it has no browser access.{" "}
-              <a href="/guides/steer-coding-agents-from-your-phone">
-                Set it up
-              </a>
-              .
+              Android app is a waitlist, and it has no browser access.
             </p>
           ),
         },
