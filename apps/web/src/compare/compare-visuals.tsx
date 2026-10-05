@@ -50,20 +50,11 @@ function ThreadPill({
   );
 }
 
-function PaneHead({
-  icon,
-  title,
-  child,
-}: {
-  icon: ReactNode;
-  title: string;
-  child: boolean;
-}) {
+function PaneHead({ icon, title }: { icon: ReactNode; title: string }) {
   return (
     <div className="cmp-pane-head">
       {icon}
       <span className="cmp-pane-title">{title}</span>
-      {child ? <span className="cmp-pane-tag">child</span> : null}
     </div>
   );
 }
@@ -153,7 +144,6 @@ export function AgentSplit() {
             <PaneHead
               icon={<ClaudeIcon className="cmp-pane-ic" />}
               title="Add rate limiting to uploads"
-              child={false}
             />
             <ol className="cmp-feed">
               <li className="cmp-user" style={{ animationDelay: "2.3s" }}>
@@ -258,7 +248,6 @@ export function AgentSplit() {
               <PaneHead
                 icon={<OpenAiIcon className="cmp-pane-ic" />}
                 title="Review the rate limiter"
-                child
               />
               <ol className="cmp-feed">
                 <li className="cmp-user" style={{ animationDelay: "4s" }}>

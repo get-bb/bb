@@ -1126,15 +1126,6 @@
   color: var(--heading-sub);
 }
 
-.cmp-pane-tag {
-  padding: 0 7px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11px;
-  line-height: 18px;
-  color: var(--subtle);
-}
-
 .cmp-pane-child .cmp-feed {
   background: color-mix(in oklab, var(--bg) 70%, var(--surface));
 }
