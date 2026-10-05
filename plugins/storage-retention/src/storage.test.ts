@@ -971,6 +971,7 @@ it.skipIf(process.platform === "win32")(
       revived: path.join(fakeHome, "revived", "bb"),
       kept: path.join(fakeHome, "kept", "bb"),
       spare: path.join(fakeHome, "spare", "bb"),
+      extra: path.join(fakeHome, "extra", "bb"),
     };
     await fs.mkdir(checkouts.gone, { recursive: true });
     await fs.mkdir(checkouts.kept, { recursive: true });
@@ -1061,6 +1062,7 @@ it.skipIf(process.platform === "win32")(
           .map((entry) => [entry.name, entry.sourcePathState])
           .sort(),
       ).toEqual([
+        ["extra", "missing"],
         ["gone", "missing"],
         ["kept", "exists"],
         ["revived", "missing"],
@@ -1072,18 +1074,29 @@ it.skipIf(process.platform === "win32")(
           names: ["kept"],
         }),
       ).rejects.toThrow("Not a development instance with a missing checkout");
-      expect(
-        await host.harness.callRpc("removeMissingDevInstances", {
-          hostId: "host_test",
-          names: ["spare"],
-        }),
-      ).toEqual({
+      const single = (name: string) => ({
         removedCount: 1,
-        removedBytes: scanned.entries.find((entry) => entry.name === "spare")!
+        removedBytes: scanned.entries.find((entry) => entry.name === name)!
           .sizeBytes,
         skippedCount: 0,
         stoppedProcessCount: 0,
       });
+      expect(
+        await Promise.all(
+          ["spare", "extra"].map((name) =>
+            host.harness.callRpc("removeMissingDevInstances", {
+              hostId: "host_test",
+              names: [name],
+            }),
+          ),
+        ),
+      ).toEqual([single("spare"), single("extra")]);
+      expect(
+        hostStorageResponseSchema
+          .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
+          .report!.developerStorage!.entries.map((entry) => entry.name)
+          .sort(),
+      ).toEqual(["gone", "kept", "revived"]);
       expect(goneServer.child.exitCode).toBeNull();
       await expect
         .poll(async () => (await fs.readdir(rootPath)).sort())

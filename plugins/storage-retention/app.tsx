@@ -33,6 +33,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { storageRpc, State, Policy, Preview } from "./src/contract.js";
 import {
@@ -166,9 +172,7 @@ function StoragePage({
   const busy =
     actionBusy ||
     hosts.some((host) => host.largeFileCleanup.state === "running");
-  const [threadClears, setThreadClears] = useState<
-    Record<string, { state: "clearing" } | { state: "failed"; message: string }>
-  >({});
+  const [rowActions, setRowActions] = useState<Record<string, RowAction>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
     string | null
@@ -215,24 +219,21 @@ function StoragePage({
       "retention",
     );
   }
-  async function clearThread(threadId: string) {
-    if (threadClears[threadId]?.state === "clearing") return;
-    setThreadClears((current) => ({
-      ...current,
-      [threadId]: { state: "clearing" },
-    }));
+  async function runRowAction(key: string, work: () => Promise<unknown>) {
+    if (rowActions[key]?.state === "running") return;
+    setRowActions((current) => ({ ...current, [key]: { state: "running" } }));
     try {
-      await rpc.call("clearThread", { threadId });
+      await work();
       await refresh();
-      setThreadClears((current) => {
+      setRowActions((current) => {
         const next = { ...current };
-        delete next[threadId];
+        delete next[key];
         return next;
       });
     } catch (error) {
-      setThreadClears((current) => ({
+      setRowActions((current) => ({
         ...current,
-        [threadId]: { state: "failed", message: message(error) },
+        [key]: { state: "failed", message: message(error) },
       }));
     }
   }
@@ -253,38 +254,27 @@ function StoragePage({
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
-  const clearingThreads = Object.values(threadClears).some(
-    (clear) => clear.state === "clearing",
+  const rowActionRunning = Object.values(rowActions).some(
+    (action) => action.state === "running",
   );
-  const locked = busy || scanning || offline || clearingThreads;
+  const locked = busy || scanning || offline || rowActionRunning;
+  const rowDisabled = busy || scanning || offline || cleanup !== null;
   const changed =
     state !== null &&
     policy !== null &&
     (policy.archiveAfterDays !== state.policy.archiveAfterDays ||
       policy.deleteAfterDays !== state.policy.deleteAfterDays);
-  function devInstancesCleanup(target: string, selection: DevSelection) {
+  function devInstancesCleanup(target: string, count: number, size: number) {
     return {
-      key:
-        selection.kind === "all"
-          ? "dev-instances"
-          : `dev-instance:${selection.name}`,
-      ...(selection.kind === "all"
-        ? {
-            action: "Remove instances",
-            title: `Remove ${plural(selection.count, "development instance")} (${bytes(selection.bytes)})?`,
-            detail:
-              "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
-          }
-        : {
-            action: "Remove instance",
-            title: `Remove development instance “${selection.label}” (${bytes(selection.bytes)})?`,
-            detail:
-              "Delete this development instance’s database, logs, and thread files. Its source checkout no longer exists. Development servers still running from it are stopped first. This can’t be undone.",
-          }),
+      key: "dev-instances",
+      action: "Remove instances",
+      title: `Remove ${plural(count, "development instance")} (${bytes(size)})?`,
+      detail:
+        "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
       run: async () => {
         const result = await rpc.call("removeMissingDevInstances", {
           hostId: target,
-          names: selection.kind === "all" ? null : [selection.name],
+          names: null,
         });
         return `Removed ${plural(result.removedCount, "development instance")} · ${bytes(result.removedBytes)} freed${result.stoppedProcessCount ? ` · stopped ${plural(result.stoppedProcessCount, "process", "processes")}` : ""}${result.skippedCount ? ` · ${result.skippedCount.toLocaleString()} skipped` : ""}`;
       },
@@ -752,11 +742,11 @@ function StoragePage({
                         }
                         onAction={() =>
                           setCleanup(
-                            devInstancesCleanup(report.hostId, {
-                              kind: "all",
-                              count: missingDev.length,
-                              bytes: missingDevBytes,
-                            }),
+                            devInstancesCleanup(
+                              report.hostId,
+                              missingDev.length,
+                              missingDevBytes,
+                            ),
                           )
                         }
                       >
@@ -781,7 +771,7 @@ function StoragePage({
                       ? report.largestThreads
                       : report.largestThreads.slice(0, PREVIEW_COUNT)
                     ).map((thread) => {
-                      const clear = threadClears[thread.threadId];
+                      const clear = rowActions[thread.threadId];
                       return (
                         <div
                           key={thread.threadId}
@@ -800,74 +790,28 @@ function StoragePage({
                               ]}
                               onOpen={() => navigate.toThread(thread.threadId)}
                             />
-                            {clear?.state === "clearing" && (
-                              <p
-                                role="status"
-                                className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                              >
-                                <Icon
-                                  name="Spinner"
-                                  className="size-3 animate-spin"
-                                />
-                                Clearing files…
-                              </p>
-                            )}
-                            {clear?.state === "failed" && (
-                              <p
-                                role="alert"
-                                className="text-xs text-destructive"
-                              >
-                                {clear.message}
-                              </p>
-                            )}
+                            <RowActionStatus
+                              action={clear}
+                              runningLabel="Clearing files…"
+                            />
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <span className="text-xs tabular-nums text-muted-foreground">
                               {bytes(thread.sizeBytes)}
                             </span>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="-my-1.5 size-7"
-                                  aria-label={`Actions for ${thread.title}`}
-                                >
-                                  <Icon
-                                    name="MoreHorizontal"
-                                    className="size-4"
-                                  />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onSelect={() =>
-                                    navigate.toThread(thread.threadId)
-                                  }
-                                >
-                                  Open thread
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  disabled={
-                                    busy ||
-                                    scanning ||
-                                    offline ||
-                                    thread.running ||
-                                    cleanup !== null ||
-                                    clear?.state === "clearing"
-                                  }
-                                  onSelect={() =>
-                                    void clearThread(thread.threadId)
-                                  }
-                                >
-                                  {clear?.state === "failed"
-                                    ? "Retry clearing files"
-                                    : "Clear files"}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <RowActionButton
+                              label="Clear files"
+                              target={thread.title}
+                              action={clear}
+                              disabled={rowDisabled || thread.running}
+                              onClick={() =>
+                                void runRowAction(thread.threadId, () =>
+                                  rpc.call("clearThread", {
+                                    threadId: thread.threadId,
+                                  }),
+                                )
+                              }
+                            />
                           </div>
                         </div>
                       );
@@ -890,11 +834,15 @@ function StoragePage({
                 {report.developerStorage && (
                   <DeveloperStorage
                     storage={report.developerStorage}
-                    removeDisabled={locked || cleanup !== null}
-                    confirmationKey={cleanup?.key ?? null}
-                    confirmation={cleanupConfirmation}
-                    onRemove={(selection) =>
-                      setCleanup(devInstancesCleanup(report.hostId, selection))
+                    rowDisabled={rowDisabled}
+                    rowActions={rowActions}
+                    onRemove={(name) =>
+                      void runRowAction(`dev:${name}`, () =>
+                        rpc.call("removeMissingDevInstances", {
+                          hostId: report.hostId,
+                          names: [name],
+                        }),
+                      )
                     }
                   />
                 )}
@@ -1568,9 +1516,64 @@ function ProjectWorktrees({
   );
 }
 
-type DevSelection =
-  | { kind: "all"; count: number; bytes: number }
-  | { kind: "one"; name: string; label: string; bytes: number };
+type RowAction = { state: "running" } | { state: "failed"; message: string };
+
+function RowActionButton({
+  label,
+  target,
+  action,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  target: string;
+  action: RowAction | undefined;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const running = action?.state === "running";
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="-my-1.5 size-7 text-muted-foreground hover:text-destructive"
+            aria-label={`${label}: ${target}`}
+            disabled={disabled || running}
+            onClick={onClick}
+          >
+            <Icon
+              name={running ? "Spinner" : "Trash2"}
+              className={cn("size-4", running && "animate-spin")}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function RowActionStatus({
+  action,
+  runningLabel,
+}: {
+  action: RowAction | undefined;
+  runningLabel: string;
+}) {
+  if (action === undefined) return null;
+  return action.state === "running" ? (
+    <p role="status" className="text-xs text-muted-foreground">
+      {runningLabel}
+    </p>
+  ) : (
+    <p role="alert" className="text-xs text-destructive">
+      {action.message}
+    </p>
+  );
+}
 
 type DeveloperEntry = NonNullable<
   NonNullable<HostReport["report"]>["developerStorage"]
@@ -1617,16 +1620,14 @@ function ShowMoreToggle({
 
 function DeveloperStorage({
   storage,
-  removeDisabled,
-  confirmationKey,
-  confirmation,
+  rowDisabled,
+  rowActions,
   onRemove,
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
-  removeDisabled: boolean;
-  confirmationKey: string | null;
-  confirmation: ReactNode;
-  onRemove: (selection: DevSelection) => void;
+  rowDisabled: boolean;
+  rowActions: Record<string, RowAction>;
+  onRemove: (name: string) => void;
 }) {
   const navigate = useBbNavigate();
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
@@ -1746,9 +1747,9 @@ function DeveloperStorage({
                   ).map((entry) => {
                     const label =
                       entry.threads[0]?.title ?? developerEntryLabel(entry);
-                    const removeKey = `dev-instance:${entry.name}`;
+                    const removal = rowActions[`dev:${entry.name}`];
                     return (
-                      <div key={entry.name} className="space-y-3">
+                      <div key={entry.name}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1 space-y-1">
                             {entry.threads.length > 0 ? (
@@ -1778,11 +1779,26 @@ function DeveloperStorage({
                                   Could not check whether the checkout exists
                                 </p>
                               )}
+                            <RowActionStatus
+                              action={removal}
+                              runningLabel="Removing instance…"
+                            />
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <span className="text-xs font-normal tabular-nums text-muted-foreground">
                               {bytes(entry.sizeBytes)}
                             </span>
+                            {entry.sourcePathState === "missing" ? (
+                              <RowActionButton
+                                label="Remove instance"
+                                target={label}
+                                action={removal}
+                                disabled={rowDisabled}
+                                onClick={() => onRemove(entry.name)}
+                              />
+                            ) : (
+                              <span aria-hidden className="size-7" />
+                            )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -1836,30 +1852,10 @@ function DeveloperStorage({
                                 >
                                   Copy dev data path
                                 </DropdownMenuItem>
-                                {entry.sourcePathState === "missing" && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      disabled={removeDisabled}
-                                      onSelect={() =>
-                                        onRemove({
-                                          kind: "one",
-                                          name: entry.name,
-                                          label,
-                                          bytes: entry.sizeBytes,
-                                        })
-                                      }
-                                    >
-                                      Remove instance…
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
                         </div>
-                        {confirmationKey === removeKey && confirmation}
                       </div>
                     );
                   })}

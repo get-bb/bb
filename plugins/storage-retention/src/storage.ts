@@ -61,9 +61,9 @@ export function createStorage(bb: BbPluginApi) {
   });
   const lifecycle = new AbortController();
   const busy = new Set<string>();
-  const threadClears = new Map<
+  const entryClears = new Map<
     string,
-    { threads: Set<string>; release: () => void }
+    { keys: Set<string>; release: () => void }
   >();
   const scans = new Map<string, HostStorageScanStatus>();
   const largeFileCleanups = new Map<string, LargeFileCleanupStatus>();
@@ -112,21 +112,25 @@ export function createStorage(bb: BbPluginApi) {
       busy.delete(hostId);
     };
   }
-  function acquireThreadClear(hostId: string, threadId: string) {
-    let group = threadClears.get(hostId);
-    if (group === undefined) {
-      group = { threads: new Set(), release: acquire(hostId) };
-      threadClears.set(hostId, group);
-    }
-    if (group.threads.has(threadId))
-      throw new Error("This thread’s files are already being cleared");
-    group.threads.add(threadId);
-    const active = group;
+  function acquireEntries(
+    hostId: string,
+    keys: string[],
+    duplicateMessage: string,
+  ) {
+    const existing = entryClears.get(hostId);
+    if (existing && keys.some((key) => existing.keys.has(key)))
+      throw new Error(duplicateMessage);
+    const group = existing ?? {
+      keys: new Set<string>(),
+      release: acquire(hostId),
+    };
+    entryClears.set(hostId, group);
+    for (const key of keys) group.keys.add(key);
     return () => {
-      active.threads.delete(threadId);
-      if (active.threads.size === 0) {
-        threadClears.delete(hostId);
-        active.release();
+      for (const key of keys) group.keys.delete(key);
+      if (group.keys.size === 0) {
+        entryClears.delete(hostId);
+        group.release();
       }
     };
   }
@@ -695,11 +699,17 @@ export function createStorage(bb: BbPluginApi) {
     names: string[] | null;
   }) {
     await requireHost(hostId, true);
-    const release = acquire(hostId);
+    const release =
+      names === null
+        ? acquire(hostId)
+        : acquireEntries(
+            hostId,
+            names.map((name) => `dev:${name}`),
+            "This development instance is already being removed",
+          );
     try {
-      const cached = read(hostId);
-      const developer = cached?.developerStorage;
-      if (!cached || !developer)
+      const developer = read(hostId)?.developerStorage;
+      if (!developer)
         throw new Error(
           "Scan the machine before removing development instances",
         );
@@ -744,11 +754,18 @@ export function createStorage(bb: BbPluginApi) {
         const bytes = developer.entries
           .filter((entry) => removed.has(entry.name))
           .reduce((total, entry) => total + entry.sizeBytes, 0);
-        developer.entries = developer.entries.filter(
-          (entry) => !removed.has(entry.name),
-        );
-        developer.sizeBytes = Math.max(0, developer.sizeBytes - bytes);
-        store(hostId, cached);
+        const current = read(hostId);
+        if (current?.developerStorage) {
+          current.developerStorage.entries =
+            current.developerStorage.entries.filter(
+              (entry) => !removed.has(entry.name),
+            );
+          current.developerStorage.sizeBytes = Math.max(
+            0,
+            current.developerStorage.sizeBytes - bytes,
+          );
+          store(hostId, current);
+        }
         removedCount += removed.size;
         removedBytes += bytes;
         stoppedProcessCount += result.stoppedProcessCount;
@@ -867,7 +884,11 @@ export function createStorage(bb: BbPluginApi) {
       hostId = match.host_id;
     }
     await requireHost(hostId, true);
-    const release = acquireThreadClear(hostId, threadId);
+    const release = acquireEntries(
+      hostId,
+      [threadId],
+      "This thread’s files are already being cleared",
+    );
     try {
       const rootPath = await storageRoot(hostId);
       await worker.call(
