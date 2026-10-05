@@ -17,7 +17,7 @@ matching CLI command is `bb storage clear-archived-files --machine HOST_ID --yes
 
 The development section offers Remove instances for `~/.bb-dev` entries whose
 source checkout no longer exists. The host re-verifies each checkout is missing,
-stops processes whose command line runs from it, then removes the entry. The
+stops processes whose working directory is inside it, then removes the entry. The
 matching CLI command is `bb storage remove-dev-instances --machine HOST_ID --yes`.
 
 Large-file cleanup from the page starts a background job so slow folder walks

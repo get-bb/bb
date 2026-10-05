@@ -70,11 +70,21 @@ async function resolveSweepDirectory(
   directory: string,
 ): Promise<string | null> {
   const resolved = resolve(directory);
-  let parent = dirname(resolved);
-  try {
-    parent = await realpath(parent);
-  } catch {}
-  const canonical = join(parent, basename(resolved));
+  let ancestor = dirname(resolved);
+  const missing = [basename(resolved)];
+  for (;;) {
+    try {
+      ancestor = await realpath(ancestor);
+      break;
+    } catch {}
+    const parent = dirname(ancestor);
+    if (parent === ancestor) {
+      break;
+    }
+    missing.unshift(basename(ancestor));
+    ancestor = parent;
+  }
+  const canonical = join(ancestor, ...missing);
   try {
     if ((await lstat(canonical)).isSymbolicLink()) {
       return null;
