@@ -99,7 +99,7 @@ export const preferenceDefinitions = {
   groupByReadStatus: definePreference(
     z.boolean(),
     false,
-    "List threads that show an unread dot above the rest, keeping the selected sort within each group. Worktree rows move up when a thread in them shows the dot. The open thread keeps its place until another thread is opened.",
+    "List threads that show an unread dot above the rest, keeping the selected sort within each group. The open thread keeps its place until another thread is opened.",
     null,
   ),
   chronologicalSort: definePreference(

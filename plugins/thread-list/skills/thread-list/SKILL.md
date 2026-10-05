@@ -50,17 +50,12 @@ Organize → Rows → Provider icons toggles the icon before each thread title.
 `bb thread-list prefs set showProviderIcons true` to show them. Unknown
 provider ids have no icon.
 
-Organize → Groups → By read status lists unread threads above read threads at
-each level of the list, keeping the selected sort within each group.
-`groupByReadStatus` defaults to `false`; use
-`bb thread-list prefs set groupByReadStatus true` to turn it on. A thread counts
-as unread when its row shows the unread dot; worktree rows move up when a thread
-in them shows it, and child threads don't lift their parent. Parents start
-collapsed while the option is on, without changing `collapsedThreads`. It is
-exclusive with By environment: while it is on, `environmentGrouping` is ignored.
-The open
-thread keeps its place until another thread is opened, and pinned threads keep
-their manual order.
+Organize → Groups → By read status lists threads that show the unread dot above
+the rest, keeping the selected sort within each group. `groupByReadStatus`
+defaults to `false`; use `bb thread-list prefs set groupByReadStatus true` to
+turn it on. Parents start collapsed while it is on, without changing
+`collapsedThreads`, and `environmentGrouping` is ignored. The open thread keeps
+its place until another thread is opened.
 
 New threads inherit the sidebar group where creation was invoked. Pinned
 creates pinned threads; custom sections supply their section; project, machine,
