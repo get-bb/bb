@@ -155,7 +155,8 @@ const BB_VS_SUPERSET: Comparison = {
           <p>
             When you want more—or less—customize in Settings, browse the{" "}
             <a href="/marketplace">plugin marketplace</a>, or ask an agent to
-            build exactly what you need, immediately available on your phone.
+            build exactly what you need, immediately available wherever you use
+            bb, including your phone.
           </p>
         </>
       ),

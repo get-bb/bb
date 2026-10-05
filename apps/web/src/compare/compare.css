@@ -4,6 +4,15 @@
   padding-top: 40px;
 }
 
+.cmp-bb {
+  font-style: italic;
+  font-weight: 700;
+}
+
+:is(h1, h2) .cmp-bb {
+  font-weight: inherit;
+}
+
 .cmp-logos {
   display: flex;
   align-items: center;
@@ -1570,13 +1579,4 @@
   .cmp-feed > li {
     animation: none;
   }
-}
-
-.cmp-bb {
-  font-style: italic;
-  font-weight: 700;
-}
-
-:is(h1, h2) .cmp-bb {
-  font-weight: inherit;
 }
