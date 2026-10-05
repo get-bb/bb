@@ -323,11 +323,16 @@ const BB_VS_SUPERSET: Comparison = {
       ],
     },
     {
-      title: "Only in bb",
+      title: "Talking to your agents",
       rows: [
         {
           feature: "Side chats",
           bb: cell("yes", "Ask without derailing the agent"),
+          competitor: cell("no"),
+        },
+        {
+          feature: "Drafts",
+          bb: cell("yes", "Save a message, send when ready"),
           competitor: cell("no"),
         },
         {
