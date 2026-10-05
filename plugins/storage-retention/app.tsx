@@ -773,7 +773,7 @@ function StoragePage({
                     )}
                     {(threadsExpanded
                       ? report.largestThreads
-                      : report.largestThreads.slice(0, 5)
+                      : report.largestThreads.slice(0, PREVIEW_COUNT)
                     ).map((thread) => {
                       const clear = threadClears[thread.threadId];
                       return (
@@ -842,20 +842,20 @@ function StoragePage({
                         </div>
                       );
                     })}
+                    {report.largestThreads.length > PREVIEW_COUNT && (
+                      <div className="px-4 py-2.5">
+                        <ShowMoreToggle
+                          expanded={threadsExpanded}
+                          total={report.largestThreads.length}
+                          onToggle={() =>
+                            setExpandedThreadsHostId(
+                              threadsExpanded ? null : hostId,
+                            )
+                          }
+                        />
+                      </div>
+                    )}
                   </div>
-                  {report.largestThreads.length > 5 && (
-                    <button
-                      className="ml-4 rounded-sm text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-expanded={threadsExpanded}
-                      onClick={() =>
-                        setExpandedThreadsHostId(
-                          threadsExpanded ? null : hostId,
-                        )
-                      }
-                    >
-                      {threadsExpanded ? "Show fewer" : "Show more"}
-                    </button>
-                  )}
                 </section>
                 {report.developerStorage && (
                   <DeveloperStorage
@@ -1481,6 +1481,35 @@ function developerEntryLabel(entry: DeveloperEntry) {
   );
 }
 
+const PREVIEW_COUNT = 5;
+
+function ShowMoreToggle({
+  expanded,
+  total,
+  onToggle,
+  className,
+}: {
+  expanded: boolean;
+  total: number;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      className={cn(
+        "block rounded-sm text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        className,
+      )}
+      aria-expanded={expanded}
+      onClick={onToggle}
+    >
+      {expanded
+        ? "Show fewer"
+        : `Show ${(total - PREVIEW_COUNT).toLocaleString()} more`}
+    </button>
+  );
+}
+
 function DeveloperStorage({
   storage,
   removeDisabled,
@@ -1493,7 +1522,9 @@ function DeveloperStorage({
   onRemoveMissing: (count: number, bytes: number) => void;
 }) {
   const navigate = useBbNavigate();
-  const [expanded, setExpanded] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [filter, setFilter] = useState("all");
   const [copyStatus, setCopyStatus] = useState<{
     text: string;
@@ -1520,28 +1551,28 @@ function DeveloperStorage({
         : filter === "unresolved"
           ? unresolved
           : storage.entries;
-  const entries = expanded ? filtered : filtered.slice(0, 5);
   const groups = [
     {
       title: "Linked threads",
-      all: filtered.filter((entry) => entry.threads.length > 0),
-      entries: entries.filter((entry) => entry.threads.length > 0),
+      entries: filtered.filter((entry) => entry.threads.length > 0),
     },
     {
       title: "Other instances",
-      all: filtered.filter(
-        (entry) => entry.sourcePath !== null && entry.threads.length === 0,
-      ),
-      entries: entries.filter(
+      entries: filtered.filter(
         (entry) => entry.sourcePath !== null && entry.threads.length === 0,
       ),
     },
     {
       title: "Unidentified sources",
-      all: filtered.filter((entry) => entry.sourcePath === null),
-      entries: entries.filter((entry) => entry.sourcePath === null),
+      entries: filtered.filter((entry) => entry.sourcePath === null),
     },
   ];
+  const toggleGroup = (title: string) =>
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (!next.delete(title)) next.add(title);
+      return next;
+    });
   const copyPath = async (value: string, label: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -1568,7 +1599,7 @@ function DeveloperStorage({
             value={filter}
             onValueChange={(value) => {
               setFilter(value);
-              setExpanded(false);
+              setExpandedGroups(new Set());
               setCopyStatus(null);
             }}
           >
@@ -1599,8 +1630,7 @@ function DeveloperStorage({
             <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <p className="min-w-0 flex-1 text-xs leading-snug text-subtle-foreground">
                 <span className="text-foreground">
-                  {bytes(missingBytes)} in{" "}
-                  {plural(missing.length, "instance")}
+                  {bytes(missingBytes)} in {plural(missing.length, "instance")}
                 </span>{" "}
                 whose source checkout no longer exists. Servers still running
                 from them are stopped before removal.
@@ -1626,11 +1656,14 @@ function DeveloperStorage({
                 <h3 className="text-xs font-medium text-muted-foreground">
                   {group.title}{" "}
                   <span className="ml-1 font-normal tabular-nums text-muted-foreground">
-                    ({group.all.length.toLocaleString()})
+                    ({group.entries.length.toLocaleString()})
                   </span>
                 </h3>
                 <div className="mt-2 space-y-3">
-                  {group.entries.map((entry) => {
+                  {(expandedGroups.has(group.title)
+                    ? group.entries
+                    : group.entries.slice(0, PREVIEW_COUNT)
+                  ).map((entry) => {
                     const label =
                       entry.threads[0]?.title ?? developerEntryLabel(entry);
                     return (
@@ -1737,25 +1770,21 @@ function DeveloperStorage({
                     );
                   })}
                 </div>
+                {group.entries.length > PREVIEW_COUNT && (
+                  <ShowMoreToggle
+                    className="mt-3"
+                    expanded={expandedGroups.has(group.title)}
+                    total={group.entries.length}
+                    onToggle={() => toggleGroup(group.title)}
+                  />
+                )}
               </div>
             ))}
         </div>
-        {entries.length === 0 && (
+        {filtered.length === 0 && (
           <p className="py-4 text-xs text-muted-foreground">
             No entries in this category.
           </p>
-        )}
-        {filtered.length > 5 && (
-          <div>
-            <button
-              className="rounded-sm text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => setExpanded((value) => !value)}
-            >
-              {expanded
-                ? "Show fewer entries"
-                : `Show all ${filtered.length.toLocaleString()} entries`}
-            </button>
-          </div>
         )}
         {copyStatus && (
           <p
