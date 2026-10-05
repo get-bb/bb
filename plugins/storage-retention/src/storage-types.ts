@@ -32,6 +32,7 @@ const developerEntrySchema = z.object({
   sizeBytes: byteCountSchema,
   sourcePath: z.string().nullable().default(null),
   sourcePathState: z.enum(["exists", "missing", "unknown"]).default("unknown"),
+  running: z.boolean().default(false),
 });
 export const developerStorageScanSchema = z.object({
   path: z.string(),

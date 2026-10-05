@@ -506,6 +506,7 @@ export function createStorage(bb: BbPluginApi) {
                       sourcePath: inspected.get(entry.name)?.sourcePath ?? null,
                       sourcePathState:
                         inspected.get(entry.name)?.sourcePathState ?? "unknown",
+                      running: inspected.get(entry.name)?.running ?? false,
                     }))
                     .sort((a, b) => b.sizeBytes - a.sizeBytes),
                 }
@@ -691,7 +692,7 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
-  async function removeMissingDevInstances({
+  async function removeDevInstances({
     hostId,
     names,
   }: {
@@ -722,31 +723,33 @@ export function createStorage(bb: BbPluginApi) {
         environments,
         projects,
       );
-      const missing = developer.entries.filter(
-        (entry) =>
-          entry.sourcePathState === "missing" &&
-          (names === null || names.includes(entry.name)),
+      const targets = developer.entries.filter((entry) =>
+        names === null
+          ? entry.sourcePathState === "missing"
+          : names.includes(entry.name),
       );
       const unknown = (names ?? []).filter(
-        (name) => !missing.some((entry) => entry.name === name),
+        (name) => !targets.some((entry) => entry.name === name),
       );
       if (unknown.length > 0)
         throw new Error(
-          `Not a development instance with a missing checkout in the last scan: ${unknown.join(", ")}`,
+          `Not a development instance in the last scan: ${unknown.join(", ")}`,
         );
+      const running: string[] = [];
       let removedCount = 0;
       let removedBytes = 0;
       let stoppedProcessCount = 0;
-      for (let offset = 0; offset < missing.length; offset += 500) {
+      for (let offset = 0; offset < targets.length; offset += 500) {
         lifecycle.signal.throwIfAborted();
         const result = await worker.call(
           "removeDeveloperEntries",
           {
             rootPath: developer.path,
-            names: missing
+            names: targets
               .slice(offset, offset + 500)
               .map((entry) => entry.name),
             candidatePaths,
+            condition: names === null ? "checkoutMissing" : "notRunning",
           },
           { hostId, signal: lifecycle.signal },
         );
@@ -769,11 +772,16 @@ export function createStorage(bb: BbPluginApi) {
         removedCount += removed.size;
         removedBytes += bytes;
         stoppedProcessCount += result.stoppedProcessCount;
+        running.push(...result.running);
       }
+      if (running.length > 0)
+        throw new Error(
+          `Stop the development server before removing ${running.length === 1 ? "this instance" : `these instances: ${running.join(", ")}`}. Its checkout still exists, so BB won’t stop it for you.`,
+        );
       return {
         removedCount,
         removedBytes,
-        skippedCount: missing.length - removedCount,
+        skippedCount: targets.length - removedCount,
         stoppedProcessCount,
       };
     } finally {
@@ -938,7 +946,7 @@ export function createStorage(bb: BbPluginApi) {
     clearLargeFiles,
     startClearLargeFiles,
     clearArchivedFiles,
-    removeMissingDevInstances,
+    removeDevInstances,
     clearThread,
     retryWorktreeCleanup,
   };

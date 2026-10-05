@@ -272,7 +272,7 @@ function StoragePage({
       detail:
         "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
       run: async () => {
-        const result = await rpc.call("removeMissingDevInstances", {
+        const result = await rpc.call("removeDevInstances", {
           hostId: target,
           names: null,
         });
@@ -838,7 +838,7 @@ function StoragePage({
                     rowActions={rowActions}
                     onRemove={(name) =>
                       void runRowAction(`dev:${name}`, () =>
-                        rpc.call("removeMissingDevInstances", {
+                        rpc.call("removeDevInstances", {
                           hostId: report.hostId,
                           names: [name],
                         }),
@@ -1792,6 +1792,12 @@ function DeveloperStorage({
                                   Could not check whether the checkout exists
                                 </p>
                               )}
+                            {entry.running &&
+                              entry.sourcePathState !== "missing" && (
+                                <p className="text-xs text-muted-foreground">
+                                  Dev server running at last scan
+                                </p>
+                              )}
                             <RowActionStatus
                               action={removal}
                               runningLabel="Removing instance…"
@@ -1801,17 +1807,13 @@ function DeveloperStorage({
                             <span className="text-xs font-normal tabular-nums text-muted-foreground">
                               {bytes(entry.sizeBytes)}
                             </span>
-                            {entry.sourcePathState === "missing" ? (
-                              <RowActionButton
-                                label="Remove instance"
-                                target={label}
-                                action={removal}
-                                disabled={rowDisabled}
-                                onClick={() => onRemove(entry.name)}
-                              />
-                            ) : (
-                              <span aria-hidden className="size-7" />
-                            )}
+                            <RowActionButton
+                              label="Remove instance"
+                              target={label}
+                              action={removal}
+                              disabled={rowDisabled}
+                              onClick={() => onRemove(entry.name)}
+                            />
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button

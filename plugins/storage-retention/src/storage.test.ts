@@ -934,6 +934,10 @@ it("recovers developer checkout paths from launch records, old runtime records, 
     path.join(rootPath, "unidentified", "bb-dev-instance.json"),
     "{bad json",
   );
+  const staleLock = path.join(rootPath, "launch", "daemon.lock.lock");
+  await fs.mkdir(staleLock);
+  await fs.utimes(staleLock, new Date(0), new Date(0));
+  await fs.mkdir(path.join(rootPath, "runtime", "daemon.lock.lock"));
   const worker = experimental_createHostEntryHarness(hostEntry);
   try {
     const result = await worker.experimental_call("inspectDeveloperEntries", {
@@ -942,12 +946,42 @@ it("recovers developer checkout paths from launch records, old runtime records, 
       candidatePaths: [known],
     });
     expect(result.entries).toEqual([
-      { name: "launch", sourcePath: existing, sourcePathState: "exists" },
-      { name: "runtime", sourcePath: existing, sourcePathState: "exists" },
-      { name: managedName, sourcePath: managed, sourcePathState: "missing" },
-      { name: knownName, sourcePath: known, sourcePathState: "exists" },
-      { name: "unidentified", sourcePath: null, sourcePathState: "unknown" },
-      { name: names[5], sourcePath: null, sourcePathState: "unknown" },
+      {
+        name: "launch",
+        sourcePath: existing,
+        sourcePathState: "exists",
+        running: false,
+      },
+      {
+        name: "runtime",
+        sourcePath: existing,
+        sourcePathState: "exists",
+        running: true,
+      },
+      {
+        name: managedName,
+        sourcePath: managed,
+        sourcePathState: "missing",
+        running: false,
+      },
+      {
+        name: knownName,
+        sourcePath: known,
+        sourcePathState: "exists",
+        running: false,
+      },
+      {
+        name: "unidentified",
+        sourcePath: null,
+        sourcePathState: "unknown",
+        running: false,
+      },
+      {
+        name: names[5],
+        sourcePath: null,
+        sourcePathState: "unknown",
+        running: false,
+      },
     ]);
     await expect(
       worker.experimental_call("inspectDeveloperEntries", {
@@ -972,9 +1006,11 @@ it.skipIf(process.platform === "win32")(
       kept: path.join(fakeHome, "kept", "bb"),
       spare: path.join(fakeHome, "spare", "bb"),
       extra: path.join(fakeHome, "extra", "bb"),
+      idle: path.join(fakeHome, "idle", "bb"),
     };
     await fs.mkdir(checkouts.gone, { recursive: true });
     await fs.mkdir(checkouts.kept, { recursive: true });
+    await fs.mkdir(checkouts.idle, { recursive: true });
     for (const [name, repoRoot] of Object.entries(checkouts)) {
       await fs.mkdir(path.join(rootPath, name), { recursive: true });
       await fs.writeFile(
@@ -987,6 +1023,7 @@ it.skipIf(process.platform === "win32")(
       );
     }
     await fs.mkdir(path.join(rootPath, ".bb-trash-stale"));
+    await fs.mkdir(path.join(rootPath, "kept", "daemon.lock.lock"));
     const server = (checkout: string) => {
       const child = spawn(
         process.execPath,
@@ -1059,21 +1096,28 @@ it.skipIf(process.platform === "win32")(
       ).report!.developerStorage!;
       expect(
         scanned.entries
-          .map((entry) => [entry.name, entry.sourcePathState])
+          .map((entry) => [entry.name, entry.sourcePathState, entry.running])
           .sort(),
       ).toEqual([
-        ["extra", "missing"],
-        ["gone", "missing"],
-        ["kept", "exists"],
-        ["revived", "missing"],
-        ["spare", "missing"],
+        ["extra", "missing", false],
+        ["gone", "missing", false],
+        ["idle", "exists", false],
+        ["kept", "exists", true],
+        ["revived", "missing", false],
+        ["spare", "missing", false],
       ]);
       await expect(
-        host.harness.callRpc("removeMissingDevInstances", {
+        host.harness.callRpc("removeDevInstances", {
           hostId: "host_test",
           names: ["kept"],
         }),
-      ).rejects.toThrow("Not a development instance with a missing checkout");
+      ).rejects.toThrow("Stop the development server");
+      await expect(
+        host.harness.callRpc("removeDevInstances", {
+          hostId: "host_test",
+          names: ["unscanned"],
+        }),
+      ).rejects.toThrow("Not a development instance in the last scan");
       const single = (name: string) => ({
         removedCount: 1,
         removedBytes: scanned.entries.find((entry) => entry.name === name)!
@@ -1083,14 +1127,14 @@ it.skipIf(process.platform === "win32")(
       });
       expect(
         await Promise.all(
-          ["spare", "extra"].map((name) =>
-            host.harness.callRpc("removeMissingDevInstances", {
+          ["spare", "extra", "idle"].map((name) =>
+            host.harness.callRpc("removeDevInstances", {
               hostId: "host_test",
               names: [name],
             }),
           ),
         ),
-      ).toEqual([single("spare"), single("extra")]);
+      ).toEqual([single("spare"), single("extra"), single("idle")]);
       expect(
         hostStorageResponseSchema
           .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
@@ -1103,7 +1147,7 @@ it.skipIf(process.platform === "win32")(
         .toEqual(["gone", "kept", "revived"]);
       await fs.mkdir(checkouts.revived, { recursive: true });
       expect(
-        await host.harness.callRpc("removeMissingDevInstances", {
+        await host.harness.callRpc("removeDevInstances", {
           hostId: "host_test",
           names: null,
         }),
@@ -1161,8 +1205,13 @@ it.skipIf(process.platform === "win32")(
           rootPath,
           names: ["linked", "plain"],
           candidatePaths: [],
+          condition: "checkoutMissing",
         }),
-      ).toEqual({ removed: ["linked", "plain"], stoppedProcessCount: 0 });
+      ).toEqual({
+        removed: ["linked", "plain"],
+        running: [],
+        stoppedProcessCount: 0,
+      });
       await expect
         .poll(async () => (await fs.readdir(rootPath)).sort())
         .toEqual([]);

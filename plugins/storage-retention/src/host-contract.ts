@@ -67,6 +67,7 @@ export const developerEntryInspectionSchema = z.object({
   name: z.string(),
   sourcePath: z.string().nullable(),
   sourcePathState: z.enum(["exists", "missing", "unknown"]),
+  running: z.boolean(),
 });
 
 export const hostStorageContract = defineRpcContract({
@@ -86,10 +87,12 @@ export const hostStorageContract = defineRpcContract({
         rootPath: z.string().min(1),
         names: z.array(z.string().min(1)).max(500),
         candidatePaths: z.array(z.string().min(1)),
+        condition: z.enum(["checkoutMissing", "notRunning"]),
       })
       .strict(),
     output: z.object({
       removed: z.array(z.string()),
+      running: z.array(z.string()),
       stoppedProcessCount: z.number().int().nonnegative(),
     }),
   },

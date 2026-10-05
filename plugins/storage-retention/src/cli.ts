@@ -200,7 +200,7 @@ export function registerCli(
             instance: {
               type: "string",
               description:
-                "Remove only this ~/.bb-dev entry name (default: every instance with a missing checkout)",
+                "Remove only this ~/.bb-dev entry, any source state; refused while its dev server runs unless its checkout is gone (default: every instance with a missing checkout)",
             },
             yes: YES,
           },
@@ -210,7 +210,7 @@ export function registerCli(
                 throw new Error(
                   "Pass --yes to stop their servers and permanently remove development instance data.",
                 );
-              return storage.removeMissingDevInstances({
+              return storage.removeDevInstances({
                 hostId: required(input.options.machine, "machine"),
                 names:
                   input.options.instance === undefined

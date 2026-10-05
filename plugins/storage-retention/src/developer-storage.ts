@@ -90,6 +90,24 @@ function inferredPaths(name: string, homeDirectory: string) {
   ];
 }
 
+const DAEMON_LOCK_FRESH_MS = 15_000;
+
+async function daemonRunning(directory: string) {
+  try {
+    const stats = await fs.stat(path.join(directory, "daemon.lock.lock"));
+    return Date.now() - stats.mtimeMs < DAEMON_LOCK_FRESH_MS;
+  } catch (error) {
+    if (
+      isFsErrorWithCode(error, "ENOENT") ||
+      isFsErrorWithCode(error, "ENOTDIR") ||
+      isFsErrorWithCode(error, "EACCES") ||
+      isFsErrorWithCode(error, "EPERM")
+    )
+      return false;
+    throw error;
+  }
+}
+
 function assertDeveloperInput(
   input: z.infer<typeof hostStorageContract.inspectDeveloperEntries.input>,
 ) {
@@ -162,7 +180,12 @@ export async function inspectDeveloperEntries(
           throw error;
       }
     }
-    entries.push({ name, sourcePath, sourcePathState });
+    entries.push({
+      name,
+      sourcePath,
+      sourcePathState,
+      running: await daemonRunning(directory),
+    });
   }
   return { entries };
 }
@@ -180,13 +203,24 @@ export async function removeDeveloperEntries(
     root = await fs.realpath(input.rootPath);
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT"))
-      return { removed: [], stoppedProcessCount: 0 };
+      return { removed: [], running: [], stoppedProcessCount: 0 };
     throw error;
   }
-  const missing = (await inspectDeveloperEntries(input, signal)).entries.filter(
+  const inspected = (await inspectDeveloperEntries(input, signal)).entries;
+  const missing = inspected.filter(
     (entry): entry is typeof entry & { sourcePath: string } =>
       entry.sourcePath !== null && entry.sourcePathState === "missing",
   );
+  const running =
+    input.condition === "notRunning"
+      ? inspected.filter(
+          (entry) => entry.running && entry.sourcePathState !== "missing",
+        )
+      : [];
+  const eligible =
+    input.condition === "checkoutMissing"
+      ? missing
+      : inspected.filter((entry) => !running.includes(entry));
   const stoppedProcessCount = (
     await experimental_killProcessesWithCwdUnder({
       directories: missing.map((entry) => entry.sourcePath),
@@ -198,7 +232,7 @@ export async function removeDeveloperEntries(
     .map((name) => path.join(root, name));
   const removed: string[] = [];
   try {
-    for (const entry of missing) {
+    for (const entry of eligible) {
       signal.throwIfAborted();
       const source = path.join(root, entry.name);
       try {
@@ -233,5 +267,9 @@ export async function removeDeveloperEntries(
       })().finally(() => lease.dispose());
     }
   }
-  return { removed, stoppedProcessCount };
+  return {
+    removed,
+    running: running.map((entry) => entry.name),
+    stoppedProcessCount,
+  };
 }

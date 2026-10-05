@@ -564,7 +564,8 @@ and, after a scan, a separate `~/.bb-dev` breakdown when that folder exists,
 including recovered source paths, checkout existence, and links to known threads.
 `bb storage remove-dev-instances --machine HOST_ID --yes` removes development
 instances whose checkout no longer exists, stopping servers still running from it;
-add `--instance NAME` to remove one entry.
+add `--instance NAME` to remove one entry of any kind, refused while its dev
+server runs unless its checkout is gone.
 See the plugin’s storage-retention skill for commands and limitations.
 
 ### Opt-in server performance diagnostics

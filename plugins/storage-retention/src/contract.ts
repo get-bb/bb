@@ -68,7 +68,7 @@ export const storageRpc = defineRpcContract({
       clearedBytes: z.number().int().nonnegative(),
     }),
   },
-  removeMissingDevInstances: {
+  removeDevInstances: {
     input: z
       .object({
         hostId: z.string().min(1),
