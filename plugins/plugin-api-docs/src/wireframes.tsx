@@ -1696,7 +1696,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
               <span
                 aria-hidden
                 data-guide-transient-for="mention-provider"
-                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-1.5 block w-44 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
+                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
               >
                 <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
                   Your plugin
@@ -1714,10 +1714,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             <RegionMark
               id="mention-provider"
               label="Plugin mention results in the @ typeahead"
-              className={cn(
-                "flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5",
-                mention.outlined && "relative z-[61]",
-              )}
+              className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
               chip="outside-above"
               showChip={!plus.outlined}
             >
@@ -1749,7 +1746,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
               <span
                 aria-hidden
                 data-guide-transient-for="composer-plus-menu"
-                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-1 block w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 rounded-md border border-border bg-popover p-1 shadow-md"
               >
                 <span className="flex h-6 items-center gap-1.5 px-1.5">
                   <MiniIcon icon="Paperclip" className="size-3.5" />
@@ -1800,7 +1797,7 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
               <span
                 aria-hidden
                 data-guide-transient-for="composer-actions"
-                className="pointer-events-none absolute bottom-full right-0 z-[60] mb-1 block w-48 rounded-md border border-border bg-popover p-2 shadow-md"
+                className="pointer-events-none absolute bottom-full right-0 z-[60] mb-7 block w-48 rounded-md border border-border bg-popover p-2 shadow-md"
               >
                 <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
                   Search saved prompts
