@@ -1,7 +1,6 @@
-const PLUGIN_BRANDING = import.meta.glob<{
-  name?: string;
-  branding?: { icon?: string };
-}>("../../../../plugins/*/package.json", { import: "bb", eager: true });
+const PLUGIN_MANIFESTS = import.meta.glob<{
+  bb?: { name?: string; branding?: { icon?: string } };
+}>("../../../../plugins/*/package.json", { import: "default", eager: true });
 
 const PLUGIN_ICON_URLS = import.meta.glob<string>(
   "../../../../plugins/*/{icons/*.svg,*.svg}",
@@ -9,7 +8,7 @@ const PLUGIN_ICON_URLS = import.meta.glob<string>(
 );
 
 export const BRAND_ICON_URL_BY_NAME: ReadonlyMap<string, string> = new Map(
-  Object.entries(PLUGIN_BRANDING).flatMap(([manifestPath, bb]) => {
+  Object.entries(PLUGIN_MANIFESTS).flatMap(([manifestPath, { bb }]) => {
     const icon = bb?.branding?.icon;
     if (!bb?.name || !icon?.startsWith("./")) return [];
     const url =
@@ -21,7 +20,7 @@ export const BRAND_ICON_URL_BY_NAME: ReadonlyMap<string, string> = new Map(
 const PLUGIN_SOURCE_ROOT = "https://github.com/get-bb/bb/tree/main/plugins/";
 
 const PLUGIN_DIR_BY_NAME: ReadonlyMap<string, string> = new Map(
-  Object.entries(PLUGIN_BRANDING).flatMap(([manifestPath, bb]) => {
+  Object.entries(PLUGIN_MANIFESTS).flatMap(([manifestPath, { bb }]) => {
     const dir = /\/plugins\/([^/]+)\/package\.json$/.exec(manifestPath)?.[1];
     return bb?.name && dir ? [[bb.name, dir] as const] : [];
   }),
