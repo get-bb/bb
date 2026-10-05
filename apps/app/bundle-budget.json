@@ -205,11 +205,6 @@
       "ThreadPage",
       "NewThreadPage"
     ],
-    "src/components/secondary-panel/ThreadStorageFileTree.tsx": [
-      "boot",
-      "ThreadPage",
-      "NewThreadPage"
-    ],
     "src/components/promptbox/banner/QueuedMessagesList.tsx": [
       "boot",
       "ThreadPage",
