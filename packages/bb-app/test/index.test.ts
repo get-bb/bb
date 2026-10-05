@@ -740,6 +740,28 @@ describe("bb-app launcher", () => {
     );
   });
 
+  it("passes opt-in performance diagnostics through to the launched server", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-performance-"));
+    try {
+      for (const enabled of [false, true]) {
+        const runtime = await resolveBbAppRuntimeState({
+          entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js")
+            .href,
+          env: { BB_DATA_DIR: dataDir },
+          homeDir: "/home/tester",
+          options: parseLauncherArgs(enabled ? ["--perf-diagnostics"] : [])
+            .options,
+          serverUrlMode: "local",
+        });
+        expect(runtime.serverEnv.BB_PERF_DIAGNOSTICS).toBe(
+          enabled ? "1" : undefined,
+        );
+      }
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("reports the server bind host separately from the loopback connection URL", async () => {
     const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
@@ -2044,16 +2066,38 @@ describe("bb-app launcher", () => {
     const desktopServerEnv = createServerEnv({
       context,
       env: { BB_APP_SURFACE: "desktop" },
+      install: { kind: "desktop" },
     });
-    const webServerEnv = createServerEnv({ context, env: {} });
+    const webServerEnv = createServerEnv({
+      context,
+      env: {},
+      install: { kind: "npm" },
+    });
     const invalidSurfaceServerEnv = createServerEnv({
       context,
       env: { BB_APP_SURFACE: "bogus" },
+      install: { kind: "npm" },
     });
 
     expect(desktopServerEnv.BB_APP_SURFACE).toBe("desktop");
     expect(webServerEnv.BB_APP_SURFACE).toBe("web");
     expect(invalidSurfaceServerEnv.BB_APP_SURFACE).toBe("web");
+  });
+
+  it("replaces inherited install markers so a fork never reports a stale commit", () => {
+    const serverEnv = createServerEnv({
+      context: createTestStartContext(),
+      env: {
+        BB_APP_INSTALL_KIND: "source",
+        BB_APP_SOURCE_COMMIT: "a".repeat(40),
+        BB_APP_SOURCE_ORIGIN: "official",
+      },
+      install: { kind: "source", origin: "fork" },
+    });
+
+    expect(serverEnv.BB_APP_INSTALL_KIND).toBe("source");
+    expect(serverEnv.BB_APP_SOURCE_ORIGIN).toBe("fork");
+    expect(serverEnv).not.toHaveProperty("BB_APP_SOURCE_COMMIT");
   });
 });
 

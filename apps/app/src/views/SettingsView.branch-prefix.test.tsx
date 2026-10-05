@@ -37,11 +37,9 @@ function renderSection(overrides?: {
         onNavigateToThreadAfterCreateChange={vi.fn()}
         onOpenLinksInAppBrowserChange={vi.fn()}
         onRewriteLocalhostLinksChange={vi.fn()}
-        onRichTextEditingChange={vi.fn()}
         onSteerActiveThreadOnEnterChange={vi.fn()}
         openLinksInAppBrowser={false}
         rewriteLocalhostLinks={false}
-        richTextEditing={false}
         steerActiveThreadOnEnter={false}
       />
       <PrivacySettingsSection

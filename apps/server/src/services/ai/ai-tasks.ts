@@ -18,7 +18,7 @@ import {
 export const AI_TASK_TIMEOUT_MS: Record<AiTask, number> = {
   "thread-title": 5_000,
   "commit-message": 5_000,
-  voice: 10_000,
+  voice: 70_000,
 };
 
 export type AiTaskFailureReason =

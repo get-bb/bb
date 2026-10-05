@@ -37,6 +37,7 @@ import {
 import type { CallerExecutionInputSource } from "@bb/domain";
 import { THREAD_EVENT_LIST_PAGE_SIZE } from "../common.js";
 import {
+  timelineConversationRowSchema,
   timelineDeltaSchema,
   timelineRowSchema,
   timelineWorkflowWorkRowSchema,
@@ -968,6 +969,31 @@ export const threadEventWaitQuerySchema = z.object({
   waitMs: z.string().regex(/^\d+$/).optional(),
 });
 export type ThreadEventWaitQuery = z.infer<typeof threadEventWaitQuerySchema>;
+
+export const THREAD_MESSAGE_CONTEXT_LIMIT = 20;
+
+const threadMessageContextCountSchema = z
+  .string()
+  .regex(/^\d+$/)
+  .refine(
+    (value) => Number(value) <= THREAD_MESSAGE_CONTEXT_LIMIT,
+    `Message context cannot exceed ${THREAD_MESSAGE_CONTEXT_LIMIT}`,
+  );
+
+export const threadMessageQuerySchema = z
+  .object({
+    before: threadMessageContextCountSchema,
+    after: threadMessageContextCountSchema,
+  })
+  .partial();
+export type ThreadMessageQuery = z.infer<typeof threadMessageQuerySchema>;
+
+export const threadMessageResponseSchema = z.object({
+  message: timelineConversationRowSchema,
+  before: z.array(timelineConversationRowSchema),
+  after: z.array(timelineConversationRowSchema),
+});
+export type ThreadMessageResponse = z.infer<typeof threadMessageResponseSchema>;
 
 export const threadStorageFilesQuerySchema = z
   .object({

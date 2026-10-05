@@ -115,6 +115,9 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   `bb updates app apply [--yes] [--no-wait]` downloads the
   update and restarts bb into it, without rolling back if it fails to start.
   Running it from a thread restarts bb and interrupts that thread.
+  Source installs show their Git revision and use manual Git updates without the
+  update shim. They are never compared with npm releases; unavailable release
+  checks report “Latest unknown”.
 - Use `bb project create --name <name> --root <path> --machine <id-or-name>`
   to bind a new project's local path to a connected enrolled machine. Use
   `--host` as an alias. Without a selector, the CLI asks its local host daemon.

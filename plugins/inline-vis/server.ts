@@ -123,6 +123,7 @@ export const inlineVisRpcContract = defineRpcContract({
       })
       .strict(),
     output: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("not-found"), file: z.string() }).strict(),
       z
         .object({
           kind: z.literal("html"),
@@ -201,7 +202,7 @@ export default async function plugin(bb: BbPluginApi) {
         });
       } catch (error) {
         if (httpStatus(error) === 404) {
-          throw new Error(`Preview file not found: ${file}`);
+          return { kind: "not-found" as const, file };
         }
         throw error;
       }

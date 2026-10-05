@@ -58,6 +58,8 @@ const hosts: Host[] = [
 const version = {
   currentVersion: "0.0.32",
   latestVersion: "0.0.33",
+  currentCommit: null,
+  installKind: "npm" as const,
   source: "npm" as const,
   updateAvailable: true,
   isDevelopment: false,
@@ -142,6 +144,31 @@ describe("bb updates command output", () => {
     expect(output).toContain("laptop");
     expect(output).toContain("offline");
   });
+
+  it.each(["source", "npm"] as const)(
+    "reports unknown freshness for an unmanaged %s install",
+    async (installKind) => {
+      stubServerApi({
+        "v1.system.version.$get": vi.fn(async () => ({
+          ...version,
+          installKind,
+          currentCommit: installKind === "source" ? "a".repeat(40) : null,
+          latestVersion: null,
+          updateAvailable: false,
+        })),
+        "v1.hosts.$get": vi.fn(async () => []),
+      });
+      await runCommand(["updates"], register);
+      const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+      expect(output).toContain("Latest unknown");
+      expect(output).not.toContain("Up to date");
+      expect(output).not.toContain("npx bb-app@latest");
+      if (installKind === "source") {
+        expect(output).toContain("source checkout aaaaaaaaaa");
+        expect(output).toContain("update this checkout with Git");
+      }
+    },
+  );
 
   it("bb updates --json prints the aggregate", async () => {
     const status = providerStatus({ codexNeedsUpdate: false });
@@ -292,6 +319,27 @@ describe("bb updates app command output", () => {
     expect(getStatus).toHaveBeenCalledWith({ query: { force: "true" } });
   });
 
+  it("bb updates app does not call a failed check up to date", async () => {
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () => ({
+        activity: { phase: "idle" },
+        available: null,
+        blocked: {
+          reason: "fetch-failed",
+          message: "Couldn't check for a newer bb release.",
+        },
+        current: { version: "0.0.32", commit: null },
+        lastResult: null,
+        runningThreadCount: 0,
+        support: { kind: "supported", mode: "npm" },
+      })),
+    });
+    await runCommand(["updates", "app"], register);
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Couldn't check for a newer bb release.");
+    expect(output).not.toContain("up to date");
+  });
+
   it("bb updates app lists incoming commits and blockers for a source checkout", async () => {
     stubServerApi({
       "v1.system.app-update.$get": vi.fn(async () =>
@@ -316,7 +364,7 @@ describe("bb updates app command output", () => {
     await runCommand(["updates", "app"], register);
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      `bb-app 0.0.32 (${"a".repeat(10)}) -> ${"b".repeat(10)} (+12 commits)`,
+      `bb-app source checkout ${"a".repeat(10)} -> ${"b".repeat(10)} (+12 commits)`,
       "  Fix bug",
       "  Add feature",
       "  … 10 more",

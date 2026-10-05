@@ -284,7 +284,9 @@ function FollowUpPromptBoxWithComposer({
   }, []);
   const voice = usePromptVoice(
     promptBoxRef,
-    voiceDraft ?? pluginComposerHost ?? undefined,
+    voiceDraft
+      ? { ...voiceDraft, submit: pluginComposerHost?.submit }
+      : (pluginComposerHost ?? undefined),
   );
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();

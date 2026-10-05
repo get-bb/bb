@@ -592,6 +592,10 @@ describe("plugin catalog service", () => {
           pluginIds: ["widgets"],
         },
       ]);
+      expect(catalog.categories().map((category) => category.id)).toEqual([
+        "acme-tools",
+        ...PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
+      ]);
     });
 
     it("ignores collections from a third-party marketplace", async () => {

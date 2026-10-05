@@ -66,6 +66,7 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
   return {
     ...messageBase(args),
     kind: "user",
+    messageSeq: args.seq,
     initiator: args.initiator ?? "user",
     senderThreadId: null,
     systemMessageKind: "unlabeled",

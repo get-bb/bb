@@ -2577,7 +2577,7 @@ fresh status, bounded at 2 s, before skipping a service whose cached status is
 older). At least one of `complete` / `transcribe` is required; which tasks a
 service appears for follows from the functions it declares. bb owns the
 prompts and the reply cleanup; the plugin owns the model, the API, and any retries. Failure is a
-rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
+rejected promise, and core aborts `signal` at 5 s (text) or 70 s (voice).
 
 The user picks per task in Settings → AI services, `bb settings ai-services
 set`, or `sdk.system.setAiServiceSelection` (`automatic` | `off` |
@@ -3629,11 +3629,11 @@ snapshot is a no-op. `insert` remains the cursor/end insertion primitive.
 Core quoting, prefills and history restoration call this same contract. Quotes
 are pure draft transformations that append blockquoted text and merge attachments
 by path, followed by `focus()`. Attachments remain independent draft items, not
-children of a quote. `replace` does not upload/copy files across projects.
-Submission rollback, restore-if-empty seeds, uploads, and editor transactions
-remain beneath these actions. Command completion's trigger-range replacement and
-autocomplete dismissal remain a documented boundary, not a hidden option on
-`replace`.
+children of a quote. `replace` preserves source-project references; core copies
+those files into the destination project on submission. Submission rollback,
+restore-if-empty seeds, uploads, and editor transactions remain beneath these
+actions. Command completion's trigger-range replacement and autocomplete
+dismissal remain a documented boundary, not a hidden option on `replace`.
 
 `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
 `removeMention` are marked internal and stripped from published declarations,

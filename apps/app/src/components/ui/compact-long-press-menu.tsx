@@ -149,7 +149,7 @@ export function CompactLongPressMenu({
   );
 
   const handleClickCapture = useCallback(
-    (event: ReactMouseEvent<HTMLElement>) => {
+    (event: ReactMouseEvent<HTMLElement> | MouseEvent) => {
       if (!suppressClickRef.current) {
         return;
       }
@@ -159,6 +159,21 @@ export function CompactLongPressMenu({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    const clearSuppressedClick = () => {
+      suppressClickRef.current = false;
+    };
+    document.addEventListener("click", handleClickCapture, true);
+    document.addEventListener("pointerdown", clearSuppressedClick, true);
+    document.addEventListener("keydown", clearSuppressedClick, true);
+    return () => {
+      document.removeEventListener("click", handleClickCapture, true);
+      document.removeEventListener("pointerdown", clearSuppressedClick, true);
+      document.removeEventListener("keydown", clearSuppressedClick, true);
+    };
+  }, [handleClickCapture, open]);
 
   return (
     <>

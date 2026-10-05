@@ -840,6 +840,28 @@ jobs:
             apps/desktop/release/desktop-version-windows.json
           if-no-files-found: error
 
+  nightly-mobile-android:
+    name: Build and publish bb Nightly Android APK (EAS)
+    if: >-
+      ${{ !cancelled()
+      && needs.publish.result == 'success'
+      && (github.event_name == 'schedule'
+      || (inputs.npm_tag == 'nightly' && inputs.dry_run == false)
+      || needs.publish-nightly.result == 'success') }}
+    needs:
+      - publish
+      - publish-nightly
+    permissions:
+      contents: write
+    uses: ./.github/workflows/mobile-android-eas.yml
+    with:
+      profile: preview
+      publish: true
+      submit: false
+      version: ${{ needs.publish-nightly.outputs.version || needs.publish.outputs.version }}
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
   nightly-mobile-ios:
     name: Build bb Nightly iOS (EAS)
     # Same gate as the desktop jobs: only after the npm publish succeeded on

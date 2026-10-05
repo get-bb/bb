@@ -9,7 +9,7 @@ describe("app update presentation", () => {
   it("labels source revisions with a short commit", () => {
     expect(
       formatAppUpdateRevision({ commit: "abcdef1234567", version: "1.0.0" }),
-    ).toBe("1.0.0 (abcdef1)");
+    ).toBe("abcdef1");
     expect(
       formatAppUpdateTarget({
         channel: "main",

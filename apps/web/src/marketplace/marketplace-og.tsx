@@ -351,7 +351,9 @@ async function loadImage(
   loadAsset: MarketplaceOgAssetLoader,
 ): Promise<string | null> {
   try {
-    const response = await loadAsset(marketplaceAssetUrl(declared));
+    const response = await loadAsset(
+      new URL(marketplaceAssetUrl(declared), "https://getbb.app").href,
+    );
     if (!response.ok) return null;
     const type = response.headers.get("content-type")?.split(";")[0];
     if (

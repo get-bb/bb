@@ -142,6 +142,11 @@ Desktop users update through the desktop app's relaunch; development servers
 and `bb-server` cannot update themselves. Connected daemons follow the server
 version automatically.
 
+For source installs, `bb updates` shows the checkout commit and explains manual
+Git updates when no update shim is running. It does not compare that checkout
+with npm releases. Failed or unavailable release checks show “Latest unknown”;
+“Up to date” requires a successful check.
+
 Machine selectors accept either an exact machine ID or an unambiguous machine
 name. `--host` is an alias for `--machine`.
 

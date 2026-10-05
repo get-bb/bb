@@ -14,7 +14,7 @@ import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
+import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
@@ -32,8 +32,6 @@ import {
   SettingsUpdatesStory,
 } from "../../.ladle/settings-story-fixtures";
 import type { ThemePreference } from "@/hooks/useTheme";
-import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
-import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PROJECT_ROUTE_PATH,
@@ -55,11 +53,6 @@ export default {
 };
 
 type StoredTargetId = LocalOpenTargetSettingsSectionProps["directoryTargetId"];
-
-const audioInputDevices: AudioInputDeviceOption[] = [
-  { deviceId: "macbook-mic", label: "MacBook Pro Microphone" },
-  { deviceId: "studio-mic", label: "Studio Display Microphone" },
-];
 
 const vscodeTarget: WorkspaceOpenTarget = {
   capabilities: {
@@ -119,7 +112,6 @@ function useSettingsStoryState() {
     useState(false);
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
-  const [richTextEditing, setRichTextEditing] = useState(false);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
@@ -129,8 +121,7 @@ function useSettingsStoryState() {
     defaultAppSettings.managedBranchPrefix,
   );
   const [showDiagnosticEvents, setShowDiagnosticEvents] = useState(false);
-  const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
-    useState<PreferredAudioInputDeviceId>("studio-mic");
+
   const [directoryTargetId, setDirectoryTargetId] =
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
@@ -146,9 +137,7 @@ function useSettingsStoryState() {
     managedBranchPrefix,
     navigateToThreadAfterCreate,
     openLinksInAppBrowser,
-    preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
-    richTextEditing,
     steerActiveThreadOnEnter,
     confirmThreadArchive,
     setConfirmThreadArchive,
@@ -163,9 +152,7 @@ function useSettingsStoryState() {
     setManagedBranchPrefix,
     setNavigateToThreadAfterCreate,
     setOpenLinksInAppBrowser,
-    setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
-    setRichTextEditing,
     setSteerActiveThreadOnEnter,
     setStreamerMode,
     setShowDiagnosticEvents,
@@ -175,19 +162,7 @@ function useSettingsStoryState() {
 }
 
 function VoiceInputStory() {
-  const state = useSettingsStoryState();
-
-  return (
-    <VoiceInputSettingsSectionContent
-      devices={audioInputDevices}
-      errorMessage={null}
-      isLoading={false}
-      isSupported={true}
-      onDeviceChange={state.setPreferredAudioInputDeviceId}
-      onRefresh={() => undefined}
-      preferredDeviceId={state.preferredAudioInputDeviceId}
-    />
-  );
+  return <VoiceInputSettingsSection />;
 }
 
 function GeneralSettingsStory({
@@ -212,11 +187,9 @@ function GeneralSettingsStory({
         }
         onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
-        onRichTextEditingChange={state.setRichTextEditing}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
-        richTextEditing={state.richTextEditing}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
       />
       <CliSkillsSettingsSectionContent
@@ -296,6 +269,7 @@ function ExperimentsStory() {
     <ExperimentsSettingsSection
       disabled={false}
       experiments={state.experiments}
+      performanceDiagnosticsAvailable={true}
       onExperimentChange={(key, enabled) =>
         state.setExperiments((current) => ({ ...current, [key]: enabled }))
       }

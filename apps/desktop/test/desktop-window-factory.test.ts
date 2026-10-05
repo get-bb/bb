@@ -263,6 +263,7 @@ describe("desktop window factory", () => {
     expect(createdWindows[0]?.options.minHeight).toBe(MIN_WINDOW_HEIGHT);
     expect(createdWindows[0]?.options.minWidth).toBe(MIN_WINDOW_WIDTH);
     expect(createdWindows[0]?.options.titleBarStyle).toBe("hiddenInset");
+    expect(createdWindows[0]?.options).not.toHaveProperty("autoHideMenuBar");
     expect(createdWindows[0]?.options.webPreferences?.spellcheck).toBe(true);
     expect(createdWindows[0]?.webContents.spellCheckerEnabledValues).toEqual([
       true,
@@ -382,21 +383,25 @@ describe("desktop window factory", () => {
       name: "keeps the native frame",
       isLinuxFrameless: false,
       isLinuxTransparent: false,
-      present: {},
+      present: { autoHideMenuBar: true },
       absent: ["frame", "titleBarStyle", "trafficLightPosition"],
     },
     {
       name: "enables transparency when requested",
       isLinuxFrameless: false,
       isLinuxTransparent: true,
-      present: { transparent: true, backgroundColor: "#00000000" },
+      present: {
+        autoHideMenuBar: true,
+        transparent: true,
+        backgroundColor: "#00000000",
+      },
       absent: ["frame"],
     },
     {
       name: "removes the native frame when requested",
       isLinuxFrameless: true,
       isLinuxTransparent: false,
-      present: { frame: false },
+      present: { autoHideMenuBar: true, frame: false },
       absent: ["titleBarStyle", "trafficLightPosition"],
     },
   ])(

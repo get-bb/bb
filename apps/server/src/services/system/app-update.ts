@@ -37,6 +37,7 @@ export interface AppUpdateService {
 }
 
 interface CreateAppUpdateServiceArgs {
+  currentCommit: string | null;
   appSurface: AppSurface;
   appVersion: AppVersionService;
   config: Pick<ServerRuntimeConfig, "appVersion" | "isDevelopment">;
@@ -246,7 +247,16 @@ export function createAppUpdateService(
     }
     if (support.mode === "npm") {
       const version = await args.appVersion.getSystemVersion({ forceRefresh });
-      if (!version.updateAvailable || version.latestVersion === null) {
+      if (version.latestVersion === null) {
+        return {
+          available: null,
+          blocked: {
+            reason: "fetch-failed",
+            message: "Couldn't check for a newer bb release.",
+          },
+        };
+      }
+      if (!version.updateAvailable) {
         return { available: null, blocked: null };
       }
       return {
@@ -263,7 +273,14 @@ export function createAppUpdateService(
       };
     }
     const check = await readSourceCheck(args.launcher, forceRefresh);
-    if (check === null) return { available: null, blocked: null };
+    if (check === null)
+      return {
+        available: null,
+        blocked: {
+          reason: "fetch-failed",
+          message: "Source update status is not available yet.",
+        },
+      };
     return {
       available:
         check.incoming === null
@@ -305,7 +322,7 @@ export function createAppUpdateService(
       blocked,
       current:
         status === null
-          ? { commit: null, version: args.config.appVersion }
+          ? { commit: args.currentCommit, version: args.config.appVersion }
           : toPublicRevision(status.current),
       lastResult:
         status?.lastResult === null || status?.lastResult === undefined

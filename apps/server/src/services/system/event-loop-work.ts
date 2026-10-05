@@ -13,15 +13,17 @@ interface EventLoopWorkFrame {
 interface CompletedEventLoopWork {
   blocksEventLoop: boolean;
   durationMs: number;
+  cpuMs: number | null;
   label: string;
 }
 
 interface EventLoopWorkSnapshot {
-  currentWork: string | null;
-  lastWork: string | null;
-  lastWorkMs: number | null;
-  slowestWork: string | null;
-  slowestWorkMs: number | null;
+  inFlightWorkAtObservation: string | null;
+  lastCompletedWork: string | null;
+  lastCompletedWorkWallMs: number | null;
+  longestSynchronousWork: string | null;
+  longestSynchronousWorkWallMs: number | null;
+  longestSynchronousWorkCpuMs: number | null;
 }
 
 const activeFrames = new Map<number, EventLoopWorkFrame>();
@@ -43,7 +45,7 @@ function enterEventLoopWork(label: string, blocksEventLoop: boolean): number {
   return id;
 }
 
-function leaveEventLoopWork(id: number): void {
+function leaveEventLoopWork(id: number, cpuMs: number | null): void {
   const frame = activeFrames.get(id);
   activeFrames.delete(id);
   if (frame === undefined) {
@@ -51,6 +53,7 @@ function leaveEventLoopWork(id: number): void {
   }
   const completed: CompletedEventLoopWork = {
     blocksEventLoop: frame.blocksEventLoop,
+    cpuMs,
     durationMs: performance.now() - frame.startedAt,
     label: frame.label,
   };
@@ -87,29 +90,33 @@ function formatActiveWork(): string | null {
   return roots.map((root) => formatLineage(root)).join(" | ");
 }
 
-function selectSlowestWork(): CompletedEventLoopWork | null {
-  let slowest: CompletedEventLoopWork | null = null;
+function selectLongestSynchronousWork(): CompletedEventLoopWork | null {
+  let longest: CompletedEventLoopWork | null = null;
   for (const completed of completedInWindow) {
     if (!completed.blocksEventLoop) {
       continue;
     }
-    if (slowest === null || completed.durationMs > slowest.durationMs) {
-      slowest = completed;
+    if (longest === null || completed.durationMs > longest.durationMs) {
+      longest = completed;
     }
   }
-  return slowest;
+  return longest;
 }
 
 function getEventLoopWorkSnapshot(): EventLoopWorkSnapshot {
-  const slowest = selectSlowestWork();
+  const longest = selectLongestSynchronousWork();
   return {
-    currentWork: formatActiveWork(),
-    lastWork: lastCompleted?.label ?? null,
-    lastWorkMs:
+    inFlightWorkAtObservation: formatActiveWork(),
+    lastCompletedWork: lastCompleted?.label ?? null,
+    lastCompletedWorkWallMs:
       lastCompleted === null ? null : roundDurationMs(lastCompleted.durationMs),
-    slowestWork: slowest?.label ?? null,
-    slowestWorkMs:
-      slowest === null ? null : roundDurationMs(slowest.durationMs),
+    longestSynchronousWork: longest?.label ?? null,
+    longestSynchronousWorkCpuMs:
+      longest === null || longest.cpuMs === null
+        ? null
+        : roundDurationMs(longest.cpuMs),
+    longestSynchronousWorkWallMs:
+      longest === null ? null : roundDurationMs(longest.durationMs),
   };
 }
 
@@ -121,11 +128,13 @@ export function takeEventLoopWorkWindowSnapshot(): EventLoopWorkSnapshot {
 
 export function runEventLoopWorkSync<T>(label: string, work: () => T): T {
   const id = enterEventLoopWork(label, true);
+  const cpuStart = process.threadCpuUsage();
   return currentFrameId.run(id, () => {
     try {
       return work();
     } finally {
-      leaveEventLoopWork(id);
+      const cpu = process.threadCpuUsage(cpuStart);
+      leaveEventLoopWork(id, (cpu.user + cpu.system) / 1_000);
     }
   });
 }
@@ -139,7 +148,7 @@ export async function runEventLoopWork<T>(
     try {
       return await work();
     } finally {
-      leaveEventLoopWork(id);
+      leaveEventLoopWork(id, null);
     }
   });
 }

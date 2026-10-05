@@ -52,6 +52,24 @@ type LoadState =
     }
   | { status: "error"; file: string; message: string };
 
+type ReadyPreview = Extract<LoadState, { status: "ready" }>;
+type PreviewCache = Map<string, ReadyPreview>;
+const MAX_CACHED_PREVIEWS = 8;
+
+function rememberPreview(
+  cache: PreviewCache,
+  key: string,
+  preview: ReadyPreview,
+): void {
+  cache.delete(key);
+  cache.set(key, preview);
+  while (cache.size > MAX_CACHED_PREVIEWS) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
 const DEFAULT_HEIGHT_PX = 224;
 const MIN_HEIGHT_PX = 120;
 const MAX_HEIGHT_PX = 1_200;
@@ -211,7 +229,8 @@ function InlineVisDirective({
   attributes,
   source,
   message,
-}: PluginMessageDirectiveProps) {
+  previewCache,
+}: PluginMessageDirectiveProps & { previewCache: PreviewCache }) {
   const rpc = useRpc<typeof inlineVisRpcContract>();
   const navigate = useBbNavigate();
   const fileAttr = attributes.file?.trim() ?? "";
@@ -222,11 +241,17 @@ function InlineVisDirective({
     previewHeight === null
       ? `inline-vis height must be a whole number from ${MIN_HEIGHT_PX} to ${MAX_HEIGHT_PX} pixels.`
       : null;
+  const cacheKey = JSON.stringify([
+    message.threadId,
+    message.id,
+    sourceAttr ?? "workspace",
+    fileAttr,
+  ]);
   const [state, setState] = useState<LoadState>(() =>
     heightError
       ? { status: "invalid-height", message: heightError }
       : fileAttr
-        ? { status: "loading", file: fileAttr }
+        ? (previewCache.get(cacheKey) ?? { status: "loading", file: fileAttr })
         : { status: "missing-file" },
   );
   const [collapsed, setCollapsed] = useState(readCollapsedPreference);
@@ -246,7 +271,8 @@ function InlineVisDirective({
       return;
     }
     let cancelled = false;
-    setState({ status: "loading", file: fileAttr });
+    const cachedPreview = previewCache.get(cacheKey);
+    setState(cachedPreview ?? { status: "loading", file: fileAttr });
 
     void (async () => {
       try {
@@ -256,9 +282,20 @@ function InlineVisDirective({
           ...(sourceAttr === undefined ? {} : { source: sourceAttr }),
         });
         if (cancelled) return;
-        setState({ status: "ready", ...result });
+        if (result.kind === "not-found") {
+          previewCache.delete(cacheKey);
+          setState({
+            status: "error",
+            file: result.file,
+            message: `Preview file not found: ${result.file}`,
+          });
+          return;
+        }
+        const preview: ReadyPreview = { status: "ready", ...result };
+        rememberPreview(previewCache, cacheKey, preview);
+        setState(preview);
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || cachedPreview) return;
         setState({
           status: "error",
           file: fileAttr,
@@ -270,7 +307,15 @@ function InlineVisDirective({
     return () => {
       cancelled = true;
     };
-  }, [fileAttr, heightError, message.threadId, rpc, sourceAttr]);
+  }, [
+    cacheKey,
+    fileAttr,
+    heightError,
+    message.threadId,
+    previewCache,
+    rpc,
+    sourceAttr,
+  ]);
 
   if (state.status === "missing-file") {
     return (
@@ -376,8 +421,20 @@ function InlineVisDirective({
 }
 
 export default definePluginApp((app) => {
+  const previewCache: PreviewCache = new Map();
   app.slots.messageDirective({
     id: "inline-vis",
-    component: InlineVisDirective,
+    component: (props) => (
+      <InlineVisDirective
+        key={JSON.stringify([
+          props.message.threadId,
+          props.message.id,
+          props.attributes.source ?? "workspace",
+          props.attributes.file?.trim() ?? "",
+        ])}
+        {...props}
+        previewCache={previewCache}
+      />
+    ),
   });
 });

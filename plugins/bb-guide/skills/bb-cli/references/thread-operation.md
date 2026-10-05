@@ -123,6 +123,8 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
   `--after-seq <seq>` or pass `--all`.
   Grep the `--all` output, not the default page, when checking whether a
   thread ever received a message.
+- Read a message reference (`@thread:<id>#msg=<seq>` or a `…/threads/<id>#msg=<seq>`
+  link) with `bb thread log <id> --message <seq> [--context <n>]`.
 - Use `bb thread output <thread-id>` to read the latest final output, or
   `bb thread output --self` for the current thread.
 
@@ -169,6 +171,11 @@ For review or fix pipelines, get the environment ID from
   by default. `--exclude <names...>` replaces that set; entries match basenames
   at any depth or exact root-relative paths using `/` separators.
 - File remove supports `--recursive` and requires `--yes` without a terminal.
+  Recursive directory removal, including orphaned thread storage cleanup,
+  stops processes working inside that directory before deleting files on
+  macOS and Linux, matching worktree removal. Thread deletion also stops these
+  processes before deleting its storage. Windows does not enumerate process
+  working directories.
 - Use `bb voice transcribe <file> [--type <mime>] [--prompt <text>]` without the
   app composer. The MIME type defaults to `audio/webm`.
 

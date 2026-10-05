@@ -24,6 +24,7 @@ describe("sitemapXml", () => {
       "/",
       "/blog",
       "/changelog",
+      "/plugin-guide",
       "/privacy",
       "/marketplace",
       "/blog/an-agentic-ide",

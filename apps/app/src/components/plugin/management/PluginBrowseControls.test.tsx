@@ -319,6 +319,7 @@ describe("PluginCollectionToolbar", () => {
       mockToolbarWidth(800);
       render(<ToolbarHarness installed />);
       const trigger = screen.getByRole("button", { name: control });
+      fireEvent.keyDown(document, { key: "Tab" });
       act(() => trigger.focus());
       expect((await screen.findByRole("tooltip")).textContent).toBe(tooltip);
     },
@@ -332,6 +333,7 @@ describe("PluginCollectionToolbar", () => {
     expect(
       trigger.querySelector('[data-icon="FilterHorizontal"]'),
     ).not.toBeNull();
+    fireEvent.keyDown(document, { key: "Tab" });
     act(() => trigger.focus());
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Category: Security; Source: Local; Sort: Name · Z–A",
@@ -556,7 +558,9 @@ describe("PluginCollectionToolbar", () => {
     const resize = mockToolbarWidth(354);
     render(<ToolbarHarness installed createAction />);
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: "Search plugins" })).toBeNull();
+    expect(
+      screen.queryByRole("textbox", { name: "Search plugins" }),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
     resize(320);
     expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();

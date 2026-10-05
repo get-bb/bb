@@ -21,12 +21,21 @@ import type {
 } from "@bb/server-contract";
 import { mergeLatestTimelineRows } from "@bb/client-core";
 import { createDeferredPromise, type DeferredPromise } from "@bb/test-helpers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import {
   BottomAnchorContext,
   type BottomAnchorContextValue,
 } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { appToast } from "@/components/ui/app-toast";
 import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import {
@@ -108,6 +117,7 @@ function makeUserRow(
     turnId: null,
     sourceSeqStart: sourceSeq,
     sourceSeqEnd: sourceSeq,
+    messageSeq: sourceSeq,
     startedAt: 1,
     createdAt: 1,
     text: "hello",
@@ -890,6 +900,139 @@ describe("useThreadTimelineController", () => {
     ]);
   });
 
+  it("loads older history for a message link and reports a removed message as not found", async () => {
+    const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
+    onTestFinished(() => toastSpy.mockRestore());
+    const adjacentMessageRow = {
+      ...makeUserRow("thread-1:user-seed:5", 5),
+      sourceSeqStart: 4,
+    };
+    vi.mocked(sdk.threads.timeline)
+      .mockResolvedValueOnce(
+        makeTimelineResponse({
+          rows: [makeUserRow("thread-1:user-seed:3", 3), adjacentMessageRow],
+          maxSeq: 5,
+          timelinePage: {
+            historySnapshot: "snapshot-1",
+            hasOlderRows: true,
+            olderCursor: { anchorId: "thread-1:user-seed:3", anchorSeq: 3 },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeTimelineResponse({
+          rows: [newestLoadedRow],
+          maxSeq: 5,
+          timelinePage: {
+            kind: "older",
+            historySnapshot: "snapshot-1",
+            hasOlderRows: false,
+            olderCursor: null,
+          },
+        }),
+      );
+    const { wrapper: queryWrapper } = createQueryClientTestHarness();
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      queryWrapper({
+        children: (
+          <MemoryRouter
+            initialEntries={["/projects/proj-1/threads/thread-1#msg=4"]}
+          >
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
+          </MemoryRouter>
+        ),
+      });
+    const { result } = renderHook(
+      () => {
+        const timeline = useThreadTimelineController({ threadId: "thread-1" });
+        useScrollToSearchedMessage(timeline.timelineRows, "thread-1", {
+          hasOlderRows: timeline.hasOlderTimelineRows,
+          isLoadingOlderRows: timeline.isLoadingOlderTimelineRows,
+          onLoadOlderRows: timeline.loadOlderTimelineRows,
+          reportsMissingTarget: true,
+        });
+        return timeline;
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        "Message not found",
+        expect.anything(),
+      );
+    });
+    expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
+    expect(rowIds(result.current)).toEqual([
+      newestLoadedRow.id,
+      "thread-1:user-seed:3",
+      adjacentMessageRow.id,
+    ]);
+    expect(toastSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("reveals an accepted steer from a link to its request seq", async () => {
+    const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
+    onTestFinished(() => toastSpy.mockRestore());
+    const steerRow: TimelineUserConversationRow = {
+      ...makeUserRow("thread-1:user-seed:5", 7),
+      messageSeq: 5,
+      turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    };
+    const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness(
+      { queries: { staleTime: Infinity } },
+    );
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({
+        rows: [makeUserRow("thread-1:user-seed:3", 3), steerRow],
+        maxSeq: 8,
+      }),
+    );
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      queryWrapper({
+        children: (
+          <MemoryRouter
+            initialEntries={["/projects/proj-1/threads/thread-1#msg=5"]}
+          >
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
+          </MemoryRouter>
+        ),
+      });
+    const scrollIntoView = vi.fn();
+    const renderedTarget = document.createElement("div");
+    renderedTarget.setAttribute("data-timeline-row-id", steerRow.id);
+    renderedTarget.scrollIntoView = scrollIntoView;
+    document.body.appendChild(renderedTarget);
+    onTestFinished(() => renderedTarget.remove());
+
+    renderHook(
+      () => {
+        const timeline = useThreadTimelineController({ threadId: "thread-1" });
+        useScrollToSearchedMessage(timeline.timelineRows, "thread-1", {
+          hasOlderRows: timeline.hasOlderTimelineRows,
+          isLoadingOlderRows: timeline.isLoadingOlderTimelineRows,
+          onLoadOlderRows: timeline.loadOlderTimelineRows,
+          reportsMissingTarget: true,
+        });
+        return timeline;
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "start",
+        inline: "nearest",
+      });
+    });
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
   it("retries revealing a searched row when a realtime update changes only top-level fields", async () => {
     const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness(
       { queries: { staleTime: Infinity } },
@@ -952,7 +1095,10 @@ describe("useThreadTimelineController", () => {
       });
 
       await waitFor(() => {
-        expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+        expect(scrollIntoView).toHaveBeenCalledWith({
+          block: "start",
+          inline: "nearest",
+        });
       });
       expect(result.current.activeThinking?.id).toBe("thinking-1");
     } finally {

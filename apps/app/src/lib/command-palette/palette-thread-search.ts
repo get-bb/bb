@@ -2,6 +2,7 @@ import {
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
 } from "@bb/domain";
+import { fuzzyMatchText } from "@bb/fuzzy-match";
 import type {
   ThreadSearchMatch,
   ThreadSearchResponse,
@@ -12,6 +13,7 @@ import {
   normalizeThreadLifecycleFilter,
   type ThreadArchiveFilter,
 } from "@/lib/thread-lifecycle-filter";
+import { PALETTE_RESULT_LIMIT } from "./palette-ranking";
 
 export interface PaletteThreadSearchRow {
   id: string;
@@ -20,6 +22,7 @@ export interface PaletteThreadSearchRow {
   highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   secondaryTitle: string | null;
   projectName: string | null;
+  projectHighlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   relativeTime: string;
   projectId: string;
   threadId: string;
@@ -42,7 +45,10 @@ export interface PaletteThreadSearchRowsResult {
   rows: PaletteThreadSearchRow[];
 }
 
+type HighlightRange = PaletteThreadSearchRow["highlightRanges"][number];
+
 const RECENT_THREAD_LIMIT = 20;
+const LOCAL_ROWS_BEFORE_SERVER_ROWS = 3;
 
 function isTitleMatch(match: ThreadSearchMatch): boolean {
   return match.sourceKind === "title" || match.sourceKind === "title_fallback";
@@ -77,12 +83,105 @@ function serverRow(
     highlightRanges: primaryMatch?.highlightRanges ?? [],
     secondaryTitle: snippetMatch === undefined ? null : title,
     projectName: projectMetadata(thread.projectId, projectNamesById),
+    projectHighlightRanges: [],
     relativeTime: formatRelativeTime({ timestamp: thread.updatedAt, now }),
     projectId: thread.projectId,
     threadId: thread.id,
     thread,
     messageSeq: snippetMatch?.sourceSeq ?? null,
   };
+}
+
+function positionsToRanges(positions: readonly number[]): HighlightRange[] {
+  const ranges: HighlightRange[] = [];
+  for (const position of [...new Set(positions)].sort((a, b) => a - b)) {
+    const last = ranges.at(-1);
+    if (last !== undefined && last.end === position) {
+      last.end = position + 1;
+    } else {
+      ranges.push({ start: position, end: position + 1 });
+    }
+  }
+  return ranges;
+}
+
+function projectNameMatch(name: string, query: string): HighlightRange | null {
+  const needle = query.toLowerCase();
+  const haystack = name.toLowerCase();
+  if (haystack.startsWith(needle)) return { start: 0, end: needle.length };
+  for (const word of haystack.matchAll(/[\p{L}\p{N}]+/gu)) {
+    if (word[0].startsWith(needle)) {
+      return { start: word.index, end: word.index + needle.length };
+    }
+  }
+  return null;
+}
+
+function localMatchRows(
+  threads: readonly ThreadListEntry[],
+  query: string,
+  projectNamesById: ReadonlyMap<string, string>,
+  now: number,
+): PaletteThreadSearchRow[] {
+  const titleRows = fuzzyMatchText({
+    items: threads,
+    query,
+    getText: getThreadDisplayTitle,
+    limit: threads.length,
+  })
+    .sort(
+      (left, right) =>
+        right.score - left.score || right.item.updatedAt - left.item.updatedAt,
+    )
+    .map((match) => ({
+      ...serverRow(match.item, [], "active", projectNamesById, now),
+      highlightRanges: positionsToRanges(match.positions),
+    }));
+  const titleMatchIds = new Set(titleRows.map((row) => row.threadId));
+  const projectRows = threads
+    .filter((thread) => !titleMatchIds.has(thread.id))
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .flatMap((thread) => {
+      const match = projectNameMatch(
+        projectNamesById.get(thread.projectId) ?? "",
+        query,
+      );
+      if (match === null) return [];
+      const row = serverRow(thread, [], "active", projectNamesById, now);
+      return [
+        {
+          ...row,
+          projectHighlightRanges: row.projectName === null ? [] : [match],
+        },
+      ];
+    });
+  return [...titleRows, ...projectRows].slice(0, PALETTE_RESULT_LIMIT);
+}
+
+function mergeActiveRows(
+  localRows: readonly PaletteThreadSearchRow[],
+  serverRows: readonly PaletteThreadSearchRow[],
+): PaletteThreadSearchRow[] {
+  const serverRowsById = new Map(serverRows.map((row) => [row.id, row]));
+  const localIds = new Set(localRows.map((row) => row.id));
+  const merged = localRows.map((row) => {
+    const server = serverRowsById.get(row.id);
+    if (server === undefined) return row;
+    return server.secondaryTitle === null
+      ? { ...row, messageSeq: server.messageSeq }
+      : {
+          ...row,
+          primaryText: server.primaryText,
+          highlightRanges: server.highlightRanges,
+          secondaryTitle: server.secondaryTitle,
+          messageSeq: server.messageSeq,
+        };
+  });
+  return [
+    ...merged.slice(0, LOCAL_ROWS_BEFORE_SERVER_ROWS),
+    ...serverRows.filter((row) => !localIds.has(row.id)),
+    ...merged.slice(LOCAL_ROWS_BEFORE_SERVER_ROWS),
+  ];
 }
 
 export function buildPaletteThreadSearchRows({
@@ -97,36 +196,50 @@ export function buildPaletteThreadSearchRows({
   const trimmedQuery = query.trim();
   const isRecent = trimmedQuery.length === 0;
   const isSearchable = trimmedQuery.length >= 2;
+  const threadsFor = (lifecycle: ThreadArchiveFilter) =>
+    recentThreads.filter((thread) =>
+      lifecycle === "archived"
+        ? thread.archivedAt !== null
+        : thread.archivedAt === null,
+    );
+  const serverRowsFor = (lifecycle: ThreadArchiveFilter) =>
+    isSearchable && searchResultsAreCurrent
+      ? (searchResponse?.[lifecycle]?.results ?? []).map((result) =>
+          serverRow(
+            result.thread,
+            result.matches,
+            lifecycle,
+            projectNamesById,
+            now,
+          ),
+        )
+      : [];
+  const rowsFor = (lifecycle: ThreadArchiveFilter) => {
+    if (isRecent) {
+      return threadsFor(lifecycle)
+        .sort((left, right) =>
+          lifecycle === "archived"
+            ? (right.archivedAt ?? 0) - (left.archivedAt ?? 0)
+            : right.updatedAt - left.updatedAt,
+        )
+        .slice(0, RECENT_THREAD_LIMIT)
+        .map((thread) =>
+          serverRow(thread, [], lifecycle, projectNamesById, now),
+        );
+    }
+    if (lifecycle === "archived") return serverRowsFor(lifecycle);
+    return mergeActiveRows(
+      localMatchRows(
+        threadsFor(lifecycle),
+        trimmedQuery,
+        projectNamesById,
+        now,
+      ),
+      serverRowsFor(lifecycle),
+    );
+  };
   return {
     isRecent,
-    rows: normalizeThreadLifecycleFilter(lifecycles).flatMap((lifecycle) =>
-      isRecent
-        ? recentThreads
-            .filter((thread) =>
-              lifecycle === "archived"
-                ? thread.archivedAt !== null
-                : thread.archivedAt === null,
-            )
-            .sort((left, right) =>
-              lifecycle === "archived"
-                ? (right.archivedAt ?? 0) - (left.archivedAt ?? 0)
-                : right.updatedAt - left.updatedAt,
-            )
-            .slice(0, RECENT_THREAD_LIMIT)
-            .map((thread) =>
-              serverRow(thread, [], lifecycle, projectNamesById, now),
-            )
-        : isSearchable && searchResultsAreCurrent
-          ? (searchResponse?.[lifecycle]?.results ?? []).map((result) =>
-              serverRow(
-                result.thread,
-                result.matches,
-                lifecycle,
-                projectNamesById,
-                now,
-              ),
-            )
-          : [],
-    ),
+    rows: normalizeThreadLifecycleFilter(lifecycles).flatMap(rowsFor),
   };
 }

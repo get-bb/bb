@@ -265,6 +265,7 @@ describe("resolveThreadTimelinePlaceholder", () => {
         text: "Done",
         sourceSeqStart: 1,
         sourceSeqEnd: 1,
+        messageSeq: 1,
         startedAt: 1,
         createdAt: 1,
         attachments: null,

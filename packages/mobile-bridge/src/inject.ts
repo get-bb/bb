@@ -4,6 +4,7 @@ import { NATIVE_BRIDGE_GLOBAL } from "./version.js";
 export interface NativeShellApi extends NativeShellHandshake {
   post(message: unknown): void;
   request(kind: string, payload: unknown): Promise<unknown>;
+  copyTextAndImage?(text: string, imageUrl: string): Promise<unknown>;
   subscribe(listener: (event: unknown) => void): () => void;
 }
 
@@ -29,6 +30,30 @@ export function buildBridgeInjectionScript(
     var listeners = [];
     var pending = {};
     var nextId = 0;
+    var imagePastes = {};
+
+    var discardImagePaste = function (id) {
+      var entry = imagePastes[id];
+      if (!entry) return;
+      delete imagePastes[id];
+      clearTimeout(entry.timer);
+      entry.controller.abort();
+    };
+
+    var deliverImagePaste = function (id) {
+      var entry = imagePastes[id];
+      if (!entry || !entry.blob || !entry.image) return;
+      var blob = entry.blob;
+      var image = entry.image;
+      discardImagePaste(id);
+      if (!entry.target.isConnected || entry.href !== window.location.href
+          || blob.size === 0 || blob.size > 35 * 1024 * 1024) return;
+      var clipboard = new DataTransfer();
+      clipboard.items.add(new File([blob], image.name, { type: image.type }));
+      entry.target.dispatchEvent(new ClipboardEvent("paste", {
+        bubbles: true, cancelable: true, clipboardData: clipboard
+      }));
+    };
 
     var post = function (message) {
       try {
@@ -41,6 +66,33 @@ export function buildBridgeInjectionScript(
 
     var native = {
       __installed: true,
+      __beginImagePaste: function (id, url) {
+        var target = document.activeElement;
+        if (!target || !target.isContentEditable || !target.closest("[data-promptbox]")) return false;
+        var controller = new AbortController();
+        var timer = setTimeout(function () { discardImagePaste(id); }, 30000);
+        imagePastes[id] = { target: target, timer: timer, href: window.location.href, controller: controller };
+        fetch(url, { signal: controller.signal, credentials: "omit", cache: "no-store" })
+          .then(function (response) {
+            if (!response.ok) throw new Error("Keyboard image unavailable");
+            return response.blob();
+          })
+          .then(function (blob) {
+            var entry = imagePastes[id];
+            if (!entry) return;
+            entry.blob = blob;
+            deliverImagePaste(id);
+          })
+          .catch(function () { discardImagePaste(id); });
+        return true;
+      },
+      __finishImagePaste: function (id, image) {
+        var entry = imagePastes[id];
+        if (!entry) return;
+        if (!image) { discardImagePaste(id); return; }
+        entry.image = image;
+        deliverImagePaste(id);
+      },
       __apply: function (next) {
         for (var key in next) {
           if (Object.prototype.hasOwnProperty.call(next, key)) {
@@ -74,15 +126,16 @@ export function buildBridgeInjectionScript(
         }
       },
       post: post,
+      copyTextAndImage: handshake.platform === "android" ? function (text, imageUrl) {
+        return native.request("clipboard", { text: text, imageUrl: imageUrl });
+      } : undefined,
       request: function (kind, payload) {
         return new Promise(function (resolve, reject) {
           var id = "r" + String(nextId++) + "-" + String(Date.now());
-          // A shell that never answers must not leak the promise. Ten seconds
-          // is far longer than any share sheet takes to open.
           var timer = setTimeout(function () {
             delete pending[id];
             reject(new Error("native request timed out"));
-          }, 10000);
+          }, kind === "clipboard" ? 30000 : 10000);
           pending[id] = { resolve: resolve, reject: reject, timer: timer };
           post({ type: "request", id: id, request: { kind: kind, payload: payload } });
         });

@@ -136,7 +136,7 @@ function openSseResponse(events: JsonValue[]): {
 } {
   let canceled = false;
   const bytes = new TextEncoder().encode(
-    `${events.map((event) => `data: ${JSON.stringify(event)}`).join("\n\n")}\n\n`,
+    `${events.map((event) => `data: ${event === "[DONE]" ? event : JSON.stringify(event)}`).join("\n\n")}\n\n`,
   );
   return {
     response: new Response(
@@ -316,6 +316,77 @@ describe("Codex ChatGPT client", () => {
     });
     expect(requestBody.text).toBeUndefined();
   });
+
+  it.each([
+    { terminalType: "response.completed", finalText: "Final result" },
+    { terminalType: "response.done", finalText: "Final result" },
+    { terminalType: "response.completed", finalText: "" },
+    { terminalType: "[DONE]", finalText: "" },
+  ])(
+    "returns text and cancels an open SSE body after $terminalType with final text '$finalText'",
+    async ({ terminalType, finalText }) => {
+      const homeDir = await makeTempHome();
+      await writeCodexApiKeyAuth({ homeDir, apiKey: "sk-codex-api-key" });
+      const fetchMock = setupFetchMock();
+      const completedResponse = openSseResponse([
+        { type: "response.output_text.delta", delta: "Partial result" },
+        terminalType === "[DONE]"
+          ? "[DONE]"
+          : {
+              type: terminalType,
+              response: {
+                output: [
+                  {
+                    type: "message",
+                    content: [{ type: "output_text", text: finalText }],
+                  },
+                ],
+              },
+            },
+        "[DONE]",
+      ]);
+      fetchMock.mockResolvedValueOnce(completedResponse.response);
+
+      await expect(
+        completeCodexInference(
+          {
+            model: "gpt-5.6-luna",
+            prompt: "Return a title",
+            timeoutMs: 100,
+          },
+          new AbortController().signal,
+        ),
+      ).resolves.toBe(finalText || "Partial result");
+      expect(completedResponse.wasCanceled()).toBe(true);
+    },
+  );
+
+  it.each(["response.completed", "[DONE]"])(
+    "rejects an empty open SSE body after %s without waiting for EOF",
+    async (terminalType) => {
+      const homeDir = await makeTempHome();
+      await writeCodexApiKeyAuth({ homeDir, apiKey: "sk-codex-api-key" });
+      const fetchMock = setupFetchMock();
+      const completedResponse = openSseResponse([
+        terminalType === "[DONE]"
+          ? "[DONE]"
+          : { type: terminalType, response: { output: [] } },
+      ]);
+      fetchMock.mockResolvedValueOnce(completedResponse.response);
+
+      await expect(
+        completeCodexInference(
+          {
+            model: "gpt-5.6-luna",
+            prompt: "Return a title",
+            timeoutMs: 100,
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ detailCode: "codex_response_invalid" });
+      expect(completedResponse.wasCanceled()).toBe(true);
+    },
+  );
 
   it("classifies streamed overload failures as service unavailable", async () => {
     const homeDir = await makeTempHome();

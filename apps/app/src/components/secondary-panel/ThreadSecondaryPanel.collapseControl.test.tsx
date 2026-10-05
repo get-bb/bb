@@ -14,7 +14,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
-import { PanelGroup } from "react-resizable-panels";
+import { Panel, PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -176,6 +176,50 @@ function renderFixedTabSplit() {
     </Wrapper>,
   );
 }
+
+describe("ThreadSecondaryPanel unavailable content", () => {
+  it.each([false, true])(
+    "only mounts the unavailable fallback while open (drawer=%s)",
+    (renderAsDrawer) => {
+      const { wrapper: Wrapper } = createQueryClientTestHarness();
+      const panel = (isOpen: boolean) => (
+        <Wrapper>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <Panel id="main" order={1}>
+                Working main content
+              </Panel>
+              <ThreadSecondaryPanel
+                activeTab={null}
+                canUseGitUi={false}
+                fixedTabs={[]}
+                tabs={[]}
+                isConversationCollapsed={false}
+                isOpen={isOpen}
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onTabReorder={noop}
+                onOpenNewTab={noop}
+                onPanelFocus={noop}
+                onToggleConversationCollapse={noop}
+                renderAsDrawer={renderAsDrawer}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </Wrapper>
+      );
+      const { unmount } = render(panel(false));
+      expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
+
+      unmount();
+      render(panel(true));
+      expect(
+        screen.getByText("This panel view is unavailable."),
+      ).not.toBeNull();
+    },
+  );
+});
 
 describe("ThreadSecondaryPanel compact file content", () => {
   it("renders the available tab while persisted active state catches up", () => {

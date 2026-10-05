@@ -59,6 +59,7 @@ import {
 
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
+  performanceDiagnosticsAvailable: false,
   generalSettings: defaultAppSettings,
   experiments: { ...defaultExperiments },
   appearance: defaultAppTheme,

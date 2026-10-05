@@ -7,6 +7,7 @@ import type {
 } from "@bb/server-contract";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { revealTimelineRow } from "@/components/thread/timeline/reveal-timeline-row.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
 import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
@@ -625,10 +626,7 @@ export function ThreadTableOfContents({
     async (id: string) => {
       const getScrollElement = () => bottomAnchor?.getScrollElement() ?? null;
       const scrollToRow = (element: HTMLElement) => {
-        bottomAnchor?.scrollElementIntoView({
-          element,
-          options: { block: "start", inline: "nearest" },
-        });
+        revealTimelineRow(element, bottomAnchor);
       };
       onNavigateToRow?.(id);
 

@@ -67,6 +67,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     hostDaemonPort: 38887,
     inheritedSkillsRootPaths: [],
     isDevelopment: false,
+    performanceDiagnosticsAvailable: false,
     serverPort: 38886,
     sharedSkillRoots: { user: [], project: [] },
   };

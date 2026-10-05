@@ -892,6 +892,7 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   if (
     row === null ||
     row.environmentProviderId === null ||
+    !row.providerOwnsPath ||
     environmentHasLiveThreads(deps.db, environmentId)
   )
     return false;

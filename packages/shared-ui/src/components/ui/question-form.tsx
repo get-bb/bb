@@ -13,7 +13,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   type KeyboardEvent,
   type RefObject,
 } from "react";
@@ -24,12 +23,12 @@ import { cn } from "../../lib/utils";
 import {
   answerStateFor,
   buildQuestionAnswers,
-  createInitialFormState,
   isQuestionAnswered,
   resolveQuestionShortcutChoice,
   type QuestionAnswerState,
   type QuestionFormState,
 } from "./question-form-state";
+import { useQuestionFormDraft } from "./question-form-draft";
 
 const OTHER_OPTION_LABEL = "Other…";
 const FREE_TEXT_MIN_HEIGHT = 84;
@@ -298,24 +297,24 @@ function QuestionInputBlock({
 }
 
 export interface QuestionFormProps {
+  draftKey?: string;
   questions: readonly Question[];
   disabled: boolean;
   cancelDisabled: boolean;
-  onSubmit: (answers: Record<string, QuestionAnswer>) => void;
-  onCancel: () => void;
+  onSubmit: (answers: Record<string, QuestionAnswer>) => void | Promise<void>;
+  onCancel: () => void | Promise<void>;
 }
 
 export function QuestionForm({
+  draftKey,
   questions,
   disabled,
   cancelDisabled,
   onSubmit,
   onCancel,
 }: QuestionFormProps) {
-  const [formState, setFormState] = useState<QuestionFormState>(() =>
-    createInitialFormState(questions),
-  );
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const { formState, setFormState, currentIndex, setCurrentIndex, clearDraft } =
+    useQuestionFormDraft(draftKey, questions);
   const formRef = useRef<HTMLDivElement>(null);
   const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
 
@@ -342,7 +341,7 @@ export function QuestionForm({
         [question.id]: update(answerStateFor(current, question)),
       }));
     },
-    [],
+    [setFormState],
   );
 
   const handleToggleOption = useCallback(
@@ -375,14 +374,17 @@ export function QuestionForm({
     updateQuestionState(question, (state) => ({ ...state, otherText: value }));
   };
 
-  const submitAnswer = (): void => {
+  const submitAnswer = async (): Promise<void> => {
     if (disabled || !allAnswered) return;
-    onSubmit(buildQuestionAnswers(questions, formState));
+    try {
+      await onSubmit(buildQuestionAnswers(questions, formState));
+      clearDraft();
+    } catch {}
   };
 
   const handleAdvance = (): void => {
     if (isLast) {
-      submitAnswer();
+      void submitAnswer();
       return;
     }
     setCurrentIndex((index) => Math.min(index + 1, totalQuestions - 1));
@@ -463,7 +465,12 @@ export function QuestionForm({
           size="sm"
           variant="ghost"
           disabled={cancelDisabled}
-          onClick={onCancel}
+          onClick={async () => {
+            try {
+              await onCancel();
+              clearDraft();
+            } catch {}
+          }}
         >
           Cancel
         </Button>

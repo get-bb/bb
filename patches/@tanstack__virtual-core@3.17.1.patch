@@ -1,0 +1,114 @@
+diff --git a/dist/cjs/index.cjs b/dist/cjs/index.cjs
+index e691366c4459a108c4ab8bb9d8e00a7df823fc81..71a6c81079b7e65e30fe21e7dadd3707fe78aeff 100644
+--- a/dist/cjs/index.cjs
++++ b/dist/cjs/index.cjs
+@@ -111,6 +111,7 @@ const observeOffset = (instance, cb, readOffset) => {
+     element.addEventListener("scrollend", endHandler, addEventListenerOptions);
+   }
+   return () => {
++    fallback?.cancel();
+     element.removeEventListener("scroll", handler);
+     if (registerScrollendEvent) {
+       element.removeEventListener("scrollend", endHandler);
+diff --git a/dist/cjs/utils.cjs b/dist/cjs/utils.cjs
+index eb9a544cb056944a290ad0050610cd6f22d143e1..a88d712e89e5f43ef382c17bfc0446f602a89a5d 100644
+--- a/dist/cjs/utils.cjs
++++ b/dist/cjs/utils.cjs
+@@ -62,10 +62,12 @@ function notUndefined(value, msg) {
+ const approxEqual = (a, b) => Math.abs(a - b) < 1.01;
+ const debounce = (targetWindow, fn, ms) => {
+   let timeoutId;
+-  return function(...args) {
++  const debounced = function(...args) {
+     targetWindow.clearTimeout(timeoutId);
+     timeoutId = targetWindow.setTimeout(() => fn.apply(this, args), ms);
+   };
++  debounced.cancel = () => targetWindow.clearTimeout(timeoutId);
++  return debounced;
+ };
+ exports.approxEqual = approxEqual;
+ exports.debounce = debounce;
+diff --git a/dist/cjs/utils.d.cts b/dist/cjs/utils.d.cts
+index 8af53b8d393dad4705e07f35dba3f0749beae6a5..e0c7de127bcd788580068d76eaac23f605bc14ac 100644
+--- a/dist/cjs/utils.d.cts
++++ b/dist/cjs/utils.d.cts
+@@ -12,4 +12,7 @@ export declare function memo<TDeps extends ReadonlyArray<any>, TResult>(getDeps:
+ };
+ export declare function notUndefined<T>(value: T | undefined, msg?: string): T;
+ export declare const approxEqual: (a: number, b: number) => boolean;
+-export declare const debounce: (targetWindow: Window & typeof globalThis, fn: Function, ms: number) => (this: any, ...args: Array<any>) => void;
++export declare const debounce: (targetWindow: Window & typeof globalThis, fn: Function, ms: number) => {
++    (this: any, ...args: Array<any>): void;
++    cancel: () => void;
++};
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 25cf5bc1aff674ecbc5b2a032fd036a91699870c..a4d223158c7703207c59e262ef9a066cb402dc94 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -109,6 +109,7 @@ const observeOffset = (instance, cb, readOffset) => {
+     element.addEventListener("scrollend", endHandler, addEventListenerOptions);
+   }
+   return () => {
++    fallback?.cancel();
+     element.removeEventListener("scroll", handler);
+     if (registerScrollendEvent) {
+       element.removeEventListener("scrollend", endHandler);
+diff --git a/dist/esm/utils.d.ts b/dist/esm/utils.d.ts
+index 8af53b8d393dad4705e07f35dba3f0749beae6a5..e0c7de127bcd788580068d76eaac23f605bc14ac 100644
+--- a/dist/esm/utils.d.ts
++++ b/dist/esm/utils.d.ts
+@@ -12,4 +12,7 @@ export declare function memo<TDeps extends ReadonlyArray<any>, TResult>(getDeps:
+ };
+ export declare function notUndefined<T>(value: T | undefined, msg?: string): T;
+ export declare const approxEqual: (a: number, b: number) => boolean;
+-export declare const debounce: (targetWindow: Window & typeof globalThis, fn: Function, ms: number) => (this: any, ...args: Array<any>) => void;
++export declare const debounce: (targetWindow: Window & typeof globalThis, fn: Function, ms: number) => {
++    (this: any, ...args: Array<any>): void;
++    cancel: () => void;
++};
+diff --git a/dist/esm/utils.js b/dist/esm/utils.js
+index 5369a85f196d547cc760ff4b1c8d2a0b4857bf62..988c0d6b46f6e8c1fe34540bac630e4b10b9039d 100644
+--- a/dist/esm/utils.js
++++ b/dist/esm/utils.js
+@@ -60,10 +60,12 @@ function notUndefined(value, msg) {
+ const approxEqual = (a, b) => Math.abs(a - b) < 1.01;
+ const debounce = (targetWindow, fn, ms) => {
+   let timeoutId;
+-  return function(...args) {
++  const debounced = function(...args) {
+     targetWindow.clearTimeout(timeoutId);
+     timeoutId = targetWindow.setTimeout(() => fn.apply(this, args), ms);
+   };
++  debounced.cancel = () => targetWindow.clearTimeout(timeoutId);
++  return debounced;
+ };
+ export {
+   approxEqual,
+diff --git a/src/index.ts b/src/index.ts
+index 7af791d13a0b026c380272c0e09601dd1b38c246..3077a4cbc2a21f35ebb688d641b2da7853d12c20 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -213,6 +213,7 @@ const observeOffset = <T extends Element | Window>(
+     element.addEventListener('scrollend', endHandler, addEventListenerOptions)
+   }
+   return () => {
++    fallback?.cancel()
+     element.removeEventListener('scroll', handler)
+     if (registerScrollendEvent) {
+       element.removeEventListener('scrollend', endHandler)
+diff --git a/src/utils.ts b/src/utils.ts
+index 5e16080cd0f92c1814b082280a3513debed5e119..ed708a28d488c09eb2bf3210b72421645cb04788 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -102,8 +102,10 @@ export const debounce = (
+   ms: number,
+ ) => {
+   let timeoutId: number
+-  return function (this: any, ...args: Array<any>) {
++  const debounced = function (this: any, ...args: Array<any>) {
+     targetWindow.clearTimeout(timeoutId)
+     timeoutId = targetWindow.setTimeout(() => fn.apply(this, args), ms)
+   }
++  debounced.cancel = () => targetWindow.clearTimeout(timeoutId)
++  return debounced
+ }

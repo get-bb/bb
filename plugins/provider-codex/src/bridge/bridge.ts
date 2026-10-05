@@ -71,7 +71,6 @@ import {
   toCodexDynamicTools,
   toCodexPermissionSettings,
   toCodexServiceTier,
-  toCodexThreadPermissionSettings,
   toCodexUserInput,
   type BbThreadForkParams,
   type BbThreadStartParams,
@@ -464,7 +463,7 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
-  turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings> | null;
+  turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
   unopenedCompactionDispatches: PendingCompactionDispatch[];
@@ -565,7 +564,6 @@ function constructionSignature(
   cwd: string,
   sessionOptions: CodexSessionOptions,
 ): string {
-  const permissionSettings = toCodexThreadPermissionSettings(sessionOptions);
   const poolBaseUrl = sessionOptions.envVars?.[CODEX_POOL_BASE_URL_ENV];
   const poolToken = sessionOptions.envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
   return JSON.stringify({
@@ -573,9 +571,6 @@ function constructionSignature(
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
-    approvalPolicy: permissionSettings.approvalPolicy,
-    approvalsReviewer: permissionSettings.approvalsReviewer,
-    sandbox: permissionSettings.sandbox,
     poolRoute:
       poolBaseUrl === undefined || poolToken === undefined
         ? null
@@ -1103,7 +1098,11 @@ async function constructThreadSession(
       args.cwd,
       decoded.sessionOptions,
     ),
-    turnPermissionSettings: null,
+    turnPermissionSettings: toCodexPermissionSettings({
+      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
+      gitWritableRoots: [],
+      options: decoded.sessionOptions,
+    }),
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
@@ -1247,6 +1246,11 @@ async function constructThreadSession(
       providerThreadId: codexThreadId,
       threadId: args.threadId,
     });
+    session.turnPermissionSettings = toCodexPermissionSettings({
+      additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
+      gitWritableRoots: translator.getThreadGitWritableRoots(args.threadId),
+      options: decoded.sessionOptions,
+    });
     announceSessionIdentity(session, codexThreadId);
     return { session, codexThreadId };
   } catch (error) {
@@ -1283,7 +1287,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     translator: session.translator,
     construction: session.construction,
     constructionSignature: session.constructionSignature,
-    turnPermissionSettings: null,
+    turnPermissionSettings: session.turnPermissionSettings,
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
@@ -1466,8 +1470,25 @@ async function handleModelList(id: string | number): Promise<void> {
       resultSchema: ignoredChildResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
+    const models = parseModelsResponse(result);
+    const configuredModel = await connection
+      .request({
+        method: "config/read",
+        params: {},
+        resultSchema: z.object({
+          config: z.object({ model: z.string().nullish() }),
+        }),
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      })
+      .then((configResult) => configResult.config.model)
+      .catch(() => null);
+    if (models.some((model) => model.model === configuredModel)) {
+      for (const model of models) {
+        model.isDefault = model.model === configuredModel;
+      }
+    }
     sendResult(id, {
-      models: parseModelsResponse(result),
+      models,
       selectedOnlyModels: [],
     });
   } catch (error) {
@@ -1854,25 +1875,27 @@ async function handleTurnStart(
       });
       const previousPermissions = session.turnPermissionSettings;
       session.turnPermissionSettings = permissionSettings;
-      result = await connection.request({
-        method: "turn/start",
-        params: {
-          threadId: codexThreadId,
-          input: toCodexUserInput(input),
-          approvalPolicy: permissionSettings.approvalPolicy,
-          approvalsReviewer: permissionSettings.approvalsReviewer,
-          sandboxPolicy: permissionSettings.sandboxPolicy,
-          model: decoded.sessionOptions.model ?? undefined,
-          serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
-        },
-        resultSchema: ignoredChildResultSchema,
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      }).catch((error: unknown) => {
-        if (session.turnPermissionSettings === permissionSettings) {
-          session.turnPermissionSettings = previousPermissions;
-        }
-        throw error;
-      });
+      result = await connection
+        .request({
+          method: "turn/start",
+          params: {
+            threadId: codexThreadId,
+            input: toCodexUserInput(input),
+            approvalPolicy: permissionSettings.approvalPolicy,
+            approvalsReviewer: permissionSettings.approvalsReviewer,
+            sandboxPolicy: permissionSettings.sandboxPolicy,
+            model: decoded.sessionOptions.model ?? undefined,
+            serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
+          },
+          resultSchema: ignoredChildResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        })
+        .catch((error: unknown) => {
+          if (session.turnPermissionSettings === permissionSettings) {
+            session.turnPermissionSettings = previousPermissions;
+          }
+          throw error;
+        });
     }
     sendResult(id, { threadId: params.threadId });
     settleAcceptedDispatch({
@@ -1919,25 +1942,32 @@ async function handleTurnSteer(
     const decoded = decodeCodexOptions(params.options);
     const permissionSettings = toCodexPermissionSettings({
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-      gitWritableRoots: session.translator.getThreadGitWritableRoots(params.threadId),
+      gitWritableRoots: session.translator.getThreadGitWritableRoots(
+        params.threadId,
+      ),
       options: decoded.sessionOptions,
     });
     if (
-      session.turnPermissionSettings !== null &&
       !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings)
     ) {
       if (!session.openCodexTurnIds.has(params.expectedTurnId)) {
         throw new Error("The turn to steer is no longer active");
       }
       const failure = await interruptCodexTurn(
-        session, session.codexThreadId, params.expectedTurnId,
+        session,
+        session.codexThreadId,
+        params.expectedTurnId,
       );
       if (failure !== null) throw failure;
       const settled = await waitForCodexTurnSettlement(
-        session, params.expectedTurnId, INTERRUPT_SETTLEMENT_TIMEOUT_MS,
+        session,
+        params.expectedTurnId,
+        INTERRUPT_SETTLEMENT_TIMEOUT_MS,
       );
       if (!settled) {
-        throw new Error("Codex did not stop the active turn before applying new permissions");
+        throw new Error(
+          "Codex did not stop the active turn before applying new permissions",
+        );
       }
       await handleTurnStart(id, params);
       return;

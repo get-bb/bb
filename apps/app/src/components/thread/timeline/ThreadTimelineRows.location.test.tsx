@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   MemoryRouter,
+  BrowserRouter,
   useLocation,
   useNavigate,
   type NavigateFunction,
@@ -54,6 +55,13 @@ function PaneTimeline({ threadId }: { threadId: string }) {
       text: `Message in ${threadId}`,
       threadId,
     }),
+    conversationRow({
+      id: `${threadId}-next-message`,
+      role: "assistant",
+      seq: 13,
+      text: `Next message in ${threadId}`,
+      threadId,
+    }),
   ]);
   return (
     <ThreadTimelineRows
@@ -65,16 +73,21 @@ function PaneTimeline({ threadId }: { threadId: string }) {
   );
 }
 
-function renderTwoPaneTimelines() {
+function renderTwoPaneTimelines(nativeHistory = false) {
   const navigateRef: { current: NavigateFunction | null } = { current: null };
+  const content = (
+    <QueryClientProvider client={new QueryClient()}>
+      <NavigationProbe navigateRef={navigateRef} />
+      <PaneTimeline threadId="thr_a" />
+      <PaneTimeline threadId="thr_b" />
+    </QueryClientProvider>
+  );
   const view = render(
-    <MemoryRouter initialEntries={["/threads/thr_a"]}>
-      <QueryClientProvider client={new QueryClient()}>
-        <NavigationProbe navigateRef={navigateRef} />
-        <PaneTimeline threadId="thr_a" />
-        <PaneTimeline threadId="thr_b" />
-      </QueryClientProvider>
-    </MemoryRouter>,
+    nativeHistory ? (
+      <BrowserRouter>{content}</BrowserRouter>
+    ) : (
+      <MemoryRouter initialEntries={["/threads/thr_a"]}>{content}</MemoryRouter>
+    ),
   );
   const navigate = (path: string, options?: NavigateOptions) => {
     if (navigateRef.current === null) {
@@ -146,5 +159,45 @@ describe("ThreadTimelineRows location subscription", () => {
         .querySelector('[data-timeline-row-id="thr_b-message"]')
         ?.classList.contains("bb-search-flash"),
     ).toBe(false);
+  });
+
+  it("reveals a new target when only the message fragment changes after a search", async () => {
+    const previousUrl = window.location.href;
+    const previousState = window.history.state;
+    window.history.replaceState(
+      {
+        key: "fragment-test",
+        usr: { searchMessageSeq: 12, searchThreadId: "thr_a" },
+      },
+      "",
+      "/threads/thr_a",
+    );
+    const { container, unmount } = renderTwoPaneTimelines(true);
+    try {
+      await screen.findByText("Next message in thr_a");
+      for (const [seq, rowId] of [
+        [12, "thr_a-message"],
+        [13, "thr_a-next-message"],
+      ] as const) {
+        act(() => {
+          window.location.hash = `msg=${seq}`;
+        });
+        await waitFor(() =>
+          expect(
+            container
+              .querySelector(`[data-timeline-row-id="${rowId}"]`)
+              ?.classList.contains("bb-search-flash"),
+          ).toBe(true),
+        );
+      }
+      expect(
+        container
+          .querySelector("[data-timeline-row-id='thr_b-next-message']")
+          ?.classList.contains("bb-search-flash"),
+      ).toBe(false);
+    } finally {
+      unmount();
+      window.history.replaceState(previousState, "", previousUrl);
+    }
   });
 });

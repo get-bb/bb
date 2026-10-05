@@ -475,6 +475,12 @@ export function marketplaceEntryCollections(
   ];
 }
 
+export function marketplaceCategories(
+  manifest: MarketplaceManifest,
+): PluginMarketplaceCategory[] {
+  return [...marketplaceManifestIndex(manifest).categories.values()];
+}
+
 export function marketplaceCollections(
   manifest: MarketplaceManifest,
 ): PluginMarketplaceCollection[] {

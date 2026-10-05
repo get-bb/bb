@@ -108,6 +108,7 @@ export type TimelineConversationTurnRequest = z.infer<
 
 const timelineConversationRowBaseSchema = timelineRowBaseSchema.extend({
   kind: z.literal("conversation"),
+  messageSeq: z.number().int(),
   text: z.string(),
   attachments: timelineConversationAttachmentsSchema.nullable(),
 });

@@ -188,6 +188,7 @@ interface CreateAppOptions {
   bbAppArtifactService?: BbAppArtifactService;
   serverMove?: ServerMoveAppOptions;
   slowApiRequestLogThresholdMs?: number;
+  performanceDiagnosticsEnabled?: () => boolean;
   staticDir?: string;
 }
 
@@ -691,14 +692,19 @@ export function createApp(
     await next();
     const durationMs = performance.now() - startedAt;
     const path = context.req.path;
+    const diagnosticsEnabled =
+      options?.performanceDiagnosticsEnabled?.() ?? false;
     if (
       shouldLogSlowApiRequest({
         durationMs,
         path,
-        thresholdMs: slowApiRequestLogThresholdMs,
+        thresholdMs: diagnosticsEnabled ? 100 : slowApiRequestLogThresholdMs,
       })
     ) {
-      deps.logger.debug(
+      const log = diagnosticsEnabled
+        ? deps.logger.info.bind(deps.logger)
+        : deps.logger.debug.bind(deps.logger);
+      log(
         {
           durationMs: roundDurationMs(durationMs),
           method: context.req.method,

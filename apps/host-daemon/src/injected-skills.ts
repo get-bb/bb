@@ -19,6 +19,9 @@ const STORE_COMPLETE_MARKER = ".complete";
 const STORE_LAST_USED_MARKER = ".last-used";
 export const MAX_SKILL_STORE_TREES = 64;
 const STALE_TEMP_STAGING_DIR_AGE_MS = 60 * 60 * 1000;
+const STAGE_CATALOG_FILE = "catalog.json";
+const WINDOWS_RENAME_RETRY_BUDGET_MS = 5_000;
+const WINDOWS_TRANSIENT_RENAME_CODES = ["EPERM", "EACCES", "EBUSY"] as const;
 const SKILL_NAME_PATTERN = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const MAX_STAGED_SKILL_FILES = 1_000;
 const MAX_STAGED_SKILL_BYTES = 10 * 1024 * 1024;
@@ -425,16 +428,91 @@ function createCatalogFile(args: CreateCatalogFileArgs): CatalogFile {
   };
 }
 
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.lstat(targetPath);
+    return true;
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) return false;
+    throw error;
+  }
+}
+
+function isWindowsTransientRenameError(error: unknown): boolean {
+  return (
+    process.platform === "win32" &&
+    WINDOWS_TRANSIENT_RENAME_CODES.some((code) =>
+      isFsErrorWithCode(error, code),
+    )
+  );
+}
+
+async function renameDirectoryIntoPlace(
+  sourcePath: string,
+  destinationPath: string,
+): Promise<"renamed" | "destination-exists"> {
+  const deadline = Date.now() + WINDOWS_RENAME_RETRY_BUDGET_MS;
+  for (let delayMs = 20; ; delayMs = Math.min(delayMs * 2, 500)) {
+    try {
+      await fs.rename(sourcePath, destinationPath);
+      return "renamed";
+    } catch (error) {
+      if (
+        isFsErrorWithCode(error, "EEXIST") ||
+        isFsErrorWithCode(error, "ENOTEMPTY")
+      ) {
+        return "destination-exists";
+      }
+      if (!isWindowsTransientRenameError(error)) throw error;
+      if (await pathExists(destinationPath)) return "destination-exists";
+      if (Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+async function publishDirectory(args: {
+  destinationPath: string;
+  isComplete: (directoryPath: string) => Promise<boolean>;
+  tempRootPath: string;
+}): Promise<void> {
+  if (
+    (await renameDirectoryIntoPlace(
+      args.tempRootPath,
+      args.destinationPath,
+    )) === "renamed" ||
+    (await args.isComplete(args.destinationPath))
+  ) {
+    return;
+  }
+  await fs.rm(args.destinationPath, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+  });
+  if (
+    (await renameDirectoryIntoPlace(
+      args.tempRootPath,
+      args.destinationPath,
+    )) === "renamed" ||
+    (await args.isComplete(args.destinationPath))
+  ) {
+    return;
+  }
+  throw new Error(
+    `Unable to replace incomplete directory ${args.destinationPath}`,
+  );
+}
+
+async function isStageRootComplete(stageRootPath: string): Promise<boolean> {
+  return pathExists(path.join(stageRootPath, STAGE_CATALOG_FILE));
+}
+
 async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
   const stagingRootPath = resolveStagingRootPath(args.dataDir);
   const stageRootPath = resolveStageRootPath(args.dataDir, args.catalogHash);
-  try {
-    await fs.access(path.join(stageRootPath, "catalog.json"));
+  if (await isStageRootComplete(stageRootPath)) {
     return stageRootPath;
-  } catch (error) {
-    if (!isFsErrorWithCode(error, "ENOENT")) {
-      throw error;
-    }
   }
 
   await fs.mkdir(stagingRootPath, { recursive: true });
@@ -442,10 +520,9 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
     stagingRootPath,
     `.tmp-${args.catalogHash}-${process.pid}-${Date.now()}-${randomUUID()}`,
   );
-  await fs.rm(tempRootPath, { recursive: true, force: true });
-  await fs.mkdir(path.join(tempRootPath, "skills"), { recursive: true });
 
   try {
+    await fs.mkdir(path.join(tempRootPath, "skills"), { recursive: true });
     for (const tree of args.trees) {
       await copyCollectedTree({
         skillDirectoryPath: path.join(tempRootPath, "skills", tree.source.name),
@@ -453,7 +530,7 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
       });
     }
     await fs.writeFile(
-      path.join(tempRootPath, "catalog.json"),
+      path.join(tempRootPath, STAGE_CATALOG_FILE),
       `${JSON.stringify(
         createCatalogFile({
           catalogHash: args.catalogHash,
@@ -464,17 +541,13 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
       )}\n`,
       "utf8",
     );
-    await fs.rename(tempRootPath, stageRootPath);
-  } catch (error) {
-    if (
-      isFsErrorWithCode(error, "EEXIST") ||
-      isFsErrorWithCode(error, "ENOTEMPTY")
-    ) {
-      await fs.rm(tempRootPath, { recursive: true, force: true });
-      return stageRootPath;
-    }
+    await publishDirectory({
+      destinationPath: stageRootPath,
+      isComplete: isStageRootComplete,
+      tempRootPath,
+    });
+  } finally {
     await fs.rm(tempRootPath, { recursive: true, force: true });
-    throw error;
   }
 
   return stageRootPath;
@@ -607,6 +680,18 @@ export async function hashInstalledSkillDirectory(args: {
   }
 }
 
+async function isStoredTreeComplete(treeRootPath: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(treeRootPath, STORE_COMPLETE_MARKER));
+    return (
+      await fs.stat(path.join(treeRootPath, STORE_CONTENT_DIR))
+    ).isDirectory();
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) return false;
+    throw error;
+  }
+}
+
 async function touchStoredTree(treeRootPath: string): Promise<void> {
   await fs.writeFile(path.join(treeRootPath, STORE_LAST_USED_MARKER), "");
 }
@@ -691,8 +776,8 @@ async function writeFetchedTreeToStore(args: {
     `.tmp-${args.treeHash}-${process.pid}-${Date.now()}-${randomUUID()}`,
   );
   const contentRootPath = path.join(tempRootPath, STORE_CONTENT_DIR);
-  await fs.mkdir(contentRootPath, { recursive: true });
   try {
+    await fs.mkdir(contentRootPath, { recursive: true });
     for (const file of files) {
       const destinationPath = path.join(contentRootPath, file.relativePath);
       await fs.mkdir(path.dirname(destinationPath), { recursive: true });
@@ -704,17 +789,13 @@ async function writeFetchedTreeToStore(args: {
       path.join(tempRootPath, STORE_COMPLETE_MARKER),
       "complete\n",
     );
-    await fs.rename(tempRootPath, treeRootPath);
-  } catch (error) {
-    if (
-      isFsErrorWithCode(error, "EEXIST") ||
-      isFsErrorWithCode(error, "ENOTEMPTY")
-    ) {
-      await fs.rm(tempRootPath, { recursive: true, force: true });
-    } else {
-      await fs.rm(tempRootPath, { recursive: true, force: true });
-      throw error;
-    }
+    await publishDirectory({
+      destinationPath: treeRootPath,
+      isComplete: isStoredTreeComplete,
+      tempRootPath,
+    });
+  } finally {
+    await fs.rm(tempRootPath, { recursive: true, force: true });
   }
   await touchStoredTree(treeRootPath);
   await gcSkillStore(args.dataDir);
@@ -733,16 +814,10 @@ export async function ensureStoredSkillTree(args: {
   }
   const pull = runInSerialLane(skillStoreQueues, args.dataDir, async () => {
     const treeRootPath = resolveStoredTreeRootPath(args.dataDir, args.treeHash);
-    try {
-      await fs.access(path.join(treeRootPath, STORE_COMPLETE_MARKER));
-      await fs.access(path.join(treeRootPath, STORE_CONTENT_DIR));
+    if (await isStoredTreeComplete(treeRootPath)) {
       await touchStoredTree(treeRootPath);
       await gcSkillStore(args.dataDir);
       return path.join(treeRootPath, STORE_CONTENT_DIR);
-    } catch (error) {
-      if (!isFsErrorWithCode(error, "ENOENT")) {
-        throw error;
-      }
     }
     return writeFetchedTreeToStore({
       dataDir: args.dataDir,
