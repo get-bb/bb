@@ -9,7 +9,7 @@ import { createPromptParagraphNewlineTransaction } from "./prompt-editor-paragra
 const schema = getSchema(promptEditorExtensions({ getPlaceholder: () => "" }));
 
 const editorContext = {
-  extensionManager: { attributes: [], splittableMarks: [] },
+  extensionManager: { attributes: [] },
 };
 
 function stateFromJson(docJson: unknown, selectionPosition: number) {

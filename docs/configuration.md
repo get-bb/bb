@@ -326,7 +326,7 @@ value changed from the saved setting wins. Hidden diagnostics do not count
 toward timeline event or byte limits.
 
 The prompt box uses plain-text editing. Markdown delimiters remain visible while
-editing; the former Markdown formatting preference is ignored.
+editing.
 
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A

@@ -59,7 +59,6 @@
     "@tiptap/extension-hard-break": "^3.26.0",
     "@tiptap/extension-mention": "^3.26.0",
     "@tiptap/extension-paragraph": "^3.26.0",
-    "@tiptap/extension-placeholder": "^3.26.0",
     "@tiptap/extension-text": "^3.26.0",
     "@tiptap/extensions": "^3.26.0",
     "@tiptap/pm": "^3.26.0",
