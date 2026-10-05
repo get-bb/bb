@@ -64,6 +64,15 @@ early reset takes effect on the next turn. Use
 For an OAuth account in error, `refresh` also forces a new token with the stored
 refresh token and clears the error when that succeeds, so a spurious error does
 not require logging in again.
+OAuth refresh successes and failures are recorded in the plugin log with the
+provider, account ID, token expiry timestamps, and whether refresh was forced.
+Recognized OAuth error codes and descriptions (such as `invalid_grant: Refresh
+token expired`) also appear in account errors returned by the CLI and RPCs.
+Unrecognized provider text and raw response bodies are omitted to avoid logging
+credentials. Error-body inspection is limited to 4 KiB and one second; a missing
+or unreadable body preserves the HTTP error. Log timestamps provide refresh
+history going forward; they cannot recover earlier events or explain a provider's
+internal reason for expiring a token.
 An account enters error only when its OAuth refresh token is rejected (HTTP 400
 or 401 from the token endpoint) or an API key is rejected. A 401 or 403 on a
 freshly refreshed OAuth token is treated as an upstream failure instead: the
