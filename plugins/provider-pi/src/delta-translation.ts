@@ -179,6 +179,20 @@ const piToolExecutionEndEventSchema = z
   })
   .passthrough();
 
+const piReadArgsSchema = z.object({
+  path: z.string().refine((path) => path.trim().length > 0),
+});
+
+const piImageContentBlockSchema = z.object({
+  type: z.literal("image"),
+  data: z.string().trim().min(1),
+  mimeType: z.string().regex(/^image\/[^\s/]+$/),
+});
+
+const piToolResultContentSchema = z.object({
+  content: z.array(z.unknown()),
+});
+
 const piToolExecutionUpdateEventSchema = z
   .object({
     type: z.literal("tool_execution_update"),
@@ -859,10 +873,30 @@ export function createPiDeltaTranslator(
           ? extractPiCommandExecutionOutput(piEvent.data.result)
           : undefined;
         const shapeKey = toolShapeKey(context, piEvent.data.toolCallId);
-        const terminalShape =
+        let terminalShape =
           startedToolShapes.get(shapeKey) ??
           classifyPiToolResultFallback(piEvent.data.toolName);
         startedToolShapes.delete(shapeKey);
+        if (
+          !piEvent.data.isError &&
+          piEvent.data.toolName === "read" &&
+          terminalShape.type === "tool" &&
+          terminalShape.tool === "read"
+        ) {
+          const args = piReadArgsSchema.safeParse(terminalShape.args);
+          const result = piToolResultContentSchema.safeParse(
+            piEvent.data.result,
+          );
+          if (
+            args.success &&
+            result.success &&
+            result.data.content.some(
+              (block) => piImageContentBlockSchema.safeParse(block).success,
+            )
+          ) {
+            terminalShape = { type: "imageView", path: args.data.path };
+          }
+        }
         return [
           {
             kind: "item.close",
