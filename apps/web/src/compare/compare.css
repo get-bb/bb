@@ -723,7 +723,7 @@
 
 .cmp-us,
 .cmp-table thead th.cmp-us {
-  background: var(--surface-recessed);
+  background: var(--surface);
 }
 
 .cmp-us .cmp-mark-no {
