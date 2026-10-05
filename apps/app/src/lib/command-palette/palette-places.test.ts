@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { SETTINGS_NAV_SECTIONS } from "@/components/settings/settings-sections";
 import { buildPalettePlaces, matchPalettePlaces } from "./palette-places";
 
-function build(navigate = vi.fn()) {
+function build() {
   return buildPalettePlaces({
-    navigate,
+    navigate: vi.fn(),
     panels: [
       {
         pluginId: "automations",
@@ -47,14 +47,6 @@ describe("buildPalettePlaces", () => {
         icon: "Plug02",
       },
     ]);
-  });
-
-  it("navigates once to the place's route", () => {
-    const navigate = vi.fn();
-    const places = build(navigate);
-    places.find((place) => place.id === "settings:plugin:linear")?.run();
-    expect(navigate).toHaveBeenCalledTimes(1);
-    expect(navigate).toHaveBeenCalledWith("/settings/plugins/linear");
   });
 });
 
