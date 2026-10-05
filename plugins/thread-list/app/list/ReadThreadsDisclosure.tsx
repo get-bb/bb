@@ -9,7 +9,12 @@ export function ReadThreadsDisclosure({
 }) {
   if (hiddenCount === 0) return null;
   return (
-    <Button variant="ghost" size="sm" onClick={revealReadThreads}>
+    <Button
+      variant="ghost"
+      size="sm"
+      className="font-normal"
+      onClick={revealReadThreads}
+    >
       Show {hiddenCount} read {hiddenCount === 1 ? "thread" : "threads"}
     </Button>
   );
