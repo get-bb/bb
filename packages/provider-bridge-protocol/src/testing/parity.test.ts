@@ -162,6 +162,8 @@ it("waits for the exact planned tail and a quiet period before closing", async (
       ...tailEvents,
       ...extraEvents,
     ]);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(run.stalls).toEqual([]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

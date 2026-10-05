@@ -645,14 +645,18 @@ export async function replayRecording(
     () => Date.now() - lastOutputAt >= settleMs,
   );
   child.stdin?.end();
+  let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const exitCode = await Promise.race([
     exited,
-    sleep(timeoutMs).then(() => {
-      stalls.push("bridge did not exit after stdin closed; killed");
-      child.kill("SIGKILL");
-      return null;
+    new Promise<null>((resolveTimeout) => {
+      shutdownTimer = setTimeout(() => {
+        stalls.push("bridge did not exit after stdin closed; killed");
+        child.kill("SIGKILL");
+        resolveTimeout(null);
+      }, timeoutMs);
     }),
   ]);
+  clearTimeout(shutdownTimer);
   for (const directory of [stateDir, workspaceDir]) {
     await rm(directory, {
       force: true,
