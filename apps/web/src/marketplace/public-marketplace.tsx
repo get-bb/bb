@@ -22,6 +22,10 @@ import {
   marketplaceInstallBadge,
   type MarketplaceStats,
 } from "./marketplace-model.js";
+import {
+  bundledPluginName,
+  bundledPluginSetup,
+} from "./bundled-marketplace.js";
 import { marketplacePluginIcon } from "./marketplace-icons.js";
 import { MarketplaceScreenshots } from "./marketplace-screenshots.js";
 import { MarketplaceOverview } from "./marketplace-overview.js";
@@ -144,7 +148,9 @@ function PluginArtwork({
     );
   }
   const url = marketplaceAssetUrl(entry.icon.url);
-  const isSvg = new URL(url).pathname.toLowerCase().endsWith(".svg");
+  const isSvg =
+    url.startsWith("data:image/svg+xml") ||
+    new URL(url, "https://getbb.app").pathname.toLowerCase().endsWith(".svg");
   return (
     <span className={className} aria-hidden>
       {isSvg ? (
@@ -174,13 +180,22 @@ function authorInitials(name: string): string {
 function AuthorAvatar({
   author,
   large = false,
+  official = false,
 }: {
   author: MarketplaceV2Entry["author"];
   large?: boolean;
+  official?: boolean;
 }) {
   const className = large
     ? "marketplace-author-avatar is-large"
     : "marketplace-author-avatar";
+  if (official) {
+    return (
+      <span className={`${className} is-official`} aria-hidden>
+        <span className="bb-mark marketplace-author-mark" />
+      </span>
+    );
+  }
   if (author.github === undefined) {
     return (
       <span className={`${className} is-fallback`} aria-hidden>
@@ -209,15 +224,27 @@ function InstallCount({
   variant?: "card" | "detail";
 }) {
   const renderedAt = useContext(MarketplaceRenderTimeContext) ?? Date.now();
-  const badge = marketplaceInstallBadge(entry, stats, renderedAt);
+  const setup = bundledPluginSetup(entry);
+  const badge = marketplaceInstallBadge(entry, stats, renderedAt, {
+    installedByDefault: setup !== null && setup.kind !== "install",
+  });
   const className = `marketplace-${variant}-installs`;
+  if (badge?.kind === "builtin") {
+    return (
+      <span className={className}>
+        {variant === "detail" ? "Included with bb" : "Built in"}
+      </span>
+    );
+  }
   if (badge?.kind === "new" && variant === "card") {
     return <span className={`${className} is-new`}>New</span>;
   }
   if (badge?.kind !== "count") return null;
   const total = badge.installs;
   const formatted =
-    variant === "detail" ? total.toLocaleString("en-US") : formatInstalls(total);
+    variant === "detail"
+      ? total.toLocaleString("en-US")
+      : formatInstalls(total);
   return (
     <span
       className={className}
@@ -269,7 +296,10 @@ function PluginCard({
         ) : null}
         <span className="marketplace-card-meta">
           <span className="marketplace-card-author">
-            <AuthorAvatar author={entry.author} />
+            <AuthorAvatar
+              author={entry.author}
+              official={"bundled" in entry.source}
+            />
             <span>{entry.author.name}</span>
           </span>
           <InstallCount entry={entry} stats={stats} />
@@ -316,42 +346,60 @@ function Shelf({
   stats: MarketplaceStats | null;
   onSelect: (category: string | undefined, sort?: MarketplaceSort) => void;
 }) {
-  const notable = shelf.kind === "collection";
+  const [expanded, setExpanded] = useState(false);
+  const builtIn =
+    shelf.kind === "collection" &&
+    shelf.entries.every((entry) => bundledPluginName(entry) !== null);
+  const notable = shelf.kind === "collection" && !builtIn;
   const description =
     shelf.description ??
-    (notable ? "Hand-picked recent additions." : undefined);
-  const viewHref = notable
-    ? "/marketplace?sort=recently-added"
-    : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
+    (builtIn
+      ? "Made by the bb team and included with bb."
+      : notable
+        ? "Hand-picked recent additions."
+        : undefined);
+  const viewHref = builtIn
+    ? `#${shelf.id}`
+    : notable
+      ? "/marketplace?sort=recently-added"
+      : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
   return (
     <section
-      className={`marketplace-shelf${notable ? " marketplace-shelf-notable" : ""}`}
+      id={builtIn ? shelf.id : undefined}
+      className={`marketplace-shelf${shelf.kind === "collection" ? " marketplace-shelf-notable" : ""}`}
     >
       <div className="marketplace-section-head">
         <div>
           <h2>
-            {shelf.label}{"\u00a0"}
+            {shelf.label}
+            {"\u00a0"}
             <span>{shelf.entries.length}</span>
           </h2>
           {description === undefined ? null : <p>{description}</p>}
         </div>
-        <a
-          href={viewHref}
-          onClick={(event) => {
-            event.preventDefault();
-            if (notable) {
-              onSelect(undefined, "recently-added");
-              return;
-            }
-            onSelect(shelf.id);
-          }}
-        >
-          View all
-        </a>
+        {expanded ? null : (
+          <a
+            href={viewHref}
+            onClick={(event) => {
+              event.preventDefault();
+              if (builtIn) {
+                setExpanded(true);
+                return;
+              }
+              if (notable) {
+                onSelect(undefined, "recently-added");
+                return;
+              }
+              onSelect(shelf.id);
+            }}
+          >
+            View all
+          </a>
+        )}
       </div>
       <PluginGrid
         manifest={manifest}
-        entries={shelf.entries.slice(0, 3)}
+        entries={expanded ? shelf.entries : shelf.entries.slice(0, 3)}
         stats={stats}
       />
     </section>
@@ -817,7 +865,8 @@ function MoreInCategory({
       <div className="marketplace-section-head">
         <div>
           <h2>
-            More in {categoryName}{"\u00a0"}
+            More in {categoryName}
+            {"\u00a0"}
             <span>{entries.length}</span>
           </h2>
           {category?.description === undefined ? null : (
@@ -859,7 +908,13 @@ export function PublicMarketplaceDetailPage({
   const category = categoryDefinition?.displayName ?? "More plugins";
   const categoryId = categoryDefinition?.id ?? UNCATEGORIZED_CATEGORY_ID;
   const repository = marketplaceRepositoryUrl(entry);
-  const installCommand = marketplaceInstallCommand(entry.id);
+  const setup = bundledPluginSetup(entry);
+  const installCommand =
+    setup === null
+      ? marketplaceInstallCommand(entry.id)
+      : setup.kind === "included"
+        ? null
+        : setup.command;
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
 
@@ -889,7 +944,10 @@ export function PublicMarketplaceDetailPage({
             <div className="marketplace-detail-attribution">
               {authorPath === undefined ? (
                 <span className="marketplace-detail-author">
-                  <AuthorAvatar author={entry.author} />
+                  <AuthorAvatar
+                    author={entry.author}
+                    official={"bundled" in entry.source}
+                  />
                   <span>{entry.author.name}</span>
                 </span>
               ) : (
@@ -897,7 +955,10 @@ export function PublicMarketplaceDetailPage({
                   className="marketplace-detail-author"
                   href={authorPath}
                 >
-                  <AuthorAvatar author={entry.author} />
+                  <AuthorAvatar
+                    author={entry.author}
+                    official={"bundled" in entry.source}
+                  />
                   <span>{entry.author.name}</span>
                 </MarketplaceLink>
               )}
@@ -908,23 +969,24 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
               <InstallCount entry={entry} stats={stats} variant="detail" />
-
             </div>
           </div>
           <div className="marketplace-detail-install">
             <div className="marketplace-detail-actions">
-              <CommandButton
-                command={installCommand}
-                label={`Copy ${installCommand}`}
-                size="compact"
-                onCopy={(copied) => {
-                  if (!copied) return;
-                  trackLandingEvent({
-                    name: "marketplace_install_command_copied",
-                    properties: { plugin_id: entry.id },
-                  });
-                }}
-              />
+              {installCommand === null ? null : (
+                <CommandButton
+                  command={installCommand}
+                  label={`Copy ${installCommand}`}
+                  size="compact"
+                  onCopy={(copied) => {
+                    if (!copied) return;
+                    trackLandingEvent({
+                      name: "marketplace_install_command_copied",
+                      properties: { plugin_id: entry.id },
+                    });
+                  }}
+                />
+              )}
               <MarketplaceLink
                 className="marketplace-detail-source marketplace-detail-download"
                 href="/download/macos"
@@ -949,15 +1011,15 @@ export function PublicMarketplaceDetailPage({
               <hr className="marketplace-overview-rule" />
               <div className="marketplace-overview-heading">
                 <h2>Overview</h2>
-              <a
-                className="marketplace-detail-source"
-                href={repository}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View source
-                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
+                <a
+                  className="marketplace-detail-source"
+                  href={repository}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View source
+                  <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+                </a>
               </div>
               {entry.overview === undefined ? null : (
                 <MarketplaceOverview markdown={entry.overview} />
