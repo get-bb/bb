@@ -3,7 +3,7 @@
 Control the BB introduction and bundled agent skills in Settings → Installed
 plugins → BB guide. The plugin and all six settings default to enabled.
 
-- `introduction`: send the BB CLI, thread, and link instructions.
+- `introduction`: send the BB CLI, thread, process-safety, and link instructions.
 - `skills`: make the selected bundled skills available.
 - `bbCli`: include `bb-cli`.
 - `pluginAuthoring`: include `bb-plugin-authoring`.
