@@ -242,10 +242,13 @@ async function startIntegrationServer(
   });
   pendingInteractions.start();
   const appVersion = createAppVersionService({
+    installKind: null,
+    sourceCommit: null,
     config,
     logger: testLogger,
   });
   const appUpdate = createAppUpdateService({
+    currentCommit: null,
     appSurface: "web",
     appVersion,
     config,
