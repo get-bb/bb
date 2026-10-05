@@ -1242,6 +1242,10 @@
   color: var(--ink-strong);
 }
 
+.cmp-composer-placeholder {
+  color: var(--subtle);
+}
+
 @keyframes cmp-feed-in {
   from {
     opacity: 0;

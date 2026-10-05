@@ -269,6 +269,31 @@ export function AgentSplit() {
                 .
               </li>
             </ol>
+            <div className="cmp-composer">
+              <span className="cmp-composer-input cmp-composer-placeholder">
+                Ask a follow-up
+              </span>
+              <span className="composer-row">
+                <span className="model">
+                  <OpenAiIcon className="model-ic" />
+                  Codex
+                  <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
+                </span>
+                <span className="composer-actions" aria-hidden="true">
+                  <HugeiconsIcon
+                    icon={AttachmentIcon}
+                    className="composer-clip"
+                  />
+                  <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
+                  <span className="send-btn">
+                    <HugeiconsIcon
+                      icon={ArrowMoveDownLeftIcon}
+                      className="send-ic"
+                    />
+                  </span>
+                </span>
+              </span>
+            </div>
           </section>
         </div>
       </div>
