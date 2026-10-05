@@ -272,7 +272,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "Android app",
-          bb: cell("partial", "In testing, browser works"),
+          bb: cell("yes", "Alpha"),
           competitor: cell("no", "Waitlist"),
         },
         {
@@ -572,12 +572,11 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can I control my coding agents from my phone?",
           answer: (
             <p>
-              Yes, for free. Use the bb iPhone app, a public beta on TestFlight
-              (Apple’s beta testing app), for push notifications, or open bb in
-              any browser through bb Connect, bb’s free remote access. Android
-              works fully in the browser, without push notifications, and a
-              native app is in testing. Superset’s iPhone app needs Pro and iOS
-              26, its Android app is a waitlist, and it has no browser access.{" "}
+              Yes, for free. Use the bb mobile app, a public beta on iPhone
+              through TestFlight (Apple’s beta testing app) and in alpha on
+              Android, or open bb in any browser through bb Connect, bb’s free
+              remote access. Superset’s iPhone app needs Pro and iOS 26, its
+              Android app is a waitlist, and it has no browser access.{" "}
               <a href="/guides/steer-coding-agents-from-your-phone">
                 Set it up
               </a>
