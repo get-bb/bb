@@ -82,6 +82,29 @@ const BB_VS_SUPERSET: Comparison = {
   sub: "Get Claude Code, Codex or any agent working together on the same task, and approve from your phone.",
   highlights: [
     {
+      title: "Run more agents, $0 more.",
+      wide: false,
+      visual: (
+        <TeamCost
+          plan="Superset Pro"
+          logo={SUPERSET_LOGO}
+          yearlyPerSeatMonthly={15}
+        />
+      ),
+      body: (
+        <>
+          <p>
+            You only pay for the AI plans you already have. bb is free, whether
+            you run one agent on your own or your whole team runs dozens.
+          </p>
+          <p>
+            The mobile app, automations, remote access, and plugins all come
+            included.
+          </p>
+        </>
+      ),
+    },
+    {
       title: "Agents that work together like a team",
       wide: true,
       visual: <AgentSplit />,
@@ -101,29 +124,6 @@ const BB_VS_SUPERSET: Comparison = {
           </div>
           <p className="cmp-providers-note">
             Need another? Add it with a <a href="/marketplace">plugin</a>.
-          </p>
-        </>
-      ),
-    },
-    {
-      title: "Run more agents, $0 more.",
-      wide: false,
-      visual: (
-        <TeamCost
-          plan="Superset Pro"
-          logo={SUPERSET_LOGO}
-          yearlyPerSeatMonthly={15}
-        />
-      ),
-      body: (
-        <>
-          <p>
-            You only pay for the AI plans you already have. bb is free, whether
-            you run one agent on your own or your whole team runs dozens.
-          </p>
-          <p>
-            The mobile app, automations, remote access, and plugins all come
-            included.
           </p>
         </>
       ),
