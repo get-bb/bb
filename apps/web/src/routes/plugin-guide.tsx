@@ -47,12 +47,12 @@ function PluginGuideRoute() {
     <>
       <div className="wrap">
         <SiteNav current="plugin-guide" />
-        <header className="page-head">
+        <header className="page-head guide-head">
           <h1>Plugin Guide</h1>
           <p className="sub">Every place a plugin can extend bb.</p>
         </header>
       </div>
-      <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 sm:px-7">
+      <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-2 sm:px-7 sm:pt-6">
         <LazyPluginGuide initialSlideId={slide} onSlideChange={onSlideChange} />
       </main>
       <div className="wrap">

@@ -447,6 +447,15 @@
     padding: 48px 0 28px;
   }
 
+  .guide-head {
+    padding: 20px 0 12px;
+    border-bottom: none;
+  }
+
+  .guide-head .sub {
+    margin-top: 6px;
+  }
+
   .lightbox {
     padding: 12px;
   }
