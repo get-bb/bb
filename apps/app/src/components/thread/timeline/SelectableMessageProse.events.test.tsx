@@ -352,11 +352,12 @@ describe("SelectableMessageProse", () => {
     expect(onSelect).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
-    await vi.advanceTimersToNextFrame();
-    expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "Double click target paragraph text",
-      }),
+    await vi.waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Double click target paragraph text",
+        }),
+      ),
     );
   });
 
