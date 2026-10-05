@@ -94,7 +94,12 @@
     "and Markdown HTML from the workspace route. The route limits drop by",
     "1,075,985 raw and 272,230 Brotli bytes, preserving prior headroom.",
     "HTML bytes warm on idle without importing; actual thread visits still load",
-    "ThreadDetailView. PluginFrontend is also measured for split guards."
+    "ThreadDetailView. PluginFrontend is also measured for split guards.",
+    "",
+    "On 2026-10-05 both SplitWorkspaceRoute limits temporarily rose 5%",
+    "to restore CI headroom after mobile recent-thread long-press actions.",
+    "A separate follow-up will reduce the route payload and ratchet these",
+    "limits back down. Boot budgets and split guards remain unchanged."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -221,8 +226,8 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 1087864,
-      "maxBrotliBytes": 317278,
+      "maxBytes": 1142257,
+      "maxBrotliBytes": 333142,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
