@@ -63,16 +63,6 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Next thread",
         "Open the next visible sidebar thread.",
       ),
-      command(
-        "thread.back",
-        "Back to previous thread",
-        "Go back to the thread you opened before this one in this window.",
-      ),
-      command(
-        "thread.forward",
-        "Forward to next thread",
-        "Go forward to the thread you went back from in this window.",
-      ),
       ...THREAD_JUMP_APP_COMMAND_IDS.map((id, index) =>
         paletteHiddenCommand(
           id,
@@ -95,6 +85,12 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "window.find",
         "Find in window",
         "Search the text shown in the current bb desktop window.",
+      ),
+      command("history.back", "Go back", "Go back in this window's history."),
+      command(
+        "history.forward",
+        "Go forward",
+        "Go forward in this window's history.",
       ),
       command(
         "app.back",

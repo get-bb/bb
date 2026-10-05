@@ -200,9 +200,9 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       desktopOnly: true,
     },
   ),
-  binding("thread.back", "[", { control: true }, webMainWithoutModal),
+  binding("history.back", "[", { control: true }, webMainWithoutModal),
   binding(
-    "thread.back",
+    "history.back",
     "[",
     { mod: true },
     {
@@ -210,9 +210,9 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       desktopOnly: true,
     },
   ),
-  binding("thread.forward", "]", { control: true }, webMainWithoutModal),
+  binding("history.forward", "]", { control: true }, webMainWithoutModal),
   binding(
-    "thread.forward",
+    "history.forward",
     "]",
     { mod: true },
     {

@@ -476,14 +476,12 @@ uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
 `Control+Shift+[/]` on the web; they follow the sidebar order.
 
-`thread.back` / `thread.forward` move through the threads opened in the
-current window, like browser history. Desktop uses `Mod+[` / `Mod+]`; the web
-uses `Control+[` / `Control+]` so the browser keeps `Command+[` for its own
-Back. Each window keeps its own history in memory, capped at 50 threads, and
-starts empty. Opening a different thread after going back drops the forward
-entries. Deleted threads are skipped, archived threads open normally, and
-pages such as Settings are not recorded. At either end the shortcut does
-nothing. In a split layout the focused pane navigates.
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows: they move through the pages opened
+in the current window, like browser history. Desktop uses `Mod+[` / `Mod+]`;
+the web uses `Control+[` / `Control+]` so the browser keeps `Command+[` for its
+own Back. At either end the shortcut does nothing. Hovering an arrow shows its
+current shortcut.
 
 On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
 `Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
@@ -545,13 +543,13 @@ delayed shortcut badges without disabling any shortcuts.
 | Threads   | Rename focused thread                     | Unassigned                        | Thread view              |
 | Threads   | Archive focused thread                    | Unassigned                        | Thread view              |
 | Threads   | Previous / next thread                    | Surface defaults above            | Desktop / web            |
-| Threads   | Back / forward through opened threads     | Surface defaults above            | Desktop / web            |
 | Threads   | Open visible thread 1–9                   | Platform defaults above           | Web / desktop            |
 | Layout    | Previous / next chat pane                 | Unassigned                        | While split              |
 | Layout    | Focus chat pane 1–8                       | Platform defaults above           | Split (web / desktop)    |
 | Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split              |
 | Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
 | Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Go back / go forward                      | Surface defaults above            | Desktop / web            |
 | Window    | Settings                                  | `Mod+,`                           | All clients              |
 | Window    | Open data directory                       | Unassigned                        | Desktop                  |
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
