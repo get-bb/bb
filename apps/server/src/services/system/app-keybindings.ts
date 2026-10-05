@@ -200,6 +200,8 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       desktopOnly: true,
     },
   ),
+  binding("history.back", "[", { mod: true }, mainWithoutModal),
+  binding("history.forward", "]", { mod: true }, mainWithoutModal),
   ...numberedChatBindings(THREAD_JUMP_APP_COMMAND_IDS, mainWithoutModal),
   ...(
     [
@@ -262,6 +264,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   ),
   binding("panel.close", "w", { mod: true }, mainWithoutModal),
   binding("panel.toggle", "j", { mod: true }, mainWithoutModal),
+  unassignedBinding("panel.fullScreen.toggle", mainWithoutModal),
   binding("file.quickOpen", "p", { mod: true }, mainWithoutModal),
   binding(
     "diff.toggle",

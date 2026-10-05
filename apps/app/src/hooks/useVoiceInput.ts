@@ -1,4 +1,7 @@
+import { createMicrophoneRecordingStream } from "@/lib/microphone-recording-stream";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useMicrophoneSignal } from "./useMicrophoneSignal";
+import { useAudioInputDevices } from "./useAudioInputDevices";
 import { appToast } from "@/components/ui/app-toast";
 import { downloadBlob } from "@/lib/download-blob";
 import {
@@ -19,7 +22,7 @@ import {
 type VoiceInputState = "idle" | "recording" | "transcribing" | "error";
 
 interface UseVoiceInputOptions {
-  onTranscript: (transcript: string) => void;
+  onTranscript: (transcript: string) => void | Promise<void>;
   onTranscribe: (args: {
     file: File;
     promptContext?: string;
@@ -75,7 +78,7 @@ function resolveRecordingErrorMessage(
           : "No microphone was found";
       case "NotReadableError":
       case "TrackStartError":
-        return "Microphone is already in use";
+        return "Microphone is unavailable or already in use";
       case "AbortError":
         return "Voice capture was aborted";
       default:
@@ -115,6 +118,18 @@ function createRecordingFile(audioBlob: Blob, mimeType: string): File {
 
 export function useVoiceInput(options: UseVoiceInputOptions) {
   const preferredAudioInputDeviceId = useAudioInputDevicePreferenceValue();
+  const {
+    devices,
+    hasDeviceAccess,
+    refresh: refreshDevices,
+  } = useAudioInputDevices();
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const recordingStreamRef = useRef<ReturnType<
+    typeof createMicrophoneRecordingStream
+  > | null>(null);
+  const deviceRequestRef = useRef(0);
+  const startingRef = useRef(false);
+  const recordingPreferenceRef = useRef(preferredAudioInputDeviceId);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -133,18 +148,121 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     useState<VoiceUnsupportedReason | null>("unsupported-browser");
   const [stream, setStream] = useState<MediaStream | null>(null);
 
+  const { silent } = useMicrophoneSignal(stream, false);
+
+  useEffect(() => {
+    setCaptureError(null);
+  }, [preferredAudioInputDeviceId]);
+
+  useEffect(() => {
+    if (!stream) return;
+    const tracks = stream.getAudioTracks();
+    const update = () => {
+      setCaptureError(
+        tracks.some((track) => track.readyState === "ended")
+          ? "Microphone disconnected during recording. Choose another microphone."
+          : tracks.some((track) => track.muted)
+            ? "Microphone is not providing audio. Check your microphone or choose another."
+            : null,
+      );
+    };
+    update();
+    for (const track of tracks) {
+      track.addEventListener("mute", update);
+      track.addEventListener("unmute", update);
+      track.addEventListener("ended", update);
+    }
+    return () => {
+      for (const track of tracks) {
+        track.removeEventListener("mute", update);
+        track.removeEventListener("unmute", update);
+        track.removeEventListener("ended", update);
+      }
+    };
+  }, [stream]);
+
   const showError = useCallback((message: string) => {
     setState("error");
     appToast.error("Voice input failed", { description: message });
   }, []);
 
   const stopMediaStream = useCallback(() => {
+    deviceRequestRef.current += 1;
+    recordingStreamRef.current?.close();
+    recordingStreamRef.current = null;
     const stream = streamRef.current;
     if (!stream) return;
     stream.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setStream(null);
   }, []);
+
+  const switchMicrophone = useCallback(
+    async (deviceId: string | null) => {
+      const recordingStream = recordingStreamRef.current;
+      if (!recordingStream) return;
+      const request = ++deviceRequestRef.current;
+      try {
+        const next = await requestAudioInputStream(
+          navigator.mediaDevices,
+          deviceId,
+        );
+        if (
+          deviceRequestRef.current !== request ||
+          recordingStreamRef.current !== recordingStream
+        ) {
+          next.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        try {
+          recordingStream.replace(next);
+        } catch (error) {
+          next.getTracks().forEach((track) => track.stop());
+          throw error;
+        }
+        const previous = streamRef.current;
+        streamRef.current = next;
+        setStream(next);
+        previous?.getTracks().forEach((track) => track.stop());
+        setCaptureError(null);
+        void refreshDevices();
+      } catch (error) {
+        if (
+          deviceRequestRef.current === request &&
+          recordingStreamRef.current === recordingStream
+        ) {
+          setCaptureError(resolveRecordingErrorMessage(error));
+        }
+      }
+    },
+    [refreshDevices],
+  );
+
+  useEffect(() => {
+    if (state !== "recording" || !stream) return;
+    const recover = () => {
+      if (!recordingStreamRef.current) return;
+      setCaptureError(
+        "Microphone disconnected. Switching to an available microphone…",
+      );
+      void switchMicrophone(null);
+    };
+    const tracks = stream.getAudioTracks();
+    for (const track of tracks) track.addEventListener("ended", recover);
+    return () => {
+      for (const track of tracks) track.removeEventListener("ended", recover);
+    };
+  }, [state, stream, switchMicrophone]);
+
+  useEffect(() => {
+    if (
+      state === "recording" &&
+      recordingPreferenceRef.current !== preferredAudioInputDeviceId
+    ) {
+      recordingPreferenceRef.current = preferredAudioInputDeviceId;
+      void switchMicrophone(preferredAudioInputDeviceId);
+    }
+  }, [state, preferredAudioInputDeviceId, switchMicrophone]);
 
   const requestRecordingWakeLock = useCallback(() => {
     if (
@@ -246,15 +364,36 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       showError(voiceUnsupportedMessage(unsupportedReason));
       return;
     }
-    if (state === "recording" || state === "transcribing") {
+    if (
+      startingRef.current ||
+      state === "recording" ||
+      state === "transcribing"
+    ) {
       return;
     }
 
+    startingRef.current = true;
+    const request = ++deviceRequestRef.current;
     try {
       const stream = await requestAudioInputStream(
         navigator.mediaDevices,
         preferredAudioInputDeviceId,
-      );
+      ).catch((error: unknown) => {
+        setCaptureError(
+          resolveRecordingErrorMessage(
+            error,
+            preferredAudioInputDeviceId !== null,
+          ),
+        );
+        throw error;
+      });
+      if (request !== deviceRequestRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      setCaptureError(null);
+      void refreshDevices();
+      recordingPreferenceRef.current = preferredAudioInputDeviceId;
       streamRef.current = stream;
       setStream(stream);
       chunksRef.current = [];
@@ -265,10 +404,18 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       shouldHoldWakeLockRef.current = true;
       requestRecordingWakeLock();
 
+      const recordingStream =
+        typeof AudioContext === "undefined"
+          ? null
+          : createMicrophoneRecordingStream(stream);
+      recordingStreamRef.current = recordingStream;
+      if (recordingStream) await recordingStream.resume();
+      if (request !== deviceRequestRef.current) return;
+      const recorderInput = recordingStream?.stream ?? stream;
       const preferredMimeType = resolvePreferredAudioMimeType();
       const recorder = preferredMimeType
-        ? new MediaRecorder(stream, { mimeType: preferredMimeType })
-        : new MediaRecorder(stream);
+        ? new MediaRecorder(recorderInput, { mimeType: preferredMimeType })
+        : new MediaRecorder(recorderInput);
       mediaRecorderRef.current = recorder;
 
       recorder.onstart = () => {
@@ -324,41 +471,58 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         const promptContext = promptContextRef.current;
         promptContextRef.current = undefined;
 
-        setState("transcribing");
-        const abortController = new AbortController();
-        transcriptionAbortRef.current = abortController;
-        try {
-          const transcript = await options.onTranscribe({
-            file: audioFile,
-            promptContext,
-            signal: abortController.signal,
-          });
-          if (abortController.signal.aborted) return;
-          const normalized = normalizeTranscript(transcript);
-          if (normalized.length === 0) {
-            throw new Error("Voice transcription returned an empty result.");
-          }
-          options.onTranscript(normalized);
-          setState("idle");
-        } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") {
+        const transcribeRecording = async () => {
+          setState("transcribing");
+          const abortController = new AbortController();
+          transcriptionAbortRef.current = abortController;
+          try {
+            const transcript = await options.onTranscribe({
+              file: audioFile,
+              promptContext,
+              signal: abortController.signal,
+            });
+            if (abortController.signal.aborted) return;
+            const normalized = normalizeTranscript(transcript);
+            if (normalized.length === 0) {
+              throw new Error("Voice transcription returned an empty result.");
+            }
+            await options.onTranscript(normalized);
             setState("idle");
-            return;
+          } catch (error) {
+            if (error instanceof DOMException && error.name === "AbortError") {
+              setState("idle");
+              return;
+            }
+            setState("error");
+            appToast.error("Voice input failed", {
+              description: resolveRecordingErrorMessage(error),
+              duration: Infinity,
+              action: {
+                label: "Retry",
+                onClick: (event) => {
+                  if (
+                    transcriptionAbortRef.current !== null ||
+                    mediaRecorderRef.current?.state === "recording"
+                  ) {
+                    event.preventDefault();
+                    return;
+                  }
+                  void transcribeRecording();
+                },
+              },
+              cancel: {
+                label: "Download recording",
+                onClick: () => downloadBlob(audioFile, audioFile.name),
+              },
+            });
+          } finally {
+            if (transcriptionAbortRef.current === abortController) {
+              transcriptionAbortRef.current = null;
+            }
           }
-          setState("error");
-          appToast.error("Voice input failed", {
-            description: resolveRecordingErrorMessage(error),
-            duration: Infinity,
-            action: {
-              label: "Download recording",
-              onClick: () => downloadBlob(audioFile, audioFile.name),
-            },
-          });
-        } finally {
-          if (transcriptionAbortRef.current === abortController) {
-            transcriptionAbortRef.current = null;
-          }
-        }
+        };
+
+        await transcribeRecording();
       };
 
       recorder.start(CHUNK_TIMESLICE_MS);
@@ -378,6 +542,8 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
           preferredAudioInputDeviceId !== null,
         ),
       );
+    } finally {
+      startingRef.current = false;
     }
   }, [
     isSupported,
@@ -385,6 +551,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     unsupportedReason,
     preferredAudioInputDeviceId,
     releaseRecordingWakeLock,
+    refreshDevices,
     requestRecordingWakeLock,
     showError,
     state,
@@ -441,6 +608,14 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
 
   return {
     state,
+    microphoneWarning:
+      captureError ??
+      (state === "recording" && silent
+        ? "No audio detected. Check your microphone or choose another."
+        : null) ??
+      (hasDeviceAccess && devices.length === 0
+        ? "No microphones are available. Connect a microphone or check microphone access."
+        : null),
     isSupported,
     unsupportedReason,
     stream,

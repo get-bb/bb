@@ -457,7 +457,7 @@ describe("ThreadDetailSecondaryContent", () => {
     ).toBe(true);
   });
 
-  it("pins a split browser pane to its tab and gates native commands by pane focus", () => {
+  it("pins a split browser pane to its tab and gates native commands by pane focus", async () => {
     const renderBrowserDeck = vi.fn(() => null);
     const props = createProps();
     props.secondaryPanel.renderBrowserDeck = renderBrowserDeck;
@@ -472,6 +472,7 @@ describe("ThreadDetailSecondaryContent", () => {
       </MemoryRouter>,
     );
 
+    await screen.findByTestId("inline-secondary-panel");
     const panelBrowserDeck = secondaryPanelMockState.renderBrowserDeck;
     expect(panelBrowserDeck).toBeDefined();
     if (panelBrowserDeck === undefined) return;

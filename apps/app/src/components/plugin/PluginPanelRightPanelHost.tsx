@@ -1,8 +1,14 @@
 import {
+  getPanelTabHistoryKey,
+  forgetClosedPanelTab,
+  rememberClosedPanelTab,
+} from "@/components/secondary-panel/recentlyClosedPanelTabs";
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -241,6 +247,11 @@ export function PluginPanelRightPanelHost({
     paneId: resolvedPaneId,
     pluginId,
   });
+  const historyContextKey = getPanelTabHistoryKey({
+    panelStateId,
+    environmentId: null,
+    fileOwnerThreadId: null,
+  });
   const fixedViewTabs = useMemo<readonly PluginPageFixedPanelTab[]>(
     () =>
       (panel?.fixedTabs ?? []).map((fixedTab) =>
@@ -262,6 +273,7 @@ export function PluginPanelRightPanelHost({
   const updatePanelState = useUpdateFixedPanelTabsState(panelStateId, null);
   const closePersistedPanel = useCloseFixedSecondaryPanel(panelStateId, null);
   const [openedPluginIds, setOpenedPluginIds] = useState<string[]>([]);
+  const openedPluginIdsRef = useRef(openedPluginIds);
   const [activePluginDetailId, setActivePluginDetailId] = useState<
     string | null
   >(null);
@@ -423,15 +435,23 @@ export function PluginPanelRightPanelHost({
   }, []);
   const openPluginDetail = useCallback(
     (nextPluginId: string) => {
-      setOpenedPluginIds((current) =>
-        current.includes(nextPluginId) ? current : [...current, nextPluginId],
-      );
+      if (historyContextKey !== null)
+        forgetClosedPanelTab(
+          historyContextKey,
+          `marketplace-plugin:${nextPluginId}`,
+        );
+      const current = openedPluginIdsRef.current;
+      const next = current.includes(nextPluginId)
+        ? current
+        : [...current, nextPluginId];
+      openedPluginIdsRef.current = next;
+      setOpenedPluginIds(next);
       setActivePluginDetailId(nextPluginId);
       setIsPluginDetailPanelOpen(true);
       revealPanel();
       return true;
     },
-    [revealPanel],
+    [historyContextKey, revealPanel],
   );
   const targetStore = useStore();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
@@ -586,7 +606,34 @@ export function PluginPanelRightPanelHost({
     return true;
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
-    if (!isFocused || panel === null || !reopenClosedTab()) return false;
+    if (
+      !isFocused ||
+      panel === null ||
+      !reopenClosedTab({
+        destinations: openedPluginIds.map((pluginId) => ({
+          pluginId,
+          title: pluginDetailTabMetadata[pluginId]?.label ?? pluginId,
+        })),
+        dismiss: selectPersistedPanelTab,
+        restore: ({ index, destination }) => {
+          openPluginDetail(destination.pluginId);
+          const next = openedPluginIdsRef.current.filter(
+            (id) => id !== destination.pluginId,
+          );
+          next.splice(Math.min(index, next.length), 0, destination.pluginId);
+          openedPluginIdsRef.current = next;
+          setOpenedPluginIds(next);
+          setPluginDetailTabMetadata((current) => ({
+            ...current,
+            [destination.pluginId]: {
+              icon: current[destination.pluginId]?.icon ?? null,
+              label: destination.title,
+            },
+          }));
+        },
+      })
+    )
+      return false;
     revealPanel();
     return true;
   });
@@ -707,14 +754,24 @@ export function PluginPanelRightPanelHost({
 
   const closePluginDetailTab = useCallback(
     (closingPluginId: string) => {
-      const closingIndex = openedPluginIds.indexOf(closingPluginId);
+      const closingIndex = openedPluginIdsRef.current.indexOf(closingPluginId);
       if (closingIndex === -1) return;
-      const nextPluginIds = openedPluginIds.filter(
+      const nextPluginIds = openedPluginIdsRef.current.filter(
         (candidate) => candidate !== closingPluginId,
       );
-      setOpenedPluginIds((current) =>
-        current.filter((candidate) => candidate !== closingPluginId),
-      );
+      openedPluginIdsRef.current = nextPluginIds;
+      setOpenedPluginIds(nextPluginIds);
+      if (historyContextKey !== null)
+        rememberClosedPanelTab(historyContextKey, {
+          kind: "plugin-detail",
+          index: closingIndex,
+          destination: {
+            pluginId: closingPluginId,
+            title:
+              pluginDetailTabMetadata[closingPluginId]?.label ??
+              closingPluginId,
+          },
+        });
       if (activePluginDetailId !== closingPluginId) return;
       const nextActivePluginId =
         nextPluginIds[Math.min(closingIndex, nextPluginIds.length - 1)] ?? null;
@@ -734,7 +791,8 @@ export function PluginPanelRightPanelHost({
       activePluginDetailId,
       fixedViewTabs.length,
       hidePanel,
-      openedPluginIds,
+      historyContextKey,
+      pluginDetailTabMetadata,
       panelState.secondary.tabs.length,
     ],
   );

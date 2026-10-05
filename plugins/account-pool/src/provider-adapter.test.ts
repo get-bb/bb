@@ -7,13 +7,117 @@ import {
 } from "./provider-adapter.js";
 
 describe("OAuth refresh transport", () => {
-  it("classifies rejected responses even when cancellation never settles", async () => {
+  it.each([
+    {
+      body: {
+        error: "invalid_grant",
+        error_description: "Refresh token expired",
+      },
+      detail: " invalid_grant: Refresh token expired.",
+    },
+    {
+      body: {
+        error: "invalid_grant",
+        error_description: "refresh-secret access-secret",
+      },
+      detail: " invalid_grant.",
+    },
+    {
+      body: {
+        error: { code: "refresh_token_reused", message: "refresh-secret" },
+      },
+      detail: " refresh_token_reused.",
+    },
+    {
+      body: { error: "refresh-secret", error_description: "access-secret" },
+      detail: "",
+    },
+  ])(
+    "retains only recognized OAuth error details: $detail",
+    async ({ body, detail }) => {
+      await expect(
+        fetchOAuthRefresh(
+          {
+            fetch: async () => Response.json(body, { status: 400 }),
+            now: () => 0,
+          },
+          "https://auth.example/token",
+          { refresh_token: "refresh-secret" },
+        ),
+      ).rejects.toMatchObject({
+        message: `OAuth refresh failed with HTTP 400.${detail}`,
+      });
+    },
+  );
+
+  it.each(["malformed", "oversized", "broken", "pending"])(
+    "preserves HTTP rejection classification with a %s JSON error body",
+    async (body) => {
+      const controller = new AbortController();
+      const timeout = vi
+        .spyOn(AbortSignal, "timeout")
+        .mockReturnValue(controller.signal);
+      const cancel = vi.fn(() => new Promise<void>(() => {}));
+      try {
+        const stream = new ReadableStream<Uint8Array>({
+          start(streamController) {
+            if (body === "broken")
+              streamController.error(new Error("private socket detail"));
+            else if (body !== "pending") {
+              streamController.enqueue(
+                new TextEncoder().encode(
+                  body === "malformed"
+                    ? "{"
+                    : JSON.stringify({
+                        error: "invalid_grant",
+                        padding: "x".repeat(4096),
+                      }),
+                ),
+              );
+              streamController.close();
+            }
+          },
+          cancel,
+        });
+        const refresh = fetchOAuthRefresh(
+          {
+            fetch: async () =>
+              new Response(stream, {
+                status: 400,
+                headers: { "content-type": "application/json" },
+              }),
+            now: () => 0,
+          },
+          "https://auth.example/token",
+          { refresh_token: "refresh-secret" },
+        );
+        if (body === "pending") {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          controller.abort(new DOMException("Timed out", "TimeoutError"));
+        }
+        await expect(refresh).rejects.toMatchObject({
+          message: "OAuth refresh failed with HTTP 400.",
+        });
+        await expect(refresh).rejects.not.toBeInstanceOf(
+          TransientOAuthRefreshError,
+        );
+        if (body === "pending") expect(cancel).toHaveBeenCalledOnce();
+      } finally {
+        timeout.mockRestore();
+      }
+    },
+  );
+
+  it("classifies rejected JSON responses even when the body and cancellation never settle", async () => {
     const cancel = vi.fn(() => new Promise<void>(() => {}));
     await expect(
       fetchOAuthRefresh(
         {
           fetch: async () =>
-            new Response(new ReadableStream({ cancel }), { status: 503 }),
+            new Response(new ReadableStream({ cancel }), {
+              status: 503,
+              headers: { "content-type": "application/json" },
+            }),
           now: () => 0,
         },
         "https://auth.example/token",

@@ -57,6 +57,8 @@ const release: RuntimeRelease = {
 };
 const asset = `dev-browser-${platform}`;
 const attestationPath = `/-/npm/v1/attestations/dev-browser@${version}`;
+const noWindowsRuntime =
+  "DevBrowser publishes no Windows runtime, so the runtime installer never runs on Windows";
 
 function provenance(
   repository: string,
@@ -110,7 +112,8 @@ if (process.argv[2] === "install") {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "dev-browser.cjs"), "shim");
   fs.writeFileSync(path.join(dir, "..", "package.json"), JSON.stringify({ name: "dev-browser", version: config.version }));
-  fs.writeFileSync(path.join(process.cwd(), "node_modules", ".package-lock.json"), JSON.stringify({ packages: { "node_modules/dev-browser": { version: config.version, resolved: (config.resolvedBase ?? process.env.npm_config_registry) + "/dev-browser/-/dev-browser.tgz", integrity: config.integrity } } }));
+  const omitResolved = config.omitLockfileRegistryResolved && !process.argv.includes("--omit-lockfile-registry-resolved=false");
+  fs.writeFileSync(path.join(process.cwd(), "node_modules", ".package-lock.json"), JSON.stringify({ packages: { "node_modules/dev-browser": { version: config.version, ...(omitResolved ? {} : { resolved: (config.resolvedBase ?? process.env.npm_config_registry) + "/dev-browser/-/dev-browser.tgz" }), integrity: config.integrity } } }));
   process.exit(0);
 }
 if (process.argv[2] === "audit") { process.stdout.write(JSON.stringify(config.audit)); process.exit(config.auditExit ?? 0); }
@@ -222,38 +225,46 @@ beforeEach(async () => {
 });
 
 describe("runtime installer", () => {
-  it("installs the exact pinned package once and reuses it without npm or network", async () => {
-    const dir = await dataDir();
-    const progress: string[] = [];
-    const installed = await install(dir, {
-      onProgress: (detail) => progress.push(detail),
-    });
-    expect(installed.sha256).toBe(sha256(binaryContent));
-    expect(installed.binary).toBe(
-      join(
-        installRoot(dir),
-        `dev-browser@${version}`,
-        "node_modules/dev-browser/bin/dev-browser-bin",
-      ),
-    );
-    await access(installed.binary, constants.X_OK);
-    expect(await npmCalls()).toEqual([
-      `install --ignore-scripts --no-audit --no-fund --omit=dev --loglevel=error --registry=${base}`,
-      `audit signatures --json --registry=${base}`,
-    ]);
-    expect(requests).toEqual([attestationPath, "/SHA256SUMS", `/${asset}`]);
-    expect(progress).toContain(
-      "verifying npm registry signature and provenance",
-    );
-    expect(await entries(dir)).toEqual([`dev-browser@${version}`]);
-    const warm = await install(dir, {
-      env: env(false),
-      downloadBase: "http://127.0.0.1:9/unreachable",
-    });
-    expect(warm.binary).toBe(installed.binary);
-    expect(requests).toHaveLength(3);
-  });
-  it("reinstalls when the cached binary no longer matches the pin", async () => {
+  it.for([false, true])(
+    "installs the exact pinned package with registry URL omission %s and reuses it without npm or network",
+    async (omitLockfileRegistryResolved, { skip }) => {
+      skip(process.platform === "win32", noWindowsRuntime);
+      await configureNpm({ omitLockfileRegistryResolved });
+      const dir = await dataDir();
+      const progress: string[] = [];
+      const installed = await install(dir, {
+        onProgress: (detail) => progress.push(detail),
+      });
+      expect(installed.sha256).toBe(sha256(binaryContent));
+      expect(installed.binary).toBe(
+        join(
+          installRoot(dir),
+          `dev-browser@${version}`,
+          "node_modules/dev-browser/bin/dev-browser-bin",
+        ),
+      );
+      await access(installed.binary, constants.X_OK);
+      expect(await npmCalls()).toEqual([
+        `install --ignore-scripts --no-audit --no-fund --omit=dev --omit-lockfile-registry-resolved=false --loglevel=error --registry=${base}`,
+        `audit signatures --json --registry=${base}`,
+      ]);
+      expect(requests).toEqual([attestationPath, "/SHA256SUMS", `/${asset}`]);
+      expect(progress).toContain(
+        "verifying npm registry signature and provenance",
+      );
+      expect(await entries(dir)).toEqual([`dev-browser@${version}`]);
+      const warm = await install(dir, {
+        env: env(false),
+        downloadBase: "http://127.0.0.1:9/unreachable",
+      });
+      expect(warm.binary).toBe(installed.binary);
+      expect(requests).toHaveLength(3);
+    },
+  );
+  it("reinstalls when the cached binary no longer matches the pin", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", noWindowsRuntime);
     const dir = await dataDir();
     const first = await install(dir);
     await writeFile(first.binary, "#!/bin/sh\necho tampered\n", {
@@ -264,13 +275,19 @@ describe("runtime installer", () => {
     expect(await readFile(second.binary, "utf8")).toBe(binaryContent);
     expect(await npmCalls()).toHaveLength(2);
   });
-  it("refuses a binary whose digest differs from the pin and leaves nothing behind", async () => {
+  it("refuses a binary whose digest differs from the pin and leaves nothing behind", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", noWindowsRuntime);
     const dir = await dataDir();
     served[`/${asset}`] = binaryContent.replace(version, "1.0.0-other");
     await expect(install(dir)).rejects.toThrow("not the pinned");
     expect(await entries(dir)).toEqual([]);
   });
-  it("refuses a release whose SHA256SUMS disagrees with the pin", async () => {
+  it("refuses a release whose SHA256SUMS disagrees with the pin", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", noWindowsRuntime);
     const dir = await dataDir();
     served["/SHA256SUMS"] = `${"0".repeat(64)}  ${asset}\n`;
     await expect(install(dir)).rejects.toThrow(
@@ -278,7 +295,10 @@ describe("runtime installer", () => {
     );
     expect(requests).toEqual([attestationPath, "/SHA256SUMS"]);
   });
-  it("refuses packages without provenance from the pinned repository tag", async () => {
+  it("refuses packages without provenance from the pinned repository tag", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", noWindowsRuntime);
     const dir = await dataDir();
     served[attestationPath] = JSON.stringify(
       provenance("someone-else/dev-browser", `refs/tags/v${version}`),
@@ -293,6 +313,8 @@ describe("runtime installer", () => {
     await expect(install(dir)).rejects.toThrow("npm audit signatures failed");
     await configureNpm({ resolvedBase: "http://mirror.invalid" });
     await expect(install(dir)).rejects.toThrow("not the pinned registry");
+  });
+  it("rejects provenance and signature reports that do not cover the pinned release", () => {
     expect(() =>
       checkProvenance(
         provenance("example/dev-browser", "refs/heads/main"),
@@ -319,7 +341,10 @@ describe("runtime installer", () => {
       ),
     ).toThrow("registry signature");
   });
-  it("reports npm failures, a missing npm, and an unrecorded platform clearly", async () => {
+  it("reports npm failures, a missing npm, and an unrecorded platform clearly", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", noWindowsRuntime);
     const dir = await dataDir();
     await configureNpm({ installExit: 1 });
     await expect(install(dir)).rejects.toThrow(
@@ -339,7 +364,10 @@ describe("runtime installer", () => {
       }),
     ).rejects.toThrow(`no verified release artifact recorded for ${platform}`);
   });
-  it("serves concurrent installs from one npm run and tolerates a stale lock", async () => {
+  it("serves concurrent installs from one npm run and tolerates a stale lock", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", noWindowsRuntime);
     const dir = await dataDir();
     await mkdir(installRoot(dir), { recursive: true });
     const lock = join(installRoot(dir), `dev-browser@${version}.lock`);
@@ -421,7 +449,10 @@ describe("runtime installer", () => {
     await unlockC();
     await expect(readFile(path, "utf8")).rejects.toThrow();
   });
-  it("cancels an in-progress install, cleans up, and allows a retry", async () => {
+  it("cancels an in-progress install, cleans up, and allows a retry", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", noWindowsRuntime);
     const dir = await dataDir();
     await configureNpm({ installDelayMs: 60_000 });
     const controller = new AbortController();

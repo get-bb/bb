@@ -8,8 +8,11 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-popover: var(--popover);
+  --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-subtle-foreground: var(--subtle-foreground);
+  --color-timeline-accent: var(--timeline-accent);
+  --color-file-accent: var(--file-accent);
   --color-state-hover: var(--state-hover);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
@@ -20,23 +23,35 @@
   --color-warning-text: var(--warning-text);
   --color-success: var(--success);
   --color-border: var(--border);
+  --color-border-hairline: var(--border-hairline);
+  --color-border-seam: var(--border-seam);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-surface-recessed: var(--surface-recessed);
+  --color-surface-recessed-solid: var(--surface-recessed-solid);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-solid: var(--surface-raised-solid);
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
   --color-surface-selected: var(--surface-selected);
   --color-surface-selected-border: var(--surface-selected-border);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 
+  --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
+  --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lift: var(--shadow-lift);
   --shadow-lg: var(--shadow-lg);
   --shadow-2xl: var(--shadow-2xl);
 }
@@ -59,10 +74,14 @@
   --text-sm: 0.8125rem;
   --text-base: 0.9375rem;
   --text-base--line-height: 1.375rem;
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
 }
 
 @media (max-width: 767px) and (pointer: coarse) {
   :root {
+    --text-2xs: 0.6875rem;
+    --text-2xs--line-height: 0.9375rem;
     --text-xs: 0.875rem;
     --text-xs--line-height: 1.25rem;
     --text-sm: 0.9375rem;
@@ -73,7 +92,8 @@
 }
 
 :root,
-.light {
+.light,
+.app-theme {
   color-scheme: light;
   /* Anchors. The neutral ramp below is derived from these two by mixing ink
    * into the canvas, so changing the canvas moves every surface coherently. */
@@ -91,12 +111,15 @@
   --primary: oklch(0.4891 0 0);
   /* Secondary text tiers. Sit at ~7.4:1 and ~5.9:1 on the white background
    * while keeping muted darker than subtle so the hierarchy survives. */
+  --muted: color-mix(in oklch, var(--ink) 11%, var(--canvas));
   --muted-foreground: oklch(0.44 0 0);
   --subtle-foreground: oklch(0.5 0 0);
   /* Interactive-state fill: translucent ink so the hover step reads
    * consistently on canvas, cards, and recessed surfaces alike. Over the canvas
    * it matches an opaque ink-over-canvas mix exactly; on elevated surfaces it
    * composites for real, visible contrast. */
+  --timeline-accent: oklch(0.55 0.1 250);
+  --file-accent: var(--timeline-accent);
   --state-hover: color-mix(in oklab, var(--ink) 5.9%, transparent);
   --destructive: oklch(0.45 0.19 25.8625);
   --destructive-foreground: oklch(1 0 0);
@@ -108,6 +131,8 @@
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
   --border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 14.7%, var(--canvas));
+  --border-seam: color-mix(in oklch, var(--ink) 9.5%, var(--canvas));
   --input: color-mix(in oklch, var(--ink) 29.5%, var(--canvas));
   /* Focus ring shares the primary accent — kept as one value so they can't
    * drift apart. */
@@ -115,6 +140,12 @@
   /* Inset panel tint on the ink ramp: a clear sunken step, translucent so it
    * reads on card or page alike. */
   --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
+  --sidebar: color-mix(in oklch, var(--ink) 2.2%, var(--canvas));
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: color-mix(in oklch, var(--ink) 8%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -133,8 +164,12 @@
     transparent
   );
   --font-sans: "Inter Variable", Inter, sans-serif;
-  --font-mono: "Fira Code", monospace;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --radius: 0.5rem;
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 20% / 0.07);
+  --shadow-md:
+    0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 2px 4px -1px hsl(0 0% 20% / 0.15);
+  --shadow-lift: 0px -4px 12px -4px hsl(0 0% 20% / 0.07);
   --shadow-sm:
     0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 1px 2px -1px hsl(0 0% 20% / 0.15);
   --shadow-lg:
@@ -143,7 +178,8 @@
   --spacing: 0.25rem;
 }
 
-.dark {
+.dark,
+.dark .app-theme {
   color-scheme: dark;
   --canvas: oklch(0.195 0 0);
   /* Softened from a brighter near-white so dark-mode foreground text reads a
@@ -158,10 +194,13 @@
   --card: var(--canvas);
   --popover: var(--canvas);
   --primary: oklch(0.7058 0 0);
+  --muted: color-mix(in oklch, var(--ink) 16%, var(--canvas));
   --muted-foreground: oklch(0.78 0 0);
   --subtle-foreground: oklch(0.68 0 0);
   /* Interactive-state fill: translucent ink so the hover step reads
    * consistently on canvas, cards, and recessed surfaces alike. */
+  --timeline-accent: oklch(0.72 0.09 250);
+  --file-accent: var(--timeline-accent);
   --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);
   --destructive: oklch(0.56 0.19 22.1703);
   --destructive-foreground: oklch(1 0 0);
@@ -172,10 +211,18 @@
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
   --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 21%, var(--canvas));
+  --border-seam: color-mix(in oklch, var(--ink) 11%, var(--canvas));
   --input: color-mix(in oklch, var(--ink) 32.6%, var(--canvas));
   --ring: var(--primary);
   /* Same model as light; ink is light here, so this lifts the dark canvas. */
   --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
+  --sidebar: color-mix(in oklch, var(--ink) 4.3%, var(--canvas));
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: color-mix(in oklch, var(--ink) 12%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -194,11 +241,15 @@
     transparent
   );
   --font-sans: "Inter Variable", Inter, sans-serif;
-  --font-mono: "Fira Code", monospace;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --radius: 0.5rem;
   /* Dark shadows are pure black at higher alpha — a 20%-gray shadow is
    * invisible on the dark canvas, so floating surfaces (popovers, dropdowns)
    * stop separating from the card beneath them. */
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.2);
+  --shadow-md:
+    0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 2px 4px -1px hsl(0 0% 0% / 0.5);
+  --shadow-lift: 0px -4px 12px -4px hsl(0 0% 0% / 0.26);
   --shadow-sm:
     0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 1px 2px -1px hsl(0 0% 0% / 0.4);
   --shadow-lg:

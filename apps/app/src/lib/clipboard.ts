@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import { appToast } from "@/components/ui/app-toast";
+import { getNativeShell } from "@/lib/native-shell/native-shell";
 
 interface CopyToClipboardOptions {
   successMessage?: string | null;
@@ -127,6 +129,18 @@ async function copyTextAndImageToClipboard(
   text: string,
   imageUrl: string,
 ): Promise<boolean> {
+  const shell = getNativeShell();
+  if (shell?.copyTextAndImage) {
+    try {
+      const result = await shell.copyTextAndImage(
+        text,
+        new URL(imageUrl, window.location.href).href,
+      );
+      return z.object({ copied: z.literal(true) }).safeParse(result).success;
+    } catch {
+      return false;
+    }
+  }
   if (
     typeof navigator === "undefined" ||
     typeof navigator.clipboard?.write !== "function" ||
@@ -164,6 +178,10 @@ export async function copyToClipboardWithToast(
     : await copyTextToClipboard(text);
   if (copied) {
     if (successMessage) appToast.success(successMessage);
+    return true;
+  }
+  if (imageUrl && text && (await copyTextToClipboard(text))) {
+    appToast.success("Copied text; image could not be copied");
     return true;
   }
   if (errorMessage) appToast.error(errorMessage);

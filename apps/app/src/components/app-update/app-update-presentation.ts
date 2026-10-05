@@ -18,7 +18,7 @@ export function formatAppUpdateRevision(
 ): string {
   return revision.commit === null
     ? revision.version
-    : `${revision.version} (${revision.commit.slice(0, 7)})`;
+    : revision.commit.slice(0, 7);
 }
 
 export function formatAppUpdateTarget(

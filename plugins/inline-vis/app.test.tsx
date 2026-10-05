@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
-const app = await loadPluginApp(() => import("./app"));
+let app: Awaited<ReturnType<typeof loadPluginApp>>;
+
+beforeEach(async () => {
+  app = await loadPluginApp(() => import("./app"));
+});
 
 afterEach(() => {
   cleanup();
@@ -25,6 +29,59 @@ describe("inline-vis messageDirective registration", () => {
 });
 
 describe("InlineVisDirective", () => {
+  it.each(["not-found", "disconnected"] as const)(
+    "revalidates a cached Markdown preview after %s and does not resurrect missing content",
+    async (failure) => {
+      const props = {
+        attributes: { file: "notes.md" },
+        source: '::inline-vis{file="notes.md"}',
+        message,
+        openWorkspaceFile: null,
+      };
+      const first = renderSlot(app.messageDirectives[0]!, props, {
+        rpc: {
+          preparePreview: () => ({
+            kind: "markdown",
+            file: "notes.md",
+            source: "workspace",
+            target: {
+              kind: "workspace",
+              environmentId: "env_1",
+              path: "notes.md",
+            },
+            rootPath: "/work/repo",
+            content: "Previously loaded notes",
+          }),
+        },
+      });
+      await first.findByText("Previously loaded notes");
+      first.unmount();
+      const options = {
+        rpc: {
+          preparePreview: () => {
+            if (failure === "disconnected") throw new Error("Connection lost");
+            return { kind: "not-found", file: "notes.md" };
+          },
+        },
+      };
+      const second = renderSlot(app.messageDirectives[0]!, props, options);
+      if (failure === "not-found") {
+        expect((await second.findByRole("alert")).textContent).toContain(
+          "Preview file not found: notes.md",
+        );
+        expect(second.queryByText("Previously loaded notes")).toBeNull();
+        second.unmount();
+        const third = renderSlot(app.messageDirectives[0]!, props, options);
+        expect(third.queryByText("Previously loaded notes")).toBeNull();
+        await third.findByRole("alert");
+      } else {
+        await waitFor(() => expect(second.rpcCalls).toHaveLength(1));
+        expect(second.getByText("Previously loaded notes")).toBeTruthy();
+        expect(second.queryByRole("alert")).toBeNull();
+      }
+    },
+  );
+
   it("requires a file attribute without calling rpc", async () => {
     const slot = renderSlot(
       app.messageDirectives[0]!,

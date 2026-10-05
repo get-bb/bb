@@ -43,6 +43,13 @@ const renderWithRouter = (
   initialEntries: ComponentProps<typeof MemoryRouter>["initialEntries"] = ["/"],
 ) => render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
 
+function selectMessageMenuItem(name: string) {
+  fireEvent.pointerDown(
+    screen.getByRole("button", { name: "Message actions" }),
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name }));
+}
+
 function SameThreadSearchNavigationHarness() {
   const navigate = useNavigate();
   return (
@@ -119,7 +126,7 @@ function EditActionAvailabilityHarness({
 function SearchOlderRowsHarness({
   onLoadOlderRows,
 }: {
-  onLoadOlderRows: () => void;
+  onLoadOlderRows: () => Promise<void> | void;
 }) {
   const [loadedOlderRows, setLoadedOlderRows] = useState(false);
   const rows = loadedOlderRows
@@ -158,8 +165,8 @@ function SearchOlderRowsHarness({
       timelineRows={rows}
       hasOlderTimelineRows={!loadedOlderRows}
       isLoadingOlderTimelineRows={false}
-      onLoadOlderRows={() => {
-        onLoadOlderRows();
+      onLoadOlderRows={async () => {
+        await onLoadOlderRows();
         setLoadedOlderRows(true);
       }}
       threadRuntimeDisplayStatus="idle"
@@ -258,7 +265,8 @@ afterEach(() => {
 });
 
 describe("ThreadTimelineRows actions", () => {
-  it("uses inline mobile actions only for the last assistant message", () => {
+  it("uses inline mobile candidates only for the last assistant message", () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
     const { container } = renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
@@ -293,10 +301,17 @@ describe("ThreadTimelineRows actions", () => {
     ).not.toBeNull();
     expect(
       latestMessage?.querySelector('[aria-label="Message actions"]'),
+    ).not.toBeNull();
+    expect(
+      earlierMessage?.querySelector('[aria-label="Copy message"]'),
     ).toBeNull();
+    expect(
+      latestMessage?.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
   });
 
-  it("uses inline mobile actions only for the last user message", () => {
+  it("uses inline mobile candidates only for the last user message", () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
     const { container } = renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
@@ -329,7 +344,13 @@ describe("ThreadTimelineRows actions", () => {
     ).not.toBeNull();
     expect(
       latestMessage?.querySelector('[aria-label="Message actions"]'),
+    ).not.toBeNull();
+    expect(
+      earlierMessage?.querySelector('[aria-label="Copy message"]'),
     ).toBeNull();
+    expect(
+      latestMessage?.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
   });
 
   it("keeps edit actions available while the thread is active", () => {
@@ -463,7 +484,7 @@ describe("ThreadTimelineRows actions", () => {
     );
     expect(
       actionableMessage?.querySelector('[aria-label="Message actions"]'),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(
       actionableMessage?.querySelector('[aria-label="Copy message"]'),
     ).not.toBeNull();
@@ -472,7 +493,7 @@ describe("ThreadTimelineRows actions", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the last text footer inline when an attachment-only row has no add action", () => {
+  it("keeps the always-present menu on an attachment-only row", () => {
     const { container } = renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
@@ -508,13 +529,13 @@ describe("ThreadTimelineRows actions", () => {
     );
     expect(
       copyableMessage?.querySelector('[aria-label="Message actions"]'),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(
       copyableMessage?.querySelector('[aria-label="Copy message"]'),
     ).not.toBeNull();
     expect(
       attachmentOnlyMessage?.querySelector('[aria-label="Message actions"]'),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
   it("renders send-to-main on assistant rows when the timeline supplies a handler", () => {
@@ -589,7 +610,7 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain("Working");
     expect(markup).toContain("Streaming assistant response.");
     expect(markup).toContain('aria-label="Copy message"');
-    expect(markup).not.toContain('aria-label="Message actions"');
+    expect(markup).toContain('aria-label="Message actions"');
     expect(markup).toContain("max-md:pointer-coarse:opacity-100");
   });
 
@@ -644,7 +665,7 @@ describe("ThreadTimelineRows actions", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    selectMessageMenuItem("Add to chat");
     expect(onMessageAddToChat).toHaveBeenCalledWith(
       "Quote this agent response.",
     );
@@ -674,7 +695,7 @@ describe("ThreadTimelineRows actions", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    selectMessageMenuItem("Add to chat");
     expect(onMessageAddToChat).toHaveBeenCalledWith(
       "Quote this agent response.",
       [
@@ -682,13 +703,11 @@ describe("ThreadTimelineRows actions", () => {
           type: "localImage",
           path: "uploads/screenshot.png",
           name: "screenshot.png",
-          sizeBytes: 0,
         },
         {
           type: "localFile",
           path: "uploads/spec.md",
           name: "spec.md",
-          sizeBytes: 0,
         },
       ],
     );
@@ -710,7 +729,7 @@ describe("ThreadTimelineRows actions", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    selectMessageMenuItem("Add to chat");
     expect(onSelectionAddToChat).toHaveBeenCalledWith(
       "Quote this user prompt.",
     );
@@ -740,7 +759,7 @@ describe("ThreadTimelineRows actions", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    selectMessageMenuItem("Add to chat");
     expect(onSelectionAddToChat).toHaveBeenCalledWith(
       "Quote this user prompt.",
       [
@@ -748,13 +767,11 @@ describe("ThreadTimelineRows actions", () => {
           type: "localImage",
           path: "uploads/screenshot.png",
           name: "screenshot.png",
-          sizeBytes: 0,
         },
         {
           type: "localFile",
           path: "uploads/spec.md",
           name: "spec.md",
-          sizeBytes: 0,
         },
       ],
     );
@@ -784,13 +801,12 @@ describe("ThreadTimelineRows actions", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    selectMessageMenuItem("Add to chat");
     expect(onSelectionAddToChat).toHaveBeenCalledWith("", [
       {
         type: "localFile",
         path: "uploads/spec.md",
         name: "spec.md",
-        sizeBytes: 0,
       },
     ]);
   });
@@ -1056,56 +1072,134 @@ describe("ThreadTimelineRows actions", () => {
       expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
     );
     expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
+    await waitFor(() => {
+      expect(
+        container.querySelector<HTMLElement>(
+          '[data-timeline-row-list="top-level"]',
+        )?.style.visibility,
+      ).not.toBe("hidden");
+    });
   });
 
-  it("cancels the follow-up search reveals when the rows unmount", () => {
-    vi.useFakeTimers();
-    try {
-      vi.spyOn(window, "requestAnimationFrame").mockImplementation(
-        (callback) => {
-          callback(performance.now());
-          return 1;
+  it("cancels a queued search reveal when the rows unmount", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const view = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "match",
+            role: "assistant",
+            text: "Answer containing the search result.",
+            sourceSeqStart: 12,
+            sourceSeqEnd: 12,
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
         },
-      );
-      vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-        configurable: true,
-        value: vi.fn(),
-      });
+      ],
+    );
+    expect(frames.size).toBeGreaterThan(0);
+    act(() => {
+      const pending = [...frames.values()];
+      frames.clear();
+      for (const callback of pending) callback(performance.now());
+    });
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(frames.size).toBeGreaterThan(0);
+    view.unmount();
 
-      const view = renderWithRouter(
-        <ThreadTimelineRows
-          threadId="thr_main"
-          timelineRows={[
-            conversationRow({
-              id: "match",
-              role: "assistant",
-              text: "Answer containing the search result.",
-              sourceSeqStart: 12,
-              sourceSeqEnd: 12,
-              threadId: "thr_main",
-            }),
-          ]}
-          threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
-        />,
-        [
-          {
-            pathname: "/thread",
-            state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
-          },
-        ],
-      );
-      view.unmount();
+    const querySelector = vi.spyOn(document, "querySelector");
+    act(() => {
+      const pending = [...frames.values()];
+      frames.clear();
+      for (const callback of pending) callback(performance.now());
+    });
+    expect(querySelector).not.toHaveBeenCalled();
+  });
 
-      const querySelector = vi.spyOn(document, "querySelector");
+  it("keeps the initial timeline hidden until an older linked message is positioned and stable", async () => {
+    let resolvePage: (() => void) | undefined;
+    const page = new Promise<void>((resolve) => {
+      resolvePage = resolve;
+    });
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const onLoadOlderRows = vi.fn(() => page);
+    const { container } = renderWithRouter(
+      <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
+      [{ pathname: "/threads/thr_main", hash: "#msg=12" }],
+    );
+    await waitFor(() => expect(onLoadOlderRows).toHaveBeenCalledTimes(1));
+    const list = container.querySelector<HTMLElement>(
+      '[data-timeline-row-list="top-level"]',
+    );
+    expect(list?.style.visibility).toBe("hidden");
+    await act(async () => resolvePage?.());
+    const target = container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="older_match"]',
+    );
+    expect(target).not.toBeNull();
+    expect(list?.style.visibility).toBe("hidden");
+    expect(target?.classList.contains("bb-search-flash")).toBe(false);
+    if (target === null) throw new Error("Expected linked message");
+    let targetTop = 100;
+    vi.spyOn(target, "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(0, targetTop, 100, 80),
+    );
+    const runFrame = () => {
       act(() => {
-        vi.advanceTimersByTime(1000);
+        const pending = [...frames.values()];
+        frames.clear();
+        for (const callback of pending) callback(performance.now());
       });
-      expect(querySelector).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
+    };
+    runFrame();
+    expect(list?.style.visibility).toBe("hidden");
+    targetTop = 150;
+    runFrame();
+    expect(list?.style.visibility).toBe("hidden");
+    expect(target.classList.contains("bb-search-flash")).toBe(false);
+    for (let index = 0; index < 5; index += 1) {
+      runFrame();
     }
+    expect(list?.style.visibility).not.toBe("hidden");
+    expect(target?.classList.contains("bb-search-flash")).toBe(true);
+    expect(target?.scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      inline: "nearest",
+    });
   });
 
   it("loads older timeline rows before scrolling to an older thread-search match", async () => {
@@ -1149,7 +1243,7 @@ describe("ThreadTimelineRows actions", () => {
   it("does not retry failed older-row auto-loading until rows advance", async () => {
     const onLoadOlderRows = vi.fn();
 
-    renderWithRouter(
+    const { container } = renderWithRouter(
       <SearchOlderRowsFailedLoadHarness onLoadOlderRows={onLoadOlderRows} />,
       [
         {
@@ -1168,6 +1262,11 @@ describe("ThreadTimelineRows actions", () => {
     });
 
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+    expect(
+      container.querySelector<HTMLElement>(
+        '[data-timeline-row-list="top-level"]',
+      )?.style.visibility,
+    ).not.toBe("hidden");
   });
 
   it("renders plugin message actions on user and assistant rows with the narrow message reference", () => {
@@ -1510,7 +1609,7 @@ describe("ThreadTimelineRows shared message column width", () => {
     vi.unstubAllGlobals();
   });
 
-  it("expands overflow actions in place from the row list's one column measurement", () => {
+  it("keeps older touch actions in the shared drawer after measuring the row list", async () => {
     mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
     const observations: { callback: ResizeObserverCallback; node: Element }[] =
       [];
@@ -1573,16 +1672,23 @@ describe("ThreadTimelineRows shared message column width", () => {
     if (!trigger) throw new Error("Missing overflow trigger");
     fireEvent.click(trigger);
 
+    await screen.findByRole("dialog", { name: "Message actions" });
     expect(document.body.querySelector('[data-side="top"]')).toBeNull();
     expect(
       earlierMessage?.querySelector('[aria-label="Copy message"]'),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(
       earlierMessage?.querySelector('[aria-label="Fork into new thread"]'),
-    ).not.toBeNull();
+    ).toBeNull();
+    expect(
+      await screen.findByRole("menuitem", { name: "Copy message" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Fork into new thread" }),
+    ).toBeTruthy();
   });
 
-  it("subtracts the assistant column's padding from the shared list width", () => {
+  it("does not expand older touch actions in place at the former width threshold", async () => {
     mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
     const observations: { callback: ResizeObserverCallback; node: Element }[] =
       [];
@@ -1648,21 +1754,15 @@ describe("ThreadTimelineRows shared message column width", () => {
       fireEvent.click(trigger);
     };
 
-    reportListWidth(131);
-    clickTrigger();
-    expect(document.body.querySelector('[data-side="top"]')).not.toBeNull();
-    expect(
-      earlierMessage.querySelector('[aria-label="Copy message"]'),
-    ).toBeNull();
-
     reportListWidth(132);
     clickTrigger();
+    await screen.findByRole("dialog", { name: "Message actions" });
     expect(document.body.querySelector('[data-side="top"]')).toBeNull();
     expect(
       earlierMessage.querySelector('[aria-label="Copy message"]'),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(
       earlierMessage.querySelector('[aria-label="Fork into new thread"]'),
-    ).not.toBeNull();
+    ).toBeNull();
   });
 });

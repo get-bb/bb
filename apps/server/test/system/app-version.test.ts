@@ -43,18 +43,52 @@ function createStubFetch(
 }
 
 describe("createAppVersionService", () => {
+  it.each(["source", "desktop", "npm", null] as const)(
+    "reports install kind %s independently of npm lookup failure",
+    async (installKind) => {
+      const service = createAppVersionService({
+        sourceCommit: null,
+        installKind,
+        config: { appVersion: "0.0.5", isDevelopment: false },
+        fetchImpl: createStubFetch([{ throwError: new Error("offline") }], []),
+        logger: testLogger,
+      });
+      expect((await service.getSystemVersion()).installKind).toBe(installKind);
+    },
+  );
+
+  it("reports the source commit without comparing the checkout to npm", async () => {
+    const calls: FetchCall[] = [];
+    const service = createAppVersionService({
+      sourceCommit: "a".repeat(40),
+      installKind: "source",
+      config: { appVersion: "0.0.5", isDevelopment: false },
+      fetchImpl: createStubFetch([{ body: { version: "9.9.9" } }], calls),
+      logger: testLogger,
+    });
+    const response = await service.getSystemVersion();
+    expect(response.currentCommit).toBe("a".repeat(40));
+    expect(response.latestVersion).toBeNull();
+    expect(response.updateAvailable).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
   it("skips the npm lookup in development mode", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: true },
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], calls),
       logger: testLogger,
     });
     const response = await service.getSystemVersion();
     expect(response).toEqual({
+      currentCommit: null,
       currentVersion: "0.0.5",
       isDevelopment: true,
       latestVersion: null,
+      installKind: "npm",
       source: "npm",
       updateAvailable: false,
       upgradeCommand: "npx bb-app@latest",
@@ -65,6 +99,8 @@ describe("createAppVersionService", () => {
   it("reports updateAvailable=true when npm latest is greater", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], calls),
       logger: testLogger,
@@ -79,6 +115,8 @@ describe("createAppVersionService", () => {
   it("checks the nightly dist-tag when running a nightly build", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.43.5-nightly.100.1", isDevelopment: false },
       fetchImpl: createStubFetch(
         [{ body: { version: "0.43.5-nightly.101.1" } }],
@@ -106,6 +144,8 @@ describe("createAppVersionService", () => {
       });
     }) as typeof fetch;
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.43.5-nightly.100.1", isDevelopment: false },
       fetchImpl,
       logger: testLogger,
@@ -123,6 +163,8 @@ describe("createAppVersionService", () => {
 
   it("reports updateAvailable=false when versions are equal", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.6", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], []),
       logger: testLogger,
@@ -134,6 +176,8 @@ describe("createAppVersionService", () => {
 
   it("reports updateAvailable=false when local is ahead of npm latest", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "9.9.9", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], []),
       logger: testLogger,
@@ -146,6 +190,8 @@ describe("createAppVersionService", () => {
   it("returns latestVersion=null when npm fails and there is no cache", async () => {
     const warn = vi.fn();
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch(
         [{ throwError: new Error("network down") }],
@@ -155,9 +201,11 @@ describe("createAppVersionService", () => {
     });
     const response = await service.getSystemVersion();
     expect(response).toEqual({
+      currentCommit: null,
       currentVersion: "0.0.5",
       isDevelopment: false,
       latestVersion: null,
+      installKind: "npm",
       source: "npm",
       updateAvailable: false,
       upgradeCommand: "npx bb-app@latest",
@@ -167,6 +215,8 @@ describe("createAppVersionService", () => {
 
   it("returns latestVersion=null when npm returns a non-200 status", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch([{ ok: false, status: 429, body: {} }], []),
       logger: testLogger,
@@ -178,6 +228,8 @@ describe("createAppVersionService", () => {
 
   it("returns latestVersion=null when npm returns an unexpected payload", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { unexpected: true } }], []),
       logger: testLogger,
@@ -188,6 +240,8 @@ describe("createAppVersionService", () => {
 
   it("returns latestVersion but updateAvailable=false when current version is not semver", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "totally-not-semver", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], []),
       logger: testLogger,
@@ -200,6 +254,8 @@ describe("createAppVersionService", () => {
   it("caches the npm result and avoids repeat fetches inside the TTL", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch(
         [{ body: { version: "0.0.6" } }, { body: { version: "0.0.7" } }],
@@ -217,6 +273,8 @@ describe("createAppVersionService", () => {
   it("bypasses the npm cache for a forced check", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch(
         [{ body: { version: "0.0.6" } }, { body: { version: "0.0.7" } }],
@@ -234,6 +292,8 @@ describe("createAppVersionService", () => {
   it("dedupes concurrent inflight requests", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], calls),
       logger: testLogger,
@@ -251,6 +311,8 @@ describe("createAppVersionService", () => {
     const calls: FetchCall[] = [];
     let currentTime = 1_000;
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       cacheTtlMs: 100,
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch(
@@ -274,6 +336,8 @@ describe("createAppVersionService", () => {
 
   it("treats a published prerelease latest as an update when local is the stable predecessor", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.6-alpha.1" } }], []),
       logger: testLogger,
@@ -285,6 +349,8 @@ describe("createAppVersionService", () => {
 
   it("does not flag updateAvailable when local is the stable that follows a published prerelease", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.5-alpha.1" } }], []),
       logger: testLogger,
@@ -296,6 +362,8 @@ describe("createAppVersionService", () => {
 
   it("ignores semver build metadata when comparing equal versions", async () => {
     const service = createAppVersionService({
+      sourceCommit: null,
+      installKind: "npm",
       config: { appVersion: "0.0.5", isDevelopment: false },
       fetchImpl: createStubFetch([{ body: { version: "0.0.5+build.1" } }], []),
       logger: testLogger,

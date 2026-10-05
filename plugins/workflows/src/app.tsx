@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from "react";
 import {
   activityIconClass,
@@ -18,6 +19,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackCollapseRow,
+  PromptStackCountSlot,
+  PromptStackChevron,
+  PromptStackPeekLayers,
+  useDisclosureFocusHandoff,
+} from "@/components/ui/prompt-stack-disclosure";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   WorkflowPhaseStrip,
@@ -70,10 +79,6 @@ const FAILED_POLL_RETRY_BASE_MS = 2_000;
 const FAILED_POLL_RETRY_MAX_MS = 60_000;
 const WORKFLOW_PANEL_ACTION_ID = "workflow-run";
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
-const WORKFLOW_HEADER_GROUP_CLASS = activityRowClass(
-  "active",
-  "flex w-full items-stretch rounded-none px-0 py-0",
-);
 const WORKFLOW_HEADER_BUTTON_CLASS =
   "flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-none bg-transparent px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
 const WORKFLOW_OPEN_BUTTON_CLASS =
@@ -601,7 +606,51 @@ function RefreshWarning({ message }: { message: string }) {
 function WorkflowStatusBanner() {
   const { scope } = useComposer();
   if (scope.kind !== "thread") return null;
-  return <WorkflowStatusBannerLoaded threadId={scope.threadId} />;
+  return (
+    <WorkflowStatusBannerLoaded
+      key={scope.threadId}
+      threadId={scope.threadId}
+    />
+  );
+}
+
+function WorkflowComposerSummary({ run }: { run: WorkflowRunView }) {
+  const shared = buildSharedWorkflowView(run);
+  const settledAgents = settledAgentCount(shared.progress.agents);
+  const agentCount = shared.progress.agents.length;
+  return (
+    <>
+      <Icon
+        name="Workflow"
+        className={activityIconClass("active", "size-3.5 shrink-0")}
+        aria-hidden
+      />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <span
+          className="min-w-0 truncate font-medium text-foreground"
+          title={run.name}
+        >
+          {run.name}
+        </span>
+        {agentCount === 0 ? null : (
+          <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
+            {settledAgents}/{agentCount} agents
+          </span>
+        )}
+        {run.startedAt === null ? null : (
+          <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
+            <WorkflowDuration startedAt={run.startedAt} />
+          </span>
+        )}
+      </span>
+      <WorkflowPhaseStrip
+        progress={shared.progress}
+        currentPhaseIndex={shared.currentPhaseIndex}
+        settled={false}
+        className="w-16 shrink-0"
+      />
+    </>
+  );
 }
 
 function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
@@ -610,8 +659,9 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
   const bodyId = useId();
   const toggleId = useId();
   const shared = buildSharedWorkflowView(run);
-  const settledAgents = settledAgentCount(shared.progress.agents);
-  const agentCount = shared.progress.agents.length;
+  const focus = useDisclosureFocusHandoff(expanded, () =>
+    setExpanded((value) => !value),
+  );
 
   return (
     <section
@@ -622,59 +672,23 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
       <div
         role="group"
         aria-label={`Workflow controls: ${run.name}`}
-        className={WORKFLOW_HEADER_GROUP_CLASS}
+        className="flex w-full items-stretch"
       >
         <button
+          ref={focus.triggerRef}
           type="button"
           id={toggleId}
           aria-expanded={expanded}
           aria-controls={bodyId}
           aria-label={`Workflow: ${run.name}`}
-          onClick={() => setExpanded((value) => !value)}
-          className={WORKFLOW_HEADER_BUTTON_CLASS}
+          onClick={focus.onTriggerClick}
+          className={cn(
+            WORKFLOW_HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
-          <Icon
-            name="Workflow"
-            className={activityIconClass("active", "size-3.5 shrink-0")}
-            aria-hidden
-          />
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-            <span
-              className={activityTextClass("active", "min-w-0 truncate")}
-              title={run.name}
-            >
-              {run.name}
-            </span>
-            {agentCount === 0 ? null : (
-              <span
-                className={activityMetaClass(
-                  "active",
-                  "shrink-0 text-2xs tabular-nums",
-                )}
-              >
-                {settledAgents}/{agentCount} agents
-              </span>
-            )}
-            {run.startedAt === null ? null : (
-              <span
-                className={activityMetaClass(
-                  "active",
-                  "shrink-0 text-2xs tabular-nums",
-                )}
-              >
-                <WorkflowDuration startedAt={run.startedAt} />
-              </span>
-            )}
-          </span>
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              activityIconClass("active"),
-              "size-3.5 shrink-0 transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
-            aria-hidden
-          />
+          <WorkflowComposerSummary run={run} />
+          <PromptStackChevron isExpanded={expanded} />
         </button>
         <button
           type="button"
@@ -691,17 +705,12 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           <Icon name="ArrowRight" className="size-3.5" aria-hidden />
         </button>
       </div>
-      <WorkflowPhaseStrip
-        progress={shared.progress}
-        currentPhaseIndex={shared.currentPhaseIndex}
-        settled={false}
-        className="px-3 pb-2"
-      />
       <section
         id={bodyId}
         role="region"
         aria-labelledby={toggleId}
         aria-hidden={!expanded}
+        inert={!expanded}
         className={cn(
           "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
           expanded
@@ -714,22 +723,96 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
             progress={shared.progress}
             currentPhaseIndex={shared.currentPhaseIndex}
           />
+          <div className="px-1 pb-1">
+            <PromptStackCollapseRow
+              buttonRef={focus.collapseRef}
+              controlsId={bodyId}
+              label={`Collapse workflow ${run.name}`}
+              onCollapse={focus.onCollapseClick}
+            />
+          </div>
         </div>
       </section>
     </section>
   );
 }
 
+function WorkflowStackFront({
+  runs,
+  onExpand,
+  buttonRef,
+}: {
+  runs: readonly WorkflowRunView[];
+  onExpand: () => void;
+  buttonRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const front = runs[0]!;
+  return (
+    <PromptStackPeekLayers hiddenCount={runs.length - 1}>
+      <section
+        aria-label="Workflows"
+        className="overflow-hidden rounded-lg border border-border bg-surface-raised-solid"
+        style={{ minHeight: WORKFLOW_CARD_ROW_HEIGHT }}
+      >
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-expanded={false}
+          aria-label={`${runs.length} workflows running. Show all`}
+          onClick={onExpand}
+          className={cn(
+            WORKFLOW_HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+            "w-full",
+          )}
+        >
+          <WorkflowComposerSummary run={front} />
+          <PromptStackCountSlot count={runs.length - 1} />
+        </button>
+      </section>
+    </PromptStackPeekLayers>
+  );
+}
+
 function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
   const state = useActiveWorkflowRuns(threadId);
+  const [stackExpanded, setStackExpanded] = useState(false);
+  const listId = useId();
+  const focus = useDisclosureFocusHandoff(stackExpanded, () =>
+    setStackExpanded((value) => !value),
+  );
 
+  if (stackExpanded && state.status === "ready" && state.runs.length < 2) {
+    setStackExpanded(false);
+  }
   if (state.status !== "ready" || state.runs.length === 0) return null;
 
+  const runs = state.runs;
+  const collapsed = runs.length > 1 && !stackExpanded;
   return (
-    <section aria-label="Active workflows" className="space-y-2">
-      {state.runs.map((run) => (
-        <WorkflowComposerCard key={run.id} run={run} />
-      ))}
+    <section aria-label="Active workflows" className="flex flex-col gap-2">
+      {collapsed ? (
+        <WorkflowStackFront
+          runs={runs}
+          buttonRef={focus.triggerRef}
+          onExpand={focus.onTriggerClick}
+        />
+      ) : null}
+      <div hidden={collapsed} className="flex flex-col gap-1">
+        <div id={listId} className="flex flex-col gap-2">
+          {runs.map((run) => (
+            <WorkflowComposerCard key={run.id} run={run} />
+          ))}
+        </div>
+        {runs.length > 1 && stackExpanded ? (
+          <PromptStackCollapseRow
+            buttonRef={focus.collapseRef}
+            controlsId={listId}
+            label={`Collapse ${runs.length} workflows`}
+            onCollapse={focus.onCollapseClick}
+          />
+        ) : null}
+      </div>
     </section>
   );
 }

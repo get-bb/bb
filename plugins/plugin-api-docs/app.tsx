@@ -121,7 +121,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "plugin-api",
     title: "Plugin Guide",
-    icon: "Puzzle",
+    icon: "plugin-api-docs/guide",
     path: "plugin-api",
     component: PluginApiMapPage,
   });

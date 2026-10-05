@@ -5,7 +5,7 @@ import {
   type Request as MiniflareRequest,
   Response as MiniflareResponse,
 } from "miniflare";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "@bb/connect-db";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
 
@@ -66,9 +66,8 @@ function gateway(script: string, bindings: Record<string, string>) {
   });
 }
 
-let mf: Miniflare;
-let unconfigured: Miniflare;
-let tight: Miniflare;
+let script: string;
+const gateways: Miniflare[] = [];
 
 async function seed(db: D1Database): Promise<void> {
   await applyConnectDbMigrationsToD1(db);
@@ -87,21 +86,25 @@ async function seed(db: D1Database): Promise<void> {
 }
 
 beforeAll(async () => {
-  const script = await bundleWorker();
-  mf = gateway(script, { ...VARS, OPENROUTER_API_KEY: "sk-or-test" });
-  unconfigured = gateway(script, VARS);
-  tight = gateway(script, {
-    ...VARS,
-    AI_DAILY_BUDGET_MICROS: "25000",
-    OPENROUTER_API_KEY: "sk-or-test",
-  });
-  for (const instance of [mf, unconfigured, tight]) {
-    await seed((await instance.getD1Database("DB")) as unknown as D1Database);
-  }
+  script = await bundleWorker();
 }, 60_000);
 
-afterAll(async () => {
-  await Promise.all([mf?.dispose(), unconfigured?.dispose(), tight?.dispose()]);
+async function seededGateway(
+  bindings: Record<string, string> = {
+    ...VARS,
+    OPENROUTER_API_KEY: "sk-or-test",
+  },
+): Promise<Miniflare> {
+  const instance = gateway(script, bindings);
+  gateways.push(instance);
+  await seed((await instance.getD1Database("DB")) as unknown as D1Database);
+  return instance;
+}
+
+afterEach(async () => {
+  await Promise.all(gateways.splice(0).map((instance) => instance.dispose()));
+  upstreamBodies.length = 0;
+  upstreamGate = Promise.resolve();
 });
 
 function complete(instance: Miniflare, prompt = "title please") {
@@ -118,6 +121,7 @@ function complete(instance: Miniflare, prompt = "title please") {
 
 describe("bb-ai-gateway worker on D1", () => {
   it("completes, meters in D1, and reports usage", async () => {
+    const mf = await seededGateway();
     const response = await complete(mf);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -150,6 +154,7 @@ describe("bb-ai-gateway worker on D1", () => {
   });
 
   it("transcribes a recording larger than a completion body and meters it", async () => {
+    const mf = await seededGateway();
     const audio = Buffer.alloc(3 * 1024 * 1024, 7).toString("base64");
     const response = await mf.dispatchFetch(
       "https://getbb.app/api/ai/v1/transcribe",
@@ -168,7 +173,7 @@ describe("bb-ai-gateway worker on D1", () => {
       model: "microsoft/mai-transcribe-2",
       usage: {
         costMicros: 100,
-        spentTodayMicros: 110,
+        spentTodayMicros: 100,
         limitMicros: 2_000_000,
       },
     });
@@ -180,6 +185,7 @@ describe("bb-ai-gateway worker on D1", () => {
   });
 
   it("rate limits an account at 60 completions a minute", async () => {
+    const mf = await seededGateway();
     const statuses: number[] = [];
     for (let index = 0; index < 61; index += 1) {
       statuses.push((await complete(mf)).status);
@@ -204,6 +210,11 @@ describe("bb-ai-gateway worker on D1", () => {
   }, 30_000);
 
   it("holds concurrent D1 reservations to the daily limit", async () => {
+    const tight = await seededGateway({
+      ...VARS,
+      AI_DAILY_BUDGET_MICROS: "25000",
+      OPENROUTER_API_KEY: "sk-or-test",
+    });
     let release: () => void = () => {};
     upstreamGate = new Promise<void>((resolve) => {
       release = resolve;
@@ -216,12 +227,16 @@ describe("bb-ai-gateway worker on D1", () => {
         return response.arrayBuffer();
       }),
     );
-    await vi.waitFor(() => {
-      expect(upstreamBodies.length - before).toBe(5);
-      expect(statuses).toHaveLength(3);
-    });
-    expect(statuses).toEqual([402, 402, 402]);
-    release();
+    try {
+      await vi.waitFor(() => {
+        expect(upstreamBodies.length - before).toBe(5);
+        expect(statuses).toHaveLength(3);
+      });
+      expect(statuses).toEqual([402, 402, 402]);
+    } finally {
+      release();
+      await Promise.allSettled(pending);
+    }
     await Promise.all(pending);
     expect(statuses.filter((status) => status === 200)).toHaveLength(5);
     const db = (await tight.getD1Database("DB")) as unknown as D1Database;
@@ -235,6 +250,7 @@ describe("bb-ai-gateway worker on D1", () => {
   });
 
   it("answers unavailable without an OpenRouter key", async () => {
+    const unconfigured = await seededGateway(VARS);
     const response = await complete(unconfigured);
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({
@@ -243,6 +259,7 @@ describe("bb-ai-gateway worker on D1", () => {
   });
 
   it("prunes month-old metadata on the daily cron", async () => {
+    const mf = await seededGateway();
     const db = (await mf.getD1Database("DB")) as unknown as D1Database;
     const old = NOW - 40 * 24 * 60 * 60 * 1000;
     await db
@@ -252,8 +269,13 @@ describe("bb-ai-gateway worker on D1", () => {
       .bind(old)
       .run();
     await db
-      .prepare("INSERT INTO ai_usage_day (user_id, day) VALUES ('u1', ?1)")
-      .bind(new Date(old).toISOString().slice(0, 10))
+      .prepare(
+        "INSERT INTO ai_usage_day (user_id, day) VALUES ('u1', ?1), ('u1', ?2)",
+      )
+      .bind(
+        new Date(NOW).toISOString().slice(0, 10),
+        new Date(old).toISOString().slice(0, 10),
+      )
       .run();
 
     const worker = await mf.getWorker();

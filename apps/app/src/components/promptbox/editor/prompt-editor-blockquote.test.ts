@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
-import StarterKit from "@tiptap/starter-kit";
+import { promptEditorExtensions } from "./prompt-editor-extensions";
 import { Node } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { promptEditorValueFromDoc } from "./prompt-editor-serialization";
@@ -10,23 +10,7 @@ import {
   createRemoveEmptyBlockquotesTransaction,
 } from "./prompt-editor-blockquote";
 
-const schema = getSchema([
-  StarterKit.configure({
-    blockquote: {},
-    bold: false,
-    bulletList: false,
-    code: false,
-    codeBlock: false,
-    dropcursor: false,
-    gapcursor: false,
-    heading: false,
-    horizontalRule: false,
-    italic: false,
-    listItem: false,
-    orderedList: false,
-    strike: false,
-  }),
-]);
+const schema = getSchema(promptEditorExtensions({ getPlaceholder: () => "" }));
 
 function stateFromJson(docJson: unknown, selectionPosition: number) {
   const doc = Node.fromJSON(schema, docJson);

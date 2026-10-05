@@ -29,7 +29,7 @@ import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
 } from "./project-execution-defaults.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { resolvePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   appendPluginMentionContext,
   captureUserMessageSentTelemetry,
@@ -63,7 +63,7 @@ import {
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
-import { deriveTitleFallback } from "./title-generation.js";
+import { deriveForkTitle, deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 import {
@@ -623,12 +623,6 @@ export async function createThreadFromRequest(
       );
     }
   }
-  await validatePromptAttachmentReferences({
-    db: deps.db,
-    dataDir: deps.config.dataDir,
-    input: requestInput.input,
-    projectId: requestInput.projectId,
-  });
   await deps.providerRegistry.whenRegistrationsSettled();
   const {
     executionDefaults,
@@ -683,6 +677,18 @@ export async function createThreadFromRequest(
     providerId,
     titleFallback: deriveTitleFallback(requestInput.input),
   };
+  if (
+    request.title === undefined &&
+    request.originKind === "fork" &&
+    request.visibility === "visible" &&
+    request.input.every((item) => item.visibility === "agent-only") &&
+    sourceThread !== null
+  ) {
+    const forkTitle = deriveForkTitle(sourceThread);
+    if (forkTitle !== null) {
+      request.title = forkTitle;
+    }
+  }
   const resolvedEnvironment =
     requestedEnvironment.type === "provider"
       ? null
@@ -748,6 +754,13 @@ export async function createThreadFromRequest(
       projectId: request.projectId,
       requestedEnvironment: request.environment,
     });
+  request.input = await resolvePromptAttachmentReferences({
+    db: deps.db,
+    dataDir: deps.config.dataDir,
+    input: request.input,
+    projectId: request.projectId,
+    hostId: hostIdForEnvironmentIntent(deps, environmentIntent),
+  });
 
   const fork = resolveForkPoint(deps, {
     originKind: request.originKind ?? null,

@@ -116,14 +116,14 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     const previousExample = () => examples().querySelector<HTMLButtonElement>('[aria-label="Previous example plugin"]')!;
     const nextExample = () => examples().querySelector<HTMLButtonElement>('[aria-label="Next example plugin"]')!;
     expect(previousExample().disabled).toBe(true);
-    for (const name of ["Automations", "Docs", "GitHub", "Tasks"]) {
+    for (const name of ["Automations", "Docs", "GitHub", "Tasks", "Theme Preview"]) {
       expect(examples().textContent).toContain(name);
       expect(examples().querySelectorAll('[aria-live="polite"] > span:not(.sr-only)')).toHaveLength(1);
-      if (name !== "Tasks") act(() => nextExample().click());
+      if (name !== "Theme Preview") act(() => nextExample().click());
     }
     expect(nextExample().disabled).toBe(true);
     act(() => previousExample().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
-    expect(examples().textContent).toContain("GitHub");
+    expect(examples().textContent).toContain("Tasks");
     expect(visiblePage()).toBe("Sidebar");
     expect(navigate).not.toHaveBeenCalled();
     act(() => container.querySelector('[role="dialog"] button')!.dispatchEvent(

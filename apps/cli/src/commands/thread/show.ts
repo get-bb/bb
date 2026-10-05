@@ -18,8 +18,12 @@ import { BbHttpError, type BbSdk } from "@bb/sdk";
 import type {
   EnvironmentDiffQuery,
   ThreadTimelineResponse,
+  TimelineConversationRow,
 } from "@bb/server-contract";
-import { THREAD_EVENT_LIST_PAGE_SIZE } from "@bb/server-contract";
+import {
+  THREAD_EVENT_LIST_PAGE_SIZE,
+  THREAD_MESSAGE_CONTEXT_LIMIT,
+} from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -51,6 +55,8 @@ interface ThreadLogCommandOptions {
   limit?: string;
   afterSeq?: string;
   all?: boolean;
+  message?: string;
+  context?: string;
 }
 
 const THREAD_LOG_DEFAULT_EVENT_LIMIT = 100;
@@ -424,11 +430,27 @@ export function registerShowCommand(
       "--all",
       "Print the whole thread by paging through every entry (cannot be combined with --limit)",
     )
+    .option(
+      "--message <seq>",
+      "Print one message: the msg value of a message link or @thread:<id>#msg=<seq> mention",
+    )
+    .option(
+      "--context <count>",
+      `With --message, also print up to this many messages before and after it (0-${THREAD_MESSAGE_CONTEXT_LIMIT})`,
+    )
     .action(
       action(async (id: string | undefined, opts: ThreadLogCommandOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
         const format = resolveThreadTimelineTextFormat(opts);
+
+        if (opts.message !== undefined) {
+          await printThreadLogMessage(sdk, { threadId, format, opts });
+          return;
+        }
+        if (opts.context !== undefined) {
+          throw new Error("--context requires --message");
+        }
 
         if (opts.all && opts.limit !== undefined) {
           throw new Error("--all cannot be combined with --limit");
@@ -600,6 +622,62 @@ function printEnvironmentPullRequest(
     `    Review:       ${pr.review.state} (${pr.review.reviewRequestCount} requested)`,
   );
   console.log(`    Merge:        ${pr.mergeability.state}`);
+}
+
+async function printThreadLogMessage(
+  sdk: BbSdk,
+  args: {
+    threadId: string;
+    format: ThreadTimelineTextFormat;
+    opts: ThreadLogCommandOptions;
+  },
+): Promise<void> {
+  const { format, opts, threadId } = args;
+  if (opts.all || opts.limit !== undefined || opts.afterSeq !== undefined) {
+    throw new Error(
+      "--message cannot be combined with --limit, --all or --after-seq",
+    );
+  }
+  if (opts.message === undefined || !/^(0|[1-9]\d*)$/u.test(opts.message)) {
+    throw new Error("--message must be a non-negative integer.");
+  }
+  const context = opts.context === undefined ? 0 : Number(opts.context);
+  if (
+    opts.context !== undefined &&
+    (!/^\d+$/u.test(opts.context) || context > THREAD_MESSAGE_CONTEXT_LIMIT)
+  ) {
+    throw new Error(
+      `--context must be an integer from 0 to ${THREAD_MESSAGE_CONTEXT_LIMIT}.`,
+    );
+  }
+  const result = await sdk.threads.message({
+    threadId,
+    seq: Number(opts.message),
+    before: context,
+    after: context,
+  });
+  if (format === "json") {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
+  const formatRows = (rows: readonly TimelineConversationRow[]) =>
+    formatThreadTimelineText([...rows], {
+      verbose: format === "verbose",
+      color,
+    });
+  if (context === 0) {
+    console.log(formatRows([result.message]));
+    return;
+  }
+  const sections = [
+    ...(result.before.length > 0
+      ? [`Before:\n${formatRows(result.before)}`]
+      : []),
+    `Message ${opts.message}:\n${formatRows([result.message])}`,
+    ...(result.after.length > 0 ? [`After:\n${formatRows(result.after)}`] : []),
+  ];
+  console.log(sections.join("\n\n"));
 }
 
 function parseThreadLogLimit<TDefault extends number | null>(

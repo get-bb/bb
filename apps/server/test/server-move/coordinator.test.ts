@@ -13,8 +13,11 @@ import {
 } from "@bb/server-archive";
 import type { ServerMoveStatus } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
+import { createServerErrorHandler } from "../../src/errors.js";
 import { createServerMoveCoordinator } from "../../src/services/server-move/coordinator.js";
+import { serverMoveFreezeMiddleware } from "../../src/services/server-move/freeze.js";
 import {
   isServerMoveFrozen,
   isServerMoveSnapshotFenced,
@@ -32,7 +35,11 @@ import {
   type FakeDaemonReply,
 } from "../helpers/server-move.js";
 import { seedHost, seedPrimaryHost } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  testLogger,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const OLD = "host-old";
 const NEW = "host-new";
@@ -550,12 +557,22 @@ describe("server move coordinator", () => {
       await expect.poll(() => events.includes("retire")).toBe(true);
     }));
 
-  it("moves a bb connect server with the old server's own grant and no address probe", () =>
+  it("moves a bb connect server whose source grant requires a writable account RPC", () =>
     withTestHarness(async (harness) => {
       seedTopology(harness);
       const base = createTestServerMoveEnvironment(harness);
       const { events } = base;
       const grantHeaders = { "x-bb-connect-machine": "bbcm_laptop" };
+      const accountRpcStatuses: number[] = [];
+      const accountRpcPath =
+        "/api/v1/plugins/bb-account/rpc/bb-account.v1.fetch";
+      const accountRpc = new Hono();
+      accountRpc.onError(createServerErrorHandler(testLogger));
+      accountRpc.use(
+        "/api/v1/*",
+        serverMoveFreezeMiddleware({ isFrozen: () => coordinator.isFrozen() }),
+      );
+      accountRpc.post(accountRpcPath, (context) => context.json({ ok: true }));
       const coordinator = createServerMoveCoordinator({
         ...base.environment,
         resolveMode: async () => ({
@@ -565,6 +582,13 @@ describe("server move coordinator", () => {
         }),
         resolveServerHostGrant: async (hostId) => {
           events.push(`grant:${hostId}`);
+          const response = await accountRpc.request(accountRpcPath, {
+            method: "POST",
+          });
+          accountRpcStatuses.push(response.status);
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
           return { serverUrl: CONNECT_URL, headers: grantHeaders };
         },
       });
@@ -593,14 +617,15 @@ describe("server move coordinator", () => {
         serverUrl: CONNECT_URL,
         destinationStatusUrl: null,
       });
+      await expect.poll(() => accountRpcStatuses).toEqual([200]);
       await expect.poll(() => events.includes("retire")).toBe(true);
 
       expect(events).toEqual([
         `${NEW}:server_move.inspect`,
         `${OLD}:server_move.inspect`,
+        `grant:${OLD}`,
         "schedules:paused",
         "stop-work",
-        `grant:${OLD}`,
         "plugins:suspend",
         `${NEW}:server_move.inspect`,
         "export",

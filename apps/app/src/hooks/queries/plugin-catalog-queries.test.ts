@@ -179,6 +179,7 @@ describe("plugin catalog queries", () => {
           },
           installed: false,
           conflictingInstallSource: null,
+          installedByDefault: false,
           installs: null,
           compatible: false,
           incompatibleReason: "requires bb >= 0.15",
@@ -191,6 +192,7 @@ describe("plugin catalog queries", () => {
           pluginIds: ["todoist"],
         },
       ],
+      categories: [],
     });
   });
 

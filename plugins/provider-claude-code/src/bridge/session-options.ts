@@ -257,6 +257,7 @@ export function buildSessionOptions(
       CLAUDE_CODE_DISABLE_1M_CONTEXT: params.disable1MContext ? "1" : "0",
     },
     permissionMode: params.permissionMode,
+    allowBypassPermissions: params.permissionScope === "full",
     ...(params.reasoningLevel
       ? { effort: toSdkEffort(params.reasoningLevel) }
       : {}),

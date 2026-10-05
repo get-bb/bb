@@ -14,6 +14,7 @@ import type {
   BbDesktopBrowserControl,
   BbDesktopBrowserFindInPageRequest,
   BbDesktopBrowserState,
+  BbDesktopBrowserTarget,
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
@@ -46,6 +47,7 @@ import {
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
+  takeBrowserViewRecreation,
   type BrowserViewVisibilityCoordinator,
 } from "./browserViewVisibilityCoordinator";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
@@ -60,7 +62,7 @@ import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserTo
 
 interface BrowserTabContentProps {
   tabId: string;
-  existingOnly?: true;
+  desktopTarget?: BbDesktopBrowserTarget;
   initialUrl: string;
   addressFocusRequest: BrowserAddressFocusRequest | null;
   onAddressFocusRequestConsumed?: (request: BrowserAddressFocusRequest) => void;
@@ -380,7 +382,7 @@ function BrowserPageLoadError({
 
 export function BrowserTabContent({
   tabId,
-  existingOnly,
+  desktopTarget,
   initialUrl,
   addressFocusRequest,
   onAddressFocusRequestConsumed,
@@ -536,10 +538,13 @@ export function BrowserTabContent({
     const initialBounds = syncInitialBounds();
     const mountUrl = initialUrlRef.current;
     registerBrowserView({ environmentId, tabId, threadId });
+    const existingOnly =
+      desktopTarget !== undefined &&
+      !takeBrowserViewRecreation(tabId, desktopTarget);
     desktopBrowser.attach({
       tabId,
       threadId,
-      ...(existingOnly === true ? { existingOnly } : {}),
+      ...(existingOnly ? { existingOnly: true } : {}),
       url: mountUrl,
       bounds: initialBounds,
       visible: false,
@@ -607,7 +612,7 @@ export function BrowserTabContent({
     visibilityCoordinator,
     tabId,
     threadId,
-    existingOnly,
+    desktopTarget,
   ]);
 
   useEffect(() => {

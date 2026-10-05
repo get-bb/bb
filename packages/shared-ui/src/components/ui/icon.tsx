@@ -23,7 +23,6 @@ import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02I
 import CircleIcon from "@hugeicons/core-free-icons/CircleIcon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
-import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
 import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
 import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
 import Edit02Icon from "@hugeicons/core-free-icons/Edit02Icon";
@@ -198,7 +197,7 @@ const CORE_ICON_MAP = {
   SectionMove: SectionMoveStrokeRoundedIcon,
   Settings: Settings01Icon,
   SlidersHorizontal: SlidersHorizontalIcon,
-  Spinner: DashedLineCircleIcon,
+  Spinner: Loading03Icon,
   Target: Target02Icon,
   Terminal: ComputerTerminal01Icon,
   Toolbox: ToolboxIcon,

@@ -11,6 +11,10 @@ import {
 
 afterEach(cleanupTempDirs);
 
+function gitShellPath(filePath: string): string {
+  return filePath.replaceAll("\\", "/");
+}
+
 async function initBranchRepo(): Promise<string> {
   const repoPath = await makeTempDir("bb-host-branches-repo-");
   await runGitCommand(["init", "-b", "develop"], { cwd: repoPath });
@@ -69,12 +73,13 @@ async function initStaleOriginMainRepo(): Promise<StaleOriginMainRepo> {
   const uploadPackPath = path.join(repoPath, "delayed-upload-pack.sh");
   await fs.writeFile(
     uploadPackPath,
-    `#!/bin/sh\ntouch ${JSON.stringify(refreshStartedPath)}\nwhile [ ! -f ${JSON.stringify(releaseRefreshPath)} ]; do sleep 0.01; done\nsleep 0.2\nexec git-upload-pack "$@"\n`,
+    `#!/bin/sh\ntouch ${JSON.stringify(gitShellPath(refreshStartedPath))}\nwhile [ ! -f ${JSON.stringify(gitShellPath(releaseRefreshPath))} ]; do sleep 0.01; done\nsleep 0.2\nexec git-upload-pack "$@"\n`,
     { encoding: "utf8", mode: 0o755 },
   );
-  await runGitCommand(["config", "remote.origin.uploadpack", uploadPackPath], {
-    cwd: repoPath,
-  });
+  await runGitCommand(
+    ["config", "remote.origin.uploadpack", gitShellPath(uploadPackPath)],
+    { cwd: repoPath },
+  );
   return { releaseRefreshPath, refreshStartedPath, repoPath };
 }
 
@@ -89,16 +94,17 @@ async function initSshRemoteRepo(): Promise<SshRemoteRepo> {
   const sshScriptPath = path.join(repoPath, "recording-ssh.sh");
   await fs.writeFile(
     sshScriptPath,
-    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(sshLogPath)}\nprintf 'GIT_TERMINAL_PROMPT=%s\\n' "\${GIT_TERMINAL_PROMPT-unset}" >> ${JSON.stringify(sshLogPath)}\nprintf -- '--\\n' >> ${JSON.stringify(sshLogPath)}\nexit 255\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(gitShellPath(sshLogPath))}\nprintf 'GIT_TERMINAL_PROMPT=%s\\n' "\${GIT_TERMINAL_PROMPT-unset}" >> ${JSON.stringify(gitShellPath(sshLogPath))}\nprintf -- '--\\n' >> ${JSON.stringify(gitShellPath(sshLogPath))}\nexit 255\n`,
     { encoding: "utf8", mode: 0o755 },
   );
   await runGitCommand(
     ["remote", "add", "origin", "ssh://git.invalid/repo.git"],
     { cwd: repoPath },
   );
-  await runGitCommand(["config", "core.sshCommand", sshScriptPath], {
-    cwd: repoPath,
-  });
+  await runGitCommand(
+    ["config", "core.sshCommand", gitShellPath(sshScriptPath)],
+    { cwd: repoPath },
+  );
   return { repoPath, sshLogPath };
 }
 
@@ -559,11 +565,11 @@ describe("host.list_branch_options dispatch", () => {
     const uploadPackPath = path.join(repoPath, "delayed-upload-pack.sh");
     await fs.writeFile(
       uploadPackPath,
-      `#!/bin/sh\ntouch ${JSON.stringify(refreshStartedPath)}\nwhile [ ! -f ${JSON.stringify(releaseRefreshPath)} ]; do sleep 0.01; done\nexec git-upload-pack "$@"\n`,
+      `#!/bin/sh\ntouch ${JSON.stringify(gitShellPath(refreshStartedPath))}\nwhile [ ! -f ${JSON.stringify(gitShellPath(releaseRefreshPath))} ]; do sleep 0.01; done\nexec git-upload-pack "$@"\n`,
       { encoding: "utf8", mode: 0o755 },
     );
     await runGitCommand(
-      ["config", "remote.origin.uploadpack", uploadPackPath],
+      ["config", "remote.origin.uploadpack", gitShellPath(uploadPackPath)],
       {
         cwd: repoPath,
       },

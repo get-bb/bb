@@ -1,5 +1,4 @@
 import { type CSSProperties, type ReactNode, type Ref } from "react";
-import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 import {
@@ -53,25 +52,5 @@ export function PromptStackCard({
     >
       {children}
     </div>
-  );
-}
-
-export function PromptStackCardChevron({
-  isExpanded,
-  className,
-}: {
-  isExpanded: boolean;
-  className: string;
-}) {
-  return (
-    <Icon
-      name="ChevronDown"
-      className={cn(
-        className,
-        "size-3.5 shrink-0 transition-transform duration-200",
-        isExpanded && "rotate-180",
-      )}
-      aria-hidden="true"
-    />
   );
 }

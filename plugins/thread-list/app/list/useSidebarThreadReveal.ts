@@ -16,12 +16,12 @@ import {
   collapsedEnvironmentIdsAtom,
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
-  collapsedThreadIdsAtom,
   sidebarCollapsedMachinesAtom,
   sidebarCollapsedThreadSectionsAtom,
   sidebarOrganizationModeAtom,
 } from "../preferences/atoms.js";
 import { usePreferencesReady } from "../preferences/PreferencesSync.js";
+import { useExpandThreadAncestors } from "./useReadStatusGrouping.js";
 
 interface ThreadSidebarExpansionArgs {
   organizationMode: SidebarOrganizationMode;
@@ -121,7 +121,7 @@ export function useSidebarThreadRevealCore({
   personalProjectId,
 }: SidebarThreadRevealInputs): void {
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
-  const setCollapsedThreadIdList = useSetAtom(collapsedThreadIdsAtom);
+  const expandThreadAncestors = useExpandThreadAncestors();
   const setCollapsedEnvironmentIdList = useSetAtom(collapsedEnvironmentIdsAtom);
   const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
   const setCollapsedMachineKeyList = useSetAtom(sidebarCollapsedMachinesAtom);
@@ -152,11 +152,9 @@ export function useSidebarThreadRevealCore({
       return;
     }
     const revealIds = new Set<string>();
-    if (
-      pendingNavigation.current &&
-      threadById.has(pendingNavigation.current)
-    ) {
-      revealIds.add(pendingNavigation.current);
+    const navigationRevealId = pendingNavigation.current;
+    if (navigationRevealId && threadById.has(navigationRevealId)) {
+      revealIds.add(navigationRevealId);
       pendingNavigation.current = undefined;
     }
     const unreadIds = new Set<string>();
@@ -201,9 +199,7 @@ export function useSidebarThreadRevealCore({
         remainingHops -= 1;
       }
 
-      setCollapsedThreadIdList((current) =>
-        removeCollapsedIds(current, threadIdsToExpand),
-      );
+      expandThreadAncestors(threadIdsToExpand, threadId === navigationRevealId);
       setCollapsedEnvironmentIdList((current) =>
         removeCollapsedIds(current, environmentIdsToExpand),
       );
@@ -250,7 +246,7 @@ export function useSidebarThreadRevealCore({
     threads,
     threadById,
     effectivePinnedThreadIds,
-    setCollapsedThreadIdList,
+    expandThreadAncestors,
     setCollapsedEnvironmentIdList,
     setCollapsedProjectIdList,
     setCollapsedMachineKeyList,

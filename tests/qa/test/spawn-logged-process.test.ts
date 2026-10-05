@@ -98,6 +98,8 @@ function useIsolatedStandaloneTmpDir(): string {
   const tempDir = mkdtempSync(path.join(tmpdir(), "standalone-cleanup-test-"));
   spawnMockState.tempDirs.push(tempDir);
   vi.stubEnv("TMPDIR", tempDir);
+  vi.stubEnv("TEMP", tempDir);
+  vi.stubEnv("TMP", tempDir);
   return tempDir;
 }
 
@@ -261,6 +263,8 @@ describe("spawnLoggedProcess", () => {
       "fetch",
       vi.fn(async () => new Response(null, { status: 200 })),
     );
+    const tempDir = mkdtempSync(path.join(tmpdir(), "standalone-server-"));
+    spawnMockState.tempDirs.push(tempDir);
 
     await startQaServer({
       dataDir: "/tmp/standalone-server-data",
@@ -271,7 +275,7 @@ describe("spawnLoggedProcess", () => {
           BB_SERVER_PORT: "9999",
         },
       }),
-      logPath: "/tmp/standalone-server.log",
+      logPath: path.join(tempDir, "standalone-server.log"),
       port: 4567,
     });
 

@@ -65,6 +65,7 @@ function assistant(
               mobileActionDisplay="inline"
               onOpenLocalFileLink={onOpenLocalFileLink}
               text={text}
+              timestamp={0}
             />
           </MessageDirectiveRegistryProvider>
         </ThreadTitleMentionResourcesProvider>

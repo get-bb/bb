@@ -530,8 +530,8 @@ vi.mock("@/components/promptbox/banner/ThreadTodoCard", () => ({
   ThreadTodoCard: () => null,
 }));
 
-vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
-  ThreadWorkflowCard: ({
+vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => {
+  const MockWorkflowCard = ({
     workflow,
     isExpanded,
     onToggle,
@@ -548,8 +548,16 @@ vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
     >
       {workflow.workflowName}
     </button>
-  ),
-}));
+  );
+  return {
+    ThreadWorkflowCard: MockWorkflowCard,
+    ThreadWorkflowSummary: ({
+      workflow,
+    }: {
+      workflow: TimelineWorkflowWorkRow;
+    }) => <span data-testid="workflow-summary">{workflow.workflowName}</span>,
+  };
+});
 
 vi.mock(
   "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
@@ -1827,7 +1835,7 @@ describe("ThreadDetailPromptArea", () => {
     );
   });
 
-  it("gives every concurrently running workflow its own independently expandable card", () => {
+  it("auto-collapses concurrently running workflows into a stack that expands to independently expandable cards", () => {
     renderPromptArea({
       activeWorkflows: [
         workflowRow({
@@ -1845,6 +1853,21 @@ describe("ThreadDetailPromptArea", () => {
       ],
     });
 
+    const stack = screen.getByRole("button", {
+      name: "2 workflows running. Show all",
+    });
+    expect(stack.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByTestId("workflow-summary").textContent).toBe(
+      "rfn-visual-identity",
+    );
+    expect(screen.queryAllByTestId("workflow-card")).toHaveLength(0);
+
+    fireEvent.click(stack);
+    const collapse = screen.getByRole("button", {
+      name: "Collapse 2 workflows",
+    });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(collapse);
     const cards = screen.getAllByTestId("workflow-card");
     expect(cards.map((card) => card.textContent)).toEqual([
       "rfn-visual-identity",
@@ -1857,6 +1880,47 @@ describe("ThreadDetailPromptArea", () => {
         .getAllByTestId("workflow-card")
         .map((card) => card.getAttribute("data-expanded")),
     ).toEqual(["false", "true"]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse 2 workflows" }),
+    );
+    expect(screen.queryAllByTestId("workflow-card")).toHaveLength(0);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "2 workflows running. Show all" }),
+    );
+  });
+
+  it("re-collapses the workflow stack after the running count drops below two", () => {
+    const first = workflowRow({
+      id: "row-wf-a",
+      status: "pending",
+      taskStatus: "running",
+      workflowName: "wf-a",
+    });
+    const second = workflowRow({
+      id: "row-wf-b",
+      status: "pending",
+      taskStatus: "running",
+      workflowName: "wf-b",
+    });
+    const { rerender } = renderPromptArea({ activeWorkflows: [first, second] });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "2 workflows running. Show all" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse 2 workflows" }),
+    ).toBeTruthy();
+
+    rerender(buildPromptAreaElement({ activeWorkflows: [first] }));
+    rerender(buildPromptAreaElement({ activeWorkflows: [first, second] }));
+
+    expect(
+      screen.getByRole("button", { name: "2 workflows running. Show all" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Collapse 2 workflows" }),
+    ).toBeNull();
   });
 
   it("shows a child permission prompt on the parent composer", () => {

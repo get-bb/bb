@@ -48,7 +48,10 @@ function createDevTurboCommand(): DevCommand {
   };
 }
 
-export function createStartWorktreeCommand(dryRun = false): DevCommand {
+export function createStartWorktreeCommand(
+  dryRun = false,
+  performanceDiagnostics = false,
+): DevCommand {
   return {
     args: [
       "--conditions=source",
@@ -57,6 +60,7 @@ export function createStartWorktreeCommand(dryRun = false): DevCommand {
       resolve(repoRoot, "scripts", "start-bb.mjs"),
       "--worktree-runtime-policy",
       ...(dryRun ? ["--dryrun"] : []),
+      ...(performanceDiagnostics ? ["--perf-diagnostics"] : []),
     ],
     command: process.execPath,
   };
@@ -179,8 +183,18 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dryrun");
   const mode = resolveDevLaunchMode(
-    args.filter((arg) => arg !== "--dryrun" && arg !== "--staging"),
+    args.filter(
+      (arg) =>
+        arg !== "--dryrun" &&
+        arg !== "--staging" &&
+        arg !== "--perf-diagnostics",
+    ),
   );
+  if (args.includes("--perf-diagnostics") && mode !== "worktree") {
+    throw new Error(
+      "--perf-diagnostics is supported by pnpm start and pnpm start:worktree.",
+    );
+  }
   const cloud = resolveDevCloud({ staging: args.includes("--staging"), mode });
   if (dryRun && mode !== "worktree") {
     throw new Error(
@@ -205,7 +219,7 @@ async function main(): Promise<void> {
 
   const command =
     mode === "worktree"
-      ? createStartWorktreeCommand(dryRun)
+      ? createStartWorktreeCommand(dryRun, args.includes("--perf-diagnostics"))
       : createDevTurboCommand();
   process.exitCode = await runScriptProcess({
     args: command.args,

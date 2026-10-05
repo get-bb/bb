@@ -79,7 +79,10 @@ describe("codex app-server connection", () => {
     }
   });
 
-  it("forces termination when a provider ignores stdin shutdown and SIGTERM", async () => {
+  it("forces termination when a provider ignores stdin shutdown and SIGTERM", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", "Windows has no SIGTERM or SIGKILL");
     const ready = deferred<void>();
     const exited = deferred<CodexAppServerExitInfo>();
     const connection = createCodexAppServerConnection({
@@ -154,7 +157,10 @@ describe("codex app-server connection", () => {
     }
   });
 
-  it("offers SIGTERM cleanup when a provider does not exit on EOF", async () => {
+  it("offers SIGTERM cleanup when a provider does not exit on EOF", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", "Windows has no SIGTERM handlers");
     const ready = deferred<void>();
     const exited = deferred<CodexAppServerExitInfo>();
     const connection = createCodexAppServerConnection({
@@ -204,7 +210,7 @@ describe("codex app-server connection", () => {
       'process.stdin.once("data", () => {',
       'process.stderr.write("fixture stderr\\n");',
       `process.stdout.write(${JSON.stringify(childRequestLine())}, () => {`,
-      `spawn(process.execPath, ["-e", ${JSON.stringify(descendantScript)}], { stdio: ["ignore", 1, "ignore"] });`,
+      `spawn(process.execPath, ["-e", ${JSON.stringify(descendantScript)}], { stdio: ["ignore", 1, "ignore"], detached: process.platform === "win32" });`,
       "process.exit(7);",
       "});",
       "});",
@@ -236,7 +242,12 @@ describe("codex app-server connection", () => {
       await expect(exited.promise).resolves.toEqual({
         code: 7,
         signal: null,
-        stderrTail: "fixture stderr",
+        stderrTail:
+          process.platform === "win32"
+            ? expect.stringMatching(
+                /^fixture stderr(\nstdin failed \(EPIPE\): write EPIPE)?$/u,
+              )
+            : "fixture stderr",
         spawnFailed: false,
       });
     } finally {
@@ -279,7 +290,11 @@ describe("codex app-server connection", () => {
     }
   }, 30_000);
 
-  it("makes a broken child stdin immediately terminal", async () => {
+  it("makes a broken child stdin immediately terminal", async ({ skip }) => {
+    skip(
+      process.platform === "win32",
+      "a live Windows child cannot close its inherited stdin pipe",
+    );
     const ready = deferred<void>();
     const exited = deferred<CodexAppServerExitInfo>();
     const connection = createCodexAppServerConnection({

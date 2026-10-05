@@ -1006,7 +1006,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   return (
     <DetailCard
       appearance="flat"
-      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3 max-md:gap-0 max-md:py-1 max-md:[--detail-label-width:7.5rem] max-md:[&>div]:min-h-10 max-md:[&>div:not(.items-center)]:pt-2.5"
+      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3 max-md:py-1 max-md:[--detail-label-width:7.5rem]"
       onScroll={handleScroll}
     >
       {children}

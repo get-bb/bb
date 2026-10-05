@@ -106,19 +106,19 @@ function registerRemoteRuntimeFileResponder(
     sessionId: args.sessionId,
     handle: ({ command }) => {
       if (command.type === "host.list_files") {
-        const prefix = `${command.path}${path.sep}`;
+        const prefix = `${command.path}${path.posix.sep}`;
         const files = [...args.files.keys()]
           .filter((filePath) => filePath.startsWith(prefix))
-          .map((filePath) => path.relative(command.path, filePath))
+          .map((filePath) => path.posix.relative(command.path, filePath))
           .filter((relativePath) => {
-            const segments = relativePath.split(path.sep);
+            const segments = relativePath.split(path.posix.sep);
             return segments.length === 2 && segments[1] === "SKILL.md";
           })
           .sort()
           .slice(0, command.limit)
           .map((relativePath) => ({
-            name: path.basename(relativePath),
-            path: relativePath.split(path.sep).join("/"),
+            name: path.posix.basename(relativePath),
+            path: relativePath,
           }));
         return { ok: true, result: { files, truncated: false } };
       }
@@ -1240,7 +1240,7 @@ describe("thread runtime config", () => {
         ...defaultExperiments,
       });
       const workspacePath = "/remote/runtime-agents-workspace";
-      const agentInstructionsPath = path.join(
+      const agentInstructionsPath = path.posix.join(
         workspacePath,
         ".bb",
         "AGENTS.md",
@@ -1351,13 +1351,13 @@ describe("thread runtime config", () => {
         ...defaultExperiments,
       });
       const workspacePath = "/remote/runtime-skills-workspace";
-      const skillRootPath = path.join(
+      const skillRootPath = path.posix.join(
         workspacePath,
         ".bb",
         "skills",
         "remote-review",
       );
-      const skillFilePath = path.join(skillRootPath, "SKILL.md");
+      const skillFilePath = path.posix.join(skillRootPath, "SKILL.md");
       const responder = registerRemoteRuntimeFileResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -1407,7 +1407,7 @@ describe("thread runtime config", () => {
           expect.objectContaining({
             command: expect.objectContaining({
               type: "host.list_files",
-              path: path.join(workspacePath, ".bb", "skills"),
+              path: path.posix.join(workspacePath, ".bb", "skills"),
             }),
           }),
           expect.objectContaining({
@@ -1435,7 +1435,7 @@ describe("thread runtime config", () => {
           id: "host-runtime-shared-skills",
         });
         const workspacePath = "/remote/runtime-shared-skills";
-        const skillFilePath = path.join(
+        const skillFilePath = path.posix.join(
           workspacePath,
           ".agents",
           "skills",
@@ -1482,7 +1482,7 @@ describe("thread runtime config", () => {
           sourceType: "shared-project",
           name: "portable-review",
           description: "Review code from one shared source.",
-          sourceRootPath: path.dirname(skillFilePath),
+          sourceRootPath: path.posix.dirname(skillFilePath),
           skillFilePath,
         });
       },

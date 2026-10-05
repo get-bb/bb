@@ -29,6 +29,7 @@ function renderAssistantMessage(text: string, streaming: boolean) {
           mobileActionDisplay="overflow"
           streaming={streaming}
           text={text}
+          timestamp={0}
         />
       </RouteNavigationProvider>
     </MemoryRouter>
@@ -50,6 +51,7 @@ function renderAssistantMessage(text: string, streaming: boolean) {
               mobileActionDisplay="overflow"
               streaming={nextStreaming}
               text={nextText}
+              timestamp={0}
             />
           </RouteNavigationProvider>
         </MemoryRouter>,

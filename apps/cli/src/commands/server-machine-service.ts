@@ -183,6 +183,11 @@ export async function installMachineService(
       `${dataDir} is not locked by a server move. This command keeps a computer connected as a machine after its bb server moved to another machine.`,
     );
   }
+  if (process.platform === "win32") {
+    throw new Error(
+      "bb cannot install the background machine service on Windows. It is available on macOS and Linux.",
+    );
+  }
   await assertMachineIdentity(dataDir);
   const installerPath = await resolveInstallerPath();
   await assertServiceNode();

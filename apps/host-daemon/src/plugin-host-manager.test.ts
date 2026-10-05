@@ -155,9 +155,14 @@ describe("PluginHostManager", () => {
   afterEach(async () => {
     await Promise.all(managers.splice(0).map((manager) => manager.shutdown()));
     await Promise.all(
-      tempDirs
-        .splice(0)
-        .map((dir) => rm(dir, { recursive: true, force: true })),
+      tempDirs.splice(0).map((dir) =>
+        rm(dir, {
+          recursive: true,
+          force: true,
+          maxRetries: 20,
+          retryDelay: 100,
+        }),
+      ),
     );
   });
 

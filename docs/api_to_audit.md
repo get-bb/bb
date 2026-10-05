@@ -20,13 +20,32 @@ Escape and outside clicks; returning to the editor also closes the popup.
 Compact interactive popups use the shared persistent responsive drawer;
 editor-driven suggestions remain inline so typing continues in the editor. The
 component owns search, results and keyboard navigation. No automatic menu row
-is added; existing actions and plus-menu rows can call
+is added; actions, plus-menu rows and composer commands call
 `experimental_openPopup`.
 
 Before stabilization, verify multiple composers, selection retention, plugin
 reload and crash recovery, scope suppression, and compact Safari
 keyboard/drawer behavior. Verify multiple popups in one customization and popup-id uniqueness across
 customizations.
+
+## Composer commands
+
+`PluginAppComposer.experimental_registerCommand({ id, title, defaultShortcut?,
+run })` registers a command that is listed in the palette and Settings →
+Keyboard, rebindable under `plugin:<plugin-id>/<command-id>`, and shares the
+`app.commands` ID namespace. Each prompt box provides command ownership and
+mounts its composer commands through `useComposerCommand`, the same hook bb's
+`composer.focus` uses; `run` receives that composer's plugin-bound
+`PluginComposerApi`. Ownership (`composerOwnsCommand`, per
+`[data-app-composer]` shell): the composer holding the caret, otherwise the
+focused pane's primary composer. Plugin composer commands use bb's composer
+keybinding context (prompt available; no terminal, browser or modal focus).
+The palette evaluates ownership against the element focused when it opened.
+
+Before stabilization, verify split panes, side chat, inline queued-message
+editing, palette invocation from each, plugin reload, and rebinding. Audit
+whether composer scopes should filter commands the way they filter other
+composer contributions, and whether commands need an availability callback.
 
 ## `settingsSection.experimental_page`
 
@@ -2558,7 +2577,7 @@ fresh status, bounded at 2 s, before skipping a service whose cached status is
 older). At least one of `complete` / `transcribe` is required; which tasks a
 service appears for follows from the functions it declares. bb owns the
 prompts and the reply cleanup; the plugin owns the model, the API, and any retries. Failure is a
-rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
+rejected promise, and core aborts `signal` at 5 s (text) or 70 s (voice).
 
 The user picks per task in Settings → AI services, `bb settings ai-services
 set`, or `sdk.system.setAiServiceSelection` (`automatic` | `off` |
@@ -3610,11 +3629,11 @@ snapshot is a no-op. `insert` remains the cursor/end insertion primitive.
 Core quoting, prefills and history restoration call this same contract. Quotes
 are pure draft transformations that append blockquoted text and merge attachments
 by path, followed by `focus()`. Attachments remain independent draft items, not
-children of a quote. `replace` does not upload/copy files across projects.
-Submission rollback, restore-if-empty seeds, uploads, and editor transactions
-remain beneath these actions. Command completion's trigger-range replacement and
-autocomplete dismissal remain a documented boundary, not a hidden option on
-`replace`.
+children of a quote. `replace` preserves source-project references; core copies
+those files into the destination project on submission. Submission rollback,
+restore-if-empty seeds, uploads, and editor transactions remain beneath these
+actions. Command completion's trigger-range replacement and autocomplete
+dismissal remain a documented boundary, not a hidden option on `replace`.
 
 `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
 `removeMention` are marked internal and stripped from published declarations,

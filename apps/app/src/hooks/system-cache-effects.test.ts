@@ -204,6 +204,8 @@ describe("system cache effects", () => {
     queryClient.setQueryData(versionKey, {
       currentVersion: "0.0.5",
       latestVersion: "0.0.6",
+      currentCommit: null,
+      installKind: "npm",
       source: "npm",
       updateAvailable: true,
       isDevelopment: false,

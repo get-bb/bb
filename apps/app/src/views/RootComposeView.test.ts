@@ -29,7 +29,6 @@ import {
   readInitialPromptFromLocationState,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
-  shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -779,32 +778,6 @@ describe("shouldStartComposingFromLocationState", () => {
     expect(shouldStartComposingFromLocationState({ focusPrompt: false })).toBe(
       false,
     );
-  });
-});
-
-describe("shouldNavigateAfterThreadCreate", () => {
-  it("follows the preference for ordinary new threads", () => {
-    expect(
-      shouldNavigateAfterThreadCreate({
-        isForkDraft: false,
-        navigateToThreadAfterCreate: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldNavigateAfterThreadCreate({
-        isForkDraft: false,
-        navigateToThreadAfterCreate: true,
-      }),
-    ).toBe(true);
-  });
-
-  it("always navigates for submitted fork drafts", () => {
-    expect(
-      shouldNavigateAfterThreadCreate({
-        isForkDraft: true,
-        navigateToThreadAfterCreate: false,
-      }),
-    ).toBe(true);
   });
 });
 

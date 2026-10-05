@@ -72,6 +72,7 @@ function UserMessage({
         systemMessageKind="unlabeled"
         systemMessageSubject={null}
         text={text}
+        timestamp={0}
         attachments={null}
         mentions={mentions}
         projectId="proj_demo"

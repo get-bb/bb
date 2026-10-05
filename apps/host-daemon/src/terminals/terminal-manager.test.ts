@@ -973,10 +973,12 @@ describe("TerminalManager", () => {
       packageDirectory,
     });
 
-    const buildHelperMode = (await fs.stat(buildHelperPath)).mode;
-    const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
-    expect(buildHelperMode & 0o111).not.toBe(0);
-    expect(prebuildHelperMode & 0o111).not.toBe(0);
+    if (process.platform !== "win32") {
+      const buildHelperMode = (await fs.stat(buildHelperPath)).mode;
+      const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
+      expect(buildHelperMode & 0o111).not.toBe(0);
+      expect(prebuildHelperMode & 0o111).not.toBe(0);
+    }
     expect(logger.warn).not.toHaveBeenCalled();
   });
 

@@ -1,3 +1,4 @@
+import type { PluginMarketplaceCategory } from "@bb/domain";
 import type {
   InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
@@ -258,6 +259,7 @@ export interface PluginCatalogSearchEntry {
   official: boolean;
   author: PluginCatalogAuthor | null;
   installed: boolean;
+  installedByDefault: boolean;
   conflictingInstallSource: string | null;
   installs: number | null;
   compatible: boolean;
@@ -292,6 +294,7 @@ function toPluginCatalogSearchEntry(
     official: data.official,
     author: data.author,
     installed: data.installed,
+    installedByDefault: data.installedByDefault,
     conflictingInstallSource: data.conflictingInstallSource,
     installs: data.installs,
     compatible: data.compatible,
@@ -302,13 +305,14 @@ function toPluginCatalogSearchEntry(
 export interface PluginCatalogSearchData {
   entries: PluginCatalogSearchEntry[];
   collections: PluginCatalogCollection[];
+  categories: PluginMarketplaceCategory[];
 }
 
 export async function searchPluginCatalog(
   fetchImpl: FetchLike,
   query: string,
 ): Promise<PluginCatalogSearchData> {
-  const { results, collections } = await createPluginsClient(
+  const { results, collections, categories } = await createPluginsClient(
     fetchImpl,
   ).catalog.search({
     query,
@@ -316,6 +320,7 @@ export async function searchPluginCatalog(
   return {
     entries: results.map(toPluginCatalogSearchEntry),
     collections,
+    categories,
   };
 }
 

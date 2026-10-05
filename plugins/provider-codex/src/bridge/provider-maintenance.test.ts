@@ -10,6 +10,35 @@ import {
   getCodexProviderUsage,
 } from "./provider-maintenance.js";
 
+async function writeFakeCli(args: {
+  binDir: string;
+  name: string;
+  output: string;
+  touchPath?: string;
+}): Promise<void> {
+  if (process.platform === "win32") {
+    const lines = [
+      "@echo off",
+      ...(args.touchPath === undefined
+        ? []
+        : [`type nul > "${args.touchPath}"`]),
+      `echo ${args.output}`,
+    ];
+    await fs.writeFile(
+      path.join(args.binDir, `${args.name}.cmd`),
+      `${lines.join("\r\n")}\r\n`,
+    );
+    return;
+  }
+  const touch =
+    args.touchPath === undefined ? "" : `touch '${args.touchPath}'\n`;
+  await fs.writeFile(
+    path.join(args.binDir, args.name),
+    `#!/bin/sh\n${touch}echo "${args.output}"\n`,
+    { mode: 0o755 },
+  );
+}
+
 function installationStatus() {
   return {
     executableName: "codex",
@@ -143,12 +172,9 @@ describe("Codex credential health and usage", () => {
     tempDirs.push(homeDir);
     const binDir = path.join(homeDir, "bin");
     await fs.mkdir(binDir);
-    await fs.writeFile(
-      path.join(binDir, "codex"),
-      '#!/bin/sh\necho "codex-cli 0.150.0"\n',
-      { mode: 0o755 },
-    );
+    await writeFakeCli({ binDir, name: "codex", output: "codex-cli 0.150.0" });
     vi.stubEnv("HOME", homeDir);
+    vi.stubEnv("USERPROFILE", homeDir);
     vi.stubEnv("CODEX_HOME", "");
     vi.stubEnv("PATH", `${binDir}${path.delimiter}${process.env.PATH ?? ""}`);
   });
@@ -175,16 +201,17 @@ describe("Codex credential health and usage", () => {
     async (version, requirement, unsupported) => {
       const binDir = path.join(homeDir, "bin");
       const marker = path.join(homeDir, "npm-probed");
-      await fs.writeFile(
-        path.join(binDir, "codex"),
-        `#!/bin/sh\necho "codex-cli ${version}"\n`,
-        { mode: 0o755 },
-      );
-      await fs.writeFile(
-        path.join(binDir, "npm"),
-        `#!/bin/sh\ntouch '${marker}'\necho "1.1.0"\n`,
-        { mode: 0o755 },
-      );
+      await writeFakeCli({
+        binDir,
+        name: "codex",
+        output: `codex-cli ${version}`,
+      });
+      await writeFakeCli({
+        binDir,
+        name: "npm",
+        output: "1.1.0",
+        touchPath: marker,
+      });
 
       const status = await getCodexProviderInstallationStatus(
         requirement,

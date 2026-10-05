@@ -21,6 +21,7 @@ import {
   sidebarSortDirectionAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarEnvironmentGroupingAtom,
+  sidebarGroupByReadStatusAtom,
   sidebarShowProviderIconsAtom,
 } from "../preferences/atoms.js";
 
@@ -90,6 +91,7 @@ export function SidebarHeaderMenuContents({
         compact ? (
           <DropdownMenuItem
             key={item.page}
+            className="[&>[data-icon-root]:last-child]:size-3 [&>[data-icon-root]:last-child]:text-subtle-foreground"
             onSelect={(event) => {
               event.preventDefault();
               onPageChange(item.page);
@@ -101,7 +103,7 @@ export function SidebarHeaderMenuContents({
           </DropdownMenuItem>
         ) : (
           <DropdownMenuSub key={item.page}>
-            <DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger className="[&>[data-icon-root]:last-child]:size-3 [&>[data-icon-root]:last-child]:text-subtle-foreground">
               <Icon name={item.icon} />
               {item.label}
             </DropdownMenuSubTrigger>
@@ -138,6 +140,9 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
+  const [groupByReadStatus, setGroupByReadStatus] = useAtom(
+    sidebarGroupByReadStatusAtom,
+  );
   const [showProviderIcons, setShowProviderIcons] = useAtom(
     sidebarShowProviderIconsAtom,
   );
@@ -207,11 +212,25 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
             onSelect={(event) => {
               event.preventDefault();
               setEnvironmentGrouping(!groupByEnvironment);
+              if (!groupByEnvironment) setGroupByReadStatus(false);
             }}
           >
             By environment
             <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
               {groupByEnvironment && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={groupByReadStatus}
+            onSelect={(event) => {
+              event.preventDefault();
+              setGroupByReadStatus(!groupByReadStatus);
+            }}
+          >
+            By read status
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {groupByReadStatus && <Icon name="Check" className="size-4" />}
             </span>
           </DropdownMenuItem>
         </DropdownMenuGroup>

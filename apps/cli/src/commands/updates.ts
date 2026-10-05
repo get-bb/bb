@@ -172,7 +172,7 @@ function printUpdatesTable(args: {
 function formatRevision(revision: SystemAppUpdateRevision): string {
   return revision.commit === null
     ? revision.version
-    : `${revision.version} (${revision.commit.slice(0, 10)})`;
+    : `source checkout ${revision.commit.slice(0, 10)}`;
 }
 
 function formatAvailableTarget(status: SystemAppUpdateStatus): string | null {
@@ -230,7 +230,12 @@ function appRowFromStatus(args: {
         : target === null
           ? appUpdate.blocked?.reason === "fetch-failed"
             ? `${UPDATE_STATE_PRESENTATION["latest-unknown"].label} (${appUpdate.blocked.message})`
-            : UPDATE_STATE_PRESENTATION["up-to-date"].label
+            : appUpdate.blocked !== null
+              ? `${UPDATE_STATE_PRESENTATION["update-manually"].label} (${appUpdate.blocked.message})`
+              : appUpdate.support.mode === "npm" &&
+                  version.latestVersion === null
+                ? UPDATE_STATE_PRESENTATION["latest-unknown"].label
+                : UPDATE_STATE_PRESENTATION["up-to-date"].label
           : appUpdate.blocked !== null
             ? `${UPDATE_STATE_PRESENTATION["update-available"].label} (blocked: ${appUpdate.blocked.message})`
             : `${UPDATE_STATE_PRESENTATION["update-available"].label} (run: bb updates app apply)`;
@@ -240,11 +245,20 @@ function appRowFromStatus(args: {
       state,
     ];
   }
+  if (version.installKind === "source") {
+    return [
+      "bb-app",
+      `source checkout ${version.currentCommit === null ? `build ${version.currentVersion}` : version.currentCommit.slice(0, 10)}`,
+      "Latest unknown (update this checkout with Git; automatic update checks are off)",
+    ];
+  }
   const appState = version.isDevelopment
     ? "development mode"
     : version.updateAvailable
       ? `${UPDATE_STATE_PRESENTATION["update-available"].label} (run: ${version.upgradeCommand})`
-      : UPDATE_STATE_PRESENTATION["up-to-date"].label;
+      : version.latestVersion === null
+        ? UPDATE_STATE_PRESENTATION["latest-unknown"].label
+        : UPDATE_STATE_PRESENTATION["up-to-date"].label;
   const appVersionLabel =
     version.latestVersion !== null &&
     version.latestVersion !== version.currentVersion
@@ -263,7 +277,13 @@ function printAppUpdateStatus(status: SystemAppUpdateStatus): void {
   const target = formatAvailableTarget(status);
   console.log(
     target === null
-      ? `bb-app ${current} is up to date.`
+      ? status.blocked !== null ||
+        status.activity.phase !== "idle" ||
+        (status.lastResult !== null &&
+          !status.lastResult.acknowledged &&
+          status.lastResult.outcome === "failed")
+        ? `bb-app ${current}`
+        : `bb-app ${current} is up to date.`
       : `bb-app ${current} -> ${target}`,
   );
   if (status.activity.phase === "preparing") {

@@ -18,10 +18,10 @@ desktop app is published at the same version (see "Publish The Desktop App").
 The automated nightly channel is the exception to the manual stable flow. The
 scheduled path in `publish-bb-app.yml` derives a unique next-patch prerelease,
 publishes it under npm's `nightly` dist-tag, then builds the separately
-installable `bb Nightly` app for macOS and Linux and publishes both at
-`desktop-nightly`. It does not commit the generated version or move either
+installable `bb Nightly` app for macOS, Linux, and Windows and publishes all
+three at `desktop-nightly`. It does not commit the generated version or move either
 stable `latest` pointer. Each platform job derives the nightly version from the
-run ID, so the two jobs agree without sharing state. If the
+run ID, so the jobs agree without sharing state. If the
 `npm-release` GitHub environment requires approval, scheduled runs will wait
 for that approval; remove the reviewer gate only if fully unattended nightly
 publishing is intended.
@@ -202,15 +202,16 @@ Report:
 ## Publish The Desktop App
 
 The npm publish does not build or publish the desktop app. The desktop release
-is a separate workflow. It builds the signed and notarized macOS app and the
-Linux x64 AppImage in parallel jobs, then one publish job creates the immutable
-`desktop-v<version>` GitHub release and moves the `desktop-latest` release with
-both auto-update feeds: `desktop-version.json` for macOS and
-`desktop-version-linux.json` for Linux. Run it from the same pushed `main`
+is a separate workflow. It builds the signed and notarized macOS app, the
+Linux x64 AppImage, and the Windows x64 installer in parallel jobs, then one
+publish job creates the immutable `desktop-v<version>` GitHub release and moves
+the `desktop-latest` release with every auto-update feed:
+`desktop-version.json` for macOS, `desktop-version-linux.json` for Linux, and
+`desktop-version-windows.json` for Windows. Run it from the same pushed `main`
 commit, at the same version, for every stable release.
 
-A failure in either platform job stops the publish job, so no release can ship
-one platform's binaries against the other platform's stale feed.
+A failure in any platform job stops the publish job, so no release can ship
+one platform's binaries against another platform's stale feed.
 
 ```bash
 gh workflow run build-desktop.yml \
@@ -224,9 +225,13 @@ gh workflow run build-desktop.yml \
 - Only a non-prerelease version is published. The workflow refuses to publish a
   prerelease (`X.Y.Z-...`) to `desktop-latest`.
 - macOS signing/notarization secrets must be configured, or the workflow
-  withholds the unsigned `.dmg`/`.zip` and publishes both version feeds plus the
-  Linux AppImage. Linux has no notarization equivalent, so it never waits on the
-  Apple secrets.
+  withholds the unsigned `.dmg`/`.zip` and publishes every version feed plus the
+  Linux AppImage and the Windows installer. Linux has no notarization
+  equivalent, so it never waits on the Apple secrets.
+- The Windows installer is signed when the `WINDOWS_CERTIFICATE_PFX` and
+  `WINDOWS_CERTIFICATE_PASSWORD` secrets are both set. Without them it publishes
+  unsigned and Windows SmartScreen warns before running it. Setting only one of
+  the two fails the Windows job.
 - The `desktop-v<version>` release is immutable: if it already exists the
   workflow fails. Bump to a new version rather than re-running the same one.
 - The immutable `desktop-v<version>` release owns GitHub's repository-wide
@@ -246,11 +251,14 @@ gh release view desktop-latest --json tagName,assets \
 gh release list --limit 10 --json tagName,isLatest \
   -q '.[] | select(.isLatest) | .tagName'
 curl -fsSL https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json
+curl -fsSL https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json
+curl -fsSL https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-windows.json
 ```
 
-Confirm `desktop-version.json` reports the released version and that the
-`desktop-v<version>` release exists with the expected `.dmg`/`.zip` assets and
-is the release reported as GitHub's **Latest**.
+Confirm each feed reports the released version and that the
+`desktop-v<version>` release exists with the expected `.dmg`/`.zip`,
+`.AppImage`, and `.exe` assets and is the release reported as GitHub's
+**Latest**.
 
 Add to the report from "Verify The Release":
 
@@ -352,7 +360,8 @@ jobs are unaffected.
 - If the desktop workflow fails because `desktop-v<version>` already exists, do
   not delete the immutable release. Bump to the next version, re-run the npm
   publish, then re-run the desktop workflow.
-- If the desktop workflow withholds the macOS binaries (feeds and the Linux
-  AppImage still publish), the macOS signing secrets are missing or incomplete.
+- If the desktop workflow withholds the macOS binaries (feeds, the Linux
+  AppImage, and the Windows installer still publish), the macOS signing secrets
+  are missing or incomplete.
   Fix the secrets and re-run; do not hand-upload unsigned macOS binaries to
   `desktop-latest`.

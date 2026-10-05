@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -180,7 +181,12 @@ export async function startFakePiBridge(
       );
       harness.restore();
       vi.unstubAllEnvs();
-      rmSync(workspaceDir, { recursive: true, force: true });
+      await rm(workspaceDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     },
   };
   if (options.initialize) {

@@ -147,7 +147,7 @@ describe("third-party marketplaces", () => {
     const configFile = join(dataDir, "gitconfig");
     await writeFile(
       configFile,
-      `[url "${repo}"]\n\tinsteadOf = ${url}\n`,
+      `[url "${repo.replaceAll("\\", "\\\\")}"]\n\tinsteadOf = ${url}\n`,
       "utf8",
     );
     const previous = process.env.GIT_CONFIG_GLOBAL;

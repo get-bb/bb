@@ -114,11 +114,9 @@ export function Lightbox({
 
 function RemovalSpinner() {
   return (
-    <span
-      role="status"
-      aria-label="Removing"
-      className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
-    />
+    <span role="status" aria-label="Removing" className="inline-flex">
+      <Icon name="Spinner" className="size-3.5 animate-spin" aria-hidden />
+    </span>
   );
 }
 

@@ -101,6 +101,36 @@ afterEach(() => {
 });
 
 describe("ThreadActionsMenu", () => {
+  it.each([false, true])(
+    "offers environment reuse only in compact menus: compact=%s",
+    async (compact) => {
+      const createThread = vi.fn();
+      const menu = (
+        <ThreadActionsMenu
+          thread={thread}
+          onCreateNewThreadInEnvironment={createThread}
+        />
+      );
+      if (compact) renderCompact(menu);
+      else renderWide(menu);
+      const trigger = screen.getByRole("button", { name: "Thread actions" });
+      if (compact) fireEvent.click(trigger);
+      else fireEvent.pointerDown(trigger, { button: 0 });
+      if (!compact) {
+        expect(
+          screen.queryByRole("menuitem", { name: "New thread in environment" }),
+        ).toBeNull();
+        return;
+      }
+      fireEvent.click(
+        await screen.findByRole("menuitem", {
+          name: "New thread in environment",
+        }),
+      );
+      expect(createThread).toHaveBeenCalledOnce();
+    },
+  );
+
   it("opens the rename dialog from the menu", async () => {
     renderWide(<ThreadActionsMenu thread={thread} />);
     fireEvent.pointerDown(

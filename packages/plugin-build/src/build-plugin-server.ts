@@ -3,13 +3,13 @@ import {
   mkdtemp,
   readFile,
   realpath,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { dirname, extname, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { init as initModuleLexer, parse as parseModule } from "es-module-lexer";
+import { renameIntoPlace } from "./rename-into-place.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
 import { zodResolutionPlugin } from "./zod-resolution.js";
@@ -257,6 +257,7 @@ export async function buildPluginServer(
             );
             build.onResolve({ filter: BARE_PACKAGE_FILTER }, async (args) => {
               if (
+                args.kind === "entry-point" ||
                 args.pluginData === PLUGIN_RUNTIME_FALLBACK_RESOLVE_MARK ||
                 PLUGIN_SDK_SUBPATH_FILTER.test(args.path) ||
                 /^zod($|\/)/.test(args.path) ||
@@ -321,7 +322,13 @@ export async function buildPluginServer(
                   return { path: resolved.path };
                 }
                 if (args.kind === "dynamic-import") {
-                  return { path: resolved.path, external: true };
+                  return {
+                    path:
+                      process.platform === "win32"
+                        ? pathToFileURL(resolved.path).href
+                        : resolved.path,
+                    external: true,
+                  };
                 }
                 return {
                   errors: [
@@ -350,11 +357,11 @@ export async function buildPluginServer(
       await writeFile(join(stageDir, "package.json"), '{"type":"module"}\n');
     }
 
-    await rename(stagedJsPath, jsPath);
-    await rename(join(stageDir, `${fileName}.map`), mapPath);
-    await rename(stagedMetaPath, metaPath);
+    await renameIntoPlace(stagedJsPath, jsPath);
+    await renameIntoPlace(join(stageDir, `${fileName}.map`), mapPath);
+    await renameIntoPlace(stagedMetaPath, metaPath);
     if (format === "esm") {
-      await rename(
+      await renameIntoPlace(
         join(stageDir, "package.json"),
         join(distDir, "package.json"),
       );

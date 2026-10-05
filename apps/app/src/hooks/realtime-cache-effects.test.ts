@@ -11,6 +11,7 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
+import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
 import {
   archivedThreadsListQueryKey,
   environmentDiffFilesQueryKey,
@@ -890,6 +891,12 @@ describe("createRealtimeCacheEffects", () => {
 
     expect(queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated).toBe(
       true,
+    );
+    expect(hasThreadTimelineUnseenEvents(queryClient, "thr_unviewed")).toBe(
+      true,
+    );
+    expect(hasThreadTimelineUnseenEvents(queryClient, "thr_viewed")).toBe(
+      false,
     );
     const unviewedInvalidations = invalidateSpy.mock.calls.filter(
       ([filters]) =>

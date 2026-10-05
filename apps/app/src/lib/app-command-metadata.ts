@@ -86,6 +86,12 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Find in window",
         "Search the text shown in the current bb desktop window.",
       ),
+      command("history.back", "Go back", "Go back in this window's history."),
+      command(
+        "history.forward",
+        "Go forward",
+        "Go forward in this window's history.",
+      ),
       command(
         "app.back",
         "Back to app",
@@ -141,6 +147,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "panel.toggle",
         "Toggle panel",
         "Show or hide the secondary panel.",
+      ),
+      command(
+        "panel.fullScreen.toggle",
+        "Toggle panel full screen",
+        "Expand the right panel over the conversation, or restore the conversation.",
       ),
       command(
         "pane.focus.left",

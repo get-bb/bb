@@ -127,7 +127,10 @@ it.each(["retained", "removed before relocation", "removed after relocation"])(
       onExit: () => undefined,
     });
     try {
-      const result = await child.request({ type: "bash", command: "pwd" });
+      const result = await child.request({
+        type: "bash",
+        command: process.platform === "win32" ? 'cygpath -w "$PWD"' : "pwd",
+      });
       expect(result.success).toBe(true);
       expect(result.data).toMatchObject({ output: `${target}\n`, exitCode: 0 });
       const bytes = readFileSync(relocatedFile, "utf8");

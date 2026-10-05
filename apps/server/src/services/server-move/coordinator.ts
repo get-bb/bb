@@ -542,6 +542,18 @@ export function createServerMoveCoordinator(
   }
 
   async function runStopWork(move: MoveRun): Promise<void> {
+    setStep(move, "stop-work", "running", "Resolving server access");
+    move.grant =
+      move.status.mode === "connect"
+        ? await untilCancelled(
+            move,
+            environment.resolveServerHostGrant(
+              move.sourceServerHost.id,
+              move.abort.signal,
+            ),
+          )
+        : { serverUrl: move.status.serverUrl, headers: {} };
+    assertNotCancelled(move);
     move.frozen = true;
     setServerMoveFrozen(deps.db, true);
     environment.plugins.setSchedulesPaused(true);
@@ -554,16 +566,6 @@ export function createServerMoveCoordinator(
         timeoutMs: timings.stopWorkTimeoutMs,
       }),
     );
-    move.grant =
-      move.status.mode === "connect"
-        ? await untilCancelled(
-            move,
-            environment.resolveServerHostGrant(
-              move.sourceServerHost.id,
-              move.abort.signal,
-            ),
-          )
-        : { serverUrl: move.status.serverUrl, headers: {} };
     assertNotCancelled(move);
     setStep(move, "stop-work", "running", "Pausing plugins");
     await suspendPlugins(move);

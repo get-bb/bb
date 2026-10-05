@@ -174,7 +174,15 @@
       "type": "registry:ui"
     },
     {
+      "name": "prompt-stack-disclosure",
+      "type": "registry:ui"
+    },
+    {
       "name": "question-form",
+      "type": "registry:ui"
+    },
+    {
+      "name": "question-form-draft",
       "type": "registry:ui"
     },
     {

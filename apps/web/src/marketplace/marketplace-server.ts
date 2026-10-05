@@ -3,6 +3,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { getEnv } from "../server/env.js";
 import { serveMarketplaceObject } from "../server/marketplace.js";
 import {
+  bundledMarketplace,
+  withBundledPlugins,
+} from "./bundled-marketplace.js";
+import {
   createPublicMarketplaceCache,
   type MarketplaceResource,
   type PublicMarketplaceData,
@@ -23,8 +27,13 @@ async function marketplaceResource(path: string): Promise<MarketplaceResource> {
   return { etag, value: await response.json() };
 }
 
-const loadCachedPublicMarketplace =
-  createPublicMarketplaceCache(marketplaceResource);
+const loadCachedPublicMarketplace = createPublicMarketplaceCache(
+  marketplaceResource,
+  {
+    withBundled: (community) =>
+      withBundledPlugins(community, bundledMarketplace()),
+  },
+);
 
 export const getPublicMarketplace = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicMarketplaceData> => loadCachedPublicMarketplace(),

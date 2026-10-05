@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 const OUTPUT_TAIL_LINES = 40;
+const COMMAND_KILL_AFTER_MS = 1_000;
 
 export interface RunCommandArgs {
   args: string[];
@@ -39,6 +40,7 @@ export class CommandFailedError extends Error {
 
 export const runCommand: RunCommand = (args) =>
   new Promise((resolvePromise, rejectPromise) => {
+    args.signal?.throwIfAborted();
     const child = spawn(args.command, args.args, {
       cwd: args.cwd,
       env: args.env ?? process.env,
@@ -66,6 +68,14 @@ export const runCommand: RunCommand = (args) =>
     child.stderr.on("data", (chunk: Buffer) => {
       pushLines(chunk, stderrPartial);
     });
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+    const stop = (): void => {
+      child.kill("SIGTERM");
+      killTimer ??= setTimeout(
+        () => child.kill("SIGKILL"),
+        COMMAND_KILL_AFTER_MS,
+      );
+    };
     const timeout =
       args.timeoutMs === undefined
         ? null
@@ -73,21 +83,23 @@ export const runCommand: RunCommand = (args) =>
             tail.push(
               `Timed out after ${String(Math.round((args.timeoutMs ?? 0) / 1000))}s`,
             );
-            child.kill("SIGTERM");
+            stop();
           }, args.timeoutMs);
     const onAbort = (): void => {
       tail.push("Cancelled");
-      child.kill("SIGTERM");
+      stop();
     };
     if (args.signal?.aborted === true) onAbort();
     args.signal?.addEventListener("abort", onAbort, { once: true });
     child.once("error", (error) => {
       if (timeout !== null) clearTimeout(timeout);
+      if (killTimer !== null) clearTimeout(killTimer);
       args.signal?.removeEventListener("abort", onAbort);
       rejectPromise(error);
     });
     child.once("close", (code, signal) => {
       if (timeout !== null) clearTimeout(timeout);
+      if (killTimer !== null) clearTimeout(killTimer);
       args.signal?.removeEventListener("abort", onAbort);
       for (const partial of [stdoutPartial, stderrPartial]) {
         if (partial.value.trim() !== "") {

@@ -401,6 +401,87 @@ function SpatialFixture({
   );
 }
 
+const PHONE_COLUMN_WIDTH = 350;
+const PHONE_TOOLBAR_RESERVE = 72;
+
+function PhoneFixture({ children }: { children: ReactNode }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState({
+    scale: 1,
+    height: null as number | null,
+    offsetX: 0,
+  });
+
+  useBrowserLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const measure = () => {
+      const viewport = outer.closest<HTMLElement>(
+        "[data-guide-stage-viewport]",
+      );
+      const viewportHeight =
+        viewport?.clientHeight ?? document.documentElement.clientHeight;
+      const naturalHeight = inner.offsetHeight;
+      if (naturalHeight === 0 || outer.clientWidth === 0) return;
+      const scale = Math.min(
+        1,
+        outer.clientWidth / PHONE_COLUMN_WIDTH,
+        (viewportHeight - PHONE_TOOLBAR_RESERVE) / naturalHeight,
+      );
+      const height = Math.ceil(naturalHeight * scale);
+      const offsetX = Math.max(
+        0,
+        (outer.clientWidth - PHONE_COLUMN_WIDTH * scale) / 2,
+      );
+      setFit((current) =>
+        Math.abs(current.scale - scale) < 0.001 &&
+        current.height === height &&
+        Math.abs(current.offsetX - offsetX) < 0.5
+          ? current
+          : { scale, height, offsetX },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(outer);
+    observer.observe(inner);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={outerRef}
+      data-guide-responsive-strategy="mobile"
+      data-guide-scale={fit.scale.toFixed(4)}
+      className="w-full overflow-x-clip"
+      style={{ height: fit.height ?? undefined }}
+    >
+      <div
+        ref={innerRef}
+        className="origin-top-left"
+        style={
+          {
+            width: PHONE_COLUMN_WIDTH,
+            marginLeft: fit.offsetX,
+            transform: fit.scale === 1 ? undefined : `scale(${fit.scale})`,
+            [CHIP_COUNTER_SCALE_PROPERTY]: annotationChipCounterScale(
+              fit.scale,
+            ),
+          } as CSSProperties
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function SlideContent({
   group,
   mobile = false,
@@ -471,12 +552,9 @@ function Slide({
 }) {
   if (mobile && viewportMobile && group.id !== "headless") {
     return (
-      <div
-        data-guide-responsive-strategy="mobile"
-        className="mx-auto w-full max-w-[430px]"
-      >
+      <PhoneFixture>
         <SlideContent group={group} mobile />
-      </div>
+      </PhoneFixture>
     );
   }
   if (fixtureResponsiveStrategy(group) === "reflow") {
@@ -489,7 +567,7 @@ function Slide({
   return (
     <>
       <SpatialFixture
-        band={mobile ? { min: 430, max: 430 } : FIXTURE_WIDTH_BANDS[group.groupId]}
+        band={mobile ? { min: 390, max: 390 } : FIXTURE_WIDTH_BANDS[group.groupId]}
         maxScale={mobile ? 1 : MAX_FIXTURE_SCALE}
       >
         <SlideContent group={group} mobile={mobile} />
@@ -499,7 +577,13 @@ function Slide({
   );
 }
 
-function SlideTitle({ title }: { title: string }) {
+function SlideTitle({
+  title,
+  brandMark,
+}: {
+  title: string;
+  brandMark?: ReactNode;
+}) {
   const parts = title.split(/\bbb\b/);
   if (parts.length === 1) {
     return <>{title}</>;
@@ -508,7 +592,9 @@ function SlideTitle({ title }: { title: string }) {
     <>
       {parts.map((part, index) => (
         <Fragment key={index}>
-          {index > 0 ? <span className="font-bold italic">bb</span> : null}
+          {index > 0
+            ? (brandMark ?? <span className="font-bold italic">bb</span>)
+            : null}
           {part}
         </Fragment>
       ))}
@@ -617,12 +703,16 @@ export function ProductMap({
   initialSlideId,
   onSlideChange,
   onCopyForAgent,
+  brandMark,
+  mobileOnlyOnCompactViewport = false,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
   renderPluginIcon?: (displayName: string) => ReactNode;
   initialSlideId?: string;
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
+  brandMark?: ReactNode;
+  mobileOnlyOnCompactViewport?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -641,8 +731,10 @@ export function ProductMap({
   const [displayMode, setDisplayMode] = useState<"mobile" | "desktop" | null>(
     null,
   );
+  const desktopLocked = mobileOnlyOnCompactViewport && viewportMobile;
   const mobile =
-    displayMode === null ? viewportMobile : displayMode === "mobile";
+    desktopLocked ||
+    (displayMode === null ? viewportMobile : displayMode === "mobile");
   const slides = mobile ? MOBILE_SLIDES : DESKTOP_SLIDES;
   const numbers = useMemo(() => new Map(
     slides.filter((slide) => slide.groupId !== "headless").flatMap((slide) =>
@@ -810,14 +902,18 @@ export function ProductMap({
             onKeyDown={onKeyDown}
             className="mt-2"
           >
-            <div className="mb-3 border-b border-border-hairline pb-3">
-              <h2 className="text-base font-semibold">
-                <SlideTitle title={slides[index].title} />
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
-                {slides[index].blurb}
-              </p>
-            </div>
+            {desktopLocked ? (
+              <h2 className="sr-only">{slides[index].title}</h2>
+            ) : (
+              <div className="mb-3 border-b border-border-hairline pb-3">
+                <h2 className="text-base font-semibold">
+                  <SlideTitle title={slides[index].title} brandMark={brandMark} />
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
+                  {slides[index].blurb}
+                </p>
+              </div>
+            )}
             <div
               data-guide-navigation-toolbar
               className="flex w-full items-center gap-2"
@@ -933,16 +1029,21 @@ export function ProductMap({
                       mode === "mobile" ? "Mobile layout" : "Desktop layout"
                     }
                     title={
-                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                      mode === "mobile"
+                        ? "Mobile layout"
+                        : desktopLocked
+                          ? "Desktop layout is available on wider screens"
+                          : "Desktop layout"
                     }
                     aria-pressed={(mobile ? "mobile" : "desktop") === mode}
+                    disabled={mode === "desktop" && desktopLocked}
                     onClick={() => setDisplayMode(mode)}
                     className={cn(
-                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md",
+                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-40",
                       FOCUS_RING_CLASS,
                       (mobile ? "mobile" : "desktop") === mode
                         ? "bg-surface-selected text-foreground"
-                        : "text-muted-foreground hover:bg-state-hover",
+                        : "text-muted-foreground enabled:hover:bg-state-hover",
                     )}
                   >
                     <HugeiconsIcon

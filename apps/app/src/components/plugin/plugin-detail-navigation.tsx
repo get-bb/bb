@@ -4,10 +4,12 @@ import {
   Suspense,
   useCallback,
   useContext,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type Key,
 } from "react";
 import { PluginIcon } from "./PluginIcon";
@@ -21,6 +23,14 @@ import {
   type PluginDetailDestination,
   type PluginDetailOpener,
 } from "./plugin-detail-opener";
+
+import {
+  forgetClosedPanelTab,
+  getPanelTabOrder,
+  rememberClosedPanelTab,
+  setPanelTabOrder,
+  subscribePanelTabOrder,
+} from "@/components/secondary-panel/recentlyClosedPanelTabs";
 
 const LazyPluginDetailPaneView = lazy(() =>
   import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
@@ -42,6 +52,10 @@ interface PluginDetailPanelState {
   dismiss: () => void;
   close: (pluginId: string) => void;
   open: PluginDetailOpener;
+  restore: (entry: {
+    index: number;
+    destination: PluginDetailDestination;
+  }) => void;
   tabOrder: readonly string[];
   setTabOrder: (order: string[]) => void;
 }
@@ -49,12 +63,28 @@ interface PluginDetailPanelState {
 export const PluginDetailPanelContext =
   createContext<PluginDetailPanelState | null>(null);
 
-export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
+export function usePluginDetailPanelState(
+  resetKey: Key,
+  isFocused: boolean,
+  historyContextKey: string | null = null,
+) {
   const [destinations, setDestinations] = useState<PluginDetailDestination[]>(
     [],
   );
+  const destinationsRef = useRef(destinations);
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
-  const [tabOrder, setTabOrder] = useState<string[]>([]);
+  const localOrderId = useId();
+  const orderKey = historyContextKey ?? `${localOrderId}:${resetKey}`;
+  const subscribeOrder = useCallback(
+    (listener: () => void) => subscribePanelTabOrder(orderKey, listener),
+    [orderKey],
+  );
+  const getOrder = useCallback(() => getPanelTabOrder(orderKey), [orderKey]);
+  const tabOrder = useSyncExternalStore(subscribeOrder, getOrder, getOrder);
+  const setTabOrder = useCallback(
+    (order: string[]) => setPanelTabOrder(orderKey, order),
+    [orderKey],
+  );
   const orderedDestinations = useMemo(
     () =>
       arrangeByStoredOrder({
@@ -67,40 +97,74 @@ export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
   useLayoutEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
     setDestinations([]);
+    destinationsRef.current = [];
     // oxlint-disable-next-line react/set-state-in-effect
     setActivePluginId(null);
-    // oxlint-disable-next-line react/set-state-in-effect
-    setTabOrder([]);
   }, [resetKey]);
   const dismiss = useCallback(() => setActivePluginId(null), []);
-  const open = useCallback<PluginDetailOpener>((destination) => {
-    setDestinations((current) =>
-      current.some((entry) => entry.pluginId === destination.pluginId)
+  const open = useCallback<PluginDetailOpener>(
+    (destination) => {
+      if (historyContextKey !== null)
+        forgetClosedPanelTab(
+          historyContextKey,
+          `marketplace-plugin:${destination.pluginId}`,
+        );
+      const current = destinationsRef.current;
+      const next = current.some(
+        (entry) => entry.pluginId === destination.pluginId,
+      )
         ? current
-        : [...current, destination],
-    );
-    setActivePluginId(destination.pluginId);
-    return true;
-  }, []);
+        : [...current, destination];
+      destinationsRef.current = next;
+      setDestinations(next);
+      setActivePluginId(destination.pluginId);
+      return true;
+    },
+    [historyContextKey],
+  );
+  const restore = useCallback(
+    ({
+      destination,
+    }: {
+      index: number;
+      destination: PluginDetailDestination;
+    }) => {
+      open(destination);
+    },
+    [open],
+  );
   const close = useCallback(
     (pluginId: string) => {
       const index = orderedDestinations.findIndex(
         (entry) => entry.pluginId === pluginId,
       );
-      const remaining = orderedDestinations.filter(
-        (entry) => entry.pluginId !== pluginId,
+      const destination = destinationsRef.current.find(
+        (entry) => entry.pluginId === pluginId,
       );
+      if (destination === undefined) return;
+      const remaining = arrangeByStoredOrder({
+        items: destinationsRef.current.filter(
+          (entry) => entry.pluginId !== pluginId,
+        ),
+        getId: (entry) => `marketplace-plugin:${entry.pluginId}`,
+        storedOrder: tabOrder,
+      }).ordered;
+      destinationsRef.current = remaining;
+      if (historyContextKey !== null) {
+        rememberClosedPanelTab(historyContextKey, {
+          kind: "plugin-detail",
+          index,
+          destination,
+        });
+      }
       setDestinations(remaining);
-      setTabOrder((current) =>
-        current.filter((id) => id !== `marketplace-plugin:${pluginId}`),
-      );
       if (activePluginId === pluginId) {
         setActivePluginId(
           remaining[Math.min(index, remaining.length - 1)]?.pluginId ?? null,
         );
       }
     },
-    [activePluginId, orderedDestinations],
+    [activePluginId, historyContextKey, orderedDestinations, tabOrder],
   );
   usePublishPluginDetailOpener(open, isFocused);
   return useMemo(
@@ -110,10 +174,20 @@ export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
       dismiss,
       close,
       open,
+      restore,
       tabOrder,
       setTabOrder,
     }),
-    [activePluginId, orderedDestinations, dismiss, close, open, tabOrder],
+    [
+      activePluginId,
+      orderedDestinations,
+      dismiss,
+      close,
+      open,
+      restore,
+      tabOrder,
+      setTabOrder,
+    ],
   );
 }
 
@@ -128,6 +202,23 @@ export function usePluginDetailPanelProps(
     if (previousActiveTabId.current !== activeTabId) dismiss?.();
     previousActiveTabId.current = activeTabId;
   }, [activeTabId, dismiss]);
+  const visibleIds = [
+    ...props.tabs.map((tab) => tab.tab.id),
+    ...(details?.destinations.map(
+      (destination) => `marketplace-plugin:${destination.pluginId}`,
+    ) ?? []),
+  ];
+  const displayedOrder = details?.destinations.length
+    ? arrangeByStoredOrder({
+        items: visibleIds,
+        getId: (id) => id,
+        storedOrder: details.tabOrder,
+      }).ordered
+    : visibleIds;
+  const setTabOrder = details?.setTabOrder;
+  useLayoutEffect(() => {
+    setTabOrder?.(displayedOrder);
+  }, [displayedOrder, setTabOrder]);
   if (details === null || details.destinations.length === 0) return props;
   const active = details.activePluginId;
   const selectExisting = (select: () => void) => () => {

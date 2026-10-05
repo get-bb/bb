@@ -66,6 +66,7 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
   return {
     ...messageBase(args),
     kind: "user",
+    messageSeq: args.seq,
     initiator: args.initiator ?? "user",
     senderThreadId: null,
     systemMessageKind: "unlabeled",
@@ -133,6 +134,27 @@ function summarySourceMessageIds(
 }
 
 describe("groupCompletedTurnMessages", () => {
+  it("keeps a bb thread tell command out of the summary", () => {
+    const before = commandMessage({ id: "command-1", seq: 1 });
+    const sent = {
+      ...commandMessage({ id: "sent", seq: 2 }),
+      command: 'bb thread tell thr_wrkr234567 "Is it ready?"',
+    };
+    const after = commandMessage({ id: "command-2", seq: 3 });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([before, sent, after], undefined),
+    );
+
+    expect(summarySourceMessageIds(groups)).toEqual([
+      ["command-1"],
+      ["command-2"],
+    ]);
+    expect(groups.summaryItems).toContainEqual({
+      kind: "ungrouped-message",
+      message: sent,
+    });
+  });
+
   it("unwraps a singleton compaction group after a user message", () => {
     const user = userMessage({ id: "compact-request", seq: 1 });
     const compaction = compactionMessage({ id: "compaction", seq: 2 });

@@ -35,11 +35,13 @@ The recommended way to start using bb is the desktop app:
 **[Download the latest desktop app](https://github.com/get-bb/bb/releases/tag/desktop-latest)**
 
 The desktop app supports macOS on Apple Silicon (arm64). The Linux x64 AppImage
-is alpha: expect problems, and please report them. Intel Mac users should run bb
-with `npx` instead. On Windows, run bb inside
+and the Windows x64 installer are alpha: expect problems, and please report
+them. Intel Mac users should run bb with `npx` instead. Native Windows needs
+[Git for Windows](https://git-scm.com/download/win), which bb uses for Git and
+for environment setup scripts. You can also run bb inside
 [WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/windows/wsl/install):
-install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
-shell. Native Windows PowerShell and CMD are not supported.
+install WSL2 first, then run the `npx` command below from your WSL2 (Linux)
+shell.
 
 Early adopters can install
 **[bb Nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly)**
@@ -82,13 +84,17 @@ docs, start with
 
 ### Telemetry
 
-Production runs (the desktop app and `npx bb-app`) send anonymous usage
-telemetry (app starts, thread creation counts, user message counts, and plugin
-installs) to help us understand adoption. Identification is a random per-install
+Production runs (the desktop app, `npx bb-app`, and `pnpm start` checkouts) send
+anonymous usage telemetry (app starts, thread creation counts, user message
+counts, and plugin installs) to help us understand adoption. Each event carries
+the app version, how bb was installed (desktop, npm, or source checkout), and
+the OS release, CPU architecture, and Node version. Source checkouts report whether
+`origin` points to `github.com/get-bb/bb`, another repository, or is unavailable.
+Telemetry never includes Git commit hashes or remote URLs. Identification is a random per-install
 id stored in your data dir — no user, host, project, workspace, or message
 content is ever attached. Plugin install events name only public plugins
 (bundled plugins and `bb-community` marketplace entries); installs from a local
-path, a private git or npm source, or a third-party marketplace report no name. Development/source runs never send. Opt out any run with
+path, a private git or npm source, or a third-party marketplace report no name. Development runs (`pnpm dev`, `pnpm start:worktree`) never send. Opt out any run with
 `BB_TELEMETRY=false`. See
 [`apps/server/src/services/system/telemetry.ts`](./apps/server/src/services/system/telemetry.ts).
 
@@ -131,8 +137,15 @@ pnpm exec turbo run dev --filter=@bb/desktop
 The desktop shell connects to this checkout's running dev app. Stop each command
 with Ctrl-C in its terminal.
 
-To use the dev app from another machine over Tailscale, run `pnpm dev`, note the
-printed app port, and publish the loopback Vite listener:
+To use the dev app from another machine over Tailscale, start it with the
+Tailscale browser origin configured:
+
+```bash
+BB_APP_URL=https://<machine>.<tailnet>.ts.net pnpm dev
+```
+
+Note the printed app port, then publish the loopback Vite listener in another
+terminal:
 
 ```bash
 tailscale serve --bg --https=443 http://127.0.0.1:<app-port>

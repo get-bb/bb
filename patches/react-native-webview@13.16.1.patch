@@ -1,17 +1,19 @@
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-index 80c68034b193a47bedb56ca527352de9548e8ac6..774bda697582dcc2f1e3f5e90dda3c36861c5034 100644
+index 80c6803..cc9dd10 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-@@ -9,6 +9,7 @@ import android.view.Menu;
+@@ -9,6 +9,9 @@ import android.view.Menu;
  import android.view.MenuItem;
  import android.view.MotionEvent;
  import android.view.View;
 +import android.view.WindowInsets;
++import android.view.inputmethod.EditorInfo;
++import android.view.inputmethod.InputConnection;
  import android.webkit.JavascriptInterface;
  import android.webkit.ValueCallback;
  import android.webkit.WebChromeClient;
-@@ -17,6 +18,8 @@ import android.webkit.WebViewClient;
- 
+@@ -17,6 +20,8 @@ import android.webkit.WebViewClient;
+
  import androidx.annotation.NonNull;
  import androidx.annotation.Nullable;
 +import androidx.core.graphics.Insets;
@@ -19,10 +21,31 @@ index 80c68034b193a47bedb56ca527352de9548e8ac6..774bda697582dcc2f1e3f5e90dda3c36
  import androidx.webkit.JavaScriptReplyProxy;
  import androidx.webkit.WebMessageCompat;
  import androidx.webkit.WebViewCompat;
-@@ -130,6 +133,16 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+@@ -49,6 +54,8 @@ import java.util.Map;
+ import java.util.Set;
+
+ public class RNCWebView extends WebView implements LifecycleEventListener {
++    final RNCWebViewImagePaste imagePaste = new RNCWebViewImagePaste(this);
++    final RNCWebViewClipboard clipboard = new RNCWebViewClipboard(this);
+     protected @Nullable
+     String injectedJS;
+     protected @Nullable
+@@ -122,6 +129,11 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         cleanupCallbacksAndDestroy();
+     }
+
++    @Override
++    public InputConnection onCreateInputConnection(EditorInfo info) {
++        return imagePaste.wrap(super.onCreateInputConnection(info), info);
++    }
++
+     @Override
+     public boolean onTouchEvent(MotionEvent event) {
+         if (this.nestedScrollEnabled) {
+@@ -130,6 +142,16 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
          return super.onTouchEvent(event);
      }
- 
+
 +    @Override
 +    public WindowInsets onApplyWindowInsets(WindowInsets insets) {
 +        WindowInsets adjusted = new WindowInsetsCompat.Builder(
@@ -36,3 +59,560 @@ index 80c68034b193a47bedb56ca527352de9548e8ac6..774bda697582dcc2f1e3f5e90dda3c36
      @Override
      protected void onSizeChanged(int w, int h, int ow, int oh) {
          super.onSizeChanged(w, h, ow, oh);
+@@ -325,6 +347,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+     }
+
+     public void onMessage(String message, String sourceUrl) {
++        if (clipboard.receive(message, sourceUrl)) return;
+         ThemedReactContext reactContext = getThemedReactContext();
+         RNCWebView mWebView = this;
+
+@@ -416,6 +439,8 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+
+     @Override
+     public void destroy() {
++        imagePaste.destroy();
++        clipboard.destroy();
+         if (mWebChromeClient != null) {
+             mWebChromeClient.onHideCustomView();
+         }
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+index 0287e1c..5c9db56 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+@@ -87,9 +87,16 @@ public class RNCWebViewClient extends WebViewClient {
+       mLastLoadFailed = false;
+
+       RNCWebView reactWebView = (RNCWebView) webView;
++      reactWebView.imagePaste.cancelAll();
+       reactWebView.callInjectedJavaScriptBeforeContentLoaded();
+     }
+
++    @Override
++    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
++        WebResourceResponse image = ((RNCWebView) view).imagePaste.intercept(request);
++        return image == null ? super.shouldInterceptRequest(view, request) : image;
++    }
++
+     @Override
+     public boolean shouldOverrideUrlLoading(WebView view, String url) {
+         final RNCWebView rncWebView = (RNCWebView) view;
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java
+new file mode 100644
+index 0000000..973f675
+--- /dev/null
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java
+@@ -0,0 +1,192 @@
++package com.reactnativecommunity.webview;
++
++import android.content.ClipData;
++import android.content.ClipboardManager;
++import android.content.Context;
++import android.net.Uri;
++import android.os.SystemClock;
++import android.util.Log;
++import android.webkit.CookieManager;
++import android.webkit.MimeTypeMap;
++
++import androidx.core.content.FileProvider;
++
++import org.json.JSONObject;
++
++import java.io.File;
++import java.io.FileOutputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.net.HttpURLConnection;
++import java.net.URI;
++import java.net.URL;
++import java.nio.charset.StandardCharsets;
++import java.util.Locale;
++import java.util.UUID;
++import java.util.concurrent.atomic.AtomicBoolean;
++import java.util.concurrent.atomic.AtomicReference;
++
++final class RNCWebViewClipboard {
++    private static final int MAX_BYTES = 35 * 1024 * 1024;
++    private final RNCWebView webView;
++    private final AtomicBoolean busy = new AtomicBoolean();
++    private final AtomicReference<HttpURLConnection> connection = new AtomicReference<>();
++    private volatile boolean destroyed;
++
++    RNCWebViewClipboard(RNCWebView webView) {
++        this.webView = webView;
++    }
++
++    boolean receive(String raw, String sourceUrl) {
++        if (webView.injectedJSBeforeContentLoaded == null
++                || !webView.injectedJSBeforeContentLoaded.contains("copyTextAndImage")) return false;
++        try {
++            JSONObject message = new JSONObject(raw);
++            if (!"request".equals(message.optString("type"))) return false;
++            JSONObject request = message.getJSONObject("request");
++            if (!"clipboard".equals(request.optString("kind"))) return false;
++            String id = message.getString("id");
++            JSONObject payload = request.getJSONObject("payload");
++            String text = payload.getString("text");
++            String imageUrl = payload.getString("imageUrl");
++            if (id.isEmpty() || id.length() > 64 || text.length() > 100000) return false;
++            webView.post(() -> start(id, text, imageUrl, sourceUrl));
++            return true;
++        } catch (Exception error) {
++            return false;
++        }
++    }
++
++    private void start(String id, String text, String imageUrl, String sourceUrl) {
++        if (destroyed) return;
++        try {
++            URI page = new URI(webView.getUrl());
++            URI source = new URI(sourceUrl);
++            URI image = new URI(imageUrl);
++            if (!sameOrigin(page, source) || !sameOrigin(page, image)
++                    || image.getUserInfo() != null) throw new IOException("Image must be on the current server");
++            if (!busy.compareAndSet(false, true)) throw new IOException("An image copy is already running");
++            String cookie = CookieManager.getInstance().getCookie(imageUrl);
++            long deadline = SystemClock.elapsedRealtime() + 25000;
++            new Thread(() -> download(id, text, imageUrl, cookie, deadline), "BBClipboard").start();
++        } catch (Exception error) {
++            respond(id, false, error.getMessage());
++        }
++    }
++
++    private static boolean sameOrigin(URI left, URI right) {
++        String scheme = left.getScheme();
++        return ("https".equals(scheme) || "http".equals(scheme))
++                && scheme.equals(right.getScheme()) && left.getHost() != null
++                && left.getHost().equalsIgnoreCase(right.getHost())
++                && port(left) == port(right);
++    }
++
++    private static int port(URI uri) {
++        return uri.getPort() == -1 ? ("https".equals(uri.getScheme()) ? 443 : 80) : uri.getPort();
++    }
++
++    private void download(String id, String text, String url, String cookie, long deadline) {
++        File file = null;
++        HttpURLConnection http = null;
++        try {
++            http = (HttpURLConnection) new URL(url).openConnection();
++            connection.set(http);
++            http.setInstanceFollowRedirects(false);
++            http.setConnectTimeout(10000);
++            http.setReadTimeout(10000);
++            if (cookie != null) http.setRequestProperty("Cookie", cookie);
++            checkActive(deadline);
++            if (http.getResponseCode() != 200) throw new IOException("Image download failed");
++            String type = http.getContentType();
++            if (type == null) throw new IOException("Image type missing");
++            type = type.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
++            if (!type.startsWith("image/")) throw new IOException("Expected an image");
++            if (http.getContentLengthLong() > MAX_BYTES) throw new IOException("Image exceeds 35 MB");
++            String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(type);
++            if (extension == null) throw new IOException("Unsupported image type");
++            File directory = new File(webView.getContext().getCacheDir(), "bb-clipboard");
++            if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Image cache unavailable");
++            File[] oldFiles = directory.listFiles();
++            if (oldFiles != null) {
++                long cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L;
++                for (File old : oldFiles) if (old.lastModified() < cutoff) old.delete();
++            }
++            file = new File(directory, UUID.randomUUID() + "." + extension);
++            int total = 0;
++            try (InputStream input = http.getInputStream(); FileOutputStream output = new FileOutputStream(file)) {
++                byte[] bytes = new byte[16384];
++                while (true) {
++                    checkActive(deadline);
++                    int count = input.read(bytes);
++                    if (count == -1) break;
++                    total += count;
++                    if (total > MAX_BYTES) throw new IOException("Image exceeds 35 MB");
++                    output.write(bytes, 0, count);
++                }
++            }
++            if (total == 0 || (http.getContentLengthLong() >= 0 && total != http.getContentLengthLong())) {
++                throw new IOException("Incomplete image");
++            }
++            checkActive(deadline);
++            if (!text.isEmpty()) {
++                try (FileOutputStream output = new FileOutputStream(file.getPath() + ".txt")) {
++                    output.write(text.getBytes(StandardCharsets.UTF_8));
++                }
++            }
++            Uri uri = FileProvider.getUriForFile(webView.getContext(),
++                    webView.getContext().getPackageName() + ".fileprovider", file);
++            File completed = file;
++            String mimeType = type;
++            webView.post(() -> {
++                try {
++                    checkActive(deadline);
++                    ClipData clip = new ClipData("BB message", new String[]{mimeType}, new ClipData.Item(uri));
++                    ClipboardManager clipboard = (ClipboardManager) webView.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
++                    clipboard.setPrimaryClip(clip);
++                    respond(id, true, "");
++                } catch (Exception error) {
++                    completed.delete();
++                    new File(completed.getPath() + ".txt").delete();
++                    respond(id, false, error.getMessage());
++                } finally {
++                    busy.set(false);
++                }
++            });
++            file = null;
++        } catch (Exception error) {
++            Log.w("BBClipboard", "Could not copy message image", error);
++            respond(id, false, error.getMessage());
++            busy.set(false);
++        } finally {
++            if (file != null) {
++                file.delete();
++                new File(file.getPath() + ".txt").delete();
++            }
++            if (http != null) {
++                connection.compareAndSet(http, null);
++                http.disconnect();
++            }
++        }
++    }
++
++    private void checkActive(long deadline) throws IOException {
++        if (destroyed || SystemClock.elapsedRealtime() >= deadline) throw new IOException("Image copy expired");
++    }
++
++    private void respond(String id, boolean copied, String error) {
++        webView.post(() -> {
++            if (destroyed) return;
++            String response = copied ? "{ok:true,result:{copied:true}}"
++                    : "{ok:false,error:" + JSONObject.quote(error == null ? "Image copy failed" : error) + "}";
++            webView.evaluateJavascript("(function(){var n=window.bb&&window.bb.native;if(n&&n.__receive)n.__receive({type:'response',id:"
++                    + JSONObject.quote(id) + ",response:" + response + "});})()", null);
++        });
++    }
++
++    void destroy() {
++        destroyed = true;
++        HttpURLConnection http = connection.getAndSet(null);
++        if (http != null) http.disconnect();
++    }
++}
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewFileProvider.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewFileProvider.java
+index 919b3ad..dfaa44a 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewFileProvider.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewFileProvider.java
+@@ -1,7 +1,16 @@
+ package com.reactnativecommunity.webview;
+
++import android.content.ClipDescription;
++import android.content.res.AssetFileDescriptor;
++import android.net.Uri;
++import android.os.Bundle;
++import android.os.ParcelFileDescriptor;
++
+ import androidx.core.content.FileProvider;
+
++import java.io.FileNotFoundException;
++import java.io.IOException;
++
+ /**
+  * Providing a custom {@code FileProvider} prevents manifest {@code <provider>} name collisions.
+  * <p>
+@@ -9,6 +18,32 @@ import androidx.core.content.FileProvider;
+  */
+ public class RNCWebViewFileProvider extends FileProvider {
+
+-  // This class intentionally left blank.
++  @Override
++  public String[] getStreamTypes(Uri uri, String filter) {
++    if (uri.getPath() != null && uri.getPath().startsWith("/bb_clipboard/")
++        && filter.startsWith("text/") && ClipDescription.compareMimeTypes("text/plain", filter)) {
++      try (ParcelFileDescriptor descriptor = super.openFile(textUri(uri), "r")) {
++        return new String[]{"text/plain"};
++      } catch (IOException error) {
++        return null;
++      }
++    }
++    return super.getStreamTypes(uri, filter);
++  }
++
++  @Override
++  public AssetFileDescriptor openTypedAssetFile(Uri uri, String filter, Bundle options)
++      throws FileNotFoundException {
++    if (uri.getPath() != null && uri.getPath().startsWith("/bb_clipboard/")
++        && filter.startsWith("text/") && ClipDescription.compareMimeTypes("text/plain", filter)) {
++      return new AssetFileDescriptor(super.openFile(textUri(uri), "r"), 0,
++          AssetFileDescriptor.UNKNOWN_LENGTH);
++    }
++    return super.openTypedAssetFile(uri, filter, options);
++  }
++
++  private static Uri textUri(Uri uri) {
++    return uri.buildUpon().path(uri.getPath() + ".txt").build();
++  }
+
+ }
+\ No newline at end of file
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewImagePaste.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewImagePaste.java
+new file mode 100644
+index 0000000..19400bf
+--- /dev/null
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewImagePaste.java
+@@ -0,0 +1,248 @@
++package com.reactnativecommunity.webview;
++
++import android.content.ContentResolver;
++import android.content.res.AssetFileDescriptor;
++import android.database.Cursor;
++import android.net.Uri;
++import android.os.CancellationSignal;
++import android.provider.OpenableColumns;
++import android.system.ErrnoException;
++import android.system.Os;
++import android.system.OsConstants;
++import android.system.StructPollfd;
++import android.util.Log;
++import android.view.inputmethod.EditorInfo;
++import android.view.inputmethod.InputConnection;
++import android.webkit.MimeTypeMap;
++import android.webkit.WebResourceRequest;
++import android.webkit.WebResourceResponse;
++
++import androidx.core.view.inputmethod.EditorInfoCompat;
++import androidx.core.view.inputmethod.InputConnectionCompat;
++import androidx.core.view.inputmethod.InputContentInfoCompat;
++
++import org.json.JSONObject;
++
++import java.io.ByteArrayInputStream;
++import java.io.FilterInputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.util.Collections;
++import java.util.Map;
++import java.util.UUID;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicBoolean;
++import java.util.concurrent.atomic.AtomicReference;
++
++final class RNCWebViewImagePaste {
++    private static final int MAX_BYTES = 35 * 1024 * 1024;
++    private static final String PATH = "/__bb_keyboard_image/";
++    private final RNCWebView webView;
++    private volatile boolean destroyed;
++    private final Map<String, Transfer> transfers = new ConcurrentHashMap<>();
++
++    RNCWebViewImagePaste(RNCWebView webView) {
++        this.webView = webView;
++    }
++
++    InputConnection wrap(InputConnection connection, EditorInfo info) {
++        if (connection == null || webView.injectedJSBeforeContentLoaded == null
++                || !webView.injectedJSBeforeContentLoaded.contains("__beginImagePaste")) {
++            return connection;
++        }
++        EditorInfoCompat.setContentMimeTypes(info, new String[]{"image/*"});
++        return InputConnectionCompat.createWrapper(connection, info, (content, flags, options) -> {
++            if (!content.getDescription().hasMimeType("image/*")
++                    || !"content".equals(content.getContentUri().getScheme())) return false;
++            boolean granted = (flags & InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0;
++            try {
++                if (granted) content.requestPermission();
++                if (!webView.post(() -> receive(content, granted))) {
++                    if (granted) content.releasePermission();
++                    return false;
++                }
++                return true;
++            } catch (Exception error) {
++                Log.w("BBImagePaste", "Could not receive keyboard image", error);
++                if (granted) content.releasePermission();
++                return false;
++            }
++        });
++    }
++
++    private void receive(InputContentInfoCompat content, boolean granted) {
++        if (destroyed) {
++            if (granted) content.releasePermission();
++            return;
++        }
++        Uri page = Uri.parse(webView.getUrl() == null ? "" : webView.getUrl());
++        if ((!"https".equals(page.getScheme()) && !"http".equals(page.getScheme()))
++                || transfers.size() >= 4) {
++            if (granted) content.releasePermission();
++            return;
++        }
++        String id = UUID.randomUUID().toString();
++        String url = page.buildUpon().path(PATH + id).clearQuery().fragment(null).build().toString();
++        Transfer transfer = new Transfer(id, url, content, granted);
++        transfers.put(url, transfer);
++        webView.postDelayed(transfer.expire, 30000);
++        String begin = "(function(){var n=window.bb&&window.bb.native;return !!(n&&n.__beginImagePaste&&n.__beginImagePaste("
++                + JSONObject.quote(id) + "," + JSONObject.quote(url) + "));})()";
++        webView.evaluateJavascript(begin, accepted -> {
++            if (!"true".equals(accepted)) transfer.complete(null);
++        });
++    }
++
++    WebResourceResponse intercept(WebResourceRequest request) {
++        String path = request.getUrl().getPath();
++        if (path == null || !path.startsWith(PATH)) return null;
++        Transfer transfer = transfers.get(request.getUrl().toString());
++        if (transfer == null || !"GET".equals(request.getMethod())
++                || !transfer.claimed.compareAndSet(false, true)) return unavailable();
++        try {
++            ContentResolver resolver = webView.getContext().getContentResolver();
++            Uri uri = transfer.content.getContentUri();
++            String type = resolver.getType(uri);
++            if (type == null) {
++                for (int i = 0; i < transfer.content.getDescription().getMimeTypeCount(); i++) {
++                    String candidate = transfer.content.getDescription().getMimeType(i);
++                    if (candidate.startsWith("image/")) { type = candidate; break; }
++                }
++            }
++            if (type == null || !type.startsWith("image/")) throw new IOException("Expected image");
++            String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(type);
++            String name = "clipboard-image" + (extension == null ? "" : "." + extension);
++            try (Cursor cursor = resolver.query(uri, new String[]{OpenableColumns.DISPLAY_NAME},
++                    null, null, null, transfer.cancellation)) {
++                if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
++                    String candidate = cursor.getString(0);
++                    if (!candidate.trim().isEmpty()) name = candidate;
++                }
++            } catch (Exception error) {
++                Log.w("BBImagePaste", "Could not read image filename", error);
++            }
++            transfer.cancellation.throwIfCanceled();
++            AssetFileDescriptor descriptor = resolver.openAssetFileDescriptor(uri, "r", transfer.cancellation);
++            if (descriptor == null) throw new IOException("Image unavailable");
++            InputStream input;
++            try {
++                input = descriptor.createInputStream();
++            } catch (Exception error) {
++                descriptor.close();
++                throw error;
++            }
++            transfer.stream.set(input);
++            if (transfer.closed.get()) {
++                input.close();
++                throw new IOException("Image transfer expired");
++            }
++            JSONObject image = new JSONObject();
++            image.put("name", name);
++            image.put("type", type);
++            StructPollfd poll = new StructPollfd();
++            poll.fd = descriptor.getParcelFileDescriptor().getFileDescriptor();
++            poll.events = (short) OsConstants.POLLIN;
++            StructPollfd[] descriptors = new StructPollfd[]{poll};
++            InputStream bounded = new FilterInputStream(input) {
++                private int total;
++                private boolean ended;
++
++                @Override
++                public int read() throws IOException {
++                    byte[] single = new byte[1];
++                    return read(single, 0, 1) == -1 ? -1 : single[0] & 0xff;
++                }
++
++                @Override
++                public int read(byte[] bytes, int offset, int length) throws IOException {
++                    if (length == 0) return 0;
++                    if (ended) return -1;
++                    if (transfer.closed.get()) throw new IOException("Image transfer expired");
++                    try {
++                        while (!transfer.closed.get() && Os.poll(descriptors, 250) == 0) {}
++                        if (transfer.closed.get()) throw new IOException("Image transfer expired");
++                        int count = in.read(bytes, offset, Math.min(length, MAX_BYTES - total + 1));
++                        if (count == -1) {
++                            ended = true;
++                            transfer.complete(total == 0 ? null : image);
++                        } else {
++                            total += count;
++                            if (total > MAX_BYTES) throw new IOException("Image exceeds 35 MB");
++                        }
++                        return count;
++                    } catch (ErrnoException error) {
++                        transfer.complete(null);
++                        throw new IOException(error);
++                    } catch (IOException error) {
++                        transfer.complete(null);
++                        throw error;
++                    }
++                }
++
++                @Override
++                public void close() {
++                    transfer.complete(null);
++                }
++            };
++            return new WebResourceResponse(type, null, 200, "OK",
++                    Collections.singletonMap("Cache-Control", "no-store"), bounded);
++        } catch (Exception error) {
++            Log.w("BBImagePaste", "Could not stream keyboard image", error);
++            transfer.complete(null);
++            return unavailable();
++        }
++    }
++
++    void cancelAll() {
++        for (Transfer transfer : transfers.values()) transfer.complete(null);
++    }
++
++    void destroy() {
++        destroyed = true;
++        cancelAll();
++    }
++
++    private static WebResourceResponse unavailable() {
++        return new WebResourceResponse("text/plain", "utf-8", 410, "Gone",
++                Collections.singletonMap("Cache-Control", "no-store"), new ByteArrayInputStream(new byte[0]));
++    }
++
++    private final class Transfer {
++        final String id;
++        final String url;
++        final InputContentInfoCompat content;
++        final boolean granted;
++        final CancellationSignal cancellation = new CancellationSignal();
++        final AtomicBoolean claimed = new AtomicBoolean();
++        final AtomicBoolean closed = new AtomicBoolean();
++        final AtomicReference<InputStream> stream = new AtomicReference<>();
++        final Runnable expire = () -> complete(null);
++
++        Transfer(String id, String url, InputContentInfoCompat content, boolean granted) {
++            this.id = id;
++            this.url = url;
++            this.content = content;
++            this.granted = granted;
++        }
++
++        void complete(JSONObject image) {
++            if (!closed.compareAndSet(false, true)) return;
++            transfers.remove(url);
++            webView.removeCallbacks(expire);
++            cancellation.cancel();
++            InputStream input = stream.getAndSet(null);
++            if (input != null) {
++                try { input.close(); } catch (IOException error) {
++                    Log.w("BBImagePaste", "Could not close keyboard image", error);
++                }
++            }
++            if (granted) content.releasePermission();
++            String payload = image == null ? "null" : image.toString();
++            webView.post(() -> {
++                if (!destroyed) webView.evaluateJavascript(
++                        "(function(){var n=window.bb&&window.bb.native;if(n&&n.__finishImagePaste)n.__finishImagePaste("
++                                + JSONObject.quote(id) + "," + payload + ");})()", null);
++            });
++        }
++    }
++}
+diff --git a/android/src/main/res/xml/file_provider_paths.xml b/android/src/main/res/xml/file_provider_paths.xml
+index aba5f56..7ee0a5e 100644
+--- a/android/src/main/res/xml/file_provider_paths.xml
++++ b/android/src/main/res/xml/file_provider_paths.xml
+@@ -1,5 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <paths>
++  <cache-path name="bb_clipboard" path="bb-clipboard/" />
+   <external-path
+     name="shared"
+     path="." />

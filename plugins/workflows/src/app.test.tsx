@@ -134,7 +134,12 @@ describe("workflow composer banner", () => {
       },
     );
 
-    await slot.findByText("Review the release");
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    );
+    expect(slot.getByText("Review the release")).toBeTruthy();
     expect(slot.getByText("Queue release notes")).toBeTruthy();
     expect(slot.getByText("Review")).toBeTruthy();
     expect(slot.getByText("1/2 agents")).toBeTruthy();
@@ -146,7 +151,94 @@ describe("workflow composer banner", () => {
     ).toBeTruthy();
   });
 
-  it("matches the native collapsed summary and expands with an accessible toggle", async () => {
+  it("auto-collapses multiple active runs into a stack that expands to every run", async () => {
+    const runs = [1, 2, 3, 4].map((index) => ({
+      ...run,
+      id: `wfr_${index}1111111-1111-4111-8111-111111111111`,
+      name: `Build ${index}`,
+    }));
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs }) },
+      },
+    );
+
+    const stack = await slot.findByRole("button", {
+      name: "4 workflows running. Show all",
+    });
+    expect(stack.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.getByText("+3")).toBeTruthy();
+    expect(
+      slot.container.querySelectorAll("[data-prompt-stack-peek]"),
+    ).toHaveLength(2);
+    expect(slot.queryAllByRole("region", { name: "Workflow" })).toHaveLength(0);
+
+    fireEvent.click(stack);
+    expect(slot.getAllByRole("region", { name: "Workflow" })).toHaveLength(4);
+    const collapse = slot.getByRole("button", { name: "Collapse 4 workflows" });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(collapse);
+    expect(
+      slot.container.querySelectorAll("[data-prompt-stack-peek]"),
+    ).toHaveLength(0);
+
+    fireEvent.click(collapse);
+    expect(slot.queryAllByRole("region", { name: "Workflow" })).toHaveLength(0);
+    expect(document.activeElement).toBe(
+      slot.getByRole("button", { name: "4 workflows running. Show all" }),
+    );
+  });
+
+  it("re-collapses the stack after every run finishes and new runs start", async () => {
+    const runs = [1, 2].map((index) => ({
+      ...run,
+      id: `wfr_${index}1111111-1111-4111-8111-111111111111`,
+      name: `Build ${index}`,
+    }));
+    let current: WorkflowRunView[] = runs;
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs: current }) },
+      },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    );
+    expect(
+      slot.getByRole("button", { name: "Collapse 2 workflows" }),
+    ).toBeTruthy();
+
+    current = [];
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
+    await waitFor(() =>
+      expect(
+        slot.queryByRole("button", { name: "Collapse 2 workflows" }),
+      ).toBeNull(),
+    );
+
+    current = runs;
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
+    expect(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("expands from the card and collapses from the chevron row with focus following", async () => {
     const slot = renderSlot(
       banner,
       {},
@@ -178,9 +270,16 @@ describe("workflow composer banner", () => {
     expect(body?.className).toContain("grid-rows-[1fr]");
     expect(slot.getByText("Adversarial review")).toBeTruthy();
     expect(slot.getByRole("button", { name: /Review0\/1/ })).toBeTruthy();
-    expect(
-      slot.container.querySelector('[data-icon="ChevronDown"].rotate-180'),
-    ).toBeTruthy();
+    const collapse = slot.getByRole("button", {
+      name: "Collapse workflow Review the release",
+    });
+    expect(document.activeElement).toBe(collapse);
+
+    fireEvent.click(collapse);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(body?.getAttribute("aria-hidden")).toBe("true");
+    expect(body?.hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(toggle);
   });
 
   it("preserves each run's expansion state across polls", async () => {

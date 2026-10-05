@@ -61,6 +61,7 @@ const GUIDE_ENTRY: PluginCatalogSearchEntry = {
   repositoryUrl: null,
   installed: false,
   conflictingInstallSource: null,
+  installedByDefault: false,
   installs: null,
   compatible: true,
   incompatibleReason: null,

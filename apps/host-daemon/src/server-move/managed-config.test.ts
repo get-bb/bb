@@ -52,7 +52,11 @@ describe("rewriteManagedConfigServer", () => {
       serverUrl: "https://new.example.test",
       serverHeaders: { "x-bb-connect-machine": "bbcm_new" },
     });
-    expect((await stat(join(dataDir, "config.json"))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(join(dataDir, "config.json"))).mode & 0o777).toBe(
+        0o600,
+      );
+    }
   });
 
   it("refuses to rewrite an invalid config.json", async () => {

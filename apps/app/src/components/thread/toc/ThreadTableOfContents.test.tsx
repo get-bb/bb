@@ -79,6 +79,7 @@ function userConversationRow(index = 1): TimelineConversationRow {
     turnId: `turn_${index}`,
     sourceSeqStart: index,
     sourceSeqEnd: index,
+    messageSeq: index,
     startedAt: index,
     createdAt: index,
     kind: "conversation",
@@ -314,6 +315,7 @@ beforeEach(() => {
     scrollElementIntoView,
     scrollElementIntoViewClampedToMaxScroll: vi.fn(),
     captureScrollAnchor: vi.fn(),
+    holdContentPosition: vi.fn(),
   } as unknown as ReturnType<typeof useBottomAnchoredScroll>);
 
   setOutline(undefined);
@@ -824,7 +826,8 @@ describe("ThreadTableOfContents", () => {
   });
 
   it("scrolls straight to a message already loaded in the window", async () => {
-    scrollElement.appendChild(timelineRowElement("u2"));
+    const target = timelineRowElement("u2");
+    scrollElement.appendChild(target);
     const loadOlder = vi.fn();
     const onNavigateToRow = vi.fn();
     setOutline([
@@ -860,6 +863,7 @@ describe("ThreadTableOfContents", () => {
     fireEvent.click(await screen.findByText("Loaded question"));
 
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
+    expect(target.classList.contains("bb-search-flash")).toBe(true);
     expect(onNavigateToRow).toHaveBeenCalledWith("u2");
     expect(loadOlder).not.toHaveBeenCalled();
   });

@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
+import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
-  PromptStackCardChevron,
 } from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
@@ -11,6 +11,11 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 
 const HEADER_GROUP_CLASS = activityRowClass(
   "active",
@@ -52,6 +57,7 @@ export function CollapsibleActiveStackCard({
   dismiss,
   children,
 }: CollapsibleActiveStackCardProps) {
+  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
   return (
     <PromptStackCard
       ariaLabel={cardAriaLabel}
@@ -64,13 +70,17 @@ export function CollapsibleActiveStackCard({
         className={HEADER_GROUP_CLASS}
       >
         <button
+          ref={focus.triggerRef}
           type="button"
           id={toggleId}
           aria-expanded={isExpanded}
           aria-controls={bodyId}
           aria-label={toggleAriaLabel}
-          onClick={onToggle}
-          className={HEADER_BUTTON_CLASS}
+          onClick={focus.onTriggerClick}
+          className={cn(
+            HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
           <Icon
             name={iconName}
@@ -85,10 +95,7 @@ export function CollapsibleActiveStackCard({
           >
             {title}
           </span>
-          <PromptStackCardChevron
-            isExpanded={isExpanded}
-            className={activityIconClass("active")}
-          />
+          <PromptStackHoverChevron isExpanded={isExpanded} />
         </button>
         {dismiss ? (
           <button
@@ -106,20 +113,17 @@ export function CollapsibleActiveStackCard({
           </button>
         ) : null}
       </div>
-      <section
+      <AnimatedDisclosureBody
         id={bodyId}
-        role="region"
-        aria-labelledby={toggleId}
-        aria-hidden={!isExpanded}
-        className={cn(
-          "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
-          isExpanded
-            ? "grid-rows-[1fr] border-t border-border opacity-100"
-            : "pointer-events-none grid-rows-[0fr] opacity-0",
-        )}
+        labelledBy={toggleId}
+        isExpanded={isExpanded}
+        collapsedBorder="none"
+        collapseLabel={`Collapse ${title}`}
+        collapseRef={focus.collapseRef}
+        onCollapse={focus.onCollapseClick}
       >
-        <div className="overflow-hidden bg-popover">{children}</div>
-      </section>
+        {children}
+      </AnimatedDisclosureBody>
     </PromptStackCard>
   );
 }

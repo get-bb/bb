@@ -1,5 +1,6 @@
 import { cacheKey, serveWithCache, shellCacheKey } from "../src/cache.js";
 import { fetchThroughRelay } from "../src/relay.js";
+import { requestForTunnelDo, responseForVisitor } from "../src/worker.js";
 
 export { TunnelDO } from "../src/tunnel-do.js";
 
@@ -84,13 +85,21 @@ export default {
         stub.fetch(originRequest)
       );
     };
-    return (
+    const response = (
       await serveWithCache(request, NAMESPACE, ctx, (init) => {
-        if (init === undefined) return fetchOrigin(request);
+        if (init === undefined)
+          return fetchOrigin(requestForTunnelDo(request, null));
         const headers = new Headers(request.headers);
         headers.set("if-none-match", init.ifNoneMatch);
-        return fetchOrigin(new Request(request, { headers }));
+        return fetchOrigin(
+          requestForTunnelDo(new Request(request, { headers }), null),
+        );
       })
     ).response;
+    return responseForVisitor(
+      response,
+      url.pathname === "/install.sh" ? url.pathname : null,
+      [],
+    );
   },
 };

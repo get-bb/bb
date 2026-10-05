@@ -1446,8 +1446,8 @@ export function listLatestThreadStateEventRowsByThreadIds(
         candidate.type <> 'thread/extensionState/updated'
         OR json_extract(candidate.data, '$.kind') = ${args.kind}
       )`;
-      const threadIdList = sql.join(
-        threadIds.map((threadId) => sql`${threadId}`),
+      const requestedThreads = sql.join(
+        threadIds.map((threadId) => sql`(${threadId})`),
         sql`, `,
       );
       return db
@@ -1455,17 +1455,16 @@ export function listLatestThreadStateEventRowsByThreadIds(
         .from(events)
         .where(
           sql`${events}.rowid IN (
-        SELECT latest_state.rowid
-        FROM ${events} AS latest_state INDEXED BY events_thread_state_thread_sequence_idx
-        WHERE latest_state.thread_id IN (${threadIdList})
-          AND latest_state.type ${stateTypesPredicate}
-          AND latest_state.sequence = (
-            SELECT MAX(candidate.sequence)
-            FROM ${events} AS candidate INDEXED BY events_thread_state_thread_sequence_idx
-            WHERE candidate.thread_id = latest_state.thread_id
-              AND candidate.type ${stateTypesPredicate}
-              AND ${kindPredicate}
-          )
+        SELECT (
+          SELECT candidate.rowid
+          FROM ${events} AS candidate INDEXED BY events_thread_state_thread_sequence_idx
+          WHERE candidate.thread_id = requested.column1
+            AND candidate.type ${stateTypesPredicate}
+            AND ${kindPredicate}
+          ORDER BY candidate.sequence DESC
+          LIMIT 1
+        )
+        FROM (VALUES ${requestedThreads}) AS requested
       )`,
         )
         .all();
@@ -2690,22 +2689,129 @@ export function listStoredConversationOutlineEventRows(
   db: DbConnection,
   args: ListStoredConversationOutlineEventRowsArgs,
 ): StoredEventRow[] {
+  return selectStoredConversationOutlineEventRows(db, args, false);
+}
+
+export function listStoredRootConversationOutlineEventRows(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowsArgs,
+): StoredEventRow[] {
+  return selectStoredConversationOutlineEventRows(db, args, true);
+}
+
+export function getStoredConversationOutlineProjectionState(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowsArgs & {
+    classificationSequenceStart: number;
+    summaryCompactionDeltaThreshold: number;
+  },
+) {
+  const crossTurnState = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.classificationSequenceStart),
+        inArray(events.type, [
+          "item/started",
+          "item/completed",
+          "item/backgroundTask/progress",
+          "item/backgroundTask/completed",
+          "item/delegation/progress",
+          "item/delegation/completed",
+        ]),
+        inArray(events.itemKind, ["backgroundTask", "delegation"]),
+      ),
+    )
+    .limit(1)
+    .get();
+  const acceptedNestedRoot = db
+    .select({ found: sql<number>`1` })
+    .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.classificationSequenceStart),
+        inArray(events.type, ["turn/input/accepted", "turn/started"]),
+        sql`EXISTS (
+          SELECT 1 FROM events AS nested_start
+            INDEXED BY events_thread_turn_type_item_sequence_idx
+          WHERE nested_start.thread_id = ${events.threadId}
+            AND nested_start.turn_id = ${events.turnId}
+            AND nested_start.type = 'turn/started'
+            AND nested_start.parent_tool_call_id IS NOT NULL
+        ) AND EXISTS (
+          SELECT 1 FROM events AS accepted_root
+          WHERE accepted_root.thread_id = ${events.threadId}
+            AND accepted_root.turn_id = ${events.turnId}
+            AND accepted_root.type = 'turn/input/accepted'
+            AND EXISTS (
+              SELECT 1 FROM events AS root_request
+              WHERE root_request.thread_id = accepted_root.thread_id
+                AND root_request.type = 'client/turn/requested'
+                AND json_extract(root_request.data, '$.requestId') = json_extract(accepted_root.data, '$.clientRequestId')
+                AND json_extract(root_request.data, '$.target.kind') IN ('new-turn', 'thread-start')
+            )
+        )`,
+      ),
+    )
+    .limit(1)
+    .get();
+  const compactionDelta = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.sequenceStart),
+        eq(events.type, "item/agentMessage/delta"),
+      ),
+    )
+    .offset(args.summaryCompactionDeltaThreshold - 1)
+    .limit(1)
+    .get();
+  return {
+    includeNestedEvents:
+      crossTurnState !== undefined || acceptedNestedRoot !== undefined,
+    summaryCompactionEnabled: compactionDelta !== undefined,
+  };
+}
+
+function selectStoredConversationOutlineEventRows(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowsArgs,
+  rootOnly: boolean,
+): StoredEventRow[] {
+  const rootWhere = rootOnly
+    ? and(
+        isNull(events.parentToolCallId),
+        sql`NOT EXISTS (
+          SELECT 1 FROM events AS nested_turn_started
+            INDEXED BY events_thread_turn_type_item_sequence_idx
+          WHERE nested_turn_started.thread_id = ${events.threadId}
+            AND nested_turn_started.turn_id = ${events.turnId}
+            AND nested_turn_started.type = 'turn/started'
+            AND nested_turn_started.parent_tool_call_id IS NOT NULL
+        )`,
+      )
+    : undefined;
   const lifecycleRows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
-      storedConversationOutlineLifecycleWhere(
-        args.threadId,
-        args.sequenceStart,
+      and(
+        rootWhere,
+        storedConversationOutlineLifecycleWhere(args.threadId, args.sequenceStart),
       ),
     );
   const completedConversationRows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
-      storedConversationOutlineCompletedWhere(
-        args.threadId,
-        args.sequenceStart,
+      and(
+        rootWhere,
+        storedConversationOutlineCompletedWhere(args.threadId, args.sequenceStart),
       ),
     );
   const structuralRows = db
@@ -2713,6 +2819,7 @@ export function listStoredConversationOutlineEventRows(
     .from(events)
     .where(
       and(
+        rootWhere,
         storedConversationOutlineStructuralWhere(
           args.threadId,
           args.sequenceStart,
@@ -2852,13 +2959,15 @@ export function listTimelineOrderingContext(
       clientRequestId: sql<
         string | null
       >`json_extract(${events.data}, '$.clientRequestId')`,
-      initiator: sql<
-        string | null
-      >`json_extract(${events.data}, '$.initiator')`,
       expectedTurnId: sql<
         string | null
       >`json_extract(${events.data}, '$.target.expectedTurnId')`,
-      hasInput: sql<number>`CASE WHEN ${events.type} = 'client/turn/requested' AND ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END`,
+      hasVisibleUserInput: sql<number>`CASE
+        WHEN ${events.type} = 'client/turn/requested'
+          AND json_extract(${events.data}, '$.initiator') = 'user'
+        THEN CASE WHEN ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END
+        ELSE 0
+      END`,
     })
     .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
     .where(
@@ -2873,27 +2982,25 @@ export function listTimelineOrderingContext(
     .all();
 }
 
-export function hasTimelineGroupingContextRowsInRange(
+export function getTimelineGroupingContextChangesInRange(
   db: DbConnection,
   args: { afterSequence: number; threadId: string; throughSequence: number },
-): boolean {
+): { ordering: boolean; parented: boolean } {
   const row = db
-    .select({ sequence: sql<number>`${events.sequence}` })
+    .select({
+      ordering: sql<number>`COALESCE(MAX(CASE WHEN ${inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES])} THEN 1 ELSE 0 END), 0)`,
+      parented: sql<number>`COALESCE(MAX(CASE WHEN ${events.parentToolCallId} is not null THEN 1 ELSE 0 END), 0)`,
+    })
     .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
     .where(
       and(
         eq(events.threadId, args.threadId),
         gt(events.sequence, args.afterSequence),
         lte(events.sequence, args.throughSequence),
-        or(
-          inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES]),
-          isNotNull(events.parentToolCallId),
-        ),
       ),
     )
-    .limit(1)
     .get();
-  return row !== undefined;
+  return { ordering: row?.ordering === 1, parented: row?.parented === 1 };
 }
 
 export function listStoredEventRowsInSequenceRange(
@@ -2926,9 +3033,14 @@ export function getFirstParentedTimelineBoundarySequence(
   args: { threadId: string; sequenceStart: number; maxSeq: number },
 ): number | null {
   const result = db.get<{ sequence: number | null }>(sql`
-    WITH parents AS MATERIALIZED (
+    WITH nested_history AS MATERIALIZED (
+      SELECT 1
+      FROM events INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+      WHERE thread_id = ${args.threadId} AND parent_tool_call_id IS NOT NULL
+      LIMIT 1
+    ), parents AS MATERIALIZED (
       SELECT item_id, turn_id, min(sequence) AS start
-      FROM events INDEXED BY events_delegating_item_lookup_idx
+      FROM nested_history CROSS JOIN events INDEXED BY events_delegating_item_lookup_idx
       WHERE thread_id = ${args.threadId}
         AND item_kind IN ('toolCall', 'delegation')
         AND parent_tool_call_id IS NULL

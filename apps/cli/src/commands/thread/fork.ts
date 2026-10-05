@@ -113,7 +113,10 @@ export function registerForkCommand(
       "--prompt-file <path>",
       `Read the first prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
     )
-    .option("--title <title>", "Thread title")
+    .option(
+      "--title <title>",
+      'Thread title; idle forks default to the numbered source title, e.g. "(1) foo"',
+    )
     .option(
       "--source-seq-end <seq>",
       "Fork after the source turn containing this event sequence",

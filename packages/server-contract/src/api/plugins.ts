@@ -1,6 +1,7 @@
 import {
   jsonValueSchema,
   pluginCatalogCategoryIdSchema,
+  pluginMarketplaceCategorySchema,
   pluginMarketplaceCollectionIdSchema,
   pluginMarketplaceCollectionPluginIdSchema,
 } from "@bb/domain";
@@ -409,6 +410,7 @@ export const pluginCatalogSearchResultSchema = z.object({
   official: z.boolean(),
   author: pluginCatalogAuthorSchema.nullable(),
   installed: z.boolean(),
+  installedByDefault: z.boolean().default(false),
   conflictingInstallSource: z.string().nullable(),
   installs: z.number().int().nonnegative().nullable().default(null),
   compatible: z.boolean(),
@@ -421,6 +423,7 @@ export type PluginCatalogSearchResult = z.infer<
 export const pluginCatalogSearchResponseSchema = z.object({
   results: z.array(pluginCatalogSearchResultSchema),
   collections: z.array(pluginCatalogCollectionSchema),
+  categories: z.array(pluginMarketplaceCategorySchema).default([]),
 });
 export type PluginCatalogSearchResponse = z.infer<
   typeof pluginCatalogSearchResponseSchema

@@ -103,15 +103,17 @@ import {
   type ClaudeInteractiveResponse,
   type ClaudePermissionMode,
   type ClaudePermissionRequestApprovalParams,
+  type ClaudePermissionRule,
   type ClaudeSuggestedPermissionUpdate,
   type ClaudeUserQuestionInput,
   type ClaudeUserQuestionRequestParams,
+  CLAUDE_BASH_TOOL_NAME,
   CLAUDE_EXIT_PLAN_MODE_TOOL_NAME,
   CLAUDE_USER_QUESTION_TOOL_NAME,
   claudeExitPlanModeInputSchema,
   claudeSuggestedPermissionUpdateSchema,
   claudeUserQuestionInputSchema,
-  shouldRequestClaudePermissionApproval,
+  getSuggestedRules,
   toPendingInteractionPermissionProfile,
 } from "../interactive-contract.js";
 
@@ -186,6 +188,7 @@ interface PendingPermissionRequest extends PendingInteractiveRequestBase {
   kind: "permission_request";
   originalInput: Record<string, unknown>;
   permissions: PendingInteractionGrantedPermissionProfile;
+  suggestedRules: ClaudePermissionRule[];
   toolName: string;
 }
 
@@ -317,13 +320,6 @@ interface ReplaceThreadSessionBeforeNextTurnArgs {
 
 interface ClaudeCodeThreadStopResult {
   ok: true;
-}
-
-interface ClaudeCanUseToolDecisionContext {
-  blockedPath: string | undefined;
-  decisionReason: string | undefined;
-  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
-  toolName: string;
 }
 
 interface BuildInteractiveRequestParamsArgs {
@@ -472,7 +468,10 @@ function applySandboxSetting(
     return;
   }
   sessionOptions.sandboxEnabled = enabled;
-  const sandbox = buildWorkspaceWriteSandbox(sessionOptions);
+  const sandbox = buildWorkspaceWriteSandbox({
+    ...sessionOptions,
+    permissionMode: attachment.approvedPlanPermissionMode,
+  });
   if (sandbox) {
     attachment.sessionOptions.sandbox = sandbox;
   } else {
@@ -484,6 +483,63 @@ function applySandboxSetting(
       showRuntimeNote: false,
     };
   }
+}
+
+function applyPermissionSettings(
+  attachment: ThreadAttachment,
+  params: TurnStartParams | TurnSteerParams,
+): boolean {
+  const construction = attachment.sessionConstructionConfig.sessionOptions;
+  const writeRoots =
+    params.permissionScope === "workspace"
+      ? params.additionalWorkspaceWriteRoots
+      : [];
+  if (
+    attachment.approvedPlanPermissionMode === params.permissionMode &&
+    construction.permissionScope === params.permissionScope &&
+    isDeepStrictEqual(
+      construction.additionalWorkspaceWriteRoots ?? [],
+      writeRoots,
+    )
+  ) {
+    return false;
+  }
+  const permissionMode =
+    attachment.permissionMode === "plan" ? "plan" : params.permissionMode;
+  construction.permissionMode = permissionMode;
+  construction.permissionScope = params.permissionScope;
+  construction.additionalWorkspaceWriteRoots = writeRoots;
+  attachment.permissionMode = permissionMode;
+  attachment.approvedPlanPermissionMode = params.permissionMode;
+  attachment.sessionPermissionGrants = [];
+  const rebuilt = buildSessionOptions(
+    {
+      ...construction,
+      ...attachment.liveSettings,
+      permissionMode: params.permissionMode,
+    },
+    attachment.sessionOptions.env ?? {},
+  );
+  attachment.sessionOptions.permissionMode = permissionMode;
+  attachment.sessionOptions.allowBypassPermissions = rebuilt.allowBypassPermissions;
+  if (rebuilt.sandbox) {
+    attachment.sessionOptions.sandbox = rebuilt.sandbox;
+  } else {
+    delete attachment.sessionOptions.sandbox;
+  }
+  if (rebuilt.additionalDirectories) {
+    attachment.sessionOptions.additionalDirectories =
+      rebuilt.additionalDirectories;
+  } else {
+    delete attachment.sessionOptions.additionalDirectories;
+  }
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurn = {
+      reason: "Claude Code permissions changed",
+      showRuntimeNote: false,
+    };
+  }
+  return true;
 }
 
 function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
@@ -628,6 +684,12 @@ function sessionPermissionGrantCovers(
 function hasClaudeSessionPermissionGrant(
   args: ClaudeSessionPermissionCoverageArgs,
 ): boolean {
+  if (
+    args.permissions.network === null &&
+    args.permissions.fileSystem === null
+  ) {
+    return false;
+  }
   return args.grants.some((grant) =>
     sessionPermissionGrantCovers({
       grant,
@@ -1275,9 +1337,11 @@ function buildTrackedSessionOptions(
     {
       ...toSessionConstructionConfig(params).sessionOptions,
       ...toInitialLiveSessionSettings(params),
+      permissionMode: params.approvedPlanPermissionMode,
     },
     env,
   );
+  sessionOptions.permissionMode = params.permissionMode;
   sessionOptions.hooks = buildSessionTrackingHooks(threadIdRef);
   sessionOptions.recordThreadId = () => threadIdRef.current;
   return sessionOptions;
@@ -1633,6 +1697,7 @@ function buildInteractiveRequestParams(
       blockedPath: args.blockedPath,
       suggestions: args.suggestions,
     }),
+    suggestedRules: getSuggestedRules(args.suggestions),
   };
 }
 
@@ -1660,7 +1725,10 @@ function decodePendingInteractiveResponse(
     return null;
   }
   try {
-    return buildClaudeInteractiveResponse(outcome.data);
+    return buildClaudeInteractiveResponse(
+      outcome.data,
+      pending.kind === "permission_request" ? pending.suggestedRules : [],
+    );
   } catch {
     return null;
   }
@@ -1775,6 +1843,7 @@ function createForwardInteractiveRequest(
         payload,
         originalInput: args.input,
         permissions: params.permissions,
+        suggestedRules: params.suggestedRules,
         resolve: finish,
         toolName: args.toolName,
       });
@@ -1959,16 +2028,13 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       options.suggestions,
     );
 
-    const requestContext: ClaudeCanUseToolDecisionContext = {
+    const requestedPermissions = toPendingInteractionPermissionProfile({
       toolName,
       blockedPath: options.blockedPath,
-      decisionReason: options.decisionReason,
       suggestions,
-    };
-    const requestedPermissions =
-      toPendingInteractionPermissionProfile(requestContext);
+    });
     if (
-      toolName === "Bash" &&
+      toolName === CLAUDE_BASH_TOOL_NAME &&
       shouldAutoDenyInteractiveRequest(interactiveRequestPolicy) &&
       typeof input === "object" &&
       input !== null &&
@@ -1993,18 +2059,6 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
         updatedInput: input,
         toolUseID: options.toolUseID,
         decisionClassification: "user_permanent",
-      };
-    }
-
-    const shouldRequestApproval =
-      shouldRequestClaudePermissionApproval(requestContext) ||
-      (options.suggestions?.length ?? 0) > 0;
-
-    if (!shouldRequestApproval) {
-      return {
-        behavior: "allow",
-        updatedInput: input,
-        toolUseID: options.toolUseID,
       };
     }
 
@@ -2336,7 +2390,13 @@ async function runTurnInput(
     applySandboxSetting(attachment, params.sandboxEnabled);
   }
 
-  const threadSession = await getWritableThreadSession(params.threadId, intent);
+  const permissionsChanged = attachment
+    ? applyPermissionSettings(attachment, params)
+    : false;
+  const threadSession = await getWritableThreadSession(
+    params.threadId,
+    permissionsChanged ? "new-turn" : intent,
+  );
   if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;
@@ -2565,6 +2625,7 @@ function handleParsedMessage(parsed: unknown): void {
     }
     if (
       pending.kind === "permission_request" &&
+      pending.toolName !== CLAUDE_BASH_TOOL_NAME &&
       shouldCacheClaudeSessionPermission(interactiveResponse)
     ) {
       threadSession.attachment.sessionPermissionGrants.push({

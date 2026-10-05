@@ -117,6 +117,10 @@ function runCompaction(threadId) {
       turnId,
       item: { type: "contextCompaction", id: itemId },
     });
+    if (COMPACTION_MODE === "wait-for-interrupt") {
+      openTurnIdsByThreadId.set(threadId, turnId);
+      return;
+    }
     notify("item/completed", {
       threadId,
       turnId,
@@ -428,6 +432,10 @@ async function handleRequest(message) {
         respond(id, { data: [] });
         return;
       }
+      if (script?.modelList) {
+        respond(id, script.modelList);
+        return;
+      }
       respond(id, {
         data: [
           {
@@ -443,6 +451,13 @@ async function handleRequest(message) {
           },
         ],
       });
+      return;
+    case "config/read":
+      if (script?.configReadError) {
+        respondError(id, -32601, "Configuration read unavailable");
+      } else {
+        respond(id, script?.configRead ?? { config: { model: null } });
+      }
       return;
     case "skills/extraRoots/set":
       respond(id, {});
@@ -603,7 +618,7 @@ async function handleRequest(message) {
           threadId: params.threadId,
           turn: { id: turnId, status: "inProgress" },
         });
-        respond(id, {});
+        setTimeout(() => respond(id, {}), script?.startResponseDelayMs ?? 0);
         return;
       }
       if (scriptedTurns) {

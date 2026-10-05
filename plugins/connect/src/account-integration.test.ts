@@ -36,12 +36,24 @@ let stub: StubGetbb;
 let accountHost: FakePluginHost;
 let connectHost: FakePluginHost;
 let accountRunning = true;
+let serverMoving = false;
+let blockedAccountReads = 0;
+let successfulAccountReads = 0;
 let credentialReads = 0;
 let failCredentialRead: number | null = null;
 let tunnelService: { controller: AbortController; done: Promise<void> } | null =
   null;
 
 function callAccountRpc(args: RpcArgs): Promise<unknown> {
+  if (serverMoving) {
+    blockedAccountReads += 1;
+    return Promise.reject(
+      Object.assign(new Error("HTTP 503: Changes are paused"), {
+        status: 503,
+        code: "server_moving",
+      }),
+    );
+  }
   if (args.method === "bb-account.v1.connectCredential") credentialReads += 1;
   const failRead =
     args.method === "bb-account.v1.connectCredential" &&
@@ -57,7 +69,10 @@ function callAccountRpc(args: RpcArgs): Promise<unknown> {
     .callRpc(args.method, args.input ?? null, {
       experimental_caller: { kind: "plugin", pluginId: "connect" },
     })
-    .then((result) => args.outputSchema.parse(result));
+    .then((result) => {
+      successfulAccountReads += 1;
+      return args.outputSchema.parse(result);
+    });
   const signal = args.signal;
   if (signal === undefined) return call;
   return new Promise((resolve, reject) => {
@@ -144,6 +159,9 @@ async function storedCredential(): Promise<string> {
 beforeEach(async () => {
   stub = await StubGetbb.start();
   accountRunning = true;
+  serverMoving = false;
+  blockedAccountReads = 0;
+  successfulAccountReads = 0;
   credentialReads = 0;
   failCredentialRead = null;
 });
@@ -160,6 +178,38 @@ afterEach(async () => {
 });
 
 describe("connect on top of bb account", () => {
+  it("keeps the live tunnel through a server move freeze and resumes account polling", async () => {
+    await loadBoth();
+    await signInAccount();
+    startTunnel();
+    await waitForConnected(1);
+    const socket = stub.tunnelDials[0]!.socket!;
+
+    serverMoving = true;
+    await vi.waitFor(
+      () => expect(blockedAccountReads).toBeGreaterThanOrEqual(2),
+      { timeout: 30_000 },
+    );
+
+    expect(await connectStatus()).toMatchObject({
+      paired: true,
+      state: "connected",
+    });
+    expect(socket.readyState).toBe(1);
+
+    const readsBeforeResume = successfulAccountReads;
+    serverMoving = false;
+    await vi.waitFor(() =>
+      expect(successfulAccountReads).toBeGreaterThan(readsBeforeResume),
+    );
+    expect(await connectStatus()).toMatchObject({
+      paired: true,
+      state: "connected",
+    });
+    expect(stub.tunnelDials).toHaveLength(1);
+    expect(socket.readyState).toBe(1);
+  }, 35_000);
+
   it("waits while signed out, then dials the gate with the account's credential the moment it signs in", async () => {
     await loadBoth();
     startTunnel();

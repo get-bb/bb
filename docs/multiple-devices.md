@@ -170,7 +170,9 @@ them when it starts, when it becomes active, and every five minutes.
 
 Open Settings → Machines and choose Add a machine. Run the generated one-line
 installer on the computer that should
-execute work. It installs and enrolls a host daemon; when bb connect is paired,
+execute work. Choose Windows in the dialog for a PowerShell command; a Windows
+machine needs Node.js 22.19 or newer and Git for Windows, and its daemon starts
+when you sign in to Windows. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
 through the account gate. Without bb connect, open the server through a
 Tailscale Serve URL before generating the installer; the loopback listener is
@@ -192,6 +194,14 @@ to skip an identical installed artifact. The package route is public like
 slightly early through a paired tunnel is an accepted tradeoff. npm installs
 the package into the machine's bb data directory, not its system-wide global
 prefix, so enrollment needs neither `sudo` nor a PATH change.
+
+The Connect gate consumes platform authentication cookies without forwarding
+them to tunnels, including public installer requests and port shares. Tenant
+responses may set host-only cookies outside the `better-auth.*` and
+`bb-connect.*` namespaces (including their `__Secure-` variants); cookies
+with a `Domain` attribute are dropped. Only the gate can renew platform
+cookies. Public installer responses are served as sandboxed plain text, or
+as an attachment for `/install/bb-app.tgz`, with content sniffing disabled.
 
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the

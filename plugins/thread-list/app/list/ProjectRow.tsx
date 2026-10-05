@@ -749,7 +749,9 @@ function EnvironmentThreadGroupHeaderActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          align="end"
+          side="right"
+          align="start"
+          sideOffset={8}
           mobileTitle="Environment actions"
           onCloseAutoFocus={onCloseAutoFocus}
         >

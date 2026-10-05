@@ -15,6 +15,7 @@ import {
 interface NativeBridgeGlobal {
   post(message: unknown): void;
   request(kind: string, payload: unknown): Promise<unknown>;
+  copyTextAndImage?(text: string, imageUrl: string): Promise<unknown>;
   subscribe(listener: (event: unknown) => void): () => void;
   safeArea?: unknown;
 }
@@ -25,6 +26,7 @@ export interface NativeShell {
   has(capability: NativeCapability): boolean;
   post(message: unknown): void;
   request(kind: string, payload: unknown): Promise<unknown>;
+  copyTextAndImage?(text: string, imageUrl: string): Promise<unknown>;
   subscribe(listener: (event: ShellToPageEvent) => void): () => void;
 }
 
@@ -78,6 +80,10 @@ function buildNativeShell(): NativeShell | null {
     has: (capability) => capabilities.has(capability),
     post: (message) => bridge.post(message),
     request: (kind, payload) => bridge.request(kind, payload),
+    copyTextAndImage:
+      typeof bridge.copyTextAndImage === "function"
+        ? bridge.copyTextAndImage.bind(bridge)
+        : undefined,
     subscribe: (listener) =>
       bridge.subscribe((event) => {
         const parsed = parseShellToPageEvent(event);

@@ -5,7 +5,6 @@ import { dispatchPromptEditorTransaction } from "./prompt-editor-transaction";
 interface SplitBlockEditorContext {
   extensionManager: {
     attributes: Editor["extensionManager"]["attributes"];
-    splittableMarks?: Editor["extensionManager"]["splittableMarks"];
   };
 }
 
@@ -33,7 +32,6 @@ export function createPromptParagraphNewlineTransaction(args: {
     view: null as never,
   });
 
-  transaction.setStoredMarks([]);
   return didSplit && transaction.docChanged ? transaction : null;
 }
 

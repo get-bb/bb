@@ -17,6 +17,7 @@ import {
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   HOST_ID_FILE_NAME,
+  type HostPlatform,
 } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
@@ -95,10 +96,10 @@ export function seedHost(
 
 export function seedHostSession(
   deps: Pick<AppDeps, "db" | "hub">,
-  args: { id?: string; name?: string } = {},
+  args: { id?: string; name?: string; platform?: HostPlatform } = {},
 ) {
   const host = seedHost(deps, args);
-  const session = seedSession(deps, host.id);
+  const session = seedSession(deps, host.id, { platform: args.platform });
   return { host, session };
 }
 
@@ -112,7 +113,7 @@ export function seedPrimaryHost(
 export function seedSession(
   deps: Pick<AppDeps, "db" | "hub">,
   hostId: string,
-  options: { instanceId?: string } = {},
+  options: { instanceId?: string; platform?: HostPlatform } = {},
 ) {
   const session = openSession(deps.db, {
     hostId,
@@ -123,7 +124,10 @@ export function seedSession(
     heartbeatIntervalMs: 5_000,
     leaseTimeoutMs: 30_000,
   });
-  deps.hub.recordDaemonSessionPlatform(session.id, "darwin");
+  deps.hub.recordDaemonSessionPlatform(
+    session.id,
+    options.platform ?? "darwin",
+  );
   registerTestHostRpcCapture(deps, { hostId, sessionId: session.id });
   return session;
 }

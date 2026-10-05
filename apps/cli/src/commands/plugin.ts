@@ -8,6 +8,10 @@ import { Command, Option } from "commander";
 import { z } from "zod";
 import { derivePluginId, jsonValueSchema } from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
+import {
+  pluginInstallBadge,
+  type PluginInstallBadge,
+} from "@bb/domain/plugin-install-badge";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
@@ -67,6 +71,13 @@ export function resolveNewPluginTarget(name: string): NewPluginTarget | null {
     packageName,
     directoryName: `bb-plugin-${pluginId}`,
   };
+}
+
+function pluginInstallBadgeLabel(badge: PluginInstallBadge | null): string {
+  if (badge === null) return "";
+  if (badge.kind === "builtin") return "Built in";
+  if (badge.kind === "new") return "New";
+  return badge.installs.toLocaleString("en-US");
 }
 
 function toolchainBaseDir(): string {
@@ -317,14 +328,23 @@ async function warnIfSdkVersionUnpublished(): Promise<void> {
   );
 }
 
+async function execNpm(
+  args: readonly string[],
+  options: { cwd?: string; timeout?: number; killSignal?: NodeJS.Signals },
+): Promise<{ stdout: string; stderr: string }> {
+  const { exec, execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  if (process.platform === "win32") {
+    return promisify(exec)(["npm", ...args].join(" "), options);
+  }
+  return promisify(execFile)("npm", [...args], options);
+}
+
 async function probeSdkVersionPublished(): Promise<
   "published" | "missing" | "unknown"
 > {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
   try {
-    const { stdout } = await promisify(execFile)(
-      "npm",
+    const { stdout } = await execNpm(
       ["view", `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`, "version", "--json"],
       { timeout: 5_000, killSignal: "SIGKILL" },
     );
@@ -365,14 +385,10 @@ function npmFailureDetail(cause: unknown): string {
 async function installScaffoldDependencies(
   targetDir: string,
 ): Promise<boolean> {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
   try {
-    await promisify(execFile)(
-      "npm",
-      ["install", "--include=dev", "--no-fund", "--no-audit"],
-      { cwd: targetDir },
-    );
+    await execNpm(["install", "--include=dev", "--no-fund", "--no-audit"], {
+      cwd: targetDir,
+    });
   } catch (cause) {
     console.warn(
       `Could not run npm install — run it in the plugin directory before \`bb plugin build\`.${npmFailureDetail(cause)}`,
@@ -884,19 +900,17 @@ export function registerPluginCommands(
           return;
         }
         const showMarketplace = results.some((result) => !result.official);
-        const showInstalls = results.some((result) => result.installs !== null);
-        const rows = results.map((result) => [
+        const now = Date.now();
+        const badges = results.map((result) =>
+          pluginInstallBadgeLabel(pluginInstallBadge(result, now)),
+        );
+        const showInstalls = badges.some((badge) => badge !== "");
+        const rows = results.map((result, index) => [
           result.displayName,
           result.description,
           result.category ?? "Uncategorized",
           ...(showMarketplace ? [result.marketplaceDisplayName] : []),
-          ...(showInstalls
-            ? [
-                result.installs === null
-                  ? ""
-                  : result.installs.toLocaleString("en-US"),
-              ]
-            : []),
+          ...(showInstalls ? [badges[index]] : []),
           result.installed
             ? "✓ installed"
             : !result.compatible

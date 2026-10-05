@@ -1,4 +1,7 @@
+import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { useSplitPreload } from "@/lib/define-split";
+import { idleSplitDownload } from "@/lib/split-prefetch";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   useCallback,
@@ -506,7 +509,10 @@ function RoutedThreadDetailView() {
   );
 }
 
+const queuedMessagesDownload = idleSplitDownload("queued-messages-list");
+
 export function ThreadDetailView(props: ThreadDetailViewProps) {
+  useSplitPreload(queuedMessagesDownload);
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
   }
@@ -517,8 +523,13 @@ function ThreadDetailViewInternal(
   props: ThreadRoutePathArgs & { timelineEnabled: boolean },
 ) {
   const { projectId, threadId, timelineEnabled } = props;
-  const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
-    usePaneContext();
+  const {
+    isFocused,
+    isMaximized: isPaneMaximized,
+    navigateInPane,
+    onRequestClose,
+    isBoundedPane,
+  } = usePaneContext();
   const navigate = useImmediateRouteNavigate();
   useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
@@ -587,7 +598,15 @@ function ThreadDetailViewInternal(
       isCompactViewport: renderSecondaryPanelAsDrawer,
       threadId,
     });
-  const pluginDetails = usePluginDetailPanelState(threadId, isFocused);
+  const pluginDetails = usePluginDetailPanelState(
+    threadId,
+    isFocused,
+    getPanelTabHistoryKey({
+      environmentId: thread?.environmentId,
+      fileOwnerThreadId: threadId ?? null,
+      panelStateId: threadId ?? null,
+    }),
+  );
   const isWorkspacePanelOpen = renderSecondaryPanelAsDrawer
     ? secondaryPanelDrawerVisibility.isDrawerVisible
     : isPersistedSecondaryPanelOpen;
@@ -860,6 +879,7 @@ function ThreadDetailViewInternal(
     contextWindowUsage,
     goal,
     hasOlderTimelineRows,
+    isCatchingUpTimeline,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
     modelFallback,
@@ -949,6 +969,7 @@ function ThreadDetailViewInternal(
     [thread, threadEnvironmentHost],
   );
   const forkThreadFromMessage = useForkThreadFromMessage({
+    navigateInPane,
     sourceThread: thread ?? null,
   });
   const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
@@ -1589,7 +1610,7 @@ function ThreadDetailViewInternal(
     return true;
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
-    if (!isFocused || !reopenClosedTab()) return false;
+    if (!isFocused || !reopenClosedTab(pluginDetails)) return false;
     openCompactDrawer();
     return true;
   });
@@ -1624,7 +1645,7 @@ function ThreadDetailViewInternal(
         rows: DEFAULT_TERMINAL_ROWS,
       })
       .then((session) => {
-        closeTab(newTab.id);
+        closeTab(newTab.id, { remember: false });
         setShouldAutoFocusTerminal(true);
         setActiveFixedTerminal(session.id);
         openCompactDrawer();
@@ -1707,6 +1728,18 @@ function ThreadDetailViewInternal(
   useAppCommandHandler("panel.toggle", () => {
     if (!isFocused) return false;
     toggleSecondaryPanel();
+    return true;
+  });
+  useAppCommandHandler("panel.fullScreen.toggle", () => {
+    if (
+      !isFocused ||
+      !isSecondaryPanelOpen ||
+      renderSecondaryPanelAsDrawer ||
+      isPaneMaximized
+    ) {
+      return false;
+    }
+    toggleConversationCollapse();
     return true;
   });
   useAppCommandHandler("panel.close", () => {
@@ -2492,6 +2525,7 @@ function ThreadDetailViewInternal(
       actionsMenu={(includeResponsiveActions) => (
         <ThreadActionsMenu
           thread={thread}
+          onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
           triggerClassName={HEADER_ICON_BUTTON_CLASS}
           responsiveActions={
             includeResponsiveActions ? responsiveHeaderActions : undefined
@@ -2947,6 +2981,7 @@ function ThreadDetailViewInternal(
               splitPanelStateId: thread.id,
               renderBrowserDeck,
               isOpen: isSecondaryPanelOpen,
+              showFullScreenShortcut: true,
               onClose: closeSecondaryPanel,
               onCollapse: closeSecondaryPanel,
               onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
@@ -2970,6 +3005,7 @@ function ThreadDetailViewInternal(
               threadOriginKind,
               hasOlderTimelineRows,
               hostConnectionNotice,
+              isCatchingUpTimeline,
               isLoadingOlderTimelineRows,
               isThreadTimelinePending,
               timelineError: Boolean(timelineError),

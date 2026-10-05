@@ -92,10 +92,22 @@
   --spark: oklch(0.75 0.16 50); /* --warning-text (dark) */
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer landing-reset {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  code,
+  .mono {
+    font-family: var(--font-mono);
+  }
 }
 
 /* The hero's faint full-bleed wash (::before/::after) extends past the wrap on
@@ -119,16 +131,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-code,
-.mono {
-  font-family: var(--font-mono);
-}
-
 .wrap {
   max-width: 980px;
   margin: 0 auto;
@@ -142,6 +144,8 @@ code,
   align-items: center;
   justify-content: space-between;
   padding: 22px 0;
+  position: relative;
+  z-index: 10;
   animation: hdr-down 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -197,6 +201,72 @@ code,
 .nav-links .nav-current {
   color: var(--ink);
   font-weight: 500;
+}
+
+.nav-menu {
+  position: relative;
+}
+
+.nav-menu summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  color: var(--dim);
+  cursor: pointer;
+  list-style: none;
+}
+
+.nav-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-menu summary:hover,
+.nav-menu[open] summary,
+.nav-links .nav-menu summary.nav-current {
+  color: var(--ink);
+}
+
+.nav-menu summary svg {
+  width: 14px;
+  height: 14px;
+}
+
+.nav-menu[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.nav-menu summary:focus-visible,
+.nav-menu-panel a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.nav-menu-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: -10px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--shade) 12%, transparent);
+}
+
+.nav-links .nav-menu-panel a {
+  padding: 8px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.nav-links .nav-menu-panel a:hover,
+.nav-links .nav-menu-panel a[aria-current="page"] {
+  background: var(--surface);
+  color: var(--heading);
 }
 
 .nav-icon-button {
@@ -2972,6 +3042,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .updates-label {
+    display: none;
+  }
+}
+
+@media (max-width: 359px) {
+  .nav-links {
+    gap: 10px;
+  }
+
+  .nav-links .nav-icon-button {
     display: none;
   }
 }

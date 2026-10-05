@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compareParity,
@@ -30,7 +31,7 @@ import {
 } from "./index.js";
 
 const cells = listRecordedCells(RECORDINGS_ROOT);
-const checkoutRoot = new URL("../../..", import.meta.url).pathname;
+const checkoutRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 function readPinned(): Record<string, RowCountsEntry> {
   if (!existsSync(ROW_COUNTS_PATH)) return {};

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { projects, environmentVariables, upsertHost, updateHost } from "@bb/db";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk/node";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { withTestHarness } from "../helpers/test-app.js";
 import { seedPrimaryHost } from "../helpers/seed.js";
 import { resolveHostEnvironment } from "../../src/services/hosts/host-environment.js";
@@ -65,10 +65,15 @@ describe("machine environment settings", () => {
           "GH_TOKEN",
         );
         await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
-        expect(
-          (await stat(join(harness.config.dataDir, "machine-environment-key")))
-            .mode & 0o777,
-        ).toBe(0o600);
+        if (process.platform !== "win32") {
+          expect(
+            (
+              await stat(
+                join(harness.config.dataDir, "machine-environment-key"),
+              )
+            ).mode & 0o777,
+          ).toBe(0o600);
+        }
         expect(
           JSON.stringify(harness.db.select().from(environmentVariables).all()),
         ).not.toContain("test-region");
@@ -145,6 +150,10 @@ describe("machine environment settings", () => {
 });
 
 it("isolates projects on a shared machine and restores global values after removal", async () => {
+  const resolver = vi
+    .spyOn(gitCredentials, "resolveGitCredentials")
+    .mockResolvedValue([]);
+  onTestFinished(() => resolver.mockRestore());
   await withTestHarness(async (harness) => {
     const sdk = createBbSdk({
       transport: createHttpTransport({

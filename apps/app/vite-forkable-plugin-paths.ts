@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Plugin } from "vite";
+import { normalizePath, type Plugin } from "vite";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -25,7 +25,7 @@ function readForkablePluginPaths(): ForkablePluginPaths[] {
         resolve(root, target),
       ],
     );
-    return { root: `${root}${sep}`, paths };
+    return { root: `${normalizePath(root)}/`, paths };
   });
 }
 
@@ -48,18 +48,21 @@ function mapPath(
 
 export function forkablePluginPaths(appSourceDir: string): Plugin {
   const plugins = readForkablePluginPaths();
-  const appSourcePrefix = `${appSourceDir}${sep}`;
+  const appSourcePrefix = `${normalizePath(appSourceDir)}/`;
   return {
     name: "bb:forkable-plugin-paths",
     enforce: "pre",
     resolveId(source, importer, options) {
-      if (importer === undefined || !source.startsWith(appSourcePrefix)) {
-        return null;
-      }
-      const plugin = plugins.find(({ root }) => importer.startsWith(root));
+      if (importer === undefined) return null;
+      const normalizedSource = normalizePath(source);
+      if (!normalizedSource.startsWith(appSourcePrefix)) return null;
+      const normalizedImporter = normalizePath(importer);
+      const plugin = plugins.find(({ root }) =>
+        normalizedImporter.startsWith(root),
+      );
       if (plugin === undefined) return null;
       const target = mapPath(
-        `@/${source.slice(appSourcePrefix.length).split(sep).join("/")}`,
+        `@/${normalizedSource.slice(appSourcePrefix.length)}`,
         plugin.paths,
       );
       return target === null

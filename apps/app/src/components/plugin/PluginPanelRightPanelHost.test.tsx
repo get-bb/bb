@@ -36,6 +36,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import * as panelSplits from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
+import { resetRecentlyClosedPanelTabsForTest } from "@/components/secondary-panel/useThreadFileTabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
@@ -82,6 +83,15 @@ interface TestNewThreadPanelActionRegistration {
 }
 
 const browserState = vi.hoisted(() => ({ available: false }));
+const appCommandHandlers = vi.hoisted(
+  () =>
+    new Map<
+      string,
+      Parameters<
+        typeof import("@/components/commands/AppCommandProvider").useAppCommandHandler
+      >[1]
+    >(),
+);
 const viewportState = vi.hoisted(() => ({ isCompactViewport: false }));
 const createTerminal = vi.hoisted(() => vi.fn());
 const catalogQueryState = vi.hoisted(() => ({ queries: [] as string[] }));
@@ -211,7 +221,13 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 }));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandHandler: () => undefined,
+  useAppCommandHandler: (
+    ...[command, handler]: Parameters<
+      typeof import("@/components/commands/AppCommandProvider").useAppCommandHandler
+    >
+  ) => {
+    appCommandHandlers.set(command, handler);
+  },
   useAppCommandShortcut: () => null,
 }));
 
@@ -716,6 +732,8 @@ describe("PluginPanelRightPanelHost", () => {
   });
 
   beforeEach(() => {
+    appCommandHandlers.clear();
+    resetRecentlyClosedPanelTabsForTest();
     browserState.available = false;
     viewportState.isCompactViewport = false;
     createTerminal.mockReset();
@@ -836,6 +854,37 @@ describe("PluginPanelRightPanelHost", () => {
     );
   });
 
+  it("restores closed plugin details before older content tabs", async () => {
+    renderHost();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
+    expect(
+      await screen.findByText("host:host-explicit:/tmp/example.log"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close example.log" }));
+    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close Secrets" }));
+
+    act(() => {
+      expect(
+        appCommandHandlers.get("panel.reopenClosedTab")?.({ target: null }),
+      ).toBe(true);
+    });
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(screen.queryByTestId("host-scoped-file-preview")).toBeNull();
+
+    act(() => {
+      expect(
+        appCommandHandlers.get("panel.reopenClosedTab")?.({ target: null }),
+      ).toBe(true);
+    });
+    expect(
+      await screen.findByText("host:host-explicit:/tmp/example.log"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
+  });
+
   it("accepts sidebar detail requests before the plugin panel registers", async () => {
     fixedTabState.panelRegistered = false;
     renderHost();
@@ -949,6 +998,7 @@ describe("PluginPanelRightPanelHost", () => {
     ];
 
     renderHost("board", "task/123");
+    expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
 
     expect(secondaryPanelState.splitPanelStateId).toBe(
       getPluginPagePanelStateId({
@@ -970,7 +1020,6 @@ describe("PluginPanelRightPanelHost", () => {
         .getByTestId("shared-secondary-panel-region")
         .hasAttribute("hidden"),
     ).toBe(false);
-    expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
     expect(
       screen
         .getByRole("button", { name: "Navigation" })

@@ -1,4 +1,5 @@
 import { ThreadQuestionFormHost } from "../user-questions/ThreadQuestionFormHost";
+import { useStickyFooterAvailableHeight } from "../user-questions/useStickyFooterAvailableHeight";
 import {
   Activity,
   Fragment,
@@ -40,6 +41,8 @@ export function PendingInteractionShell({
   testId,
 }: PendingInteractionShellProps) {
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
+  const rootRef = useRef<HTMLElement>(null);
+  const availableHeight = useStickyFooterAvailableHeight(rootRef, isExpanded);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const contentId = useId();
   const errorId = useId();
@@ -96,15 +99,21 @@ export function PendingInteractionShell({
 
   return (
     <section
+      ref={rootRef}
       aria-label={label}
       data-testid={testId}
       data-expanded={isExpanded ? "" : undefined}
       onKeyDown={handleKeyDown}
-      className="@container mb-2 min-w-0 max-w-full rounded-lg border border-border bg-surface-recessed text-xs text-muted-foreground"
+      style={
+        availableHeight === null
+          ? undefined
+          : { maxHeight: Math.max(160, availableHeight) }
+      }
+      className="@container mb-2 flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-lg border border-border bg-surface-recessed text-xs text-muted-foreground"
     >
       <div
         className={cn(
-          "flex min-h-9 items-center gap-2 pl-3 pr-1.5",
+          "flex min-h-9 shrink-0 items-center gap-2 pl-3 pr-1.5",
           isExpanded ? "border-b border-border-hairline py-1.5" : "py-1",
         )}
       >
@@ -142,7 +151,7 @@ export function PendingInteractionShell({
           <div
             id={contentId}
             hidden={!isExpanded}
-            className="max-h-[min(32rem,50dvh)] overflow-y-auto overscroll-contain px-3 pb-3 pt-2.5"
+            className="min-h-0 max-h-[min(32rem,50dvh)] touch-pan-y overflow-y-auto overscroll-contain px-3 pb-3 pt-2.5"
           >
             {title ? (
               <h3 className="min-w-0 text-sm font-medium text-foreground">

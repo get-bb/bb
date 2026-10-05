@@ -77,12 +77,14 @@ describe("startMachineAuthProxy", () => {
   it.each(["resets", "closes"])(
     "fails the caller's response when the upstream connection %s mid-body",
     async (drop) => {
+      let dropUpstream = () => {};
       const upstream = http.createServer((_request, response) => {
         response.writeHead(200, { "content-type": "text/event-stream" });
-        response.write("data: first\n\n", () => {
+        response.write("data: first\n\n");
+        dropUpstream = () => {
           if (drop === "resets") response.socket?.resetAndDestroy();
           else response.socket?.destroy();
-        });
+        };
       });
       const upstreamPort = await listen(upstream);
       const proxy = await startMachineAuthProxy({
@@ -100,6 +102,7 @@ describe("startMachineAuthProxy", () => {
         response.on("close", resolve),
       );
       response.on("error", () => {});
+      response.once("data", () => dropUpstream());
       response.resume();
       await closed;
 

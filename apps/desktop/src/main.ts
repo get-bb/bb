@@ -687,7 +687,8 @@ function createDesktopPathContext(): DesktopPathContext {
 
 function shouldEnableServerDaemonLogsMenu(): boolean {
   return (
-    process.platform === "darwin" && currentRuntime?.ownership === "spawned"
+    (process.platform === "darwin" || process.platform === "win32") &&
+    currentRuntime?.ownership === "spawned"
   );
 }
 

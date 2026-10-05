@@ -140,18 +140,38 @@ describe("machine Git environment", () => {
     await exec("git", ["add", "."], { cwd: source, env });
     await exec("git", ["commit", "-m", "seed"], { cwd: source, env });
     await exec("git", ["clone", "--bare", source, bare], { env });
-    const helper = `#!/usr/bin/env python3
-import os, subprocess, sys
-assert sys.argv[2] == "https://github.com/octocat/private.git"
-auth = subprocess.run(["git", "credential", "fill"], input="protocol=https\\nhost=github.com\\n\\n", text=True, capture_output=True, check=True).stdout
-assert "username=x-access-token\\n" in auth
-assert "password=" + os.environ["GH_TOKEN"] + "\\n" in auth
-for line in sys.stdin:
-    if line.strip() == "capabilities":
-        print("connect\\n", flush=True)
-    elif line.startswith("connect "):
-        print("", flush=True)
-        os.execlp("git", "git", "upload-pack", os.environ["FAKE_BARE"])
+    const helper = `#!/usr/bin/env node
+const assert = require("node:assert");
+const { execFileSync, spawnSync } = require("node:child_process");
+const { readSync, writeSync } = require("node:fs");
+assert.strictEqual(process.argv[3], "https://github.com/octocat/private.git");
+const auth = execFileSync("git", ["credential", "fill"], { input: "protocol=https\\nhost=github.com\\n\\n", encoding: "utf8" });
+assert.ok(auth.includes("username=x-access-token\\n"));
+assert.ok(auth.includes("password=" + process.env.GH_TOKEN + "\\n"));
+function readLine() {
+  const byte = Buffer.alloc(1);
+  let line = "";
+  for (;;) {
+    let count = 0;
+    try {
+      count = readSync(0, byte, 0, 1, null);
+    } catch (error) {
+      if (error.code !== "EOF") throw error;
+    }
+    if (count === 0) return line === "" ? null : line;
+    if (byte[0] === 10) return line;
+    line += String.fromCharCode(byte[0]);
+  }
+}
+for (let line = readLine(); line !== null; line = readLine()) {
+  if (line.trim() === "capabilities") {
+    writeSync(1, "connect\\n\\n");
+  } else if (line.startsWith("connect ")) {
+    writeSync(1, "\\n");
+    const result = spawnSync("git", ["upload-pack", process.env.FAKE_BARE], { stdio: "inherit" });
+    process.exit(result.status ?? 1);
+  }
+}
 `;
     await writeFile(join(helpers, "git-remote-https"), helper, { mode: 0o755 });
     const target = join(home, "cloned");

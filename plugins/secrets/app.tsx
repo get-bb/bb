@@ -6,7 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOffSlashIcon from "@hugeicons/core-free-icons/ViewOffSlashIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -197,7 +197,7 @@ function SecretRequestInteraction({
         >
           {busy ? (
             <HugeiconsIcon
-              icon={DashedLineCircleIcon}
+              icon={Loading03Icon}
               className="size-3 animate-spin"
               aria-hidden="true"
             />

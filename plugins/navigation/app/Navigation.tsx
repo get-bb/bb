@@ -295,7 +295,7 @@ function NavigationRowChrome({
                   />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent side="right" align="start" sideOffset={4}>
                 {menuItems("dropdown")}
               </DropdownMenuContent>
             </DropdownMenu>

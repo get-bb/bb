@@ -47,7 +47,6 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { formatHostUpdateStatus } from "@/lib/host-update-status";
 
 const PERMISSION_MODE_PRESENTATION: Record<
   PermissionMode,
@@ -60,6 +59,7 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
   linux: "Linux",
   wsl: "WSL",
+  win32: "Windows",
   unknown: null,
 };
 
@@ -113,7 +113,6 @@ export function MachineRowContent({
   const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
   const connectionLabel = machineStatusLabel({ host, now });
-  const updateStatus = formatHostUpdateStatus(host);
 
   return (
     <SettingsRow>
@@ -160,11 +159,6 @@ export function MachineRowContent({
                 >
                   {permission.label}
                 </span>
-                {updateStatus === null ? null : (
-                  <span className="min-w-0 text-warning-text">
-                    {updateStatus}
-                  </span>
-                )}
               </div>
             </div>
           </Link>

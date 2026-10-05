@@ -1,9 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
-import { withTestHarness } from "../../helpers/test-app.js";
+import {
+  type TestAppHarness,
+  withTestHarness,
+} from "../../helpers/test-app.js";
 
 const HOST_SOURCE = `
   export default {
@@ -90,19 +93,20 @@ async function writePlugin(
 
 const ACME_AI = { pluginId: "acme-ai", serviceId: "acme-ai" };
 
-describe("bb.experimental_aiServices.register (server)", () => {
-  let workDir: string;
-
-  beforeEach(async () => {
-    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-ai-service-test-"));
-  });
-
-  afterEach(async () => {
+async function withPluginHarness(
+  run: (harness: TestAppHarness, workDir: string) => Promise<void>,
+): Promise<void> {
+  const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-ai-service-test-"));
+  try {
+    await withTestHarness((harness) => run(harness, workDir));
+  } finally {
     await rm(workDir, { recursive: true, force: true });
-  });
+  }
+}
 
+describe("bb.experimental_aiServices.register (server)", () => {
   it("lands the service when the load commits and removes it when the plugin is disabled", async () => {
-    await withTestHarness(async (harness) => {
+    await withPluginHarness(async (harness, workDir) => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-acme-ai",
         serverSource: REGISTER_AI_SERVICE_SOURCE("acme-ai"),
@@ -135,7 +139,7 @@ describe("bb.experimental_aiServices.register (server)", () => {
   });
 
   it("fails the load of a plugin whose service answers nothing", async () => {
-    await withTestHarness(async (harness) => {
+    await withPluginHarness(async (harness, workDir) => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-empty-ai",
         serverSource: `
@@ -160,7 +164,7 @@ describe("bb.experimental_aiServices.register (server)", () => {
   });
 
   it("fails the load on the host build error for a plugin that registers only an AI service", async () => {
-    await withTestHarness(async (harness) => {
+    await withPluginHarness(async (harness, workDir) => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-broken-host-ai",
         serverSource: REGISTER_AI_SERVICE_SOURCE("broken-host-ai"),
@@ -185,7 +189,7 @@ describe("bb.experimental_aiServices.register (server)", () => {
   it.each(["service-first", "provider-first"] as const)(
     "keeps the provider listed as unavailable when the host entry of a plugin that also registers an AI service fails to build (%s)",
     async (order) => {
-      await withTestHarness(async (harness) => {
+      await withPluginHarness(async (harness, workDir) => {
         const id = `dual-${order}`;
         const rootDir = await writePlugin(workDir, {
           name: `bb-plugin-${id}`,
@@ -244,7 +248,7 @@ describe("bb.experimental_aiServices.register (server)", () => {
   );
 
   it("lets two plugins register the same service id without shadowing each other", async () => {
-    await withTestHarness(async (harness) => {
+    await withPluginHarness(async (harness, workDir) => {
       const first = await harness.pluginService.installPath(
         await writePlugin(workDir, {
           name: "bb-plugin-first-ai",
@@ -279,7 +283,7 @@ describe("bb.experimental_aiServices.register (server)", () => {
   });
 
   it("fails the load of a plugin that registers one id twice", async () => {
-    await withTestHarness(async (harness) => {
+    await withPluginHarness(async (harness, workDir) => {
       const entry = await harness.pluginService.installPath(
         await writePlugin(workDir, {
           name: "bb-plugin-twice-ai",
@@ -302,7 +306,7 @@ describe("bb.experimental_aiServices.register (server)", () => {
   });
 
   it("fails the load of a plugin whose service id is a selection mode", async () => {
-    await withTestHarness(async (harness) => {
+    await withPluginHarness(async (harness, workDir) => {
       const entry = await harness.pluginService.installPath(
         await writePlugin(workDir, {
           name: "bb-plugin-reserved-ai",

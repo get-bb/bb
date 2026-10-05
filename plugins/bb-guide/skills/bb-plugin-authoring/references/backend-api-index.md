@@ -159,6 +159,7 @@ Read the installed declarations for exact current signatures.
 - `PluginCommandContext`
 - `PluginCommandShortcut`
 - `PluginCommandRegistration`
+- `ExperimentalComposerCommandRegistration`
 - `PluginComposerApi`
 - `PluginComposerMention`
 - `PluginComposerScope`

@@ -76,7 +76,11 @@ export function BrowsePluginsTab({
   const searchQuery = usePluginCatalogSearch(trimmedQuery, { enabled: true });
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const activeQuery = shelfKey === null ? searchQuery : catalogQuery;
-  const catalog = activeQuery.data ?? { entries: [], collections: [] };
+  const catalog = activeQuery.data ?? {
+    entries: [],
+    collections: [],
+    categories: [],
+  };
   const entries = useMemo(
     () => catalog.entries.filter((entry) => entry.compatible),
     [catalog.entries],
@@ -98,8 +102,9 @@ export function BrowsePluginsTab({
         : pluginBrowseShelves({
             entries,
             collections: catalog.collections,
+            categories: catalog.categories,
           }).find((shelf) => shelf.key === shelfKey),
-    [catalog.collections, entries, shelfKey],
+    [catalog.categories, catalog.collections, entries, shelfKey],
   );
   useResourceRouteLabel(selectedShelf?.label ?? null);
   const shelfEntries = useMemo(
@@ -110,8 +115,13 @@ export function BrowsePluginsTab({
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
   const categoryOptions = useMemo(
-    () => pluginCategoryFilterOptions(shelfEntries, selectedCategories),
-    [shelfEntries, selectedCategories],
+    () =>
+      pluginCategoryFilterOptions(
+        shelfEntries,
+        selectedCategories,
+        catalog.categories,
+      ),
+    [catalog.categories, shelfEntries, selectedCategories],
   );
   const filteredEntries = useMemo(() => {
     const selected = new Set(selectedCategories);
@@ -147,6 +157,7 @@ export function BrowsePluginsTab({
                 (entry) => entry.compatible,
               ),
               collections: catalogQuery.data?.collections ?? [],
+              categories: catalogQuery.data?.categories ?? [],
             },
             { omitCollectionEntriesFromCategories: true },
           )

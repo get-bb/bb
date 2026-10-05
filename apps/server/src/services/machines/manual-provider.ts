@@ -1,7 +1,10 @@
 import { validatePluginMachineProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { MachineEnrollments } from "./enrollments.js";
 import type { MachineEnrollmentService } from "./machine-services.js";
-import { manualEnrollmentCommand } from "./manual-enrollment-command.js";
+import {
+  manualEnrollmentCommand,
+  manualEnrollmentPowerShellCommand,
+} from "./manual-enrollment-command.js";
 import type {
   PluginMachineProviderBridge,
   PluginMachineProviderRecord,
@@ -54,7 +57,7 @@ export function createManualMachineProviderRecord(
       },
       async remove(context) {
         context.report.step(
-          `Uninstall the machine service with its original installer: install-machine.sh --uninstall --host-id ${context.hostId}`,
+          `Uninstall the machine service with its original installer: install-machine.sh --uninstall --host-id ${context.hostId} (on Windows: node "%USERPROFILE%\\.bb-machines\\<server>\\install-machine-windows.mjs" --uninstall --host-id ${context.hostId})`,
         );
         return { status: "removed" };
       },
@@ -90,7 +93,11 @@ export function withManualMachineProvider(
 export async function manualHostCommand(
   enrollments: MachineEnrollmentService,
   hostId: string,
-): Promise<{ command: string; expiresAt: number } | null> {
+): Promise<{
+  command: string;
+  windowsCommand: string;
+  expiresAt: number;
+} | null> {
   const bootstrap = await enrollments.pendingBootstrapForHost({
     hostId,
     owner: MANUAL_PROVIDER_OWNER,
@@ -99,6 +106,7 @@ export async function manualHostCommand(
     ? null
     : {
         command: manualEnrollmentCommand(bootstrap),
+        windowsCommand: manualEnrollmentPowerShellCommand(bootstrap),
         expiresAt: bootstrap.expiresAt,
       };
 }

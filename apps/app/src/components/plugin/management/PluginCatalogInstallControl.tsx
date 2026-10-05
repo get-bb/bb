@@ -7,10 +7,14 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  NEW_TEXT_STYLE,
+  type PluginInstallCountPresentation,
+} from "./plugin-ui";
 
 type PluginCatalogInstallControlProps = {
   displayName: string;
-  count?: { display: string; accessibleLabel: string };
+  count?: PluginInstallCountPresentation;
   showLabel?: boolean;
   subtle?: boolean;
 } & (
@@ -72,7 +76,13 @@ export function PluginCatalogInstallControl(
               else props.onInstall();
             }}
           >
-            <span className="grid place-items-center" aria-hidden>
+            <span
+              className={cn(
+                "grid place-items-center",
+                count?.tone === "builtin" && "hidden",
+              )}
+              aria-hidden
+            >
               <Icon
                 name={stateIcon}
                 className={cn(
@@ -92,7 +102,14 @@ export function PluginCatalogInstallControl(
             </span>
             {props.showLabel ? (installed ? "Installed" : "Install") : null}
             {count === undefined ? null : (
-              <span aria-hidden className="text-2xs">
+              <span
+                aria-hidden
+                className={cn(
+                  "text-2xs",
+                  count.tone === "new" && "font-semibold",
+                )}
+                style={count.tone === "new" ? NEW_TEXT_STYLE : undefined}
+              >
                 {count.display}
               </span>
             )}

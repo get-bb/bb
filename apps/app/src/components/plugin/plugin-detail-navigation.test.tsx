@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { arrayMove } from "@bb/client-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadSecondaryPanelProps } from "@/components/secondary-panel/ThreadSecondaryPanel";
@@ -10,6 +11,13 @@ import {
   usePluginDetailPanelState,
 } from "./plugin-detail-navigation";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
+import {
+  resetRecentlyClosedPanelTabsForTest,
+  takeClosedPanelTab,
+  getPanelTabHistoryKey,
+} from "@/components/secondary-panel/recentlyClosedPanelTabs";
+import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
+import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 
 const selectExisting = vi.fn();
 const closePanel = vi.fn();
@@ -87,7 +95,7 @@ function PanelProbe({
 }
 
 function ReorderingWorkspace() {
-  const state = usePluginDetailPanelState("reordering", true);
+  const state = usePluginDetailPanelState("reordering", true, "reordering");
   const [tabs, setTabs] = useState([
     baseProps.tabs[0],
     {
@@ -98,6 +106,23 @@ function ReorderingWorkspace() {
   ]);
   return (
     <PluginDetailPanelContext.Provider value={state}>
+      <button
+        onClick={() => {
+          const entry = takeClosedPanelTab(
+            "reordering",
+            new Set([
+              ...tabs.map((tab) => tab.tab.id),
+              ...state.destinations.map(
+                (destination) => `marketplace-plugin:${destination.pluginId}`,
+              ),
+            ]),
+            true,
+          );
+          if (entry?.kind === "plugin-detail") state.restore(entry);
+        }}
+      >
+        Reopen closed tab
+      </button>
       <PanelProbe
         id="reordering"
         input={{
@@ -131,12 +156,171 @@ function Workspace({
   );
 }
 
+function HistoryWorkspace() {
+  const tabs = useThreadFileTabs({
+    panelStateId: "combined-history",
+    syncThreadId: null,
+    environmentId: "env-1",
+    storageFiles: undefined,
+    terminalSessions: undefined,
+  });
+  const details = usePluginDetailPanelState(
+    "combined-history",
+    true,
+    getPanelTabHistoryKey({
+      panelStateId: "combined-history",
+      fileOwnerThreadId: null,
+      environmentId: "env-1",
+    }),
+  );
+  return (
+    <PluginDetailPanelContext.Provider value={details}>
+      <button
+        onClick={() => {
+          for (const path of ["A.md", "B.md"])
+            tabs.openTab({
+              kind: "workspace-file-preview",
+              environmentId: "env-1",
+              tab: {
+                path,
+                lineRange: null,
+                source: { kind: "working-tree" },
+                statusLabel: null,
+              },
+            });
+        }}
+      >
+        Open files
+      </button>
+      <button onClick={() => details.close("docs")}>
+        Close selected detail
+      </button>
+      <button onClick={() => tabs.reopenClosedTab(details)}>
+        Restore latest
+      </button>
+      <PanelProbe
+        id="combined-history"
+        input={{
+          ...baseProps,
+          tabs: tabs.orderedSecondaryFileTabs.map((tab) => ({
+            ...baseProps.tabs[0],
+            tab,
+            label: tab.kind === "workspace-file-preview" ? tab.path : tab.id,
+            onClose: () => tabs.closeTab(tab.id),
+            onSelect: () => tabs.activateTab(tab.id),
+          })),
+          onTabReorder: tabs.reorderTab,
+        }}
+      />
+    </PluginDetailPanelContext.Provider>
+  );
+}
+
+function renderHistoryWorkspace() {
+  return render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <HistoryWorkspace />
+    </QueryClientProvider>,
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  resetRecentlyClosedPanelTabsForTest();
+  resetFixedPanelTabsStateForTest();
+  window.localStorage.clear();
 });
 
 describe("plugin details in the active workspace", () => {
+  it.each(["keyboard", "remount", "mixed"])(
+    "preserves the combined order when restoring after %s close",
+    (scenario) => {
+      const view = renderHistoryWorkspace();
+      act(() => screen.getByRole("button", { name: "Open files" }).click());
+      act(() =>
+        openPluginDetailsInWorkspace({ pluginId: "docs", title: "Docs" }),
+      );
+      if (scenario === "mixed") {
+        act(() => screen.getByRole("button", { name: "Close A.md" }).click());
+      }
+      act(() =>
+        screen
+          .getByRole("button", {
+            name:
+              scenario === "keyboard" ? "Close selected detail" : "Close Docs",
+          })
+          .click(),
+      );
+      if (scenario === "remount") {
+        view.unmount();
+        renderHistoryWorkspace();
+      }
+      act(() => screen.getByRole("button", { name: "Restore latest" }).click());
+      if (scenario === "mixed") {
+        act(() =>
+          screen.getByRole("button", { name: "Restore latest" }).click(),
+        );
+      }
+      expect(
+        screen
+          .getAllByRole("button", { name: /^Move .* left$/ })
+          .map((button) => button.textContent),
+      ).toEqual(["Move A.md left", "Move B.md left", "Move Docs left"]);
+    },
+  );
+  it.each([false, true])(
+    "restores detail tabs in their combined position after close (reordered: %s)",
+    (reordered) => {
+      render(<ReorderingWorkspace />);
+      act(() =>
+        openPluginDetailsInWorkspace({ pluginId: "docs", title: "Docs" }),
+      );
+      act(() =>
+        openPluginDetailsInWorkspace({ pluginId: "tasks", title: "Tasks" }),
+      );
+      if (reordered) {
+        act(() =>
+          screen.getByRole("button", { name: "Move Docs left" }).click(),
+        );
+      }
+      act(() => screen.getByRole("button", { name: "Close Docs" }).click());
+      act(() => screen.getByRole("button", { name: "Close Tasks" }).click());
+      act(() =>
+        screen.getByRole("button", { name: "Reopen closed tab" }).click(),
+      );
+      act(() =>
+        screen.getByRole("button", { name: "Reopen closed tab" }).click(),
+      );
+      expect(
+        screen
+          .getAllByRole("button", { name: /^Move .* left$/ })
+          .map((button) => button.textContent),
+      ).toEqual(
+        reordered
+          ? [
+              "Move Existing tab left",
+              "Move Docs left",
+              "Move Another tab left",
+              "Move Tasks left",
+            ]
+          : [
+              "Move Existing tab left",
+              "Move Another tab left",
+              "Move Docs left",
+              "Move Tasks left",
+            ],
+      );
+      expect(screen.getByTestId("reordering").dataset.active).toBe(
+        "marketplace-plugin:docs",
+      );
+    },
+  );
+
   it("preserves ordinary tab order after dragging across details and closing them", () => {
     render(<ReorderingWorkspace />);
     act(() =>

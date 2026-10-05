@@ -27,6 +27,21 @@ import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 
 const execFileAsync = promisify(execFile);
+const npmCommand =
+  process.platform === "win32"
+    ? {
+        file: process.execPath,
+        args: [
+          join(
+            dirname(process.execPath),
+            "node_modules",
+            "npm",
+            "bin",
+            "npm-cli.js",
+          ),
+        ],
+      }
+    : { file: "npm", args: [] };
 const pluginSdkRoot = resolve(process.cwd(), "../plugin-sdk");
 const dependencyRequire = createRequire(join(pluginSdkRoot, "package.json"));
 
@@ -249,8 +264,15 @@ async function linkExternalDependencies(targetDir: string): Promise<void> {
 async function packPluginSdk(packDir: string): Promise<string> {
   await mkdir(packDir, { recursive: true });
   await execFileAsync(
-    "npm",
-    ["pack", "--silent", "--ignore-scripts", "--pack-destination", packDir],
+    npmCommand.file,
+    [
+      ...npmCommand.args,
+      "pack",
+      "--silent",
+      "--ignore-scripts",
+      "--pack-destination",
+      packDir,
+    ],
     {
       cwd: pluginSdkRoot,
     },
@@ -267,8 +289,9 @@ async function installPackedSdk(
   tarball: string,
 ): Promise<void> {
   await execFileAsync(
-    "npm",
+    npmCommand.file,
     [
+      ...npmCommand.args,
       "install",
       "--ignore-scripts",
       "--legacy-peer-deps",
@@ -411,7 +434,7 @@ describe("external plugin scaffold types", () => {
   it("installs the packed testing runtimes and executes scaffold backend and frontend tests", async () => {
     const packedListing = (
       await execFileAsync("tar", ["-tzf", tarball])
-    ).stdout.split("\n");
+    ).stdout.split(/\r?\n/);
     expect(packedListing).toContain("package/dist/testing/index.js");
     expect(packedListing).toContain("package/dist/testing/app.js");
     expect(packedListing).toContain(

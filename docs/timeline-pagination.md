@@ -161,12 +161,21 @@ their outline. When an active thread advances, a bounded per-database cache
 retains completed outline items and reprojects the tail from a safe turn
 boundary. It keeps the latest turn in the tail even after that turn completes.
 
-Checkpoints never cross an unresolved steer, an open turn, or the first
-external-user ordering boundary. Late references to retained turns or requests,
-history rewrites, context clears, metadata/display changes, and writes from
-another database connection force a rebuild. Background/delegated and parented
-events use the full projection because their effects can cross turn boundaries.
-Crossing the message-delta compaction threshold also rebuilds the prefix so
-empty completed messages keep the same fallback previews.
+Ordinary outlines select only root events before decoding and projection. A
+child turn is identified by its stored start, including child completion events
+without a parent ID. Unfinished children do not prevent retaining completed root
+history. Checkpoints never cross an unresolved steer, an open root turn, or the
+first external-user ordering boundary.
+
+Accepted root turns with inherited parent metadata, background/delegation state,
+and external-user ordering use the full projection conservatively. These
+classification changes are checked in newly appended events and retained with
+the bounded checkpoint. Late references to retained root turns, requests, or
+parent items, history rewrites, context clears, metadata/display changes, and
+writes from another database connection force a rebuild.
+
+The message-delta compaction threshold still counts nested deltas through an
+indexed, bounded lookup. Crossing it rebuilds the prefix so empty completed
+messages keep the same fallback previews even when child payloads are omitted.
 The checkpoint cache retains at most 16 threads and 8 million characters of
 serialized previews and identity data; eviction only affects performance.

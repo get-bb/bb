@@ -23,12 +23,18 @@ export interface ConversationOutlineSelection {
   project: () => ConversationOutlineProjection["items"];
 }
 
+export interface ConversationOutlineProjectionState {
+  includeNestedEvents: boolean;
+  summaryCompactionEnabled: boolean;
+}
+
 interface Checkpoint {
   agentMessageDeltaCount: number;
   items: ThreadConversationOutlineItem[];
   sequenceStart: number;
   turnIds: Set<string>;
   requestIds: Set<string>;
+  parentItemIds: Set<string>;
 }
 
 interface Entry {
@@ -40,6 +46,7 @@ interface Entry {
   key: string;
   maxSeq: number;
   chars: number;
+  projectionState: ConversationOutlineProjectionState;
 }
 
 interface OutlineCache {
@@ -63,15 +70,18 @@ function referencedRequestId(
   return event.type === "turn/input/accepted" ? event.clientRequestId : null;
 }
 
-function hasCrossTurnState(events: ThreadEventWithMeta[]): boolean {
+function parentItemId(event: ThreadEventWithMeta["event"]): string | null {
+  if ("item" in event && "parentToolCallId" in event.item)
+    return event.item.parentToolCallId ?? null;
+  return "parentToolCallId" in event ? (event.parentToolCallId ?? null) : null;
+}
+
+function hasBackgroundState(events: ThreadEventWithMeta[]): boolean {
   return events.some(
     ({ event }) =>
-      ("parentToolCallId" in event && event.parentToolCallId != null) ||
-      ("item" in event &&
-        (event.item.type === "backgroundTask" ||
-          event.item.type === "delegation" ||
-          ("parentToolCallId" in event.item &&
-            event.item.parentToolCallId != null))),
+      "item" in event &&
+      (event.item.type === "backgroundTask" ||
+        event.item.type === "delegation"),
   );
 }
 
@@ -88,10 +98,19 @@ function canReuse(
   checkpoint: Checkpoint,
   events: ThreadEventWithMeta[],
 ): boolean {
-  if (hasCrossTurnState(events)) return false;
+  if (hasBackgroundState(events)) return false;
   let hasTailTurn = false;
   return events.every(({ event }) => {
     if (event.type === "turn/started") hasTailTurn = true;
+    const parentId = parentItemId(event);
+    if (parentId !== null && checkpoint.parentItemIds.has(parentId))
+      return false;
+    if (
+      "item" in event &&
+      event.item.type === "toolCall" &&
+      checkpoint.parentItemIds.has(event.item.id)
+    )
+      return false;
     if (isThreadError(event) && !hasTailTurn) return false;
     if (
       event.scope.kind === "turn" &&
@@ -117,7 +136,7 @@ function nextCheckpoint(
   previous: Checkpoint,
   orderingBoundarySequence: number | null,
 ): Checkpoint {
-  if (hasCrossTurnState(projection.events)) return previous;
+  if (hasBackgroundState(projection.events)) return previous;
   const activeTurns = new Set<string>();
   const pendingRequests = new Set<string>();
   let completedBoundary = previous.sequenceStart;
@@ -155,9 +174,14 @@ function nextCheckpoint(
   if (boundary <= previous.sequenceStart) return previous;
   const turnIds = new Set(previous.turnIds);
   const requestIds = new Set(previous.requestIds);
+  const parentItemIds = new Set(previous.parentItemIds);
   for (const { event, meta } of projection.events) {
     if (meta.seq >= boundary) continue;
     if (event.scope.kind === "turn") turnIds.add(event.scope.turnId);
+    const parentId = parentItemId(event);
+    if (parentId !== null) parentItemIds.add(parentId);
+    if ("item" in event && event.item.type === "toolCall")
+      parentItemIds.add(event.item.id);
     const requestId = referencedRequestId(event);
     if (requestId !== null) requestIds.add(requestId);
   }
@@ -172,6 +196,7 @@ function nextCheckpoint(
     sequenceStart: boundary,
     turnIds,
     requestIds,
+    parentItemIds,
   };
   const tailEvents = projection.events.filter(
     ({ meta }) => meta.seq >= boundary,
@@ -204,9 +229,14 @@ export function projectConversationOutlineIncrementally(args: {
   maxSeq: number;
   contextBoundarySeq: number;
   orderingBoundarySequence: number | null;
+  resolveProjectionState: (
+    sequenceStart: number,
+    previous: ConversationOutlineProjectionState | null,
+  ) => ConversationOutlineProjectionState;
   select: (
     sequenceStart: number,
     precedingAgentMessageDeltaCount: number,
+    projectionState: ConversationOutlineProjectionState,
   ) => ConversationOutlineSelection;
 }): ThreadConversationOutlineItem[] {
   let cache = caches.get(args.db);
@@ -227,8 +257,9 @@ export function projectConversationOutlineIncrementally(args: {
     sequenceStart: args.contextBoundarySeq,
     turnIds: new Set(),
     requestIds: new Set(),
+    parentItemIds: new Set(),
   };
-  let checkpoint =
+  const canReuseEntry =
     entry !== undefined &&
     entry.key === args.key &&
     entry.dataVersion === dataVersion &&
@@ -236,12 +267,24 @@ export function projectConversationOutlineIncrementally(args: {
     entry.contextBoundarySeq === args.contextBoundarySeq &&
     (args.orderingBoundarySequence === null ||
       entry.checkpoint.sequenceStart <= args.orderingBoundarySequence) &&
-    entry.maxSeq <= args.maxSeq
+    entry.maxSeq <= args.maxSeq;
+  const previousState = canReuseEntry ? entry.projectionState : null;
+  const projectionState = args.resolveProjectionState(
+    canReuseEntry ? entry.maxSeq + 1 : args.contextBoundarySeq,
+    previousState,
+  );
+  let checkpoint =
+    canReuseEntry &&
+    previousState?.includeNestedEvents ===
+      projectionState.includeNestedEvents &&
+    previousState.summaryCompactionEnabled ===
+      projectionState.summaryCompactionEnabled
       ? entry.checkpoint
       : empty;
   let selection = args.select(
     checkpoint.sequenceStart,
     checkpoint.agentMessageDeltaCount,
+    projectionState,
   );
   let agentMessageDeltaCount =
     checkpoint.agentMessageDeltaCount +
@@ -258,7 +301,7 @@ export function projectConversationOutlineIncrementally(args: {
     (crossedCompactionThreshold || !canReuse(checkpoint, selection.events))
   ) {
     checkpoint = empty;
-    selection = args.select(checkpoint.sequenceStart, 0);
+    selection = args.select(checkpoint.sequenceStart, 0, projectionState);
     agentMessageDeltaCount = selection.events.filter(
       ({ event }) => event.type === "item/agentMessage/delta",
     ).length;
@@ -278,7 +321,7 @@ export function projectConversationOutlineIncrementally(args: {
       next === entry?.checkpoint
         ? entry.chars
         : JSON.stringify(next.items).length +
-          [...next.turnIds, ...next.requestIds].reduce(
+          [...next.turnIds, ...next.requestIds, ...next.parentItemIds].reduce(
             (sum, id) => sum + id.length,
             0,
           );
@@ -292,6 +335,7 @@ export function projectConversationOutlineIncrementally(args: {
         key: args.key,
         maxSeq: args.maxSeq,
         chars,
+        projectionState,
       });
       cache.chars += chars;
     }

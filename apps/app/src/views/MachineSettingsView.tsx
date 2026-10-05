@@ -82,6 +82,7 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
   linux: "Linux",
   wsl: "WSL",
+  win32: "Windows",
   unknown: null,
 };
 

@@ -42,6 +42,10 @@ one page.
   stdin. Inside double quotes the shell runs `backticks` and `$(...)` before
   bb sees the text, which silently corrupts Markdown and can execute commands.
 - Timeouts take seconds or a duration with a unit (`90s`, `20m`, `4h`).
+- Examples here use POSIX shell syntax. On a Windows machine the agent shell
+  is usually PowerShell: read an environment variable as `$env:NAME`
+  (`"$env:BB_THREAD_ID"`), separate commands with `;` instead of `&&`, and
+  continue a line with a backtick instead of a backslash.
 
 A standalone CLI targets http://127.0.0.1:38886. Use BB_SERVER_URL and
 BB_HOST_DAEMON_PORT only for an intentional non-default target.
@@ -107,7 +111,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   server. An imported server keeps its connect tunnel and bb account off
   until `bb server allow-connect`. On the computer a server moved away from,
   `bb server install-machine-service` installs the persistent, self-updating
-  machine service (needs Node.js 22.19+ on the PATH).
+  machine service (macOS and Linux only; needs Node.js 22.19+ on the PATH).
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a

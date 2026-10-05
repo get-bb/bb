@@ -75,6 +75,7 @@ export function MachineReconnectDialog({
           <MachineLaunchCommand
             key={prepared.command}
             command={prepared.command}
+            windowsCommand={prepared.windowsCommand}
             expiresAt={prepared.expiresAt}
             onRegenerate={() => {
               if (hostId !== null) mutate(hostId);

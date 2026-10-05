@@ -184,7 +184,7 @@ describe("buildPaletteThreadSearchRows", () => {
     });
   });
 
-  it("uses active recents before typing and does not reuse them for a one-character query", () => {
+  it("uses active recents before typing and only title matches once typing starts", () => {
     const active = makeThread("recent-active");
     const archived = makeThread("recent-archived", { archivedAt: NOW - 1 });
     const recents = build({
@@ -199,7 +199,7 @@ describe("buildPaletteThreadSearchRows", () => {
       isRecent: true,
       rows: [{ id: "active:recent-active" }],
     });
-    expect(build({ query: "m", recentThreads: [active] })).toMatchObject({
+    expect(build({ query: "z", recentThreads: [active] })).toMatchObject({
       isRecent: false,
       rows: [],
     });
@@ -249,5 +249,171 @@ describe("buildPaletteThreadSearchRows", () => {
     expect(rows[0]?.threadId).toBe("20");
     expect(rows.at(-1)?.threadId).toBe("1");
     expect(recentThreads[0]?.id).toBe("0");
+  });
+
+  describe("loaded title matches", () => {
+    const titled = (id: string, title: string, updatedAt = NOW) =>
+      makeThread(id, { title, updatedAt });
+
+    it("matches loaded active titles from one character with highlight ranges", () => {
+      const result = build({
+        query: " q",
+        searchResponse: undefined,
+        recentThreads: [
+          titled("quick", "Quick switcher"),
+          titled("other", "Release notes"),
+        ],
+      });
+      expect(result.isRecent).toBe(false);
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0]).toMatchObject({
+        threadId: "quick",
+        primaryText: "Quick switcher",
+        highlightRanges: [{ start: 0, end: 1 }],
+        messageSeq: null,
+      });
+    });
+
+    it("lists a project's threads after title matches when a word in its name starts with the query", () => {
+      const result = build({
+        query: "pal",
+        projectNamesById: new Map([
+          ["project-1", "Palette project"],
+          ["project-2", "Other"],
+        ]),
+        recentThreads: [
+          titled("in-project", "Unrelated"),
+          titled("title-hit", "Pale ale"),
+          makeThread("elsewhere", { projectId: "project-2", title: "Nothing" }),
+        ],
+      });
+      expect(result.rows.map((row) => row.threadId)).toEqual([
+        "title-hit",
+        "in-project",
+      ]);
+      expect(result.rows[1]?.highlightRanges).toEqual([]);
+      expect(result.rows[0]?.projectHighlightRanges).toEqual([]);
+      expect(result.rows[1]?.projectHighlightRanges).toEqual([
+        { start: 0, end: 3 },
+      ]);
+    });
+
+    it("highlights the project-name word that starts with the query", () => {
+      const result = build({
+        query: "proj",
+        recentThreads: [titled("in-project", "Unrelated")],
+      });
+      expect(result.rows[0]?.projectHighlightRanges).toEqual([
+        { start: 8, end: 12 },
+      ]);
+    });
+
+    it("does not match a project on letters inside a word", () => {
+      expect(
+        build({
+          query: "lette",
+          recentThreads: [titled("a", "Unrelated")],
+        }).rows,
+      ).toEqual([]);
+    });
+
+    it("ranks by match quality, then update time", () => {
+      const result = build({
+        query: "fix",
+        recentThreads: [
+          titled("fuzzy", "Find it x", NOW + 100),
+          titled("older", "Fix older", NOW),
+          titled("newer", "Fix newer", NOW + 10),
+        ],
+      });
+      expect(result.rows.map((row) => row.threadId)).toEqual([
+        "newer",
+        "older",
+        "fuzzy",
+      ]);
+    });
+
+    it("shows no loaded matches when only Archived is selected", () => {
+      expect(
+        build({
+          query: "fix",
+          lifecycles: ["archived"],
+          recentThreads: [titled("a", "Fix it")],
+        }).rows,
+      ).toEqual([]);
+    });
+
+    it("inserts server-only rows after three loaded rows and merges threads found both ways", () => {
+      const local = Array.from({ length: 6 }, (_, index) =>
+        titled(`local-${index}`, `Fix ${index}`, NOW - index),
+      );
+      const messageOnly = titled("message-only", "Weekly sync");
+      const result = build({
+        query: "fix",
+        recentThreads: local,
+        searchResponse: {
+          active: {
+            total: 2,
+            results: [
+              {
+                thread: messageOnly,
+                matches: [
+                  {
+                    sourceKind: "assistant_message",
+                    text: "we should fix it",
+                    highlightRanges: [{ start: 10, end: 13 }],
+                    sourceSeq: 7,
+                  },
+                ],
+              },
+              {
+                thread: titled("local-4", "Fix 4", NOW - 4),
+                matches: [
+                  {
+                    sourceKind: "user_message",
+                    text: "please fix 4",
+                    highlightRanges: [{ start: 7, end: 10 }],
+                    sourceSeq: 12,
+                  },
+                ],
+              },
+            ],
+          },
+          archived: { total: 0, results: [] },
+        },
+      });
+      expect(result.rows.map((row) => row.threadId)).toEqual([
+        "local-0",
+        "local-1",
+        "local-2",
+        "message-only",
+        "local-3",
+        "local-4",
+        "local-5",
+      ]);
+      expect(result.rows[5]).toMatchObject({
+        id: "active:local-4",
+        primaryText: "please fix 4",
+        secondaryTitle: "Fix 4",
+        messageSeq: 12,
+        highlightRanges: [{ start: 7, end: 10 }],
+      });
+    });
+
+    it("keeps loaded matches while server results are stale", () => {
+      const result = build({
+        query: "fix",
+        searchResultsAreCurrent: false,
+        recentThreads: [titled("a", "Fix it")],
+        searchResponse: {
+          active: {
+            total: 1,
+            results: [{ thread: titled("stale", "Stale"), matches: [] }],
+          },
+          archived: { total: 0, results: [] },
+        },
+      });
+      expect(result.rows.map((row) => row.threadId)).toEqual(["a"]);
+    });
   });
 });

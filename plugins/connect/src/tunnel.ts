@@ -438,6 +438,10 @@ export class ConnectTunnel {
     }
     this.tunnel = tunnel;
     let connectedAt = 0;
+    let transportError: {
+      message: string;
+      code: string | number | null;
+    } | null = null;
     let retryScheduled = false;
     let handshakeDeadline: ReturnType<typeof setTimeout> | undefined;
     const isCurrent = () =>
@@ -503,22 +507,40 @@ export class ConnectTunnel {
     });
     tunnel.on("error", (e: Error) => {
       if (!isCurrent()) return;
+      const code = "code" in e ? e.code : null;
+      transportError = {
+        message: e.message,
+        code:
+          typeof code === "string" || typeof code === "number" ? code : null,
+      };
       this.lastError = humanizeTransportError(e, connectApexHost(identity));
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
+      if (!isCurrent()) return;
+      const now = Date.now();
+      const lastHeartbeatAckAt = this.session?.lastHeartbeatAckAt ?? null;
+      const detail = `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""}) ${JSON.stringify(
+        {
+          transportError,
+          connectedDurationMs: connectedAt
+            ? Math.max(0, now - connectedAt)
+            : null,
+          lastHeartbeatAckAgeMs:
+            lastHeartbeatAckAt === null
+              ? null
+              : Math.max(0, now - lastHeartbeatAckAt),
+        },
+      )}`;
       if (
         code === TUNNEL_CLEAN_CLOSE_CODE &&
         reason.toString() === TUNNEL_REPLACED_CLOSE_REASON
       ) {
-        if (!isCurrent()) return;
         this.lastError =
           "another bb connected with this server's identity and took over bb connect";
-        retry(this.lastError, TUNNEL_REPLACED_RETRY_MS);
+        retry(`${detail}; ${this.lastError}`, TUNNEL_REPLACED_RETRY_MS);
         return;
       }
-      retry(
-        `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""})`,
-      );
+      retry(detail);
     });
   }
 }

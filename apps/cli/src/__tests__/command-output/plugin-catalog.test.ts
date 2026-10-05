@@ -1,3 +1,4 @@
+import { sep } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   collectLogPayloads,
@@ -29,6 +30,7 @@ const searchResult = {
   official: true,
   author: null,
   installed: false,
+  installedByDefault: false,
   conflictingInstallSource: null,
   installs: null,
   compatible: true,
@@ -194,6 +196,29 @@ describe("bb plugin catalog", () => {
     expect(output).toContain("4,210");
   });
 
+  it("labels built-in and new listings like the plugin store", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        results: [
+          { ...searchResult, installedByDefault: true, installs: 2 },
+          {
+            ...searchResult,
+            entryId: "notes",
+            pluginId: "notes",
+            displayName: "Notes",
+            installs: 3,
+            publishedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    await runCommand(["plugin", "search", "lin"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Built in");
+    expect(output).toContain("New");
+  });
+
   it("outputs raw catalog search results as JSON", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json({ results: [searchResult] }));
 
@@ -213,7 +238,8 @@ describe("bb plugin catalog", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body));
-    expect(body.source).toMatch(/^path:.*\/linear$/);
+    expect(body.source.startsWith("path:")).toBe(true);
+    expect(body.source.endsWith(`${sep}linear`)).toBe(true);
   });
 
   it("installs a pasted GitHub repository URL as a direct source", async () => {
