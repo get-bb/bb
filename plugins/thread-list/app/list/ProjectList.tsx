@@ -1557,10 +1557,8 @@ function ProjectListComponent({
   const heldReadStatus = useHeldReadStatus(threads, selectedThreadId);
   const threadUnreadPredicate = useMemo(
     () =>
-      groupByReadStatus
-        ? createThreadUnreadPredicate(threads, heldReadStatus)
-        : null,
-    [groupByReadStatus, heldReadStatus, threads],
+      groupByReadStatus ? createThreadUnreadPredicate(heldReadStatus) : null,
+    [groupByReadStatus, heldReadStatus],
   );
   const activeRename = useSidebarRenameState();
   const sidebarThreadComparator = useMemo<ThreadComparator>(() => {

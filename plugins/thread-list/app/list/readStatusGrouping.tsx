@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { ThreadUnreadPredicate } from "../model/project-thread-groups.js";
+import { isUnreadDoneThread } from "../model/thread-activity.js";
 
 interface HeldReadStatus {
   threadId: string;
@@ -38,25 +39,12 @@ export function useHeldReadStatus(
 }
 
 export function createThreadUnreadPredicate(
-  threads: readonly SidebarThread[],
   held: HeldReadStatus | null,
 ): ThreadUnreadPredicate {
-  const threadById = new Map(threads.map((thread) => [thread.id, thread]));
-  const unreadThreadIds = new Set<string>();
-  for (const thread of threads) {
-    const isUnread =
+  return (thread) =>
+    isUnreadDoneThread(
       held !== null && thread.id === held.threadId
-        ? held.isUnread
-        : thread.isUnread;
-    if (thread.isHidden || !isUnread) continue;
-    let current: SidebarThread | undefined = thread;
-    while (current !== undefined && !unreadThreadIds.has(current.id)) {
-      unreadThreadIds.add(current.id);
-      current =
-        current.parentThreadId === null
-          ? undefined
-          : threadById.get(current.parentThreadId);
-    }
-  }
-  return (thread) => unreadThreadIds.has(thread.id);
+        ? { ...thread, isUnread: held.isUnread }
+        : thread,
+    );
 }

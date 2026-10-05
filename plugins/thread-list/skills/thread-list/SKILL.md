@@ -53,8 +53,9 @@ provider ids have no icon.
 Organize → Groups → By read status lists unread threads above read threads at
 each level of the list, keeping the selected sort within each group.
 `groupByReadStatus` defaults to `false`; use
-`bb thread-list prefs set groupByReadStatus true` to turn it on. Worktree rows
-and parent threads count as unread when any thread in them is unread. The open
+`bb thread-list prefs set groupByReadStatus true` to turn it on. A thread counts
+as unread when its row shows the unread dot; worktree rows move up when a thread
+in them shows it, and child threads don't lift their parent. The open
 thread keeps its place until another thread is opened, and pinned threads keep
 their manual order.
 

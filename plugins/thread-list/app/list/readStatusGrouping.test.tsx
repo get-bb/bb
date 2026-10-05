@@ -26,7 +26,6 @@ describe("useHeldReadStatus", () => {
         selectedThreadId: string | undefined;
       }) =>
         createThreadUnreadPredicate(
-          threads,
           useHeldReadStatus(threads, selectedThreadId),
         ),
       {
@@ -50,10 +49,7 @@ describe("useHeldReadStatus", () => {
   it("keeps the held status when the sidebar remounts", () => {
     const opened = makeSidebarThread({ id: "remounted", latestAttentionAt: 5 });
     const useHeldUnreadPredicate = (threads: SidebarThread[]) =>
-      createThreadUnreadPredicate(
-        threads,
-        useHeldReadStatus(threads, "remounted"),
-      );
+      createThreadUnreadPredicate(useHeldReadStatus(threads, "remounted"));
     const first = renderHook(() => useHeldUnreadPredicate([opened]));
     expect(first.result.current(opened)).toBe(true);
     first.unmount();
@@ -69,43 +65,44 @@ describe("useHeldReadStatus", () => {
 });
 
 describe("createThreadUnreadPredicate", () => {
-  it("counts a parent as unread when any descendant is unread", () => {
+  it("counts only threads that show an unread dot", () => {
     const parent = makeSidebarThread({ id: "parent", lastReadAt: 10 });
-    const child = makeSidebarThread({
+    const unreadChild = makeSidebarThread({
       id: "child",
       parentThreadId: "parent",
-      lastReadAt: 10,
-    });
-    const grandchild = makeSidebarThread({
-      id: "grandchild",
-      parentThreadId: "child",
       latestAttentionAt: 5,
     });
-    const sibling = makeSidebarThread({ id: "sibling", lastReadAt: 10 });
-    const isUnread = createThreadUnreadPredicate(
-      [parent, child, grandchild, sibling],
-      null,
-    );
+    const unreadRoot = makeSidebarThread({ id: "root", latestAttentionAt: 5 });
+    const unreadError = makeSidebarThread({
+      id: "error",
+      status: "error",
+      latestAttentionAt: 5,
+    });
+    const unreadRunning = makeSidebarThread({
+      id: "running",
+      status: "active",
+      latestAttentionAt: 5,
+    });
+    const isUnread = createThreadUnreadPredicate(null);
 
-    expect(isUnread(parent)).toBe(true);
-    expect(isUnread(child)).toBe(true);
-    expect(isUnread(grandchild)).toBe(true);
-    expect(isUnread(sibling)).toBe(false);
+    expect(isUnread(unreadRoot)).toBe(true);
+    expect(isUnread(unreadError)).toBe(true);
+    expect(isUnread(parent)).toBe(false);
+    expect(isUnread(unreadChild)).toBe(false);
+    expect(isUnread(unreadRunning)).toBe(false);
   });
 
-  it("keeps a parent unread while its held child stays open", () => {
-    const parent = makeSidebarThread({ id: "held-parent", lastReadAt: 10 });
-    const child = makeSidebarThread({
-      id: "held-child",
-      parentThreadId: "held-parent",
+  it("uses the held status for the open thread", () => {
+    const markedRead = makeSidebarThread({
+      id: "held",
       latestAttentionAt: 5,
       lastReadAt: 10,
     });
-    const isUnread = createThreadUnreadPredicate([parent, child], {
-      threadId: "held-child",
+    const isUnread = createThreadUnreadPredicate({
+      threadId: "held",
       isUnread: true,
     });
 
-    expect(isUnread(parent)).toBe(true);
+    expect(isUnread(markedRead)).toBe(true);
   });
 });
