@@ -119,8 +119,8 @@ const BB_VS_SUPERSET: Comparison = {
             the release notes.
           </p>
           <p>
-            They pass work back and forth on their own, so you get finished,
-            reviewed work without copying between tools.
+            They pass work back and forth once you tell them to work together,
+            so you get finished, reviewed work without copying between tools.
           </p>
           <div className="providers cmp-providers">
             <span className="label">Works with any agent</span>
@@ -342,17 +342,49 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Switching from Superset",
       items: [
         {
+          question: "What’s the difference between bb and Superset?",
+          answer: (
+            <>
+              <p>
+                Both run Claude Code, Codex, and other coding agents in parallel
+                on your repo. bb is free for any team size and open source,
+                while Superset charges $20 per user a month for teams. bb
+                includes phone and browser access, remote machines, and
+                automations at no cost, and works on Windows through WSL2, which
+                runs Linux inside Windows. When one agent starts another, the
+                new agent gets its own thread (one conversation with one agent)
+                that you can open and message.
+              </p>
+              <p>
+                Superset fits better if you need cloud workspaces, a Run button
+                for dev servers, port management, a released iPhone app, or SSO.
+              </p>
+            </>
+          ),
+        },
+        {
           question: "Is there a free, open-source Superset alternative?",
           answer: (
             <p>
-              Yes: bb is free and MIT-licensed. It runs Claude Code, Codex, and
-              other coding agents on your own machines, lets them start and
-              message each other, and includes a mobile app. Comparing more
-              tools? See the{" "}
-              <a href="/compare/conductor-alternatives">
-                Conductor alternatives roundup
-              </a>
-              .
+              Yes: bb. It’s free for any team size and MIT-licensed, so you can
+              use and change it for anything, including at work. Superset
+              charges $20 per user a month for teams, and its Elastic License
+              2.0 makes the code public but isn’t an open-source license.{" "}
+              <a href="/download/macos">Download bb</a>.
+            </p>
+          ),
+        },
+        {
+          question: "How do I get started?",
+          answer: (
+            <p>
+              <a href="/download/macos">Download bb for macOS</a> (Apple
+              Silicon) or <a href="/download/linux">Linux</a> (alpha). On an
+              Intel Mac or on Windows through WSL2, run{" "}
+              <code>npx bb-app@latest</code> in a terminal to download and start
+              bb; it needs Node.js 22.19 or later. You also need Claude Code or
+              Codex installed and signed in. Then add your repo folder and start
+              a thread.
             </p>
           ),
         },
@@ -360,10 +392,11 @@ const BB_VS_SUPERSET: Comparison = {
           question: "How do I switch from Superset to bb?",
           answer: (
             <p>
-              Add your repo to bb. Branches and worktrees are plain Git, so bb
-              can work in an existing Superset worktree, and your setup scripts
-              map to bb’s setup files. Chats don’t carry over, and Superset
-              keeps working while you try bb. Follow the{" "}
+              Install bb and add the same repo folder. Your branches and
+              Superset’s worktrees (separate copies of your repo, one per task)
+              are plain Git, so bb picks up unfinished work where it is, and
+              your setup scripts map to bb’s setup files. Chats don’t carry
+              over, and Superset keeps working while you try bb. Follow the{" "}
               <a href="/guides/move-from-superset-to-bb">step-by-step guide</a>.
             </p>
           ),
@@ -374,23 +407,16 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Price and license",
       items: [
         {
-          question: "Is bb free?",
+          question: "Is bb free and open source?",
           answer: (
             <p>
-              Yes. bb has no paid tier, for one person or a whole team. The
-              mobile app, automations, remote access, and plugins are all
-              included. You pay only for the Claude, ChatGPT, or other agent
-              plans and API keys you already use.
-            </p>
-          ),
-        },
-        {
-          question: "Is bb open source?",
-          answer: (
-            <p>
-              Yes. bb is MIT-licensed, and the code is on{" "}
-              <a href="https://github.com/get-bb/bb">GitHub</a>. Read it, fork
-              it, change anything, and run your own build.
+              Yes, for one person or a whole team. The mobile app, remote
+              machines, automations, and plugins are all included, while
+              Superset puts its mobile app, remote machines, and automations on
+              its $20-per-user Pro plan. You pay only for the Claude, ChatGPT,
+              or other agent plans and API keys you already use. The code is on{" "}
+              <a href="https://github.com/get-bb/bb">GitHub</a> under the MIT
+              license.
             </p>
           ),
         },
@@ -400,8 +426,8 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               Yes. bb runs the Claude Code and Codex you’re already signed in
               to, so your Claude Pro or Max and ChatGPT plans work as they do
-              today, along with your CLAUDE.md, skills, MCP servers, and Codex
-              settings. API keys work too.
+              today, with your existing setup (CLAUDE.md, skills, MCP servers,
+              and Codex settings). API keys work too.
             </p>
           ),
         },
@@ -414,10 +440,12 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Which coding agents does bb support?",
           answer: (
             <p>
-              Claude Code, Codex, Pi, Cursor, OpenCode, Grok Build, omp, and
-              Hermes Agent. Add any other agent that supports the open Agent
-              Client Protocol, like Gemini CLI or Devin, in Settings, or add one
-              with a plugin. You pick the agent for each thread.
+              Claude Code, Codex, Cursor, and OpenCode, plus Pi, Grok Build,
+              omp, and Hermes Agent. In Settings, add any other agent that
+              supports the Agent Client Protocol (ACP), an open standard for
+              connecting coding agents to apps, like Gemini CLI or Devin. You
+              can also add one with a plugin. Each thread can use a different
+              agent.
             </p>
           ),
         },
@@ -428,7 +456,8 @@ const BB_VS_SUPERSET: Comparison = {
               Yes. Ask Claude Code to “start a bb Codex thread to review this
               branch, then fix what it finds.” It starts Codex in the same
               worktree, waits, and applies the fixes. Codex shows up as its own
-              thread you can open.{" "}
+              thread, so you can read the exact prompt Claude sent, watch it
+              work, and message it mid-run.{" "}
               <a href="/guides/claude-code-and-codex-together">See how</a>.
             </p>
           ),
@@ -437,10 +466,12 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can my coding agents talk to each other?",
           answer: (
             <p>
-              Yes. Tell them to work together, and any agent can message another
-              thread, whatever the provider: mid-task, or queued until it
-              finishes. The receiving thread shows each message and who sent it,
-              and you can step in and message any of them yourself.
+              Yes, and there’s no coordinator to set up; Superset does this
+              through a coordinator skill. Tell your agents to work together,
+              and any agent can message another thread, whatever the provider,
+              right away or once that thread finishes its current task. The
+              receiving thread shows each message and who sent it, and you can
+              step in and message any of them yourself.
             </p>
           ),
         },
@@ -451,7 +482,8 @@ const BB_VS_SUPERSET: Comparison = {
               Yes. Give each thread its own Git worktree so agents don’t
               overwrite each other’s changes. List your .env files and setup
               commands once, and bb prepares every new worktree. By default, bb
-              runs one thread per processor core and queues the rest.
+              runs one thread per processor core and starts the rest as others
+              finish.
             </p>
           ),
         },
@@ -459,9 +491,11 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can I control what my agents are allowed to do?",
           answer: (
             <p>
-              Yes. Pick a permission mode for each thread: Accept Edits, Approve
-              for me, or Full Access. When an agent needs your approval, allow
-              or deny it from your computer or your phone.
+              Yes. Pick a permission mode for each thread. Accept Edits applies
+              changes inside the project and asks before anything else. Approve
+              for me reviews requests automatically and sends high-risk ones to
+              you. Full Access skips approvals and can run anything on your
+              machine. Allow or deny approvals from your computer or your phone.
             </p>
           ),
         },
@@ -474,10 +508,12 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can I control my coding agents from my phone?",
           answer: (
             <p>
-              Yes, for free. Install the bb mobile app for iPhone, in public
-              beta on TestFlight, for push notifications, or open bb in any
-              phone or computer browser through bb Connect. Start tasks, approve
-              commands, answer questions, and review changes from anywhere.{" "}
+              Yes, for free. Use the bb iPhone app, a public beta on TestFlight
+              (Apple’s beta testing app), for push notifications, or open bb in
+              any browser through bb Connect, bb’s free remote access. Android
+              works fully in the browser, without push notifications, and a
+              native app is in testing. Superset’s iPhone app needs Pro and iOS
+              26, its Android app is a waitlist, and it has no browser access.{" "}
               <a href="/guides/steer-coding-agents-from-your-phone">
                 Set it up
               </a>
@@ -486,23 +522,14 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
-          question: "Is there an Android app?",
-          answer: (
-            <p>
-              Not yet. On Android, open bb in your phone’s browser through bb
-              Connect: the whole app works there, without push notifications. A
-              native Android app is in testing.
-            </p>
-          ),
-        },
-        {
           question: "Will my agents keep running when I close my laptop?",
           answer: (
             <p>
               Not on that laptop. Agents run on your machine, and closing the
-              lid puts it to sleep. On a Mac, Keep Awake stops idle sleep. For
-              long runs, add an always-on desktop, mini PC, or cloud server to
-              bb and run threads there.
+              lid puts it to sleep. On a Mac, switch on Keep Awake, a built-in
+              bb plugin that stops idle sleep while bb runs. For long runs, add
+              an always-on desktop, mini PC, or cloud server to bb and run
+              threads there.
             </p>
           ),
         },
@@ -527,9 +554,10 @@ const BB_VS_SUPERSET: Comparison = {
           answer: (
             <p>
               Yes, free. Automations start an agent thread or run a script on a
-              repeating schedule, once at a set time, or after a delay. Pick the
-              agent, model, and permission mode, and give each run its own
-              worktree if you like.
+              repeating schedule, once at a set time, or after a delay.
+              Superset’s automations only repeat and need Pro. Pick the agent,
+              model, and permission mode, and give each run its own worktree if
+              you like.
             </p>
           ),
         },
@@ -544,24 +572,17 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
-          question: "Can I customize bb with plugins?",
+          question: "Can I customize bb with plugins or scripts?",
           answer: (
             <p>
-              Yes. Install plugins from the{" "}
-              <a href="/marketplace">marketplace</a>, or ask an agent to build
-              one for you. Plugins can add panels, commands, and new agents.
-              Everything you add works in the mobile app too, because it runs
-              your own bb.
-            </p>
-          ),
-        },
-        {
-          question: "Does bb have a CLI and an API?",
-          answer: (
-            <p>
-              Yes. Everything in the app is also in the bb CLI and the HTTP API,
-              so scripts, cron jobs, and other agents can start, message, and
-              manage threads.
+              Yes. bb works out of the box, with worktrees, diff review,
+              automations, and the mobile app ready from your first thread. When
+              you want more, install plugins from the{" "}
+              <a href="/marketplace">marketplace</a> or ask an agent to build
+              one. Plugins can add panels, commands, and new agents, and they
+              work in the mobile app too. Everything in the app is also in the
+              bb CLI and HTTP API, so scripts and other agents can start,
+              message, and manage threads.
             </p>
           ),
         },
@@ -574,10 +595,12 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Does bb run on Mac, Windows, and Linux?",
           answer: (
             <p>
-              Yes. Download the app for Apple Silicon Macs or Linux (alpha), or
-              run <code>npx bb-app@latest</code> on Windows through WSL2 or an
-              Intel Mac. Then add a repo and start a thread; there’s nothing
-              else to set up.
+              Yes. Download the app for{" "}
+              <a href="/download/macos">Apple Silicon Macs</a> or{" "}
+              <a href="/download/linux">Linux</a> (alpha), or run{" "}
+              <code>npx bb-app@latest</code> on an Intel Mac or on Windows
+              through WSL2. Superset doesn’t run on Windows yet, though it has a
+              native Intel Mac app.
             </p>
           ),
         },
@@ -596,9 +619,11 @@ const BB_VS_SUPERSET: Comparison = {
           question: "Can my team use bb?",
           answer: (
             <p>
-              Yes, for free, with no seats to buy. Each person runs bb on their
-              own machines with their own agent subscriptions. bb doesn’t offer
-              team plans, SSO, or a support SLA.
+              Yes, free at any team size, while Superset charges $20 per user a
+              month for teams. Each person runs bb on their own machines with
+              their own agent subscriptions and shares work through Git and pull
+              requests as usual. bb doesn’t offer team plans, SSO, or a support
+              SLA.
             </p>
           ),
         },

@@ -798,6 +798,10 @@
   color: var(--dim);
 }
 
+.cmp-faq-answer p + p {
+  margin-top: 12px;
+}
+
 .cmp-faq-answer a {
   color: var(--heading);
   text-decoration: underline;

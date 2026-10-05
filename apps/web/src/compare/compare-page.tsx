@@ -37,7 +37,8 @@ function plainText(node: ReactNode): string {
     return node.map(plainText).join("");
   }
   if (isValidElement<{ children?: ReactNode }>(node)) {
-    return plainText(node.props.children);
+    const text = plainText(node.props.children);
+    return node.type === "p" ? `${text} ` : text;
   }
   return "";
 }
