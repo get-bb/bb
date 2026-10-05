@@ -644,7 +644,6 @@ function splitThreadTellScript(script: string): ThreadTellScript | null {
     if (stdin === null) return null;
     line = head!.trim();
   }
-  if (line.includes("\n") || line.includes("<<")) return null;
   return { line, stdin, variable };
 }
 

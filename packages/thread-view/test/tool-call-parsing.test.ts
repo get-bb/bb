@@ -126,6 +126,15 @@ describe("parseSentThreadMessage", () => {
     });
   });
 
+  it("reads a multi-line quoted message", () => {
+    expect(
+      sent('bb thread tell thr_wrkr234567 "Checklist:\n1. Notes\n2. Docs"'),
+    ).toEqual({
+      threadId: "thr_wrkr234567",
+      message: "Checklist:\n1. Notes\n2. Docs",
+    });
+  });
+
   it("reads a message piped from a heredoc with --message-file -", () => {
     const command = [
       "bb thread tell thr_wrkr234567 --message-file - <<'EOF'",
