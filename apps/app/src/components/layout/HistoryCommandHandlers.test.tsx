@@ -62,6 +62,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     data: {
       generalSettings: { ...defaultAppSettings },
       keybindings: [mocks.backBinding, mocks.forwardBinding],
+      defaultKeybindings: [mocks.backBinding, mocks.forwardBinding],
     },
   }),
 }));
