@@ -112,7 +112,6 @@ function useSettingsStoryState() {
     useState(false);
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
-  const [richTextEditing, setRichTextEditing] = useState(false);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
@@ -139,7 +138,6 @@ function useSettingsStoryState() {
     navigateToThreadAfterCreate,
     openLinksInAppBrowser,
     rewriteLocalhostLinks,
-    richTextEditing,
     steerActiveThreadOnEnter,
     confirmThreadArchive,
     setConfirmThreadArchive,
@@ -155,7 +153,6 @@ function useSettingsStoryState() {
     setNavigateToThreadAfterCreate,
     setOpenLinksInAppBrowser,
     setRewriteLocalhostLinks,
-    setRichTextEditing,
     setSteerActiveThreadOnEnter,
     setStreamerMode,
     setShowDiagnosticEvents,
@@ -190,11 +187,9 @@ function GeneralSettingsStory({
         }
         onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
-        onRichTextEditingChange={state.setRichTextEditing}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
-        richTextEditing={state.richTextEditing}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
       />
       <CliSkillsSettingsSectionContent

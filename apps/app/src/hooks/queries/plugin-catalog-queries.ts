@@ -1,3 +1,4 @@
+import type { PluginMarketplaceCategory } from "@bb/domain";
 import type {
   InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
@@ -304,13 +305,14 @@ function toPluginCatalogSearchEntry(
 export interface PluginCatalogSearchData {
   entries: PluginCatalogSearchEntry[];
   collections: PluginCatalogCollection[];
+  categories: PluginMarketplaceCategory[];
 }
 
 export async function searchPluginCatalog(
   fetchImpl: FetchLike,
   query: string,
 ): Promise<PluginCatalogSearchData> {
-  const { results, collections } = await createPluginsClient(
+  const { results, collections, categories } = await createPluginsClient(
     fetchImpl,
   ).catalog.search({
     query,
@@ -318,6 +320,7 @@ export async function searchPluginCatalog(
   return {
     entries: results.map(toPluginCatalogSearchEntry),
     collections,
+    categories,
   };
 }
 

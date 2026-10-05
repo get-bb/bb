@@ -19,8 +19,12 @@
       "passThroughEnv": ["DISPLAY"]
     },
     "@bb/web#build": {
+      "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/server/src/generated/bb-official-marketplace/marketplace.json",
+        "$TURBO_ROOT$/plugins/*/icons/*.svg",
+        "$TURBO_ROOT$/plugins/*/*.svg",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
         "$TURBO_ROOT$/changelog-parser.ts",
@@ -28,7 +32,10 @@
         "$TURBO_ROOT$/apps/web/src/**",
         "$TURBO_ROOT$/apps/web/tsconfig.json",
         "$TURBO_ROOT$/apps/web/vite.config.ts",
+        "$TURBO_ROOT$/assets/bb-logo.svg",
+        "$TURBO_ROOT$/packages/shared-ui/src/**",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/plugins/plugin-api-docs/src/**",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/turbo.json"
@@ -438,6 +445,9 @@
     "@bb/plugin-build#topo": {
       "dependsOn": ["^topo", "@bb/plugin-build#generate"]
     },
+    "@bb/web#topo": {
+      "dependsOn": ["^topo", "@bb/server#generate:bb-official-marketplace"]
+    },
     "@bb/server#topo": {
       "dependsOn": ["^topo", "@bb/server#generate:bb-official-marketplace"]
     },
@@ -510,7 +520,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/changelog-metadata.ts",
-        "$TURBO_ROOT$/changelog-parser.ts"
+        "$TURBO_ROOT$/changelog-parser.ts",
+        "$TURBO_ROOT$/packages/shared-ui/src/**",
+        "$TURBO_ROOT$/plugins/plugin-api-docs/src/**"
       ]
     },
     "@bb/host-daemon#build": {

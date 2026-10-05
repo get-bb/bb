@@ -158,5 +158,35 @@
     "id": "provider-pi",
     "name": "Pi provider",
     "icon": null
+  },
+  {
+    "id": "agent-annotations",
+    "name": "Agent Annotations",
+    "icon": "MessageSquarePlus"
+  },
+  {
+    "id": "bb-account",
+    "name": "bb account",
+    "icon": "UserRound"
+  },
+  {
+    "id": "bb-guide",
+    "name": "BB guide",
+    "icon": "Explore"
+  },
+  {
+    "id": "pdf-preview",
+    "name": "PDF preview",
+    "icon": "FileText"
+  },
+  {
+    "id": "theme-preview",
+    "name": "Theme Preview",
+    "icon": "Palette"
+  },
+  {
+    "id": "thread-list",
+    "name": "Thread list",
+    "icon": "ListView"
   }
 ]

@@ -223,7 +223,7 @@ function PlanReviewRequestBanner({
     <PendingInteractionShell
       label="Plan review"
       title={approval.reason ?? "Ready to code?"}
-      initiallyExpanded={false}
+      initiallyExpanded
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="plan-review-banner"

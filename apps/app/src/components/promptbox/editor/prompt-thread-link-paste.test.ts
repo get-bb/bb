@@ -41,23 +41,19 @@ function deferred<T>() {
 
 function createEditor({
   text = "",
-  richTextEditing = false,
   getCachedThread = () => null,
   resolveThreads = async () => [],
-}: Partial<PasteOptions> & { text?: string; richTextEditing?: boolean } = {}) {
+}: Partial<PasteOptions> & { text?: string } = {}) {
   const editor = new Editor({
     extensions: [
-      ...promptEditorExtensions({ richTextEditing, getPlaceholder: () => "" }),
+      ...promptEditorExtensions({ getPlaceholder: () => "" }),
       createPromptThreadLinkPasteExtension({
         getOrigin: () => origin,
         getCachedThread,
         resolveThreads,
       }),
     ],
-    content: promptEditorContentFromValue(
-      { text, mentions: [] },
-      { richTextMarkdown: richTextEditing },
-    ),
+    content: promptEditorContentFromValue({ text, mentions: [] }),
   });
   editors.push(editor);
   return editor;
@@ -112,68 +108,64 @@ describe("pasted thread link conversion", () => {
       });
     },
   );
-  it.each([false, true])(
-    "converts one paste atomically and replays exact URL and selection history in rich-text mode %s",
-    async (richTextEditing) => {
-      const pending = deferred<Resolution[]>();
-      const resolveThreads = vi.fn(
-        (_ids: string[], _signal: AbortSignal) => pending.promise,
-      );
-      const original = "Before selected after";
-      const editor = createEditor({
-        text: original,
-        richTextEditing,
-        getCachedThread: (id) => (id === threadId ? resolution(id) : null),
-        resolveThreads,
-      });
-      editor.commands.setTextSelection({ from: 8, to: 16 });
-      const pasted = `😀 (${url}/), ${secondUrl} and ${url}. https://example.com`;
-      await paste(editor, pasted);
-      expect(value(editor)).toEqual({
-        text: `Before ${pasted} after`,
-        mentions: [],
-      });
-      expect(resolveThreads.mock.calls[0]?.[0]).toEqual([secondId]);
+  it("converts one paste atomically and replays exact URL and selection history", async () => {
+    const pending = deferred<Resolution[]>();
+    const resolveThreads = vi.fn(
+      (_ids: string[], _signal: AbortSignal) => pending.promise,
+    );
+    const original = "Before selected after";
+    const editor = createEditor({
+      text: original,
+      getCachedThread: (id) => (id === threadId ? resolution(id) : null),
+      resolveThreads,
+    });
+    editor.commands.setTextSelection({ from: 8, to: 16 });
+    const pasted = `😀 (${url}/), ${secondUrl} and ${url}. https://example.com`;
+    await paste(editor, pasted);
+    expect(value(editor)).toEqual({
+      text: `Before ${pasted} after`,
+      mentions: [],
+    });
+    expect(resolveThreads.mock.calls[0]?.[0]).toEqual([secondId]);
 
-      pending.resolve([resolution(secondId)]);
-      await vi.dynamicImportSettled();
-      await vi.advanceTimersByTimeAsync(0);
-      const converted = value(editor);
-      expect(converted.text).toBe(
-        `Before 😀 (@thread:${threadId}), @thread:${secondId} and @thread:${threadId}. https://example.com after`,
-      );
-      expect(converted.mentions.map((mention) => mention.resource)).toEqual([
-        { kind: "thread", ...resolution() },
-        { kind: "thread", ...resolution(secondId) },
-        { kind: "thread", ...resolution() },
-      ]);
-      editor.commands.undo();
-      expect(value(editor)).toEqual({
-        text: `Before ${pasted} after`,
-        mentions: [],
-      });
-      editor.commands.undo();
-      expect(value(editor)).toEqual({ text: original, mentions: [] });
-      expect(editor.state.selection.from).toBe(8);
-      expect(editor.state.selection.to).toBe(16);
-      editor.commands.redo();
-      expect(value(editor).text).toBe(`Before ${pasted} after`);
-      editor.commands.redo();
-      expect(value(editor)).toEqual(converted);
-      await vi.dynamicImportSettled();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(resolveThreads).toHaveBeenCalledTimes(1);
+    pending.resolve([resolution(secondId)]);
+    await vi.dynamicImportSettled();
+    await vi.advanceTimersByTimeAsync(0);
+    const converted = value(editor);
+    expect(converted.text).toBe(
+      `Before 😀 (@thread:${threadId}), @thread:${secondId} and @thread:${threadId}. https://example.com after`,
+    );
+    expect(converted.mentions.map((mention) => mention.resource)).toEqual([
+      { kind: "thread", ...resolution() },
+      { kind: "thread", ...resolution(secondId) },
+      { kind: "thread", ...resolution() },
+    ]);
+    editor.commands.undo();
+    expect(value(editor)).toEqual({
+      text: `Before ${pasted} after`,
+      mentions: [],
+    });
+    editor.commands.undo();
+    expect(value(editor)).toEqual({ text: original, mentions: [] });
+    expect(editor.state.selection.from).toBe(8);
+    expect(editor.state.selection.to).toBe(16);
+    editor.commands.redo();
+    expect(value(editor).text).toBe(`Before ${pasted} after`);
+    editor.commands.redo();
+    expect(value(editor)).toEqual(converted);
+    await vi.dynamicImportSettled();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resolveThreads).toHaveBeenCalledTimes(1);
 
-      editor.commands.insertContent(" typed");
-      editor.commands.undo();
-      expect(value(editor)).toEqual(converted);
-      editor.commands.undo();
-      expect(value(editor)).toEqual({
-        text: `Before ${pasted} after`,
-        mentions: [],
-      });
-    },
-  );
+    editor.commands.insertContent(" typed");
+    editor.commands.undo();
+    expect(value(editor)).toEqual(converted);
+    editor.commands.undo();
+    expect(value(editor)).toEqual({
+      text: `Before ${pasted} after`,
+      mentions: [],
+    });
+  });
 
   it("maps boundary edits and the current caret while permanently excluding edited or removed occurrences", async () => {
     const pending = deferred<Resolution[]>();
@@ -207,29 +199,6 @@ describe("pasted thread link conversion", () => {
     expect(value(editor).mentions).toHaveLength(1);
     expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1);
     expect(resolveThreads.mock.calls[0]?.[0]).toEqual([threadId]);
-  });
-
-  it("keeps a rich block paste and its trailing paragraph in one history event", async () => {
-    const editor = createEditor({
-      richTextEditing: true,
-      resolveThreads: async () => [resolution()],
-    });
-    editor
-      .chain()
-      .insertContent({
-        type: "heading",
-        attrs: { level: 2 },
-        content: [{ type: "text", text: url }],
-      })
-      .setMeta("uiEvent", "paste")
-      .run();
-    await vi.dynamicImportSettled();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(value(editor).mentions).toHaveLength(1);
-    editor.commands.undo();
-    expect(value(editor).text).toContain(url);
-    editor.commands.undo();
-    expect(value(editor)).toEqual({ text: "", mentions: [] });
   });
 
   it.each(["undo", "cancel", "destroy"])(
@@ -411,17 +380,13 @@ describe("pasted thread link conversion", () => {
     expect(resolveThreads.mock.calls[0]?.[0]).toEqual([threadId]);
   });
 
-  it.each(["code", "blockquote"])(
-    "leaves a URL literal when pasted into an existing %s context",
-    async (context) => {
-      const resolveThreads = vi.fn(async () => [resolution()]);
-      const editor = createEditor({ richTextEditing: true, resolveThreads });
-      if (context === "code") editor.commands.setCode();
-      if (context === "blockquote") editor.commands.setBlockquote();
-      await paste(editor, url);
-      expect(value(editor).mentions).toHaveLength(0);
-      expect(value(editor).text).toContain(url);
-      expect(resolveThreads).not.toHaveBeenCalled();
-    },
-  );
+  it("leaves a URL literal when pasted into an existing blockquote", async () => {
+    const resolveThreads = vi.fn(async () => [resolution()]);
+    const editor = createEditor({ resolveThreads });
+    editor.commands.setBlockquote();
+    await paste(editor, url);
+    expect(value(editor).mentions).toHaveLength(0);
+    expect(value(editor).text).toContain(url);
+    expect(resolveThreads).not.toHaveBeenCalled();
+  });
 });

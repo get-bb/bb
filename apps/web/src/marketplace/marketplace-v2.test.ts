@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { MARKETPLACE_V2_FIXTURE } from "./marketplace-v2.fixture.js";
-import { parseMarketplaceV2Manifest } from "./marketplace-v2.js";
+import {
+  parseBundledMarketplaceManifest,
+  parseMarketplaceV2Manifest,
+} from "./marketplace-v2.js";
 
 describe("parseMarketplaceV2Manifest", () => {
   it("parses the v2 fixture and fills omitted arrays at the boundary", () => {
@@ -106,6 +109,20 @@ describe("parseMarketplaceV2Manifest", () => {
         ],
       }),
     ).toThrow(/duplicate plugin id/u);
+  });
+
+  it("accepts bundled sources only in the bundled catalog", () => {
+    const entry = MARKETPLACE_V2_FIXTURE.plugins[0];
+    if (entry === undefined) throw new Error("The fixture needs a plugin");
+    const manifest = {
+      ...MARKETPLACE_V2_FIXTURE,
+      collections: [],
+      plugins: [{ ...entry, source: { bundled: { plugin: "docs" } } }],
+    };
+    expect(() => parseMarketplaceV2Manifest(manifest)).toThrow(/source/u);
+    expect(
+      parseBundledMarketplaceManifest(manifest).plugins[0]?.source,
+    ).toEqual({ bundled: { plugin: "docs" } });
   });
 
   it("accepts a catalog with more than 256 plugins", () => {
