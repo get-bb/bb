@@ -97,7 +97,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             }
           />
           <span className="install-note">
-            Windows (via WSL), Intel Macs &amp; remote machines
+            Windows, Intel Macs &amp; remote machines
           </span>
         </span>
       </div>
