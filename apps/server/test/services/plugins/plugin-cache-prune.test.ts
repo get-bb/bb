@@ -238,20 +238,35 @@ describe("plugin cache pruning", () => {
   });
 
   it.each(["prune", "update/remove", "gc"])(
-    "%s preserves installed path plugins inside recorded cache directories",
+    "%s preserves cache paths overlapping installed path plugins",
     async (operation) => {
       const protectedRoots: string[] = [];
-      for (const { letter, subdirectory } of [
-        { letter: "a", subdirectory: "" },
-        { letter: "b", subdirectory: "plugins/unused" },
+      for (const { letter, subdirectory, localSubdirectory } of [
+        { letter: "a", subdirectory: "", localSubdirectory: "plugins/local" },
+        {
+          letter: "b",
+          subdirectory: "plugins/unused",
+          localSubdirectory: "plugins/local",
+        },
+        {
+          letter: "d",
+          subdirectory: "plugins/one",
+          localSubdirectory: "plugins",
+        },
       ]) {
         const commit = letter.repeat(40);
         const checkout = join(gitRepoCache, commit);
         const artifactRoot = join(checkout, subdirectory);
-        const rootDir = join(checkout, "plugins", "local");
+        const rootDir = join(checkout, localSubdirectory);
         await fill(artifactRoot);
         await fill(rootDir);
         gitArtifact(letter, commit, artifactRoot);
+        if (letter === "d") {
+          const siblingRoot = join(checkout, "plugins", "two");
+          await fill(siblingRoot);
+          gitArtifact("sibling", commit, siblingRoot);
+          protectedRoots.push(artifactRoot, siblingRoot);
+        }
         upsertInstalledPlugin(db, {
           id: `local-${letter}`,
           source: `path:${rootDir}`,
@@ -301,6 +316,8 @@ describe("plugin cache pruning", () => {
       expect(listPluginArtifacts(db, "pruned").map(({ id }) => id)).toEqual([
         "a",
         "b",
+        "d",
+        "sibling",
       ]);
     },
   );

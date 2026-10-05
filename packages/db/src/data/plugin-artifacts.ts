@@ -154,7 +154,7 @@ export function listPluginArtifactsAtOrUnderPath(
     .all();
 }
 
-export function listInstalledPluginIdsAtOrUnderPath(
+export function listInstalledPluginIdsOverlappingPath(
   db: DbConnection,
   directory: string,
   separator: string,
@@ -167,6 +167,7 @@ export function listInstalledPluginIdsAtOrUnderPath(
       or(
         eq(installedPlugins.rootDir, directory),
         sql`${installedPlugins.rootDir} LIKE ${pattern} ESCAPE '\\'`,
+        sql`instr(${directory} || ${separator}, rtrim(${installedPlugins.rootDir}, ${separator}) || ${separator}) = 1`,
       ),
     )
     .all()

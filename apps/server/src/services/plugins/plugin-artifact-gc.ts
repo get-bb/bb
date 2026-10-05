@@ -5,7 +5,7 @@ import {
   deletePluginStateSnapshot,
   listExpiredPluginStateSnapshots,
   listGarbageCollectablePluginArtifacts,
-  listInstalledPluginIdsAtOrUnderPath,
+  listInstalledPluginIdsOverlappingPath,
   listPluginArtifactsAtOrUnderPath,
   listPluginArtifactsInGitCheckout,
   listPluginArtifactsUnderPath,
@@ -113,7 +113,8 @@ function planArtifactRemovals(args: {
         ? checkoutRoot
         : storageRoot;
     if (
-      listInstalledPluginIdsAtOrUnderPath(args.db, removedRoot, sep).length > 0
+      listInstalledPluginIdsOverlappingPath(args.db, removedRoot, sep).length >
+      0
     ) {
       continue;
     }
@@ -290,7 +291,7 @@ export async function prunePluginCache(args: {
       (artifact) => !plannedIds.has(artifact.id),
     );
     if (owned) continue;
-    if (listInstalledPluginIdsAtOrUnderPath(args.db, entry, sep).length > 0) {
+    if (listInstalledPluginIdsOverlappingPath(args.db, entry, sep).length > 0) {
       continue;
     }
     orphans.push(entry);
