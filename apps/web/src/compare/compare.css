@@ -40,7 +40,7 @@
 }
 
 .cmp-team {
-  padding: 40px 0 64px;
+  padding: 8px 0 56px;
   text-align: center;
 }
 
@@ -780,6 +780,14 @@
 }
 
 @media (max-width: 720px) {
+  .cmp-team {
+    padding: 0 0 48px;
+  }
+
+  .cmp-page .closer {
+    padding: 56px 0;
+  }
+
   .cmp-logo {
     width: 52px;
     height: 52px;
