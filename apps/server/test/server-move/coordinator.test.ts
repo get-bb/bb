@@ -570,9 +570,7 @@ describe("server move coordinator", () => {
       accountRpc.onError(createServerErrorHandler(testLogger));
       accountRpc.use(
         "/api/v1/*",
-        serverMoveFreezeMiddleware({
-          isFrozen: () => isServerMoveFrozen(harness.db),
-        }),
+        serverMoveFreezeMiddleware({ isFrozen: () => coordinator.isFrozen() }),
       );
       accountRpc.post(accountRpcPath, (context) => context.json({ ok: true }));
       const coordinator = createServerMoveCoordinator({
