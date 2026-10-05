@@ -8,6 +8,7 @@ import { providerCliJobKey } from "@/components/provider-cli/provider-cli-instal
 import { SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
+import { useMachineAttention } from "@/hooks/useMachineAttention";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getSettingsRoutePath } from "@/lib/route-paths";
@@ -38,13 +39,13 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const providers = useSystemProviders().data;
   const { runningJobKey } = useProviderCliInstallRunner();
 
-  const stuckDaemonCount = inventory.machines.filter(
-    (machine) => machine.canRetryDaemonUpdate,
-  ).length;
+  const machineAttention = useMachineAttention(
+    inventory.machines.map((machine) => machine.host),
+    inventory.isLoading,
+  );
   const bbUpdateCount =
     (inventory.appUpdateAvailable ? 1 : 0) +
-    (inventory.desktopUpdateReady ? 1 : 0) +
-    stuckDaemonCount;
+    (inventory.desktopUpdateReady ? 1 : 0);
 
   const staleProvidersByKey = new Map<ProviderCliKey, StaleProvider>();
   for (const machine of inventory.machines) {
@@ -69,7 +70,11 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     ),
   );
 
-  if (bbUpdateCount === 0 && staleProviders.length === 0) {
+  if (
+    bbUpdateCount === 0 &&
+    staleProviders.length === 0 &&
+    machineAttention.label === null
+  ) {
     return null;
   }
 
@@ -82,6 +87,25 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
 
   return (
     <SidebarMenuItem className="flex min-w-0 max-w-[50%] items-center gap-1">
+      {machineAttention.label !== null ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={getSettingsRoutePath("machines")}
+              onClick={() => {
+                machineAttention.acknowledge();
+                onNavigate?.();
+              }}
+              aria-label={machineAttention.label}
+              data-testid="sidebar-machines-attention-badge"
+              className={cn(CHIP_CLASS, "text-warning-text")}
+            >
+              <Icon name="AlertTriangle" className="size-3" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="top">{machineAttention.label}</TooltipContent>
+        </Tooltip>
+      ) : null}
       {bbUpdateCount > 0 ? (
         <Tooltip>
           <TooltipTrigger asChild>

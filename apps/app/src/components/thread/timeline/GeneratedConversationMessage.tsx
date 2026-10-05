@@ -81,7 +81,11 @@ interface GeneratedConversationMessageProps {
   workspaceRootPath?: string;
 }
 
-type GeneratedConversationSourceKind = "agent" | "automation" | "system";
+type GeneratedConversationSourceKind =
+  | "agent"
+  | "agent-recipient"
+  | "automation"
+  | "system";
 
 interface GeneratedConversationBodyTextArgs {
   initiator: TimelineUserConversationRow["initiator"];
@@ -272,11 +276,14 @@ export function generatedConversationTitle({
   systemMessageKind,
   systemMessageSubject,
 }: GeneratedConversationTitleArgs): TimelineTitle {
-  const agentLeadIn = sourceIsPluginSideChat
-    ? "Replying to"
-    : originKind === "fork"
-      ? "Forked from"
-      : "Message from";
+  const agentLeadIn =
+    sourceKind === "agent-recipient"
+      ? "Sent to"
+      : sourceIsPluginSideChat
+        ? "Replying to"
+        : originKind === "fork"
+          ? "Forked from"
+          : "Message from";
   const sideChatAction =
     sourceIsPluginSideChat && sourceThreadId !== null
       ? ({ kind: "open-plugin-side-chat", threadId: sourceThreadId } as const)
@@ -286,7 +293,7 @@ export function generatedConversationTitle({
       ? null
       : ({ kind: "thread", threadId: sourceThreadId } as const);
   const segments: TimelineTitleSegment[] =
-    sourceKind === "agent"
+    sourceKind === "agent" || sourceKind === "agent-recipient"
       ? [
           timelineTitleSegment({
             em: false,
@@ -323,6 +330,7 @@ function generatedConversationEmptyText(
 ): string {
   switch (sourceKind) {
     case "agent":
+    case "agent-recipient":
       return "Sent an agent message";
     case "automation":
       return "Ran an automation";
@@ -365,6 +373,8 @@ function generatedConversationIconName(
   switch (sourceKind) {
     case "agent":
       return "MessageSquare";
+    case "agent-recipient":
+      return "Sent";
     case "automation":
       return "Repeat";
     case "system":
@@ -575,7 +585,7 @@ export const GeneratedConversationMessage = memo(
       ],
     );
     const sourceTitleContent =
-      sourceKind === "agent" ? (
+      sourceKind === "agent" || sourceKind === "agent-recipient" ? (
         <GeneratedAgentSourceTitle
           onTitleAction={onTitleAction}
           sourceIsPluginSideChat={sourceIsPluginSideChat}
@@ -634,7 +644,8 @@ export const GeneratedConversationMessage = memo(
         ? closeUnterminatedMarkdownCodeSpan(collapsedPreviewBody.text)
         : collapsedPreviewBody.text;
     const suppressGeneratedAgentImages =
-      sourceKind === "agent" && !sourceIsPluginSideChat;
+      (sourceKind === "agent" || sourceKind === "agent-recipient") &&
+      !sourceIsPluginSideChat;
     const collapsedPreview =
       !titleOnly && collapsedPreviewBody.text ? (
         <div

@@ -12,6 +12,7 @@ import type {
   TimelineWorkRow,
 } from "@bb/server-contract";
 import { assertNever } from "./assert-never.js";
+import { parseSentThreadMessage } from "./tool-call-parsing.js";
 import {
   getFileChangeAction,
   type FileChangeAction,
@@ -744,7 +745,8 @@ function isSummarizableActivityRow(
     row.kind === "work" &&
     row.workKind !== "approval" &&
     row.workKind !== "question" &&
-    row.workKind !== "workflow"
+    row.workKind !== "workflow" &&
+    (row.workKind !== "command" || parseSentThreadMessage(row) === null)
   );
 }
 

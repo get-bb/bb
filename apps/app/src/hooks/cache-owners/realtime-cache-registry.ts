@@ -26,6 +26,7 @@ import {
 } from "./query-cache";
 import { bumpDiffPatchFreshnessGeneration } from "./environment-diff-patch-cache-owner";
 import { invalidateSystemExecutionOptions } from "./system-cache-effects";
+import { markThreadTimelineUnseenEvents } from "./thread-timeline-unseen-events";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -861,6 +862,7 @@ function dirtyThreadTimelineQueries({
     threadId !== undefined &&
     !hasActiveQueries(queryClient, threadTimelineQueryKeyPrefix(threadId))
   ) {
+    markThreadTimelineUnseenEvents(queryClient, threadId);
     for (const queryKey of [...timelineQueryKeys, ...outlineQueryKeys]) {
       queryClient.invalidateQueries({ queryKey, refetchType: "none" });
     }

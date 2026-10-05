@@ -159,4 +159,18 @@ describe("generatedConversationTitle — agent source", () => {
     expect(title.segments[1]?.text).toBe("Worker 2");
     expect(title.segments[1]?.link).toEqual(threadLink("thr_sender"));
   });
+  it("links the recipient thread name of a sent message", () => {
+    const title = generatedConversationTitle({
+      originKind: null,
+      sourceKind: "agent-recipient",
+      sourceName: "Worker 2",
+      sourceThreadId: "thr_recipient",
+      sourceIsPluginSideChat: false,
+      systemMessageKind: "unlabeled",
+      systemMessageSubject: null,
+    });
+
+    expect(title.plain).toBe("Sent to Worker 2");
+    expect(title.segments[1]?.link).toEqual(threadLink("thr_recipient"));
+  });
 });

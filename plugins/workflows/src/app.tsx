@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from "react";
 import {
   activityIconClass,
@@ -70,12 +71,20 @@ const FAILED_POLL_RETRY_BASE_MS = 2_000;
 const FAILED_POLL_RETRY_MAX_MS = 60_000;
 const WORKFLOW_PANEL_ACTION_ID = "workflow-run";
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
-const WORKFLOW_HEADER_GROUP_CLASS = activityRowClass(
-  "active",
-  "flex w-full items-stretch rounded-none px-0 py-0",
-);
 const WORKFLOW_HEADER_BUTTON_CLASS =
   "flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-none bg-transparent px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
+const WORKFLOW_COLLAPSE_ROW_CLASS =
+  "flex min-h-6 w-full cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground";
+const WORKFLOW_COUNT_PILL_CLASS =
+  "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground";
+const WORKFLOW_STACK_PEEK_LAYERS: Record<number, readonly string[]> = {
+  1: ["inset-x-2 top-1 bottom-0"],
+  2: ["inset-x-4 top-2 bottom-0", "inset-x-2 top-1 bottom-1"],
+};
+const WORKFLOW_STACK_PEEK_PADDING: Record<number, string> = {
+  1: "pb-1",
+  2: "pb-2",
+};
 const WORKFLOW_OPEN_BUTTON_CLASS =
   "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground";
 
@@ -604,14 +613,64 @@ function WorkflowStatusBanner() {
   return <WorkflowStatusBannerLoaded threadId={scope.threadId} />;
 }
 
+function WorkflowComposerSummary({ run }: { run: WorkflowRunView }) {
+  const shared = buildSharedWorkflowView(run);
+  const settledAgents = settledAgentCount(shared.progress.agents);
+  const agentCount = shared.progress.agents.length;
+  return (
+    <>
+      <Icon
+        name="Workflow"
+        className={activityIconClass("active", "size-3.5 shrink-0")}
+        aria-hidden
+      />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <span
+          className="min-w-0 truncate font-medium text-foreground"
+          title={run.name}
+        >
+          {run.name}
+        </span>
+        {agentCount === 0 ? null : (
+          <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
+            {settledAgents}/{agentCount} agents
+          </span>
+        )}
+        {run.startedAt === null ? null : (
+          <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
+            <WorkflowDuration startedAt={run.startedAt} />
+          </span>
+        )}
+      </span>
+      <WorkflowPhaseStrip
+        progress={shared.progress}
+        currentPhaseIndex={shared.currentPhaseIndex}
+        settled={false}
+        className="w-16 shrink-0"
+      />
+    </>
+  );
+}
+
 function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
   const navigate = useBbNavigate();
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
   const toggleId = useId();
   const shared = buildSharedWorkflowView(run);
-  const settledAgents = settledAgentCount(shared.progress.agents);
-  const agentCount = shared.progress.agents.length;
+  const headerRef = useRef<HTMLButtonElement>(null);
+  const collapseRef = useRef<HTMLButtonElement>(null);
+  const pendingFocus = useRef<"header" | "collapse" | null>(null);
+  useEffect(() => {
+    const target =
+      pendingFocus.current === "collapse"
+        ? collapseRef.current
+        : pendingFocus.current === "header"
+          ? headerRef.current
+          : null;
+    pendingFocus.current = null;
+    target?.focus();
+  }, [expanded]);
 
   return (
     <section
@@ -622,59 +681,22 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
       <div
         role="group"
         aria-label={`Workflow controls: ${run.name}`}
-        className={WORKFLOW_HEADER_GROUP_CLASS}
+        className="flex w-full items-stretch"
       >
         <button
+          ref={headerRef}
           type="button"
           id={toggleId}
           aria-expanded={expanded}
           aria-controls={bodyId}
           aria-label={`Workflow: ${run.name}`}
-          onClick={() => setExpanded((value) => !value)}
+          onClick={() => {
+            pendingFocus.current = expanded ? null : "collapse";
+            setExpanded((value) => !value);
+          }}
           className={WORKFLOW_HEADER_BUTTON_CLASS}
         >
-          <Icon
-            name="Workflow"
-            className={activityIconClass("active", "size-3.5 shrink-0")}
-            aria-hidden
-          />
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-            <span
-              className={activityTextClass("active", "min-w-0 truncate")}
-              title={run.name}
-            >
-              {run.name}
-            </span>
-            {agentCount === 0 ? null : (
-              <span
-                className={activityMetaClass(
-                  "active",
-                  "shrink-0 text-2xs tabular-nums",
-                )}
-              >
-                {settledAgents}/{agentCount} agents
-              </span>
-            )}
-            {run.startedAt === null ? null : (
-              <span
-                className={activityMetaClass(
-                  "active",
-                  "shrink-0 text-2xs tabular-nums",
-                )}
-              >
-                <WorkflowDuration startedAt={run.startedAt} />
-              </span>
-            )}
-          </span>
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              activityIconClass("active"),
-              "size-3.5 shrink-0 transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
-            aria-hidden
-          />
+          <WorkflowComposerSummary run={run} />
         </button>
         <button
           type="button"
@@ -691,12 +713,6 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           <Icon name="ArrowRight" className="size-3.5" aria-hidden />
         </button>
       </div>
-      <WorkflowPhaseStrip
-        progress={shared.progress}
-        currentPhaseIndex={shared.currentPhaseIndex}
-        settled={false}
-        className="px-3 pb-2"
-      />
       <section
         id={bodyId}
         role="region"
@@ -714,22 +730,130 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
             progress={shared.progress}
             currentPhaseIndex={shared.currentPhaseIndex}
           />
+          <div className="px-1 pb-1">
+            <button
+              ref={collapseRef}
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={bodyId}
+              aria-label={`Collapse workflow ${run.name}`}
+              onClick={() => {
+                pendingFocus.current = "header";
+                setExpanded(false);
+              }}
+              className={WORKFLOW_COLLAPSE_ROW_CLASS}
+            >
+              <Icon name="ChevronUp" className="size-3.5" aria-hidden />
+            </button>
+          </div>
         </div>
       </section>
     </section>
   );
 }
 
+function WorkflowStackFront({
+  runs,
+  onExpand,
+  buttonRef,
+}: {
+  runs: readonly WorkflowRunView[];
+  onExpand: () => void;
+  buttonRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const front = runs[0]!;
+  const peekCount = Math.min(runs.length - 1, 2);
+  return (
+    <div className={cn("relative", WORKFLOW_STACK_PEEK_PADDING[peekCount])}>
+      {(WORKFLOW_STACK_PEEK_LAYERS[peekCount] ?? []).map((layerClass) => (
+        <div
+          key={layerClass}
+          aria-hidden
+          data-workflow-stack-peek=""
+          className={cn(
+            "absolute rounded-lg border border-border bg-surface-raised-solid",
+            layerClass,
+          )}
+        />
+      ))}
+      <section
+        aria-label="Workflows"
+        className="relative overflow-hidden rounded-lg border border-border bg-surface-raised-solid"
+        style={{ minHeight: WORKFLOW_CARD_ROW_HEIGHT }}
+      >
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-expanded={false}
+          aria-label={`${runs.length} workflows running. Show all`}
+          onClick={onExpand}
+          className={cn(WORKFLOW_HEADER_BUTTON_CLASS, "w-full")}
+        >
+          <WorkflowComposerSummary run={front} />
+          <span className={WORKFLOW_COUNT_PILL_CLASS}>+{runs.length - 1}</span>
+        </button>
+      </section>
+    </div>
+  );
+}
+
 function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
   const state = useActiveWorkflowRuns(threadId);
+  const [stackExpanded, setStackExpanded] = useState(false);
+  const listId = useId();
+  const frontButtonRef = useRef<HTMLButtonElement>(null);
+  const collapseButtonRef = useRef<HTMLButtonElement>(null);
+  const pendingFocus = useRef<"front" | "collapse" | null>(null);
+  useEffect(() => {
+    const target =
+      pendingFocus.current === "collapse"
+        ? collapseButtonRef.current
+        : pendingFocus.current === "front"
+          ? frontButtonRef.current
+          : null;
+    pendingFocus.current = null;
+    target?.focus();
+  }, [stackExpanded]);
 
   if (state.status !== "ready" || state.runs.length === 0) return null;
 
+  const runs = state.runs;
+  const collapsed = runs.length > 1 && !stackExpanded;
   return (
-    <section aria-label="Active workflows" className="space-y-2">
-      {state.runs.map((run) => (
-        <WorkflowComposerCard key={run.id} run={run} />
-      ))}
+    <section aria-label="Active workflows" className="flex flex-col gap-2">
+      {collapsed ? (
+        <WorkflowStackFront
+          runs={runs}
+          buttonRef={frontButtonRef}
+          onExpand={() => {
+            pendingFocus.current = "collapse";
+            setStackExpanded(true);
+          }}
+        />
+      ) : null}
+      <div hidden={collapsed} className="flex flex-col gap-1">
+        <div id={listId} className="flex flex-col gap-2">
+          {runs.map((run) => (
+            <WorkflowComposerCard key={run.id} run={run} />
+          ))}
+        </div>
+        {runs.length > 1 && stackExpanded ? (
+          <button
+            ref={collapseButtonRef}
+            type="button"
+            aria-expanded
+            aria-controls={listId}
+            onClick={() => {
+              pendingFocus.current = "front";
+              setStackExpanded(false);
+            }}
+            aria-label={`Collapse ${runs.length} workflows`}
+            className={WORKFLOW_COLLAPSE_ROW_CLASS}
+          >
+            <Icon name="ChevronUp" className="size-3.5" aria-hidden />
+          </button>
+        ) : null}
+      </div>
     </section>
   );
 }

@@ -235,6 +235,11 @@ Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
   BB renders the correct project-aware link; do not construct thread URLs manually.
+  Pasting a bare thread URL from the current bb origin into a composer turns it
+  into the same thread pill when the target resolves. Undo restores the URL;
+  paste without formatting (Cmd/Ctrl+Shift+V) keeps it literal. Links with query
+  strings or fragments, quoted/code text, and links to other origins stay literal.
+  CLI prompts can use @thread:<id> directly; URL conversion only runs on a user paste.
 
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
