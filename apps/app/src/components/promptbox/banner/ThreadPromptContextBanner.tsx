@@ -52,7 +52,7 @@ import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStat
 import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-  PromptStackCountWithHoverChevron,
+  PromptStackCountSlot,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
   type DisclosureFocusHandoff,
@@ -763,10 +763,7 @@ function ActiveChildThreadsCard({
             />
           </span>
           {otherCount > 0 ? (
-            <PromptStackCountWithHoverChevron
-              count={otherCount}
-              isExpanded={isExpanded}
-            />
+            <PromptStackCountSlot count={otherCount} />
           ) : (
             <PromptStackHoverChevron isExpanded={isExpanded} />
           )}

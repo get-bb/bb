@@ -13,7 +13,7 @@ import {
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
-  PromptStackCountWithHoverChevron,
+  PromptStackCountSlot,
   PromptStackPeekLayers,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
@@ -64,10 +64,7 @@ export function ThreadWorkflowStack({
             )}
           >
             <ThreadWorkflowSummary workflow={front} />
-            <PromptStackCountWithHoverChevron
-              count={running.length - 1}
-              isExpanded={false}
-            />
+            <PromptStackCountSlot count={running.length - 1} />
           </button>
         </PromptStackCard>
       </PromptStackPeekLayers>

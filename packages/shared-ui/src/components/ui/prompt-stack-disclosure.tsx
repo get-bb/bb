@@ -136,19 +136,10 @@ export function PromptStackHoverChevron({
   return <HoverChevronSlot isExpanded={isExpanded} className="ml-auto" />;
 }
 
-export function PromptStackCountWithHoverChevron({
-  count,
-  isExpanded,
-}: {
-  count: number;
-  isExpanded: boolean;
-}) {
+export function PromptStackCountSlot({ count }: { count: number }) {
   return (
-    <>
-      <span className={cn(PROMPT_STACK_COUNT_PILL_CLASS, "ml-auto")}>
-        {`+${count}`}
-      </span>
-      <HoverChevronSlot isExpanded={isExpanded} />
-    </>
+    <span className={cn(TRAILING_SLOT_CLASS, "ml-auto")}>
+      <span className={PROMPT_STACK_COUNT_PILL_CLASS}>{`+${count}`}</span>
+    </span>
   );
 }

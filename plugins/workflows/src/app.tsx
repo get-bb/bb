@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
-  PromptStackCountWithHoverChevron,
+  PromptStackCountSlot,
   PromptStackHoverChevron,
   PromptStackPeekLayers,
   useDisclosureFocusHandoff,
@@ -766,10 +766,7 @@ function WorkflowStackFront({
           )}
         >
           <WorkflowComposerSummary run={front} />
-          <PromptStackCountWithHoverChevron
-            count={runs.length - 1}
-            isExpanded={false}
-          />
+          <PromptStackCountSlot count={runs.length - 1} />
         </button>
       </section>
     </PromptStackPeekLayers>

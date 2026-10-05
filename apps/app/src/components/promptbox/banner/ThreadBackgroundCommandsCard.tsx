@@ -20,7 +20,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-  PromptStackCountWithHoverChevron,
+  PromptStackCountSlot,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
@@ -242,10 +242,7 @@ export function ThreadBackgroundCommandsCard({
             ) : (
               <>
                 <BackgroundActivitySummary row={primary} showDuration={false} />
-                <PromptStackCountWithHoverChevron
-                  count={others.length}
-                  isExpanded={isExpanded}
-                />
+                <PromptStackCountSlot count={others.length} />
               </>
             )}
           </button>
