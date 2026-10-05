@@ -54,7 +54,7 @@ What you give up: Superset's workspace layout, Run button, cloud workspaces, rel
 
 ### 1. Install bb
 
-[Download for macOS](/download/macos) · [Download for Linux (alpha)](/download/linux) · or run `npx bb-app@latest` on Intel Macs and Windows (WSL2).
+[Download for macOS](/download/macos) · [Download for Windows](https://github.com/get-bb/bb/releases/latest) · [Download for Linux (alpha)](/download/linux) · or run `npx bb-app@latest` on Intel Macs.
 
 Check each agent is signed in: `claude`, `codex login`, and, if you use them, `cursor-agent login` or `opencode auth login`. If an agent's CLI is missing, bb's composer shows an **Install** button. bb uses each CLI's default login, in `~/.claude` and `~/.codex`. If your Superset profile pointed a CLI at another folder (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`), sign in again with the commands above and check the account before your first thread.
 
