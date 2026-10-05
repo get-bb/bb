@@ -35,17 +35,52 @@ export function prepareSplitImport(id: string): Promise<void> {
   return downloads.get(id) ?? Promise.resolve();
 }
 
-export function idleSplitDownload(id: string) {
-  return {
-    preloadPolicy: "idle" as const,
-    async preload() {
-      if (importing.has(id)) return;
-      let pending = downloads.get(id);
-      if (pending === undefined) {
-        pending = downloadSplitAssets(id).catch(() => undefined);
-        downloads.set(id, pending);
+export async function downloadSplit(id: string): Promise<void> {
+  if (importing.has(id)) return;
+  let pending = downloads.get(id);
+  if (pending === undefined) {
+    pending = downloadSplitAssets(id).catch(() => undefined);
+    downloads.set(id, pending);
+  }
+  await pending;
+}
+
+const preloadQueue = new Set<() => Promise<void>>();
+let preloadingStarted = false;
+let drainScheduled = false;
+
+function drainPreloadQueue() {
+  drainScheduled = false;
+  const warmers = [...preloadQueue];
+  preloadQueue.clear();
+  for (const warm of warmers) void warm();
+}
+
+function scheduleDrain() {
+  if (drainScheduled || preloadQueue.size === 0) return;
+  drainScheduled = true;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(drainPreloadQueue, { timeout: 1000 });
+      } else {
+        window.setTimeout(drainPreloadQueue, 1000);
       }
-      await pending;
-    },
-  };
+    });
+  });
+}
+
+export function queueSplitPreload(warm: () => Promise<void>): void {
+  preloadQueue.add(warm);
+  if (preloadingStarted) scheduleDrain();
+}
+
+export function queueSplitDownload(id: string): void {
+  queueSplitPreload(() => downloadSplit(id));
+}
+
+export function startSplitPreloading(): void {
+  if (preloadingStarted) return;
+  preloadingStarted = true;
+  scheduleDrain();
 }

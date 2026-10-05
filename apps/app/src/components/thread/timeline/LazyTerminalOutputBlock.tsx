@@ -22,5 +22,5 @@ export const LazyTerminalOutputBlock = defineSplit<TerminalOutputBlockProps>({
       (module) => module.TerminalOutputBlock,
     ),
   loading: TerminalOutputBlockLoading,
-  preload: "render",
+  tier: "intent",
 });

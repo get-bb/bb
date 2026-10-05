@@ -75,6 +75,7 @@ import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provi
 import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
 import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { startSplitPreloading } from "./lib/split-prefetch";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -420,6 +421,7 @@ export function AppRoutes() {
 function RouteContentPaintSignal() {
   useEffect(() => {
     markRouteContentPainted();
+    startSplitPreloading();
   }, []);
   return null;
 }

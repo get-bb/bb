@@ -15,7 +15,7 @@ const BbSourceCodeSplit = defineSplit<
   id: "bb-source-code",
   load: () => import("./BbSourceCode").then((module) => module.default),
   loading: ({ fallback }) => fallback,
-  preload: "render",
+  tier: "intent",
 });
 
 interface SourceCodeHostProps extends Omit<

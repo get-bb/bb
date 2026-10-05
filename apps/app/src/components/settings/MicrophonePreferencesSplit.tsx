@@ -14,5 +14,5 @@ export const MicrophonePreferencesSplit = defineSplit<{
   loading: () => (
     <Skeleton className="h-24 w-full" aria-label="Loading microphones" />
   ),
-  preload: "intent",
+  tier: "intent",
 });

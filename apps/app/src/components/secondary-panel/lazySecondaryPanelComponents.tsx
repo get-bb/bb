@@ -1,7 +1,6 @@
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
 import {
   useEffect,
-  useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
@@ -121,32 +120,28 @@ const ThreadSecondaryPanelSplit = defineSplit<LazyThreadSecondaryPanelProps>({
         <SplitLoadFailure retry={props.retry} />
       </ThreadSecondaryPanelInlinePlaceholder>
     ),
-  preload: "startup",
+  unmounted: (props) =>
+    props.renderAsDrawer ? null : (
+      <ThreadSecondaryPanelInlinePlaceholder
+        isOpen={false}
+        isConversationCollapsed={props.isConversationCollapsed}
+        resizablePanelId={props.resizablePanelId}
+      />
+    ),
+  mountWhen: (props) => props.isOpen,
+  keepMounted: true,
+  tier: "preload",
 });
 
-function useRetainedRealization(active: boolean): boolean {
-  const [realized, setRealized] = useState(active);
-  if (active && !realized) setRealized(true);
-  return active || realized;
-}
-
 export const LazyThreadSecondaryPanel = Object.assign(
-  function ThreadSecondaryPanelGate(props: LazyThreadSecondaryPanelProps) {
-    const realized = useRetainedRealization(props.isOpen);
+  function ThreadSecondaryPanelWithTabWarmup(
+    props: LazyThreadSecondaryPanelProps,
+  ) {
     useEffect(() => {
       if (props.isOpen) {
         for (const split of panelContentSplits) void split.preload();
       }
     }, [props.isOpen]);
-    if (!realized) {
-      return props.renderAsDrawer ? null : (
-        <ThreadSecondaryPanelInlinePlaceholder
-          isOpen={false}
-          isConversationCollapsed={props.isConversationCollapsed}
-          resizablePanelId={props.resizablePanelId}
-        />
-      );
-    }
     return <ThreadSecondaryPanelSplit {...props} />;
   },
   ThreadSecondaryPanelSplit,
@@ -167,10 +162,10 @@ export const LazyThreadTerminalPanel = defineSplit({
       <SecondaryPanelContentSkeleton />
     </div>
   ),
-  preload: "render",
+  tier: "intent",
 });
 
-const BrowserTabDeckSplit = defineSplit({
+export const LazyBrowserTabDeck = defineSplit({
   id: "browser-tab-deck",
   load: () =>
     import("./BrowserTabDeck").then((module) => module.BrowserTabDeck),
@@ -179,15 +174,10 @@ const BrowserTabDeckSplit = defineSplit({
     props.activeBrowserTabId === null ? null : (
       <SplitLoadFailure retry={props.retry} />
     ),
-  preload: "render",
+  mountWhen: (props) => props.activeBrowserTabId !== null,
+  keepMounted: true,
+  tier: "intent",
 });
-
-export const LazyBrowserTabDeck = Object.assign(function BrowserTabDeckGate(
-  props: ComponentProps<typeof BrowserTabDeckSplit>,
-) {
-  const realized = useRetainedRealization(props.activeBrowserTabId !== null);
-  return realized ? <BrowserTabDeckSplit {...props} /> : null;
-}, BrowserTabDeckSplit);
 
 export const LazyNewTabPage = defineSplit({
   id: "new-tab-page",
@@ -197,14 +187,14 @@ export const LazyNewTabPage = defineSplit({
       <SecondaryPanelContentSkeleton />
     </div>
   ),
-  preload: "render",
+  tier: "intent",
 });
 
 export const LazyFilePreview = defineSplit({
   id: "file-preview",
   load: () => import("./FilePreview").then((module) => module.FilePreview),
   loading: FilePreviewLoading,
-  preload: "render",
+  tier: "intent",
 });
 
 export const LazyThreadStorageFileTree = defineSplit<
@@ -218,7 +208,7 @@ export const LazyThreadStorageFileTree = defineSplit<
       (module) => module.ThreadStorageFileTree,
     ),
   loading: ({ fallback }) => fallback,
-  preload: "render",
+  tier: "intent",
 });
 
 export const LazyWorkspaceFilePreviewTabContent = defineSplit({
@@ -228,7 +218,7 @@ export const LazyWorkspaceFilePreviewTabContent = defineSplit({
       (module) => module.WorkspaceFilePreviewTabContent,
     ),
   loading: FilePreviewLoading,
-  preload: "render",
+  tier: "intent",
 });
 
 export const LazyHostFilePreviewTabContent = defineSplit({
@@ -238,7 +228,7 @@ export const LazyHostFilePreviewTabContent = defineSplit({
       (module) => module.HostFilePreviewTabContent,
     ),
   loading: FilePreviewLoading,
-  preload: "render",
+  tier: "intent",
 });
 
 export const LazyHostScopedFilePreviewTabContent = defineSplit({
@@ -248,7 +238,7 @@ export const LazyHostScopedFilePreviewTabContent = defineSplit({
       (module) => module.HostScopedFilePreviewTabContent,
     ),
   loading: FilePreviewLoading,
-  preload: "render",
+  tier: "intent",
 });
 
 export const LazyProjectFilePreviewTabContent = defineSplit({
@@ -258,7 +248,7 @@ export const LazyProjectFilePreviewTabContent = defineSplit({
       (module) => module.ProjectFilePreviewTabContent,
     ),
   loading: FilePreviewLoading,
-  preload: "render",
+  tier: "intent",
 });
 
 export const LazyThreadStorageFilePreviewTabContent = defineSplit({
@@ -268,7 +258,7 @@ export const LazyThreadStorageFilePreviewTabContent = defineSplit({
       (module) => module.ThreadStorageFilePreviewTabContent,
     ),
   loading: FilePreviewLoading,
-  preload: "render",
+  tier: "intent",
 });
 
 const panelContentSplits = [

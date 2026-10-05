@@ -1,5 +1,12 @@
 # UI split loading-policy audit — 2026-09-29
 
+On 2026-10-05 the four policies became two tiers: `render` and `intent` are the
+`intent` tier, and `startup` and `idle` are the `preload` tier, which warms after
+route content paints instead of when an owning page mounts. Plugin detail and
+plugin-panel hosts, thread-search palette mode, the plugin file context menu,
+the sidebar rename editor and the external file dispatcher moved from
+`React.lazy` to intent-tier splits.
+
 Scope: app-owned runtime imports in `apps/app/src`, excluding type imports,
 stories, tests and plugin-provided URLs. This covers the shared-helper migration
 and the four new boundaries. Decisions below are based on code, emitted module

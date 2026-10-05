@@ -1,7 +1,5 @@
 import {
   createContext,
-  lazy,
-  Suspense,
   useCallback,
   useContext,
   useId,
@@ -17,7 +15,7 @@ import { arrayMove } from "@bb/client-core";
 import { arrangeByStoredOrder } from "@/lib/stored-order";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { ThreadSecondaryPanelProps } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { SecondaryPanelContentSkeleton } from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import { LazyPluginDetailPaneView } from "@/views/ToolsViewSplits";
 import {
   usePublishPluginDetailOpener,
   type PluginDetailDestination,
@@ -32,18 +30,8 @@ import {
   subscribePanelTabOrder,
 } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 
-const LazyPluginDetailPaneView = lazy(() =>
-  import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
-    default: PluginDetailPaneView,
-  })),
-);
-
 export function PluginDetailTabContent({ pluginId }: { pluginId: string }) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <LazyPluginDetailPaneView pluginId={pluginId} />
-    </Suspense>
-  );
+  return <LazyPluginDetailPaneView pluginId={pluginId} />;
 }
 
 interface PluginDetailPanelState {
