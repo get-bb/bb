@@ -2843,6 +2843,26 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--ink);
 }
 
+.footer-groups {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 24px 64px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.footer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.footer-group-title {
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
 /* ── Responsive ─────────────────────────────────────────────────── */
 
 @media (max-width: 820px) {

@@ -640,7 +640,7 @@ const BB_VS_SUPERSET: Comparison = {
   },
 };
 
-const COMPARISONS: Comparison[] = [BB_VS_SUPERSET];
+export const COMPARISONS: Comparison[] = [BB_VS_SUPERSET];
 
 export function getComparison(slug: string): Comparison | undefined {
   return COMPARISONS.find((comparison) => comparison.slug === slug);
