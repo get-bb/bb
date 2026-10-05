@@ -91,25 +91,6 @@ it.each([
     expect(
       screen.getByRole("link", { name: "Download Android APK" }),
     ).toBeTruthy();
-    if (build !== undefined && latest !== null && build < latest) {
-      expect(
-        screen.getByRole("status", { name: "Android update available" }),
-      ).toBeTruthy();
-      expect(
-        screen
-          .getByRole("link", { name: "Update Android app" })
-          .getAttribute("href"),
-      ).toBe(
-        "https://github.com/get-bb/bb/releases/download/android-testing/bb-android.apk",
-      );
-    } else {
-      expect(
-        screen.queryByRole("status", { name: "Android update available" }),
-      ).toBeNull();
-      expect(
-        screen.queryByRole("link", { name: "Update Android app" }),
-      ).toBeNull();
-    }
   },
 );
 

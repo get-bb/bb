@@ -7,7 +7,6 @@ import { useQuery } from "@tanstack/react-query";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { sdk } from "@/lib/sdk";
 import { getNativeShell } from "@/lib/native-shell";
-import { Icon } from "@bb/shared-ui/icon";
 
 export function MobileAppSection() {
   const releases = useQuery({
@@ -19,10 +18,6 @@ export function MobileAppSection() {
   const android = releases.data?.android;
   const handshake = getNativeShell()?.handshake;
   const installedAndroid = handshake?.platform === "android" ? handshake : null;
-  const androidUpdateAvailable =
-    installedAndroid?.androidVersionCode !== undefined &&
-    android != null &&
-    installedAndroid.androidVersionCode < android.versionCode;
   return (
     <section aria-label="Mobile app downloads" className="space-y-5">
       <div>
@@ -31,37 +26,6 @@ export function MobileAppSection() {
           Use bb from your phone
         </p>
       </div>
-      {androidUpdateAvailable && (
-        <div
-          role="status"
-          aria-label="Android update available"
-          className="flex gap-3 rounded-lg border border-warning/30 bg-warning/10 p-4"
-        >
-          <Icon
-            name="Download"
-            aria-hidden
-            className="mt-0.5 size-5 shrink-0 text-warning-text"
-          />
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <h3 className="text-base font-semibold">
-                Android update available
-              </h3>
-              <p className="text-sm text-subtle-foreground">
-                Download the latest APK to update this phone.
-              </p>
-            </div>
-            <a
-              href={mobileAppDownloads.android}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonVariants()}
-            >
-              Update Android app
-            </a>
-          </div>
-        </div>
-      )}
       <MachineAccessSettings title="Accessing bb from your phone">
         {(pluginId) => <PluginMobileSettingsSections pluginId={pluginId} />}
       </MachineAccessSettings>
@@ -129,7 +93,8 @@ export function MobileAppSection() {
                     ? "Checking for updates…"
                     : !android
                       ? "Unable to check for updates. You can still download the latest APK."
-                      : androidUpdateAvailable
+                      : installedAndroid.androidVersionCode <
+                          android.versionCode
                         ? "Update available"
                         : installedAndroid.androidVersionCode ===
                             android.versionCode

@@ -707,10 +707,8 @@ and returns `android: null` if unavailable or inconsistent. Download links remai
 usable during metadata failures. iOS version and release date are shown in TestFlight.
 Inside the Android app, Settings → Mobile also shows the installed version and
 compares its native build number with the published APK: up to date, update
-available, or newer than the published release.
-When an update is available, a banner at the top of the page provides an
-**Update Android app** download link.
-Older apps without build-number reporting and unavailable release metadata show that update status cannot be
+available, or newer than the published release. Older apps without build-number
+reporting and unavailable release metadata show that update status cannot be
 determined. The download button remains available in every state.
 The nightly release pipeline builds and publishes an Android preview APK after
 a successful npm nightly publication, alongside the iOS build. This runs on the
