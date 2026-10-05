@@ -6,6 +6,8 @@ const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
   success: vi.fn(),
 }));
+const nativeMocks = vi.hoisted(() => ({ getNativeShell: vi.fn() }));
+vi.mock("@/lib/native-shell/native-shell", () => nativeMocks);
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: toastMocks,
@@ -40,6 +42,7 @@ afterEach(() => {
   document.body.replaceChildren();
   toastMocks.error.mockReset();
   toastMocks.success.mockReset();
+  nativeMocks.getNativeShell.mockReset();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   removeClipboard();
@@ -98,6 +101,69 @@ describe("copyTextToClipboard", () => {
 });
 
 describe("copyToClipboardWithToast", () => {
+  it("copies both representations through the native shell instead of trusting WebView clipboard success", async () => {
+    const request = vi.fn().mockResolvedValue({ copied: true });
+    nativeMocks.getNativeShell.mockReturnValue({ copyTextAndImage: request });
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write },
+    });
+
+    await expect(
+      copyToClipboardWithToast("A photo", {
+        imageUrl: "/attachments/photo.png",
+      }),
+    ).resolves.toBe(true);
+
+    expect(request).toHaveBeenCalledWith(
+      "A photo",
+      new URL("/attachments/photo.png", window.location.href).href,
+    );
+    expect(write).not.toHaveBeenCalled();
+    expect(toastMocks.success).toHaveBeenCalledWith("Copied");
+  });
+
+  it.each(["rejected", "invalid"])(
+    "preserves text and reports partial success after a %s native image copy",
+    async (failure) => {
+      const request =
+        failure === "rejected"
+          ? vi.fn().mockRejectedValue(new Error("Image unavailable"))
+          : vi.fn().mockResolvedValue({});
+      nativeMocks.getNativeShell.mockReturnValue({ copyTextAndImage: request });
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      installClipboard(writeText);
+
+      await expect(
+        copyToClipboardWithToast("A photo", {
+          imageUrl: "/attachments/photo.png",
+        }),
+      ).resolves.toBe(true);
+
+      expect(writeText).toHaveBeenCalledWith("A photo");
+      expect(toastMocks.success).toHaveBeenCalledWith(
+        "Copied text; image could not be copied",
+      );
+    },
+  );
+
+  it("reports image-only failure without replacing the clipboard with empty text", async () => {
+    nativeMocks.getNativeShell.mockReturnValue({
+      copyTextAndImage: vi
+        .fn()
+        .mockRejectedValue(new Error("Image unavailable")),
+    });
+    const writeText = vi.fn();
+    installClipboard(writeText);
+
+    await expect(
+      copyToClipboardWithToast("", { imageUrl: "/attachments/photo.png" }),
+    ).resolves.toBe(false);
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(toastMocks.error).toHaveBeenCalledWith("Failed to copy");
+  });
   it("writes message text and an attached PNG as one clipboard item", async () => {
     const clipboardData: Record<string, Blob | Promise<Blob>>[] = [];
     class TestClipboardItem {
@@ -176,7 +242,7 @@ describe("copyToClipboardWithToast", () => {
     expect(write).toHaveBeenCalledOnce();
   });
 
-  it("reports a failure when the browser cannot write the attached image", async () => {
+  it("copies text with a partial-success message when the browser cannot write the attached image", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -188,10 +254,12 @@ describe("copyToClipboardWithToast", () => {
         errorMessage: "Failed to copy",
         imageUrl: "/attachments/photo.png",
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
 
-    expect(writeText).not.toHaveBeenCalled();
-    expect(toastMocks.error).toHaveBeenCalledWith("Failed to copy");
+    expect(writeText).toHaveBeenCalledWith("A photo");
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Copied text; image could not be copied",
+    );
   });
 
   it("shows the configured error only after both copy methods fail", async () => {

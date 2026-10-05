@@ -3321,13 +3321,35 @@ describe("Account Pool plugin", () => {
 
       const stillRejected = await refresh();
       expect(refreshCalls).toBe(2);
-      expect(stillRejected?.error).toBe("OAuth refresh failed with HTTP 400.");
+      expect(stillRejected?.error).toBe(
+        "OAuth refresh failed with HTTP 400. invalid_grant.",
+      );
+      expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+        level: "warn",
+        message: expect.stringContaining(
+          `Account Pooler ${provider} account ${fixture.account.id} OAuth refresh failed`,
+        ),
+      });
 
       refreshStatus = 200;
       const recovered = await refresh();
       expect(refreshCalls).toBe(3);
       expect(recovered?.error).toBeNull();
+      expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+        level: "info",
+        message: expect.stringContaining(
+          `Account Pooler ${provider} account ${fixture.account.id} OAuth refresh succeeded`,
+        ),
+      });
       expect(await send()).toBe(200);
+      const refreshLogs = fixture.host.harness.inspection.logEntries.filter(
+        (entry) =>
+          entry.message.includes(`account ${fixture.account.id} OAuth refresh`),
+      );
+      expect(refreshLogs).toHaveLength(3);
+      const logText = JSON.stringify(refreshLogs);
+      for (const token of ["oauth-old", "oauth-new", "oauth-refresh"])
+        expect(logText).not.toContain(token);
     });
   });
 

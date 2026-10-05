@@ -70,7 +70,14 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
-import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
+import {
+  createPanelActionOpenPanel,
+  usePluginNewThreadPanelActions,
+} from "@/components/plugin/PluginPanelActions";
+import {
+  usePublishThreadPanelOpener,
+  type PluginThreadPanelOpenHandler,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -1024,6 +1031,24 @@ function RootComposeSurface({
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
   const dismissPluginDetails = pluginDetails.dismiss;
+  const handleOpenPluginPanel = useCallback<PluginThreadPanelOpenHandler>(
+    ({ pluginId, actionId, title, params }) => {
+      const action = rootPanelNewThreadPanelActions.find(
+        (candidate) =>
+          candidate.pluginId === pluginId && candidate.id === actionId,
+      );
+      if (action === undefined) return false;
+      const accepted = createPanelActionOpenPanel({
+        action,
+        slot: "experimental_newThreadPanelAction",
+        openPluginPanel,
+      })({ title, params });
+      if (accepted) openCompactDrawer();
+      return accepted;
+    },
+    [openCompactDrawer, openPluginPanel, rootPanelNewThreadPanelActions],
+  );
+  usePublishThreadPanelOpener(handleOpenPluginPanel, isFocusedPane);
   const closeSecondaryPanel = useCallback(() => {
     dismissPluginDetails();
     closeWorkspacePanel();

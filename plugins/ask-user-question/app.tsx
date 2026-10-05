@@ -38,16 +38,15 @@ function AskUserQuestionInteraction({
   return (
     <QuestionForm
       key={interaction.id}
+      draftKey={`${interaction.threadId}:${interaction.id}`}
       questions={parsed.data.questions}
       disabled={busy}
       cancelDisabled={busy}
       onSubmit={(answers) => {
         setBusy(true);
-        void submit({ answers })
-          .catch(() => {})
-          .finally(() => setBusy(false));
+        return submit({ answers }).finally(() => setBusy(false));
       }}
-      onCancel={handleCancel}
+      onCancel={cancel}
     />
   );
 }

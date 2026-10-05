@@ -33,6 +33,7 @@ export function sitemapXml(
     { path: "/" },
     { path: "/blog" },
     { path: "/changelog" },
+    { path: "/plugin-guide" },
     { path: "/privacy" },
     ...contentPaths.map((path) => ({ path })),
     ...posts.map((post) => ({

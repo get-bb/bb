@@ -126,6 +126,7 @@ export class TunnelSession {
   private readonly httpStreams = new Map<number, HttpStream>();
   private readonly wsStreams = new Map<number, WsStream>();
   private lastAck = Date.now();
+  private lastReceivedAckAt: number | null = null;
   private lastHeartbeatTickAt = 0;
   private stallGraceSinceAck = false;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -138,10 +139,15 @@ export class TunnelSession {
     return this.remoteClientCount;
   }
 
+  get lastHeartbeatAckAt(): number | null {
+    return this.lastReceivedAckAt;
+  }
+
   start(): void {
     const { tunnel } = this.options;
     const monotonicNow = this.options.monotonicNow ?? (() => performance.now());
     this.lastAck = Date.now();
+    this.lastReceivedAckAt = null;
     this.lastHeartbeatTickAt = monotonicNow();
     this.heartbeat = setInterval(() => {
       const tickAt = monotonicNow();
@@ -166,6 +172,7 @@ export class TunnelSession {
       if (!isBinary) {
         if (data.toString() === HEARTBEAT_RESPONSE) {
           this.lastAck = Date.now();
+          this.lastReceivedAckAt = this.lastAck;
           this.stallGraceSinceAck = false;
         }
         return;

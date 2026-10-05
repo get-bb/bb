@@ -1,3 +1,4 @@
+import type { AppInstallKind } from "@bb/config/app-install";
 import semver from "semver";
 import { z } from "zod";
 import { isNightlyAppVersion } from "@bb/config/app-update";
@@ -29,6 +30,8 @@ interface AppVersionGetSystemVersionArgs {
 }
 
 interface CreateAppVersionServiceArgs {
+  installKind: AppInstallKind | null;
+  sourceCommit: string | null;
   config: Pick<ServerRuntimeConfig, "appVersion" | "isDevelopment">;
   fetchImpl?: typeof fetch;
   logger: ServerLogger;
@@ -55,6 +58,8 @@ export function createAppVersionService(
   const now = args.now ?? (() => Date.now());
   const logger = args.logger;
   const config = args.config;
+  const installKind = args.installKind;
+  const sourceCommit = args.sourceCommit;
   const distTag = resolveDistTag(config.appVersion);
 
   let cache: NpmLatestCacheEntry | null = null;
@@ -158,6 +163,8 @@ export function createAppVersionService(
       args: AppVersionGetSystemVersionArgs = {},
     ): Promise<SystemVersionResponse> {
       const baseResponse: SystemVersionResponse = {
+        currentCommit: installKind === "source" ? sourceCommit : null,
+        installKind,
         currentVersion: config.appVersion,
         latestVersion: null,
         source: "npm",
@@ -166,7 +173,7 @@ export function createAppVersionService(
         upgradeCommand: `npx bb-app@${distTag}`,
       };
 
-      if (config.isDevelopment) {
+      if (config.isDevelopment || installKind === "source") {
         return baseResponse;
       }
 

@@ -64,6 +64,7 @@ import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
 import LayoutTwoColumnIcon from "@hugeicons/core-free-icons/Layout2ColumnIcon";
 import LayoutTwoRowIcon from "@hugeicons/core-free-icons/Layout2RowIcon";
 import LimitationIcon from "@hugeicons/core-free-icons/LimitationIcon";
+import Link02Icon from "@hugeicons/core-free-icons/Link02Icon";
 import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
 import ListEndIcon from "@hugeicons/core-free-icons/ListEndIcon";
 import ListViewIcon from "@hugeicons/core-free-icons/ListViewIcon";
@@ -286,6 +287,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Laptop: LaptopIcon,
   Layers: Layers01Icon,
   Limitation: LimitationIcon,
+  Link: Link02Icon,
   ListEnd: ListEndIcon,
   ListView: ListViewIcon,
   Lock: LockIcon,

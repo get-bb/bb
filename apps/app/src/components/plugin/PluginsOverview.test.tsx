@@ -357,7 +357,7 @@ describe("PluginsOverview", () => {
 
     const goBack = screen.getByRole("button", { name: "Go back" });
     await waitFor(() =>
-      expect((goBack as HTMLButtonElement).disabled).toBe(false),
+      expect(goBack.getAttribute("aria-disabled")).toBeNull(),
     );
     fireEvent.click(goBack);
     await waitFor(() =>

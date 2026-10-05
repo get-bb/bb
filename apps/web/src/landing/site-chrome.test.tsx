@@ -10,8 +10,10 @@ describe("site navigation", () => {
     const links = [...navLinks.matchAll(/<a [^>]*>/gu)].map(
       (match) => match[0],
     );
-    expect(links).toHaveLength(6);
-    expect(html).toContain('class="nav-current" href="/marketplace">Plugins');
+    expect(links).toHaveLength(7);
+    expect(html).toMatch(/<details class="nav-menu"><summary class="nav-current">Plugins/);
+    expect(html).toContain('href="/marketplace" aria-current="page">Marketplace');
+    expect(html).toContain('href="/plugin-guide">Plugin Guide');
     expect(html).toContain('href="/blog">Blog');
     expect(html).toContain('href="/changelog">Changelog');
     expect(html.indexOf("Changelog")).toBeLessThan(html.indexOf("Sign in"));
@@ -24,12 +26,19 @@ describe("site navigation", () => {
     expect(html).not.toContain("<button");
   });
 
+  it("marks the Plugin Guide current inside the Plugins menu", () => {
+    const html = renderToStaticMarkup(<SiteNav current="plugin-guide" />);
+    expect(html).toContain('<summary class="nav-current">Plugins');
+    expect(html).toContain('href="/plugin-guide" aria-current="page">Plugin Guide');
+    expect(html).not.toContain('aria-current="page">Marketplace');
+  });
+
   it("marks Changelog current on the changelog route", () => {
     const html = renderToStaticMarkup(<SiteNav current="changelog" />);
     expect(html).toContain('class="nav-current" href="/changelog">Changelog');
-    expect(html).not.toContain('class="nav-current" href="/marketplace"');
-    expect(renderToStaticMarkup(<SiteFooter />)).toContain(
-      'href="/changelog">Changelog',
-    );
+    expect(html).toContain("<summary>Plugins");
+    const footer = renderToStaticMarkup(<SiteFooter />);
+    expect(footer).toContain('href="/changelog">Changelog');
+    expect(footer).toContain('href="/plugin-guide">Plugin Guide');
   });
 });

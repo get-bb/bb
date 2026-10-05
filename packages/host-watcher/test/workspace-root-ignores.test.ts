@@ -190,6 +190,7 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         ".git",
         "bb-marker",
       );
+      const readyFile = path.join(realRoot, "apps", "child-0", "ready.txt");
       const visibleFile = path.join(realRoot, "apps", "child-0", "visible.txt");
       const events: WorkspaceStatusChangeEvent[] = [];
       let ready!: () => void;
@@ -207,16 +208,24 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
       });
       try {
         await readyPromise;
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await vi.waitFor(
+          async () => {
+            await fs.writeFile(readyFile, `${Date.now()}\n`);
+            expect(events.flatMap((event) => event.changedPaths)).toContain(
+              readyFile,
+            );
+          },
+          { timeout: EVENT_TIMEOUT_MS, interval: 100 },
+        );
 
         await fs.writeFile(
           nestedPackageFile,
           "module.exports={changed:true}\n",
         );
         await fs.writeFile(nestedGitFile, "marker\n");
-        await fs.writeFile(visibleFile, "visible\n");
         await vi.waitFor(
-          () => {
+          async () => {
+            await fs.writeFile(visibleFile, `${Date.now()}\n`);
             expect(events.flatMap((event) => event.changedPaths)).toContain(
               visibleFile,
             );

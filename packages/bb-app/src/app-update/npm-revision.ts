@@ -112,6 +112,7 @@ export interface InstallNpmRevisionArgs {
 export async function installNpmRevision(
   args: InstallNpmRevisionArgs,
 ): Promise<NpmAppRevision> {
+  args.signal?.throwIfAborted();
   if (semver.valid(args.version) === null) {
     throw new Error(
       `Refusing to install invalid bb-app version ${args.version}`,
@@ -155,6 +156,7 @@ export async function installNpmRevision(
       ? { args: [] as string[], command: "npm" }
       : { args: [args.npmCliPath], command: process.execPath };
   try {
+    args.signal?.throwIfAborted();
     args.onStep(`Downloading bb-app ${args.version}`);
     await runCheckedCommand(args.runner, "npm install", {
       args: [
@@ -172,6 +174,7 @@ export async function installNpmRevision(
       ...(args.signal === undefined ? {} : { signal: args.signal }),
       timeoutMs: NPM_INSTALL_TIMEOUT_MS,
     });
+    args.signal?.throwIfAborted();
     await rm(installDir, { force: true, recursive: true });
     await rename(stagingDir, installDir);
   } catch (error) {
@@ -180,6 +183,7 @@ export async function installNpmRevision(
   }
 
   try {
+    args.signal?.throwIfAborted();
     args.onStep(`Verifying bb-app ${args.version}`);
     if (!isUsableNpmRevision(revision)) {
       throw new Error(
@@ -192,6 +196,7 @@ export async function installNpmRevision(
       cwd: revision.packageRoot,
       env,
       onLine: args.onLine,
+      ...(args.signal === undefined ? {} : { signal: args.signal }),
       timeoutMs: NATIVE_CHECK_TIMEOUT_MS,
     });
   } catch (error) {

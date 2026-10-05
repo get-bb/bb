@@ -25,7 +25,8 @@ export function useThreadStorageViewer({
   );
   return {
     isThreadStorageFilesLoading,
-    threadStorageFilesError,
+    threadStorageFilesError:
+      threadStorageFiles === undefined ? threadStorageFilesError : null,
     threadStorageFiles,
   };
 }

@@ -90,7 +90,6 @@ import {
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
 import { localhostLinkRewriteDescription } from "@/lib/localhost-link-rewrite-description";
-import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   SETTINGS_ROUTE_PATH,
   getRootComposeRoutePath,
@@ -178,11 +177,9 @@ interface GeneralSettingsSectionProps {
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
-  onRichTextEditingChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
-  richTextEditing: boolean;
   steerActiveThreadOnEnter: boolean;
 }
 
@@ -209,6 +206,7 @@ function appPaletteLabel(
 }
 
 interface ExperimentsSettingsSectionProps {
+  performanceDiagnosticsAvailable: boolean;
   disabled: boolean;
   experiments: Experiments;
   onExperimentChange: (key: ExperimentKey, enabled: boolean) => void;
@@ -584,7 +582,6 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const DIAGNOSTIC_EVENTS_SETTING_LABEL = "Show diagnostic events";
 const FOLLOW_UP_BEHAVIOR_SETTING_LABEL = "Default thread followup behavior";
 const FOLLOW_UP_BEHAVIOR_OPTIONS = [
@@ -861,11 +858,9 @@ export function GeneralSettingsSection({
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
-  onRichTextEditingChange,
   onSteerActiveThreadOnEnterChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
-  richTextEditing,
   steerActiveThreadOnEnter,
 }: GeneralSettingsSectionProps) {
   const localhostRewriteDescription = localhostLinkRewriteDescription(
@@ -882,14 +877,6 @@ export function GeneralSettingsSection({
               checked={navigateToThreadAfterCreate}
               onCheckedChange={onNavigateToThreadAfterCreateChange}
               aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-            />
-          </SettingsWithControl>
-
-          <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
-            <Switch
-              checked={richTextEditing}
-              onCheckedChange={onRichTextEditingChange}
-              aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
             />
           </SettingsWithControl>
 
@@ -1068,6 +1055,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Show the latest release notes as a compact preview on the Updates page.",
   },
+  performanceDiagnostics: {
+    label: "Server performance diagnostics",
+    description:
+      "Collect CPU profiles and detailed performance logs while the server was launched with --perf-diagnostics. Turning this off stops collection; saved profiles remain.",
+  },
   serverMove: {
     label: "Server move",
     description:
@@ -1075,6 +1067,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   },
 };
 export function ExperimentsSettingsSection({
+  performanceDiagnosticsAvailable,
   disabled,
   experiments,
   onExperimentChange,
@@ -1087,6 +1080,11 @@ export function ExperimentsSettingsSection({
       >
         <div className="space-y-5">
           {experimentKeys.map((experimentKey) => {
+            if (
+              experimentKey === "performanceDiagnostics" &&
+              !performanceDiagnosticsAvailable
+            )
+              return null;
             const definition = EXPERIMENT_DEFINITIONS[experimentKey];
             return (
               <SettingsWithControl
@@ -1130,7 +1128,6 @@ export function SettingsView() {
     useRewriteLocalhostLinksPreference();
   const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
-  const [richTextEditing, setRichTextEditing] = useRichTextEditingPreference();
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
@@ -1268,6 +1265,9 @@ export function SettingsView() {
           updateExperimentsMutation.isPending
         }
         experiments={experiments}
+        performanceDiagnosticsAvailable={
+          systemConfigQuery.data?.performanceDiagnosticsAvailable ?? false
+        }
         onExperimentChange={(key, enabled) =>
           updateExperimentsMutation.mutate({ [key]: enabled })
         }
@@ -1305,12 +1305,10 @@ export function SettingsView() {
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
-          richTextEditing={richTextEditing}
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
-          onRichTextEditingChange={setRichTextEditing}
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,

@@ -52,6 +52,7 @@ function assistantRow({
   return {
     ...baseRow(id, overrides),
     kind: "conversation",
+    messageSeq: overrides.sourceSeqEnd ?? 1,
     role: "assistant",
     text,
     attachments: null,

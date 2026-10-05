@@ -120,6 +120,20 @@ export function PromptStackHoverChevron({
   );
 }
 
+export function PromptStackChevron({ isExpanded }: { isExpanded: boolean }) {
+  return (
+    <span className={TRAILING_SLOT_CLASS}>
+      {isExpanded ? null : (
+        <Icon
+          name="ChevronDown"
+          className="size-3.5 shrink-0 text-subtle-foreground"
+          aria-hidden="true"
+        />
+      )}
+    </span>
+  );
+}
+
 export function PromptStackCountSlot({ count }: { count: number }) {
   return (
     <span className={TRAILING_SLOT_CLASS}>

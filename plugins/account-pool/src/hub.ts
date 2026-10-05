@@ -15,7 +15,10 @@ import {
 } from "./codex-adapter.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type { ImportedProviderAccount } from "./provider-adapter.js";
-import { TransientOAuthRefreshError } from "./provider-adapter.js";
+import {
+  OAuthRefreshError,
+  TransientOAuthRefreshError,
+} from "./provider-adapter.js";
 import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
@@ -80,6 +83,12 @@ interface HubOptions {
   getParentRoute: () => ParentPool | null;
   onAccountsChanged: () => void;
   onUpstreamError: (provider: PoolProvider, error: unknown) => void;
+  onOAuthRefresh: (
+    provider: PoolProvider,
+    accountId: string,
+    outcome: "succeeded" | "failed",
+    message: string,
+  ) => void;
 }
 
 interface SelectedAccount {
@@ -1089,11 +1098,23 @@ export class AccountPoolHub {
               });
               this.refreshBackoffs.delete(account.id);
               if (result.refreshed) {
+                this.options.onOAuthRefresh(
+                  account.provider,
+                  account.id,
+                  "succeeded",
+                  `previousExpiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, expiresAt=${result.secret.kind === "oauth" ? result.secret.expiresAt : null}, forced=${forceRefresh}.`,
+                );
                 const quota = this.options.quotas.get(account.id);
                 this.options.quotas.put({ ...quota, error: null });
               }
               return result.secret;
             } catch (error) {
+              this.options.onOAuthRefresh(
+                account.provider,
+                account.id,
+                "failed",
+                `${error instanceof OAuthRefreshError ? error.message : "Stored credential refresh failed."} expiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, forced=${forceRefresh}.`,
+              );
               if (
                 !(error instanceof TransientOAuthRefreshError) ||
                 secret.kind !== "oauth"
@@ -1358,6 +1379,7 @@ export function createHub(options: {
   getParentRoute?: () => ParentPool | null;
   onAccountsChanged?: () => void;
   onUpstreamError?: (provider: PoolProvider, error: unknown) => void;
+  onOAuthRefresh?: HubOptions["onOAuthRefresh"];
 }): AccountPoolHub {
   const adapters: ReadonlyMap<PoolProvider, ProviderAdapter> = new Map([
     [
@@ -1392,6 +1414,7 @@ export function createHub(options: {
     getParentRoute: options.getParentRoute ?? (() => null),
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
     onUpstreamError: options.onUpstreamError ?? (() => {}),
+    onOAuthRefresh: options.onOAuthRefresh ?? (() => {}),
   });
 }
 

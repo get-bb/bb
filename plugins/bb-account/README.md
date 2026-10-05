@@ -33,7 +33,7 @@ survives restarts.
 `/api/connect/` are only for the connect plugin (the handler checks the rpc
 caller), and every other path is refused. A path may not contain `..`, `//`,
 a query, a fragment, or characters other than letters, digits, and `-._~/`;
-anything else throws. `timeoutMs` is an integer from 1000 to 15000 and
+anything else throws. `timeoutMs` is an integer from 1000 to 65000 and
 defaults to 15000. Request bodies are capped at 16 MB (room for a base64
 voice recording) and response bodies at 1 MB, redirects
 are returned rather than followed, and a non-JSON body comes back as `null`.

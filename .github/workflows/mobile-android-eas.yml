@@ -17,6 +17,29 @@ on:
         description: Upload production AAB to the Google Play internal track as a draft
         type: boolean
         default: false
+      version:
+        description: BB version (X.Y.Z or X.Y.Z-nightly.RUN.ATTEMPT). Empty keeps the committed value.
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      profile:
+        required: true
+        type: string
+      publish:
+        required: true
+        type: boolean
+      submit:
+        required: true
+        type: boolean
+      version:
+        type: string
+        default: ""
+    secrets:
+      EXPO_TOKEN:
+        required: true
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:
+        required: false
 
 permissions:
   contents: read
@@ -40,6 +63,22 @@ jobs:
           node-version: 22.x
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Apply the Android version
+        if: inputs.version != ''
+        working-directory: apps/mobile
+        env:
+          MOBILE_VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const version = process.env.MOBILE_VERSION;
+          if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-nightly\.[1-9]\d*\.[1-9]\d*)?$/.test(version ?? "")) {
+            throw new Error(`Invalid BB Android version: ${version}`);
+          }
+          const config = JSON.parse(readFileSync("app.json", "utf8"));
+          config.expo.version = version;
+          writeFileSync("app.json", `${JSON.stringify(config, null, 2)}\n`);
+          JS
       - name: Build and optionally submit
         working-directory: apps/mobile
         env:

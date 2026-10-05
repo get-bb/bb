@@ -146,6 +146,23 @@ describe("CompactLongPressMenu", () => {
     expect(onRename).toHaveBeenCalledOnce();
   });
 
+  it("ignores the opening release on the drawer backdrop but allows a fresh tap to dismiss", () => {
+    vi.useFakeTimers();
+    const { row, onOpenChange } = renderRow();
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS + 500));
+    const backdrop = document.querySelector(
+      "[data-persistent-drawer-backdrop][data-state='open']",
+    );
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+    touchPointerDown(backdrop!);
+    fireEvent.click(backdrop!);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it("cancels the press when the finger moves or lifts early, and ignores mouse pointers", () => {
     vi.useFakeTimers();
     const { row, onOpenChange, onRowClick } = renderRow();

@@ -3,10 +3,7 @@ import { getExperiments } from "@bb/db";
 import { defaultExperiments, experimentsSchema } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
-import {
-  type TestAppHarness,
-  withTestHarness,
-} from "../helpers/test-app.js";
+import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 function putExperiments(harness: TestAppHarness, body: object) {
   return harness.app.request("/api/v1/settings/experiments", {
@@ -25,9 +22,24 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         changelogPreview: false,
         serverMove: false,
+        performanceDiagnostics: false,
       });
     });
   });
+
+  it.each([false, true])(
+    "reports startup permission %s independently of the experiment",
+    async (available) => {
+      await withTestHarness(async (harness) => {
+        harness.deps.config.performanceDiagnosticsAvailable = available;
+        await putExperiments(harness, { performanceDiagnostics: true });
+        const response = await harness.app.request("/api/v1/system/config");
+        const body = systemConfigResponseSchema.parse(await readJson(response));
+        expect(body.performanceDiagnosticsAvailable).toBe(available);
+        expect(body.experiments.performanceDiagnostics).toBe(true);
+      });
+    },
+  );
 
   it("persists a PUT and reflects it in /system/config", async () => {
     await withTestHarness(async (harness) => {
@@ -37,16 +49,19 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           changelogPreview: true,
           serverMove: true,
+          performanceDiagnostics: true,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
         serverMove: true,
+        performanceDiagnostics: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         serverMove: true,
+        performanceDiagnostics: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -55,6 +70,7 @@ describe("experiments settings", () => {
       ).toEqual({
         changelogPreview: true,
         serverMove: true,
+        performanceDiagnostics: true,
       });
     });
   });
@@ -67,6 +83,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
         serverMove: true,
+        performanceDiagnostics: false,
       });
       expect(
         harness.db.$client

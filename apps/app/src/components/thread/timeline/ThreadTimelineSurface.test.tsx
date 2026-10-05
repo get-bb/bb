@@ -41,6 +41,7 @@ describe("ThreadTimelineSurface load-older control", () => {
     );
     const anchor = {
       captureScrollAnchor: vi.fn(),
+      holdContentPosition: vi.fn(),
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView: vi.fn(),

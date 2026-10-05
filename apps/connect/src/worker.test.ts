@@ -15,6 +15,10 @@ import {
   TUNNEL_TARGET_HEADER,
 } from "./protocol-headers";
 
+beforeEach(() => {
+  vi.resetAllMocks();
+});
+
 describe("connect sign-in page", () => {
   it("points unauthenticated visitors at the dashboard auth flow with returnTo", () => {
     expect(

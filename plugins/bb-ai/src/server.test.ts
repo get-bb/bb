@@ -429,7 +429,7 @@ describe("bb cloud voice input", () => {
           format: "webm",
           hint: "useVoiceInput",
         },
-        timeoutMs: 10_000,
+        timeoutMs: 65_000,
       },
     ]);
   });

@@ -282,16 +282,18 @@ export function ThreadBackgroundCommandsCard({
                     useCompactSummary ? "items-start" : "items-center",
                   )}
                 >
-                  <Icon
-                    name={display.icon}
-                    className="size-3.5 shrink-0 text-muted-foreground/60"
-                    aria-hidden="true"
-                  />
+                  <span className="flex h-[1lh] shrink-0 items-center">
+                    <Icon
+                      name={display.icon}
+                      className="size-3.5 text-muted-foreground/60"
+                      aria-hidden="true"
+                    />
+                  </span>
                   <span
                     className={cn(
                       "min-w-0 flex-1 text-muted-foreground",
                       useCompactSummary
-                        ? "whitespace-normal [overflow-wrap:anywhere]"
+                        ? "line-clamp-2 break-all"
                         : "truncate",
                     )}
                     title={row.description}

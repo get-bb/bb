@@ -20,7 +20,7 @@ export interface SlowDbQueryLogger {
 
 export interface CreateConnectionOptions {
   slowQueryLogger?: SlowDbQueryLogger;
-  slowQueryThresholdMs?: number;
+  slowQueryThresholdMs?: number | (() => number);
 }
 
 export type DbConnection = ReturnType<typeof createConnection>;
@@ -37,7 +37,7 @@ export type SlowDbQueryOperation =
 
 interface SlowDbQueryConfig {
   logger: SlowDbQueryLogger;
-  thresholdMs: number;
+  thresholdMs: number | (() => number);
 }
 
 interface TimedStatementOperationArgs<TValue> {
@@ -82,7 +82,11 @@ function runTimedStatementOperation<TValue>(
     return args.work();
   } finally {
     const durationMs = performance.now() - startedAt;
-    if (durationMs >= args.config.thresholdMs) {
+    const thresholdMs =
+      typeof args.config.thresholdMs === "function"
+        ? args.config.thresholdMs()
+        : args.config.thresholdMs;
+    if (durationMs >= thresholdMs) {
       const cpu = threadCpuUsage(startedCpu);
       args.config.logger.info(
         {
@@ -91,7 +95,7 @@ function runTimedStatementOperation<TValue>(
           cpuDurationMs: roundDurationMs((cpu.user + cpu.system) / 1_000),
           operation: args.operation,
           sql: formatSqlForLog(args.source),
-          thresholdMs: args.config.thresholdMs,
+          thresholdMs,
         },
         "Slow DB query",
       );

@@ -1,3 +1,4 @@
+import { VoiceInputButton } from "./VoiceInputButton";
 import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
@@ -104,7 +105,6 @@ import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   type PluginMentionTrigger,
 } from "@bb/client-core";
-import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   clearComposerEditorBridge,
   publishComposerEditorBridge,
@@ -155,8 +155,6 @@ import {
   insertParagraphBeforeBlockquote,
   removeEmptyBlockquotes,
 } from "./editor/prompt-editor-blockquote";
-import { exitHeading } from "./editor/prompt-editor-heading";
-import { applyPromptListNewline } from "./editor/prompt-editor-list";
 import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import {
   MentionMenu,
@@ -497,6 +495,7 @@ type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
+  microphoneWarning: string | null;
   isSupported: boolean;
   unsupportedReason?: VoiceUnsupportedReason | null;
   stream: MediaStream | null;
@@ -1712,11 +1711,9 @@ export function PromptBoxInternal({
     syncTriggerStateRef.current = syncTriggerState;
   }, [syncTriggerState]);
 
-  const [richTextEditing] = useRichTextEditingPreference();
   const editorExtensions = useMemo(
     () => [
       ...promptEditorExtensions({
-        richTextEditing,
         getPlaceholder: () => placeholderRef.current,
         getDecorationSources: () => pluginDecorationSourcesRef.current,
         getDraftObservers: () => pluginDraftObserversRef.current,
@@ -1742,7 +1739,7 @@ export function PromptBoxInternal({
           sdk.threads.resolveMentions({ threadIds, signal }),
       }),
     ],
-    [richTextEditing],
+    [],
   );
 
   const initialEditorContent = useMemo(() => {
@@ -1752,12 +1749,10 @@ export function PromptBoxInternal({
     };
     return {
       value: initialValue,
-      content: promptEditorContentFromValue(initialValue, {
-        richTextMarkdown: richTextEditing,
-      }),
+      content: promptEditorContentFromValue(initialValue),
     };
     // oxlint-disable-next-line react/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
-  }, [richTextEditing]);
+  }, []);
 
   const editor = useEditor(
     {
@@ -1917,9 +1912,7 @@ export function PromptBoxInternal({
 
             const currentEditor = editorRef.current;
             const pastedContent =
-              promptEditorContentFromValue(pastedValue, {
-                richTextMarkdown: richTextEditing,
-              }).content ?? [];
+              promptEditorContentFromValue(pastedValue).content ?? [];
             currentEditor
               ?.chain()
               .focus()
@@ -2000,7 +1993,7 @@ export function PromptBoxInternal({
         }
       },
     },
-    [richTextEditing],
+    [],
   );
 
   useEffect(() => {
@@ -2128,11 +2121,7 @@ export function PromptBoxInternal({
     try {
       skipEditorChangeRef.current = true;
       cancelPromptThreadLinkPaste(editor);
-      editor.commands.setContent(
-        promptEditorContentFromValue(nextValue, {
-          richTextMarkdown: richTextEditing,
-        }),
-      );
+      editor.commands.setContent(promptEditorContentFromValue(nextValue));
       lastSyncedEditorValueRef.current = nextValue;
     } finally {
       skipEditorChangeRef.current = false;
@@ -2142,7 +2131,6 @@ export function PromptBoxInternal({
   }, [
     editor,
     mentionRanges,
-    richTextEditing,
     scheduleRevealEditorSelection,
     syncTriggerState,
     value,
@@ -2865,16 +2853,14 @@ export function PromptBoxInternal({
       insertion
         .insertContent(
           block
-            ? promptEditorContentFromValue(value, {
-                richTextMarkdown: richTextEditing,
-              })
+            ? promptEditorContentFromValue(value)
             : promptEditorInlineContentFromValue(value),
         )
         .run();
       if (!isPointerCoarse) scheduleRevealEditorSelection();
       return true;
     },
-    [isPointerCoarse, richTextEditing, scheduleRevealEditorSelection],
+    [isPointerCoarse, scheduleRevealEditorSelection],
   );
   const composerEditorBridge = useMemo<ComposerEditorBridge | null>(
     () =>
@@ -3295,15 +3281,6 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
-        applyPromptListNewline(currentEditor)
-      ) {
-        event.preventDefault();
-        return true;
-      }
-
-      if (
-        isBlockquoteExitKey &&
-        currentEditor &&
         (insertParagraphBeforeBlockquote(currentEditor) ||
           exitTrailingBlockquoteBreak(currentEditor))
       ) {
@@ -3317,11 +3294,6 @@ export function PromptBoxInternal({
         !event.altKey &&
         !event.ctrlKey &&
         (event.shiftKey || !canSubmitWithEnterKey);
-      if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
-        event.preventDefault();
-        return true;
-      }
-
       if (
         isPromptNewlineKey &&
         currentEditor &&
@@ -3611,6 +3583,7 @@ export function PromptBoxInternal({
                     isCompact={showCompactLayout}
                     state={renderedVoiceActionState}
                     stream={voice.stream}
+                    microphoneWarning={voice.microphoneWarning}
                     submitIcon={submitIcon ?? "CornerDownLeft"}
                     onConfirm={voice.stop}
                     onSend={voice.send}
@@ -3663,7 +3636,8 @@ export function PromptBoxInternal({
                       {voice &&
                       !showVoiceActionGroup &&
                       (!showVoiceAsPrimaryAction || showStop) ? (
-                        <Button
+                        <VoiceInputButton
+                          warning={voice?.microphoneWarning ?? null}
                           data-promptbox-expanded-only={
                             showCompactLayout ? undefined : ""
                           }
@@ -3687,7 +3661,7 @@ export function PromptBoxInternal({
                           }
                         >
                           <Icon name="Mic" className="size-4" />
-                        </Button>
+                        </VoiceInputButton>
                       ) : null}
                     </>
                   ) : null}
@@ -3715,7 +3689,8 @@ export function PromptBoxInternal({
                         />
                       </Button>
                     ) : showVoiceAsPrimaryAction ? (
-                      <Button
+                      <VoiceInputButton
+                        warning={voice?.microphoneWarning ?? null}
                         data-promptbox-submit-action=""
                         type="button"
                         size={showCompactLayout ? "icon" : "sm"}
@@ -3734,7 +3709,7 @@ export function PromptBoxInternal({
                         )}
                       >
                         <Icon name="Mic" className="size-4" />
-                      </Button>
+                      </VoiceInputButton>
                     ) : (
                       <ComposerSendMenu
                         isPointerCoarse={isPointerCoarse}

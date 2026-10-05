@@ -54,28 +54,51 @@ export function buildAudioInputConstraints(
   };
 }
 
+function canTryAnotherMicrophone(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    [
+      "OverconstrainedError",
+      "NotFoundError",
+      "DevicesNotFoundError",
+      "NotReadableError",
+      "TrackStartError",
+    ].includes(error.name)
+  );
+}
+
 export async function requestAudioInputStream(
-  mediaDevices: Pick<MediaDevices, "getUserMedia">,
+  mediaDevices: Pick<MediaDevices, "getUserMedia" | "enumerateDevices">,
   preferredDeviceId: PreferredAudioInputDeviceId,
 ): Promise<MediaStream> {
-  try {
-    return await mediaDevices.getUserMedia(
-      buildAudioInputConstraints(preferredDeviceId),
-    );
-  } catch (error) {
-    if (
-      preferredDeviceId === null ||
-      !(error instanceof DOMException) ||
-      ![
-        "OverconstrainedError",
-        "NotFoundError",
-        "DevicesNotFoundError",
-      ].includes(error.name)
-    ) {
-      throw error;
+  let lastError: unknown;
+  const candidates =
+    preferredDeviceId === null ? [null] : [preferredDeviceId, null];
+  for (const deviceId of candidates) {
+    try {
+      return await mediaDevices.getUserMedia(
+        buildAudioInputConstraints(deviceId),
+      );
+    } catch (error) {
+      if (!canTryAnotherMicrophone(error)) throw error;
+      lastError = error;
     }
-    return mediaDevices.getUserMedia({ audio: true });
   }
+  const devices = await mediaDevices.enumerateDevices();
+  const tried = new Set([preferredDeviceId, "default", ""]);
+  for (const device of devices) {
+    if (device.kind !== "audioinput" || tried.has(device.deviceId)) continue;
+    tried.add(device.deviceId);
+    try {
+      return await mediaDevices.getUserMedia(
+        buildAudioInputConstraints(device.deviceId),
+      );
+    } catch (error) {
+      if (!canTryAnotherMicrophone(error)) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 export function useAudioInputDevicePreference() {

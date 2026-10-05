@@ -7,10 +7,31 @@
 - `pnpm desktop:worktree` packages and launches it against this checkout's data directory and deterministic ports, the same instance `pnpm start:worktree` uses, so a packaged build never touches `~/.bb` or port 38886. It also points Electron's own user-data directory at `$BB_DATA_DIR/desktop` — window state, storage and the single-instance lock all live there. Without that the build would share `~/Library/Application Support/bb` with an installed bb, fail to take the lock, and quit while the installed app focuses itself, which reads as a successful launch of code that never ran. Override it with `BB_DESKTOP_USER_DATA_DIR`. It refuses to start when the server or host-daemon port is busy, because a stale server there would answer for the build you meant to test. DevTools stay closed unless you set `BB_DESKTOP_OPEN_DEVTOOLS=1`, matching a released build. Both commands always repackage first; Turbo caches everything except electron-builder itself. Signing is left to electron-builder's keychain auto-discovery, so machines without a Developer ID identity produce unsigned artifacts and macOS shows the usual first-launch warning.
 - The packaged app defaults to server/frontend `:38886`, host daemon `:38887`, data dir `~/.bb/`, and logs under `~/.bb/logs/`.
 - `bb-app` (including `pnpm start`), `bb-server`, and `bb-host-daemon` capture service stdout and stderr directly in `logs/server-stdio.log` and `logs/host-daemon-stdio.log` under the selected data directory. These append across restarts and are separate from rotating application logs. Use `tail -F` on these files for console output and early startup errors; service output is no longer forwarded to the launcher's terminal.
+- Connect's `tunnel closed` warnings include the last transport error's original message and code, `connectedDurationMs`, and `lastHeartbeatAckAgeMs`. A null duration means the opening handshake never completed; a null acknowledgement age means no heartbeat acknowledgement arrived on that connection. These warnings appear in the server logs and `<dataDir>/plugins/connect/logs/plugin.log`.
 - Entity IDs in URLs (`proj_*`, `thr_*`) are primary keys. Query them directly against the active data dir: `sqlite3 <data>/bb.db "SELECT * FROM threads WHERE id = 'thr_xxx';"`.
 - API routes are under `/api/v1/`, for example `GET /api/v1/threads/:id`.
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
+
+## Reproducing Test Order Failures
+
+CI's test shards shuffle test files and tests within each file. Vitest prints the seed for
+runs that execute; unchanged Turbo tasks can still reuse cached results.
+Reproduce a failing package with its logged seed:
+
+```bash
+pnpm exec turbo run test --filter=@bb/app -- --sequence.shuffle --sequence.seed=4721 --maxWorkers=2
+```
+
+For a repository-wide order audit, omit the filter and use `--concurrency=4`
+before Turbo's `--` separator. CI caps each Vitest process at two workers so
+package concurrency does not multiply into unbounded worker contention.
+Use a second seed after
+repairing order dependencies. Reset test-owned mock implementations, fixture
+arrays, persisted preferences, and databases before each test. Await background
+work and close streams, workers, and subprocesses before removing their files or
+tearing down their environment. Worker isolation does not restore built-in
+process objects or cancel resources that a test leaves running.
 
 ## ACP Steer Cancellation Failures
 
@@ -63,6 +84,23 @@ transaction duration. Commit timing matters because SQLite's automatic WAL
 checkpoint can perform filesystem writes and synchronization on the server
 thread. `operation: "exec"` also covers maintenance batches. SQL string
 literals are redacted and parameter values are never logged.
+
+## Pending Question Drafts
+
+Native provider questions and Ask User Question plugin forms save partial
+selections, free text, and the current question in browser-local storage under
+`bb.question-draft.v1:<threadId>:<interactionId>`. These drafts survive thread
+navigation and page reloads on the same browser/device. They are cleared after
+successful submission or cancellation and retained if either request fails.
+When local storage is unavailable, an in-memory fallback preserves drafts
+across navigation until the page reloads. Drafts are not sent to the agent until
+submitted, and CLI/SDK answers do not read the browser's draft.
+There is no time-based expiry. If an interaction is resolved elsewhere, its
+draft can remain in local storage but is never rendered as an active question;
+the server's pending interaction list controls that. Clearing browser site data
+removes these drafts. Older clients ignore this new storage namespace. Only the
+native question form and Ask User Question plugin opt in; secret-request forms
+do not use this storage.
 
 ## Native Draft Rollback
 
@@ -623,6 +661,13 @@ behavior. Keep temporary review stories and fixtures out of the final diff.
 
 ## Pull Request Status And Daemon Compatibility
 
+Host-daemon protocol 228 makes `thread.storage.delete` and recursive directory
+removal through `host.remove_path` stop processes with working directories
+inside the target before deleting files. The latter also covers orphaned
+thread storage cleanup and CLI/SDK file removal. This uses the worktree removal
+process sweep on macOS and Linux; Windows does not enumerate process working
+directories. Older daemons must update to receive these cleanup semantics.
+
 Host-daemon protocol 226 opens the service tier: `serviceTier` in execution
 options is any non-empty tier id instead of `fast` or `default`, and
 `model/list` entries may carry `supportedServiceTiers`. A daemon on 225 rejects
@@ -649,3 +694,75 @@ serve workspace RPCs until it updates and reconnects. Auto-update-enabled
 older daemons install the server's matching bb-app artifact; disabled or failed
 updates leave the machine disconnected until a manual update succeeds. This
 is an intentional version gate, not backward-compatible field defaulting.
+
+## Opt-in server performance diagnostics
+
+Run `pnpm start --perf-diagnostics` (or `pnpm start:worktree --perf-diagnostics`)
+when investigating slowness. `bb-app --perf-diagnostics` uses the same launcher
+option. The equivalent startup setting is `BB_PERF_DIAGNOSTICS=1`; it defaults
+to false and requires a server restart. Remove the flag/setting and restart to
+turn it off. This does not enable profiling for the daemon or other servers.
+
+When both gates are on, the mode logs database operations taking at least 25 ms, API requests taking
+at least 100 ms, and event-loop stalls of at least 100 ms. Every five seconds,
+`Server performance sample` records process and main-thread CPU time, loop
+utilization/delay, GC duration/count/max, and memory. CPU values are totals for
+that interval, not attribution to an individual request. GC callbacks can be
+delayed by a blocked loop. These measurements distinguish CPU pressure from
+elapsed-time stalls but do not prove a particular OS scheduling or I/O cause.
+
+Continuous V8 CPU sampling at 1 ms writes a `.cpuprofile` every 30 seconds to
+`$BB_DATA_DIR/logs/performance/`. Profiles are retained for up to 12 hours with a total cap of 1 GB
+(1,000,000,000 bytes), deleting oldest captures first when either limit is
+reached. Each file is limited to 12 MiB (oversized captures are discarded).
+Cleanup runs when collection starts and before each save, including captures
+from previous sessions. Space for the pending file is reserved inside the
+total cap. Turning collection off leaves saved captures until collection
+starts again; their age does not reset. Graceful
+shutdown saves the partial window; a crash can lose the current window.
+`Server CPU profile saved` logs its path, PID, and UTC start/end times. Copy
+relevant files before age or size retention removes them. Load a profile in Chrome
+DevTools' JavaScript profiler to inspect sampled stacks. No inspector network
+port is opened. Save records explicitly report `sampleTimeBasis: elapsed` and
+`nativeFramesMayIncludeWaiting: true`. Sampling can miss short calls and does not identify native
+I/O waits precisely.
+
+Profiling, serialization, and extra logging add overhead, so leave this off
+for routine operation. Files use private permissions and can contain local
+paths and function names; inspect before sharing. Existing logs retain their
+normal rotation policy. No request bodies or SQL bindings are added by this
+mode. A capture failure is logged and disables CPU capture for that process;
+summary logging continues. Profiles already saved remain after disabling it.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.
+
+### Diagnose a captured stall
+
+1. Record the affected request path and approximate UTC time. Find its
+   `Slow API request` and nearby `Event loop stalled` records. For timelines,
+   match the thread ID to `Thread timeline build blocked the event loop` and
+   inspect the stage timings. `inFlightWorkAtObservation` can name an unrelated asynchronous
+   long poll; it is not proof of what blocked the loop. Compare `longestSynchronousWork`
+   and its `longestSynchronousWorkWallMs` / `longestSynchronousWorkCpuMs`
+   measurements with the profile stacks instead.
+2. Find the `Server CPU profile saved` interval covering that time and PID.
+   Copy the file before rotation overwrites it. In the JavaScript profiler,
+   select the affected time window and inspect the bottom-up view and caller
+   stack. Packaged captures name functions and bundled JavaScript locations;
+   match function names against the exact source revision used to build it.
+3. Compare sampled stacks with `mainThreadCpuMs`, GC totals and SQL
+   `cpuDurationMs`. A native SQLite call may appear throughout an elapsed wait
+   without consuming equivalent CPU. A slow SQL operation with very little
+   CPU indicates waiting, but does not identify the lock owner or prove disk
+   I/O. Interval CPU totals include other requests and background work.
+4. Repeat with a small control workload. Expected long polls can generate
+   slow-request records without blocking the event loop; require corroborating
+   loop delay, stage timings or sampled execution before calling them stalls.

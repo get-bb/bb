@@ -186,7 +186,6 @@ export function createProviderRegistryService(
       settled,
       new Promise<void>((resolve) => {
         timer = setTimeout(resolve, REGISTRATIONS_SETTLED_TIMEOUT_MS);
-        timer.unref?.();
       }),
     ]);
     clearTimeout(timer);

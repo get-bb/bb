@@ -14,7 +14,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-  PromptStackHoverChevron,
+  PromptStackChevron,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import { WorkflowPhaseStrip } from "@bb/shared-ui/workflow-progress";
@@ -109,7 +109,7 @@ export function ThreadWorkflowCard({
         )}
       >
         <ThreadWorkflowSummary workflow={workflow} />
-        <PromptStackHoverChevron isExpanded={isExpanded} />
+        <PromptStackChevron isExpanded={isExpanded} />
       </button>
       <AnimatedDisclosureBody
         id={bodyId}

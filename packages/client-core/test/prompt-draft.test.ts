@@ -5,9 +5,11 @@ import {
   appendQuoteToDraftText,
   emptyPromptDraftState,
   isPromptDraftEmpty,
+  getProjectStoredPromptAttachmentPaths,
   parsePromptDraftStorage,
   promptDraftToInput,
   promptInputToDraft,
+  serializePromptDraftStorage,
 } from "../src/prompt/prompt-draft.js";
 
 describe("prompt draft helpers", () => {
@@ -18,6 +20,69 @@ describe("prompt draft helpers", () => {
       mentions: [],
       attachments: [],
     });
+  });
+
+  it("treats a stored zero attachment size as unknown", () => {
+    const parsed = parsePromptDraftStorage(
+      JSON.stringify({
+        text: "",
+        attachments: [
+          {
+            type: "localFile",
+            path: "/tmp/spec.md",
+            name: "spec.md",
+            sizeBytes: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.attachments).toEqual([
+      { type: "localFile", path: "/tmp/spec.md", name: "spec.md" },
+    ]);
+    expect(promptDraftToInput(parsed)).toEqual([
+      { type: "localFile", path: "/tmp/spec.md", name: "spec.md" },
+    ]);
+  });
+
+  it("preserves portable attachments through history conversion and persisted drafts", () => {
+    const input = [
+      {
+        type: "localImage" as const,
+        path: "shot.png",
+        sourceProjectId: "proj_source",
+      },
+      {
+        type: "localFile" as const,
+        path: "notes.txt",
+        name: "notes.txt",
+        sizeBytes: 5,
+        mimeType: "text/plain",
+        sourceProjectId: "proj_other",
+      },
+      {
+        type: "localFile" as const,
+        path: "/tmp/report.txt",
+        name: "report.txt",
+        hostId: "host_1",
+      },
+    ];
+    const restored = parsePromptDraftStorage(
+      serializePromptDraftStorage(promptInputToDraft(input)),
+    );
+
+    expect(promptDraftToInput(restored)).toEqual(input);
+    expect(
+      getProjectStoredPromptAttachmentPaths([
+        ...restored.attachments,
+        {
+          type: "localFile",
+          path: "legacy.txt",
+          name: "legacy.txt",
+          sizeBytes: 1,
+        },
+      ]),
+    ).toEqual(["legacy.txt"]);
   });
 
   it("parses structured drafts with attachments", () => {
@@ -105,26 +170,24 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
-  it("omits zero-size localFile size when mapping draft attachments to prompt input", () => {
+  it("sends no size for an unknown or zero-size placeholder attachment", () => {
     const input = promptDraftToInput({
       text: "",
       mentions: [],
       attachments: [
+        { type: "localFile", path: "uploads/spec.md", name: "spec.md" },
         {
           type: "localFile",
-          path: "uploads/spec.md",
-          name: "spec.md",
+          path: "uploads/plugin.md",
+          name: "plugin.md",
           sizeBytes: 0,
         },
       ],
     });
 
     expect(input).toEqual([
-      {
-        type: "localFile",
-        path: "uploads/spec.md",
-        name: "spec.md",
-      },
+      { type: "localFile", path: "uploads/spec.md", name: "spec.md" },
+      { type: "localFile", path: "uploads/plugin.md", name: "plugin.md" },
     ]);
   });
 
@@ -190,7 +253,6 @@ describe("prompt draft helpers", () => {
           type: "localImage",
           path: "/tmp/screenshot.png",
           name: "screenshot.png",
-          sizeBytes: 0,
         },
         {
           type: "localFile",

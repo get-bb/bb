@@ -30,7 +30,8 @@ export const LONG_POLL_TIMEOUT_MS = 25_000;
 export const FETCH_BODY_MAX_BYTES = 1024 * 1024;
 export const FETCH_REQUEST_BODY_MAX_BYTES = 16 * 1024 * 1024;
 export const FETCH_TIMEOUT_MIN_MS = 1_000;
-export const FETCH_TIMEOUT_MAX_MS = 15_000;
+export const FETCH_TIMEOUT_DEFAULT_MS = 15_000;
+export const FETCH_TIMEOUT_MAX_MS = 65_000;
 
 const emptyInputSchema = z.object({}).strict().nullable();
 
@@ -53,7 +54,7 @@ export const fetchInputSchema = z
       .int()
       .min(FETCH_TIMEOUT_MIN_MS)
       .max(FETCH_TIMEOUT_MAX_MS)
-      .default(FETCH_TIMEOUT_MAX_MS)
+      .default(FETCH_TIMEOUT_DEFAULT_MS)
       .describe("Give up on getbb.app after this many milliseconds"),
   })
   .strict();

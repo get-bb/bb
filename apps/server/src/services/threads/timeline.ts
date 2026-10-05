@@ -19,6 +19,7 @@ import {
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
+  MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
@@ -37,6 +38,8 @@ import type {
   ThreadConversationOutlineResponse,
   TimelineConversationAttachments,
   ThreadConversationOutlineAttachmentSummary,
+  ThreadMessageResponse,
+  TimelineConversationRow,
   TimelineRow,
   TimelineOutputPreview,
   ThreadTimelineResponse,
@@ -55,6 +58,8 @@ import {
   listContextWindowUsageRows,
   isTimelineCursorSequencePresent,
   listStoredConversationOutlineEventRows,
+  listStoredRootConversationOutlineEventRows,
+  getStoredConversationOutlineProjectionState,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRows,
   listTimelineInterruptionRows,
@@ -1596,14 +1601,91 @@ function toConversationOutlineAttachmentSummary(
   return { imageCount, fileCount };
 }
 
+interface BuildThreadConversationRowsOptions extends BuildThreadConversationOutlineOptions {
+  includeNestedRows: boolean;
+}
+
+function collectConversationRows(
+  rows: readonly TimelineRow[],
+  conversationRows: TimelineConversationRow[],
+): void {
+  for (const row of rows) {
+    if (row.kind === "conversation") {
+      conversationRows.push(row);
+    } else if (row.kind === "turn" && row.children !== null) {
+      collectConversationRows(row.children, conversationRows);
+    }
+  }
+}
+
+function buildThreadConversationRows(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadConversationRowsOptions,
+): TimelineConversationRow[] {
+  return runEventLoopWorkSync(`conversation-rows ${thread.id}`, () => {
+    const contextBoundarySeq = getLatestCompletedThreadContextClearSequence(
+      db,
+      {
+        atOrBeforeSequence: options.maxSeq,
+        threadId: thread.id,
+      },
+    );
+    const rawEventRows = listStoredConversationOutlineEventRows(db, {
+      sequenceStart: contextBoundarySeq ?? 0,
+      threadId: thread.id,
+    });
+    const decodedRawEvents = rawEventRows.map((row) =>
+      toThreadEventWithMeta(row),
+    );
+    const decodedEvents = compactThreadTimelineSummaryEvents(decodedRawEvents);
+    const clientRequestContextRows = selectClientRequestContextRows(db, {
+      rows: rawEventRows,
+      threadId: thread.id,
+    });
+    const acceptedClientRequestContext: AcceptedClientRequestContext = {
+      acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
+        (row) => toThreadEventWithMeta(row),
+      ),
+      rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
+        (row) => toThreadEventWithMeta(row),
+      ),
+    };
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext,
+      contextWindowEvents: [],
+      events: decodedEvents,
+      options: {
+        completedTurnDisplay: options.completedTurnDisplay,
+        includeNestedRows: options.includeNestedRows,
+        includeDiagnosticOperations: false,
+        isLatestPage: true,
+        providerDisplayName: options.providerDisplayName,
+        providerId: thread.providerId,
+        threadName: thread.title ?? thread.titleFallback ?? "",
+        threadStatus: thread.status,
+        workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+      },
+    });
+    const conversationRows: TimelineConversationRow[] = [];
+    collectConversationRows(timeline.rows, conversationRows);
+    return conversationRows;
+  });
+}
+
 function selectThreadConversationOutline(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadConversationOutlineOptions,
   sequenceStart: number,
   precedingAgentMessageDeltaCount: number,
+  rootProjection: { summaryCompactionEnabled: boolean } | null,
 ): ConversationOutlineSelection {
-  const rawEventRows = listStoredConversationOutlineEventRows(db, {
+  const selectRows =
+    rootProjection === null
+      ? listStoredConversationOutlineEventRows
+      : listStoredRootConversationOutlineEventRows;
+  const rawEventRows = selectRows(db, {
     sequenceStart,
     threadId: thread.id,
   });
@@ -1612,7 +1694,11 @@ function selectThreadConversationOutline(
   );
   const decodedEvents = compactThreadTimelineSummaryEvents(
     decodedRawEvents,
-    precedingAgentMessageDeltaCount,
+    rootProjection === null
+      ? precedingAgentMessageDeltaCount
+      : rootProjection.summaryCompactionEnabled
+        ? MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION
+        : 0,
   );
   const clientRequestContextRows = selectClientRequestContextRows(db, {
     rows: rawEventRows,
@@ -1685,12 +1771,44 @@ export function buildThreadConversationOutline(
       options,
       sequenceStart,
       0,
+      null,
     );
     return {
       items: selection.project().map(({ item }) => item),
       maxSeq: options.maxSeq,
     };
   });
+}
+
+interface GetThreadMessageOptions extends BuildThreadConversationOutlineOptions {
+  seq: number;
+  before: number;
+  after: number;
+}
+
+export function getThreadMessage(
+  db: DbConnection,
+  thread: Thread,
+  options: GetThreadMessageOptions,
+): ThreadMessageResponse {
+  const rows = buildThreadConversationRows(db, thread, {
+    ...options,
+    includeNestedRows: true,
+  });
+  const index = rows.findIndex((row) => row.messageSeq === options.seq);
+  const message = rows[index];
+  if (message === undefined) {
+    throw new ApiError(
+      404,
+      "message_not_found",
+      `Thread ${thread.id} has no message ${options.seq}; an edit may have removed it or a context clear hidden it`,
+    );
+  }
+  return {
+    message,
+    before: rows.slice(Math.max(0, index - options.before), index),
+    after: rows.slice(index + 1, index + 1 + options.after),
+  };
 }
 
 export function buildThreadConversationOutlineProjectionKey(
@@ -1767,13 +1885,32 @@ export function loadThreadConversationOutline(
           maxSeq: options.maxSeq,
           contextBoundarySeq,
           orderingBoundarySequence,
-          select: (sequenceStart, precedingAgentMessageDeltaCount) =>
+          resolveProjectionState: (classificationSequenceStart, previous) => {
+            const state = getStoredConversationOutlineProjectionState(db, {
+              threadId: thread.id,
+              sequenceStart: contextBoundarySeq,
+              classificationSequenceStart,
+              summaryCompactionDeltaThreshold:
+                MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
+            });
+            return {
+              includeNestedEvents:
+                orderingBoundarySequence !== null ||
+                previous?.includeNestedEvents === true ||
+                state.includeNestedEvents,
+              summaryCompactionEnabled: state.summaryCompactionEnabled,
+            };
+          },
+          select: (sequenceStart, precedingAgentMessageDeltaCount, state) =>
             selectThreadConversationOutline(
               db,
               thread,
               options,
               sequenceStart,
               precedingAgentMessageDeltaCount,
+              state.includeNestedEvents
+                ? null
+                : { summaryCompactionEnabled: state.summaryCompactionEnabled },
             ),
         }),
         maxSeq: options.maxSeq,

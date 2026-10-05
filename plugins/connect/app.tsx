@@ -3,6 +3,7 @@ import {
   definePluginApp,
   UrlLink as UrlLink,
   useRealtime,
+  useRealtimeConnectionState,
   useRpc,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
@@ -1511,12 +1512,17 @@ function OffContent({
 
 function useConnectStatus() {
   const rpc = useRpc<typeof connectRpcContract>();
+  const connectionState = useRealtimeConnectionState();
+  const previousConnectionState = useRef(connectionState);
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const latestStatusRequest = useRef(0);
 
   const refetch = useCallback(() => {
+    const request = ++latestStatusRequest.current;
     rpc.call("status").then(
       (result) => {
+        if (request !== latestStatusRequest.current) return;
         const next = asStatus(result);
         if (next !== null) {
           setStatus(next);
@@ -1525,13 +1531,24 @@ function useConnectStatus() {
           setLoadError("Unexpected status payload.");
         }
       },
-      (error: unknown) => setLoadError(errorText(error)),
+      (error: unknown) => {
+        if (request !== latestStatusRequest.current) return;
+        setLoadError(errorText(error));
+      },
     );
   }, [rpc]);
 
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    const previous = previousConnectionState.current;
+    previousConnectionState.current = connectionState;
+    if (connectionState === "connected" && previous !== "connected") {
+      refetch();
+    }
+  }, [connectionState, refetch]);
 
   useRealtime(CONNECT_REALTIME_CHANNEL, (payload) => {
     const next = asStatus(payload);

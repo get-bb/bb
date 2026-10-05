@@ -7,7 +7,6 @@ import { Extension, getChangedRanges, type Editor } from "@tiptap/core";
 import { closeHistory, isHistoryTransaction } from "@tiptap/pm/history";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
-import { AddMarkStep, RemoveMarkStep } from "@tiptap/pm/transform";
 import {
   findPastedThreadLinkCandidates,
   type PastedThreadLink,
@@ -59,14 +58,7 @@ function isConvertibleText(
   }
   let convertible = true;
   doc.nodesBetween(occurrence.from, occurrence.to, (node) => {
-    if (
-      node.type.name === "mention" ||
-      node.type.name === "blockquote" ||
-      node.type.spec.code ||
-      node.marks.some(
-        (mark) => mark.type.spec.code || mark.type.name === "link",
-      )
-    ) {
+    if (node.type.name === "mention" || node.type.name === "blockquote") {
       convertible = false;
       return false;
     }
@@ -146,16 +138,8 @@ function mapOccurrence(
   transaction: Transaction,
 ): PastedThreadLink | null {
   let { from, to } = occurrence;
-  for (const [index, map] of transaction.mapping.maps.entries()) {
+  for (const map of transaction.mapping.maps) {
     let changed = false;
-    const step = transaction.steps[index];
-    if (
-      (step instanceof AddMarkStep || step instanceof RemoveMarkStep) &&
-      step.from < to &&
-      step.to > from
-    ) {
-      return null;
-    }
     map.forEach((start, end) => {
       if (
         start === end ? start > from && start < to : start < to && end > from
@@ -217,7 +201,6 @@ export function createPromptThreadLinkPasteExtension(
               serializedText: `@thread:${thread.threadId}`,
             },
             null,
-            transaction.doc.nodeAt(occurrence.from)?.marks,
           ),
         );
       }

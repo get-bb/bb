@@ -3,6 +3,7 @@ import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
+import { ThreadActionsLongPressMenu } from "@/components/thread/ThreadActionsMenu";
 import { getSidebarThreadRowPaddingLeft } from "@/components/sidebar/sidebarRowClasses";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -311,102 +312,104 @@ function MobileRecentThreadRow({
     </span>
   );
   return (
-    <li
-      onTouchStart={(event) => {
-        const touch = event.touches[0];
-        const link = event.currentTarget.querySelector("a");
-        touchStartedBeforeLink.current =
-          hasChildren &&
-          touch !== undefined &&
-          link !== null &&
-          touch.clientX < link.getBoundingClientRect().left;
-      }}
-      style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
-      className={cn(
-        "flex items-center gap-2.5 rounded-md pr-2",
-        MOBILE_RECENT_ROW_HEIGHT_CLASS,
-        highlighted && "bg-surface-selected",
-      )}
-    >
-      {hasChildren ? (
-        <button
-          type="button"
-          aria-expanded={!isCollapsed}
-          aria-label={
-            isCollapsed
-              ? `Show threads under ${threadTitle}`
-              : `Hide threads under ${threadTitle}`
-          }
-          className="group relative -ml-6 flex h-11 w-13 shrink-0 cursor-pointer items-center rounded-md pl-6 outline-none"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onToggleCollapsed(thread.id);
-          }}
-        >
-          <Icon
-            name="ChevronRight"
-            className={cn(
-              "absolute left-2 size-3 text-subtle-foreground transition-transform duration-150 group-hover:text-muted-foreground group-focus-visible:text-muted-foreground",
-              !isCollapsed && "rotate-90",
-              depth > 0 && "opacity-60",
-            )}
-            aria-hidden="true"
-          />
-          {providerTile}
-        </button>
-      ) : (
-        providerTile
-      )}
-      <RouteAnchor
-        href={getThreadRoutePath({
-          projectId: thread.projectId,
-          threadId: thread.id,
-        })}
-        aria-label={`Open ${threadTitle}${indicatorLabel ? ` — ${indicatorLabel}` : ""}`}
-        onClick={(event) => {
-          const ignoreTouchClick = touchStartedBeforeLink.current;
-          touchStartedBeforeLink.current = false;
-          if (event.detail > 0 && ignoreTouchClick) {
-            event.preventDefault();
-          }
+    <ThreadActionsLongPressMenu thread={thread}>
+      <li
+        onTouchStart={(event) => {
+          const touch = event.touches[0];
+          const link = event.currentTarget.querySelector("a");
+          touchStartedBeforeLink.current =
+            hasChildren &&
+            touch !== undefined &&
+            link !== null &&
+            touch.clientX < link.getBoundingClientRect().left;
         }}
+        style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          "flex select-none items-center gap-2.5 rounded-md pr-2",
           MOBILE_RECENT_ROW_HEIGHT_CLASS,
+          highlighted && "bg-surface-selected",
         )}
       >
-        <span className="min-w-0 flex-1 space-y-0.5">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <ThreadTitle
-              title={getThreadDisplayTitle(thread)}
-              className={cn("font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}
-            />
-          </span>
-          <span
-            className={cn(
-              "flex min-w-0 items-center gap-1.5 leading-4 text-muted-foreground",
-              COARSE_POINTER_TEXT_SM_CLASS,
-            )}
-            title={metadataText}
+        {hasChildren ? (
+          <button
+            type="button"
+            aria-expanded={!isCollapsed}
+            aria-label={
+              isCollapsed
+                ? `Show threads under ${threadTitle}`
+                : `Hide threads under ${threadTitle}`
+            }
+            className="group relative -ml-6 flex h-11 w-13 shrink-0 cursor-pointer items-center rounded-md pl-6 outline-none"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleCollapsed(thread.id);
+            }}
           >
-            {workspaceIconName ? (
-              <Icon
-                name={workspaceIconName}
-                className="size-3.5 shrink-0"
-                aria-hidden="true"
+            <Icon
+              name="ChevronRight"
+              className={cn(
+                "absolute left-2 size-3 text-subtle-foreground transition-transform duration-150 group-hover:text-muted-foreground group-focus-visible:text-muted-foreground",
+                !isCollapsed && "rotate-90",
+                depth > 0 && "opacity-60",
+              )}
+              aria-hidden="true"
+            />
+            {providerTile}
+          </button>
+        ) : (
+          providerTile
+        )}
+        <RouteAnchor
+          href={getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: thread.id,
+          })}
+          aria-label={`Open ${threadTitle}${indicatorLabel ? ` — ${indicatorLabel}` : ""}`}
+          onClick={(event) => {
+            const ignoreTouchClick = touchStartedBeforeLink.current;
+            touchStartedBeforeLink.current = false;
+            if (event.detail > 0 && ignoreTouchClick) {
+              event.preventDefault();
+            }
+          }}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            MOBILE_RECENT_ROW_HEIGHT_CLASS,
+          )}
+        >
+          <span className="min-w-0 flex-1 space-y-0.5">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <ThreadTitle
+                title={getThreadDisplayTitle(thread)}
+                className={cn("font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}
               />
-            ) : null}
-            <span className="min-w-0 truncate">{metadataText}</span>
+            </span>
+            <span
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 leading-4 text-muted-foreground",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+              title={metadataText}
+            >
+              {workspaceIconName ? (
+                <Icon
+                  name={workspaceIconName}
+                  className="size-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+              ) : null}
+              <span className="min-w-0 truncate">{metadataText}</span>
+            </span>
           </span>
-        </span>
-        {indicatorKind !== "none" ? (
-          <span className="flex size-6 shrink-0 items-center justify-center">
-            <ThreadStatusGlyph {...trailingIndicatorState} />
-          </span>
-        ) : null}
-      </RouteAnchor>
-    </li>
+          {indicatorKind !== "none" ? (
+            <span className="flex size-6 shrink-0 items-center justify-center">
+              <ThreadStatusGlyph {...trailingIndicatorState} />
+            </span>
+          ) : null}
+        </RouteAnchor>
+      </li>
+    </ThreadActionsLongPressMenu>
   );
 }
 

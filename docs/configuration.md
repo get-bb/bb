@@ -163,7 +163,13 @@ In-app updates are off unless you start bb with `--in-app-updates`:
 `pnpm start --in-app-updates` from a source checkout. bb then runs under a small
 update shim, so Settings → Updates and `bb updates app apply` can update bb
 without a terminal. Without the flag, bb starts as before and Settings → Updates
-shows the upgrade command.
+shows the npm upgrade command for release installs. Source checkouts show their
+Git revision, or a labeled build version when unavailable, and are never compared
+with npm releases. Without the update shim, no freshness indicator is shown.
+Failed checks report “Latest unknown”; release checks can be retried in the UI,
+with `sdk.system.version({ force: true })`, or by rerunning `bb updates`.
+`GET /api/v1/system/version` and `sdk.system.version()` expose nullable
+`installKind` (`desktop`, `npm`, or `source`) and `currentCommit` fields.
 
 - **npm installs** download the new release into
   `<dataDir>/app-versions/<version>/` while bb keeps running, then restart into
@@ -202,8 +208,9 @@ app's own relaunch update) separately. `pnpm dev`, `bb-server`, and a standalone
 `bb-host-daemon` do not offer in-app updates. Updating restarts bb,
 which interrupts running threads; the app and CLI ask first.
 
-`BB_APP_UPDATE_MODE` is an internal marker the launcher passes to its server
-child; do not set it yourself.
+`BB_APP_UPDATE_MODE`, `BB_APP_INSTALL_KIND`, `BB_APP_SOURCE_ORIGIN`, and
+`BB_APP_SOURCE_COMMIT` are internal markers the launcher passes to its server
+child; do not set them yourself.
 
 ## Common Keys
 
@@ -266,11 +273,34 @@ another voice service.
 bb accepts voice recordings up to 25 MB. A service may set a lower limit;
 Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
 
+Open microphone preferences by right-clicking the composer microphone or pressing
+Shift+F10 while it is focused. A warning opens preferences when the microphone
+is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+preferences starts a local microphone preview with the recording waveform and
+a list of inputs. Closing preferences releases the preview. The recording controls
+contain only cancel, stop, and send; microphone preferences are available while idle.
+
+Recording tries the preferred device, then the system default, then other
+available inputs for missing or unreadable devices. Permission denials do not
+trigger fallback. A disconnect during recording switches the input into the
+same recorder, preserving audio captured before the disconnect. Reconnecting
+the preferred microphone makes it available for the next recording; it does not
+interrupt the current fallback recording.
+
+A missing preferred microphone alone does not block recording or show a warning.
+Capture failures, interrupted input, or no available inputs after access was
+granted show a decorative warning badge on the idle microphone. During capture,
+five seconds of near-silent audio produces a warning in the open preview or an
+accessible status in the recording row; the recording row has no microphone menu. Silence warnings clear when audio returns and never
+stop recording or switch microphones automatically. While idle, a warning opens
+preferences on click. Audio preview runs only while microphone preferences are
+open; it is not saved or transcribed.
+
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
-back to the system default when it is disconnected, then uses the saved
-preference again when it reconnects. Select System default to follow system
+back to the system default and other available inputs when it is disconnected,
+then uses the saved preference again when it reconnects. Select System default to follow system
 microphone changes; it does not change which service
 transcribes.
 
@@ -324,6 +354,9 @@ For older SDK callers, the general-settings API still accepts and returns
 setting. When a read-modify-write payload contains conflicting values, the
 value changed from the saved setting wins. Hidden diagnostics do not count
 toward timeline event or byte limits.
+
+The prompt box uses plain-text editing. Markdown delimiters remain visible while
+editing.
 
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
@@ -474,7 +507,15 @@ pane shortcuts follow Slack's browser-safe convention: web uses
 `Control+1…9` on macOS and `Ctrl+Shift+1…9` on Windows/Linux, while desktop
 uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
-`Control+Shift+[/]` on the web.
+`Control+Shift+[/]` on the web; they follow the sidebar order.
+
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows: they move through the pages opened
+in the current window, like browser history. They use `Mod+[` / `Mod+]` on
+desktop and the web; in the browser, bb handles the key instead of the
+browser's own Back while it has somewhere to go. At either end the shortcut
+does nothing. Hovering an arrow shows its
+current shortcut.
 
 On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
 `Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
@@ -542,6 +583,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split              |
 | Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
 | Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Go back / go forward                      | Surface defaults above            | Desktop / web            |
 | Window    | Settings                                  | `Mod+,`                           | All clients              |
 | Window    | Open data directory                       | Unassigned                        | Desktop                  |
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
@@ -1892,9 +1934,9 @@ always disables telemetry, even when the saved preference is enabled.
 
 ### Thread list provider icons, read status grouping, and lifecycle filter
 
-The Thread list plugin's `showProviderIcons` preference defaults to `false`.
+The Thread list plugin's `showProviderIcons` preference defaults to `true`.
 Organize → Rows → Provider icons or
-`bb thread-list prefs set showProviderIcons true` shows the agent provider
+`bb thread-list prefs set showProviderIcons false` hides the agent provider
 icon before each thread title. Unknown provider ids have no icon.
 
 The `groupByReadStatus` preference defaults to `false`. Organize → Groups →
@@ -1942,3 +1984,21 @@ Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on
 
 The publishing workflow verifies the signed APK and publishes both the checksum-named
 asset and the stable `bb-android.apk` alias, then `latest.json`.
+
+### Server performance diagnostics
+
+`BB_PERF_DIAGNOSTICS=1` permits opt-in CPU profiling and detailed server
+performance logs; the default is false. Restart to change it. The launcher
+flag `pnpm start --perf-diagnostics` (also `pnpm start:worktree` and `bb-app`)
+grants permission for that launch; the experiment must also be on. See [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics)
+for capture retention, overhead, and interpretation.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.

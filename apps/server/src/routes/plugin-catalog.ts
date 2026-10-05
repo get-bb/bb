@@ -35,6 +35,7 @@ export function registerPluginCatalogRoutes(
     context.json({
       results: await catalog.search(context.req.query("q") ?? ""),
       collections: catalog.collections(),
+      categories: catalog.categories(),
     }),
   );
 

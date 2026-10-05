@@ -28,7 +28,10 @@ bb replaces that leaf with this plugin's React component, which:
 1. Validates the untrusted `source` and `file` attributes.
 2. Calls the plugin RPC `preparePreview` with the message `threadId`, source,
    and file path to validate the target and surface clean inline errors.
-3. Shows loading / error states. Every preview includes a header action that
+3. Shows loading / error states on the first read. The last eight successful
+   preview results are retained in memory by thread, message, source, and path; remounts
+   revalidate without discarding them on temporary read failures. A confirmed missing
+   file clears its cached result and shows an error. Every preview includes a header action that
    opens the source file in bb's sidebar viewer, from the workspace or the
    thread's storage directory. For HTML previews that action is a link to the
    rendered page: Cmd-click, Ctrl-click, or middle-click opens it in a browser

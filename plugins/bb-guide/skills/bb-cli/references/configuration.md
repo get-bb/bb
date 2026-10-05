@@ -191,6 +191,12 @@ On the selected New tab page, `panel.previousNewTabItem` /
 move through search, enabled actions, and recent items in displayed order.
 Search results replace actions and recents while searching. Enter activates
 the focused item.
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows, moving through the pages opened in
+the current window like browser history: `Mod+[` / `Mod+]` on desktop and
+the web. `thread.previous` / `thread.next`
+(`Mod+Shift+[` / `Mod+Shift+]` on desktop, `Control+Shift+[` / `Control+Shift+]`
+on the web) follow the sidebar order instead.
 Chat splits use `pane.focus.left` / `right` / `up` / `down` with
 `Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
 spatially to the adjacent chat pane, including stacked splits, and stop at the
@@ -225,3 +231,26 @@ The UI offers Replace binding or Cancel when assigning an occupied shortcut.
 plugin defaults and availability are resolved in each app window, where the
 plugin frontend runs. CLI/SDK callers should clear conflicting explicit
 bindings in the same update; plugin defaults yield to explicit bindings.
+
+### Opt-in server performance diagnostics
+
+Start with `pnpm start --perf-diagnostics`, `pnpm start:worktree --perf-diagnostics`,
+or `bb-app --perf-diagnostics` to permit detailed performance logs and rolling
+CPU profiles when the experiment is on. `BB_PERF_DIAGNOSTICS=1` is the equivalent startup environment
+setting (off by default; restart required). Server logs include five-second
+CPU/GC/loop/memory summaries and lower slow-operation thresholds. Profiles
+are saved every 30 seconds under `$BB_DATA_DIR/logs/performance/`, in ten
+rotating slots of at most 12 MiB each. Copy a relevant `.cpuprofile` promptly
+and open it in Chrome DevTools' JavaScript profiler. This adds overhead;
+remove the setting and restart to disable. No inspector network port is
+opened. Profile files contain local paths/function names; inspect before sharing.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.

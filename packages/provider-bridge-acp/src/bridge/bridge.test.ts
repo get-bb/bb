@@ -22,11 +22,15 @@ import {
 import {
   assembleCapturedThreadEvents,
   captureBridgeJsonRpcOutput,
+  permissionChangeCases,
+  runPermissionChangeCase,
 } from "@bb/provider-bridge-protocol/testing";
 import type {
   BridgeJsonRpcOutputMessage,
   CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
+
+import { z } from "zod";
 
 import { handleLine } from "./bridge.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
@@ -1300,6 +1304,7 @@ describe("acp bridge", () => {
       },
     });
     sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
       input: [{ type: "text", text: "echo-argv", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -2176,6 +2181,7 @@ describe("acp bridge", () => {
       permissionEscalation: "ask",
     });
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
       input: [{ type: "text", text: "request-permission", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -2217,6 +2223,7 @@ describe("acp bridge", () => {
       permissionEscalation: "ask",
     });
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
       input: [
         {
           type: "text",
@@ -2262,6 +2269,7 @@ describe("acp bridge", () => {
       permissionEscalation: "ask",
     });
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
       input: [{ type: "text", text: "request-permission", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -2313,6 +2321,237 @@ describe("acp bridge", () => {
     );
   });
 
+  it.each(
+    permissionChangeCases(["accept-edits", "full"]).flatMap((scenario) =>
+      [false, true].flatMap((cli) =>
+        [false, true].map((load) => ({ ...scenario, cli, load })),
+      ),
+    ),
+  )(
+    "reconciles $before -> $after on $method (CLI: $cli, load: $load)",
+    async (scenario) => {
+      const outsideDir = mkdtempSync(
+        join(tmpdir(), "bb-acp-permission-probe-"),
+      );
+      const targetPath = join(outsideDir, "probe.txt");
+      let providerThreadId = "";
+      let messageCount = 0;
+      let completionCount = 0;
+      const probes = () =>
+        notifications(THREAD_DELTA_NOTIFICATION_METHOD).flatMap((message) => {
+          const parsed = z
+            .object({
+              deltas: z.array(
+                z.looseObject({
+                  kind: z.string(),
+                  text: z.string().optional(),
+                }),
+              ),
+            })
+            .parse(message.params);
+          return parsed.deltas.flatMap((delta) =>
+            delta.kind === "item.textDelta" &&
+            delta.text?.startsWith('{"wrote":')
+              ? [
+                  z
+                    .object({ wrote: z.boolean(), args: z.array(z.string()) })
+                    .parse(JSON.parse(delta.text)),
+                ]
+              : [],
+          );
+        });
+      try {
+        await runPermissionChangeCase(
+          {
+            async start(options) {
+              if (options.permissionMode === "auto")
+                throw new Error("Unsupported ACP mode");
+              ({ providerThreadId } = await startThread({
+                permissionMode: options.permissionMode,
+                envVars: {
+                  FAKE_ACP_WRITE_PATH: targetPath,
+                  FAKE_ACP_LOAD_SESSION: scenario.load ? "1" : "0",
+                },
+                ...(scenario.cli
+                  ? {
+                      permissionCli: {
+                        full: ["--full"],
+                        workspaceWrite: ["--workspace"],
+                        insertAfterArgs: 1,
+                      },
+                    }
+                  : {}),
+              }));
+            },
+            async dispatch(method, options, hold) {
+              rmSync(targetPath, { force: true });
+              messageCount = probes().length;
+              completionCount = threadEventsOfType("turn/completed").length;
+              const id = sendTurnRequest(method, providerThreadId, {
+                input: [
+                  {
+                    type: "text",
+                    text: `permission-probe${hold ? " hold" : ""}`,
+                    mentions: [],
+                  },
+                ],
+                options,
+                ...(method === "turn/steer"
+                  ? { expectedTurnId: "turn-probe" }
+                  : {}),
+              });
+              expect((await waitForResponse(id)).error).toBeUndefined();
+              await waitFor(
+                () => (probes().length > messageCount ? true : undefined),
+                "permission probe",
+              );
+              if (!hold) {
+                await waitFor(
+                  () =>
+                    threadEventsOfType("turn/completed").length >
+                    completionCount
+                      ? true
+                      : undefined,
+                  "probe completion",
+                );
+              }
+            },
+            async observe() {
+              const probe = probes().at(-1);
+              if (!probe) throw new Error("No permission probe received");
+              expect(existsSync(targetPath)).toBe(probe.wrote);
+              if (scenario.cli) {
+                expect(probe.args).toContain(
+                  probe.wrote ? "--full" : "--workspace",
+                );
+                expect(probe.args).not.toContain(
+                  probe.wrote ? "--workspace" : "--full",
+                );
+              }
+              return {
+                mode: probe.wrote ? "full" : "accept-edits",
+                sandbox: !probe.wrote,
+              };
+            },
+          },
+          scenario,
+        );
+        expect(notifications("session/replaced")).toHaveLength(
+          scenario.cli ? 1 : 0,
+        );
+        if (scenario.cli) {
+          expect(notifications("session/replaced")[0]?.params).toMatchObject({
+            contextLost: !scenario.load,
+          });
+        }
+      } finally {
+        await stopThread(providerThreadId);
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("rejects simultaneous starts while reconciling unchanged permissions", async () => {
+    const { providerThreadId } = await startThread();
+    const first = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    const second = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "second", mentions: [] }],
+    });
+    expect((await waitForResponse(first)).error).toBeUndefined();
+    expect((await waitForResponse(second)).error).toMatchObject({
+      message: "A turn is already active",
+    });
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+    await stopThread(providerThreadId);
+  });
+
+  it("preserves stacked steers across permission CLI rebuilds", async () => {
+    const promptLog = join(workspaceDir, "permission-prompts.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_PROMPT_LOG: promptLog },
+      permissionCli: {
+        full: ["--full"],
+        workspaceWrite: ["--workspace"],
+        insertAfterArgs: 1,
+      },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const first = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "echo-argv first", mentions: [] }],
+      options: executionOptions({ permissionMode: "accept-edits" }),
+    });
+    const second = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjn",
+      input: [{ type: "text", text: "echo-argv second", mentions: [] }],
+      options: executionOptions({ permissionMode: "full" }),
+    });
+    expect((await waitForResponse(first)).error).toBeUndefined();
+    expect((await waitForResponse(second)).error).toBeUndefined();
+    await waitFor(
+      () =>
+        notifications("session/replaced").length === 2 &&
+        agentMessageTexts().some((text) => text.includes("argv:--full"))
+          ? true
+          : undefined,
+      "both permission steers",
+    );
+    expect(loggedPrompts(promptLog)).toEqual([
+      "hang",
+      "echo-argv first",
+      "echo-argv second",
+    ]);
+    expect(
+      threadEventsOfType("turn/input/accepted").map(
+        (event) => event.clientRequestId,
+      ),
+    ).toEqual([CLIENT_REQUEST_ID, "creq_abcdefghjm", "creq_abcdefghjn"]);
+  });
+
+  it("reports a permission-changing steer whose replacement fails to start", async () => {
+    const { providerThreadId } = await startThread({
+      permissionCli: {
+        full: ["--full"],
+        workspaceWrite: ["--workspace"],
+        insertAfterArgs: 1,
+      },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const steer = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+      options: executionOptions({
+        permissionMode: "accept-edits",
+        envVars: { FAKE_ACP_SESSION_NEW_ERROR: "permission restart failed" },
+      }),
+    });
+    expect((await waitForResponse(steer)).error).toBeUndefined();
+    await waitFor(
+      () =>
+        notifications("error").find(
+          (message) =>
+            z
+              .object({ message: z.literal("permission restart failed") })
+              .safeParse(message.params).success,
+        ),
+      "replacement error",
+    );
+    expect(agentMessageTexts()).toEqual([]);
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+  });
+
   it("denies client fs writes outside the workspace in accept-edits mode", async () => {
     const outsideDir = mkdtempSync(join(tmpdir(), "bb-acp-outside-"));
     const targetPath = join(outsideDir, "outside.txt");
@@ -2324,6 +2563,7 @@ describe("acp bridge", () => {
       });
       const turnId = sendTurnRequest("turn/start", providerThreadId, {
         input: [{ type: "text", text: "write-file", mentions: [] }],
+        options: executionOptions({ permissionMode: "accept-edits" }),
       });
       await waitForResponse(turnId);
       await waitForTurnCompleted();

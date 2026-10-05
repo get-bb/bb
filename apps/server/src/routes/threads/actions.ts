@@ -42,7 +42,8 @@ import {
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
-import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
+import { resolvePromptAttachmentReferences } from "../../services/projects/attachments.js";
+import { threadTargetHostId } from "../../services/threads/dispatch-attempt.js";
 import {
   createQueuedMessageForThread,
   sendQueuedMessageNow,
@@ -322,14 +323,15 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.updateQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadQueueIsWritable(thread);
-    await validatePromptAttachmentReferences({
+    const input = await resolvePromptAttachmentReferences({
       db: deps.db,
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,
+      hostId: threadTargetHostId(deps, thread),
     });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
-      content: payload.input,
+      content: input,
       expectedUpdatedAt: payload.expectedUpdatedAt,
       id: context.req.param("queuedMessageId"),
       threadId: thread.id,

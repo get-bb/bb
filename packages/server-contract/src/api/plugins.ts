@@ -1,6 +1,7 @@
 import {
   jsonValueSchema,
   pluginCatalogCategoryIdSchema,
+  pluginMarketplaceCategorySchema,
   pluginMarketplaceCollectionIdSchema,
   pluginMarketplaceCollectionPluginIdSchema,
 } from "@bb/domain";
@@ -422,6 +423,7 @@ export type PluginCatalogSearchResult = z.infer<
 export const pluginCatalogSearchResponseSchema = z.object({
   results: z.array(pluginCatalogSearchResultSchema),
   collections: z.array(pluginCatalogCollectionSchema),
+  categories: z.array(pluginMarketplaceCategorySchema).default([]),
 });
 export type PluginCatalogSearchResponse = z.infer<
   typeof pluginCatalogSearchResponseSchema

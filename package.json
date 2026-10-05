@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "4.1.1",
+    "@vitest/utils": "4.1.1",
     "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "esbuild": "^0.28.0",
@@ -92,7 +93,8 @@
       "@hugeicons/react-native@1.0.15": "patches/@hugeicons__react-native@1.0.15.patch",
       "react-native-webview@13.16.1": "patches/react-native-webview@13.16.1.patch",
       "@tiptap/extension-blockquote@3.26.0": "patches/@tiptap__extension-blockquote@3.26.0.patch",
-      "@better-auth/api-key@1.6.23": "patches/@better-auth__api-key@1.6.23.patch"
+      "@better-auth/api-key@1.6.23": "patches/@better-auth__api-key@1.6.23.patch",
+      "@tanstack/virtual-core@3.17.1": "patches/@tanstack__virtual-core@3.17.1.patch"
     }
   }
 }

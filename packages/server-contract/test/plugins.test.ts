@@ -139,6 +139,7 @@ describe("plugin contracts", () => {
           pluginIds: ["notes", "tasks"],
         },
       ],
+      categories: [],
     });
     expect(
       pluginCatalogSearchResponseSchema.safeParse({ results: [] }).success,
