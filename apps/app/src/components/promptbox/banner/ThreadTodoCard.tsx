@@ -3,12 +3,11 @@ import type {
   ThreadTimelinePendingTodoItemStatus,
   ThreadTimelinePendingTodos,
 } from "@bb/domain";
-import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
-  PromptStackCardChevron,
 } from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
@@ -18,6 +17,7 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
 
 const STATUS_SORT_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
   in_progress: 0,
@@ -146,6 +146,7 @@ export function ThreadTodoCard({
   isExpanded,
   onToggle,
 }: ThreadTodoCardProps) {
+  const focus = useDisclosureFocusHandoff(isExpanded);
   const items = pendingTodos?.items ?? [];
   if (items.length === 0) {
     return null;
@@ -164,7 +165,11 @@ export function ThreadTodoCard({
           aria-expanded={isExpanded}
           aria-controls={BODY_ID}
           aria-label={`To-do list: ${summary.aria}`}
-          onClick={onToggle}
+          ref={focus.triggerRef}
+          onClick={() => {
+            if (!isExpanded) focus.focusCollapseAfterToggle();
+            onToggle();
+          }}
           className={TODO_HEADER_BUTTON_CLASS}
         >
           <Icon
@@ -180,20 +185,22 @@ export function ThreadTodoCard({
           >
             {summary.visible}
           </span>
-          <PromptStackCardChevron
-            isExpanded={isExpanded}
-            className={activityIconClass("active")}
-          />
         </button>
       </div>
-      <AnimatedBody
+      <AnimatedDisclosureBody
         id={BODY_ID}
         labelledBy={TOGGLE_ID}
         isExpanded={isExpanded}
         collapsedBorder="none"
+        collapseLabel="Collapse to-do list"
+        collapseRef={focus.collapseRef}
+        onCollapse={() => {
+          focus.focusTriggerAfterToggle();
+          onToggle();
+        }}
       >
         <TodoBody items={items} />
-      </AnimatedBody>
+      </AnimatedDisclosureBody>
     </PromptStackCard>
   );
 }

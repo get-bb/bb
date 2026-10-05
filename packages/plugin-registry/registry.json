@@ -38,6 +38,7 @@
     "plugin-icon",
     "popover",
     "progress",
+    "prompt-stack-disclosure",
     "question-form",
     "radio-group",
     "resizable",

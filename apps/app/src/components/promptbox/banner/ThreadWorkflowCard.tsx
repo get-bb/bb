@@ -1,7 +1,7 @@
-import { useEffect, useId, useRef } from "react";
+import { useId } from "react";
 import { isSettledWorkflowAgentState } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
-import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
@@ -11,10 +11,8 @@ import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText"
 import { WorkflowWorkRowBody } from "@/components/thread/timeline/WorkflowWorkRowBody";
 import { activityIconClass } from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
+import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
 import { WorkflowPhaseStrip } from "@bb/shared-ui/workflow-progress";
-
-export const WORKFLOW_COLLAPSE_ROW_CLASS =
-  "flex min-h-6 w-full cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground";
 
 function agentProgressLabel(workflow: TimelineWorkflowWorkRow): string | null {
   const agents = workflow.workflow?.agents ?? [];
@@ -81,19 +79,7 @@ export function ThreadWorkflowCard({
 }: ThreadWorkflowCardProps) {
   const bodyId = useId();
   const toggleId = useId();
-  const headerRef = useRef<HTMLButtonElement>(null);
-  const collapseRef = useRef<HTMLButtonElement>(null);
-  const pendingFocus = useRef<"header" | "collapse" | null>(null);
-  useEffect(() => {
-    const target =
-      pendingFocus.current === "collapse"
-        ? collapseRef.current
-        : pendingFocus.current === "header"
-          ? headerRef.current
-          : null;
-    pendingFocus.current = null;
-    target?.focus();
-  }, [isExpanded]);
+  const focus = useDisclosureFocusHandoff(isExpanded);
   if (workflow.status !== "pending") {
     return null;
   }
@@ -105,44 +91,34 @@ export function ThreadWorkflowCard({
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
       <button
-        ref={headerRef}
+        ref={focus.triggerRef}
         type="button"
         id={toggleId}
         aria-expanded={isExpanded}
         aria-controls={bodyId}
         aria-label={`Workflow: ${name}`}
         onClick={() => {
-          pendingFocus.current = isExpanded ? null : "collapse";
+          if (!isExpanded) focus.focusCollapseAfterToggle();
           onToggle();
         }}
         className={PROMPT_STACK_CARD_HEADER_BUTTON_CLASS}
       >
         <ThreadWorkflowSummary workflow={workflow} />
       </button>
-      <AnimatedBody
+      <AnimatedDisclosureBody
         id={bodyId}
         labelledBy={toggleId}
         isExpanded={isExpanded}
         collapsedBorder="none"
+        collapseLabel={`Collapse workflow ${name}`}
+        collapseRef={focus.collapseRef}
+        onCollapse={() => {
+          focus.focusTriggerAfterToggle();
+          onToggle();
+        }}
       >
         <WorkflowWorkRowBody row={workflow} size="base" collapsiblePhases />
-        <div className="px-1 pb-1">
-          <button
-            ref={collapseRef}
-            type="button"
-            aria-expanded={isExpanded}
-            aria-controls={bodyId}
-            aria-label={`Collapse workflow ${name}`}
-            onClick={() => {
-              pendingFocus.current = "header";
-              onToggle();
-            }}
-            className={WORKFLOW_COLLAPSE_ROW_CLASS}
-          >
-            <Icon name="ChevronUp" className="size-3.5" aria-hidden="true" />
-          </button>
-        </div>
-      </AnimatedBody>
+      </AnimatedDisclosureBody>
     </PromptStackCard>
   );
 }

@@ -2,12 +2,11 @@ import { useRef, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { useResizeObserver } from "usehooks-ts";
-import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
-  PromptStackCardChevron,
 } from "@/components/promptbox/banner/PromptStackCard";
 import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText";
 import { Icon } from "@bb/shared-ui/icon";
@@ -19,6 +18,7 @@ import {
   activityTextClass,
 } from "@bb/shared-ui/activity-row-styles";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
 
 const BODY_ID = "thread-background-commands-card-body";
 const TOGGLE_ID = "thread-background-commands-card-toggle";
@@ -165,6 +165,7 @@ export function ThreadBackgroundCommandsCard({
   const isCompactViewport = useIsCompactViewport();
   const cardRef = useRef<HTMLElement>(null!);
   const [isCompactCard, setIsCompactCard] = useState<boolean | null>(null);
+  const focus = useDisclosureFocusHandoff(isExpanded);
   useResizeObserver({
     ref: cardRef,
     box: "border-box",
@@ -208,7 +209,11 @@ export function ThreadBackgroundCommandsCard({
                 ? compactLabel
                 : backgroundActivityAriaLabel(primary, groupLabel)
             }
-            onClick={onToggle}
+            ref={focus.triggerRef}
+            onClick={() => {
+              if (!isExpanded) focus.focusCollapseAfterToggle();
+              onToggle();
+            }}
             className={activityRowClass(
               "active",
               PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
@@ -231,10 +236,6 @@ export function ThreadBackgroundCommandsCard({
                 </span>
               </>
             )}
-            <PromptStackCardChevron
-              isExpanded={isExpanded}
-              className={activityIconClass("active")}
-            />
           </button>
         ) : (
           <div
@@ -254,11 +255,17 @@ export function ThreadBackgroundCommandsCard({
         )}
       </div>
       {canExpand ? (
-        <AnimatedBody
+        <AnimatedDisclosureBody
           id={BODY_ID}
           labelledBy={TOGGLE_ID}
           isExpanded={isExpanded}
           collapsedBorder="none"
+          collapseLabel={`Collapse ${groupLabel.toLowerCase()}`}
+          collapseRef={focus.collapseRef}
+          onCollapse={() => {
+            focus.focusTriggerAfterToggle();
+            onToggle();
+          }}
         >
           <div className="flex flex-col gap-0.5 py-1">
             {expandedRows.map((row) => {
@@ -305,7 +312,7 @@ export function ThreadBackgroundCommandsCard({
               );
             })}
           </div>
-        </AnimatedBody>
+        </AnimatedDisclosureBody>
       ) : null}
     </PromptStackCard>
   );

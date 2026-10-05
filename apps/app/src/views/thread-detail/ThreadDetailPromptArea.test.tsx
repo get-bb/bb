@@ -550,7 +550,6 @@ vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => {
     </button>
   );
   return {
-    WORKFLOW_COLLAPSE_ROW_CLASS: "",
     ThreadWorkflowCard: MockWorkflowCard,
     ThreadWorkflowSummary: ({
       workflow,
@@ -1889,6 +1888,39 @@ describe("ThreadDetailPromptArea", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "2 workflows running. Show all" }),
     );
+  });
+
+  it("re-collapses the workflow stack after the running count drops below two", () => {
+    const first = workflowRow({
+      id: "row-wf-a",
+      status: "pending",
+      taskStatus: "running",
+      workflowName: "wf-a",
+    });
+    const second = workflowRow({
+      id: "row-wf-b",
+      status: "pending",
+      taskStatus: "running",
+      workflowName: "wf-b",
+    });
+    const { rerender } = renderPromptArea({ activeWorkflows: [first, second] });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "2 workflows running. Show all" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse 2 workflows" }),
+    ).toBeTruthy();
+
+    rerender(buildPromptAreaElement({ activeWorkflows: [first] }));
+    rerender(buildPromptAreaElement({ activeWorkflows: [first, second] }));
+
+    expect(
+      screen.getByRole("button", { name: "2 workflows running. Show all" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Collapse 2 workflows" }),
+    ).toBeNull();
   });
 
   it("shows a child permission prompt on the parent composer", () => {

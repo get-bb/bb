@@ -174,7 +174,7 @@ describe("workflow composer banner", () => {
     expect(stack.getAttribute("aria-expanded")).toBe("false");
     expect(slot.getByText("+3")).toBeTruthy();
     expect(
-      slot.container.querySelectorAll("[data-workflow-stack-peek]"),
+      slot.container.querySelectorAll("[data-prompt-stack-peek]"),
     ).toHaveLength(2);
     expect(slot.queryAllByRole("region", { name: "Workflow" })).toHaveLength(0);
 
@@ -184,7 +184,7 @@ describe("workflow composer banner", () => {
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
     expect(document.activeElement).toBe(collapse);
     expect(
-      slot.container.querySelectorAll("[data-workflow-stack-peek]"),
+      slot.container.querySelectorAll("[data-prompt-stack-peek]"),
     ).toHaveLength(0);
 
     fireEvent.click(collapse);
@@ -192,6 +192,50 @@ describe("workflow composer banner", () => {
     expect(document.activeElement).toBe(
       slot.getByRole("button", { name: "4 workflows running. Show all" }),
     );
+  });
+
+  it("re-collapses the stack after the running count drops below two", async () => {
+    const runs = [1, 2].map((index) => ({
+      ...run,
+      id: `wfr_${index}1111111-1111-4111-8111-111111111111`,
+      name: `Build ${index}`,
+    }));
+    let current: WorkflowRunView[] = runs;
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs: current }) },
+      },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    );
+    expect(
+      slot.getByRole("button", { name: "Collapse 2 workflows" }),
+    ).toBeTruthy();
+
+    current = [runs[0]!];
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
+    await waitFor(() =>
+      expect(
+        slot.queryByRole("button", { name: "Collapse 2 workflows" }),
+      ).toBeNull(),
+    );
+
+    current = runs;
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
+    expect(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    ).toBeTruthy();
   });
 
   it("expands from the card and collapses from the chevron row with focus following", async () => {
@@ -234,6 +278,7 @@ describe("workflow composer banner", () => {
     fireEvent.click(collapse);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(body?.getAttribute("aria-hidden")).toBe("true");
+    expect(body?.hasAttribute("inert")).toBe(true);
     expect(document.activeElement).toBe(toggle);
   });
 

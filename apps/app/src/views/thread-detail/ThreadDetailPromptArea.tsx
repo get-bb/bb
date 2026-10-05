@@ -653,7 +653,15 @@ export function ThreadDetailPromptArea({
       return next;
     });
   }, []);
-  const [isWorkflowStackExpanded, setIsWorkflowStackExpanded] = useState(false);
+  const [workflowStackExpandedThreadId, setWorkflowStackExpandedThreadId] =
+    useState<string | null>(null);
+  const runningWorkflowCount = activeWorkflows.filter(
+    (workflow) => workflow.status === "pending",
+  ).length;
+  if (workflowStackExpandedThreadId !== null && runningWorkflowCount < 2) {
+    setWorkflowStackExpandedThreadId(null);
+  }
+  const isWorkflowStackExpanded = workflowStackExpandedThreadId === thread.id;
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -2116,7 +2124,11 @@ export function ThreadDetailPromptArea({
         <ThreadWorkflowStack
           workflows={activeWorkflows}
           isStackExpanded={isWorkflowStackExpanded}
-          onToggleStack={() => setIsWorkflowStackExpanded((value) => !value)}
+          onToggleStack={() =>
+            setWorkflowStackExpandedThreadId((current) =>
+              current === thread.id ? null : thread.id,
+            )
+          }
           expandedWorkflowIds={expandedWorkflowIds}
           onToggleWorkflow={toggleWorkflowExpanded}
         />
