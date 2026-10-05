@@ -701,15 +701,14 @@ export function BottomAnchoredScrollBody({
     const scrollArea = scrollAreaRef.current;
     if (
       !scrollArea ||
+      shouldStickToBottomRef.current ||
       window.performance.now() > contentPositionHoldUntilRef.current
     ) {
+      contentPositionHoldUntilRef.current = 0;
       return false;
     }
     if (
-      isScrolledNearBottom(
-        refreshMaxScrollOffset(scrollArea),
-        scrollArea.scrollTop,
-      )
+      isScrolledNearBottom(maxScrollOffsetRef.current, scrollArea.scrollTop)
     ) {
       contentPositionHoldUntilRef.current = 0;
       attachToBottom();
@@ -717,7 +716,7 @@ export function BottomAnchoredScrollBody({
     }
     userDetachedFromBottomRef.current = true;
     return true;
-  }, [attachToBottom, refreshMaxScrollOffset]);
+  }, [attachToBottom]);
 
   const syncBottomStateFromScroll = useCallback(() => {
     const scrollArea = scrollAreaRef.current;

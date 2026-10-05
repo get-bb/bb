@@ -1287,5 +1287,49 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
 
     expect(scrollArea.scrollTop).toBe(300);
   });
-});
 
+  it("re-pins when collapsing a toggled row clamps a detached viewport onto the bottom", () => {
+    let bottomAnchor: BottomAnchorContextValue | null = null;
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      onBottomAnchor: (anchor) => {
+        bottomAnchor = anchor;
+      },
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-b"), { top: 20, bottom: 60 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_100,
+      clientHeight: 100,
+      scrollTop: 910,
+    });
+    getLatestResizeObserver().trigger();
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+
+    act(() => {
+      bottomAnchor?.holdContentPosition({
+        edge: "top",
+        element: getRow("row-b"),
+        update: () => {
+          setScrollMetrics(scrollArea, {
+            scrollHeight: 940,
+            clientHeight: 100,
+            scrollTop: 840,
+          });
+        },
+      });
+    });
+    const observer = getLatestResizeObserver();
+    const shrinkEntries = observer.targets.map(makeResizeEntry);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 960,
+      clientHeight: 100,
+      scrollTop: 840,
+    });
+    observer.callback(shrinkEntries, observer);
+
+    expect(scrollArea.scrollTop).toBe(860);
+  });
+});
