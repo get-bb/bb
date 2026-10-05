@@ -366,15 +366,22 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
-          question: "Is bb maintained by one person?",
+          question: "Who builds and maintains bb?",
           answer: (
-            <p>
-              No. Superset’s comparison pages call bb a largely
-              single-maintainer project, but bb is venture-backed and maintained
-              by a small team that most recently worked together at Figma,
-              building Figma’s plugin platform. The code and its full history
-              are public on <a href="https://github.com/get-bb/bb">GitHub</a>.
-            </p>
+            <>
+              <p>
+                A small, venture-backed team that most recently worked together
+                at Figma, building Figma’s plugin platform. The team also
+                includes alumni of Meta, Quora, and Mapbox.
+              </p>
+              <p>
+                bb is developed in the open: the core team commits to it every
+                day, dozens of community contributors send changes each month,
+                and a new release ships every week. Follow along or reach the
+                team on <a href="https://github.com/get-bb/bb">GitHub</a> and{" "}
+                <a href="https://discord.gg/kvBU6tJhcJ">Discord</a>.
+              </p>
+            </>
           ),
         },
         {
