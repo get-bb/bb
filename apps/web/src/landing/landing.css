@@ -144,6 +144,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 22px 0;
+  position: relative;
+  z-index: 10;
   animation: hdr-down 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
