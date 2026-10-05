@@ -129,20 +129,24 @@ const COMPANY_PROOF = [
   ["Just Eat Takeaway", justEatTakeawayLogo, "glyph"],
 ] as const;
 
-const DESKTOP_COMPANY_PROOF_COUNT = 12;
+type CompanyProofEntry = (typeof COMPANY_PROOF)[number];
 
-function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
+const COMPANY_PROOF_ROWS = [
+  COMPANY_PROOF.filter((_, index) => index % 2 === 0),
+  COMPANY_PROOF.filter((_, index) => index % 2 === 1),
+];
+
+function CompanyProofLogos({
+  companies,
+  duplicate = false,
+}: {
+  companies: readonly CompanyProofEntry[];
+  duplicate?: boolean;
+}) {
   return (
     <ul className="company-proof-logos" aria-hidden={duplicate || undefined}>
-      {COMPANY_PROOF.map(([name, logo, kind], index) => (
-        <li
-          key={name}
-          className={
-            index < DESKTOP_COMPANY_PROOF_COUNT
-              ? "company-proof-company"
-              : "company-proof-company company-proof-mobile-only"
-          }
-        >
+      {companies.map(([name, logo, kind]) => (
+        <li key={name} className="company-proof-company">
           <img
             src={logo}
             alt={duplicate ? "" : name}
@@ -154,6 +158,53 @@ function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function CompanyProofMarquee({
+  companies,
+  reverse,
+}: {
+  companies: readonly CompanyProofEntry[];
+  reverse: boolean;
+}) {
+  const [copies, setCopies] = useState(5);
+  const marqueeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const marquee = marqueeRef.current;
+    const firstCopy = marquee?.querySelector(".company-proof-logos");
+    if (!marquee || !firstCopy) return;
+
+    const measure = () => {
+      const copyWidth = firstCopy.getBoundingClientRect().width;
+      if (copyWidth === 0) return;
+      setCopies(Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(marquee);
+    observer.observe(firstCopy);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className="company-proof-marquee" ref={marqueeRef}>
+      <div
+        className={`company-proof-track${reverse ? " is-reverse" : ""}`}
+        style={
+          {
+            "--company-proof-copies": copies,
+            "--company-proof-logos": companies.length,
+          } as CSSProperties
+        }
+      >
+        <CompanyProofLogos companies={companies} />
+        {Array.from({ length: copies - 1 }, (_, i) => (
+          <CompanyProofLogos key={i} companies={companies} duplicate />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1646,9 +1697,7 @@ function SpawnSidebar() {
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
-  const [companyProofCopies, setCompanyProofCopies] = useState(5);
   const companyProofRef = useRef<HTMLElement>(null);
-  const companyProofMarqueeRef = useRef<HTMLDivElement>(null);
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1664,24 +1713,6 @@ function LandingPage() {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const marquee = companyProofMarqueeRef.current;
-    const firstCopy = marquee?.querySelector(".company-proof-logos");
-    if (!marquee || !firstCopy) return;
-
-    const measure = () => {
-      const copyWidth = firstCopy.getBoundingClientRect().width;
-      if (copyWidth === 0) return;
-      setCompanyProofCopies(
-        Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1),
-      );
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(marquee);
-    observer.observe(firstCopy);
-    return () => observer.disconnect();
-  }, []);
   return (
     <div className="wrap">
       <SiteNav />
@@ -1731,21 +1762,14 @@ function LandingPage() {
             />
           </button>
         </div>
-        <div className="company-proof-marquee" ref={companyProofMarqueeRef}>
-          <div
-            className="company-proof-track"
-            style={
-              {
-                "--company-proof-copies": companyProofCopies,
-                "--company-proof-logos": COMPANY_PROOF.length,
-              } as CSSProperties
-            }
-          >
-            <CompanyProofLogos />
-            {Array.from({ length: companyProofCopies - 1 }, (_, i) => (
-              <CompanyProofLogos key={i} duplicate />
-            ))}
-          </div>
+        <div className="company-proof-rows">
+          {COMPANY_PROOF_ROWS.map((companies, index) => (
+            <CompanyProofMarquee
+              key={index}
+              companies={companies}
+              reverse={index === 1}
+            />
+          ))}
         </div>
       </section>
 

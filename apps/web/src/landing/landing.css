@@ -820,6 +820,31 @@ body {
   will-change: auto;
 }
 
+.company-proof-track.is-reverse {
+  animation-direction: reverse;
+}
+
+.company-proof-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .company-proof-rows:hover .company-proof-track {
+    animation-play-state: paused;
+  }
+
+  .company-proof:not(.is-paused) .company-proof-toggle:not(:focus-visible) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
 .company-proof-logos {
   display: flex;
   align-items: center;
@@ -3049,7 +3074,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 /* ── Reduced motion ─────────────────────────────────────────────── */
 
-@media (prefers-reduced-motion: reduce), (min-width: 821px) {
+@media (prefers-reduced-motion: reduce) {
   .company-proof-toggle {
     display: none;
   }
@@ -3070,34 +3095,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     width: 100%;
     flex-wrap: wrap;
     justify-content: center;
-    row-gap: 20px;
     padding: 0 28px;
   }
 
   .company-proof-logos[aria-hidden="true"] {
     display: none;
   }
-}
 
-@media (min-width: 821px) {
-  .company-proof-logos {
-    display: grid;
-    grid-template-columns: repeat(6, auto);
-    justify-content: center;
-  }
-
-  .company-proof-mobile-only {
-    display: none;
-  }
-}
-
-@media (min-width: 821px) and (max-width: 1099px) {
-  .company-proof-logos {
-    grid-template-columns: repeat(4, auto);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
   .nav,
   .hero > * {
     animation: none;
