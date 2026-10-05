@@ -33,22 +33,9 @@ two-minute completion time.
 
 ## Fork checks
 
-On pull requests, the fork checker compares the checked-out merge commit with
-the event's base SHA. When every changed path belongs to a listed forkable
-plugin, only those plugins run. Renames include both old and new paths. Any
-shared, unknown, or unlisted-plugin change runs the complete list. Missing
-history also runs the complete list. Main and manual runs always check all
-plugins, including fresh resolution of published dependencies.
-
-Use `node scripts/check-plugin-forks.mjs --changed-from=<sha> --list` to inspect
-the selection without installing or building anything. Remove `--list` to run
-it. Explicit plugin directories and `--changed-from` are mutually exclusive.
-
-CI partitions the selected plugins over three runners using `--shard=1/3`,
-`--shard=2/3`, and `--shard=3/3`. Each plugin runs exactly once. Selection happens
-before partitioning, so small plugin-only changes leave unused shards empty;
-those shards skip setup. Each runner retains at most four concurrent plugin
-checks. `--list` reports the same shard selection used for execution.
+The Plugin Fork Check runs in three shards. On pull requests it checks only
+the forkable plugins a change touches; see
+[forkable-plugins.md](forkable-plugins.md) for selection and local commands.
 
 ## Setup budgets
 
@@ -63,8 +50,8 @@ of waiting for its executable cache.
 
 Dependency installation has a five-minute step budget in CI. Individual package
 fetches have a 30-second timeout with two retries and 1–5-second backoff. pnpm
-handles transient fetch failures; the workflow does not repeat the entire
-install, including lifecycle scripts, three times. The shared setup action used
+handles transient fetch failures; the workflow does not retry the whole
+install. The shared setup action used
 by other workflows reuses these tools and fetch settings, but does not impose
 the CI workflow's outer step budgets.
 
@@ -80,10 +67,8 @@ also drop every entry their own Turbo run summary does not name before saving
 still omit Turbo caching.
 
 PR runs cancel superseded work. Main concurrency groups include the commit SHA,
-so different main commits can run concurrently and each successful job saves its
-cache. The old shared main group delayed job creation by up to three minutes in
-the October 1 sample. Runner provisioning and fleet capacity remain external
-limits; removing workflow serialization does not guarantee immediate starts.
+so different main commits run concurrently and each successful job saves its
+cache. Runner provisioning and fleet capacity remain external limits.
 
 ### October 6 Windows cache timeouts
 
@@ -102,7 +87,7 @@ check remain enabled. Linux and macOS retain pnpm caching. The baseline run
 took 8m58s overall; measure subsequent CI runs before claiming an end-to-end
 speedup.
 
-## Test balancing and measurement
+## Test balancing and timing artifacts
 
 Server tests split by file into two Vitest shards. Turbo hashes the shard
 arguments, preventing one shard's result from satisfying the other.
@@ -118,35 +103,8 @@ runners that do not accept Vitest's shard arguments:
 The `plugins` group runs `bb-plugin-*`. All groups retain four concurrent Turbo
 tasks. Only `packages-build` needs Electron's runtime libraries and Xvfb.
 
-The October 1 investigation sampled 35 completed runs. The 26 successful runs
-without retries finished in a median 3m48s. Windows smoke finished last in 15 of
-20 runs containing it, with median install/build/package steps of 53s/71s/38s.
-Fork checking took a median 2m46s inside its main step; packages and server test
-steps took about 2m16s and 2m07s. These are baseline measurements, not projected
-improvements. After merge, compare cold and warm runs separately and check that
-additional runners do not increase capacity waits or cache eviction.
-
-The September 29, 2026 cold run [36597970177](https://github.com/get-bb/bb/actions/runs/36597970177)
-spent five minutes in the original catch-all test step. Its logged Vitest
-durations summed to approximately 392 seconds for plugin packages and 579
-seconds for other packages. These are aggregate task durations, not predictions
-of the new jobs' wall-clock time.
-
-A local Linux arm64 benchmark pinned to four CPUs compared four concurrent
-Turbo tasks across `bb-plugin-thread-list`, `bb-plugin-tasks`,
-`bb-plugin-account-pool`, and `bb-plugin-provider-codex`. All six runs passed:
-
-| Vitest workers per package | First run | Second run |
-| -------------------------- | --------: | ---------: |
-| Default                    |     24.5s |      24.9s |
-| 2                          |     26.5s |      26.3s |
-| 1                          |     41.6s |      41.0s |
-
-The workflow keeps Vitest's defaults. This is a representative local comparison,
-not a measurement of the new full workflow on Blacksmith. To repeat it, run
-`pnpm exec turbo run test` with the four package filters above,
-`--concurrency=4 --force --summarize`, and optionally `-- --maxWorkers=1` or
-`-- --maxWorkers=2`.
+The workflow keeps Vitest's default worker count; capping workers per package
+under four concurrent Turbo tasks made plugin test runs slower.
 
 Every test job uploads `.turbo/runs/*.json` as a `test-timings-<shard>-<attempt>`
 artifact retained for seven days. Use execution durations and cache status to

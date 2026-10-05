@@ -109,8 +109,8 @@ One consolidated view of bb and provider CLI updates across machines — the
 CLI counterpart of Settings → Updates.
 
   bb updates [status]                     Show bb-app and provider CLI update status for
-                                          every machine
-    --machine <id-or-name>                Limit to one machine
+                                          every persistent machine
+    --machine <id-or-name>                Limit to one machine (including a sandbox)
     --json                                Print the aggregate as JSON
   bb updates apply                        Run every available provider CLI install/update,
                                           one at a time

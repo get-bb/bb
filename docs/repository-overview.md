@@ -5,9 +5,9 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | Package or app                                                      | Role                                                                                                |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | [`packages/bb-app`](../packages/bb-app)                             | Published npm package, `npx bb-app@latest` launcher, bundled `bb` CLI entry, and public SDK export. |
-| [`apps/desktop`](../apps/desktop)                                   | macOS/Linux Electron shell that supervises the packaged runtime and loads the bb web UI.            |
+| [`apps/desktop`](../apps/desktop)                                   | macOS/Linux/Windows Electron shell that supervises the packaged runtime and loads the bb web UI.    |
 | [`apps/app`](../apps/app)                                           | Web UI for inspecting projects, threads, environments, and running work.                            |
-| [`apps/mobile`](../apps/mobile)                                     | Native phone client (Expo; iOS first, Android next) for a bb server over Direct URLs or bb connect. |
+| [`apps/mobile`](../apps/mobile)                                     | iOS and Android client (Expo) for a bb server over Direct URLs or bb connect.                       |
 | [`apps/server`](../apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy.               |
 | [`apps/host-daemon`](../apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.                          |
 | [`apps/cli`](../apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                                           |
@@ -28,7 +28,8 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 Some dependencies are pinned to an exact version for reasons that are not
 visible from `package.json` alone.
 
-| Dependency                     | Where         | Why                                                                                                                                                                                                                                                 |
-| ------------------------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@opentelemetry/api` (`1.9.1`) | `apps/server` | Pi AI and Drizzle each pull in `@opentelemetry/api`. Without an exact direct pin, pnpm can resolve two copies and TypeScript sees two distinct type identities, which fails the server typecheck. Bump both consumers together, not this pin alone. |
-| Pi packages (`0.84.0`)         | Pi bridge and `bb-app` | Pi extensions import the host's Pi modules. The packaged bridge keeps this exact package tree on disk so extensions share one compatible runtime. Bump the Pi packages together. |
+| Dependency                     | Where                    | Why                                                                                                                                                                                                                                                       |
+| ------------------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@opentelemetry/api` (`1.9.1`) | `apps/server`            | Better Auth and Drizzle each pull in `@opentelemetry/api`. Without an exact direct pin, pnpm can resolve two copies and TypeScript sees two distinct type identities, which fails the server typecheck. Bump both consumers together, not this pin alone. |
+| Pi packages (`0.84.0`)         | `plugins/provider-pi`    | Pi extensions import the host's Pi modules. The packaged bridge keeps this exact package tree on disk so extensions share one compatible runtime. Bump the Pi packages together.                                                                          |
+| `execa` (`9.6.1`)              | `packages/process-utils` | Execa 10 broke Windows missing-command classification and batch-file argument handling. Upgrade only after the Windows host package CI job passes.                                                                                                        |
