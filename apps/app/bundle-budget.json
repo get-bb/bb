@@ -114,8 +114,16 @@
     "workspace route plus ThreadDetailView's static imports, and NewThreadPage is",
     "the workspace route plus RootComposeView's. Each counts the JavaScript a",
     "page waits for beyond the boot payload, so moving code between the route and",
-    "a page's own chunk no longer changes the measured total. Their initial",
-    "limits are the measured sizes plus 5%."
+    "a page's own chunk no longer changes the measured total.",
+    "",
+    "On 2026-10-05 an audit cut the boot payload from 1492.0 KB to 1358.5 KB",
+    "(sideEffects on client-core, thread-view and core-ui; sonner and the server",
+    "move view after first paint) and ThreadPage from 1880.0 KB to 1807.2 KB,",
+    "mostly by loading the new-thread view on demand. The boot limits stay,",
+    "leaving about 15% raw headroom, and both journey limits are set 25% above",
+    "their measured sizes (20% headroom) so ordinary feature work does not hit",
+    "them every week. The forbidden-package and split-boundary guards catch",
+    "structural regressions."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -268,8 +276,8 @@
   },
   "routeClosures": {
     "ThreadPage": {
-      "maxBytes": 2021358,
-      "maxBrotliBytes": 585526,
+      "maxBytes": 2313248,
+      "maxBrotliBytes": 665732,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
@@ -304,8 +312,8 @@
       ]
     },
     "NewThreadPage": {
-      "maxBytes": 1138797,
-      "maxBrotliBytes": 331685,
+      "maxBytes": 1396228,
+      "maxBrotliBytes": 410950,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
