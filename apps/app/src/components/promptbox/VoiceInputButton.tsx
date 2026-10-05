@@ -75,9 +75,14 @@ export function VoiceInputButton({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {visibleWarning
-                ? `${visibleWarning} Click to open voice preferences.`
-                : "Start voice input · Right-click for voice preferences"}
+              {visibleWarning ? (
+                <>
+                  <span className="block">{visibleWarning}</span>
+                  <span className="block">Click to open voice preferences.</span>
+                </>
+              ) : (
+                "Start voice input · Right-click for voice preferences"
+              )}
             </TooltipContent>
           </Tooltip>
         </span>
