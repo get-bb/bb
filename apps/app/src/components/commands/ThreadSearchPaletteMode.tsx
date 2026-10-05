@@ -54,10 +54,7 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
-import {
-  readPaletteVisits,
-  recordPaletteVisit,
-} from "@/lib/command-palette/palette-visits";
+import { readPaletteThreadVisits } from "@/lib/command-palette/palette-visits";
 import {
   buildPaletteGroupingPlaces,
   buildPalettePlaces,
@@ -148,7 +145,7 @@ export function ThreadSearchPaletteMode({
     setExpandedGroups([]);
   }
   const [now] = useState(() => Date.now());
-  const [visits] = useState(readPaletteVisits);
+  const [visitedThreadIds] = useState(readPaletteThreadVisits);
   const navigation = useSidebarNavigation();
   const threadSearch = useThreadSearch({ active: grouping === null, query });
   const trimmedQuery = query.trim();
@@ -201,7 +198,7 @@ export function ThreadSearchPaletteMode({
         recentThreads,
         searchResponse: grouping === null ? threadSearch.data : undefined,
         searchResultsAreCurrent,
-        visits,
+        visitedThreadIds,
       }),
     [
       currentThreadId,
@@ -213,7 +210,7 @@ export function ThreadSearchPaletteMode({
       recentThreads,
       searchResultsAreCurrent,
       threadSearch.data,
-      visits,
+      visitedThreadIds,
     ],
   );
   const pluginSlots = usePluginSlots();
@@ -388,7 +385,6 @@ export function ThreadSearchPaletteMode({
           runAfterClose(place.run);
           return;
         }
-        recordPaletteVisit(place.grouping.kind, place.grouping.id);
         resetView(place.grouping);
         return;
       }

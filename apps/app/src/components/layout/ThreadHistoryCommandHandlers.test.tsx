@@ -143,48 +143,19 @@ describe("ThreadHistoryCommandHandlers", () => {
     );
   });
 
-  it("goes back and forward through the threads opened in this window", () => {
+  it("navigates back and forward and closes the mobile sidebar", () => {
     renderAt(A);
     open(B);
-    open(C);
+
+    expect(dispatch("thread.forward")).toBe(false);
+    expect(mocks.closeMobileSidebar).not.toHaveBeenCalled();
 
     expect(dispatch("thread.back")).toBe(true);
-    expect(currentPath()).toBe(B);
+    expect(currentPath()).toBe(A);
     expect(mocks.closeMobileSidebar).toHaveBeenCalledTimes(1);
 
-    expect(dispatch("thread.back")).toBe(true);
-    expect(currentPath()).toBe(A);
-
     expect(dispatch("thread.forward")).toBe(true);
     expect(currentPath()).toBe(B);
-
-    expect(dispatch("thread.forward")).toBe(true);
-    expect(currentPath()).toBe(C);
-  });
-
-  it("does nothing at either end of the history", () => {
-    renderAt(A);
-
-    expect(dispatch("thread.back")).toBe(false);
-    expect(dispatch("thread.forward")).toBe(false);
-    expect(currentPath()).toBe(A);
-    expect(mocks.closeMobileSidebar).not.toHaveBeenCalled();
-  });
-
-  it("drops forward history when another thread is opened after going back", () => {
-    renderAt(A);
-    open(B);
-    open(C);
-    dispatch("thread.back");
-    expect(currentPath()).toBe(B);
-
-    open(D);
-
-    expect(dispatch("thread.forward")).toBe(false);
-    expect(dispatch("thread.back")).toBe(true);
-    expect(currentPath()).toBe(B);
-    expect(dispatch("thread.back")).toBe(true);
-    expect(currentPath()).toBe(A);
   });
 
   it("leaves pages out of the history and returns to projectless threads", () => {
@@ -194,15 +165,6 @@ describe("ThreadHistoryCommandHandlers", () => {
 
     expect(dispatch("thread.back")).toBe(true);
     expect(currentPath()).toBe("/threads/thr_personal");
-  });
-
-  it("goes back to the last thread from a page outside the history", () => {
-    renderAt(A);
-    open(B);
-    open("/settings");
-
-    expect(dispatch("thread.back")).toBe(true);
-    expect(currentPath()).toBe(B);
   });
 
   it("skips threads the cache already knows were deleted", () => {

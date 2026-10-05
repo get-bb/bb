@@ -36,10 +36,7 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
-import {
-  readPaletteVisits,
-  recordPaletteVisit,
-} from "@/lib/command-palette/palette-visits";
+import { recordPaletteThreadVisit } from "@/lib/command-palette/palette-visits";
 import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
@@ -1353,8 +1350,8 @@ describe("CommandPalette", () => {
       makeThread("waiting-2", { ...read, hasPendingInteraction: true }),
       makeThread("unread-done", { latestAttentionAt: 5, lastReadAt: 0 }),
     ];
-    recordPaletteVisit("thread", "previous", 1);
-    recordPaletteVisit("thread", "current", 2);
+    recordPaletteThreadVisit("previous");
+    recordPaletteThreadVisit("current");
     renderPalette({ threadId: "current" });
     openThreadSearch();
     await screen.findByRole("option", { name: /Title previous/ });
@@ -2436,10 +2433,6 @@ describe("Go to narrowing", () => {
     ]);
     expect(optionTitles().join()).not.toContain("Palette project");
     expect(routeNavigateMock).not.toHaveBeenCalled();
-    expect(readPaletteVisits()[0]).toMatchObject({
-      kind: "project",
-      id: "project-1",
-    });
 
     fireEvent.change(input, { target: { value: "work" } });
     expect(optionTitles()).toHaveLength(2);
@@ -2494,9 +2487,5 @@ describe("Go to narrowing", () => {
     rerenderPalette();
     await narrowTo("pinned", /^PinnedPinned$/);
     expect(optionTitles()).toEqual([expect.stringContaining("Kept")]);
-    expect(readPaletteVisits()[0]).toMatchObject({
-      kind: "pinned",
-      id: "pinned",
-    });
   });
 });
