@@ -108,9 +108,9 @@
     "prosemirror-dropcursor and prosemirror-gapcursor are forbidden on boot",
     "and workspace paths to catch accidental extension-barrel reintroduction.",
     "",
-    "On 2026-10-05 both SplitWorkspaceRoute limits again temporarily rose 5%",
-    "after microphone input preferences joined the composer. A follow-up will",
-    "lazy-load those preferences and ratchet these limits back down."
+    "On 2026-10-05 microphone input preferences joined the composer and both",
+    "SplitWorkspaceRoute limits temporarily rose 5%. The composer now loads",
+    "those preferences on demand, and both limits returned to their prior values."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -239,8 +239,8 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 1142257,
-      "maxBrotliBytes": 333142,
+      "maxBytes": 1087864,
+      "maxBrotliBytes": 317278,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
