@@ -3079,6 +3079,24 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (min-width: 821px) {
+  .company-proof-logos {
+    display: grid;
+    grid-template-columns: repeat(6, auto);
+    justify-content: center;
+  }
+
+  .company-proof-mobile-only {
+    display: none;
+  }
+}
+
+@media (min-width: 821px) and (max-width: 1099px) {
+  .company-proof-logos {
+    grid-template-columns: repeat(4, auto);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nav,
   .hero > * {

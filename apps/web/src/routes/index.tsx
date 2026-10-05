@@ -102,18 +102,18 @@ const COMPANY_PROOF = [
   ["Figma", figmaLogo, "glyph"],
   ["Notion", notionLogo, "tile"],
   ["Vercel", vercelLogo, "glyph"],
-  ["Datadog", datadogLogo, "glyph"],
   ["Shopify", shopifyLogo, "glyph"],
   ["Adobe", adobeLogo, "glyph"],
-  ["Owner.com", ownerLogo, "tile"],
   ["Linear", linearLogo, "glyph"],
+  ["Datadog", datadogLogo, "glyph"],
   ["HubSpot", hubspotLogo, "glyph"],
+  ["Atlassian", atlassianLogo, "glyph"],
+  ["JetBrains", jetbrainsLogo, "glyph"],
+  ["Owner.com", ownerLogo, "tile"],
   ["Pendo", pendoLogo, "glyph"],
   ["ByteDance", bytedanceLogo, "glyph"],
   ["Blackstone", blackstoneLogo, "tile"],
-  ["Atlassian", atlassianLogo, "glyph"],
   ["Moody's", moodysLogo, "tile"],
-  ["JetBrains", jetbrainsLogo, "glyph"],
   ["Shortcut", shortcutLogo, "tile"],
   ["Oracle", oracleLogo, "glyph"],
   ["Render", renderLogo, "glyph"],
@@ -129,11 +129,20 @@ const COMPANY_PROOF = [
   ["Just Eat Takeaway", justEatTakeawayLogo, "glyph"],
 ] as const;
 
+const DESKTOP_COMPANY_PROOF_COUNT = 12;
+
 function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
   return (
     <ul className="company-proof-logos" aria-hidden={duplicate || undefined}>
-      {COMPANY_PROOF.map(([name, logo, kind]) => (
-        <li key={name} className="company-proof-company">
+      {COMPANY_PROOF.map(([name, logo, kind], index) => (
+        <li
+          key={name}
+          className={
+            index < DESKTOP_COMPANY_PROOF_COUNT
+              ? "company-proof-company"
+              : "company-proof-company company-proof-mobile-only"
+          }
+        >
           <img
             src={logo}
             alt={duplicate ? "" : name}
