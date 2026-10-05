@@ -153,7 +153,7 @@ describe("HistoryCommandHandlers", () => {
       expect(
         screen
           .getByRole("button", { name: "Go back" })
-          .hasAttribute("disabled"),
+          .getAttribute("aria-disabled") === "true",
       ).toBe(false),
     );
 
@@ -164,7 +164,7 @@ describe("HistoryCommandHandlers", () => {
       expect(
         screen
           .getByRole("button", { name: "Go forward" })
-          .hasAttribute("disabled"),
+          .getAttribute("aria-disabled") === "true",
       ).toBe(false),
     );
     expect(dispatch("history.back")).toBe(false);
@@ -176,7 +176,7 @@ describe("HistoryCommandHandlers", () => {
       expect(
         screen
           .getByRole("button", { name: "Go forward" })
-          .hasAttribute("disabled"),
+          .getAttribute("aria-disabled") === "true",
       ).toBe(true),
     );
     expect(dispatch("history.forward")).toBe(false);
@@ -205,7 +205,7 @@ describe("HistoryCommandHandlers", () => {
       forwardShortcut.ariaKeyshortcuts,
     );
 
-    await waitFor(() => expect(back.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(back.getAttribute("aria-disabled") === "true").toBe(false));
     fireEvent.keyDown(document.body, { key: "Tab" });
     fireEvent.focus(back);
 

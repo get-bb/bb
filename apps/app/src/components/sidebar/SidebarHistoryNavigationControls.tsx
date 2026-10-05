@@ -46,9 +46,13 @@ function SidebarHistoryNavButton({
           type="button"
           variant="ghost"
           size="icon"
-          className={SIDEBAR_HISTORY_NAV_BUTTON_CLASS}
+          className={cn(
+            SIDEBAR_HISTORY_NAV_BUTTON_CLASS,
+            disabled &&
+              "cursor-default opacity-50 hover:bg-transparent hover:text-muted-foreground",
+          )}
           onClick={onClick}
-          disabled={disabled}
+          aria-disabled={disabled || undefined}
           aria-label={label}
           aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         >
