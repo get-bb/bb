@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 
 export function ReadThreadsDisclosure({
   hiddenCount,
@@ -12,10 +13,11 @@ export function ReadThreadsDisclosure({
     <Button
       variant="ghost"
       size="sm"
-      className="font-normal text-subtle-foreground focus-visible:text-foreground"
+      className="gap-1 font-normal text-subtle-foreground focus-visible:text-foreground [&_[data-icon-root]]:size-3"
       onClick={revealReadThreads}
     >
-      Show {hiddenCount} read {hiddenCount === 1 ? "thread" : "threads"}
+      <Icon name="ChevronRight" aria-hidden="true" />
+      {hiddenCount} read {hiddenCount === 1 ? "thread" : "threads"}
     </Button>
   );
 }

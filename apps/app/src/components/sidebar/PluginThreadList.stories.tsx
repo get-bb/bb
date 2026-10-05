@@ -217,8 +217,9 @@ function OpenThreadControls() {
       <p className="text-muted-foreground">
         Organize → Groups → By read status starts on. Click a thread to open it,
         then mark it read the way bb does when you view it. It keeps its place
-        until you open another thread. Show read threads reveals them until
-        reload. Notes has no unread threads, so its threads stay visible.
+        until you open another thread. Click the read thread count to reveal
+        them until reload. Notes has no unread threads, so its threads stay
+        visible.
       </p>
       <p className="text-xs text-muted-foreground">
         Open thread: {openThread?.title ?? "none"}
