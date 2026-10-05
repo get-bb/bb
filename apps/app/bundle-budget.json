@@ -251,6 +251,10 @@
       "ThreadPage",
       "NewThreadPage",
       "PluginFrontend"
+    ],
+    "src/views/RootComposeView.tsx": [
+      "boot",
+      "ThreadPage"
     ]
   },
   "onDemandPackages": {

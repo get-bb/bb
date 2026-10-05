@@ -15,7 +15,7 @@ import {
 } from "@/lib/route-paths";
 import type { PaneContent } from "@/lib/split-layout";
 import { useRouteState } from "@/hooks/useRouteState";
-import { LegacyProjectComposeRedirect } from "./RootComposeView";
+import { LegacyProjectComposeRedirect } from "./LegacyProjectComposeRedirect";
 import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
 import { LazyPluginsView } from "./ToolsViewSplits";
 
