@@ -187,12 +187,14 @@ describe("HistoryCommandHandlers", () => {
     open(B);
     const back = screen.getByRole("button", { name: "Go back" });
     const forward = screen.getByRole("button", { name: "Go forward" });
-    const backShortcut = presentAppShortcut(
-      mocks.backBinding.shortcut,
-      browserPlatform(),
-    );
+    const backDefinition = mocks.backBinding.shortcut;
+    const forwardDefinition = mocks.forwardBinding.shortcut;
+    if (backDefinition === null || forwardDefinition === null) {
+      throw new Error("Expected default shortcuts for history commands");
+    }
+    const backShortcut = presentAppShortcut(backDefinition, browserPlatform());
     const forwardShortcut = presentAppShortcut(
-      mocks.forwardBinding.shortcut,
+      forwardDefinition,
       browserPlatform(),
     );
 
