@@ -1482,6 +1482,88 @@ describe("core environment orchestration", () => {
       expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
     }));
 
+  it("rejects cleanup of a checkout attached by its provider without ownership", async () =>
+    withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const path = "/tmp/attached-checkout";
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const fake = createFakePluginHost({
+        pluginId: "environment-project-checkout",
+      });
+      const module = z
+        .object({
+          default: z.custom<(bb: BbPluginApi) => Promise<void>>(
+            (value) => typeof value === "function",
+          ),
+        })
+        .parse(
+          await import(
+            new URL(
+              "../../../../../plugins/environment-project-checkout/server.ts",
+              import.meta.url,
+            ).href
+          ),
+        );
+      await module.default(fake.bb);
+      const provider =
+        fake.harness.registrations.environmentProviders.get("project-checkout");
+      if (provider === undefined) throw new Error("Missing checkout provider");
+      const record = { pluginId: "environment-project-checkout", provider };
+      setPluginEnvironmentProviderBridge({
+        listEnvironmentProviders: () => [record],
+        getEnvironmentProvider: (id) =>
+          id === provider.id ? record : undefined,
+        invokeProvider: async (_id, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path,
+        providerOwnsPath: false,
+        environmentProviderId: provider.id,
+        environmentProviderPluginId: record.pluginId,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        status: "idle",
+        environmentId: environment.id,
+      });
+      harness.db
+        .update(threads)
+        .set({ archivedAt: Date.now() })
+        .where(eq(threads.id, thread.id))
+        .run();
+      expect(toEnvironmentResponse(harness.db, environment)).toMatchObject({
+        managed: false,
+        workspaceProvisionType: "unmanaged",
+      });
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}/cleanup`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        message: "Environment is not provider-managed",
+      });
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        path,
+        status: "ready",
+        retireAt: null,
+        teardownStatus: null,
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        environment.id,
+      );
+      expect(fake.harness.experimental_hostRpcCalls).toHaveLength(0);
+    }));
+
   it("keeps retained environments until explicitly asked to clean up", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness, { policy: { retireGraceMs: null } });
