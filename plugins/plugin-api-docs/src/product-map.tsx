@@ -421,7 +421,8 @@ function PhoneFixture({ children }: { children: ReactNode }) {
       const viewport = outer.closest<HTMLElement>(
         "[data-guide-stage-viewport]",
       );
-      const viewportHeight = viewport?.clientHeight ?? window.innerHeight;
+      const viewportHeight =
+        viewport?.clientHeight ?? document.documentElement.clientHeight;
       const naturalHeight = inner.offsetHeight;
       if (naturalHeight === 0 || outer.clientWidth === 0) return;
       const scale = Math.min(

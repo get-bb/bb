@@ -30,7 +30,7 @@ export const Route = createFileRoute("/blog_/$slug")({
     return {
       meta: pageMeta(title, description, `/blog/${post.slug}`),
       links: post.blocks.some((block) => block.kind === "component")
-        ? siteHeadLinks(blogCss, pluginGuideCss)
+        ? [{ rel: "stylesheet", href: pluginGuideCss }, ...siteHeadLinks(blogCss)]
         : siteHeadLinks(blogCss),
     };
   },

@@ -18,20 +18,24 @@ function PluginsMenu({ current }: { current?: SiteNavPage }) {
         menu.current?.removeAttribute("open");
       }
     };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && menu.current?.open) {
+        menu.current.removeAttribute("open");
+        menu.current.querySelector("summary")?.focus();
+      }
+    };
     document.addEventListener("pointerdown", dismiss);
-    return () => document.removeEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
   }, []);
   const inSection = current === "plugins" || current === "plugin-guide";
   return (
     <details
       className="nav-menu"
       ref={menu}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && event.currentTarget.open) {
-          event.currentTarget.removeAttribute("open");
-          event.currentTarget.querySelector("summary")?.focus();
-        }
-      }}
       onBlur={(event) => {
         if (
           event.relatedTarget instanceof Node &&

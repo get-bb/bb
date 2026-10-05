@@ -1530,7 +1530,7 @@ export function AppShellRightPanel({
                 <span>18</span>
                 <span>beforeEach(() =&gt; &#123;</span>
               </div>
-              <div className="grid grid-cols-[24px_24px_1fr] bg-danger/10 px-2 py-1 text-danger">
+              <div className="grid grid-cols-[24px_24px_1fr] bg-destructive/10 px-2 py-1 text-destructive-text">
                 <span>19</span>
                 <span></span>
                 <span>− sharedMock.reset()</span>

@@ -12,13 +12,15 @@ export function LazyPluginGuide({
 }) {
   const placeholder = <div aria-busy="true" className="min-h-96" />;
   return (
-    <ClientOnly fallback={placeholder}>
-      <Suspense fallback={placeholder}>
-        <PluginGuide
-          initialSlideId={initialSlideId}
-          onSlideChange={onSlideChange}
-        />
-      </Suspense>
-    </ClientOnly>
+    <div className="app-theme">
+      <ClientOnly fallback={placeholder}>
+        <Suspense fallback={placeholder}>
+          <PluginGuide
+            initialSlideId={initialSlideId}
+            onSlideChange={onSlideChange}
+          />
+        </Suspense>
+      </ClientOnly>
+    </div>
   );
 }

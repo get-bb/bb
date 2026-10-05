@@ -3046,6 +3046,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (max-width: 359px) {
+  .nav-links {
+    gap: 10px;
+  }
+
+  .nav-links .nav-icon-button {
+    display: none;
+  }
+}
+
 /* ── Reduced motion ─────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {

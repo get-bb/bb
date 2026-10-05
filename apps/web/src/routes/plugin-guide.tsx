@@ -24,7 +24,8 @@ export const Route = createFileRoute("/plugin-guide")({
   head: () => ({
     meta: pageMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/plugin-guide"),
     links: [
-      ...siteHeadLinks(blogCss, pluginGuideCss),
+      { rel: "stylesheet", href: pluginGuideCss },
+      ...siteHeadLinks(blogCss),
       { rel: "canonical", href: "https://getbb.app/plugin-guide" },
     ],
   }),

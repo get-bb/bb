@@ -1,8 +1,5 @@
 @import "tailwindcss";
 @source "../..";
-@source "../../../../../plugins/plugin-api-docs/src";
-@source "../../../../../packages/shared-ui/src/components/ui/icon.tsx";
-@source "../../../../../packages/shared-ui/src/components/ui/switch.tsx";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -95,7 +92,8 @@
 }
 
 :root,
-.light {
+.light,
+.app-theme {
   color-scheme: light;
   /* Anchors. The neutral ramp below is derived from these two by mixing ink
    * into the canvas, so changing the canvas moves every surface coherently. */
@@ -166,7 +164,7 @@
     transparent
   );
   --font-sans: "Inter Variable", Inter, sans-serif;
-  --font-mono: "Fira Code", monospace;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --radius: 0.5rem;
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 20% / 0.07);
   --shadow-md:
@@ -180,7 +178,8 @@
   --spacing: 0.25rem;
 }
 
-.dark {
+.dark,
+.dark .app-theme {
   color-scheme: dark;
   --canvas: oklch(0.195 0 0);
   /* Softened from a brighter near-white so dark-mode foreground text reads a
@@ -242,7 +241,7 @@
     transparent
   );
   --font-sans: "Inter Variable", Inter, sans-serif;
-  --font-mono: "Fira Code", monospace;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --radius: 0.5rem;
   /* Dark shadows are pure black at higher alpha — a 20%-gray shadow is
    * invisible on the dark canvas, so floating surfaces (popovers, dropdowns)

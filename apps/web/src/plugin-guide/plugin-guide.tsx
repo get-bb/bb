@@ -4,42 +4,7 @@ import {
   GROUP_BY_SURFACE_ID,
   type PluginSurface,
 } from "../../../../plugins/plugin-api-docs/src/surfaces";
-
-const PLUGIN_BRANDING = import.meta.glob<{
-  name?: string;
-  branding?: { icon?: string };
-}>("../../../../plugins/*/package.json", { import: "bb", eager: true });
-
-const PLUGIN_ICON_URLS = import.meta.glob<string>(
-  "../../../../plugins/*/{icons/*.svg,*.svg}",
-  { query: "?url", import: "default", eager: true },
-);
-
-const BRAND_ICON_URL_BY_NAME: ReadonlyMap<string, string> = new Map(
-  Object.entries(PLUGIN_BRANDING).flatMap(([manifestPath, bb]) => {
-    const icon = bb?.branding?.icon;
-    if (!bb?.name || !icon?.startsWith("./")) return [];
-    const url =
-      PLUGIN_ICON_URLS[manifestPath.replace(/package\.json$/, icon.slice(2))];
-    return url === undefined ? [] : [[bb.name, url] as const];
-  }),
-);
-
-const PLUGIN_SOURCE_ROOT = "https://github.com/get-bb/bb/tree/main/plugins/";
-
-const PLUGIN_DIR_BY_NAME: ReadonlyMap<string, string> = new Map(
-  Object.entries(PLUGIN_BRANDING).flatMap(([manifestPath, bb]) => {
-    const dir = /\/plugins\/([^/]+)\/package\.json$/.exec(manifestPath)?.[1];
-    return bb?.name && dir ? [[bb.name, dir] as const] : [];
-  }),
-);
-
-function pluginSourceHref(displayName: string): string | null {
-  const dir = PLUGIN_DIR_BY_NAME.get(displayName);
-  return dir === undefined
-    ? null
-    : `${PLUGIN_SOURCE_ROOT}${encodeURIComponent(dir)}`;
-}
+import { BRAND_ICON_URL_BY_NAME, pluginSourceHref } from "./plugin-directory";
 
 function renderBrandIcon(displayName: string) {
   const url = BRAND_ICON_URL_BY_NAME.get(displayName);

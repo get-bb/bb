@@ -502,7 +502,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginComposerApi.replace",
           "PluginComposerApi.onSubmitted",
         ],
-        firstParty: ["Agent Annotations"],
       },
       {
         id: "composer-plus-menu",
