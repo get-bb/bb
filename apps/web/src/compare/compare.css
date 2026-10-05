@@ -355,15 +355,17 @@
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--glint) 35%, var(--bg));
+  --glint-white: var(--bg);
+  background: color-mix(in oklab, var(--glint) 35%, var(--glint-white));
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--glint) 80%, transparent),
-    0 0 8px var(--glint);
+    0 0 5px 2px color-mix(in oklab, var(--glint-white) 90%, transparent),
+    0 0 12px 3px var(--glint);
   animation: cmp-flow-down 3.3s ease-in-out infinite;
 }
 
 .dark .cmp-flow-packet {
-  background: color-mix(in oklab, var(--glint) 35%, var(--heading));
+  --glint-white: var(--heading);
 }
 
 .cmp-flow-packet-up {
