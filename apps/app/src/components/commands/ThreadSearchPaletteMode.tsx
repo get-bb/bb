@@ -54,7 +54,7 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
-import { readPaletteVisits } from "@/lib/command-palette/palette-visits";
+import { readPaletteThreadVisits } from "@/lib/command-palette/palette-visits";
 import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
@@ -106,7 +106,7 @@ export function ThreadSearchPaletteMode({
     setExpandedGroups([]);
   }
   const [now] = useState(() => Date.now());
-  const [visits] = useState(readPaletteVisits);
+  const [visitedThreadIds] = useState(readPaletteThreadVisits);
   const navigation = useSidebarNavigation();
   const threadSearch = useThreadSearch({ active: true, query });
   const trimmedQuery = query.trim();
@@ -148,7 +148,7 @@ export function ThreadSearchPaletteMode({
         recentThreads,
         searchResponse: threadSearch.data,
         searchResultsAreCurrent,
-        visits,
+        visitedThreadIds,
       }),
     [
       currentThreadId,
@@ -159,7 +159,7 @@ export function ThreadSearchPaletteMode({
       recentThreads,
       searchResultsAreCurrent,
       threadSearch.data,
-      visits,
+      visitedThreadIds,
     ],
   );
   const options = useMemo(() => {
