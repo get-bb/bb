@@ -99,7 +99,14 @@
     "On 2026-10-05 both SplitWorkspaceRoute limits temporarily rose 5%",
     "to restore CI headroom after mobile recent-thread long-press actions.",
     "A separate follow-up will reduce the route payload and ratchet these",
-    "limits back down. Boot budgets and split guards remain unchanged."
+    "limits back down. Boot budgets and split guards remain unchanged.",
+    "",
+    "On 2026-10-05 direct Tiptap extension imports removed unused editor",
+    "implementations from the shipped app. Both workspace limits returned",
+    "to their values before the temporary 5% increase. This reduction removes",
+    "code instead of moving it into deferred chunks.",
+    "prosemirror-dropcursor and prosemirror-gapcursor are forbidden on boot",
+    "and workspace paths to catch accidental extension-barrel reintroduction."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -124,6 +131,8 @@
     "ansi-to-html",
     "katex",
     "oniguruma-to-es",
+    "prosemirror-dropcursor",
+    "prosemirror-gapcursor",
     "prosemirror-model",
     "prosemirror-state",
     "prosemirror-view",
@@ -226,8 +235,8 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 1142257,
-      "maxBrotliBytes": 333142,
+      "maxBytes": 1087864,
+      "maxBrotliBytes": 317278,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
@@ -253,6 +262,8 @@
         "linkifyjs",
         "mermaid",
         "oniguruma-to-es",
+        "prosemirror-dropcursor",
+        "prosemirror-gapcursor",
         "rehype-katex",
         "rehype-raw",
         "rehype-sanitize",
