@@ -1,4 +1,7 @@
-import { useReadThreadFold } from "./useReadStatusGrouping.js";
+import {
+  ReadStatusGroupingContext,
+  useReadThreadFold,
+} from "./useReadStatusGrouping.js";
 import { ReadThreadsDisclosure } from "./ReadThreadsDisclosure.js";
 import {
   ThreadCreationPlacementScope,
@@ -28,6 +31,7 @@ import {
   Fragment,
   memo,
   useCallback,
+  useContext,
   useMemo,
   useState,
   type CSSProperties,
@@ -1806,6 +1810,7 @@ function useWindowedThreadItems({
   selectedThreadId?: string;
 }) {
   const rename = useSidebarRenameState();
+  const readStatusGrouping = useContext(ReadStatusGroupingContext);
   const collapsedSectionKeyList = useAtomValue(
     sidebarCollapsedThreadSectionsAtom,
   );
@@ -1838,6 +1843,7 @@ function useWindowedThreadItems({
     const keys = new Set<string>();
     for (const item of items) {
       if (
+        (readStatusGrouping !== null && item.kind === "section") ||
         (selectedThreadId &&
           projectThreadItemContainsThread(item, selectedThreadId)) ||
         (rename && itemContainsRename(item, rename))
@@ -1846,7 +1852,7 @@ function useWindowedThreadItems({
       }
     }
     return keys.size > 0 ? keys : undefined;
-  }, [items, selectedThreadId, rename]);
+  }, [items, selectedThreadId, rename, readStatusGrouping]);
   return { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys };
 }
 
