@@ -901,7 +901,7 @@ export function ProductMap({
             onKeyDown={onKeyDown}
             className="mt-2"
           >
-            {viewportMobile ? (
+            {desktopLocked ? (
               <h2 className="sr-only">{slides[index].title}</h2>
             ) : (
               <div className="mb-3 border-b border-border-hairline pb-3">
