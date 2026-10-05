@@ -101,6 +101,10 @@
         "source"
       ],
       "properties": {
+        "experimental": {
+          "type": "boolean",
+          "description": "Show an Experimental badge for this plugin."
+        },
         "id": {
           "type": "string",
           "$comment": "The file name must match this id.",

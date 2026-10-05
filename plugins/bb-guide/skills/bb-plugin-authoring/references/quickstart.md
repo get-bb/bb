@@ -186,3 +186,5 @@ On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 rotated at 5MB). Healthy or degraded plugins receive effective setting changes
 through `onChange`. A plugin in `needs-configuration` retries automatically.
 Use `bb plugin reload <id>` only when the change or plugin requires it.
+
+Set `bb.experimental: true` in package.json for an Experimental badge on plugin cards and details. Omit it or set false to remove the badge. Marketplace v2 entries use `experimental: true` before installation; BB Official listings inherit the manifest flag.

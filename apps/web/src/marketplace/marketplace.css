@@ -401,9 +401,20 @@
   gap: 10px;
 }
 
+.marketplace-plugin-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.marketplace-card-topline > .marketplace-plugin-title {
+  flex: 1;
+}
+
 .marketplace-card-topline strong {
   min-width: 0;
-  flex: 1;
   overflow: hidden;
   color: var(--heading);
   font-size: 15px;
@@ -411,6 +422,20 @@
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.marketplace-experimental-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in oklab, var(--spark) 40%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--spark) 10%, transparent);
+  color: var(--ink);
+  font-size: var(--text-label-small);
+  font-weight: 500;
+  line-height: 1;
 }
 
 .marketplace-artwork {

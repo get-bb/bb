@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { parseMarketplaceV2Manifest } from "./marketplace-v2.js";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +16,35 @@ import {
 } from "./public-marketplace.js";
 
 describe("public marketplace route rendering", () => {
+  it.each([true, false, undefined])(
+    "renders experimental status %s from a parsed marketplace entry",
+    (experimental) => {
+      const manifest = parseMarketplaceV2Manifest({
+        ...MARKETPLACE_V2_FIXTURE,
+        plugins: [{ ...MARKETPLACE_V2_FIXTURE.plugins[0], experimental }],
+      });
+      const entry = manifest.plugins[0]!;
+      const pages = [
+        <PublicMarketplacePage
+          manifest={manifest}
+          stats={null}
+          state={{}}
+          onStateChange={() => {}}
+        />,
+        <PublicMarketplaceDetailPage
+          manifest={manifest}
+          entry={entry}
+          stats={null}
+        />,
+      ];
+      for (const page of pages) {
+        expect(
+          renderToStaticMarkup(page).includes(">Experimental</span>"),
+        ).toBe(experimental === true);
+      }
+    },
+  );
+
   it("renders the marketplace route with document shelves and controls", () => {
     const html = renderToStaticMarkup(
       <PublicMarketplacePage

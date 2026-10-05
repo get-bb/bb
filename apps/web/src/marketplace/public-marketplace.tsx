@@ -238,6 +238,14 @@ function categoryLabel(
   );
 }
 
+function ExperimentalBadge() {
+  return (
+    <span className="marketplace-experimental-badge">
+      Experimental
+    </span>
+  );
+}
+
 function PluginCard({
   manifest,
   entry,
@@ -257,7 +265,10 @@ function PluginCard({
       >
         <span className="marketplace-card-topline">
           <PluginArtwork entry={entry} />
-          <strong>{entry.displayName}</strong>
+          <span className="marketplace-plugin-title">
+            <strong>{entry.displayName}</strong>
+            {entry.experimental ? <ExperimentalBadge /> : null}
+          </span>
         </span>
         <span className="marketplace-card-description">
           {entry.description}
@@ -786,7 +797,10 @@ function MoreFromAuthor({
           >
             <PluginArtwork entry={candidate} />
             <span>
-              <strong>{candidate.displayName}</strong>
+              <span className="marketplace-plugin-title">
+                <strong>{candidate.displayName}</strong>
+                {candidate.experimental ? <ExperimentalBadge /> : null}
+              </span>
               <small>{candidate.description}</small>
             </span>
             <InstallCount entry={candidate} stats={stats} />
@@ -885,7 +899,10 @@ export function PublicMarketplaceDetailPage({
         <header className="marketplace-detail-head">
           <PluginArtwork entry={entry} large />
           <div className="marketplace-detail-identity">
-            <h1>{entry.displayName}</h1>
+            <div className="marketplace-plugin-title">
+              <h1>{entry.displayName}</h1>
+              {entry.experimental ? <ExperimentalBadge /> : null}
+            </div>
             <div className="marketplace-detail-attribution">
               {authorPath === undefined ? (
                 <span className="marketplace-detail-author">

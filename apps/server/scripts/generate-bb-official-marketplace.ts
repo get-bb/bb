@@ -260,6 +260,7 @@ export async function generateBbOfficialMarketplace(args: {
         id,
         displayName: manifest.bb.name,
         description: manifest.bb.description,
+        experimental: manifest.bb.experimental ?? false,
         icon: marketplaceIcon(plugin.name, declaredIcon),
         tags: [],
         author: { name: "BB" },

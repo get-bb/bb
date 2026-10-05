@@ -828,6 +828,12 @@ default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
 
+Set optional `bb.experimental: true` to show an Experimental badge on plugin
+cards and details. Omitted or false means no badge. Marketplace v2 entries
+can declare `experimental: true` for the listing before installation; BB
+Official listings inherit the plugin manifest. The status is also available
+in `bb plugin list --json` and `bb plugin catalog search --json`.
+
 The scaffold also writes `PLUGIN_OVERVIEW.md` beside package.json: the
 long-form store listing, shown in an Overview section under `bb.description` on
 the plugin detail page in the app and on getbb.app. It says the same thing as
