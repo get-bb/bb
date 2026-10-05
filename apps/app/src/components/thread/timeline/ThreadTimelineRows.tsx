@@ -973,7 +973,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
           id={row.id}
           threadId={row.threadId}
           role={row.role}
-          createdAt={row.createdAt}
+          createdAt={row.startedAt}
           turnId={row.turnId}
           initiator={row.initiator}
         />
@@ -1012,7 +1012,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
           id={row.id}
           threadId={row.threadId}
           role={row.role}
-          createdAt={row.createdAt}
+          createdAt={row.startedAt}
           turnId={row.turnId}
           initiator={row.initiator}
         />
@@ -1042,7 +1042,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
         id={row.id}
         threadId={row.threadId}
         role={row.role}
-        createdAt={row.createdAt}
+        createdAt={row.startedAt}
         turnId={row.turnId}
       />
       <ConversationMessageContent
@@ -1074,7 +1074,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
         id={row.id}
         threadId={row.threadId}
         role={row.role}
-        createdAt={row.createdAt}
+        createdAt={row.startedAt}
         turnId={row.turnId}
       />
     </>

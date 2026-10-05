@@ -111,7 +111,7 @@ describe("ThreadTimelineRows row isolation", () => {
       }),
     );
     const queryClient = new QueryClient();
-    const renderTimeline = (text: string) => (
+    const renderTimeline = (text: string, createdAt: number) => (
       <MemoryRouter>
         <QueryClientProvider client={queryClient}>
           <ThreadTimelineRows
@@ -121,7 +121,8 @@ describe("ThreadTimelineRows row isolation", () => {
                 id: "streaming_message",
                 role: "assistant",
                 text,
-                createdAt: 1_700_000_000_123,
+                startedAt: 1_700_000_000_123,
+                createdAt,
                 threadId: "thr_main",
               }),
             ]}
@@ -131,9 +132,9 @@ describe("ThreadTimelineRows row isolation", () => {
         </QueryClientProvider>
       </MemoryRouter>
     );
-    const view = render(renderTimeline("first"));
+    const view = render(renderTimeline("first", 1_700_000_000_123));
     expect(component).toHaveBeenCalledTimes(1);
-    view.rerender(renderTimeline("first second"));
+    view.rerender(renderTimeline("first second", 1_700_000_000_456));
     expect(component).toHaveBeenCalledTimes(1);
     renderedMessageTexts.length = 0;
     fireEvent.click(screen.getByRole("button", { name: "Stable" }));
