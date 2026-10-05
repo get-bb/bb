@@ -525,7 +525,7 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
         ref={primaryRef}
         title={primary.text}
         highlightRanges={primary.highlightRanges}
-        className="text-foreground"
+        className="text-foreground [&_span]:whitespace-nowrap"
       />
       <span
         className="flex min-h-4 items-center gap-1.5"
