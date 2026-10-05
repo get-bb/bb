@@ -795,7 +795,7 @@ function StoragePage({
                               runningLabel="Clearing files…"
                             />
                           </div>
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex h-5 shrink-0 items-center gap-2">
                             <span className="text-xs tabular-nums text-muted-foreground">
                               {bytes(thread.sizeBytes)}
                             </span>
@@ -1658,16 +1658,19 @@ function DeveloperStorage({
   const groups = [
     {
       title: "Linked threads",
+      description: null,
       entries: filtered.filter((entry) => entry.threads.length > 0),
     },
     {
       title: "Other instances",
+      description: "No matching thread in this BB",
       entries: filtered.filter(
         (entry) => entry.sourcePath !== null && entry.threads.length === 0,
       ),
     },
     {
       title: "Unidentified sources",
+      description: "Source checkout could not be determined",
       entries: filtered.filter((entry) => entry.sourcePath === null),
     },
   ];
@@ -1739,34 +1742,44 @@ function DeveloperStorage({
                   <span className="font-normal tabular-nums text-muted-foreground">
                     ({group.entries.length.toLocaleString()})
                   </span>
+                  {group.description && (
+                    <span className="font-normal text-subtle-foreground/75">
+                      {" "}
+                      · {group.description}
+                    </span>
+                  )}
                 </h3>
                 <div className="mt-2 space-y-3">
                   {(expandedGroups.has(group.title)
                     ? group.entries
                     : group.entries.slice(0, PREVIEW_COUNT)
                   ).map((entry) => {
-                    const label =
-                      entry.threads[0]?.title ?? developerEntryLabel(entry);
+                    const primary = entry.threads[0];
+                    const label = primary?.title ?? developerEntryLabel(entry);
                     const removal = rowActions[`dev:${entry.name}`];
                     return (
                       <div key={entry.name}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1 space-y-1">
-                            {entry.threads.length > 0 ? (
-                              <div className="flex flex-col items-start gap-1">
-                                {entry.threads.map((thread) => (
-                                  <ThreadTitle
-                                    key={thread.threadId}
-                                    title={thread.title}
-                                    pills={thread.archived ? ["archived"] : []}
-                                    onOpen={() =>
-                                      navigate.toThread(thread.threadId)
-                                    }
-                                  />
-                                ))}
-                              </div>
+                            {primary ? (
+                              <ThreadTitle
+                                title={primary.title}
+                                pills={primary.archived ? ["archived"] : []}
+                                onOpen={() =>
+                                  navigate.toThread(primary.threadId)
+                                }
+                              />
                             ) : (
                               <p className="truncate text-sm">{label}</p>
+                            )}
+                            {entry.threads.length > 1 && (
+                              <p className="text-xs text-muted-foreground">
+                                Also linked to{" "}
+                                {plural(
+                                  entry.threads.length - 1,
+                                  "other thread",
+                                )}
+                              </p>
                             )}
                             {entry.sourcePathState === "missing" && (
                               <p className="text-xs text-muted-foreground">
@@ -1784,7 +1797,7 @@ function DeveloperStorage({
                               runningLabel="Removing instance…"
                             />
                           </div>
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex h-5 shrink-0 items-center gap-2">
                             <span className="text-xs font-normal tabular-nums text-muted-foreground">
                               {bytes(entry.sizeBytes)}
                             </span>
@@ -1887,9 +1900,6 @@ function DeveloperStorage({
             {copyStatus.text}
           </p>
         )}
-        <p className="border-t border-border pt-3 text-xs leading-snug text-subtle-foreground/75">
-          Other instances have no matching thread in this BB.
-        </p>
       </div>
     </section>
   );
