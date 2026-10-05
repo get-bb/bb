@@ -12,6 +12,7 @@ import {
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { useRouteStateHistoryNavigation } from "@/lib/app-route-history";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 
 interface SidebarHistoryNavigationControlsProps {
   onNavigate?: () => void;
@@ -59,9 +60,13 @@ function SidebarHistoryNavButton({
           <Icon name={icon} aria-hidden />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>
+      <TooltipContent className="flex items-center gap-1.5">
         <span>{label}</span>
-        {shortcut ? ` (${shortcut.label})` : ""}
+        {shortcut ? (
+          <kbd className="rounded-sm bg-primary-foreground/15 px-1 font-sans leading-4 tabular-nums">
+            {shortcut.label}
+          </kbd>
+        ) : null}
       </TooltipContent>
     </Tooltip>
   );
@@ -92,7 +97,8 @@ export function SidebarHistoryNavigationControls({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className={cn("flex items-center gap-1", className)}>
+      <div className={cn("relative flex items-center gap-1", className)}>
+        <SidebarHistoryShortcutHints />
         <SidebarHistoryNavButton
           command="history.back"
           icon="ChevronLeft"
@@ -109,5 +115,19 @@ export function SidebarHistoryNavigationControls({
         />
       </div>
     </TooltipProvider>
+  );
+}
+
+function SidebarHistoryShortcutHints() {
+  const back = useAppCommandShortcut("history.back");
+  const forward = useAppCommandShortcut("history.forward");
+  return (
+    <span
+      data-sidebar-history-shortcut-hints
+      className="pointer-events-none absolute right-full mr-1 flex items-center gap-1"
+    >
+      <AppCommandShortcutHint shortcut={back} />
+      <AppCommandShortcutHint shortcut={forward} />
+    </span>
   );
 }

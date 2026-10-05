@@ -209,12 +209,28 @@ describe("HistoryCommandHandlers", () => {
     fireEvent.keyDown(document.body, { key: "Tab" });
     fireEvent.focus(back);
 
-    await waitFor(() =>
-      expect(
-        screen
-          .queryAllByRole("tooltip")
-          .map((node) => node.textContent?.trim()),
-      ).toEqual([`Go back (${backShortcut.label})`]),
-    );
+    await waitFor(() => {
+      const [tooltip] = screen.queryAllByRole("tooltip");
+      expect(tooltip?.textContent).toContain("Go back");
+      expect(tooltip?.textContent).not.toContain("(");
+      expect(tooltip?.querySelector("kbd")?.textContent).toBe(
+        backShortcut.label,
+      );
+    });
+  });
+
+  it("shows both shortcuts beside the arrows while the modifier is held", async () => {
+    const platform = vi
+      .spyOn(navigator, "platform", "get")
+      .mockReturnValue("MacIntel");
+    renderAt(A);
+    const hints = () =>
+      document.querySelectorAll("[data-sidebar-history-shortcut-hints] kbd");
+    expect(hints()).toHaveLength(0);
+    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
+    await waitFor(() => expect(hints()).toHaveLength(2), { timeout: 2000 });
+    fireEvent.keyUp(window, { key: "Meta" });
+    await waitFor(() => expect(hints()).toHaveLength(0));
+    platform.mockRestore();
   });
 });
