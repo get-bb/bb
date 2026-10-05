@@ -8,7 +8,7 @@ import {
 import {
   ChangedFilesBucketMenu,
   useChangedFilesBucket,
-} from "@/components/workspace/ChangedFilesBucketMenu";
+} from "./ChangedFilesBucketMenu";
 import {
   selectWorkspaceChangedFilesSections,
   toChangeTally,

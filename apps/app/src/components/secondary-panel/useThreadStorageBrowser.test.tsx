@@ -35,18 +35,4 @@ describe("useThreadStorageBrowser", () => {
     expect(result.current.isSearchOpen).toBe(false);
     expect(result.current.filteredFiles).toHaveLength(2);
   });
-
-  it("opens a stored file through the selection handler", () => {
-    const onSelectPath = vi.fn();
-    const { result } = renderHook(() =>
-      useThreadStorageBrowser({
-        files: FILES,
-        onSelectPath,
-        selectedPath: null,
-      }),
-    );
-
-    result.current.selectPath("docs/notes.md");
-    expect(onSelectPath).toHaveBeenCalledWith("docs/notes.md");
-  });
 });

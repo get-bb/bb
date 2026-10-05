@@ -64,7 +64,7 @@ function WorkInProgressPanel() {
     }),
     onCommitClick: () => {},
     onOpenChangedFile: () => {},
-    storage: { controller, filesError: null, isFilesLoading: false },
+    storage: { controller, filesError: null },
   });
 }
 

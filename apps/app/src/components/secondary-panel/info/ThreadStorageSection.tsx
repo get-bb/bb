@@ -1,4 +1,5 @@
 import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
@@ -19,7 +20,6 @@ import { InfoList, InfoListRow, InfoSection } from "./info-list";
 export interface ThreadStorageSectionProps {
   controller: ThreadStorageBrowserController;
   filesError?: Error | null;
-  isFilesLoading: boolean;
 }
 
 function describeStorageError(error: Error): string {
@@ -40,12 +40,11 @@ function describeStorageError(error: Error): string {
 }
 
 const STORAGE_ICON_BUTTON_CLASS =
-  "shrink-0 text-subtle-foreground hover:text-foreground [&_[data-icon-root]]:size-3";
+  "shrink-0 text-subtle-foreground hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
 
 export function ThreadStorageSection({
   controller,
   filesError,
-  isFilesLoading,
 }: ThreadStorageSectionProps) {
   const {
     closeSearch,
@@ -71,7 +70,10 @@ export function ThreadStorageSection({
             size="icon"
             aria-label="Search files"
             onClick={openSearch}
-            className={cn("size-5", STORAGE_ICON_BUTTON_CLASS)}
+            className={cn(
+              "size-5 max-md:pointer-coarse:-my-2",
+              STORAGE_ICON_BUTTON_CLASS,
+            )}
           >
             <Icon name="Search" />
           </Button>
@@ -79,7 +81,7 @@ export function ThreadStorageSection({
       }
     >
       {isSearchOpen ? (
-        <div className="mb-1 flex h-7 items-center gap-1">
+        <div className="mb-1 flex h-7 items-center gap-1 max-md:pointer-coarse:h-10">
           <Input
             autoFocus
             aria-label="Search files"
@@ -92,7 +94,10 @@ export function ThreadStorageSection({
                 closeSearch();
               }
             }}
-            className="h-7 text-xs focus-visible:ring-0"
+            className={cn(
+              "h-7 focus-visible:ring-0 max-md:pointer-coarse:h-10",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
           />
           <Button
             type="button"
@@ -110,12 +115,6 @@ export function ThreadStorageSection({
         <EmptyState
           message={describeStorageError(filesError)}
           messageClassName="text-destructive"
-        />
-      ) : isFilesLoading && loadedFiles.length === 0 ? (
-        <EmptyState
-          icon="Spinner"
-          message="Loading files..."
-          iconClassName="animate-spin"
         />
       ) : filteredFiles.length === 0 ? (
         <EmptyState message="No files match search." />

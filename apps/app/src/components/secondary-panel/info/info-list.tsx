@@ -5,12 +5,12 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
 
-export const INFO_LIST_LEADING_CLASS =
+const INFO_LIST_LEADING_CLASS =
   "flex size-3 shrink-0 items-center justify-center";
 
-export const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
+const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
 
-export const INFO_LIST_DEFAULT_LIMIT = 5;
+const INFO_LIST_DEFAULT_LIMIT = 5;
 
 const INFO_LIST_ROW_CLASS =
   "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors hover:bg-state-hover";
@@ -21,7 +21,7 @@ const INFO_LIST_PRIMARY_CLASS =
 const INFO_LIST_QUIET_CONTROL_CLASS =
   "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-export function InfoCountPill({ count }: { count: number }) {
+function InfoCountPill({ count }: { count: number }) {
   return (
     <span className="ml-1.5 rounded-full bg-surface-recessed px-1.5 text-2xs leading-4 font-normal text-muted-foreground tabular-nums">
       {count}
@@ -36,7 +36,7 @@ export interface InfoSectionHeadingProps {
   trailing?: ReactNode;
 }
 
-export function InfoSectionHeading({
+function InfoSectionHeading({
   label,
   count,
   accessory,
@@ -71,6 +71,7 @@ export function InfoSection({ children, ...heading }: InfoSectionProps) {
 
 export function InfoMenuTrigger({
   children,
+  className,
   ...buttonProps
 }: ComponentProps<"button">) {
   return (
@@ -80,6 +81,7 @@ export function InfoMenuTrigger({
       className={cn(
         INFO_LIST_QUIET_CONTROL_CLASS,
         "ml-1.5 inline-flex h-5 items-center gap-0.5 px-0.5 data-[state=open]:text-foreground",
+        className,
       )}
     >
       {children}
@@ -115,7 +117,10 @@ export function InfoListRow({
 }: InfoListRowProps) {
   const primary =
     target === null ? (
-      <span className="min-w-0 truncate text-xs leading-5 text-foreground">
+      <span
+        title={title}
+        className="min-w-0 truncate text-xs leading-5 text-foreground"
+      >
         {name}
       </span>
     ) : target.kind === "link" ? (
@@ -193,7 +198,7 @@ export function InfoRowTime({
     <time
       dateTime={date.toISOString()}
       title={detail ? `${detail} · ${fullDate}` : fullDate}
-      className="shrink-0 text-2xs text-subtle-foreground tabular-nums"
+      className="relative z-10 shrink-0 text-2xs text-subtle-foreground tabular-nums"
     >
       {formatCompactRelativeTime({ timestamp, now })}
     </time>
