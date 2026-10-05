@@ -1,5 +1,9 @@
 import type { SidebarThread } from "./sidebar-thread.js";
-import type { ThreadComparator } from "./project-thread-groups.js";
+import {
+  projectThreadItemContainsThread,
+  type ProjectThreadItem,
+  type ThreadComparator,
+} from "./project-thread-groups.js";
 import { isUnreadDoneThread } from "./thread-activity.js";
 
 export interface HeldReadStatus {
@@ -53,4 +57,33 @@ export function collapseParentThreads(
     }
   }
   return collapsed;
+}
+
+export function foldReadThreads(
+  items: readonly ProjectThreadItem[],
+  isUnread: ThreadUnreadPredicate | null,
+  revealed: boolean,
+  selectedThreadId: string | undefined,
+) {
+  if (
+    isUnread === null ||
+    revealed ||
+    !items.some((item) => item.kind === "thread" && isUnread(item.node.thread))
+  ) {
+    return { items, hiddenCount: 0 };
+  }
+  let hiddenCount = 0;
+  const visibleItems = items.filter((item) => {
+    if (
+      item.kind !== "thread" ||
+      isUnread(item.node.thread) ||
+      (selectedThreadId !== undefined &&
+        projectThreadItemContainsThread(item, selectedThreadId))
+    ) {
+      return true;
+    }
+    hiddenCount += 1;
+    return false;
+  });
+  return { items: visibleItems, hiddenCount };
 }

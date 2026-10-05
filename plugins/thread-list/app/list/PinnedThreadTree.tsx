@@ -1,3 +1,5 @@
+import { useReadThreadFold } from "./useReadStatusGrouping.js";
+import { ReadThreadsDisclosure } from "./ReadThreadsDisclosure.js";
 import { memo, useCallback, useMemo, type CSSProperties } from "react";
 import { DndContext, useDroppable } from "@dnd-kit/core";
 import {
@@ -251,6 +253,18 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
     }
     return orderedNodes;
   }, [chronologicalDnd, rootNodes]);
+  const fold = useReadThreadFold(rootItems, selectedThreadId, "pinned");
+  const visibleRootIds = new Set(
+    fold.items.flatMap((item) =>
+      item.kind === "thread" ? [item.node.thread.id] : [],
+    ),
+  );
+  const visibleChronologicalRootNodes = chronologicalRootNodes.filter((node) =>
+    visibleRootIds.has(node.thread.id),
+  );
+  const visibleRenderedRootNodes = renderedRootNodes.filter((node) =>
+    visibleRootIds.has(node.thread.id),
+  );
   const hasEnvironmentGroups = rootItems.some(
     (item) => item.kind === "environment",
   );
@@ -287,7 +301,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
               onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
             />
           ) : (
-            chronologicalRootNodes.map((node) => (
+            visibleChronologicalRootNodes.map((node) => (
               <SortablePinnedRootItem
                 key={getPinnedRootNodeId(node)}
                 node={node}
@@ -304,6 +318,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
             ))
           )}
         </SortableContext>
+        <ReadThreadsDisclosure {...fold} />
       </div>
     );
   }
@@ -331,7 +346,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
             items={renderedRootNodeIds}
             strategy={verticalListSortingStrategy}
           >
-            {renderedRootNodes.map((node) => (
+            {visibleRenderedRootNodes.map((node) => (
               <SortablePinnedRootItem
                 key={getPinnedRootNodeId(node)}
                 node={node}
@@ -347,7 +362,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
           </SortableContext>
         </DndContext>
       ) : (
-        renderedRootNodes.map((node) => (
+        visibleRenderedRootNodes.map((node) => (
           <PinnedRootItem
             key={getPinnedRootNodeId(node)}
             node={node}
@@ -361,6 +376,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
           />
         ))
       )}
+      <ReadThreadsDisclosure {...fold} />
     </div>
   );
 });

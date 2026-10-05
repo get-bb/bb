@@ -56,6 +56,9 @@ defaults to `false`; use `bb thread-list prefs set groupByReadStatus true` to
 turn it on. Parents start collapsed while it is on, without changing
 `collapsedThreads`, and `environmentGrouping` is ignored. The open thread keeps
 its place until another thread is opened.
+In sections with unread threads, read threads fold behind a “Show N read threads”
+row. Revealing them lasts until reload. Sections with no unread threads keep
+showing all their threads. The open thread and its ancestors stay visible.
 
 New threads inherit the sidebar group where creation was invoked. Pinned
 creates pinned threads; custom sections supply their section; project, machine,

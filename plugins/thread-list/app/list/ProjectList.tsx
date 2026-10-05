@@ -117,7 +117,10 @@ import {
 } from "./BuiltInSidebarSection.js";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList.js";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder.js";
-import { useReadStatusGrouping } from "./useReadStatusGrouping.js";
+import {
+  ReadStatusGroupingContext,
+  useReadStatusGrouping,
+} from "./useReadStatusGrouping.js";
 import { haveSameOrder } from "../model/stored-order.js";
 import {
   useSidebarData,
@@ -1555,6 +1558,7 @@ function ProjectListComponent({
     [chronologicalSort, sortDirection, activeRename],
   );
   const {
+    isUnread,
     comparator: sidebarThreadComparator,
     collapsedThreadIds,
     toggleThreadCollapsed,
@@ -1696,7 +1700,7 @@ function ProjectListComponent({
     );
   }
 
-  return (
+  const content = (
     <SidebarHeaderActionsProvider
       value={{
         onNewSection: handleOpenCreateSectionDialog,
@@ -1826,6 +1830,11 @@ function ProjectListComponent({
       {sectionCreateDialog}
       {sectionDeleteDialogContent}
     </SidebarHeaderActionsProvider>
+  );
+  return (
+    <ReadStatusGroupingContext.Provider value={isUnread}>
+      {content}
+    </ReadStatusGroupingContext.Provider>
   );
 }
 

@@ -7,6 +7,7 @@ import {
 } from "./project-thread-groups.js";
 import {
   collapseParentThreads,
+  foldReadThreads,
   createThreadUnreadPredicate,
   groupComparatorByReadStatus,
 } from "./read-status-grouping.js";
@@ -90,5 +91,81 @@ describe("collapseParentThreads", () => {
     expect(
       [...collapseParentThreads(threads, ["other-parent"])].sort(),
     ).toEqual(["child", "parent"]);
+  });
+});
+
+describe("foldReadThreads", () => {
+  const isUnread = createThreadUnreadPredicate(null);
+  const items = () =>
+    buildSectionThreadList(
+      [
+        thread("unread", { latestAttentionAt: 600 }),
+        thread("read-parent", { ...read, latestAttentionAt: 500 }),
+        thread("child", { parentThreadId: "read-parent" }),
+        thread("read-leaf", { ...read, latestAttentionAt: 400 }),
+      ],
+      compareStandardThreads,
+    );
+  const ids = (result: ReturnType<typeof foldReadThreads>) =>
+    result.items.map((item) =>
+      item.kind === "thread" ? item.node.thread.id : item.kind,
+    );
+
+  it("folds read roots with their children and counts each root once", () => {
+    const folded = foldReadThreads(items(), isUnread, false, undefined);
+    expect(ids(folded)).toEqual(["unread"]);
+    expect(folded.hiddenCount).toBe(2);
+  });
+
+  it.each(["read-parent", "child"])(
+    "keeps the open %s and its parent in place",
+    (selected) => {
+      const folded = foldReadThreads(items(), isUnread, false, selected);
+      expect(ids(folded)).toEqual(["unread", "read-parent"]);
+      expect(folded.hiddenCount).toBe(1);
+    },
+  );
+
+  it("leaves a section with no unread roots alone, even with an unread child", () => {
+    const roots = items().filter(
+      (item) => item.kind !== "thread" || item.node.thread.id !== "unread",
+    );
+    expect(foldReadThreads(roots, isUnread, false, undefined)).toEqual({
+      items: roots,
+      hiddenCount: 0,
+    });
+  });
+
+  it.each(["disabled", "revealed"])(
+    "keeps the original order when %s",
+    (mode) => {
+      const roots = items().reverse();
+      expect(
+        foldReadThreads(
+          roots,
+          mode === "disabled" ? null : isUnread,
+          mode === "revealed",
+          undefined,
+        ),
+      ).toEqual({ items: roots, hiddenCount: 0 });
+    },
+  );
+
+  it("keeps the last unread thread held until another thread opens", () => {
+    const roots = buildSectionThreadList(
+      [thread("opened", read), thread("other", read)],
+      compareStandardThreads,
+    );
+    const held = createThreadUnreadPredicate({
+      threadId: "opened",
+      isUnread: true,
+    });
+    expect(ids(foldReadThreads(roots, held, false, "opened"))).toEqual([
+      "opened",
+    ]);
+    expect(foldReadThreads(roots, isUnread, false, "other")).toEqual({
+      items: roots,
+      hiddenCount: 0,
+    });
   });
 });

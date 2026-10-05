@@ -1,3 +1,5 @@
+import { useReadThreadFold } from "./useReadStatusGrouping.js";
+import { ReadThreadsDisclosure } from "./ReadThreadsDisclosure.js";
 import {
   ThreadCreationPlacementScope,
   useThreadCreationPlacement,
@@ -1409,9 +1411,14 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     () => getProjectThreadItemDescendants(section.items),
     [section.items],
   );
+  const fold = useReadThreadFold(
+    section.items,
+    selectedThreadId,
+    buildSidebarEntitySectionId("section", section.id),
+  );
   const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
     useWindowedThreadItems({
-      items: section.items,
+      items: fold.items,
       collapsedThreadIds,
       collapsedEnvironmentIds,
       selectedThreadId,
@@ -1430,7 +1437,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
             getNavigationEntries={getNavigationEntries}
             alwaysMountedKeys={alwaysMountedKeys}
             renderItem={(index) => {
-              const item = section.items[index];
+              const item = fold.items[index];
               if (!item) {
                 return null;
               }
@@ -1455,6 +1462,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               );
             }}
           />
+          <ReadThreadsDisclosure {...fold} />
         </SectionDndSortableList>
       ) : null}
     </div>
@@ -1857,9 +1865,10 @@ function SectionThreadTreeItems({
   onCreateThreadInSection,
   onRemoveSection,
 }: SectionThreadTreeItemsProps) {
+  const fold = useReadThreadFold(items, selectedThreadId);
   const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
     useWindowedThreadItems({
-      items,
+      items: fold.items,
       collapsedThreadIds,
       collapsedEnvironmentIds,
       selectedThreadId,
@@ -1871,7 +1880,7 @@ function SectionThreadTreeItems({
       getNavigationEntries={getNavigationEntries}
       alwaysMountedKeys={alwaysMountedKeys}
       renderItem={(index) => {
-        const item = items[index];
+        const item = fold.items[index];
         if (!item) {
           return null;
         }
@@ -1910,6 +1919,7 @@ function SectionThreadTreeItems({
       ) : (
         rows
       )}
+      <ReadThreadsDisclosure {...fold} />
     </ProjectThreadTreeGroup>
   );
 }

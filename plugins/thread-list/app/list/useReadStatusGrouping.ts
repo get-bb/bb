@@ -1,19 +1,36 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import type { SidebarThread } from "../model/sidebar-thread.js";
-import type { ThreadComparator } from "../model/project-thread-groups.js";
+import type {
+  ProjectThreadItem,
+  ThreadComparator,
+} from "../model/project-thread-groups.js";
 import {
   collapseParentThreads,
   createThreadUnreadPredicate,
   groupComparatorByReadStatus,
+  foldReadThreads,
   type HeldReadStatus,
+  type ThreadUnreadPredicate,
 } from "../model/read-status-grouping.js";
 import {
   collapsedThreadIdsAtom,
   sidebarGroupByReadStatusAtom,
+  sidebarOrganizationModeAtom,
 } from "../preferences/atoms.js";
+import { ThreadListGroupContext } from "./ThreadListVisibility.js";
 
 const threadsExpandedWhileGroupedAtom = atom<readonly string[]>([]);
+const revealedReadSectionsAtom = atom<readonly string[]>([]);
+export const ReadStatusGroupingContext =
+  createContext<ThreadUnreadPredicate | null>(null);
 let lastHeldReadStatus: HeldReadStatus | null = null;
 
 export function useHeldReadStatus(
@@ -67,15 +84,15 @@ export function useReadStatusGrouping({
   const [expandedWhileGrouped, setExpandedWhileGrouped] = useAtom(
     threadsExpandedWhileGroupedAtom,
   );
+  const isUnread = useMemo(
+    () =>
+      groupByReadStatus ? createThreadUnreadPredicate(heldReadStatus) : null,
+    [groupByReadStatus, heldReadStatus],
+  );
   const groupedComparator = useMemo(
     () =>
-      groupByReadStatus
-        ? groupComparatorByReadStatus(
-            comparator,
-            createThreadUnreadPredicate(heldReadStatus),
-          )
-        : comparator,
-    [comparator, groupByReadStatus, heldReadStatus],
+      isUnread ? groupComparatorByReadStatus(comparator, isUnread) : comparator,
+    [comparator, isUnread],
   );
   const collapsedThreadIds = useMemo(
     () =>
@@ -95,10 +112,42 @@ export function useReadStatusGrouping({
     [groupByReadStatus, setCollapsedThreadIdList, setExpandedWhileGrouped],
   );
   return {
+    isUnread,
     comparator: groupedComparator,
     collapsedThreadIds,
     toggleThreadCollapsed,
   };
+}
+
+export function useReadThreadFold(
+  items: readonly ProjectThreadItem[],
+  selectedThreadId: string | undefined,
+  sectionId?: string,
+) {
+  const isUnread = useContext(ReadStatusGroupingContext);
+  const groupId = useContext(ThreadListGroupContext);
+  const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
+  const [revealedSections, setRevealedSections] = useAtom(
+    revealedReadSectionsAtom,
+  );
+  const id = sectionId ?? groupId;
+  const key = `${organizationMode}:${id}`;
+  const folded = useMemo(
+    () =>
+      foldReadThreads(
+        items,
+        isUnread,
+        id === null || revealedSections.includes(key),
+        selectedThreadId,
+      ),
+    [items, isUnread, id, revealedSections, key, selectedThreadId],
+  );
+  const revealReadThreads = useCallback(() => {
+    setRevealedSections((current) =>
+      current.includes(key) ? current : [...current, key],
+    );
+  }, [key, setRevealedSections]);
+  return { ...folded, revealReadThreads };
 }
 
 export function useExpandThreadAncestors() {

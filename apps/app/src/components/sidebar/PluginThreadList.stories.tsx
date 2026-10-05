@@ -35,6 +35,7 @@ export default { title: "sidebar/Thread list" };
 
 const THREAD_LIST_PLUGIN_ID = "thread-list";
 const INBOX = { id: "sec_inbox", name: "Inbox", createdAt: 1, updatedAt: 1 };
+const NOTES = { id: "sec_notes", name: "Notes", createdAt: 2, updatedAt: 2 };
 const READ_AT = 10_000;
 
 function inboxEntry(
@@ -73,13 +74,19 @@ const INBOX_THREADS = [
   inboxEntry("thr_catalog_copy", "Catalog descriptions", 180, true, {
     parentThreadId: "thr_catalog",
   }),
+  inboxEntry("thr_notes", "Keyboard shortcut notes", 100, false, {
+    sectionId: NOTES.id,
+  }),
+  inboxEntry("thr_ideas", "Weekend project ideas", 90, false, {
+    sectionId: NOTES.id,
+  }),
 ];
 
 function sidebarNavigation(
   threads: SidebarBootstrapResponse["projects"][number]["threads"],
 ): SidebarBootstrapResponse {
   return {
-    sections: [INBOX],
+    sections: [INBOX, NOTES],
     projects: [{ ...makeProject(), defaultExecutionOptions: null, threads }],
     personalProject: {
       ...makeProject({
@@ -209,8 +216,9 @@ function OpenThreadControls() {
     <section className="grid max-w-xs content-start gap-3 text-sm">
       <p className="text-muted-foreground">
         Organize → Groups → By read status starts on. Click a thread to open it,
-        then mark it read the way bb does when you view it. It keeps its group
-        until you open another thread.
+        then mark it read the way bb does when you view it. It keeps its place
+        until you open another thread. Show read threads reveals them until
+        reload. Notes has no unread threads, so its threads stay visible.
       </p>
       <p className="text-xs text-muted-foreground">
         Open thread: {openThread?.title ?? "none"}
@@ -223,6 +231,15 @@ function OpenThreadControls() {
           onClick={markOpenThreadRead}
         >
           Mark open thread read
+        </button>
+        <button
+          type="button"
+          className="rounded-md border border-border px-2 py-1"
+          onClick={() =>
+            navigate(`/projects/${PROJECT_IDS.bb}/threads/thr_catalog_copy`)
+          }
+        >
+          Open folded child
         </button>
         <button
           type="button"

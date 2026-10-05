@@ -1,11 +1,21 @@
 // @vitest-environment jsdom
 
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { makeSidebarThread } from "../model/fixtures.js";
 import { createThreadUnreadPredicate } from "../model/read-status-grouping.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
-import { useHeldReadStatus } from "./useReadStatusGrouping.js";
+import {
+  useHeldReadStatus,
+  useReadThreadFold,
+  ReadStatusGroupingContext,
+} from "./useReadStatusGrouping.js";
+import { Provider, createStore } from "jotai";
+import type { ReactNode } from "react";
+import {
+  buildSectionThreadList,
+  compareStandardThreads,
+} from "../model/project-thread-groups.js";
 
 function useHeldUnreadPredicate(
   threads: SidebarThread[],
@@ -56,5 +66,52 @@ describe("useHeldReadStatus", () => {
       useHeldUnreadPredicate([read("remounted")], "remounted"),
     );
     expect(second.result.current(read("remounted"))).toBe(true);
+  });
+});
+
+describe("useReadThreadFold", () => {
+  it("reveals only its section across remounts, without persisting to a new session", () => {
+    const store = createStore();
+    const items = buildSectionThreadList(
+      [unread("unread"), read("read")],
+      compareStandardThreads,
+    );
+    const isUnread = createThreadUnreadPredicate(null);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <Provider store={store}>
+        <ReadStatusGroupingContext.Provider value={isUnread}>
+          {children}
+        </ReadStatusGroupingContext.Provider>
+      </Provider>
+    );
+    const first = renderHook(
+      ({ section }) => useReadThreadFold(items, undefined, section),
+      { wrapper, initialProps: { section: "inbox" } },
+    );
+    expect(first.result.current.hiddenCount).toBe(1);
+    act(() => first.result.current.revealReadThreads());
+    expect(first.result.current.hiddenCount).toBe(0);
+    first.rerender({ section: "other" });
+    expect(first.result.current.hiddenCount).toBe(1);
+    first.unmount();
+    const remounted = renderHook(
+      () => useReadThreadFold(items, undefined, "inbox"),
+      { wrapper },
+    );
+    expect(remounted.result.current.hiddenCount).toBe(0);
+    remounted.unmount();
+    const fresh = renderHook(
+      () => useReadThreadFold(items, undefined, "inbox"),
+      {
+        wrapper: ({ children }) => (
+          <Provider>
+            <ReadStatusGroupingContext.Provider value={isUnread}>
+              {children}
+            </ReadStatusGroupingContext.Provider>
+          </Provider>
+        ),
+      },
+    );
+    expect(fresh.result.current.hiddenCount).toBe(1);
   });
 });

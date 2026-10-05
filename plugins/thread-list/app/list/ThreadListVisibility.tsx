@@ -52,7 +52,7 @@ interface ThreadListVisibilityState {
 }
 
 const VisibilityContext = createContext<ThreadListVisibilityState | null>(null);
-const GroupContext = createContext<string | null>(null);
+export const ThreadListGroupContext = createContext<string | null>(null);
 
 export function ThreadListVisibility({
   groups,
@@ -222,11 +222,11 @@ export function ThreadListVisibilityGroupScope({
   children: ReactNode;
 }) {
   return (
-    <GroupContext.Provider value={id}>
+    <ThreadListGroupContext.Provider value={id}>
       <ThreadCreationPlacementScope group={id}>
         <div data-sidebar-visibility-group={id}>{children}</div>
       </ThreadCreationPlacementScope>
-    </GroupContext.Provider>
+    </ThreadListGroupContext.Provider>
   );
 }
 
@@ -238,7 +238,7 @@ export function ThreadListVisibilityMenuItems({
   leadingSeparator?: boolean;
 }) {
   const state = useContext(VisibilityContext);
-  const id = useContext(GroupContext);
+  const id = useContext(ThreadListGroupContext);
   if (!state) return null;
   const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
   return (
@@ -287,7 +287,11 @@ function HiddenGroup({
       onNewThread={group.onNewThread}
       activity={<GroupActivity threads={group.threads} />}
     >
-      {(closeSection) => group.renderContent(closeSection)}
+      {(closeSection) => (
+        <ThreadListGroupContext.Provider value={group.id}>
+          {group.renderContent(closeSection)}
+        </ThreadListGroupContext.Provider>
+      )}
     </SidebarOverflowItem>
   );
 }
