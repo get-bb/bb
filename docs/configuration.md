@@ -1902,8 +1902,10 @@ By read status or `bb thread-list prefs set groupByReadStatus true` lists
 threads that show an unread dot above the rest; the selected sort applies within
 each group. Read status is the innermost grouping, so worktree rows stay
 grouped and move up when a thread in them shows the dot. Child threads don't
-show the dot, so they don't lift their parent. The open thread keeps its place
-until another thread is opened. Pinned threads keep their manual order.
+show the dot, so they don't lift their parent, and parents start collapsed while
+the option is on; expanding one lasts for the session and leaves the saved
+collapsed state unchanged. The open thread keeps its place until another thread
+is opened. Pinned threads keep their manual order.
 
 The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with
