@@ -2,7 +2,6 @@ import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { buildPaletteThreadSearchRows } from "./palette-thread-search";
-import type { PaletteVisit } from "./palette-visits";
 
 const NOW = 1_000_000;
 
@@ -69,7 +68,7 @@ function build(
       archived: { results: [], total: 0 },
     },
     searchResultsAreCurrent: true,
-    visits: [],
+    visitedThreadIds: [],
     ...overrides,
   });
 }
@@ -255,11 +254,6 @@ describe("buildPaletteThreadSearchRows", () => {
   });
 
   describe("switcher ordering", () => {
-    const visit = (id: string, visitedAt: number): PaletteVisit => ({
-      kind: "thread",
-      id,
-      visitedAt,
-    });
     const ids = (result: ReturnType<typeof build>) =>
       result.rows.map((row) => row.threadId);
 
@@ -267,7 +261,7 @@ describe("buildPaletteThreadSearchRows", () => {
       const result = build({
         query: "",
         currentThreadId: "b",
-        visits: [visit("b", 3), visit("a", 2)],
+        visitedThreadIds: ["b", "a"],
         recentThreads: [
           makeThread("c", { updatedAt: NOW + 10 }),
           makeThread("a", { updatedAt: 1 }),
@@ -282,7 +276,7 @@ describe("buildPaletteThreadSearchRows", () => {
       const result = build({
         query: "",
         currentThreadId: null,
-        visits: [visit("b", 2), visit("a", 1)],
+        visitedThreadIds: ["b", "a"],
         recentThreads: [makeThread("a"), makeThread("b"), makeThread("c")],
       });
       expect(ids(result)).toEqual(["b", "a", "c"]);
@@ -293,7 +287,7 @@ describe("buildPaletteThreadSearchRows", () => {
       const result = build({
         query: "",
         currentThreadId: "b",
-        visits: [visit("b", 3), visit("deleted", 2), visit("a", 1)],
+        visitedThreadIds: ["b", "deleted", "a"],
         recentThreads: [makeThread("a"), makeThread("b")],
       });
       expect(result.previousThreadId).toBe("a");
@@ -304,7 +298,7 @@ describe("buildPaletteThreadSearchRows", () => {
       const result = build({
         query: "",
         currentThreadId: "current",
-        visits: [visit("current", 1)],
+        visitedThreadIds: ["current"],
         recentThreads: [
           makeThread("current", { updatedAt: NOW + 50 }),
           makeThread("newest", { updatedAt: NOW + 10 }),
@@ -320,7 +314,7 @@ describe("buildPaletteThreadSearchRows", () => {
         query: "",
         lifecycles: ["archived"],
         currentThreadId: "current",
-        visits: [visit("current", 3), visit("visited", 2)],
+        visitedThreadIds: ["current", "visited"],
         recentThreads: [
           makeThread("recent", { archivedAt: 100 }),
           makeThread("visited", { archivedAt: 1 }),

@@ -9,7 +9,6 @@ import {
   normalizeThreadLifecycleFilter,
   type ThreadArchiveFilter,
 } from "@/lib/thread-lifecycle-filter";
-import type { PaletteVisit } from "./palette-visits";
 
 export interface PaletteThreadSearchRow {
   id: string;
@@ -34,7 +33,7 @@ interface BuildPaletteThreadSearchRowsArgs {
   recentThreads: readonly ThreadListEntry[];
   searchResponse: ThreadSearchResponse | undefined;
   searchResultsAreCurrent: boolean;
-  visits: readonly PaletteVisit[];
+  visitedThreadIds: readonly string[];
 }
 
 export interface PaletteThreadSearchRowsResult {
@@ -85,18 +84,6 @@ function serverRow(
     thread,
     messageSeq: snippetMatch?.sourceSeq ?? null,
   };
-}
-
-function threadVisitRanks(
-  visits: readonly PaletteVisit[],
-): ReadonlyMap<string, number> {
-  const ranks = new Map<string, number>();
-  for (const visit of visits) {
-    if (visit.kind === "thread" && !ranks.has(visit.id)) {
-      ranks.set(visit.id, ranks.size);
-    }
-  }
-  return ranks;
 }
 
 function orderActiveRecents(
@@ -152,7 +139,7 @@ export function buildPaletteThreadSearchRows({
   recentThreads,
   searchResponse,
   searchResultsAreCurrent,
-  visits,
+  visitedThreadIds,
 }: BuildPaletteThreadSearchRowsArgs): PaletteThreadSearchRowsResult {
   const trimmedQuery = query.trim();
   const isRecent = trimmedQuery.length === 0;
@@ -166,7 +153,9 @@ export function buildPaletteThreadSearchRows({
             : thread.archivedAt === null,
         )
       : [];
-  const visitRanks = threadVisitRanks(visits);
+  const visitRanks = new Map(
+    visitedThreadIds.map((threadId, index) => [threadId, index]),
+  );
   const visitRankOf = (thread: ThreadListEntry) =>
     visitRanks.get(thread.id) ?? UNVISITED_RANK;
   const listedThreadIds = new Set(
@@ -175,12 +164,10 @@ export function buildPaletteThreadSearchRows({
     ),
   );
   const previousThreadId =
-    visits.find(
-      (visit) =>
-        visit.kind === "thread" &&
-        visit.id !== currentThreadId &&
-        listedThreadIds.has(visit.id),
-    )?.id ?? null;
+    visitedThreadIds.find(
+      (threadId) =>
+        threadId !== currentThreadId && listedThreadIds.has(threadId),
+    ) ?? null;
   const serverRowsFor = (lifecycle: ThreadArchiveFilter) =>
     isSearchable && searchResultsAreCurrent
       ? (searchResponse?.[lifecycle]?.results ?? []).map((result) =>

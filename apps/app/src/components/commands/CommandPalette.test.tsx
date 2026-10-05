@@ -36,7 +36,7 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
-import { recordPaletteVisit } from "@/lib/command-palette/palette-visits";
+import { recordPaletteThreadVisit } from "@/lib/command-palette/palette-visits";
 import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
@@ -1329,8 +1329,8 @@ describe("CommandPalette", () => {
         runtime: { displayStatus: "active" },
       }),
     ];
-    recordPaletteVisit("thread", "previous", 1);
-    recordPaletteVisit("thread", "current", 2);
+    recordPaletteThreadVisit("previous");
+    recordPaletteThreadVisit("current");
     renderPalette({ threadId: "current" });
     openThreadSearch();
     await screen.findByRole("option", { name: /Title previous/ });
