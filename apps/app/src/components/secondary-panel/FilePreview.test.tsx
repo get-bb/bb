@@ -486,6 +486,7 @@ describe("FilePreview", () => {
     expect(
       await screen.findByRole("button", { name: "Load full file" }),
     ).toBeTruthy();
+    await screen.findByTestId("pierre-file");
     expect(pierreMock.state.lastFile?.contents).toBe(
       [longLine, longLine].join("\n"),
     );

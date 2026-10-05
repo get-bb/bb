@@ -1676,8 +1676,10 @@ describe("SplitThreadArea", () => {
     });
 
     const toggle = await screen.findByTestId("split-workspace-panel-toggle");
-    expect(toggle.querySelector("button")?.getAttribute("aria-expanded")).toBe(
-      "true",
+    await waitFor(() =>
+      expect(
+        toggle.querySelector("button")?.getAttribute("aria-expanded"),
+      ).toBe("true"),
     );
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
