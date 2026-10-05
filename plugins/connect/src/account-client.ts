@@ -146,6 +146,15 @@ export function createAccountClient(
       });
     } catch (error) {
       const status = httpStatusOf(error);
+      if (
+        status === 503 &&
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "server_moving"
+      ) {
+        throw error;
+      }
       if (status === 503 || status === 404) {
         throw new AccountUnavailableError(`HTTP ${status}`);
       }
