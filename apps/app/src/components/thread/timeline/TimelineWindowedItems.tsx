@@ -155,6 +155,19 @@ export function TimelineWindowedItems({
     virtualizer.containerRef,
   );
 
+  useLayoutEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (
+      item,
+      _delta,
+      instance,
+    ) => {
+      const scrollTop = resolvedGetScrollElement()?.scrollTop ?? 0;
+      if (item.start >= scrollTop) return false;
+      if (!instance.itemSizeCache.has(item.key)) return true;
+      return item.end <= scrollTop && instance.scrollDirection !== "backward";
+    };
+  }, [resolvedGetScrollElement, virtualizer]);
+
   const updateScrollGeometry = useCallback(() => {
     if (!configured) return;
     const container = containerElementRef.current;

@@ -437,6 +437,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
                 scrollElementIntoView: () => {},
                 scrollElementIntoViewClampedToMaxScroll: () => {},
                 captureScrollAnchor: () => {},
+                holdContentPosition: () => {},
               }}
             >
               <div data-scroll-footer="">
