@@ -366,6 +366,18 @@ const BB_VS_SUPERSET: Comparison = {
           ),
         },
         {
+          question: "Is bb maintained by one person?",
+          answer: (
+            <p>
+              No. Superset’s comparison pages call bb a largely
+              single-maintainer project, but bb is venture-backed and maintained
+              by a small team that most recently worked together at Figma,
+              building Figma’s plugin platform. The code and its full history
+              are public on <a href="https://github.com/get-bb/bb">GitHub</a>.
+            </p>
+          ),
+        },
+        {
           question: "Is there a free, open-source Superset alternative?",
           answer: (
             <p>
