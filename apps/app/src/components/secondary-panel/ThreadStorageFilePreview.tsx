@@ -106,10 +106,10 @@ function resolveSecondaryPanelFilePreviewState({
   lineRange,
 }: ResolveSecondaryPanelFilePreviewStateArgs): FilePreviewState {
   const hasCurrentPreview = filePreview?.path === activePath;
+  if (asHttpError(error)?.status === 404) {
+    return { kind: "not-found" };
+  }
   if (error && !hasCurrentPreview) {
-    if (asHttpError(error)?.status === 404) {
-      return { kind: "not-found" };
-    }
     const message = resolveFilePreviewErrorMessage(error);
     return message === null ? { kind: "error" } : { kind: "error", message };
   }

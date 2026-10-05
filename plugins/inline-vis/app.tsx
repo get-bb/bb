@@ -282,6 +282,15 @@ function InlineVisDirective({
           ...(sourceAttr === undefined ? {} : { source: sourceAttr }),
         });
         if (cancelled) return;
+        if (result.kind === "not-found") {
+          previewCache.delete(cacheKey);
+          setState({
+            status: "error",
+            file: result.file,
+            message: `Preview file not found: ${result.file}`,
+          });
+          return;
+        }
         const preview: ReadyPreview = { status: "ready", ...result };
         rememberPreview(previewCache, cacheKey, preview);
         setState(preview);
