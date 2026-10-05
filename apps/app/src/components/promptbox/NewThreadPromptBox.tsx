@@ -294,7 +294,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
       className="w-full"
     >
       <div
-        className={`mb-2 grid gap-2 empty:hidden ${PROMPT_STACK_TRACK_CLASS}`}
+        className={`mb-2 hidden gap-2 has-[>:not(:empty)]:grid ${PROMPT_STACK_TRACK_CLASS}`}
       >
         <ComposerBannersSlot ownerPlacement="before">
           {modeConfig.banner}
