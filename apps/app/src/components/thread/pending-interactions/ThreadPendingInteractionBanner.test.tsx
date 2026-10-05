@@ -278,17 +278,16 @@ describe("ThreadPendingInteractionBanner tool-use approval", () => {
 });
 
 describe("ThreadPendingInteractionBanner request family", () => {
-  it("renders a plan review as a request with plan-verdict actions, resolved through today's approval", () => {
+  it("opens a plan review with visible plan-verdict actions without approving it automatically", () => {
     renderBanner(planReview);
     expect(screen.getAllByText("Ready to code?").length).toBeGreaterThan(0);
-    expect(isHidden(screen.getByTestId("plan-review-request"))).toBe(true);
-    expandBanner();
     expect(isHidden(screen.getByTestId("plan-review-request"))).toBe(false);
     expect(screen.getByTestId("plan-review-request").textContent).toContain(
       "Read labels from the declaration",
     );
     expect(screen.getByText("/tmp/plans/picker.md")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Approve plan" }));
     expect(mocks.resolveMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -303,6 +302,28 @@ describe("ThreadPendingInteractionBanner request family", () => {
         resolution: expect.objectContaining({ decision: "deny" }),
       }),
     );
+  });
+
+  it("allows collapsing a plan review and opens the next plan request independently", () => {
+    const client = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>{bannerElement(planReview)}</MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
+    expect(screen.queryByRole("button", { name: "Approve plan" })).toBeNull();
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          {bannerElement({ ...planReview, id: "pint_plan_next" })}
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Approve plan" })).toBeTruthy();
+    expect(isHidden(screen.getByTestId("plan-review-request"))).toBe(false);
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
   });
 
   it("renders a plugin request through the plugin's pendingInteraction slot, keyed by <pluginId>/<kind>", () => {
