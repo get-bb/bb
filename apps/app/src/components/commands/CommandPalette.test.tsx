@@ -36,7 +36,7 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
-import { recordPaletteVisit } from "@/lib/command-palette/palette-visits";
+import { recordPaletteThreadVisit } from "@/lib/command-palette/palette-visits";
 import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
@@ -1336,8 +1336,8 @@ describe("CommandPalette", () => {
       makeThread("waiting-2", { ...read, hasPendingInteraction: true }),
       makeThread("unread-done", { latestAttentionAt: 5, lastReadAt: 0 }),
     ];
-    recordPaletteVisit("thread", "previous", 1);
-    recordPaletteVisit("thread", "current", 2);
+    recordPaletteThreadVisit("previous");
+    recordPaletteThreadVisit("current");
     renderPalette({ threadId: "current" });
     openThreadSearch();
     await screen.findByRole("option", { name: /Title previous/ });

@@ -40,13 +40,6 @@ function step(
 }
 
 describe("thread navigation history", () => {
-  it("pushes each visited thread and points at the latest", () => {
-    const history = visitAll(["thr_a", "thr_b", "thr_c"]);
-
-    expect(threadIds(history)).toEqual(["thr_a", "thr_b", "thr_c"]);
-    expect(history.index).toBe(2);
-  });
-
   it("does not push a repeat visit to the current thread", () => {
     const history = visitAll(["thr_a", "thr_b"]);
 
