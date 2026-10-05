@@ -6,6 +6,7 @@ import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPromptDraftAccessor,
+  submitPromptDraft,
   usePromptDraftController,
   usePromptDraftInputEmpty,
   usePromptDraftInputThreadIds,
@@ -408,5 +409,178 @@ describe("usePromptDraftController", () => {
     );
 
     expect(result.current.text).toBe("typed");
+  });
+});
+
+describe("prompt submission recovery", () => {
+  it("preserves newer input on acceptance and removes the recovery copy", async () => {
+    const controller = getPromptDraftAccessor(uniqueScope());
+    controller.setDraft({ text: "sent work", mentions: [], attachments: [] });
+    const submitted = controller.getCurrent();
+    let accept = () => {};
+    const sending = submitPromptDraft(
+      controller,
+      submitted,
+      () =>
+        new Promise<void>((resolve) => {
+          accept = resolve;
+        }),
+    );
+    expect(controller.getCurrent().text).toBe("");
+    expect(
+      window.localStorage.getItem(
+        `${controller.storageKey}.pending-submissions`,
+      ),
+    ).toContain("sent work");
+    controller.setTextAndMentions("new work", []);
+    accept();
+    await sending;
+    expect(controller.getCurrent().text).toBe("new work");
+    expect(
+      window.localStorage.getItem(
+        `${controller.storageKey}.pending-submissions`,
+      ),
+    ).toBeNull();
+  });
+
+  it("recovers interrupted submissions after a reload alongside newer persisted input", async () => {
+    const scope = uniqueScope();
+    const controller = getPromptDraftAccessor(scope);
+    controller.setDraft({
+      text: "interrupted work",
+      mentions: [],
+      attachments: [],
+    });
+    let accept = () => {};
+    const sending = submitPromptDraft(
+      controller,
+      controller.getCurrent(),
+      () =>
+        new Promise<void>((resolve) => {
+          accept = resolve;
+        }),
+    );
+    controller.setDraft({ text: "new work", mentions: [], attachments: [] });
+    vi.resetModules();
+    const reloadedStorage = await import("./usePromptDraftStorage");
+    const reloaded = reloadedStorage.getPromptDraftAccessor(scope);
+    expect(reloaded.getCurrent().text).toBe("interrupted work\n\nnew work");
+    expect(reloaded.getCurrent().text).toBe("interrupted work\n\nnew work");
+    expect(
+      window.localStorage.getItem(
+        `${controller.storageKey}.pending-submissions`,
+      ),
+    ).toBeNull();
+    expect(window.localStorage.getItem(controller.storageKey)).toContain(
+      "interrupted work",
+    );
+    accept();
+    await sending;
+  });
+
+  it("isolates concurrent submissions across threads, projects, and composers", async () => {
+    const scope = uniqueScope();
+    const scopes = [
+      scope,
+      { ...scope, threadId: "thr-2" },
+      { ...scope, projectId: "other-project" },
+      { kind: "plugin-new-thread" as const, key: scope.projectId },
+    ];
+    const controllers = scopes.map(getPromptDraftAccessor);
+    const completions: Array<() => void> = [];
+    const sending = controllers.map((controller, index) => {
+      controller.setDraft({
+        text: `work ${index}`,
+        mentions: [],
+        attachments: [],
+      });
+      return submitPromptDraft(
+        controller,
+        controller.getCurrent(),
+        () =>
+          new Promise<void>((resolve) => {
+            completions.push(resolve);
+          }),
+      );
+    });
+    controllers[0].setDraft({
+      text: "second submission",
+      mentions: [],
+      attachments: [],
+    });
+    const second = submitPromptDraft(
+      controllers[0],
+      controllers[0].getCurrent(),
+      () =>
+        new Promise<void>((resolve) => {
+          completions.push(resolve);
+        }),
+    );
+    completions[0]();
+    await sending[0];
+    expect(
+      window.localStorage.getItem(
+        `${controllers[0].storageKey}.pending-submissions`,
+      ),
+    ).toContain("second submission");
+    vi.resetModules();
+    const reloaded = await import("./usePromptDraftStorage");
+    expect(
+      scopes.map(
+        (scope) => reloaded.getPromptDraftAccessor(scope).getCurrent().text,
+      ),
+    ).toEqual(["second submission", "work 1", "work 2", "work 3"]);
+    completions.slice(1).forEach((complete) => complete());
+    await Promise.all([...sending, second]);
+  });
+
+  it("does not resurrect an accepted submission after reloading storage", async () => {
+    const scope = uniqueScope();
+    const controller = getPromptDraftAccessor(scope);
+    controller.setDraft({
+      text: "accepted work",
+      mentions: [],
+      attachments: [],
+    });
+    await submitPromptDraft(
+      controller,
+      controller.getCurrent(),
+      async () => undefined,
+    );
+    vi.resetModules();
+    const reloaded = await import("./usePromptDraftStorage");
+    expect(reloaded.getPromptDraftAccessor(scope).getCurrent().text).toBe("");
+    expect(
+      window.localStorage.getItem(
+        `${controller.storageKey}.pending-submissions`,
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps the draft and does not send when the recovery copy cannot be persisted", async () => {
+    const controller = getPromptDraftAccessor(uniqueScope());
+    controller.setDraft({
+      text: "valuable work",
+      mentions: [],
+      attachments: [],
+    });
+    const submit = vi.fn();
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementationOnce(() => {
+        throw new Error("Storage full");
+      });
+    try {
+      await expect(
+        submitPromptDraft(controller, controller.getCurrent(), submit),
+      ).rejects.toThrow("Storage full");
+      expect(submit).not.toHaveBeenCalled();
+      expect(controller.getCurrent().text).toBe("valuable work");
+      expect(window.localStorage.getItem(controller.storageKey)).toContain(
+        "valuable work",
+      );
+    } finally {
+      setItem.mockRestore();
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { z } from "zod";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
@@ -42,7 +43,7 @@ function normalizeStorageSegment(value: string): string {
   return encodeURIComponent(value.trim());
 }
 
-function readPromptDraft(storageKey: string | null): PromptDraftState {
+function readPromptDraftValue(storageKey: string | null): PromptDraftState {
   if (!storageKey || typeof window === "undefined") {
     return EMPTY_PROMPT_DRAFT;
   }
@@ -63,6 +64,157 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
     draft,
   });
   return draft;
+}
+
+const pendingSubmissionSchema = z.array(
+  z.object({
+    id: z.string(),
+    draft: z.string(),
+  }),
+);
+const activePromptSubmissions = new Set<string>();
+const inspectedPromptSubmissionKeys = new Set<string>();
+
+function readPendingSubmissions(storageKey: string) {
+  const raw = window.localStorage.getItem(`${storageKey}.pending-submissions`);
+  if (raw === null) return [];
+  try {
+    const parsed = pendingSubmissionSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingSubmissions(
+  storageKey: string,
+  submissions: z.infer<typeof pendingSubmissionSchema>,
+): void {
+  const key = `${storageKey}.pending-submissions`;
+  if (submissions.length === 0) window.localStorage.removeItem(key);
+  else window.localStorage.setItem(key, JSON.stringify(submissions));
+}
+
+function mergeRecoveredDraft(
+  recovered: PromptDraftState,
+  current: PromptDraftState,
+): PromptDraftState {
+  if (
+    isPromptDraftEmpty(recovered) ||
+    arePromptDraftStatesEqual(recovered, current)
+  )
+    return current;
+  if (isPromptDraftEmpty(current)) return recovered;
+  const separator = recovered.text && current.text ? "\n\n" : "";
+  const offset = recovered.text.length + separator.length;
+  const paths = new Set(
+    recovered.attachments.map((attachment) => attachment.path),
+  );
+  return {
+    text: recovered.text + separator + current.text,
+    mentions: [
+      ...recovered.mentions,
+      ...current.mentions.map((mention) => ({
+        ...mention,
+        start: mention.start + offset,
+        end: mention.end + offset,
+      })),
+    ],
+    attachments: [
+      ...recovered.attachments,
+      ...current.attachments.filter(
+        (attachment) => !paths.has(attachment.path),
+      ),
+    ],
+  };
+}
+
+function readPromptDraft(storageKey: string | null): PromptDraftState {
+  const current = readPromptDraftValue(storageKey);
+  if (!storageKey || typeof window === "undefined") return current;
+  if (inspectedPromptSubmissionKeys.has(storageKey)) return current;
+  inspectedPromptSubmissionKeys.add(storageKey);
+  const pending = readPendingSubmissions(storageKey);
+  const interrupted = pending.filter(
+    (submission) => !activePromptSubmissions.has(submission.id),
+  );
+  if (interrupted.length === 0) return current;
+  const recovered = interrupted.reduceRight(
+    (draft, submission) =>
+      mergeRecoveredDraft(parsePromptDraftStorage(submission.draft), draft),
+    current,
+  );
+  writePromptDraft(storageKey, recovered);
+  if (
+    window.localStorage.getItem(storageKey) ===
+    serializePromptDraftStorage(recovered)
+  ) {
+    try {
+      writePendingSubmissions(
+        storageKey,
+        pending.filter((submission) =>
+          activePromptSubmissions.has(submission.id),
+        ),
+      );
+    } catch (error) {
+      console.warn(
+        "[prompt-draft] could not clear submission recovery copy",
+        error,
+      );
+    }
+  }
+  return recovered;
+}
+
+export async function submitPromptDraft<Result>(
+  controller: PromptDraftController,
+  draft: PromptDraftState,
+  submit: () => Promise<Result>,
+): Promise<Result> {
+  const serialized = serializePromptDraftStorage(draft);
+  if (serialized === null) return submit();
+  const id = crypto.randomUUID();
+  const { storageKey } = controller;
+  writePendingSubmissions(storageKey, [
+    ...readPendingSubmissions(storageKey),
+    { id, draft: serialized },
+  ]);
+  activePromptSubmissions.add(id);
+  let cleared = false;
+  let accepted = false;
+  try {
+    cleared = controller.clearIfCurrentMatches(draft);
+    const result = await submit();
+    accepted = true;
+    return result;
+  } catch (error) {
+    if (cleared)
+      controller.setDraft(mergeRecoveredDraft(draft, controller.getCurrent()));
+    throw error;
+  } finally {
+    try {
+      if (
+        accepted ||
+        !cleared ||
+        window.localStorage.getItem(storageKey) ===
+          serializePromptDraftStorage(controller.getCurrent())
+      ) {
+        writePendingSubmissions(
+          storageKey,
+          readPendingSubmissions(storageKey).filter(
+            (submission) => submission.id !== id,
+          ),
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "[prompt-draft] could not clear submission recovery copy",
+        error,
+      );
+    } finally {
+      activePromptSubmissions.delete(id);
+    }
+  }
 }
 
 function emitPromptDraftChange(storageKey: string): void {
