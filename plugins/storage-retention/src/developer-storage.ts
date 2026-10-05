@@ -203,10 +203,12 @@ export async function removeDeveloperEntries(
       const source = path.join(root, entry.name);
       try {
         const stats = await fs.lstat(source);
-        if (stats.isSymbolicLink() || !stats.isDirectory())
-          throw new Error(
-            "Development instance must be a directory, not a symbolic link",
-          );
+        if (stats.isSymbolicLink()) {
+          await fs.unlink(source);
+          removed.push(entry.name);
+          continue;
+        }
+        if (!stats.isDirectory()) continue;
         const trash = path.join(
           root,
           `.bb-trash-${entry.name}-${randomUUID()}`,

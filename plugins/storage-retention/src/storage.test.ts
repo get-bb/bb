@@ -1123,3 +1123,39 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it.skipIf(process.platform === "win32")(
+  "removes a symlinked development instance as a link and keeps its target",
+  async () => {
+    const fakeHome = await directory();
+    const rootPath = path.join(fakeHome, ".bb-dev");
+    const target = path.join(fakeHome, "elsewhere", "data");
+    await fs.mkdir(target, { recursive: true });
+    await fs.writeFile(
+      path.join(target, "bb-dev-instance.json"),
+      JSON.stringify({ repoRoot: path.join(fakeHome, "linked", "bb") }),
+    );
+    await fs.mkdir(path.join(rootPath, "plain"), { recursive: true });
+    await fs.writeFile(
+      path.join(rootPath, "plain", "bb-dev-instance.json"),
+      JSON.stringify({ repoRoot: path.join(fakeHome, "plain", "bb") }),
+    );
+    await fs.symlink(target, path.join(rootPath, "linked"));
+    const worker = experimental_createHostEntryHarness(hostEntry);
+    try {
+      expect(
+        await worker.experimental_call("removeDeveloperEntries", {
+          rootPath,
+          names: ["linked", "plain"],
+          candidatePaths: [],
+        }),
+      ).toEqual({ removed: ["linked", "plain"], stoppedProcessCount: 0 });
+      await expect
+        .poll(async () => (await fs.readdir(rootPath)).sort())
+        .toEqual([]);
+      expect(await fs.readdir(target)).toEqual(["bb-dev-instance.json"]);
+    } finally {
+      await worker.experimental_dispose();
+    }
+  },
+);
