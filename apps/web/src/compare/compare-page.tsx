@@ -135,12 +135,13 @@ function BrandHeader({
 }
 
 function CompareTable({ comparison }: { comparison: Comparison }) {
+  const [firstGroup] = comparison.table;
   return (
     <table role="table" className="cmp-table" aria-labelledby="cmp-table-title">
       <thead role="rowgroup">
         <tr role="row">
           <th role="columnheader" scope="col" className="cmp-corner">
-            <span className="cmp-sr">Feature</span>
+            {firstGroup?.title}
           </th>
           <BrandHeader name="bb" logo={{ kind: "bb" }} us />
           <BrandHeader
@@ -152,7 +153,12 @@ function CompareTable({ comparison }: { comparison: Comparison }) {
       </thead>
       {comparison.table.map((group) => (
         <tbody role="rowgroup" key={group.title}>
-          <tr role="row" className="cmp-group">
+          <tr
+            role="row"
+            className={
+              group === firstGroup ? "cmp-group cmp-group-first" : "cmp-group"
+            }
+          >
             <th role="rowheader" scope="rowgroup" colSpan={3}>
               {group.title}
             </th>

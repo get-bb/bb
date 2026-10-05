@@ -278,7 +278,7 @@ export function AgentSplit() {
 
 const MACHINES = [
   { name: "MacBook Air", detail: "This computer", threads: 3 },
-  { name: "Mac mini", detail: "Always on", threads: 5 },
+  { name: "Mac mini", detail: "Always on, at home", threads: 5 },
   { name: "Cloud server", detail: "Linux", threads: 2 },
 ] as const;
 
@@ -476,8 +476,8 @@ export function TeamCost({
         </span>
       </div>
       <p className="cmp-cost-foot">
-        {plan} at ${yearlyPerSeatMonthly}/user/mo billed yearly. Your Claude or
-        Codex plan is separate either way.
+        {plan} at ${yearlyPerSeatMonthly}/user/mo billed yearly. Your agent
+        plans are separate either way.
       </p>
     </div>
   );

@@ -60,8 +60,7 @@
 }
 
 .cmp-team {
-  border-top: 1px solid var(--border-soft);
-  padding: 56px 0;
+  padding: 0 0 72px;
   text-align: center;
 }
 
@@ -320,40 +319,17 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 236px;
-  padding: 8px 10px 10px;
-  border: 1px solid color-mix(in oklab, var(--ink) 22%, var(--bg));
-  border-radius: 10px;
-  background: var(--surface-recessed);
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, var(--bg) 70%, transparent),
-    0 18px 44px color-mix(in oklab, var(--shade) 16%, transparent);
+  width: 230px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 18px 44px color-mix(in oklab, var(--shade) 16%, transparent);
   text-align: left;
 }
 
-.cmp-machines::before,
-.cmp-machines::after {
-  content: "";
-  position: absolute;
-  top: 10px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 25%, var(--bg));
-  box-shadow: inset 0 1px 1px color-mix(in oklab, var(--shade) 30%, transparent);
-}
-
-.cmp-machines::before {
-  left: 8px;
-}
-
-.cmp-machines::after {
-  right: 8px;
-}
-
 .cmp-machines-title {
-  padding: 2px 10px 6px;
-  text-align: center;
+  padding: 2px 6px 6px;
   font-size: var(--text-label-small);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -362,29 +338,15 @@
 }
 
 .cmp-machine {
-  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 32px 8px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  padding: 7px 6px;
+  border-radius: 9px;
 }
 
-.cmp-machine::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  width: 16px;
-  height: 12px;
-  transform: translateY(-50%);
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--border) 0 2px,
-    transparent 2px 4px
-  );
+.cmp-machine + .cmp-machine {
+  border-top: 1px solid var(--border-soft);
 }
 
 .cmp-machines-list {
@@ -592,8 +554,7 @@
   table-layout: fixed;
 }
 
-.cmp-table thead th,
-.cmp-corner {
+.cmp-table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -601,8 +562,21 @@
   border-bottom: 1px solid var(--border);
 }
 
-.cmp-corner {
+.cmp-table thead th.cmp-corner {
+  position: static;
   width: 36%;
+  padding: 14px 12px 10px 0;
+  vertical-align: bottom;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--heading-sub);
+}
+
+.cmp-group-first {
+  display: none;
 }
 
 .cmp-brand {
@@ -866,7 +840,7 @@
     padding: 56px 0;
   }
 
-  .cmp-corner {
+  .cmp-table thead th.cmp-corner {
     width: 34%;
   }
 
@@ -1497,8 +1471,12 @@
     border-bottom: 0;
   }
 
-  .cmp-corner {
+  .cmp-table thead th.cmp-corner {
     display: none;
+  }
+
+  .cmp-group-first {
+    display: block;
   }
 
   .cmp-table thead tr,
