@@ -13,7 +13,7 @@ import {
 
 type PaletteGroupingKind = "project" | "section" | "pinned";
 
-export type PalettePlaceKind = "page" | "setting" | PaletteGroupingKind;
+type PalettePlaceKind = "page" | "setting" | PaletteGroupingKind;
 
 export interface PaletteGrouping {
   kind: PaletteGroupingKind;
