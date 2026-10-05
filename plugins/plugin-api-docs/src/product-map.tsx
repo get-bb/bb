@@ -401,6 +401,86 @@ function SpatialFixture({
   );
 }
 
+const PHONE_COLUMN_WIDTH = 350;
+const PHONE_TOOLBAR_RESERVE = 72;
+
+function PhoneFixture({ children }: { children: ReactNode }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState({
+    scale: 1,
+    height: null as number | null,
+    offsetX: 0,
+  });
+
+  useBrowserLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const measure = () => {
+      const viewport = outer.closest<HTMLElement>(
+        "[data-guide-stage-viewport]",
+      );
+      const viewportHeight = viewport?.clientHeight ?? window.innerHeight;
+      const naturalHeight = inner.offsetHeight;
+      if (naturalHeight === 0 || outer.clientWidth === 0) return;
+      const scale = Math.min(
+        1,
+        outer.clientWidth / PHONE_COLUMN_WIDTH,
+        (viewportHeight - PHONE_TOOLBAR_RESERVE) / naturalHeight,
+      );
+      const height = Math.ceil(naturalHeight * scale);
+      const offsetX = Math.max(
+        0,
+        (outer.clientWidth - PHONE_COLUMN_WIDTH * scale) / 2,
+      );
+      setFit((current) =>
+        Math.abs(current.scale - scale) < 0.001 &&
+        current.height === height &&
+        Math.abs(current.offsetX - offsetX) < 0.5
+          ? current
+          : { scale, height, offsetX },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(outer);
+    observer.observe(inner);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={outerRef}
+      data-guide-responsive-strategy="mobile"
+      data-guide-scale={fit.scale.toFixed(4)}
+      className="w-full overflow-x-clip"
+      style={{ height: fit.height ?? undefined }}
+    >
+      <div
+        ref={innerRef}
+        className="origin-top-left"
+        style={
+          {
+            width: PHONE_COLUMN_WIDTH,
+            marginLeft: fit.offsetX,
+            transform: fit.scale === 1 ? undefined : `scale(${fit.scale})`,
+            [CHIP_COUNTER_SCALE_PROPERTY]: annotationChipCounterScale(
+              fit.scale,
+            ),
+          } as CSSProperties
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function SlideContent({
   group,
   mobile = false,
@@ -471,12 +551,9 @@ function Slide({
 }) {
   if (mobile && viewportMobile && group.id !== "headless") {
     return (
-      <div
-        data-guide-responsive-strategy="mobile"
-        className="mx-auto w-full max-w-[390px]"
-      >
+      <PhoneFixture>
         <SlideContent group={group} mobile />
-      </div>
+      </PhoneFixture>
     );
   }
   if (fixtureResponsiveStrategy(group) === "reflow") {
