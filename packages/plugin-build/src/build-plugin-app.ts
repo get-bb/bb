@@ -31,6 +31,7 @@ import {
   RUNTIME_SLOT_BY_SPECIFIER,
   SHARED_UI_ICON_SPECIFIER,
   SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
+  SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER,
 } from "./runtime-shims.mjs";
 import {
   pluginScopeRoots,
@@ -52,6 +53,10 @@ const SHARED_UI_RUNTIME_MODULES: ReadonlyMap<string, string> = new Map([
   [
     "/shared-ui/src/components/ui/question-form-host",
     SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
+  ],
+  [
+    "/shared-ui/src/components/ui/voice-input-textarea",
+    SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER,
   ],
 ]);
 
@@ -150,7 +155,7 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
         namespace: SHIM_NAMESPACE,
       }));
       build.onResolve(
-        { filter: /(^|\/)(icon|question-form-host)(\.[jt]sx?)?$/ },
+        { filter: /(^|\/)(icon|question-form-host|voice-input-textarea)(\.[jt]sx?)?$/ },
         (args) => {
           if (args.namespace !== "file" || !args.path.startsWith(".")) {
             return undefined;

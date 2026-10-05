@@ -1,8 +1,9 @@
-import { QuestionVoiceInput } from "./QuestionVoiceInput";
+import { VoiceInputTextarea } from "@/components/promptbox/VoiceInputTextarea";
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { QUESTION_SELECT_APP_COMMAND_IDS } from "@bb/domain";
 import { QuestionFormHostProvider } from "@bb/shared-ui/question-form-host";
+import { VoiceInputTextareaProvider } from "@bb/shared-ui/voice-input-textarea";
 import {
   useAppCommandContext,
   useAppCommandShortcuts,
@@ -35,7 +36,6 @@ export function ThreadQuestionFormHost({ children }: { children: ReactNode }) {
         }),
       ),
       registerChoiceHandler,
-      experimental_VoiceInput: QuestionVoiceInput,
     }),
     [bindings, registerChoiceHandler],
   );
@@ -52,7 +52,9 @@ export function ThreadQuestionFormHost({ children }: { children: ReactNode }) {
   );
   return (
     <QuestionFormHostProvider value={value}>
-      {children}
+      <VoiceInputTextareaProvider value={VoiceInputTextarea}>
+        {children}
+      </VoiceInputTextareaProvider>
     </QuestionFormHostProvider>
   );
 }

@@ -50,6 +50,7 @@ beforeEach(() => {
   pane.isFocused = true;
   vi.mocked(useVoiceInput).mockReturnValue({
     state: "idle",
+    microphoneWarning: null,
     isSupported: true,
     unsupportedReason: null,
     stream: null,

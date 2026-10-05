@@ -1,4 +1,5 @@
 import type {
+  ComponentPropsWithRef,
   ComponentPropsWithoutRef,
   ComponentType,
   CSSProperties,
@@ -135,12 +136,6 @@ export interface ExperimentalQuestionShortcut {
  * what choosing an option means.
  */
 export interface ExperimentalQuestionFormHost {
-  /** Host microphone controls; transcripts are editable answers, never auto-submitted. */
-  experimental_VoiceInput?: ComponentType<{
-    disabled: boolean;
-    onTranscript: (text: string) => void;
-    onBusyChange: (busy: boolean) => void;
-  }>;
   /**
    * Shortcut per zero-based option index, as a string (`"0"` is the first
    * option). Missing entries have no binding.
@@ -153,6 +148,31 @@ export interface ExperimentalQuestionFormHost {
    * function to unregister.
    */
   registerChoiceHandler(handler: (index: number) => boolean): () => void;
+}
+
+/**
+ * Props of the host-owned `experimental_VoiceInputTextarea`: a controlled
+ * textarea with bb's voice input. Other textarea attributes, including `ref`
+ * and `className`, reach the underlying `<textarea>`; the caller styles it and
+ * the host adds room for its microphone controls when voice input is
+ * available.
+ */
+export interface ExperimentalVoiceInputTextareaProps
+  extends Omit<
+    ComponentPropsWithRef<"textarea">,
+    "value" | "defaultValue" | "onChange" | "children"
+  > {
+  value: string;
+  /**
+   * Receives typed edits and finished transcripts, which the host appends to
+   * `value`. Transcripts stay editable and are never submitted.
+   */
+  onValueChange(value: string): void;
+  /**
+   * True from the start of recording until transcription finishes or is
+   * cancelled, and false on unmount. Hold submission while it is true.
+   */
+  onVoiceInputActiveChange?(active: boolean): void;
 }
 
 /**
@@ -3633,6 +3653,13 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md for what to audit before the prefix drops.
    */
   experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+  /**
+   * BB's textarea with voice input (see
+   * {@link ExperimentalVoiceInputTextareaProps}): the same microphone
+   * preference, transcription service, and error handling as the prompt box.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_VoiceInputTextarea: ComponentType<ExperimentalVoiceInputTextareaProps>;
   /**
    * BB's controlled provider/model/reasoning picker. Provider changes emit
    * only after the new provider's verified defaults and capabilities resolve,

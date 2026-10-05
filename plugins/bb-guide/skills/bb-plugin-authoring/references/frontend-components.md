@@ -309,6 +309,17 @@ serviceTier?, executionInputSources, environment, input }`. Hand it to
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
   does not fit in a ~420px column.
+- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
+  input (the prompt box's microphone preference, transcription service, and
+  errors). Props: `value`, `onValueChange(value)`, optional
+  `onVoiceInputActiveChange(active)`, and any other textarea attribute,
+  including `ref` and `className`, which reach the `<textarea>`. Style the
+  textarea yourself; bb adds bottom padding and the microphone controls when
+  voice input is supported and renders a plain textarea otherwise (also in
+  `renderSlot`). Transcripts append to `value` and are never submitted. Hold
+  submission while `onVoiceInputActiveChange` reports `true`. The registry's
+  `voice-input-textarea` item re-exports it, and `question-form` uses it for
+  free-text answers. Alias it on import like `experimental_NewThreadComposer`.
 
 
 ## Shared app and provider icons

@@ -92,6 +92,7 @@ import {
   type CheckoutState,
   type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
+  type ExperimentalVoiceInputTextareaProps,
   type PluginEnvironmentProviderInputsRegistration,
   type PluginMachineProviderInputsRegistration,
   type ThreadChatProps,
@@ -887,6 +888,24 @@ function TestPermissionModePicker({
 }
 
 /**
+ * Stand-in for the host-owned voice input textarea: a plain controlled
+ * textarea with no microphone, matching a host where voice input is
+ * unavailable.
+ */
+function TestVoiceInputTextarea({
+  onValueChange,
+  onVoiceInputActiveChange: _onVoiceInputActiveChange,
+  ...props
+}: ExperimentalVoiceInputTextareaProps) {
+  return (
+    <textarea
+      {...props}
+      onChange={(event) => onValueChange(event.target.value)}
+    />
+  );
+}
+
+/**
  * Stand-in for the host-owned source viewer: emits the raw source in a
  * recognizable wrapper carrying the resolved presentation, so plugin tests can
  * assert what they asked the host to render without the real highlighter.
@@ -1078,6 +1097,7 @@ const testPluginSdkApp = {
   ),
   UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_VoiceInputTextarea: TestVoiceInputTextarea,
   experimental_ProviderModelPicker: TestProviderModelPicker,
   experimental_PermissionModePicker: TestPermissionModePicker,
   experimental_BranchPicker: TestBranchPicker,

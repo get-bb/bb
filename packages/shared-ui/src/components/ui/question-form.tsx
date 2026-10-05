@@ -19,6 +19,7 @@ import {
 } from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
+import { VoiceInputTextarea } from "./voice-input-textarea";
 import { usePointerCoarse } from "./hooks/use-pointer-coarse";
 import { cn } from "../../lib/utils";
 import {
@@ -197,8 +198,7 @@ interface QuestionInputBlockProps {
   onSelectOther: () => void;
   onFreeTextChange: (value: string) => void;
   onShortcutSubmit: () => void;
-  onTranscript: (text: string) => void;
-  onVoiceBusyChange: (busy: boolean) => void;
+  onVoiceInputActiveChange: (active: boolean) => void;
   shortcuts: ReadonlyMap<string, QuestionShortcut>;
 }
 
@@ -210,11 +210,9 @@ function QuestionInputBlock({
   onSelectOther,
   onFreeTextChange,
   onShortcutSubmit,
-  onTranscript,
-  onVoiceBusyChange,
+  onVoiceInputActiveChange,
   shortcuts,
 }: QuestionInputBlockProps) {
-  const { experimental_VoiceInput: VoiceInput } = useQuestionFormHost();
   const freeTextRef = useRef<HTMLTextAreaElement>(null);
   const isPointerCoarse = usePointerCoarse();
   const resizeFreeTextArea = useAutoGrow(freeTextRef, {
@@ -281,37 +279,23 @@ function QuestionInputBlock({
         ) : null}
       </div>
       {state.otherSelected ? (
-        <div className="relative mt-2">
-          <textarea
-            ref={freeTextRef}
-            aria-label={freeTextLabel}
-            value={state.otherText}
-            rows={1}
-            autoFocus={!isPointerCoarse}
-            autoComplete="off"
-            onChange={(event) => {
-              onFreeTextChange(event.target.value);
-              resizeFreeTextArea(event.target);
-            }}
-            onKeyDown={handleFreeTextKeyDown}
-            placeholder="Type your own answer…"
-            className={cn(
-              "block w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40",
-              VoiceInput && "pb-12 max-md:pointer-coarse:pb-14",
-            )}
-            style={{
-              minHeight: `${FREE_TEXT_MIN_HEIGHT}px`,
-              maxHeight: `${FREE_TEXT_MAX_HEIGHT}px`,
-            }}
-          />
-          {VoiceInput ? (
-            <VoiceInput
-              disabled={disabled}
-              onTranscript={onTranscript}
-              onBusyChange={onVoiceBusyChange}
-            />
-          ) : null}
-        </div>
+        <VoiceInputTextarea
+          ref={freeTextRef}
+          aria-label={freeTextLabel}
+          value={state.otherText}
+          rows={1}
+          autoFocus={!isPointerCoarse}
+          autoComplete="off"
+          onValueChange={onFreeTextChange}
+          onVoiceInputActiveChange={onVoiceInputActiveChange}
+          onKeyDown={handleFreeTextKeyDown}
+          placeholder="Type your own answer…"
+          className="mt-2 block w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
+          style={{
+            minHeight: `${FREE_TEXT_MIN_HEIGHT}px`,
+            maxHeight: `${FREE_TEXT_MAX_HEIGHT}px`,
+          }}
+        />
       ) : null}
     </fieldset>
   );
@@ -481,13 +465,7 @@ export function QuestionForm({
           onFreeTextChange={(value) =>
             handleFreeTextChange(currentQuestion, value)
           }
-          onTranscript={(text) =>
-            updateQuestionState(currentQuestion, (state) => ({
-              ...state,
-              otherText: `${state.otherText}${state.otherText && !/\s$/.test(state.otherText) ? " " : ""}${text}`,
-            }))
-          }
-          onVoiceBusyChange={setVoiceBusy}
+          onVoiceInputActiveChange={setVoiceBusy}
           onShortcutSubmit={handleAdvance}
           shortcuts={shortcuts}
         />
