@@ -1,4 +1,8 @@
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import {
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -16,6 +20,11 @@ import {
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import {
+  getBbDesktopInfo,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 
 export function SectionSidebarIcon({ name }: { name: IconName }) {
   return <Icon name={name} className={COARSE_POINTER_ICON_SIZE_CLASS} />;
@@ -104,6 +113,7 @@ export function SectionSidebar({
   children,
   isResizing,
   mobileHosted = false,
+  navRailTitle,
   onResizeMouseDown,
   testIdPrefix,
 }: {
@@ -112,21 +122,50 @@ export function SectionSidebar({
   children: ReactNode;
   isResizing: boolean;
   mobileHosted?: boolean;
+  navRailTitle?: string;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   testIdPrefix: string;
 }) {
+  const [desktopInfo] = useState(getBbDesktopInfo);
   const body = (
     <>
-      <SidebarTopReserveRow
-        testId={`${testIdPrefix}-sidebar-top-reserve-row`}
-      />
-      <div className="shrink-0 px-2 py-2">
-        <div className="space-y-1">
-          <SectionSidebarRow active={false} label={backLabel} to={backTo}>
-            <SectionSidebarIcon name="ChevronLeft" />
-          </SectionSidebarRow>
-        </div>
-      </div>
+      {navRailTitle === undefined ? (
+        <>
+          <SidebarTopReserveRow
+            testId={`${testIdPrefix}-sidebar-top-reserve-row`}
+          />
+          <div className="shrink-0 px-2 py-2">
+            <div className="space-y-1">
+              <SectionSidebarRow active={false} label={backLabel} to={backTo}>
+                <SectionSidebarIcon name="ChevronLeft" />
+              </SectionSidebarRow>
+            </div>
+          </div>
+        </>
+      ) : (
+        <SidebarTopReserveRow
+          testId={`${testIdPrefix}-sidebar-top-reserve-row`}
+          besideNavRail
+          renderHeaderSlot={(startInsetClassName) => (
+            <div
+              className={cn(
+                "flex h-full min-w-0 flex-1 items-center",
+                startInsetClassName,
+              )}
+            >
+              <h2
+                className={cn(
+                  "min-w-0 truncate pl-2 text-sm font-medium text-sidebar-foreground",
+                  shouldUseMacosDesktopChrome(desktopInfo) &&
+                    MACOS_CHROME_CONTROL_AXIS_CLASS,
+                )}
+              >
+                {navRailTitle}
+              </h2>
+            </div>
+          )}
+        />
+      )}
       <SidebarContent>
         <div className="min-w-0 px-2">{children}</div>
       </SidebarContent>
@@ -138,11 +177,11 @@ export function SectionSidebar({
     </>
   );
 
-  if (mobileHosted) {
+  if (mobileHosted || navRailTitle !== undefined) {
     return (
       <div
         data-testid={`${testIdPrefix}-sidebar-body`}
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
         {body}
       </div>

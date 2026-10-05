@@ -206,6 +206,16 @@ so they carry over between navigation plugins.
 - Enable it with `bb settings experiment changelogPreview true` to show the
   latest release notes on Settings → Updates.
 
+## Navigation rail
+
+- The `navigationRail` experiment defaults to false.
+- Enable it with `bb settings experiment navigationRail true` to keep a
+  vertical rail of destinations on the left edge of the sidebar on every
+  screen: Home returns to the last thread, Settings sits at the bottom, and
+  New thread moves into the sidebar header.
+- While it is on, the Navigation and Header choices under Settings →
+  Appearance are not used. Narrow windows and phones keep the regular drawer.
+
 ## Timeline windowing
 
 - Long timelines keep stable row wrappers while mounting only rows near the

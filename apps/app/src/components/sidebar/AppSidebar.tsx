@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { flushSync } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
@@ -49,6 +55,7 @@ import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
 import { LazySidebarFooterCustomize } from "./LazySidebarFooterCustomize";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
+import { NavRailNewThreadButton } from "./AppNavRail";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 
@@ -57,6 +64,7 @@ interface AppSidebarProps {
   isResizing: boolean;
   settingsRoutePath: string;
   mobileHosted?: { hidden: boolean };
+  navRail?: { hidden: boolean; rail: ReactNode; alternateBody: ReactNode };
 }
 
 export function AppSidebar({
@@ -64,6 +72,7 @@ export function AppSidebar({
   isResizing,
   settingsRoutePath,
   mobileHosted,
+  navRail,
 }: AppSidebarProps) {
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
@@ -157,11 +166,12 @@ export function AppSidebar({
     [activeThreadId, closeOnMobile, navigate],
   );
 
-  const isHiddenHostedBody = mobileHosted?.hidden === true;
+  const isHiddenHostedBody =
+    mobileHosted?.hidden === true || navRail?.hidden === true;
   const isCompactCustomizeModeActive =
     isCompactViewport && isNavigationCustomizing;
   useEffect(() => {
-    if (isCompactViewport && (!openMobile || isHiddenHostedBody)) {
+    if (isHiddenHostedBody || (isCompactViewport && !openMobile)) {
       setNavigationCustomizing(false);
       setFooterCustomizing(false);
     }
@@ -201,18 +211,33 @@ export function AppSidebar({
     <>
       <SidebarTopReserveRow
         testId="app-sidebar-top-reserve-row"
-        renderHeaderSlot={(startInsetClassName) => (
-          <SidebarHeaderSlot
-            hidden={isNavigationCustomizing}
-            startInsetClassName={startInsetClassName}
-          />
-        )}
+        besideNavRail={navRail !== undefined}
+        renderHeaderSlot={(startInsetClassName) =>
+          navRail ? (
+            <div
+              data-testid="nav-rail-header"
+              data-sidebar-header-slot=""
+              className={cn(
+                "flex h-full min-w-0 flex-1 items-center",
+                startInsetClassName,
+              )}
+            >
+              <NavRailNewThreadButton />
+            </div>
+          ) : (
+            <SidebarHeaderSlot
+              hidden={isNavigationCustomizing}
+              startInsetClassName={startInsetClassName}
+            />
+          )
+        }
       />
       <SidebarNavigationRegion
         isCustomizing={isNavigationCustomizing}
         onCustomizingChange={setNavigationCustomizing}
         focusReturnTargetRef={customizeFocusReturnRef}
         onNavigate={closeOnMobile}
+        providerSuppressed={navRail !== undefined}
       />
       <SidebarContent
         className={cn(isCompactCustomizeModeActive && "hidden")}
@@ -257,18 +282,22 @@ export function AppSidebar({
             onDisclosureCommand={pluginSidebarFooter.handleCommand}
             onNavigate={closeOnMobile}
             builtInActions={[
-              {
-                id: "settings",
-                href: settingsRoutePath,
-                ariaLabel: settingsShortcut
-                  ? `Settings (${settingsShortcut.label})`
-                  : "Settings",
-                ariaKeyShortcuts: settingsShortcut?.ariaKeyshortcuts,
-                onActivate: () => {
-                  closeOnMobile();
-                  void navigate(settingsRoutePath);
-                },
-              },
+              ...(navRail
+                ? []
+                : [
+                    {
+                      id: "settings" as const,
+                      href: settingsRoutePath,
+                      ariaLabel: settingsShortcut
+                        ? `Settings (${settingsShortcut.label})`
+                        : "Settings",
+                      ariaKeyShortcuts: settingsShortcut?.ariaKeyshortcuts,
+                      onActivate: () => {
+                        closeOnMobile();
+                        void navigate(settingsRoutePath);
+                      },
+                    },
+                  ]),
               {
                 id: "mobile",
                 href: "/settings/mobile",
@@ -319,6 +348,20 @@ export function AppSidebar({
           >
             {body}
           </div>
+        ) : navRail ? (
+          <Sidebar ref={sidebarRef}>
+            <div className="flex min-h-0 flex-1">
+              {navRail.rail}
+              <div
+                data-testid="app-sidebar-body"
+                hidden={navRail.hidden}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {body}
+              </div>
+              {navRail.alternateBody}
+            </div>
+          </Sidebar>
         ) : (
           <Sidebar ref={sidebarRef}>{body}</Sidebar>
         )}

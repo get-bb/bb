@@ -59,6 +59,30 @@ describe("Plugins sidebar", () => {
   });
 });
 
+describe("Resource sidebar beside the navigation rail", () => {
+  it("titles the header and drops the back row, since the rail's Home replaces it", () => {
+    render(
+      <MemoryRouter initialEntries={["/plugins"]}>
+        <SidebarProvider>
+          <ResourceSidebar
+            workspace="plugins"
+            appRoutePath="/projects/proj_one"
+            isResizing={false}
+            onResizeMouseDown={() => {}}
+            navRailHosted
+          />
+        </SidebarProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { name: "Plugins" })).toBeTruthy();
+    expect(screen.getAllByText("Plugins")).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Back to app" })).toBeNull();
+    expect(row("Browse plugins").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("plugins-sidebar-body")).toBeTruthy();
+  });
+});
+
 describe("Skills sidebar", () => {
   it("owns only the Skills pages and the app back target", () => {
     renderSidebarAt("skills", "/skills", "/projects/proj_one");

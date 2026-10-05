@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
-import { pluginSourceHref } from "./plugin-directory";
+import { pluginPageHref } from "./plugin-directory";
 
 const pluginsDir = new URL("../../../../plugins/", import.meta.url);
 const guideSourceDir = new URL("plugin-api-docs/src/", pluginsDir);
@@ -90,7 +90,7 @@ describe("Plugin Guide on the web", () => {
 
     const unlinked = SURFACE_GROUPS.flatMap((group) => group.surfaces)
       .flatMap((surface) => surface.firstParty ?? [])
-      .filter((name) => pluginSourceHref(name) === null);
+      .filter((name) => pluginPageHref(name) === null);
     expect([...new Set(unlinked)]).toEqual([]);
   });
 });

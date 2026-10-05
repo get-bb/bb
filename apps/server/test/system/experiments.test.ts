@@ -23,6 +23,7 @@ describe("experiments settings", () => {
         changelogPreview: false,
         serverMove: false,
         performanceDiagnostics: false,
+        navigationRail: false,
       });
     });
   });
@@ -57,11 +58,13 @@ describe("experiments settings", () => {
         changelogPreview: true,
         serverMove: true,
         performanceDiagnostics: true,
+        navigationRail: false,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         serverMove: true,
         performanceDiagnostics: true,
+        navigationRail: false,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -71,6 +74,7 @@ describe("experiments settings", () => {
         changelogPreview: true,
         serverMove: true,
         performanceDiagnostics: true,
+        navigationRail: false,
       });
     });
   });
@@ -84,6 +88,7 @@ describe("experiments settings", () => {
         changelogPreview: true,
         serverMove: true,
         performanceDiagnostics: false,
+        navigationRail: false,
       });
       expect(
         harness.db.$client

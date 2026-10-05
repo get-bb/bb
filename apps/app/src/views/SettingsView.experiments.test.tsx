@@ -18,6 +18,7 @@ function renderSection(
         changelogPreview: false,
         serverMove: false,
         performanceDiagnostics: false,
+        navigationRail: false,
       }}
       onExperimentChange={onExperimentChange}
     />,
@@ -37,6 +38,7 @@ describe("ExperimentsSettingsSection", () => {
   it.each([
     ["Changelog preview", "changelogPreview"],
     ["Server performance diagnostics", "performanceDiagnostics"],
+    ["Navigation rail", "navigationRail"],
   ])("reports %s changes", (label, key) => {
     const onChange = vi.fn();
     renderSection(onChange);

@@ -21,8 +21,8 @@ className?, leadingContent?, messageActions? }` —
   `leadingContent` is a `ReactNode` rendered above the conversation,
   scrolling with it; `messageActions` is a list of
   `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
-  rendered in this instance's per-message action bar after the native and
-  slot-registered actions — `roles` limits the action to `"user"` and/or
+  rendered in this instance's per-message action bar after the native
+  actions (slot-registered `messageAction`s do not appear in `ThreadChat`) — `roles` limits the action to `"user"` and/or
   `"assistant"` messages (omitted = both), and `run(message)` receives the
   same narrow `ThreadChatMessageReference` as the `messageAction` slot;
   errors from `run` are contained and logged, never breaking the timeline.

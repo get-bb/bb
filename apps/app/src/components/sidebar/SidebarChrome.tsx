@@ -21,12 +21,20 @@ const BROWSER_HEADER_SLOT_START_CLASS =
 const MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS =
   "pl-[calc(84px_+_var(--bb-sidebar-control-size)_-_4px)]";
 
+export const NAV_RAIL_WIDTH_CLASS =
+  "w-[calc(var(--bb-sidebar-control-size)_+_24px)]";
+const NAV_RAIL_BROWSER_HEADER_SLOT_START_CLASS = "pl-0";
+const NAV_RAIL_MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS =
+  "pl-[calc(84px_-_4px_-_24px)]";
+
 export function SidebarTopReserveRow({
   testId,
   renderHeaderSlot,
+  besideNavRail = false,
 }: {
   testId: string;
   renderHeaderSlot?: (startInsetClassName: string) => ReactNode;
+  besideNavRail?: boolean;
 }) {
   const closeOnMobile = useCloseMobileSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -47,9 +55,13 @@ export function SidebarTopReserveRow({
       )}
     >
       {renderHeaderSlot?.(
-        reserveMacosTrafficLights
-          ? MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
-          : BROWSER_HEADER_SLOT_START_CLASS,
+        besideNavRail
+          ? reserveMacosTrafficLights
+            ? NAV_RAIL_MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
+            : NAV_RAIL_BROWSER_HEADER_SLOT_START_CLASS
+          : reserveMacosTrafficLights
+            ? MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
+            : BROWSER_HEADER_SLOT_START_CLASS,
       )}
       <SidebarHistoryNavigationControls
         onNavigate={closeOnMobile}

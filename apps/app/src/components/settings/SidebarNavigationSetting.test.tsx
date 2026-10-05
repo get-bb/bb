@@ -33,7 +33,7 @@ describe("SidebarNavigationSetting", () => {
     const store = createStore();
     render(
       <Provider store={store}>
-        <SidebarNavigationSetting />
+        <SidebarNavigationSetting navigationRail={false} />
       </Provider>,
     );
 
@@ -45,16 +45,34 @@ describe("SidebarNavigationSetting", () => {
     const options = (await screen.findAllByRole("menuitem")).map(
       (item) => item.textContent ?? "",
     );
-    expect(
-      options.find((option) => option.startsWith("Automatic")),
-    ).toContain("Chooses Navigation grid (navbar).");
+    expect(options.find((option) => option.startsWith("Automatic"))).toContain(
+      "Chooses Navigation grid (navbar).",
+    );
     expect(options).toHaveLength(3);
     expect(options[1]).toContain("Navigation gridFrom the navbar plugin.");
     expect(options[2]).toContain("Navigation (built-in)BB default.");
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Navigation \(built-in\)/u }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /^Navigation \(built-in\)/u }),
+    );
     expect(store.get(sidebarNavigationProviderAtom)).toBe(
       "navigation/navigation",
     );
+  });
+
+  it("says the choice is on hold while the navigation rail experiment draws the navigation", () => {
+    registerNavigation("navigation", "navigation", "Navigation");
+    render(
+      <Provider store={createStore()}>
+        <SidebarNavigationSetting navigationRail />
+      </Provider>,
+    );
+
+    expect(
+      screen.getByText(/Not used while the Navigation rail experiment is on/u),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Sidebar navigation" }),
+    ).toBeTruthy();
   });
 });

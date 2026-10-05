@@ -168,6 +168,7 @@ export interface SidebarNavigationRegionProps {
   onCustomizingChange: (isCustomizing: boolean) => void;
   focusReturnTargetRef: { current: HTMLElement | null };
   onNavigate?: () => void;
+  providerSuppressed?: boolean;
 }
 
 export function SidebarNavigationRegion({
@@ -175,6 +176,7 @@ export function SidebarNavigationRegion({
   onCustomizingChange,
   focusReturnTargetRef,
   onNavigate,
+  providerSuppressed = false,
 }: SidebarNavigationRegionProps) {
   const replacement = useSidebarNavigationReplacement();
   const preference = useAtomValue(sidebarNavigationProviderAtom);
@@ -220,7 +222,14 @@ export function SidebarNavigationRegion({
 
   useLayoutEffect(() => {
     const nav = navRef.current;
-    if (nav === null || providerKey === null || isCustomizing) return;
+    if (
+      nav === null ||
+      providerKey === null ||
+      isCustomizing ||
+      providerSuppressed
+    ) {
+      return;
+    }
     const record = () => {
       if (nav.querySelector("[data-sidebar-navigation-placeholder]")) return;
       rememberNavigationHeight(
@@ -232,7 +241,7 @@ export function SidebarNavigationRegion({
     const observer = new ResizeObserver(record);
     observer.observe(nav);
     return () => observer.disconnect();
-  }, [isCustomizing, preference, providerKey]);
+  }, [isCustomizing, preference, providerKey, providerSuppressed]);
 
   const handleReload = useCallback(() => {
     if (slot !== null) resetCrashedPluginSlots(slot.pluginId);
@@ -244,6 +253,7 @@ export function SidebarNavigationRegion({
       ref={navRef}
       aria-label="Sidebar navigation"
       data-testid="sidebar-navigation-region"
+      hidden={(providerSuppressed && !isCustomizing) || undefined}
       className={cn(
         isCustomizing && isCompactViewport && "flex min-h-0 flex-1 flex-col",
       )}
@@ -260,7 +270,7 @@ export function SidebarNavigationRegion({
         hidden={isCustomizing || undefined}
         className={isCustomizing ? undefined : "contents"}
       >
-        {slot === null ? (
+        {providerSuppressed ? null : slot === null ? (
           <SidebarNavigationPlaceholder
             state={
               bootSettled

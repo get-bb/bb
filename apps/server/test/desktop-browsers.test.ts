@@ -942,6 +942,124 @@ describe("desktop browser public API", () => {
     });
   });
 
+  it("moves a tab to the live window that reopened it after its old window closed", async () => {
+    await withBrowserTest(async (test) => {
+      const tab = test.tab();
+      test.change({ instanceId: "closed-window" }, [tab]);
+      expect(test.stored()).toEqual([
+        expect.objectContaining({
+          id: tab.tabId,
+          desktopTarget: expect.objectContaining({
+            instanceId: "closed-window",
+          }),
+        }),
+      ]);
+      test.change({}, [{ ...tab, title: "Reopened" }]);
+      await vi.waitFor(() =>
+        expect(test.stored()).toEqual([
+          expect.objectContaining({
+            id: tab.tabId,
+            title: "Reopened",
+            desktopTarget: {
+              hostId: test.scope.hostId,
+              instanceId: test.scope.instanceId,
+              generation: test.scope.generation,
+            },
+          }),
+        ]),
+      );
+    });
+  });
+  it("keeps a tab with its live owner and closes a competing restored view", async () => {
+    await withBrowserTest(async (test) => {
+      const instances = vi.fn(() => ({
+        ok: true as const,
+        result: {
+          instances: [
+            {
+              instanceId: test.scope.instanceId,
+              generation: test.scope.generation,
+              label: "Desktop",
+            },
+            { instanceId: "owner", generation: "owner-gen", label: "Owner" },
+          ],
+        },
+      }));
+      const closed = vi.fn();
+      test.intercept((request) => {
+        if (request.command.type === "desktop.browser.list_instances")
+          return instances();
+        if (request.command.type === "desktop.browser.close_tab")
+          closed(request.command);
+        return null;
+      });
+      const tab = test.tab();
+      test.change({ instanceId: "owner", generation: "owner-gen" }, [tab]);
+      test.change({}, [{ ...tab, url: "https://clone.example" }]);
+      await vi.waitFor(() => expect(instances).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(closed).toHaveBeenCalledWith({
+          type: "desktop.browser.close_tab",
+          instanceId: test.scope.instanceId,
+          generation: test.scope.generation,
+          threadId: test.scope.threadId,
+          tabId: tab.tabId,
+        }),
+      );
+      expect(test.stored()).toEqual([
+        expect.objectContaining({
+          url: tab.url,
+          desktopTarget: expect.objectContaining({ instanceId: "owner" }),
+        }),
+      ]);
+    });
+  });
+  it("retains one owner when two windows restore the same orphan concurrently", async () => {
+    await withBrowserTest(async (test) => {
+      const tab = test.tab();
+      test.change({ instanceId: "closed-window" }, [tab]);
+      const listed = deferred<HostRpcHandlerResult>();
+      const list = vi.fn(() => listed.promise);
+      const closed = vi.fn();
+      test.intercept(({ command }) => {
+        if (command.type === "desktop.browser.list_instances") return list();
+        if (command.type === "desktop.browser.close_tab") closed(command);
+        return null;
+      });
+      test.change({}, [tab]);
+      test.change({ instanceId: "competing-window" }, [tab]);
+      await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+      listed.resolve({
+        ok: true,
+        result: {
+          instances: [
+            {
+              instanceId: test.scope.instanceId,
+              generation: test.scope.generation,
+              label: "First",
+            },
+            {
+              instanceId: "competing-window",
+              generation: test.scope.generation,
+              label: "Second",
+            },
+          ],
+        },
+      });
+      await vi.waitFor(() => expect(closed).toHaveBeenCalledTimes(1));
+      const owner = test.stored().find((value) => value.id === tab.tabId);
+      expect(owner).toMatchObject({
+        desktopTarget: { instanceId: test.scope.instanceId },
+      });
+      expect(closed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instanceId: "competing-window",
+          tabId: tab.tabId,
+        }),
+      );
+    });
+  });
+
   it("updates persisted targets after same-window reconnect and ignores deletion from its old generation", async () => {
     await withBrowserTest(async (test) => {
       const tab = test.tab();

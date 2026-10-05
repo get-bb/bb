@@ -514,6 +514,7 @@ function TestThreadChat({
               role: action.roles?.[0] ?? "assistant",
               text: "test message text",
               sourceSeqEnd: 1,
+              experimental_messageSeq: 1,
             });
           }}
         >

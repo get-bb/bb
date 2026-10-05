@@ -2410,6 +2410,13 @@ retains the drawer, thread list, footer, resize handle, and hidden-body
 shortcut policy. While a provider calls `openCustomize()`, the host renders
 its customize editor in the region and keeps the provider mounted but hidden.
 
+While the default-off `navigationRail` experiment is on, wide viewports do not
+mount this slot: the host draws a persistent rail from the same navigation
+model (items, order, visibility, accessories, split drags) and keeps the
+customize editor. Registrations and `sidebar.navigationProvider` are kept, so
+the picked provider returns when the experiment is turned off. Compact
+viewports still mount the slot.
+
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
 bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
@@ -2489,7 +2496,9 @@ under Settings → Appearance → Header. The component receives `width`,
 `controlSize`, and `isCompactViewport`. The host clips content to the row,
 keeps the window drag region on macOS while interactive descendants opt out,
 hides the header while the navigation customize editor is open, and removes
-it with one toast on a crash. `--bb-sidebar-control-size` and
+it with one toast on a crash. While the `navigationRail` experiment is on,
+wide viewports do not mount this slot because New thread takes the header;
+`sidebar.headerProvider` is kept and applies again when the experiment is off. `--bb-sidebar-control-size` and
 `--bb-sidebar-control-icon-size` expose the header's control sizing.
 
 A plugin that moves its navigation into the header tracks whether its header
@@ -3721,3 +3730,15 @@ with third-party providers.
 `bb.sdk.experimental_promptHistory.list({ cursor?, limit?, signal? })` returns `{ entries, nextCursor }`: every accepted user prompt across projects and threads, newest first, each with `id`, `createdAt`, `input`, `projectId`, and `threadId`. `limit` is a digit string, defaulting to 100 and capped at 1000. `nextCursor` is an opaque string, or null on the last page. A page can hold fewer than `limit` entries while `nextCursor` is set, because stored rows whose input no longer parses are skipped. Prompts from a deleted thread remain listed until the thread row is removed, which cascades to its prompt history. The same route backs `bb prompt-history list`.
 
 Before stabilization, audit whether `limit` should be a number, whether the cursor format needs versioning, whether project or thread filters belong on this call rather than on `projects.promptHistory` and `threads.promptHistory`, and whether skipped rows should fill the page.
+
+## `ThreadChatMessageReference.experimental_messageSeq`
+
+The message reference handed to `messageAction` runs, `ThreadChat` consumer
+message actions, and prose selections carries the event sequence that recorded
+the message. It is the `msg` value of a message link and the seq accepted by
+`sdk.threads.message` and `bb thread log --message`, so a plugin can build or
+resolve a message link without guessing. It equals `sourceSeqEnd` except for a
+steer, which is recorded by its request and shown at its acceptance.
+Stabilize once message links have shipped and the seq has stayed stable across
+edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
+should remain alongside it.
