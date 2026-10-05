@@ -163,18 +163,13 @@ In-app updates are off unless you start bb with `--in-app-updates`:
 `pnpm start --in-app-updates` from a source checkout. bb then runs under a small
 update shim, so Settings → Updates and `bb updates app apply` can update bb
 without a terminal. Without the flag, bb starts as before and Settings → Updates
-shows the npm upgrade command for release installs. Source installs show
-“Source checkout” and the Git commit, or a labeled build version when the commit
-is unavailable. Without the update shim, including `pnpm start:worktree`, the
-row shows the source revision without a freshness indicator. Source checkouts
-are never compared with npm releases. A failed check shows its explanation below
-the row without a question icon. Failed release checks offer a text-only Retry
-button; the SDK can retry with `sdk.system.version({ force: true })`, and
-rerunning `bb updates` retries an uncached lookup. The CLI reports “Latest unknown”
-instead of “Up to date”.
-`GET /api/v1/system/version` and `sdk.system.version()` expose `installKind`
-(`desktop`, `npm`, `source`, or `null` for an unmanaged server) and `currentCommit`
-(the source commit when known, otherwise `null`).
+shows the npm upgrade command for release installs. Source checkouts show their
+Git revision, or a labeled build version when unavailable, and are never compared
+with npm releases. Without the update shim, no freshness indicator is shown.
+Failed checks report “Latest unknown”; release checks can be retried in the UI,
+with `sdk.system.version({ force: true })`, or by rerunning `bb updates`.
+`GET /api/v1/system/version` and `sdk.system.version()` expose nullable
+`installKind` (`desktop`, `npm`, or `source`) and `currentCommit` fields.
 
 - **npm installs** download the new release into
   `<dataDir>/app-versions/<version>/` while bb keeps running, then restart into
