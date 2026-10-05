@@ -226,7 +226,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       )}
 
       <section className="cmp-team" data-reveal>
-        <h2>Built by alumni of</h2>
+        <h2>Built by alumni from</h2>
         <ul className="company-proof-logos cmp-team-logos">
           {TEAM_COMPANIES.map(([name, logo]) => (
             <li key={name} className="company-proof-company">

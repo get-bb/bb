@@ -17,6 +17,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { ClaudeIcon, CursorIcon, OpenAiIcon } from "../landing/icons";
+import { useCycle } from "../landing/landing-visuals";
 
 export type BrandLogo = { kind: "bb" } | { kind: "image"; src: string };
 
@@ -83,12 +84,15 @@ function PhoneStatus({ status }: { status: "running" | "done" | "waiting" }) {
   );
 }
 
+const PROMPT = "Add rate limiting, then start a bb Codex review";
+
 export function AgentSplit() {
+  const { cycle, leaving } = useCycle(11500, 500);
   return (
     <div
       className="cmp-desktop"
       role="img"
-      aria-label="The bb desktop app with two threads side by side: Claude Code starts a Codex thread to review its work, Codex sends its findings back, and Claude fixes them"
+      aria-label="The bb desktop app: you ask Claude Code for a change, it opens a Codex thread in a new split to review it, Codex sends its findings back, and Claude fixes them"
     >
       <div className="cmp-desktop-bar">
         <span className="cmp-desktop-dots" aria-hidden="true">
@@ -98,7 +102,10 @@ export function AgentSplit() {
         </span>
         <span className="cmp-desktop-title">bb</span>
       </div>
-      <div className="cmp-desktop-body">
+      <div
+        className={leaving ? "cmp-desktop-body leaving" : "cmp-desktop-body"}
+        key={cycle}
+      >
         <aside className="cmp-desktop-side">
           <div className="side-act">
             <HugeiconsIcon icon={BubbleChatAddIcon} className="sa-ic" />
@@ -115,11 +122,14 @@ export function AgentSplit() {
                 <span className="trow-title">Add rate limiting to uploads</span>
                 <PhoneStatus status="running" />
               </span>
-              <ul className="threads thread-kids">
+              <ul
+                className="threads thread-kids cmp-anim-in"
+                style={{ animationDelay: "3.4s" }}
+              >
                 <li className="kid-li">
                   <span className="trow trow-kid">
                     <span className="trow-title">Review the rate limiter</span>
-                    <PhoneStatus status="done" />
+                    <PhoneStatus status="running" />
                   </span>
                 </li>
               </ul>
@@ -146,15 +156,14 @@ export function AgentSplit() {
               child={false}
             />
             <ol className="cmp-feed">
-              <li className="cmp-user" style={{ animationDelay: "0.5s" }}>
-                Add rate limiting to uploads. When you’re done, start a bb Codex
-                thread to review it, then fix what it finds.
+              <li className="cmp-user" style={{ animationDelay: "2.3s" }}>
+                {PROMPT}
               </li>
-              <li className="cmp-agent" style={{ animationDelay: "1s" }}>
+              <li className="cmp-agent" style={{ animationDelay: "2.9s" }}>
                 Added a token bucket in <code>upload.ts</code>. Starting a Codex
                 review.
               </li>
-              <li className="cmp-message" style={{ animationDelay: "3.6s" }}>
+              <li className="cmp-message" style={{ animationDelay: "6s" }}>
                 <span className="cmp-message-head">
                   <HugeiconsIcon
                     icon={Message01Icon}
@@ -168,47 +177,73 @@ export function AgentSplit() {
                   X-Forwarded-For, and 429s have no Retry-After header.
                 </span>
               </li>
-              <li className="cmp-agent" style={{ animationDelay: "4.4s" }}>
+              <li className="cmp-agent" style={{ animationDelay: "6.7s" }}>
                 Fixed both. <code>pnpm test</code>{" "}
                 <span className="cmp-ok">passes</span>.
               </li>
             </ol>
-            <div className="cmp-composer">
-              <span className="cmp-composer-head">
-                <HugeiconsIcon
-                  icon={BubbleChatAddIcon}
-                  className="cmp-composer-ic"
-                />
-                Handoff to new thread
-                <HugeiconsIcon icon={Cancel01Icon} className="cmp-composer-x" />
-              </span>
-              <span className="cmp-composer-input">
-                Write release notes for{" "}
-                <ThreadPill
-                  title="Add rate limiting to uploads"
-                  agent="claude"
-                />
-              </span>
-              <span className="composer-row">
-                <span className="model">
-                  <CursorIcon className="model-ic" />
-                  Cursor
-                  <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
+            <div className="cmp-compose-stack">
+              <div className="cmp-composer cmp-compose-prompt">
+                <span className="cmp-composer-input">
+                  <span className="cmp-type">{PROMPT}</span>
                 </span>
-                <span className="composer-actions" aria-hidden="true">
-                  <HugeiconsIcon
-                    icon={AttachmentIcon}
-                    className="composer-clip"
-                  />
-                  <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
-                  <span className="send-btn">
-                    <HugeiconsIcon
-                      icon={ArrowMoveDownLeftIcon}
-                      className="send-ic"
-                    />
+                <span className="composer-row">
+                  <span className="model">
+                    <ClaudeIcon className="model-ic" />
+                    Claude Code
+                    <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
+                  </span>
+                  <span className="composer-actions" aria-hidden="true">
+                    <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
+                    <span className="send-btn cmp-send-pulse">
+                      <HugeiconsIcon
+                        icon={ArrowMoveDownLeftIcon}
+                        className="send-ic"
+                      />
+                    </span>
                   </span>
                 </span>
-              </span>
+              </div>
+              <div className="cmp-composer cmp-compose-handoff">
+                <span className="cmp-composer-head">
+                  <HugeiconsIcon
+                    icon={BubbleChatAddIcon}
+                    className="cmp-composer-ic"
+                  />
+                  Handoff to new thread
+                  <HugeiconsIcon
+                    icon={Cancel01Icon}
+                    className="cmp-composer-x"
+                  />
+                </span>
+                <span className="cmp-composer-input">
+                  Write release notes for{" "}
+                  <ThreadPill
+                    title="Add rate limiting to uploads"
+                    agent="claude"
+                  />
+                </span>
+                <span className="composer-row">
+                  <span className="model">
+                    <CursorIcon className="model-ic" />
+                    Cursor
+                    <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
+                  </span>
+                  <span className="composer-actions" aria-hidden="true">
+                    <HugeiconsIcon
+                      icon={AttachmentIcon}
+                      className="composer-clip"
+                    />
+                    <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
+                    <span className="send-btn">
+                      <HugeiconsIcon
+                        icon={ArrowMoveDownLeftIcon}
+                        className="send-ic"
+                      />
+                    </span>
+                  </span>
+                </span>
+              </div>
             </div>
           </section>
           <section className="cmp-pane cmp-pane-child">
@@ -218,14 +253,14 @@ export function AgentSplit() {
               child
             />
             <ol className="cmp-feed">
-              <li className="cmp-user" style={{ animationDelay: "1.8s" }}>
+              <li className="cmp-user" style={{ animationDelay: "4s" }}>
                 Review the rate limiter on this branch, read-only. Report
                 anything serious.
               </li>
-              <li className="cmp-agent" style={{ animationDelay: "2.2s" }}>
+              <li className="cmp-agent" style={{ animationDelay: "4.6s" }}>
                 Reading <code>upload.ts</code> and its tests.
               </li>
-              <li className="cmp-agent" style={{ animationDelay: "3s" }}>
+              <li className="cmp-agent" style={{ animationDelay: "5.4s" }}>
                 Found 2 issues. Sent them to{" "}
                 <ThreadPill
                   title="Add rate limiting to uploads"
@@ -243,7 +278,7 @@ export function AgentSplit() {
 
 const MACHINES = [
   { name: "MacBook Air", detail: "This computer", threads: 3 },
-  { name: "Mac mini", detail: "Always on, at home", threads: 5 },
+  { name: "Mac mini", detail: "Always on", threads: 5 },
   { name: "Cloud server", detail: "Linux", threads: 2 },
 ] as const;
 

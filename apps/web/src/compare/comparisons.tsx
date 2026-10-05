@@ -86,7 +86,7 @@ const BB_VS_SUPERSET: Comparison = {
   },
   highlights: [
     {
-      title: "Run more agents, solo or as a team. $0 more.",
+      title: "Run more agents, $0 more.",
       wide: false,
       visual: (
         <TeamCost
@@ -116,8 +116,11 @@ const BB_VS_SUPERSET: Comparison = {
         <>
           <p>
             Claude Code builds a feature, Codex reviews it, and Cursor writes
-            the release notes. They pass work back and forth on their own, so
-            you get finished, reviewed work without copying between tools.
+            the release notes.
+          </p>
+          <p>
+            They pass work back and forth on their own, so you get finished,
+            reviewed work without copying between tools.
           </p>
           <div className="providers cmp-providers">
             <span className="label">Works with any agent</span>
@@ -137,7 +140,7 @@ const BB_VS_SUPERSET: Comparison = {
         <>
           <p>
             Start tasks, answer your agents, and approve their work from the bb
-            mobile app or any browser.
+            desktop app, the mobile app, or any browser.
           </p>
           <p>
             Run agents on your laptop, a desktop at home, or a cloud server, and
@@ -160,9 +163,10 @@ const BB_VS_SUPERSET: Comparison = {
           <p>
             When you want more, browse the{" "}
             <a href="/marketplace">plugin marketplace</a> or ask an agent to
-            build exactly what you need: a live background that reacts to your
-            agents, a map of your saved places, or your own X analytics
-            dashboard. Everything you add shows up on your phone too.
+            build exactly what you need: a chief of staff that triages your
+            inbox, a research agent that tracks the topics you follow, or a
+            morning digest of everything your agents did. Everything you add
+            shows up on your phone too.
           </p>
         </>
       ),
@@ -190,9 +194,9 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Away from your desk",
       rows: [
         {
-          feature: "Mobile app",
-          bb: cell("yes", "iOS beta, any browser"),
-          competitor: cell("partial", "iPhone only, iOS 26+", true),
+          feature: "Web access from any browser",
+          bb: cell("yes", "Free with bb Connect"),
+          competitor: cell("no", "No web dashboard"),
         },
         {
           feature: "Run agents on other machines",
@@ -235,6 +239,11 @@ const BB_VS_SUPERSET: Comparison = {
           competitor: cell("partial", "", true),
         },
         {
+          feature: "GitHub integration",
+          bb: cell("yes", "Issues, PRs, checks"),
+          competitor: cell("yes", "PR view with checks"),
+        },
+        {
           feature: "Slack integration",
           bb: cell("no"),
           competitor: cell("partial", "@superset agent bot", true),
@@ -250,9 +259,24 @@ const BB_VS_SUPERSET: Comparison = {
           competitor: cell("no", "Planned, no date"),
         },
         {
+          feature: "iOS app",
+          bb: cell("yes", "TestFlight beta"),
+          competitor: cell("partial", "iOS 26+", true),
+        },
+        {
+          feature: "Android app",
+          bb: cell("partial", "In testing, browser works"),
+          competitor: cell("no", "Waitlist"),
+        },
+        {
+          feature: "macOS",
+          bb: cell("yes", "Apple Silicon app"),
+          competitor: cell("yes", "Apple Silicon and Intel"),
+        },
+        {
           feature: "Linux support",
-          bb: cell("partial", "Alpha"),
-          competitor: cell("partial", "Experimental AppImage"),
+          bb: cell("yes", "Alpha"),
+          competitor: cell("yes", "Experimental"),
         },
       ],
     },
@@ -288,6 +312,26 @@ const BB_VS_SUPERSET: Comparison = {
           feature: "Team plans and SSO",
           bb: cell("no"),
           competitor: cell("partial", "SSO on Enterprise", true),
+        },
+      ],
+    },
+    {
+      title: "Only in bb",
+      rows: [
+        {
+          feature: "Side chats",
+          bb: cell("yes", "Ask without derailing the agent"),
+          competitor: cell("no"),
+        },
+        {
+          feature: "Scheduled send",
+          bb: cell("yes", "Send a message later"),
+          competitor: cell("no"),
+        },
+        {
+          feature: "Voice input",
+          bb: cell("yes", "Dictate prompts"),
+          competitor: cell("no"),
         },
       ],
     },
