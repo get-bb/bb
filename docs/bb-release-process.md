@@ -298,49 +298,22 @@ enforces that on every PR from the `checks` job in `ci.yml`:
 | Version published, packed package differs   | Fail — run `node scripts/bump-plugin-sdk.mjs --patch`.               |
 | Registry unreachable, or local pack failed  | Exit 2; CI logs a warning and continues (infrastructure, not a bug). |
 
-The comparison covers the whole package, not just the declarations: a
-runtime-only change (different `dist/` output, an edited exports entry, a
-widened peer range) leaves `bundled-types/` identical, and publish-if-missing
-would then never ship it. The guard builds the SDK through turbo, runs
-`npm pack` to get exactly what publish would upload, and diffs that against the
-published tarball for the current version:
-
-- every packed file — `bundled-types/*`, `dist/*`, `README.md` — normalizing
-  line endings and end-of-file whitespace
-- the manifest fields consumers resolve against: `exports`, `files`, `main`,
-  `peerDependencies`, `peerDependenciesMeta`, `publishConfig`, `repository`,
-  `types` (compared by value, so key order is not drift)
-
-Comparing `dist/` content is safe because the esbuild bundles are reproducible:
-they embed no timestamps, paths, or hashes, so repeated builds of the same
-commit are byte-identical. Run the guard locally the same way CI does:
+The guard packs the SDK exactly as publish would and compares every packed
+file and the consumer-facing manifest fields with the published tarball, so a
+runtime-only change also needs a version bump. Run it locally the same way CI
+does:
 
 ```bash
 node packages/plugin-sdk/scripts/check-npm-version-guard.mjs
 ```
 
-### One-Time Bootstrap
+### Trusted publishing configuration
 
-npm trusted publishing cannot create a package that does not exist yet, so the
-first release is manual:
-
-1. Publish `@get-bb/plugin-sdk` once by hand from `packages/plugin-sdk` with
-   normal npm authentication (`npm publish`; `publishConfig.access` is already
-   `public`).
-2. On GitHub, restrict the `npm-release` environment to `main` (Settings →
-   Environments → `npm-release` → deployment branches → selected branches,
-   `main` only). `workflow_dispatch` accepts any branch, and the environment is
-   what npm's trusted publisher trusts: without a branch policy, a run from any
-   branch could request the same OIDC identity. The in-file "Require main
-   branch" step is a convenience check that a workflow edit could remove; the
-   environment policy is the control that holds.
-3. On npmjs.com, add a trusted publisher for the package pointing at this
-   repository, the workflow file `.github/workflows/publish-bb-app.yml`, and the
-   `npm-release` environment — the same values `bb-app` uses.
-
-Until all three steps are done, the `publish-plugin-sdk` job fails at
-`npm publish`. That failure is expected and isolated; the bb-app and desktop
-jobs are unaffected.
+The `npm-release` GitHub environment is restricted to `main`; that branch
+policy, not the workflow's "Require main branch" step, is what stops other
+branches from obtaining the publishing OIDC identity. Each package's npm
+trusted publisher points at this repository,
+`.github/workflows/publish-bb-app.yml`, and the `npm-release` environment.
 
 ## Failure Handling
 

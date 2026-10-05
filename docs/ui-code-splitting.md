@@ -45,15 +45,13 @@ with a simple skeleton bar, without fake icons or rows.
 The loader is shared between speculative preload and rendering, including automatic
 retries. Recognized browser JavaScript chunk-download failures get two
 additional attempts after 500 ms and 1500 ms; the loading UI stays visible until
-success or exhaustion. Other loader errors and component render errors fail
-immediately. There is no retry loop, automatic page reload, or URL rewriting.
-A failed import clears the helper's promise cache after the attempts finish. Retry creates a fresh React lazy component,
-so a rejected lazy instance does not permanently trap the feature in its error
-state. Browser module caching can still prevent recovery from a failed download, module
-evaluation, or stale deployment URL; use the browser reload in that case. A blocked
-chunk request in Chromium demonstrated this: retry stayed local but required
-a reload to recover. Errors thrown
-while rendering the loaded subtree are also contained locally.
+success or exhaustion. Other loader errors, CSS-preload errors (retrying can
+skip the failed stylesheet and render an unstyled feature), and component render
+errors fail immediately. There is no retry loop, automatic page reload, or URL
+rewriting. Try again starts a fresh bounded attempt with a new lazy component,
+but the browser's module cache can still keep a failed download or stale
+deployment URL failing; a page reload recovers. Errors thrown while rendering
+the loaded subtree are contained locally.
 
 Do not declare splits during render. Use a literal dynamic import path. Import
 implementation types with `import type` or `typeof import(...)`; do not re-export
@@ -119,18 +117,6 @@ preload does not render hidden UI or run its effects.
 Keep the existing persistent responsive drawer's deferred realization and
 retained content. Avoid rendering a split merely to preload it.
 
-Pilots:
-
-- `LazySidebarFooterCustomize`: render on demand; loading/error retain Done and
-  Escape so slow or failed downloads do not trap customization mode.
-- `LazyFilePreview`: render on demand; its code already warms through the panel
-  shell’s shared Git-diff dependency on workspace-page load, and is explicitly
-  included in panel-open warming.
-- `LazyThreadSecondaryPanel`: prop-aware desktop/drawer placeholders, preload
-  tier, intent on panel toggles, and `mountWhen` first open with `keepMounted`. Opening also warms browser, terminal, new-tab and file-preview code. Closed desktop panels
-  retain a lightweight resizable Panel shell; loaded content stays mounted after
-  closing. Inline failure preserves the resizable Panel structure.
-
 ## Enforce the boundary
 
 Add the heavy source module to `splitBoundaries` in
@@ -156,8 +142,10 @@ node apps/app/scripts/check-bundle-budget.mjs
 Verify a negative control: temporarily make the implementation eager in a
 protected closure, rebuild, and require the checker to reject that module for
 the intended reason. Restore the split and rebuild. Byte budgets alone cannot
-prove that a feature is lazy. Moving code out of boot can increase a page
-journey; report both. Do not increase limits to hide a regression.
+prove that a feature is lazy. Moving code out of boot can increase the page
+journey; report both. Shared chunks move between closures, so byte savings
+from separate splits are not additive; build and check the combined result. Do
+not increase limits to hide a regression.
 
 ## Review loading states
 
@@ -171,31 +159,19 @@ reveal another loading state while the feature fetches data. Keep focus and
 close controls usable, preserve panel geometry, and check the transition to
 real content. Do not add artificial production delays for screenshots.
 
-## Parallel implementation contract
+## Choosing a policy
 
-Establish the helper and pilots on a common base before fanning out. Give each
-child a separate worktree, one feature boundary, and an explicit preload policy.
-Each child returns:
-
-1. A focused diff and independent boundary guard, with an eager-import negative
-   control and before/after boot and route sizes.
-2. Reproduction steps using the real wrapper and its loading/error UI; keep any
-   temporary review harness out of the final diff.
-3. Desktop and compact-width loading, failure, and loaded screenshots, plus
-   observations about focus, close actions, layout shifts, and preserved input.
-4. A running isolated review server, its BB Connect URL, exact story/route and
-   interaction steps, and ownership/cleanup information. Never use production
-   data or give a remote user an inaccessible localhost link.
-5. Focused tests, relevant UI verification, and explicit platform limitations.
-
-Review each loading experience before integration. Build and check the combined
-result too: shared chunk changes mean independent byte savings are not additive.
-
-## Audited loading policies
-
-See [the September 29 loading-policy audit](ui-split-loading-audit.md) for the
-complete inventory, actual mount gates, intent wiring, nested loads and rationale.
-A policy label alone does not make a hidden mounted component lazy. Keep the
-implementation behind an explicit first-use gate, then retain it where closing
-must preserve state. Choose idle warming deliberately for commonly used UI; keep
-customization and content-dependent renderers gated by actual demand.
+- Startup: common UI on the owning page, such as the right-panel shell and the
+  model menu on workspace routes.
+- Idle: commonly used UI that is not needed for first paint, such as the
+  command palette body. Idle warming still spends transfer, parse, and
+  evaluation work on visits that never open the feature.
+- Intent: explicit small targets such as picker and panel-toggle buttons. Never
+  mount a component merely to warm it.
+- Render or data demand: customization, content-dependent views, and optional
+  timeline rows. Avoid speculative loads from hovering many rows while
+  scrolling.
+- A policy label alone does not make a hidden mounted component lazy: gate its
+  first mount explicitly, then retain it where closing must preserve state.
+- Start data fetching outside the code boundary so it runs alongside the import.
+- Do not preload a built-in renderer that a plugin can replace completely.
