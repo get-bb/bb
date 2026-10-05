@@ -106,7 +106,13 @@
     "to their values before the temporary 5% increase. This reduction removes",
     "code instead of moving it into deferred chunks.",
     "prosemirror-dropcursor and prosemirror-gapcursor are forbidden on boot",
-    "and workspace paths to catch accidental extension-barrel reintroduction."
+    "and workspace paths to catch accidental extension-barrel reintroduction.",
+    "",
+    "On 2026-10-05 the SplitWorkspaceRoute raw limit rose 512 bytes for",
+    "question-answer dictation and the plugin voice-input textarea host seam.",
+    "The measured closure is 1,088,001 bytes, 137 above the previous limit.",
+    "The existing voice hook and waveform are reused; compressed limits,",
+    "boot limits, forbidden packages and split guards remain unchanged."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -141,14 +147,8 @@
     "shiki"
   ],
   "splitBoundaries": {
-    "src/components/code/BbDiff.tsx": [
-      "boot",
-      "SplitWorkspaceRoute"
-    ],
-    "src/components/code/BbSourceCode.tsx": [
-      "boot",
-      "SplitWorkspaceRoute"
-    ],
+    "src/components/code/BbDiff.tsx": ["boot", "SplitWorkspaceRoute"],
+    "src/components/code/BbSourceCode.tsx": ["boot", "SplitWorkspaceRoute"],
     "src/components/sidebar/SidebarFooterCustomize.tsx": [
       "boot",
       "SplitWorkspaceRoute"
@@ -205,10 +205,7 @@
       "boot",
       "SplitWorkspaceRoute"
     ],
-    "src/components/commands/PaletteShell.tsx": [
-      "boot",
-      "SplitWorkspaceRoute"
-    ],
+    "src/components/commands/PaletteShell.tsx": ["boot", "SplitWorkspaceRoute"],
     "src/components/ui/markdown-html.tsx": [
       "boot",
       "SplitWorkspaceRoute",
@@ -235,7 +232,7 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 1087864,
+      "maxBytes": 1088376,
       "maxBrotliBytes": 317278,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
