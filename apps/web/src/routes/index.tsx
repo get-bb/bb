@@ -1726,7 +1726,10 @@ function LandingPage() {
           <div
             className="company-proof-track"
             style={
-              { "--company-proof-copies": companyProofCopies } as CSSProperties
+              {
+                "--company-proof-copies": companyProofCopies,
+                "--company-proof-logos": COMPANY_PROOF.length,
+              } as CSSProperties
             }
           >
             <CompanyProofLogos />
