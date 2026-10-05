@@ -158,9 +158,11 @@ function CompareTable({ comparison }: { comparison: Comparison }) {
               group === firstGroup ? "cmp-group cmp-group-first" : "cmp-group"
             }
           >
-            <th role="rowheader" scope="rowgroup" colSpan={3}>
+            <th role="rowheader" scope="rowgroup">
               {group.title}
             </th>
+            <td className="cmp-group-fill cmp-us" aria-hidden="true" />
+            <td className="cmp-group-fill" aria-hidden="true" />
           </tr>
           {group.rows.map((row) => (
             <tr role="row" key={row.feature}>

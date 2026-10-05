@@ -593,6 +593,10 @@
   color: var(--heading-sub);
 }
 
+.cmp-group .cmp-group-fill {
+  border-bottom: 1px solid var(--border);
+}
+
 .cmp-table tbody tr:not(.cmp-group) + tr {
   border-top: 1px solid var(--border-soft);
 }
@@ -1453,6 +1457,10 @@
 
   .cmp-group-first {
     display: block;
+  }
+
+  .cmp-group .cmp-group-fill {
+    display: none;
   }
 
   .cmp-table thead tr,
