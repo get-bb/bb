@@ -494,6 +494,10 @@ both public links. Add `--details --json` or call `system.mobileAppReleases()`
 upload date. The server fetches only public metadata, caches it for five minutes,
 and returns `android: null` if unavailable or inconsistent. Download links remain
 usable during metadata failures. iOS version and release date are shown in TestFlight.
+Inside the Android app, this page compares the installed native build number
+with the published APK and shows whether an update is available. Older apps
+without build-number reporting cannot determine update status. Installed version
+and build are device-local; CLI and SDK release metadata report the published APK.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
 ### Opt-in server performance diagnostics
