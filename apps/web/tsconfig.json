@@ -12,6 +12,7 @@
     "declaration": false,
     "declarationMap": false,
     "noUnusedLocals": false,
+    "resolveJsonModule": true,
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts"]

@@ -32,7 +32,10 @@
         "$TURBO_ROOT$/apps/web/src/**",
         "$TURBO_ROOT$/apps/web/tsconfig.json",
         "$TURBO_ROOT$/apps/web/vite.config.ts",
+        "$TURBO_ROOT$/assets/bb-logo.svg",
+        "$TURBO_ROOT$/packages/shared-ui/src/**",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/plugins/plugin-api-docs/src/**",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/turbo.json"
@@ -517,7 +520,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/changelog-metadata.ts",
-        "$TURBO_ROOT$/changelog-parser.ts"
+        "$TURBO_ROOT$/changelog-parser.ts",
+        "$TURBO_ROOT$/packages/shared-ui/src/**",
+        "$TURBO_ROOT$/plugins/plugin-api-docs/src/**"
       ]
     },
     "@bb/host-daemon#build": {

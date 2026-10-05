@@ -92,7 +92,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function stubCatalog(data: PluginCatalogSearchData) {
+type CatalogFixture = Omit<PluginCatalogSearchData, "categories"> &
+  Partial<Pick<PluginCatalogSearchData, "categories">>;
+
+function stubCatalog(data: CatalogFixture) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -101,6 +104,7 @@ function stubCatalog(data: PluginCatalogSearchData) {
         return jsonResponse({
           results: data.entries,
           collections: data.collections,
+          categories: data.categories ?? [],
         });
       }
       return jsonResponse({ error: "not found" }, 404);
@@ -114,7 +118,7 @@ function LocationProbe() {
 }
 
 function renderBrowse(
-  data: PluginCatalogSearchData,
+  data: CatalogFixture,
   initialEntry = "/plugins",
   onInstall = vi.fn(),
   onOpenPlugin = vi.fn(),

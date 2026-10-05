@@ -355,6 +355,9 @@ setting. When a read-modify-write payload contains conflicting values, the
 value changed from the saved setting wins. Hidden diagnostics do not count
 toward timeline event or byte limits.
 
+The prompt box uses plain-text editing. Markdown delimiters remain visible while
+editing.
+
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
