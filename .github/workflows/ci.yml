@@ -398,7 +398,7 @@ jobs:
           ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
 
       - name: Test
-        run: ${{ matrix.shard == 'packages-build' && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --sequence.shuffle --sequence.seed=42 --maxWorkers=2 ${{ matrix.args }}
+        run: ${{ matrix.shard == 'packages-build' && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --maxWorkers=2 ${{ matrix.args }}
 
       - name: Upload test timings
         if: ${{ !cancelled() }}
