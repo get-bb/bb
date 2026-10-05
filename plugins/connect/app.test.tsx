@@ -812,4 +812,29 @@ describe("Connect settings realtime recovery", () => {
     await slot.findByText("Connected");
     expect(slot.queryByText(/Failed to load/)).toBeNull();
   });
+
+  it("keeps the reconnect status when the earlier load settles late", async () => {
+    let failFirstLoad: (error: Error) => void = () => {};
+    const firstLoad = new Promise<ConnectStatus>((_, reject) => {
+      failFirstLoad = reject;
+    });
+    let calls = 0;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        realtimeConnectionState: "connecting",
+        rpc: {
+          status: () => (++calls === 1 ? firstLoad : connected()),
+        },
+      },
+    );
+
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Connected");
+    await act(async () => failFirstLoad(new Error("tunnel dropped")));
+
+    expect(slot.queryByText(/Failed to load/)).toBeNull();
+    expect(slot.getByText("Connected")).toBeTruthy();
+  });
 });

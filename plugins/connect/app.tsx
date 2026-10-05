@@ -1516,10 +1516,13 @@ function useConnectStatus() {
   const previousConnectionState = useRef(connectionState);
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const latestStatusRequest = useRef(0);
 
   const refetch = useCallback(() => {
+    const request = ++latestStatusRequest.current;
     rpc.call("status").then(
       (result) => {
+        if (request !== latestStatusRequest.current) return;
         const next = asStatus(result);
         if (next !== null) {
           setStatus(next);
@@ -1528,7 +1531,10 @@ function useConnectStatus() {
           setLoadError("Unexpected status payload.");
         }
       },
-      (error: unknown) => setLoadError(errorText(error)),
+      (error: unknown) => {
+        if (request !== latestStatusRequest.current) return;
+        setLoadError(errorText(error));
+      },
     );
   }, [rpc]);
 
