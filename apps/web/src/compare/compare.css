@@ -687,7 +687,7 @@
 }
 
 .cmp-mark-yes {
-  background: color-mix(in oklab, var(--ok) 18%, var(--bg));
+  background: color-mix(in oklab, var(--ok) 22%, var(--surface-recessed));
   color: var(--add);
 }
 
@@ -723,7 +723,11 @@
 
 .cmp-us,
 .cmp-table thead th.cmp-us {
-  background: color-mix(in oklab, var(--ok) 9%, var(--surface-recessed));
+  background: var(--surface-recessed);
+}
+
+.cmp-us .cmp-mark-no {
+  background: color-mix(in oklab, var(--ink) 11%, var(--bg));
 }
 
 .cmp-sr {
