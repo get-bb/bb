@@ -237,7 +237,7 @@ plugin types --check` reports drift). Never list one in `dependencies` —
   non-portal radix, zod, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
-  npm. Managed source installs do.
+  npm. Managed source installs run bb's bundled npm.
 - `EmptyState` ships as `npx shadcn add @bb/empty-state`. The other old bb
   extras (`PageBody`, `Spinner`) are gone — write your own (each is a few
   lines; see `plugins/github/components/` for reference implementations).
@@ -262,7 +262,8 @@ variables — use host token classes (`bg-card`, `text-foreground`,
 `text-muted-foreground`, `border-border`, `text-destructive`, …). Never
 define custom `@theme` colors and never hand-set `oklch(...)`/gray
 literals: the build's Tailwind pass emits default-theme utilities only, and
-hardcoded colors break custom palettes.
+hardcoded colors break custom palettes. `tw-animate-css` utilities also
+compile in plugin builds.
 
 Composer popups register `[{ id, label, component }]` through `experimental_popups`.
 Popup ids must be unique across the plugin's composer customizations.

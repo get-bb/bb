@@ -39,11 +39,15 @@ then exits. Pipe the manual callback code to `account login-complete` with that
 session ID within ten minutes. Codex `--login` prints a device verification
 URL, one-time code, session ID, and an `account login-poll` command that waits
 for authorization. The Claude code stays out of process arguments, and either
-browser may be on a different machine from the bb server. Newly added or
-enabled accounts are available without a plugin reload. With an
+browser may be on a different machine from the bb server. The plugin settings
+page offers the same flows as **Sign in to Claude** and **Sign in to Codex**.
+Newly added or enabled accounts are available without a plugin reload. With an
 enabled account whose secret file remains readable and valid, matching Claude
 Code or Codex sessions receive the pool route and a distinct secret token for
-their machine.
+their machine. Claude Code also receives `ENABLE_TOOL_SEARCH=true`, so tool
+search stays on through the pool, and
+`_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1`, so Opus keeps its 1M context
+window instead of the 200k fallback for custom base URLs.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies them as in-memory app-server config.
 Codex image generation and editing use the same authenticated pool route.

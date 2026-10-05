@@ -7,9 +7,42 @@ editingNotes: Keep flags accurate against the CLI implementation.
 ---
 Provider commands
 
-Manage agents in Settings → Providers. Enabled providers can be reordered, made
-default or disabled through the row menu; disabled providers stay listed at the
-bottom. Install provider plugins in Settings → Plugins.
+Providers are agent backends (e.g., codex, claude-code). Each supports different models.
+
+  bb provider list [--machine <id-or-name> | --environment <id>]
+                                          List available providers
+  bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
+                                          List models for a provider
+
+Use these before spawning threads if you are unsure which provider or model to use.
+`--host` is an alias for `--machine`. Machine and environment selectors are
+mutually exclusive because an environment already selects its machine. When no
+selector is supplied, both commands intentionally inspect the server machine.
+`bb guide threads` describes how `bb thread spawn` picks a default provider and
+model.
+
+Service tiers are provider-defined ids. `bb provider list --json` reports each
+provider's `serviceTiers` ({id, label, description?}); `default` always means
+the provider's standard tier. A model may narrow that list: `bb provider
+models` shows a Service tiers column, and `--json` reports
+`supportedServiceTiers` per model (absent when the provider does not report
+tiers per model, in which case the model accepts every tier the provider
+lists). Pass a tier id to `--service-tier`; a tier the provider does not list
+is rejected.
+
+Model lists answer from the machine's last stored list while a background
+refresh runs, so a list can be hours old. A provider whose refresh keeps
+failing or timing out keeps answering from its last stored list.
+
+When no list can be served, bb provider models prints the failing provider,
+the failure code, and the underlying host message on stderr, then reports the
+empty catalog on stdout. The model pickers show the same underlying message
+beneath their summary line.
+
+Enabling and disabling providers
+
+Manage agents in Settings → Providers. Install provider plugins in Settings →
+Plugins.
 
   bb provider disable <id>
   bb provider enable <id>
@@ -27,41 +60,6 @@ threads use the next enabled provider in saved order, including in projects whos
 last-used provider is disabled. Explicit or existing-thread choices never
 silently switch.
 
-Providers are agent backends (e.g., codex, claude-code). Each supports different models.
-
-  bb provider list [--machine <id-or-name> | --environment <id>]
-                                          List available providers
-  bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
-                                          List models for a provider
-
-Use these before spawning threads if you are unsure which provider or model to use.
-
-Service tiers are provider-defined ids. `bb provider list --json` reports each
-provider's `serviceTiers` ({id, label, description?}); `default` always means
-the provider's standard tier. A model may narrow that list: `bb provider
-models` shows a Service tiers column, and `--json` reports
-`supportedServiceTiers` per model (absent when the provider does not report
-tiers per model, in which case the model accepts every tier the provider
-lists). Pass a tier id to `--service-tier`; a tier the provider does not list
-is rejected.
-`--host` is an alias for `--machine`. Machine and environment selectors are
-mutually exclusive because an environment already selects its machine. When no
-selector is supplied, both commands intentionally inspect the server machine.
-When provider and model are omitted from bb thread spawn, the project's
-remembered defaults apply. If the project has no remembered choice, bb uses
-the explicitly requested provider or Codex, then resolves the model marked
-default by that provider on the target machine (falling back to the first
-catalog model when none is marked).
-
-Model lists answer from the machine's last stored list while a background
-refresh runs, so a list can be hours old. A provider whose refresh keeps
-failing or timing out keeps answering from its last stored list.
-
-When no list can be served, bb provider models prints the failing provider,
-the failure code, and the underlying host message on stderr, then reports the
-empty catalog on stdout. The model pickers show the same underlying message
-beneath their summary line.
-
 Provider-native memory can be controlled on the separate Settings → Providers
 → Codex and Settings → Providers → Claude Code pages. Codex memory controls
 both recall (`memories.use_memories`) and future generation
@@ -71,74 +69,27 @@ when a provider thread is started, resumed, or forked; they do not interrupt
 an active turn. These settings are separate from bb's optional Memory plugin,
 an official plugin bundled with the app.
 
-Provider-native subagents can also be disabled on those provider pages. For
-Codex, bb turns off the native multi-agent feature and caps V2 sessions at the
-root thread so remote session policy cannot start a child. For Claude Code, bb
-removes the native Task tool. The preferences default off and apply
+Provider-native subagents can also be disabled on those provider pages: Codex
+loses its native multi-agent feature and Claude Code its native Task tool. The preferences default off and apply
 when a provider thread is started, resumed, or forked; they do not modify the
 provider's global configuration.
 
-Provider failure recovery
-
-The builtin Provider retry plugin is enabled on fresh installations and
-recognizes structured Codex and Claude Code subscription windows and provider
-overloads. Subscription limits wait for the reported reset plus a short buffer
-and jitter. Overloads use exponential backoff and jitter, starting after 5–10
-seconds. If the provider accepted the failed input, core sends an agent-only
-continuation; if it rejected the input before starting, core re-sends the
-original message as agent-only. Prior output or tool activity does not block
-recovery. Provider-native retries remain authoritative while the provider
-reports that it will retry on its own.
-
-The plugin never blocks a send. It only reacts to a failure, because a
-remembered rate limit is a stale picture of the provider's state: if you raised
-your plan or the window opened early, the next send simply works. Several
-threads on one exhausted subscription therefore each fail once, then each
-schedule their own jittered retry. Automatic recovery stops after five total
-attempts for the turn.
-
-Automatic waits default to a maximum of six hours. Longer reset windows are not
-scheduled. Set `maximumWait` to `24 hours` or `No limit` under the plugin
-settings, or run:
-
-  bb plugin config provider-retry set maximumWait "24 hours"
-
-  bb provider-retry status [thread-id] [--json]    Inspect pending retries
-  bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
-  bb provider-retry retry <thread-id> [--json]     Send a pending retry now
-
-A pending retry is a queued row on the thread, so it survives a server restart
-and appears above the composer with its reason and time. Credit and
-spend-control exhaustion does not reset on a clock, so nothing is scheduled for
-it — waiting does not fix it.
-
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
-or forked provider sessions.
+or forked provider sessions. Claude Code plugin settings (`disable1MContext`,
+`chromeEnabled`, `sandboxEnabled`) are set with
+`bb plugin config provider-claude-code set <key> <value>` and documented in the
+claude-code-provider skill.
 
-Claude Code's **Disable 1M context** provider setting (`disable1MContext`)
-defaults to `false`. Enable it with
-`bb plugin config provider-claude-code set disable1MContext true`.
-bb sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` when enabled and `0` when off.
-Changes restart the thread's Claude process before its next turn, preserving
-conversation context.
-
-Claude Code runs without its Claude in Chrome browser tools under bb by
-default. Enable them with
-`bb plugin config provider-claude-code set chromeEnabled true`. The host needs
-the Chrome extension and a claude.ai login. A change restarts the thread's
-Claude process before its next turn and keeps the conversation.
-
-Claude Code runs Bash commands in its sandbox under bb in Accept Edits and
-Approve for me modes. Disable it with
-`bb plugin config provider-claude-code set sandboxEnabled false` to use Claude
-Code's own command approvals and sandbox settings. A change restarts the
-thread's Claude process before its next turn and keeps the conversation.
+Automatic retries after provider overloads and subscription-window limits
+come from the bundled Provider retry plugin (`bb provider-retry status`); see
+`bb guide plugins`. For a manual retry of a failed turn, use `bb thread retry`.
 
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
-acp-hermes-agent.
+acp-hermes-agent. The acp-provider skill covers OpenCode launch settings,
+OpenCode Go usage, and per-agent compaction support.
 
 bb indexes the native user and project skill roots for Codex, Claude Code, Pi,
 Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility
@@ -149,12 +100,6 @@ Enabled provider plugins also contribute skills to the selected provider's `/`
 command menu. `bb skill list` shows native skills for Claude Code, Codex, and
 Cursor.
 
-BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
-`OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
-values. Native questions have no ACP interaction handler in BB; agents use the
-ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
-custom agents with `dialect: "opencode"` and does not change OpenCode config files.
-
 ACP providers discover models from the agent itself. For acp-opencode, the
 list mirrors the OpenCode catalog, so a custom model from the OpenCode config
 appears automatically. Discover and select one with:
@@ -164,24 +109,9 @@ appears automatically. Discover and select one with:
 
 bb applies the selected model to the ACP session before the first prompt.
 
-OpenCode Go quotas appear in Provider usage for the selected machine after
-signing in to Go in OpenCode on that machine. Inspect the same five-hour,
-weekly, and monthly windows with bb settings usage --machine <id-or-name> --json
-or bb.sdk.system.usageLimits({ hostId, providerId: "acp-opencode" }).
-The collector uses OPENCODE_API_KEY, the active Console account in OpenCode's
-opencode.db, active v2 credential-table API keys or official Console OAuth credentials
-(opencode-go before opencode),
-then OPENCODE_AUTH_CONTENT/auth.json under XDG_DATA_HOME (default
-~/.local/share), including custom launch env overrides. Database storage is read
-only; OpenCode owns refreshing expired sessions.
-Custom OpenCode wrappers need dialect: "opencode" and providerUsage: true.
-This reports the Go subscription, not usage for other OpenCode providers or
-Zen pay-as-you-go spending.
-
-An OpenCode model and an OpenCode agent are different selections. An OpenCode
-agent (build, plan, or a custom primary agent such as an orchestrator) is a
-session mode, not a model. bb does not select OpenCode agents; configure the
-default agent in the OpenCode config and the ACP session uses it.
+An OpenCode agent (build, plan, or a custom primary agent) is a session mode,
+not a model; bb does not select it, so configure the default agent in the
+OpenCode config.
 
 Top-level customModels in the app data-dir config.json adds extra picker
 entries. Each entry has a providerId (a built-in provider id or any acp-*
@@ -219,6 +149,3 @@ Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.
 The bb user and project roots keep higher precedence than matching shared roots.
-
-OpenCode ACP declares support for the built-in /compact command. Cursor ACP does
-not expose compatible manual compaction through ACP.

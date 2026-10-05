@@ -1991,9 +1991,23 @@ On Linux, an absolute `XDG_CONFIG_HOME`
 in the desktop process environment replaces `~/.config` for discovery and known
 Chromium profile locations; relative values are ignored. Flatpak and Snap data
 directories are also searched. On macOS, discovery searches Application Support.
-The desktop app's own profile is excluded. See `bb guide browser` for search
-bounds, encryption limitations, and the `import-sources` / `import-cookies`
-commands. No additional BB setting is required to enable discovery.
+The desktop app's own profile is excluded. No additional BB setting is required
+to enable discovery. See `bb guide browser` for the `import-sources` /
+`import-cookies` commands.
+
+Unknown sources must match a browser application registered for HTTP and HTTPS
+(and the WebBrowser category on Linux), matched against macOS bundle metadata or
+Linux desktop-entry metadata in standard application directories and
+Flatpak/Snap desktop exports; cookie databases of other applications are
+excluded. Canonical database paths deduplicate additional stores, and known
+entries take precedence and keep browser-specific encryption settings.
+Scanning is bounded: 2,000 directories, 100 additional stores, 100 profiles per
+store, three directory levels in standard locations and five inside Flatpak/Snap
+data. Additional Chromium stores use matching known encryption metadata when
+available, otherwise the directory name with the conventional macOS
+`<name> Safe Storage` / `<name>` Keychain identity or Linux keyring application
+name. A missing key reports an import failure; unsupported versioned encryption
+is skipped. Import resolves discovered IDs again before reading a profile.
 
 ### Mobile app downloads
 

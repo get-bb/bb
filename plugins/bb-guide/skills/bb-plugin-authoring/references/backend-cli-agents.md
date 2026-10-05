@@ -91,7 +91,11 @@ Command keys are invocation paths, so `"account add"` declares
 `bb weather account add`. Put every spelling an agent might guess in an
 option's hidden `aliases`, state limits in each `description` because they
 show in `--help`, and express "exactly one of" and "X requires Y" with
-`constraints`. Keep a required ID strict, but when `ctx.projectId` or
+`constraints`. Set `stdin: true` on a secret-bearing string option so
+callers can pipe it: the `bb` CLI reads exactly one non-empty line (at most
+16 KiB) from piped stdin for `--<name>-stdin` and passes it to the plugin as
+`--<name> <value>`, keeping the value out of process arguments. Keep a
+required ID strict, but when `ctx.projectId` or
 `ctx.threadId` holds the value, throw an `PluginCliError` whose `hint`
 prints the exact flag to add. A registration built this way sets
 `rendersHelp`, so `bb weather today --help` reaches the plugin and

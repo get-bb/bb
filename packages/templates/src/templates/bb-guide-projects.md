@@ -61,6 +61,11 @@ Discovery:
   --environment <id> belonging to Personal. Personal has no default project
   source; the selected environment must be ready.
 
+  Path and file searches honor Git ignore rules, including local and global
+  exclusions; tracked and non-ignored untracked files, including hidden files,
+  remain searchable. Non-Git workspaces use filesystem listings. Use
+  `bb file list|paths` for listings that include ignored files.
+
 Attachments:
 
   bb project attachment upload <id>       Upload bytes from the CLI machine
@@ -100,10 +105,5 @@ Sources:
 
   bb project source delete <projectId> <sourceId>
 
-Project source deletion remains available while a project is pending deletion so providers can finish cleanup. A live project must retain at least one source; a deleting project may remove its last source.
-
-Workspace file and path searches honor Git ignore rules, including local and
-global exclusions. Tracked files and non-ignored untracked files remain
-searchable, including hidden files. Non-Git workspaces use filesystem listings.
-Use `bb file list|paths` for filesystem listings that include ignored files,
-subject to their explicit exclusion options.
+  A live project must retain at least one source; a project pending deletion
+  may remove its last source.

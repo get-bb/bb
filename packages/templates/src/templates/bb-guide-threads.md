@@ -7,7 +7,9 @@ editingNotes: Keep flags accurate against the CLI implementation. Run the json-f
 ---
 Thread commands
 
-Every command supports --json for machine-readable output.
+Every command supports --json for machine-readable output. Read-only commands
+take a thread ID or --self where supported; mutating lifecycle and messaging
+commands require an explicit ID or --self.
 
 Spawning:
 
@@ -66,7 +68,7 @@ Spawning:
   Execution defaults resolve from explicit flags, live parent execution, and
   remembered project defaults. With no remembered model, bb uses the explicitly
   requested provider or Codex and resolves its provider-reported default model
-  on the target machine. The product reasoning and permission defaults are
+  on the target machine (or the first catalog model when none is marked). The product reasoning and permission defaults are
   medium and auto.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
@@ -94,14 +96,10 @@ Spawning:
   Worktree, and Personal workspace.
 
 Handoff:
-  In the follow-up model picker, Handoff to new thread starts a new-thread
-  draft with a reference to the source thread. Choose any model, including
-  one from the current provider. Exit handoff restores the original execution
-  settings and keeps draft edits, removing the automatic source reference.
-  Closing the picker keeps handoff active; the composer also has Exit handoff.
-  CLI callers can use bb thread spawn with --provider, --model, --environment
-  and --prompt 'Continue from @thread:THREAD_ID ...'. SDK callers use
-  threads.spawn with the corresponding execution, environment and input fields.
+  The app's Handoff to new thread (in the follow-up model picker) starts a new
+  thread that references the source. From the CLI, run bb thread spawn with
+  --provider, --model, --environment and --prompt 'Continue from
+  @thread:THREAD_ID ...'; SDK callers pass the same fields to threads.spawn.
 
 Forking:
 
@@ -145,9 +143,10 @@ Editing a sent message:
     --expected-request-sequence <seq>   Select the message and reject a stale target
 
   Without --expected-request-sequence, the latest eligible message is edited.
-  Codex, Claude Code, and Pi threads are supported. The original conversation
-  remains unchanged until the provider prepares the replacement history.
-  Failed and incomplete turns are eligible. If the thread is running,
+  Codex, Claude Code, and Pi threads are supported, including failed and
+  incomplete turns; grouped multi-message requests are not editable. The
+  original conversation remains unchanged until the provider prepares the
+  replacement history. If the thread is running,
   submission stops the current turn and waits for it to settle. It then
   replaces the selected turn and every later turn while retaining workspace
   changes. Unsent queued messages remain in the queue and dispatch after the
@@ -215,6 +214,11 @@ Inspecting:
 
   Shows pull request status for the attached environment branch when available.
 
+  `thread context` reads the latest stored context measurement without starting
+  a provider request; `--json` prints `{ usage: ... }` (`null` when unavailable).
+  Claude Code includes an estimated breakdown when available; other providers
+  report totals.
+
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
     --format <format>                      Output format: json, minimal, verbose
@@ -243,11 +247,8 @@ Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
   BB renders the correct project-aware link; do not construct thread URLs manually.
-  Pasting a bare thread URL from the current bb origin into a composer turns it
-  into the same thread pill when the target resolves. Undo restores the URL;
-  paste without formatting (Cmd/Ctrl+Shift+V) keeps it literal. Links with query
-  strings or fragments, quoted/code text, and links to other origins stay literal.
-  CLI prompts can use @thread:<id> directly; URL conversion only runs on a user paste.
+  (Pasting a bb thread URL into the app composer converts it to the same mention;
+  CLI prompts are not converted, so use @thread:<id>.)
   Reference one message as @thread:thr_abc123#msg=42, taking the number from
   sourceSeq in `bb thread search --json`. Read it, or a copied message link
   (…/threads/thr_abc123#msg=42), with `bb thread log thr_abc123 --message 42`.
@@ -457,7 +458,8 @@ Lifecycle:
   place. Use `thread stop` to end a run now.
 
   `thread stop` preserves the thread history, metadata, environment, and future
-  resume behavior. It stops active work and releases an idle agent runtime.
+  resume behavior. It stops active work and releases an idle agent runtime (bb
+  also releases a runtime on its own after 30 idle minutes).
   The command succeeds when no runtime is loaded. Archive a finished hidden
   worker first, then stop it to release memory promptly. A stop that only
   releases an idle runtime adds no interruption: it leaves the timeline and any
@@ -492,29 +494,16 @@ Lifecycle:
 
   Deleting a thread removes its record immediately, but provider-owned
   environment cleanup is asynchronous. Use `bb environment show <id>` to
-  inspect teardown until the lifecycle reaches destroyed.
-
-Read-only commands require a thread ID or --self where supported.
-Mutating thread lifecycle and messaging commands require an explicit ID or --self.
-
-`bb thread context [id]` reads the latest stored context measurement without
-starting a provider request. Use `--self` for the current thread and `--json` for
-`{ usage: ... }` (`null` when unavailable). Claude Code refreshes the estimated
-breakdown after turns and compaction when its SDK supports context inspection.
-A later aggregate-only measurement replaces any older breakdown. Other providers
-continue to expose their available totals.
+  inspect teardown until the lifecycle reaches destroyed. Deleting thread
+  storage first stops processes whose working directory is inside it,
+  including dev servers in nested checkouts (macOS and Linux only).
 
 Lifecycle ownership:
-  spawn and fork accept --lifecycle-owner-thread <id>. SDK arguments use
-  lifecycleOwnerThreadId, also returned in thread responses (null if independent).
-  The owner must be live; projects, hosts and environments may differ.
-  Ownership is immutable. Archive recursively archives/stops dependents; delete
-  recursively deletes them after runtime/storage cleanup. Failed cleanup retries
-  durably. Unarchive the owner before explicitly restoring a dependent. Stop does
-  not cascade. Sidebar parents and ordinary forks retain their existing policies.
+  spawn and fork accept --lifecycle-owner-thread <id> (SDK
+  lifecycleOwnerThreadId, also returned in thread responses, null if
+  independent). The owner must be live; projects, hosts and environments may
+  differ. Ownership is immutable. Archiving the owner archives and stops its
+  dependents; deleting it deletes them. Unarchive the owner before explicitly
+  restoring a dependent. Stop does not cascade. Sidebar parents and ordinary
+  forks keep their own policies.
 
-Thread storage deletion and orphan cleanup stop processes whose working
-directories are inside that storage before removing files, including dev
-servers in nested checkouts. On macOS and Linux this uses the same SIGTERM
-grace period and SIGKILL fallback as worktree removal. Windows does not
-enumerate process working directories.

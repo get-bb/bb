@@ -9,6 +9,12 @@ bb plugin install .            # registers the directory in place (--yes to skip
 bb plugin dev                  # rebuild app/host bundles + reload on every save
 ```
 
+`bb plugin new` needs no running server. It installs the scaffold's npm
+dependencies, including `@get-bb/plugin-sdk` pinned to this bb's exact SDK
+version, and warns when that SDK version is not on npm yet. When npm leaves a
+package out, it prints the manual `npm install --include=dev` step to run
+before `bb plugin build`.
+
 The manifest is `package.json`. This block is illustrative. The scaffold adds
 the current engine values and the entries for its generated surfaces.
 
@@ -35,10 +41,14 @@ the current engine values and the entries for its generated surfaces.
   plugin-owned SQLite. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into minified `dist/app.js` + `app.css` + `app.meta.json`
   (`bb plugin dev` keeps them readable); path and git installs build it
-  automatically at install time. Git installs also
-  run `npm install --omit=dev --omit=optional` first (so a git plugin may use third-party
-  packages) and keep node_modules, since bundling cannot inline data files read
-  at runtime. Runtime imports that bb does not shim belong in `dependencies`.
+  automatically at install time, and a build failure fails the install. Git
+  installs also run `npm install --omit=dev --omit=optional --ignore-scripts`
+  first (so a git plugin may use third-party packages; lifecycle scripts never
+  run) and keep node_modules, since bundling cannot inline data files read at
+  runtime. A committed `dist/` is always replaced by the bundles bb builds.
+  Builtin, official, git, and npm installs whose `dist/server.js` was built
+  for the running SDK major load that bundle instead of the TypeScript source.
+  Runtime imports that bb does not shim belong in `dependencies`.
   Type-only imports can stay in `devDependencies`. A build-required package left in
   `devDependencies` makes the plugin uninstallable from git, and unbuildable
   after any install that omits dev deps — including the packaged CLI's own,
@@ -56,21 +66,23 @@ the current engine values and the entries for its generated surfaces.
   digest, and reuses one worker per plugin generation. Pure JavaScript
   dependencies are bundled; host code may use Node APIs such as
   `child_process`, `fs`, and `fetch`.
-  Installing or updating a git plugin needs `npm` on PATH; checking for
-  updates does not, because a check reads the manifest and never builds. Path
-  installs build from dependencies you have already installed.
-- Git installs use npm, then build declared app, server, and host source. They
+  Path installs build from dependencies you have already installed.
+- Git installs use bb's bundled npm (neither npm nor Node needs to be on
+  `PATH`; `git` does), then build declared app, server, and host source. They
   validate server metadata and host metadata when a host exists. An npm plugin
   with `bb.app` must publish `dist/app.js` and `dist/app.meta.json`. An npm
-  plugin with `bb.host` must publish its host bundle and metadata. Users of
-  prebuilt artifacts need no npm, but managed Git and npm installs need npm on
-  `PATH`.
+  plugin with `bb.host` must publish its host bundle and metadata. Checking for
+  updates reads the candidate's manifest and never installs dependencies or
+  builds, so a candidate that fails to build is reported as available and fails
+  when applied.
 - Building yourself (CI, or verifying a build without a running bb): add
   `bb-app` to `devDependencies` and set `"build": "bb plugin build"`.
   `bb plugin build` needs no running server, but the manifest still needs
-  `bb.server`. Depending on `bb-app@X` builds
-  against exactly that release's shim configuration. bb downloads its build
-  toolchain on first use, so cache `<dataDir>/plugins/toolchain-*` in CI.
+  `bb.server`; only `bb plugin dev` needs a running bb, because it reloads the
+  installed plugin. Depending on `bb-app@X` builds
+  against exactly that release's shim configuration. bb downloads a pinned
+  esbuild and Tailwind toolchain on a machine's first git or path build (never
+  for a prebuilt npm install), so cache `<dataDir>/plugins/toolchain-*` in CI.
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.

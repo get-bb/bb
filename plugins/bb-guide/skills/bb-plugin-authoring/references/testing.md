@@ -212,7 +212,10 @@ arbitration. Use a live loop for those host boundaries.
 - `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
   artifacts → reload; open app pages pick new UI up live and
   host workers move to the new generation on their next call. Build/reload
-  failures print and keep watching. The dev loop writes readable (unminified)
+  failures print and keep watching (a failed build skips that cycle's
+  reload). The directory must already be installed (`bb plugin install .`);
+  the watcher ignores `dist/`, `node_modules/`, and `.git/`, batches saves,
+  and prints one line per cycle. The dev loop writes readable (unminified)
   `dist/app.js` + `app.css`; `bb plugin build` and installs minify them.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
@@ -247,6 +250,10 @@ Remaining reference examples in `examples/plugins/`:
   needsConfiguration.
 - `agent-enrichment` — agent surfaces: CLI command, zod-schema native tool,
   docs mention provider, boolean setting, bundled `skills/` directory.
+- `composer-customization` — every composer customization region.
+
+Thread Hover Cards, an out-of-repo example, installs from the BB Community
+marketplace (source: https://github.com/brsbl/bb-plugins).
 
 ## Gotchas
 

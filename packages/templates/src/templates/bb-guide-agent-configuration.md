@@ -71,13 +71,12 @@ Skills (.bb/skills/):
   machine's global agent skill roots (`~/.agents/skills` and
   `~/.claude/skills`) so agents running outside bb can drive it. It installs on
   every connected machine unless you pass `--machine <id-or-name>`, which is
-  repeatable. Settings → Skills exposes the same action; it asks which machines
-  only when more than one is enrolled. Machines install independently, so the
-  command reports each machine's outcome and exits non-zero if any failed. The
-  install replaces a previously installed copy of the same skill and leaves
-  other skills alone. `bb skill cli-skills-status` reports whether each machine
-  is installed, out of date, missing, or unknown (disconnected or unreachable);
-  the settings row shows the same as a badge.
+  repeatable (Settings → Skills has the same action). Machines install
+  independently, so the command reports each machine's outcome and exits
+  non-zero if any failed. The install replaces a previously installed copy of
+  the same skill and leaves other skills alone. `bb skill cli-skills-status`
+  reports whether each machine is installed, out of date, missing, or unknown
+  (disconnected or unreachable).
 
   Use the skill-creator skill to author and iterate on skills.
 
@@ -97,11 +96,3 @@ BB guide plugin:
 
   Changes apply when agent configuration is next assembled. They do not erase
   existing conversation text or disable independently installed copies.
-
-Connect agent instructions:
-
-  Settings → Installed plugins → Connect → Tell agents about remote access
-  controls the message telling remotely used agents to expose public server
-  links. It defaults to true and still requires active/recent remote usage.
-  Use `bb plugin config connect set sendRemoteInstructions false` to turn it
-  off. Port sharing remains available.

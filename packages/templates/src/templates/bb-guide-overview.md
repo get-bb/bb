@@ -64,10 +64,10 @@ Run `bb guide <chapter>` for command details:
                        server
   terminals            Persistent PTY sessions across all supported scopes
   browser              Experimental built-in browser tabs and control leases
-  customization        Theming the app palette, settings, mobile push
-                       notifications
-  plugins              Installing plugins, plugin marketplaces, and their
-                       contributed bb commands
+  customization        Theme, server-backed settings, keyboard shortcuts,
+                       sidebar preferences, host files, voice
+  plugins              Installing plugins, plugin marketplaces, bundled
+                       plugins, and their contributed bb commands
   automations          Scheduling and editing recurring or one-shot work
   json                 The --json contract: output shapes and the error envelope
   commands [group]     Every core command on one page; add a group for options
