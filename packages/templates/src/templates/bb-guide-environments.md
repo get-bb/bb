@@ -43,7 +43,7 @@ Making your repo work with bb:
   operation while the daemon remains alive. Hook state is held only in daemon
   memory; a daemon restart leaves an interrupted hook outcome unknown.
 
-  A non-zero exit, timeout, signal, or cancellation fails provisioning and bb
+  A non-zero exit, timeout (15 minutes), signal, or cancellation fails provisioning and bb
   removes the new worktree after confirming the script has stopped. An unknown
   hook outcome blocks automatic cleanup and requires inspection before recovery.
   Keep optional setup steps non-fatal inside the
@@ -195,10 +195,7 @@ bb account (getbb.app sign-in):
   browser and bb finishes signing in on its own. Every command accepts
   `--json`. `bb account status` reports a paired bb whose account hasn't
   loaded yet as pending; it keeps retrying. `bb account logout` says so when
-  getbb.app didn't confirm revoking the server. In a source checkout,
-  `pnpm dev` points sign-in at that worktree's local Cloud origin through
-  `BB_DEV_CONNECT_BASE_URL`; an explicit `--base-url` still wins, and a
-  development build also accepts `http://bb.localhost:<port>` there.
+  getbb.app didn't confirm revoking the server.
 
 Remote access (bb connect):
 
@@ -271,19 +268,3 @@ Explicit environment or project deletion bypasses the retirement grace, includin
 `bb environment providers --json` includes each choice’s `description` and `icon`, as well as its label, inputs, and availability.
 
 `bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine, and reports each provider's `machineAvailability` per machine in `--json`. Add `--machine <id>` to scope structural eligibility to that machine and print its availability: `available`, `setup-required`, `unavailable` with the plugin's reason, or `unknown` while the background probe has not answered. Listing never waits on a machine; probes run in the background, are cached for ten minutes per project and machine, and are checked afresh for the selected provider and machine during thread creation.
-
-BB source checkout startup
-
-  In the BB repository, `pnpm start:worktree` prepares and serves production
-  artifacts using stable checkout-specific dev data and ports (no Vite).
-  Add `--dryrun` to `pnpm start` or `pnpm start:worktree` to prepare through
-  Turbo, print resolved paths/ports, and exit. It does not launch services,
-  migrate instance data or require ports to be free. It still writes artifacts
-  and may repair native modules. Install dependencies beforehand when needed.
-  Both normal and dry-run startup preserve their runtime policy and use the same
-  dotenv settings. Preparation writes the
-  checkout's build files; warm a separate staging checkout's cache if the live
-  instance still serves those paths. Keep the serving checkout path stable to
-  preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
-  sequence and source programmatic helpers. These are repository maintenance
-  commands, not environment lifecycle hooks or installed `bb` commands.

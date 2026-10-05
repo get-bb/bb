@@ -133,11 +133,10 @@ bb updates app apply Download the update and restart bb into it
 bb updates app dismiss Mark the last update result as seen
 
 `bb updates apply` covers provider CLIs only. `bb updates app apply` updates
-bb itself when it was started from `npx bb-app` (or a global `bb-app`) or with
-`pnpm start` from a `main` checkout, without `--no-in-app-updates`: it installs the new version next to the
+bb itself when it was started from `npx bb-app` (or a global `bb-app`) without
+`--no-in-app-updates`: it installs the new version next to the
 running one and restarts into it. It does not roll back if the new version
-fails to start. Source checkouts update only from a clean `main` that
-fast-forwards to `origin/main`.
+fails to start.
 Desktop users update through the desktop app's relaunch; development servers
 and `bb-server` cannot update themselves. Connected daemons follow the server
 version automatically.
@@ -159,9 +158,8 @@ bb project source add <projectId> --machine <id-or-name> --path <path>
 For thread spawning, machine targeting works with an unmanaged workspace path,
 a new managed worktree, or the personal workspace. Do not combine it with an
 existing environment ID: the reused environment already selects its machine.
-`--new-machine` creates through a machine provider and uses its advertised
-environment row when declared. Otherwise add `--environment-provider <id>`
-(required for SSH). Use `--environment-inputs <json>` for workspace configuration,
+`--new-machine` creates through a machine provider and always needs an explicit
+`--environment-provider <id>`. Use `--environment-inputs <json>` for workspace configuration,
 separately from `--machine-inputs <json>`. Machine inputs are persisted and
 readable by plugins; never put secrets there. Store credentials in plugin settings and pass only
 non-secret configuration or references.
@@ -171,7 +169,9 @@ checkout, core clones the project's Git remote and registers a source on the
 connected machine before creating that environment. Existing sources are reused.
 Automatic setup uses a stable per-project target and shares concurrent setup on
 the same host. After a server restart, it registers a completed checkout whose
-remote matches instead of cloning again; a conflicting target is refused.
+remote matches instead of cloning again; a conflicting target is refused. bb
+owns a checkout it cloned (here or with `project source add --clone`), so
+environments in it run `.bb-env-setup.sh` and `.bb-env-teardown.sh`.
 The project needs a Git remote and the machine needs Git access to it. Choosing
 Personal workspace first does not clone a project. Standalone `bb machine create`
 does not set up a project source and remains available until explicitly removed.
@@ -195,7 +195,10 @@ unpaired provider reports setup required. `bb settings show --json` includes
 fresh provider availability and the effective selection; failed or timed-out
 checks report unavailable without acquiring a grant. Settings and creation
 banners refresh this status when the access provider signals a change. Machines use this
-access for ongoing runtime requests, including account-pool endpoints.
+access for ongoing runtime requests, including account-pool endpoints. A
+machine on bb connect access holds a getbb.app machine credential that
+`bb machine remove` revokes; if that revocation fails, revoke the machine in
+the getbb.app dashboard.
 
 ## Move the server
 
@@ -203,7 +206,7 @@ Moving the server is experimental and off by default. Turn on the `serverMove`
 experiment in Settings → Experiments or with
 `bb settings experiment serverMove true`; until then Settings → Machines hides
 Move server here, and `bb server move`, `bb server export`, and deleting an old
-server copy from the server are refused.
+server copy from the server are refused with `server_move_experiment_disabled`.
 
 Agents must not move a server, abandon a move, or unlock an old copy without
 the user's explicit confirmation in the conversation. Run `--check`, show the
@@ -235,7 +238,8 @@ checkouts stay on the machines that own them.
 
 When the target never confirms that it took over, the move waits in
 `recovery_required`: the old server stays up and read-only, and bb finishes the
-move on its own once the target answers. `bb server move` and
+move on its own once the target answers. `bb server move` exits 0 once moved
+and 1 when the move fails or is cancelled. It and
 `bb server move status` exit 2 in that state and name the exits:
 `bb server move cancel` abandons the move and keeps the server here (it asks
 first, since abandoning while the target took over leaves two servers; `--yes`
@@ -313,6 +317,7 @@ Reconnect a disconnected machine whose server access or host key was revoked
 or became stale, without changing its BB host ID:
 
   bb machine reconnect <id-or-name>       Print a short-lived reconnect command and wait for reconnection
+                                          (refused for a connected machine)
     --json                                Print the command and expiry without waiting
 
 Run the printed command on the affected machine. It is a one-time enrollment
@@ -456,6 +461,9 @@ polling does not renew it. Restart machine setup if the plugin or server restart
 For a new thread on a new Modal sandbox, select the environment composition:
 `bb thread spawn --project <id> --environment-provider modal-sandbox --prompt "..."`.
 It creates the machine, prepares the project checkout, and runs environment setup.
+A composed environment chooses its own machine: machine selectors are refused,
+and `--machine-inputs <json>` configures that machine (for example
+`{"preset":"Large","image":"Node 22"}`).
 Progress and failures appear in the thread's provisioning details. If cloning
 fails, the machine remains available for retry or explicit removal.
 `--new-machine <id>` requires an explicit `--environment-provider <id>`; machine

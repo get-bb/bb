@@ -19,8 +19,10 @@ app uses ~/.bb/theme/…). The folder name is the theme id.
   bb theme list                  Built-in and custom themes; shows the active one
   bb theme dir                   Print the custom-theme directory (where to author)
   bb theme set <id> [--favicon-color <color>]
-                                 Activate a theme, preserving the favicon color
-                                 unless the flag supplies the complete selection
+                                 Activate a theme (built-ins: default, nord,
+                                 dracula, solarized, gruvbox, catppuccin),
+                                 preserving the favicon color unless the flag
+                                 supplies the complete selection
   bb theme show [id] [--css]     Print the active palette, or resolve <id> without
                                  activating it; --css dumps the CSS
   bb theme reset                 Back to the default theme; preserve favicon color
@@ -28,7 +30,9 @@ app uses ~/.bb/theme/…). The folder name is the theme id.
   bb theme favicon reset         Reset favicon color; preserve the active theme
 
 To author a custom theme, run `bb theme dir`, write <that-dir>/<name>/theme.css,
-then `bb theme set <name>`. Optional `pierre-dark.json` / `pierre-light.json`
+then `bb theme set <name>`. A name has at most 64 characters, starts with a
+letter or digit, then uses letters, digits, `.`, `_`, or `-`; avoid built-in
+ids. Optional `pierre-dark.json` / `pierre-light.json`
 (or a `theme.json` `codeTheme` field) ship the matching code colors. Built-in
 palettes use the matching Shiki pair. The full design-token reference is in
 the bb-cli skill (references/theming.md).
@@ -113,8 +117,10 @@ The sidebar navigation rows (New thread, Search, Plugins, Skills, plugin
 panels) are drawn by the Navigation builtin plugin. Their order and
 visibility are `bb settings ui` keys (`sidebar.pluginPanelOrder`,
 `sidebar.visiblePluginPanels`), shared by any navigation plugin chosen with
-`sidebar.navigationProvider`. `sidebar.headerProvider` picks a plugin that
-draws controls beside the sidebar toggle; it defaults to `__builtin__`.
+`sidebar.navigationProvider`. It defaults to `__automatic__`: an installed
+navigation plugin wins over the bundled `navigation/navigation` (legacy
+`__builtin__` resolves to the bundled one). `sidebar.headerProvider` picks a
+plugin that draws controls beside the sidebar toggle; it defaults to `__builtin__`.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
@@ -126,15 +132,6 @@ in all builds. Turn it on to show provider environment resolution and unhandled
 provider events. Warnings, errors, and model fallback stay visible. Existing
 unhandled-event preferences are preserved. Set it with
 `bb settings general showDiagnosticEvents <true|false>`.
-
-Settings → General → Show Git changes and Commit button controls the git
-summary, expanded file list, and Commit action in the thread header and overflow
-menu.
-`showGitChanges` defaults to true; use
-`bb settings general showGitChanges false` to hide them, or true to restore them.
-The server saves this preference across reloads and shares it across connected
-clients. PR status and workspace warnings remain visible. SDK callers can update
-`showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
 
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
@@ -153,7 +150,8 @@ remain non-interactive.
 Settings → General also includes `streamerMode`, which defaults to false. Turn
 it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The
-entries stay in the config file.
+entries stay in the config file; a request that names a hidden model still
+runs with it, and default model resolution still sees the full list.
 
 Settings → Providers includes `allowFastServiceTier`, which defaults to true.
 Set it to false with `bb settings general allowFastServiceTier false` to hide
@@ -164,11 +162,16 @@ changed. Turn it back on to choose a faster tier again; project
 defaults saved while it was off retain the default tier.
 
 Settings → General includes `managedBranchPrefix`, which defaults to
-`bb/`. bb puts it in front of every branch name it creates for a worktree, so
+`bb/` (at most 64 characters). bb puts it in front of every branch name it
+creates for a worktree or a new checkout branch, so
 the default gives `bb/fix-login-flow-thr_ab12cd34ef`. Set `sawyer/wt-` to get
 `sawyer/wt-fix-login-flow-thr_ab12cd34ef`, or clear it for no prefix. bb rejects
 a prefix that cannot start a valid git branch name. The new prefix applies to
-branches bb creates after the change.
+branches bb creates after the change; existing branches keep their names.
+
+`providerOrder` (default `[]`) is a JSON array of provider ids, and
+`defaultProviderId` (default `null`) names the default provider; `null` clears
+it.
 
   bb settings show
   bb settings ai-services
@@ -179,7 +182,7 @@ branches bb creates after the change.
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
-  bb settings reload
+  bb settings reload              Reload bb-managed configuration
 
 `bb settings ai-services` shows which AI service writes thread titles (and so
 branch names), commit messages, and voice transcripts, plus every service a
@@ -193,16 +196,19 @@ choice. Settings → AI services has the same controls. Each plugin chooses its
 own model.
 
 `bb settings general` accepts any key from `generalSettings` in
-`bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
+`bb settings show`; an unknown key or wrongly shaped value is rejected with the
+list of known keys. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
 
 `bb settings completed-turns` lists how each provider shows a finished turn:
 `collapse` folds the turn's work into one "Worked for" row and keeps the final
 answer visible, and `flat` keeps every step visible. Each provider has a
-default (Claude Code is `flat`, the other first-party providers `collapse`).
+default (Claude Code is `flat`, the other first-party providers `collapse`);
+`--json` shows whether each value comes from your setting or that default.
 `bb settings completed-turns <provider-id> <collapse|flat>` overrides it for
-that provider, and `default` removes the override. Settings → Providers has
-the same per-provider switch.
+that provider, and `default` removes
+the override. It applies to existing threads too, including `bb thread log`.
+Settings → Providers has the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
@@ -230,6 +236,7 @@ Machines and the server-backed `bb server move` and `bb server export`
 commands. Enable it with `bb settings experiment serverMove true`.
 
 Long timelines and large expanded timeline details mount only nearby rows.
+iPhone and iPad browsers, including the iOS app, keep every loaded row mounted.
 
 Thread timeline pages select complete conversation groups using
 `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` (default 1500) as a selection budget.
@@ -310,19 +317,6 @@ bindings in the same update; plugin defaults yield to explicit bindings.
 
 Push notifications
 
-For a standalone development APK from a source checkout, run
-`pnpm mobile:apk:dev`. It writes `apps/mobile/build-output/bb-dev.apk`, named
-**bb dev** with orange icons and separate package `app.getbb.mobile.dev`.
-Append `-- x86_64` for an Intel emulator. The command sets
-`BB_MOBILE_VARIANT=dev`; direct Expo commands default to `production`.
-The dev variant skips production Firebase and HTTPS app-link registration.
-See `apps/mobile/README.md` for prerequisites and per-thread artifact delivery.
-
-Android source builds accept `GOOGLE_SERVICES_JSON` (path to Firebase Android
-configuration), with `apps/mobile/google-services.json` as a local fallback.
-It is optional for building the app, required for Android push delivery.
-See `apps/mobile/README.md` for EAS file variables, signing, and Play uploads.
-
 The built-in Push notifications plugin sends mobile updates through Expo and
 system notifications to connected web and desktop clients. Web tabs or desktop
 windows must stay open; browser permission is requested in the plugin settings.
@@ -348,7 +342,8 @@ permission; OS notification settings still control whether a banner appears.
 Host files and voice transcription
 
   bb file read|write|list|paths|mkdir|move|remove ...
-  bb voice transcribe <audio-file> [--prompt <context>]
+  bb voice transcribe <audio-file> [--type <mime>] [--prompt <context>]
+                                   --type defaults to audio/webm
 
 Voice transcription uses the Voice input service chosen with
 `bb settings ai-services set voice <automatic|off|service-id>`. bb accepts
@@ -358,7 +353,9 @@ in the app, the error toast offers a download of the original recording until
 dismissed.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
-commands to confine access beneath an absolute directory. `bb file list` and
+commands to confine access beneath an absolute directory. `bb file write`
+takes exactly one of `--content` or `--stdin`; `bb file paths` lists files and
+directories unless `--files` or `--directories` narrows it. `bb file list` and
 `bb file paths` include dot-prefixed entries; pass `--no-hidden` to skip them.
 Both skip a default set of dependency and cache directories such as
 `node_modules`, `.venv`, `.pnpm-store`, and root-relative `.claude/worktrees`;
@@ -366,9 +363,9 @@ Both skip a default set of dependency and cache directories such as
 or exact root-relative paths using `/` separators. Use
 `--json` for metadata and machine-readable results.
 
-`bb file remove --recursive` and `sdk.files.remove({ recursive: true, ... })`
-stop processes whose working directories are inside the directory before
-deleting it, including processes in nested checkouts. This uses the same
+`bb file remove` needs `--yes` without a terminal. `bb file remove --recursive`
+and `sdk.files.remove({ recursive: true, ... })` stop processes whose working
+directories are inside the directory before deleting it, including processes in nested checkouts. This uses the same
 SIGTERM grace period and SIGKILL fallback as worktree removal on macOS and
 Linux; Windows does not enumerate process working directories.
 
@@ -378,8 +375,7 @@ Sidebar layout lives on the server in a keyed, revisioned registry so every
 window, device, and the CLI share it: organization mode, chronological sort,
 section orders, collapsed rows and sections, navigation entry order and
 visibility, hidden thread-list groups, and the navigation and thread-list
-provider pickers. The same registry stores which thread Info panel sections
-are collapsed (`infoPanel.collapsedSections`). The sidebar waits for them alongside the project list, and
+provider pickers. The sidebar waits for them alongside the project list, and
 an upgrade uploads the old browser-stored layout once.
 
   bb settings ui list [--json]
@@ -407,19 +403,6 @@ Migrated installations with existing projects, threads, or UI preferences fall b
 to By project (`project`). Explicit server choices take precedence over legacy
 browser choices, which take precedence over this installation fallback. Reset
 saves the installation fallback as an explicit choice.
-
-The built-in sidebar's Filter selects Active and Archived, defaulting to Active.
-The selection is browser-local, not a server-backed preference or SDK/CLI setting.
-Active includes threads with saved messages; there is no separate
-Drafts section or filter. Archived threads use their preserved placement and a
-restore action. Archived pages load only while selected.
-Plugin sidebar replacements own their filters.
-
-The palette's Filter uses Active and Archived independently of the
-sidebar, defaulting to Active. Its selection is browser-local, not configurable
-through SDK/CLI. Active includes threads with saved messages; Search threads retains
-the existing title and conversation search behavior. Archived fetches bounded recent rows only when
-selected.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, Sort by, and Filter. Organize selects By project,
@@ -458,10 +441,7 @@ want to keep hidden. `reset` shows all groups. The plugin's `setPreference` and
 
 Sidebar footer actions
 
-Settings → Appearance → Sidebar footer supports drag ordering and visibility.
-Right-click an action and choose Hide to move it into the More menu. Hidden
-shortcuts remain actionable; hiding an open disclosure closes it. The More menu
-appears only when hidden actions are available and links back to customization.
+Settings → Appearance → Sidebar footer edits footer order and visibility.
 `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are string lists. Keys are
 `builtin:settings`, `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
 Preferences survive plugin reloads and temporarily unavailable plugins; new items
@@ -530,27 +510,11 @@ Inside the Android app, this page compares the installed native build number
 with the published APK and shows whether an update is available. Older apps
 without build-number reporting cannot determine update status. Installed version
 and build are device-local; CLI and SDK release metadata report the published APK.
-Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
-### Opt-in server performance diagnostics
+Server performance diagnostics
 
-Start with `pnpm start --perf-diagnostics`, `pnpm start:worktree --perf-diagnostics`,
-or `bb-app --perf-diagnostics` to permit detailed performance logs and rolling
-CPU profiles when the experiment is on. `BB_PERF_DIAGNOSTICS=1` is the equivalent startup environment
-setting (off by default; restart required). Server logs include five-second
-CPU/GC/loop/memory summaries and lower slow-operation thresholds. Profiles
-are saved every 30 seconds under `$BB_DATA_DIR/logs/performance/`, in ten
-rotating slots of at most 12 MiB each. Copy a relevant `.cpuprofile` promptly
-and open it in Chrome DevTools' JavaScript profiler. This adds overhead;
-remove the setting and restart to disable. No inspector network port is
-opened. Profile files contain local paths/function names; inspect before sharing.
-
-Diagnostics require **both** startup permission (`--perf-diagnostics` or
-`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
-Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
-`bb settings experiment performanceDiagnostics true` to enable it, or `false`
-to stop it; SDK clients use the existing experiments update endpoint. The
-experiment takes effect live on that server. Without startup permission it
-cannot start collection. Turning it off restores normal logging thresholds,
-stops the sampler and flushes the in-flight profile; existing files remain.
-The launch flag only grants permission and still requires a restart to change.
+Start with `bb-app --perf-diagnostics` or `BB_PERF_DIAGNOSTICS=1` (restart to
+change), then run `bb settings experiment performanceDiagnostics true|false`.
+Collection needs both; it adds overhead and writes CPU profiles every 30 seconds
+to `$BB_DATA_DIR/logs/performance/` (kept 12 hours, 1 GB total, 12 MiB each),
+which contain local paths. Open a `.cpuprofile` in Chrome DevTools.

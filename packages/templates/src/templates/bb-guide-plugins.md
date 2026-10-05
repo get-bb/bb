@@ -323,7 +323,8 @@ added/updated/unchanged counts.
                                  directory of a multi-plugin git:/path:
                                  repository; --plugin <name> installs the
                                  .bb/plugins.json entry with that name
-                                 (the two flags are mutually exclusive)
+                                 (the two flags are mutually exclusive and
+                                 do not apply to npm: sources)
                                  --tag-prefix <prefix> resolves a git: semver
                                  range over <prefix>vX.Y.Z tags
                                  Installing a local path for an id that is
@@ -358,7 +359,10 @@ added/updated/unchanged counts.
                                  semver range with its tag prefix and resolved
                                  tag, engine ranges, install time, and recent
                                  activation history
-  bb plugin enable|disable <id>  Load or unload an installed plugin
+  bb plugin enable|disable <id>  Load or unload an installed plugin. A
+                                 builtin you never toggled follows bb's
+                                 default, so a release can turn it on; an
+                                 explicit choice persists across releases
   bb plugin safe-mode [on|off]   Show or change safe mode. `on` stops every
                                  plugin you installed (official store plugins
                                  included) without changing its enabled
@@ -373,7 +377,9 @@ added/updated/unchanged counts.
                                  them (previous instance kept, or degraded
                                  because a service ignored its abort)
   bb plugin config <id> [set <key> <value> | unset <key>]
-                                 Show or change a plugin's declared settings
+                                 Show or change a plugin's declared settings;
+                                 boolean and number values are converted to
+                                 the declared type
   bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's bb.log output
   bb plugin run <id> [args...]   Run a plugin command explicitly (also works when core owns its name)
   bb plugin token <id> [--rotate]  Print the token for auth:"token" HTTP
@@ -388,23 +394,32 @@ added/updated/unchanged counts.
                                  command, and a skill) and install its npm
                                  dependencies, including @get-bb/plugin-sdk
                                  pinned to this bb's exact SDK version (no
-                                 server required)
+                                 server required). It warns when that SDK
+                                 version is not on npm yet, and when npm
+                                 leaves a package out it prints the manual
+                                 `npm install --include=dev` step
   bb plugin types [path]         Sync a plugin's @get-bb/plugin-sdk surface to
                                  this bb (default: cwd): repin the npm
                                  devDependency to this bb's SDK version and
                                  the type-only devDependencies of the packages
                                  bb shims at runtime (sonner, vaul, the portal
-                                 radix families, ...) to this bb's versions;
+                                 radix families, ...) to this bb's versions,
+                                 adding missing ones and moving any out of
+                                 dependencies (run `npm install` after);
                                  legacy vendored-layout plugins must migrate;
                                  --check writes nothing and exits non-zero on
                                  a mismatch
   bb plugin migrate [path]       Switch a plugin that still vendors types/ to
                                  the @get-bb/plugin-sdk npm package (default:
-                                 cwd): pin the devDependency, drop the tsconfig
-                                 path map, delete the vendored declarations.
-                                 Prints the plan and asks first; --yes skips
-                                 the prompt (required when stdin is not a
-                                 terminal)
+                                 cwd): pin the devDependency (moving it out of
+                                 dependencies and raising an older
+                                 engines.bbPluginSdk floor), drop the tsconfig
+                                 path map, delete the vendored declarations
+                                 (types/ is kept if it holds your own), and
+                                 rewrite @bb/plugin-sdk imports. Prints the
+                                 plan and asks first; --yes skips the prompt
+                                 (required when stdin is not a terminal).
+                                 Rerunning is a no-op; run `npm install` after
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json); when
                                  bb.app is declared, the minified frontend
@@ -426,7 +441,8 @@ added/updated/unchanged counts.
                                  reload the plugin; Ctrl+C to stop
 
   bb marketplace add <source>    Add a marketplace from an https manifest URL,
-                                 git:<url>[@<ref>], or path:<directory>. bb
+                                 git:<url>[@<ref>], or path:<directory> (a
+                                 relative path resolves from the CLI's cwd). bb
                                  validates the manifest, caches the catalog,
                                  and fetches the entry icons. Adding a
                                  marketplace installs nothing
@@ -496,7 +512,7 @@ The BB Community marketplace has the reserved name `bb-community`. It lists
 reviewed plugins that live outside the app bundle. bb requests the v2 manifest
 from https://getbb.app/marketplace/v2/marketplace.json. A 404 response makes
 bb request the v1 manifest. Other errors do not cause this fallback. Set
-BB_MARKETPLACE_URL to override the URL. bb reads the manifest at startup and
+BB_MARKETPLACE_URL (read at startup) to override the URL. bb reads the manifest at startup and
 every two hours.
 
 bb stores the last catalog that it validated. An invalid manifest keeps that
