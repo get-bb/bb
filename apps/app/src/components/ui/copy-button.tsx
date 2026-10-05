@@ -84,7 +84,7 @@ export function CopyableInlineLabel({
   return (
     <button
       type="button"
-      className={`inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`}
+      className={`group/copy inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`}
       onClick={() => {
         void copy();
       }}
@@ -95,7 +95,10 @@ export function CopyableInlineLabel({
       </span>
       <Icon
         name={copied ? "Check" : "Copy"}
-        className="size-3.5 shrink-0 text-muted-foreground"
+        className={cn(
+          "size-3 shrink-0 text-subtle-foreground transition-opacity group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100 pointer-coarse:opacity-100",
+          copied ? "opacity-100" : "opacity-0",
+        )}
       />
     </button>
   );

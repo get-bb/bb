@@ -10,10 +10,9 @@ import {
   PullRequestRow,
   GitStatusRow,
   ArchivedRow,
-  ThreadCommitsRow,
-  ChangedFilesRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
+import { ChangesSection, CommitsSection } from "./ThreadInfoSections";
 import {
   PanelStage,
   baseProps,
@@ -815,6 +814,8 @@ export function Archived() {
   );
 }
 
+const STORY_NOW = 1_700_000_000_000 + 5 * 60 * 60 * 1000;
+
 const aheadCommits = Array.from({ length: 7 }, (_, index) => ({
   sha: `${index}`.padEnd(40, "0"),
   shortSha: `a1b2c3${index}`,
@@ -831,7 +832,8 @@ export function Commits() {
     <StoryCard>
       <StoryRow label="ahead of merge base (clickable, truncates at 5)">
         <RowStage>
-          <ThreadCommitsRow
+          <CommitsSection
+            now={STORY_NOW}
             workspaceStatus={makeWorkspaceStatus({
               mergeBase: {
                 mergeBaseBranch: "main",
@@ -852,7 +854,8 @@ export function Commits() {
       </StoryRow>
       <StoryRow label="nothing ahead (hidden)">
         <RowStage>
-          <ThreadCommitsRow
+          <CommitsSection
+            now={STORY_NOW}
             workspaceStatus={makeWorkspaceStatus()}
             onCommitClick={noop}
           />
@@ -867,7 +870,7 @@ export function ChangedFiles() {
     <StoryCard>
       <StoryRow label="uncommitted">
         <RowStage>
-          <ChangedFilesRow
+          <ChangesSection
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...DIRTY_WORKING_TREE,
@@ -880,7 +883,7 @@ export function ChangedFiles() {
       </StoryRow>
       <StoryRow label="committed, not merged">
         <RowStage>
-          <ChangedFilesRow
+          <ChangesSection
             workspaceStatus={makeWorkspaceStatus({
               mergeBase: COMMITTED_MERGE_BASE,
             })}
@@ -890,7 +893,7 @@ export function ChangedFiles() {
       </StoryRow>
       <StoryRow label="uncommitted + committed">
         <RowStage>
-          <ChangedFilesRow
+          <ChangesSection
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...DIRTY_WORKING_TREE,

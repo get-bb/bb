@@ -2945,6 +2945,9 @@ function ThreadDetailViewInternal(
               onCommitClick: canUseGitUi
                 ? openSecondaryPanelCommitDiff
                 : undefined,
+              onOpenChangedFile: canUseGitUi
+                ? handleOpenFilePreview
+                : undefined,
             }}
             secondaryPanel={{
               canNavigateTabs: isFocused,
