@@ -1790,14 +1790,15 @@ export interface PluginCommandContext {
   threadId: string | null;
   projectId: string | null;
   /**
-   * Open one of this plugin's `threadPanelAction` components in the current
-   * thread's side panel, exactly as `messageAction`'s `openPanel` does.
+   * Open one of this plugin's panel components in the focused side panel.
+   * In a thread, `actionId` resolves against `threadPanelAction`; on the New
+   * thread screen, it resolves against `experimental_newThreadPanelAction`.
+   * Register both slots with the same id to support commands on both screens.
    *
    * Returns true when the host accepted the open; false when it declined —
-   * `params` was not a JSON value, the action id names no `threadPanelAction`
-   * of this plugin, or the surface has no side panel. Only the main thread
-   * view has one, and the palette opens anywhere, so guard with `isAvailable`
-   * rather than assuming.
+   * `params` was not a JSON value, the action id names no matching panel action
+   * of this plugin on the focused surface, or the surface has no side panel.
+   * The palette opens anywhere, so guard with `isAvailable` rather than assuming.
    */
   openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
 }

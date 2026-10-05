@@ -46,7 +46,7 @@ interface PanelActionOpenPanelArgs {
   openPluginPanel: OpenPluginPanelHandler;
 }
 
-function createPanelActionOpenPanel({
+export function createPanelActionOpenPanel({
   action,
   slot,
   openPluginPanel,

@@ -415,6 +415,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run plugin actions from the palette or a keyboard shortcut",
           "Suggest a default shortcut that people can rebind",
           "Show a command only when the current thread or project fits",
+          "Open a plugin panel for the focused thread or New thread screen",
         ],
         apiSymbols: [
           "PluginAppBuilder.commands",
