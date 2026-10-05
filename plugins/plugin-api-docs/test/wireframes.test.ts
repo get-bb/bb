@@ -248,7 +248,7 @@ describe("guide fixture boundaries", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
 
     expect(markup).toMatch(
-      /data-guide-region="nav-panel"[^>]*class="[^"]*z-\[2\][^"]*block/,
+      /data-guide-region="nav-panel"[^>]*class="[^"]*z-\[2\][^"]*flex h-6\.5[^"]*px-2/,
     );
     expect(markup).toMatch(
       /data-guide-badge="thread-header"[^>]*data-guide-badge-placement="above"/,
@@ -450,15 +450,14 @@ describe("guide fixture boundaries", () => {
 
     expect(markup).toContain('data-guide-transient-for="mention-provider"');
     expect(markup).toMatch(
-      /data-guide-target="composer-banners"[^>]*>[\s\S]*?data-guide-transient-for="mention-provider"/,
+      /data-guide-target="composer-banners"[^>]*>[\s\S]*?data-guide-transient-for="mention-provider"[^>]*class="[^"]*bottom-full left-0 z-\[60\][\s\S]*?data-guide-region="mention-provider"/,
     );
-    expect(markup).toContain("bottom-full z-20 mb-1");
     const transientStart = markup.indexOf(
       'data-guide-transient-for="mention-provider"',
     );
     const transientMarkup = markup.slice(
       transientStart,
-      markup.indexOf("</div>", transientStart),
+      markup.indexOf('data-guide-region="mention-provider"', transientStart),
     );
     expect(transientMarkup).not.toContain(
       'data-guide-badge="mention-provider"',

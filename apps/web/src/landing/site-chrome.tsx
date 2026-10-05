@@ -1,12 +1,71 @@
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useEffect, useRef } from "react";
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { DESKTOP_DOWNLOADS } from "./site";
 
-type SiteNavPage = "blog" | "changelog" | "plugins";
+type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide";
+
+function PluginsMenu({ current }: { current?: SiteNavPage }) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !menu.current?.contains(event.target)) {
+        menu.current?.removeAttribute("open");
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && menu.current?.open) {
+        menu.current.removeAttribute("open");
+        menu.current.querySelector("summary")?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+  const inSection = current === "plugins" || current === "plugin-guide";
+  return (
+    <details
+      className="nav-menu"
+      ref={menu}
+      onBlur={(event) => {
+        if (
+          event.relatedTarget instanceof Node &&
+          !event.currentTarget.contains(event.relatedTarget)
+        ) {
+          event.currentTarget.removeAttribute("open");
+        }
+      }}
+    >
+      <summary className={inSection ? "nav-current" : undefined}>
+        Plugins
+        <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+      </summary>
+      <div className="nav-menu-panel">
+        <a
+          href="/marketplace"
+          aria-current={current === "plugins" ? "page" : undefined}
+        >
+          Marketplace
+        </a>
+        <a
+          href="/plugin-guide"
+          aria-current={current === "plugin-guide" ? "page" : undefined}
+        >
+          Plugin Guide
+        </a>
+      </div>
+    </details>
+  );
+}
 
 export function SiteNav({ current }: { current?: SiteNavPage }) {
   const platform = useDesktopPlatform();
@@ -17,12 +76,7 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
         <span className="bb-mark logo-mark" />
       </a>
       <div className="nav-links">
-        <a
-          className={current === "plugins" ? "nav-current" : undefined}
-          href="/marketplace"
-        >
-          Plugins
-        </a>
+        <PluginsMenu current={current} />
         <a
           className={current === "blog" ? "nav-current" : undefined}
           href="/blog"
@@ -64,6 +118,8 @@ export function SiteFooter() {
         <a href="/blog">Blog</a>
         {" · "}
         <a href="/changelog">Changelog</a>
+        {" · "}
+        <a href="/plugin-guide">Plugin Guide</a>
         {" · "}
         <a href="/privacy">Privacy</a>
         {" · "}

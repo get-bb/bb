@@ -63,14 +63,20 @@ import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/Br
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { Button } from "@bb/shared-ui/button";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
-import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
+import {
+  createPanelActionOpenPanel,
+  usePluginNewThreadPanelActions,
+} from "@/components/plugin/PluginPanelActions";
+import {
+  usePublishThreadPanelOpener,
+  type PluginThreadPanelOpenHandler,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -136,10 +142,7 @@ import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
-import {
-  useRootComposeProjectId,
-  useSetRootComposeProjectId,
-} from "@/lib/root-compose-selection";
+import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
@@ -197,10 +200,6 @@ const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
 const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
-
-interface LegacyProjectComposeRedirectProps {
-  projectId: string;
-}
 
 function readSectionIdFromLocationState(state: unknown): string | null {
   if (typeof state !== "object" || state === null) {
@@ -414,32 +413,6 @@ export function buildRootComposeTerminalSessions({
     );
   }
   return undefined;
-}
-
-export function LegacyProjectComposeRedirect({
-  projectId,
-}: LegacyProjectComposeRedirectProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const setRootComposeProjectId = useSetRootComposeProjectId();
-  const [, setPlacement] = useRootComposePlacement();
-
-  useEffect(() => {
-    setRootComposeProjectId(projectId);
-    setPlacement(DEFAULT_THREAD_CREATION_PLACEMENT);
-    navigate(getRootComposeRoutePath(), {
-      replace: true,
-      state: location.state,
-    });
-  }, [
-    location.state,
-    navigate,
-    projectId,
-    setRootComposeProjectId,
-    setPlacement,
-  ]);
-
-  return <RouteLoadingSkeleton isBoundedPane={false} />;
 }
 
 export function RootComposeView() {
@@ -1024,6 +997,24 @@ function RootComposeSurface({
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
   const dismissPluginDetails = pluginDetails.dismiss;
+  const handleOpenPluginPanel = useCallback<PluginThreadPanelOpenHandler>(
+    ({ pluginId, actionId, title, params }) => {
+      const action = rootPanelNewThreadPanelActions.find(
+        (candidate) =>
+          candidate.pluginId === pluginId && candidate.id === actionId,
+      );
+      if (action === undefined) return false;
+      const accepted = createPanelActionOpenPanel({
+        action,
+        slot: "experimental_newThreadPanelAction",
+        openPluginPanel,
+      })({ title, params });
+      if (accepted) openCompactDrawer();
+      return accepted;
+    },
+    [openCompactDrawer, openPluginPanel, rootPanelNewThreadPanelActions],
+  );
+  usePublishThreadPanelOpener(handleOpenPluginPanel, isFocusedPane);
   const closeSecondaryPanel = useCallback(() => {
     dismissPluginDetails();
     closeWorkspacePanel();

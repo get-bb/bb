@@ -347,6 +347,32 @@ describe("app keybindings", () => {
           when: { all: ["mainSurface"], none: ["modalOpen"] },
         },
       ]);
+      for (const [command, key] of [
+        ["history.back", "["],
+        ["history.forward", "]"],
+      ] as const) {
+        expect(
+          assignedDefaultKeybindings
+            .filter((binding) => binding.command === command)
+            .map((binding) => ({
+              desktopOnly: binding.desktopOnly,
+              key: binding.shortcut.key,
+              mod: binding.shortcut.mod,
+              control: binding.shortcut.control,
+              shift: binding.shortcut.shift,
+              when: binding.when,
+            })),
+        ).toEqual([
+          {
+            desktopOnly: false,
+            key,
+            mod: true,
+            control: false,
+            shift: false,
+            when: { all: ["mainSurface"], none: ["modalOpen"] },
+          },
+        ]);
+      }
       expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.command.startsWith("thread.jump."))

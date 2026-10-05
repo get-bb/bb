@@ -1,14 +1,21 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { defineSplit } from "@/lib/define-split";
+
 const loadRenameEditor = () => import("./SidebarRenameEditor");
-const SidebarRenameEditor = lazy(loadRenameEditor);
+
+const SidebarRenameEditor = defineSplit<{
+  session: RenameSession;
+  controller: RenameController;
+}>({
+  id: "sidebar-rename-editor",
+  load: () => loadRenameEditor().then((module) => module.default),
+  loading: ({ session }) => (
+    <span role="status" className="min-w-0 flex-1 truncate">
+      {session.name}
+    </span>
+  ),
+  tier: "intent",
+});
 
 interface SidebarRenameArgs {
   kind: "thread";
@@ -138,19 +145,11 @@ export function useSidebarRename(args: SidebarRenameArgs) {
 
   return {
     editor: isEditing ? (
-      <Suspense
-        fallback={
-          <span role="status" className="min-w-0 flex-1 truncate">
-            {session.name}
-          </span>
-        }
-      >
-        <SidebarRenameEditor
-          key={session.ownerKey}
-          session={session}
-          controller={controller}
-        />
-      </Suspense>
+      <SidebarRenameEditor
+        key={session.ownerKey}
+        session={session}
+        controller={controller}
+      />
     ) : null,
     isEditing,
     startEditing,

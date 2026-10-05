@@ -355,6 +355,9 @@ setting. When a read-modify-write payload contains conflicting values, the
 value changed from the saved setting wins. Hidden diagnostics do not count
 toward timeline event or byte limits.
 
+The prompt box uses plain-text editing. Markdown delimiters remain visible while
+editing.
+
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
@@ -504,7 +507,15 @@ pane shortcuts follow Slack's browser-safe convention: web uses
 `Control+1…9` on macOS and `Ctrl+Shift+1…9` on Windows/Linux, while desktop
 uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
-`Control+Shift+[/]` on the web.
+`Control+Shift+[/]` on the web; they follow the sidebar order.
+
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows: they move through the pages opened
+in the current window, like browser history. They use `Mod+[` / `Mod+]` on
+desktop and the web; in the browser, bb handles the key instead of the
+browser's own Back while it has somewhere to go. At either end the shortcut
+does nothing. Hovering an arrow shows its
+current shortcut.
 
 On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
 `Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
@@ -572,6 +583,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split              |
 | Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
 | Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Go back / go forward                      | Surface defaults above            | Desktop / web            |
 | Window    | Settings                                  | `Mod+,`                           | All clients              |
 | Window    | Open data directory                       | Unassigned                        | Desktop                  |
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |

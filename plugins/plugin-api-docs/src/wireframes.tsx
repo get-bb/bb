@@ -441,6 +441,8 @@ function ProviderGlyph() {
   );
 }
 
+const MOBILE_SCREEN_CLASS = "aspect-[9/19]";
+
 function WindowFrame({
   children,
   className,
@@ -529,17 +531,17 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
           Skills
         </span>
       </div>
-      <Mark
-        id="nav-panel"
-        label="Plugin nav panels, above the thread list"
-        className="mx-1.5 z-[2] block space-y-0.5 px-2 pb-2"
-        showChip={false}
-      >
-        <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">
+      <div className="px-2 pb-2">
+        <Mark
+          id="nav-panel"
+          label="Plugin nav panels, above the thread list"
+          className="z-[2] flex h-6.5 items-center gap-2 bg-sidebar-accent px-2 font-medium text-sidebar-foreground"
+          showChip={false}
+        >
           <PluginGlyph />
           Your panel
-        </span>
-      </Mark>
+        </Mark>
+      </div>
     </RegionMark>
   ),
   "thread-list": () => (
@@ -706,13 +708,18 @@ export function CommandPaletteWireframe({
     <div
       data-guide-fixture="command-palette-flow"
       data-guide-state={paletteOpen ? "palette-open" : "release-checklist-open"}
-      className={cn("relative pb-2 pt-4", mobile ? "px-3" : "px-7")}
+      className={cn("relative pb-2 pt-4", mobile ? "px-6" : "px-7")}
     >
-      <WindowFrame>
-        <div className="relative min-h-[500px]">
+      <WindowFrame
+        className={mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined}
+      >
+        <div className={mobile ? "relative min-h-0 flex-1" : "relative min-h-[500px]"}>
           <div
             data-guide-fixture="command-palette-thread"
-            className="flex min-h-[500px] bg-background"
+            className={cn(
+              "flex bg-background",
+              mobile ? "h-full" : "min-h-[500px]",
+            )}
           >
             {mobile ? null : (
               <aside className="flex w-48 shrink-0 flex-col border-r border-border-seam bg-sidebar px-2.5 py-3">
@@ -864,10 +871,15 @@ export function CommandPaletteWireframe({
                 className={cn(
                   "absolute grid grid-cols-[minmax(0,1fr)] gap-0 overflow-visible rounded-lg border border-border bg-background shadow-sm",
                   mobile
-                    ? "bottom-0 left-7 right-0 pb-4"
+                    ? "inset-x-0 bottom-0 rounded-b-none rounded-t-xl border-x-0 border-b-0 pb-3"
                     : "left-1/2 top-[12%] w-full max-w-xl -translate-x-1/2",
                 )}
               >
+                {mobile ? (
+                  <span aria-hidden className="flex h-6 items-center justify-center">
+                    <span className="h-1 w-10 rounded-full bg-muted-foreground/20" />
+                  </span>
+                ) : null}
                 <div className="flex items-center gap-2 border-b px-3 text-sm">
                   <MiniIcon
                     icon="Search"
@@ -899,18 +911,28 @@ export function CommandPaletteWireframe({
                     </span>
                   </span>
                 </div>
-                <MeasuredBadge
-                  id="command-palette-actions"
-                  label="Plugin actions in bb's quick command palette"
-                  anchor='[data-guide-region="command-palette-actions"]'
-                  at="start"
-                  flush
-                />
+                {mobile ? null : (
+                  <MeasuredBadge
+                    id="command-palette-actions"
+                    label="Plugin actions in bb's quick command palette"
+                    anchor='[data-guide-region="command-palette-actions"]'
+                    at="start"
+                    flush
+                  />
+                )}
               </div>
             </div>
           ) : null}
         </div>
       </WindowFrame>
+      {mobile && paletteOpen ? (
+        <MeasuredBadge
+          id="command-palette-actions"
+          label="Plugin actions in bb's quick command palette"
+          anchor='[data-guide-region="command-palette-actions"]'
+          at="start"
+        />
+      ) : null}
     </div>
   );
 }
@@ -1022,7 +1044,7 @@ function AppShellWireframeBody({
 
   if (scene === "navigation") {
     return (
-      <WindowFrame className="flex min-h-[500px] bg-background">
+      <WindowFrame className={cn("flex bg-background", MOBILE_SCREEN_CLASS)}>
         <div className="flex w-[76%] flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           <div className="flex h-12 items-center gap-3 px-3 text-sm">
             <MiniIcon icon="PanelLeft" />
@@ -1041,7 +1063,7 @@ function AppShellWireframeBody({
   }
   if (scene === "panel") {
     return (
-      <WindowFrame>
+      <WindowFrame className={cn("flex flex-col", MOBILE_SCREEN_CLASS)}>
         <AppShellRightPanel
           compact
           activeTab={rightPanelTab}
@@ -1052,7 +1074,13 @@ function AppShellWireframeBody({
   }
   const mobile = scene === "conversation";
   return (
-    <WindowFrame className="relative overflow-visible">
+    <WindowFrame
+      className={
+        mobile
+          ? cn("relative flex flex-col", MOBILE_SCREEN_CLASS)
+          : "relative overflow-visible"
+      }
+    >
       <span
         aria-hidden
         data-guide-target="content-scripts"
@@ -1073,7 +1101,7 @@ function AppShellWireframeBody({
       <div
         className={
           mobile
-            ? "flex min-h-[500px] items-stretch"
+            ? "flex min-h-0 flex-1 items-stretch"
             : "flex min-h-[650px] items-stretch"
         }
       >
@@ -1114,7 +1142,7 @@ function AppShellWireframeBody({
             data-guide-fixture="app-window-timeline"
             className={
               mobile
-                ? "flex-1 space-y-7 overflow-hidden px-4 py-6 text-sm leading-relaxed"
+                ? "flex min-h-0 flex-1 flex-col justify-end gap-5 overflow-hidden px-4 py-4 text-sm leading-relaxed"
                 : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
             }
           >
@@ -1264,7 +1292,9 @@ function AppShellWireframeBody({
         label="App-wide floating plugin interface"
         className={cn(
           "z-[6] flex w-44 items-center gap-2 border border-border bg-popover px-3 py-2 text-foreground shadow-md",
-          mobile ? "relative ml-auto mr-4 mb-4" : "absolute bottom-24 right-12",
+          mobile
+            ? "relative mb-4 ml-auto mr-4 shrink-0"
+            : "absolute bottom-24 right-12",
         )}
       >
         <PluginGlyph className="size-4 shrink-0" />
@@ -1317,7 +1347,7 @@ export function AppShellRightPanel({
       className={cn(
         "flex shrink-0 flex-col bg-sidebar",
         compact
-          ? "min-h-[360px] w-full"
+          ? "min-h-0 w-full flex-1"
           : "w-[380px] border-l border-border-seam",
       )}
     >
@@ -1359,7 +1389,7 @@ export function AppShellRightPanel({
           data-guide-fixture="right-panel-content-tabs"
           className={cn(
             "flex items-center gap-1.5",
-            compact ? "shrink-0" : "min-w-0",
+            compact ? "shrink-0" : "min-w-0 overflow-hidden",
           )}
         >
           <Mark
@@ -1395,19 +1425,22 @@ export function AppShellRightPanel({
             className={cn(
               tabClass("file-opener"),
               "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
+              !compact && "min-w-0 shrink",
             )}
             showChip={false}
             onActivate={() => onTabSelect("file-opener")}
           >
             <span data-guide-tab="file-opener" className="contents">
-              <MiniIcon icon="FileText" className="size-3.5" />
-              <span className="text-foreground">retry-notes.md</span>
+              <MiniIcon icon="FileText" className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate text-foreground">
+                retry-notes.md
+              </span>
             </span>
           </Mark>
         </span>
         <span className="flex-1" />
-        <MiniIcon icon="Plus" className="size-3.5" />
-        <MiniIcon icon="PanelRight" className="size-3.5" />
+        <MiniIcon icon="Plus" className="size-3.5 shrink-0" />
+        <MiniIcon icon="PanelRight" className="size-3.5 shrink-0" />
       </div>
       <div
         data-guide-tab-body={activeTab}
@@ -1497,7 +1530,7 @@ export function AppShellRightPanel({
                 <span>18</span>
                 <span>beforeEach(() =&gt; &#123;</span>
               </div>
-              <div className="grid grid-cols-[24px_24px_1fr] bg-danger/10 px-2 py-1 text-danger">
+              <div className="grid grid-cols-[24px_24px_1fr] bg-destructive/10 px-2 py-1 text-destructive-text">
                 <span>19</span>
                 <span></span>
                 <span>− sharedMock.reset()</span>
@@ -1531,9 +1564,8 @@ export function RealComposerAnnotated({
   mobile?: boolean;
 }) {
   const banners = useEngagement("composer-banners");
-  const mention = useEngagement("mention-provider");
   return (
-    <div className={cn("relative pb-2 pt-4", mobile ? "px-3" : "px-7")}>
+    <div className={cn("relative pb-2 pt-4", mobile ? "px-6" : "px-7")}>
       <div className="relative w-full select-none text-xs leading-none text-muted-foreground">
         <div
           data-guide-annotation-layer="composer-controls"
@@ -1570,8 +1602,15 @@ export function RealComposerAnnotated({
             at="above"
           />
         </div>
-        <WindowFrame>
-          <div className="flex min-h-[506px] flex-col">
+        <WindowFrame
+          className={mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined}
+        >
+          <div
+            className={cn(
+              "flex flex-col",
+              mobile ? "min-h-0 flex-1" : "min-h-[506px]",
+            )}
+          >
             <div
               aria-hidden
               className="flex h-11 items-center gap-2 border-b border-border-hairline px-4 text-sm"
@@ -1584,7 +1623,7 @@ export function RealComposerAnnotated({
             </div>
             <div
               aria-hidden
-              className="flex-1 space-y-4 px-4 py-4 text-sm leading-relaxed"
+              className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 py-4 text-sm leading-relaxed"
             >
               <div className="flex justify-end">
                 <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-3 py-2 text-foreground">
@@ -1608,25 +1647,6 @@ export function RealComposerAnnotated({
                   engagedRingClass(banners.outlined),
                 )}
               >
-                {mention.outlined ? (
-                  <div
-                    aria-hidden
-                    data-guide-transient-for="mention-provider"
-                    className="pointer-events-none absolute inset-x-0 bottom-full z-20 mb-1 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
-                  >
-                    <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
-                      Your plugin
-                    </span>
-                    <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
-                      <PluginGlyph className="size-3.5" />
-                      release-notes
-                    </span>
-                    <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
-                      <PluginGlyph className="size-3.5 opacity-60" />
-                      roadmap
-                    </span>
-                  </div>
-                ) : null}
                 <PluginGlyph className="size-3.5" />
                 <span className="text-foreground">Your banner</span>
               </Mark>
@@ -1642,6 +1662,7 @@ export function RealComposerAnnotated({
 
 function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const draft = useEngagement("composer-state");
+  const mention = useEngagement("mention-provider");
   const plus = useEngagement("composer-plus-menu");
   const picker = useEngagement("provider-picker");
   const actions = useEngagement("composer-actions");
@@ -1653,40 +1674,6 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
           mobile ? "min-h-48 gap-7" : "h-36",
         )}
       >
-        {actions.outlined ? (
-          <div
-            aria-hidden
-            data-guide-transient-for="composer-actions"
-            className="pointer-events-none absolute bottom-full left-2 right-2 z-20 mb-2 rounded-md border border-border bg-popover p-2 shadow-md"
-          >
-            <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
-              Search saved prompts
-            </span>
-            <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
-              Review this change
-            </span>
-          </div>
-        ) : null}
-        {plus.outlined ? (
-          <div
-            aria-hidden
-            data-guide-transient-for="composer-plus-menu"
-            className="pointer-events-none absolute bottom-full left-2 z-20 mb-1 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
-          >
-            <span className="flex h-6 items-center gap-1.5 px-1.5">
-              <MiniIcon icon="Paperclip" className="size-3.5" />
-              Attach files
-            </span>
-            <span className="flex h-6 items-center gap-1.5 px-1.5">
-              <MiniIcon icon="Zap" className="size-3.5" />
-              Skills
-            </span>
-            <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
-              <PluginGlyph className="size-3.5" />
-              Your action
-            </span>
-          </div>
-        ) : null}
 
         <div
           className={cn(
@@ -1704,15 +1691,36 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
           >
             Summarize{" "}
           </Mark>
-          <RegionMark
-            id="mention-provider"
-            label="Plugin mention results in the @ typeahead"
-            className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
-            chip="outside-above"
-            showChip={!plus.outlined}
-          >
-            <span aria-hidden>@release-notes</span>
-          </RegionMark>
+          <span className="relative">
+            {mention.outlined ? (
+              <span
+                aria-hidden
+                data-guide-transient-for="mention-provider"
+                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
+              >
+                <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
+                  Your plugin
+                </span>
+                <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
+                  <PluginGlyph className="size-3.5" />
+                  release-notes
+                </span>
+                <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
+                  <PluginGlyph className="size-3.5 opacity-60" />
+                  roadmap
+                </span>
+              </span>
+            ) : null}
+            <RegionMark
+              id="mention-provider"
+              label="Plugin mention results in the @ typeahead"
+              className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+              chip="outside-above"
+              showChip={!plus.outlined}
+            >
+              <span aria-hidden>@release-notes</span>
+            </RegionMark>
+          </span>
           <span aria-hidden className="whitespace-pre">
             {" "}
             and fix the{" "}
@@ -1733,25 +1741,47 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
         </div>
 
         <div className="mt-auto flex h-10 items-center gap-1">
-          <Mark
-            id="composer-plus-menu"
-            label="Plugin rows in the composer's + menu"
-            showChip={false}
-            target
-            className={cn(
-              "flex size-10 items-center justify-center rounded-md",
-              engagedRingClass(plus.outlined),
-            )}
-          >
-            <MiniIcon icon="Plus" className="size-4" />
-          </Mark>
+          <span className="relative">
+            {plus.outlined ? (
+              <span
+                aria-hidden
+                data-guide-transient-for="composer-plus-menu"
+                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+              >
+                <span className="flex h-6 items-center gap-1.5 px-1.5">
+                  <MiniIcon icon="Paperclip" className="size-3.5" />
+                  Attach files
+                </span>
+                <span className="flex h-6 items-center gap-1.5 px-1.5">
+                  <MiniIcon icon="Zap" className="size-3.5" />
+                  Skills
+                </span>
+                <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+                  <PluginGlyph className="size-3.5" />
+                  Your action
+                </span>
+              </span>
+            ) : null}
+            <Mark
+              id="composer-plus-menu"
+              label="Plugin rows in the composer's + menu"
+              showChip={false}
+              target
+              className={cn(
+                "flex size-10 items-center justify-center rounded-md",
+                engagedRingClass(plus.outlined),
+              )}
+            >
+              <MiniIcon icon="Plus" className="size-4" />
+            </Mark>
+          </span>
           <Mark
             id="provider-picker"
             label="Your agent provider and its mark, in the model picker"
             showChip={false}
             target
             className={cn(
-              "flex h-10 items-center gap-1.5 rounded-md px-2 text-foreground",
+              "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-foreground",
               engagedRingClass(picker.outlined),
             )}
           >
@@ -1762,20 +1792,36 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             )}
           </Mark>
           <span className="flex-1" />
-          <Mark
-            id="composer-actions"
-            label="Plugin composer actions, before voice and send"
-            showChip={false}
-            target
-            className={cn(
-              "flex size-9 items-center justify-center rounded-md bg-state-hover",
-              engagedRingClass(actions.outlined),
-            )}
-          >
-            <span data-guide-fixture="plugin-composer-action">
-              <PluginGlyph className="size-3.5" />
-            </span>
-          </Mark>
+          <span className="relative">
+            {actions.outlined ? (
+              <span
+                aria-hidden
+                data-guide-transient-for="composer-actions"
+                className="pointer-events-none absolute bottom-full right-0 z-[60] mb-7 block w-48 rounded-md border border-border bg-popover p-2 shadow-md"
+              >
+                <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
+                  Search saved prompts
+                </span>
+                <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
+                  Review this change
+                </span>
+              </span>
+            ) : null}
+            <Mark
+              id="composer-actions"
+              label="Plugin composer actions, before voice and send"
+              showChip={false}
+              target
+              className={cn(
+                "flex size-9 items-center justify-center rounded-md bg-state-hover",
+                engagedRingClass(actions.outlined),
+              )}
+            >
+              <span data-guide-fixture="plugin-composer-action">
+                <PluginGlyph className="size-3.5" />
+              </span>
+            </Mark>
+          </span>
           <span className="flex size-9 items-center justify-center">
             <MiniIcon icon="Mic" className="size-4" />
           </span>
@@ -1810,9 +1856,9 @@ export function ComposeScreenWireframe({
 }) {
   if (mobile) {
     return (
-      <div className="px-3 pt-4">
-        <WindowFrame>
-          <div className="flex h-12 items-center gap-3 border-b border-border-seam px-3 text-sm">
+      <div className="px-6 pt-4">
+        <WindowFrame className={cn("flex flex-col", MOBILE_SCREEN_CLASS)}>
+          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border-seam px-3 text-sm">
             <MiniIcon icon="PanelLeft" className="size-5" />
             <span className="min-w-0 flex-1">New thread</span>
             <MiniIcon icon="PanelRight" className="size-5" />
@@ -1820,28 +1866,28 @@ export function ComposeScreenWireframe({
           {panel ? (
             <div
               data-guide-mobile-scene="panel"
-              className="min-h-[450px] space-y-3 p-4 text-sm"
+              className="min-h-0 flex-1 space-y-1 p-3 text-sm"
             >
-              <div className="text-subtle-foreground">Actions</div>
-              <div className="flex items-center gap-2 py-2">
+              <div className="px-2 pb-1 text-subtle-foreground">Actions</div>
+              <div className="flex h-10 items-center gap-2 rounded-md px-2">
                 <MiniIcon icon="Globe" />
                 Open browser
               </div>
-              <div className="flex items-center gap-2 py-2">
+              <div className="flex h-10 items-center gap-2 rounded-md px-2">
                 <MiniIcon icon="Terminal" />
                 Start terminal
               </div>
               <Mark
                 id="new-thread-panel"
                 label="A plugin action in the new-thread panel launcher"
-                className="flex items-center gap-2 px-3 py-3"
+                className="flex h-10 items-center gap-2 px-2"
               >
                 <PluginGlyph />
                 Your action
               </Mark>
             </div>
           ) : (
-            <div className="flex min-h-[450px] flex-col justify-end gap-4 p-4 text-sm leading-relaxed">
+            <div className="flex min-h-0 flex-1 flex-col justify-end gap-4 overflow-hidden p-4 text-sm leading-relaxed">
               <div className="text-xs text-subtle-foreground">
                 Recent threads
               </div>
@@ -1924,7 +1970,7 @@ export function ComposeScreenWireframe({
               <Mark
                 id="new-thread-panel"
                 label="A plugin action in the new-thread panel launcher"
-                className="flex h-6.5 items-center gap-2 px-2.5"
+                className="flex h-6.5 items-center gap-2 px-2"
                 showChip={false}
               >
                 <PluginGlyph className="size-3.5" />
@@ -1939,8 +1985,10 @@ export function ComposeScreenWireframe({
 }
 
 export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
-  return (
-    <WindowFrame>
+  const frame = (
+    <WindowFrame
+      className={mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined}
+    >
       <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2.5">
         {mobile ? (
           <MiniIcon icon="PanelLeft" className="size-5" />
@@ -1950,7 +1998,12 @@ export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
         <span className="pl-1 font-medium text-foreground">Settings</span>
       </div>
 
-      <div className="mx-auto min-h-[470px] w-full max-w-[520px] space-y-4 px-4 pb-5 pt-4">
+      <div
+        className={cn(
+          "mx-auto w-full max-w-[520px] space-y-4 px-4 pb-5 pt-4",
+          mobile ? "min-h-0 flex-1 overflow-hidden" : "min-h-[470px]",
+        )}
+      >
         <span className="flex items-center gap-1 text-muted-foreground">
           <MiniIcon icon="ChevronLeft" className="size-3.5" />
           Plugin details
@@ -2027,6 +2080,8 @@ export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
                 className="pointer-events-none mt-0.5"
               />
             </span>
+            {mobile ? null : (
+              <>
             <span
               className={cn(
                 "flex items-start justify-between gap-3 py-1.5",
@@ -2058,6 +2113,8 @@ export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
                 Keep answers concise and run focused tests.
               </span>
             </span>
+              </>
+            )}
           </Mark>
 
           <Mark
@@ -2086,6 +2143,7 @@ export function SettingsWireframe({ mobile = false }: { mobile?: boolean }) {
       </div>
     </WindowFrame>
   );
+  return mobile ? <div className="px-6 pt-4">{frame}</div> : frame;
 }
 
 export function ExtensionsPluginPageWireframe({
@@ -2093,9 +2151,11 @@ export function ExtensionsPluginPageWireframe({
 }: {
   mobile?: boolean;
 }) {
-  return (
-    <WindowFrame>
-      <div className="flex h-10 items-center gap-2 border-b border-border-hairline px-3 text-sm">
+  const frame = (
+    <WindowFrame
+      className={mobile ? cn("flex flex-col", MOBILE_SCREEN_CLASS) : undefined}
+    >
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border-hairline px-3 text-sm">
         {mobile ? (
           <MiniIcon icon="PanelLeft" className="size-5" />
         ) : (
@@ -2103,7 +2163,12 @@ export function ExtensionsPluginPageWireframe({
         )}
         <span className="text-foreground">Plugins</span>
       </div>
-      <div className="flex min-h-[470px] flex-col">
+      <div
+        className={cn(
+          "flex flex-col",
+          mobile ? "min-h-0 flex-1" : "min-h-[470px]",
+        )}
+      >
         <Mark
           id="plugin-status"
           label="The needs-configuration banner bb shows for a plugin that reports it"
@@ -2189,6 +2254,7 @@ export function ExtensionsPluginPageWireframe({
       </div>
     </WindowFrame>
   );
+  return mobile ? <div className="px-6 pt-4">{frame}</div> : frame;
 }
 
 function MockHomeComposer() {
@@ -2217,13 +2283,17 @@ function MockHomeComposer() {
           </span>
         </div>
       </div>
-      <div className="flex items-center justify-between px-2.5" aria-hidden>
-        <span className="flex items-center gap-1.5">
-          <MiniIcon icon="Folder" className="size-3.5" />
-          acme-app
-          <span className="text-subtle-foreground">· worktree</span>
+      <div
+        className="flex items-center justify-between gap-2 whitespace-nowrap px-2.5"
+        aria-hidden
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <MiniIcon icon="Folder" className="size-3.5 shrink-0" />
+          <span className="truncate">
+            acme-app <span className="text-subtle-foreground">· worktree</span>
+          </span>
         </span>
-        <span>Full Access</span>
+        <span className="shrink-0">Full Access</span>
       </div>
     </>
   );

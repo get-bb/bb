@@ -4,7 +4,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Icon } from "@bb/shared-ui/icon";
 import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
-import { MicrophonePreferences } from "@/components/settings/MicrophonePreferences";
+import { MicrophonePreferencesSplit } from "@/components/settings/MicrophonePreferencesSplit";
 
 export function VoiceInputButton({
   warning,
@@ -24,7 +24,10 @@ export function VoiceInputButton({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
-        <span className="relative inline-flex shrink-0">
+        <span
+          className="relative inline-flex shrink-0"
+          {...MicrophonePreferencesSplit.intentProps}
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -109,7 +112,7 @@ export function VoiceInputButton({
               {visibleWarning}
             </p>
           ) : null}
-          <MicrophonePreferences
+          <MicrophonePreferencesSplit
             open={open}
             activeStream={null}
             onCaptureReady={handleCaptureReady}

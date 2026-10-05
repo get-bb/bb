@@ -141,25 +141,15 @@ function QueuedMessagesListFailure({
   );
 }
 
-const QueuedMessagesListSplit = defineSplit<QueuedMessagesListProps>({
+export const LazyQueuedMessagesList = defineSplit<QueuedMessagesListProps>({
   id: "queued-messages-list",
   load: () =>
     import("./QueuedMessagesList").then((module) => module.QueuedMessagesList),
   loading: QueuedMessagesListLoading,
   error: QueuedMessagesListFailure,
-  preload: "render",
-});
-
-function QueuedMessagesListGate(props: QueuedMessagesListProps) {
-  if (props.queuedMessages.length === 0 && props.inlineEditor === undefined) {
-    return null;
-  }
-  return <QueuedMessagesListSplit {...props} />;
-}
-
-export const LazyQueuedMessagesList = Object.assign(QueuedMessagesListGate, {
-  id: QueuedMessagesListSplit.id,
-  preload: QueuedMessagesListSplit.preload,
+  mountWhen: (props) =>
+    props.queuedMessages.length > 0 || props.inlineEditor !== undefined,
+  tier: "intent",
 });
 
 export function QueuedMessagesPendingCard({
@@ -168,7 +158,7 @@ export function QueuedMessagesPendingCard({
   queuedMessageCount: number;
 }) {
   useEffect(() => {
-    void QueuedMessagesListSplit.preload();
+    void LazyQueuedMessagesList.preload();
   }, []);
   return (
     <QueuedMessagesCardFrame

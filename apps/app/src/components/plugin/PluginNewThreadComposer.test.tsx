@@ -57,8 +57,11 @@ import {
   createEmptyFixedPanelTabsState,
   createTerminalFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
+  parseFixedPanelTabsState,
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
+import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
+import { getActiveThreadPanelOpener } from "./plugin-thread-panel-navigation";
 import { PluginDetailPanelContext } from "./plugin-detail-navigation";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
@@ -1442,6 +1445,84 @@ describe("PluginNewThreadComposer seeding", () => {
       type: "reuse",
       environmentId: "env-source",
     });
+  });
+
+  it("opens a new-thread plugin panel from a command and reuses its tab", async () => {
+    setPluginSlotRegistrations("panel-probe", {
+      ...EMPTY_SLOT_REGISTRATIONS,
+      newThreadPanelActions: [
+        {
+          id: "inspect-project",
+          title: "Project inspector",
+          component: () => null,
+        },
+      ],
+    });
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "/", element: <PanedRootComposeView /> }],
+      { initialEntries: ["/"] },
+    );
+    const view = render(
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>,
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_1");
+    });
+    const accepted: boolean[] = [];
+    const [command] = buildPluginPaletteActions({
+      slots: [
+        {
+          pluginId: "panel-probe",
+          target: "app",
+          generation: 1,
+          defaultShortcut: null,
+          id: "inspect",
+          title: "Inspect project",
+          run: ({ openPanel }) => {
+            accepted.push(
+              openPanel({
+                actionId: "inspect-project",
+                title: "Inspect current project",
+                params: { section: "changes" },
+              }),
+            );
+          },
+        },
+      ],
+      threadId: null,
+      projectId: null,
+      openThreadPanel: getActiveThreadPanelOpener(),
+    });
+    await act(async () => {
+      command.run();
+      command.run();
+    });
+    expect(accepted).toEqual([true, true]);
+    const panel = parseFixedPanelTabsState({
+      initialValue: createEmptyFixedPanelTabsState(),
+      now: Date.now(),
+      storedValue: window.localStorage.getItem(
+        getFixedPanelTabsStateStorageKey({
+          threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+        }),
+      ),
+    });
+    expect(panel.secondary.isOpen).toBe(true);
+    expect(panel.secondary.tabs).toEqual([
+      expect.objectContaining({
+        kind: "plugin-panel",
+        pluginId: "panel-probe",
+        actionId: "inspect-project",
+        title: "Inspect current project",
+        paramsJson: '{"section":"changes"}',
+      }),
+    ]);
+    expect(panel.secondary.activeTabId).toBe(panel.secondary.tabs[0].id);
+    view.unmount();
+    expect(getActiveThreadPanelOpener()).toBeNull();
   });
 
   it("renders the root composer with a loading project picker before the sidebar bootstrap settles", () => {

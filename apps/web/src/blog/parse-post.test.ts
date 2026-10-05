@@ -119,6 +119,34 @@ lede: Hi
       { kind: "paragraph", text: "![x](javascript:alert(1))" },
     ]);
   });
+
+  it("reads plugin guide component lines and leaves near-misses as text", () => {
+    const post = parsePost(
+      "guide",
+      `---
+title: Guide
+date: 2026-08-05
+lede: Hi
+---
+
+Before
+component:plugin-guide
+component:plugin-guide:composer
+component:plugin-guide:
+component:plugin-guide:Composer
+component:other
+`,
+    );
+    expect(post.blocks).toEqual([
+      { kind: "paragraph", text: "Before" },
+      { kind: "component", name: "plugin-guide" },
+      { kind: "component", name: "plugin-guide", slide: "composer" },
+      {
+        kind: "paragraph",
+        text: "component:plugin-guide: component:plugin-guide:Composer component:other",
+      },
+    ]);
+  });
 });
 
 describe("stripMarkdown", () => {

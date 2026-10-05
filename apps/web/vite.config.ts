@@ -40,6 +40,7 @@ export default defineConfig(({ command }) => {
     define: { __SITE_ORIGIN__: JSON.stringify(siteOrigin) },
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+      dedupe: ["react", "react-dom"],
     },
     server: {
       allowedHosts: [".localhost", ".ts.net"],

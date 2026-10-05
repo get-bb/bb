@@ -60,7 +60,7 @@ describe("computeBundleStats", () => {
     const warn = vi.fn();
     const stats = computeBundleStats(
       chunks,
-      { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+      { SplitWorkspaceRoute: ["/src/views/SplitWorkspaceRoute.tsx"] },
       warn,
     );
     if (stats === null) throw new Error("expected stats");
@@ -71,7 +71,7 @@ describe("computeBundleStats", () => {
     ]);
     const route = stats.routeClosures.SplitWorkspaceRoute;
     if (route === undefined) throw new Error("expected the route closure");
-    expect(route.entry).toBe("assets/SplitWorkspaceRoute.js");
+    expect(route.entries).toEqual(["assets/SplitWorkspaceRoute.js"]);
     expect(route.chunks.map((c) => c.fileName)).toEqual([
       "assets/SplitWorkspaceRoute.js",
       "assets/route-only.js",
@@ -87,7 +87,7 @@ describe("computeBundleStats", () => {
   it("measures a shared runtime chunk even when bundling removes its facade", () => {
     const stats = computeBundleStats(
       chunks,
-      { Runtime: "/src/lib/x.ts" },
+      { Runtime: ["/src/lib/x.ts"] },
       vi.fn(),
     );
     expect(
@@ -95,9 +95,59 @@ describe("computeBundleStats", () => {
     ).toEqual(["assets/route-only.js"]);
   });
 
+  it("measures a page journey as the union of its entries' closures", () => {
+    const stats = computeBundleStats(
+      [
+        ...chunks.map((entry) =>
+          entry.fileName === "assets/SplitWorkspaceRoute.js"
+            ? {
+                ...entry,
+                imports: [...entry.imports, "assets/composer.js"],
+              }
+            : entry,
+        ),
+        chunk("assets/ThreadDetailView.js", {
+          facadeModuleId:
+            "/repo/apps/app/src/views/thread-detail/ThreadDetailView.tsx",
+          imports: ["assets/boot-shared.js", "assets/composer.js"],
+        }),
+        chunk("assets/composer.js"),
+      ],
+      {
+        ThreadPage: [
+          "/src/views/SplitWorkspaceRoute.tsx",
+          "/src/views/thread-detail/ThreadDetailView.tsx",
+        ],
+      },
+      vi.fn(),
+    );
+    const journey = stats?.routeClosures.ThreadPage;
+    expect(journey?.entries).toEqual([
+      "assets/SplitWorkspaceRoute.js",
+      "assets/ThreadDetailView.js",
+    ]);
+    expect(journey?.chunks.map((entry) => entry.fileName)).toEqual([
+      "assets/SplitWorkspaceRoute.js",
+      "assets/ThreadDetailView.js",
+      "assets/composer.js",
+      "assets/route-only.js",
+    ]);
+  });
+
+  it("drops a journey when any of its entries has no chunk", () => {
+    const warn = vi.fn();
+    const stats = computeBundleStats(
+      chunks,
+      { ThreadPage: ["/src/views/SplitWorkspaceRoute.tsx", "/nope.tsx"] },
+      warn,
+    );
+    expect(stats?.routeClosures).toEqual({});
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("/nope.tsx"));
+  });
+
   it("warns instead of throwing when a measured route has no chunk", () => {
     const warn = vi.fn();
-    const stats = computeBundleStats(chunks, { Missing: "/nope.tsx" }, warn);
+    const stats = computeBundleStats(chunks, { Missing: ["/nope.tsx"] }, warn);
     expect(stats?.routeClosures).toEqual({});
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -114,7 +164,7 @@ describe("computeBundleStats", () => {
     );
     const stats = computeBundleStats(
       grouped,
-      { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+      { SplitWorkspaceRoute: ["/src/views/SplitWorkspaceRoute.tsx"] },
       vi.fn(),
     );
     expect(
@@ -141,7 +191,7 @@ describe("computeBundleStats", () => {
       const warn = vi.fn();
       const stats = computeBundleStats(
         eager,
-        { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+        { SplitWorkspaceRoute: ["/src/views/SplitWorkspaceRoute.tsx"] },
         warn,
       );
       expect(stats?.routeClosures).toEqual({});
@@ -172,7 +222,7 @@ async function writeFixture(
   budget: unknown,
   stats: BundleStats | null = computeBundleStats(
     chunks,
-    { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+    { SplitWorkspaceRoute: ["/src/views/SplitWorkspaceRoute.tsx"] },
     () => undefined,
   ),
   brotliFiles: readonly string[] = chunks.map((c) => c.fileName),
@@ -242,7 +292,7 @@ describe("check-bundle-budget", () => {
             }
           : c,
       ),
-      { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+      { SplitWorkspaceRoute: ["/src/views/SplitWorkspaceRoute.tsx"] },
       () => undefined,
     );
     const result = await runCheck(
@@ -416,7 +466,7 @@ describe("split boundaries", () => {
       ];
       const stats = computeBundleStats(
         input,
-        { SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx" },
+        { SplitWorkspaceRoute: ["/src/views/SplitWorkspaceRoute.tsx"] },
         () => {},
       );
       if (stats === null) throw new Error("missing stats");

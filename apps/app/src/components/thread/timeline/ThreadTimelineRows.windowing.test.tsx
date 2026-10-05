@@ -174,6 +174,7 @@ describe("ThreadTimelineRows windowing", () => {
       scrollElement.setAttribute("data-test-main-scroll", "");
       const bottomAnchor: BottomAnchorContextValue = {
         captureScrollAnchor: vi.fn(),
+        holdContentPosition: vi.fn(),
         getScrollElement: () => scrollElement,
         isAtBottom: false,
         scrollElementIntoView: vi.fn(),
@@ -233,6 +234,7 @@ describe("ThreadTimelineRows windowing", () => {
     const scrollElementIntoView = vi.fn();
     const bottomAnchor: BottomAnchorContextValue = {
       captureScrollAnchor: vi.fn(),
+      holdContentPosition: vi.fn(),
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView,
@@ -287,6 +289,7 @@ describe("ThreadTimelineRows windowing", () => {
     const scrollElementIntoView = vi.fn();
     const bottomAnchor: BottomAnchorContextValue = {
       captureScrollAnchor: vi.fn(),
+      holdContentPosition: vi.fn(),
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView,

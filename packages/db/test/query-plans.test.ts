@@ -1569,45 +1569,65 @@ describe("slow query index plans", () => {
     }
   });
 
-  it("pins the latest-thread-state lookup to the partial index with no temp sort", () => {
-    const { db, thread } = setup();
-    insertEvents(db, noopNotifier, [
-      {
-        data: JSON.stringify({ goal: "guard the query plan" }),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: threadScope(),
-        sequence: 1,
-        threadId: thread.id,
-        type: "thread/goal/updated",
-      },
-    ]);
+  it("pins multi-thread latest state lookups to one candidate seek per requested thread", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    insertEvents(
+      db,
+      noopNotifier,
+      [thread, otherThread].flatMap((stateThread, threadIndex) =>
+        Array.from({ length: 64 }, (_, index) => ({
+          data: JSON.stringify(
+            index === 63
+              ? { goal: `goal-${threadIndex}` }
+              : { kind: "other-plugin/state", payload: { index } },
+          ),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          scope: threadScope(),
+          sequence: index + 1,
+          threadId: stateThread.id,
+          type:
+            index === 63
+              ? ("thread/goal/updated" as const)
+              : ("thread/extensionState/updated" as const),
+        })),
+      ),
+    );
 
     const captured = captureStatements(db, () => {
       expect(
         listLatestThreadStateEventRowsByThreadIds(db, {
-          threadIds: [thread.id],
+          threadIds: [thread.id, otherThread.id],
           kind: "provider-codex/goal",
         }),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
     const statement = captured.find((entry) =>
-      entry.sql.includes("latest_state"),
+      entry.sql.includes("events_thread_state_thread_sequence_idx"),
     );
     if (!statement) {
       throw new Error("Expected the latest-thread-state lookup SQL");
     }
 
+    expect(statement.sql).toContain("VALUES");
     const details = queryPlanDetails({
       db,
       params: statement.params,
       sql: statement.sql,
     });
     expect(
-      details.match(/events_thread_state_thread_sequence_idx/gu),
-    ).toHaveLength(2);
-    expect(details).not.toContain("USING INDEX events_thread_sequence_idx");
+      details.match(
+        /USING (?:COVERING )?INDEX events_thread_state_thread_sequence_idx/gu,
+      ),
+    ).toHaveLength(1);
+    expect(details).not.toMatch(
+      /USING (?:COVERING )?INDEX events_thread_sequence_idx/u,
+    );
     expect(details).not.toContain("USE TEMP B-TREE");
 
     db.$client.close();

@@ -7,9 +7,7 @@ import {
 import { useAtom, useAtomValue, useStore } from "jotai";
 import {
   Fragment,
-  lazy,
   memo,
-  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -17,6 +15,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SetStateAction,
@@ -79,7 +78,7 @@ import {
   type PaneSecondaryPanelRegistry,
 } from "./PaneContext";
 import { LazyThreadDetailView as ThreadDetailView } from "./LazyThreadDetailView";
-import { RootComposeView } from "@/views/RootComposeView";
+import { LazyRootComposeView as RootComposeView } from "@/views/LazyRootComposeView";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   AppPageHeader,
@@ -123,26 +122,22 @@ import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { wsManager } from "@/lib/ws";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { PluginDetailOpenerBoundary } from "@/components/plugin/plugin-detail-opener";
+import { defineSplit } from "@/lib/define-split";
+import { LazyPluginDetailPaneView } from "@/views/ToolsViewSplits";
 
-const LazyPluginPanelRightPanelHost = lazy(() =>
-  import("@/components/plugin/PluginPanelRightPanelHost").then(
-    ({ PluginPanelRightPanelHost }) => ({ default: PluginPanelRightPanelHost }),
-  ),
-);
-
-const LazyPluginDetailPaneView = lazy(() =>
-  import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
-    default: PluginDetailPaneView,
-  })),
-);
-
-function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
-  return (
-    <Suspense fallback={null}>
-      <LazyPluginDetailPaneView pluginId={pluginId} />
-    </Suspense>
-  );
-}
+const LazyPluginPanelRightPanelHost = defineSplit<
+  ComponentProps<
+    typeof import("@/components/plugin/PluginPanelRightPanelHost").PluginPanelRightPanelHost
+  >
+>({
+  id: "plugin-panel-right-panel-host",
+  load: () =>
+    import("@/components/plugin/PluginPanelRightPanelHost").then(
+      (module) => module.PluginPanelRightPanelHost,
+    ),
+  loading: () => null,
+  tier: "intent",
+});
 
 function PluginPagePanelHost({
   children,
@@ -161,11 +156,9 @@ function PluginPagePanelHost({
       key={`${props.pluginId}/${props.panelPath}`}
       isFocused={pane?.isFocused ?? true}
     >
-      <Suspense fallback={null}>
-        <LazyPluginPanelRightPanelHost {...props}>
-          {children}
-        </LazyPluginPanelRightPanelHost>
-      </Suspense>
+      <LazyPluginPanelRightPanelHost {...props}>
+        {children}
+      </LazyPluginPanelRightPanelHost>
     </PluginDetailOpenerBoundary>
   );
 }
@@ -1166,7 +1159,7 @@ function StandalonePaneContent({
     );
   }
   if (content.kind === "plugin-detail") {
-    return <PluginDetailPaneView pluginId={content.pluginId} />;
+    return <LazyPluginDetailPaneView pluginId={content.pluginId} />;
   }
   const panelEntry = navPanelChrome.find(
     (candidate) =>
@@ -1395,7 +1388,7 @@ function NonThreadPaneContent({
         {content.kind === "new-thread" ? (
           <RootComposeView />
         ) : content.kind === "plugin-detail" ? (
-          <PluginDetailPaneView pluginId={content.pluginId} />
+          <LazyPluginDetailPaneView pluginId={content.pluginId} />
         ) : (
           <PluginPanelView
             pluginId={content.pluginId}

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BottomAnchoredScrollBody,
   useBottomAnchoredScroll,
+  type BottomAnchorContextValue,
 } from "@/components/ui/bottom-anchored-scroll-body";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
 import { scrollPageToTop } from "@/lib/page-scroll-to-top";
@@ -120,6 +121,16 @@ interface RenderArgs {
   showScrollToBottomControl?: boolean;
   scrollIntoViewRowId?: string;
   virtualized?: boolean;
+  onBottomAnchor?: (anchor: BottomAnchorContextValue | null) => void;
+}
+
+function BottomAnchorProbe({
+  onBottomAnchor,
+}: {
+  onBottomAnchor: (anchor: BottomAnchorContextValue | null) => void;
+}) {
+  onBottomAnchor(useBottomAnchoredScroll());
+  return null;
 }
 
 function CapturePrependAnchorControl() {
@@ -169,6 +180,7 @@ function renderTimeline({
   showScrollToBottomControl = false,
   scrollIntoViewRowId,
   virtualized = false,
+  onBottomAnchor,
 }: RenderArgs) {
   const timeline = (renderedRowIds: string[]) => {
     const rows = renderedRowIds.map((rowId) => (
@@ -189,6 +201,9 @@ function renderTimeline({
         {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
         {scrollIntoViewRowId ? (
           <ScrollRowIntoViewControl rowId={scrollIntoViewRowId} />
+        ) : null}
+        {onBottomAnchor ? (
+          <BottomAnchorProbe onBottomAnchor={onBottomAnchor} />
         ) : null}
         <div data-timeline-row-list="top-level">
           <div
@@ -1168,5 +1183,184 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       offsetWithinRow: 20,
       atBottom: false,
     });
+  });
+
+  it("keeps a toggled row in place instead of following the bottom", () => {
+    let bottomAnchor: BottomAnchorContextValue | null = null;
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      onBottomAnchor: (anchor) => {
+        bottomAnchor = anchor;
+      },
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-b"), { top: 20, bottom: 60 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+
+    act(() => {
+      bottomAnchor?.holdContentPosition({
+        edge: "top",
+        element: getRow("row-b"),
+        update: () => {
+          setScrollMetrics(scrollArea, {
+            scrollHeight: 2_000,
+            clientHeight: 100,
+            scrollTop: 300,
+          });
+        },
+      });
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(300);
+  });
+
+  it("keeps a collapsing row's bottom edge in place when its top is offscreen", () => {
+    let bottomAnchor: BottomAnchorContextValue | null = null;
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      onBottomAnchor: (anchor) => {
+        bottomAnchor = anchor;
+      },
+    });
+    mockScrollAreaRect(scrollArea);
+    const row = getRow("row-b");
+    mockRowRect(row, { top: -900, bottom: 60 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 2_000,
+      clientHeight: 100,
+      scrollTop: 800,
+    });
+
+    act(() => {
+      bottomAnchor?.holdContentPosition({
+        edge: "bottom",
+        element: row,
+        update: () => {
+          mockRowRect(row, { top: -900, bottom: -440 });
+        },
+      });
+    });
+
+    expect(scrollArea.scrollTop).toBe(300);
+  });
+
+  it("keeps following new content after a toggle that leaves the viewport at the bottom", () => {
+    let bottomAnchor: BottomAnchorContextValue | null = null;
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      onBottomAnchor: (anchor) => {
+        bottomAnchor = anchor;
+      },
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-b"), { top: 20, bottom: 60 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 100,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+    getLatestResizeObserver().trigger();
+
+    act(() => {
+      bottomAnchor?.holdContentPosition({
+        edge: "top",
+        element: getRow("row-b"),
+        update: () => {},
+      });
+    });
+    getLatestResizeObserver().trigger();
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(300);
+  });
+
+  it("re-pins when collapsing a toggled row clamps a detached viewport onto the bottom", () => {
+    let bottomAnchor: BottomAnchorContextValue | null = null;
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      onBottomAnchor: (anchor) => {
+        bottomAnchor = anchor;
+      },
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-b"), { top: 20, bottom: 60 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_100,
+      clientHeight: 100,
+      scrollTop: 910,
+    });
+    getLatestResizeObserver().trigger();
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+
+    act(() => {
+      bottomAnchor?.holdContentPosition({
+        edge: "top",
+        element: getRow("row-b"),
+        update: () => {
+          setScrollMetrics(scrollArea, {
+            scrollHeight: 940,
+            clientHeight: 100,
+            scrollTop: 840,
+          });
+        },
+      });
+    });
+    const observer = getLatestResizeObserver();
+    const shrinkEntries = observer.targets.map(makeResizeEntry);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 960,
+      clientHeight: 100,
+      scrollTop: 840,
+    });
+    observer.callback(shrinkEntries, observer);
+
+    expect(scrollArea.scrollTop).toBe(860);
+  });
+
+  it("suspends native scroll anchoring until overlapping holds finish", () => {
+    vi.useFakeTimers();
+    let bottomAnchor: BottomAnchorContextValue | null = null;
+    const { scrollArea, getRow } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+      onBottomAnchor: (anchor) => {
+        bottomAnchor = anchor;
+      },
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-b"), { top: 20, bottom: 60 });
+    const hold = () =>
+      act(() => {
+        bottomAnchor?.holdContentPosition({
+          edge: "top",
+          element: getRow("row-b"),
+          update: () => {},
+        });
+      });
+
+    hold();
+    vi.advanceTimersByTime(200);
+    hold();
+    vi.advanceTimersByTime(100);
+    expect(scrollArea.style.overflowAnchor).toBe("none");
+
+    vi.advanceTimersByTime(200);
+    expect(scrollArea.style.overflowAnchor).toBe("");
   });
 });

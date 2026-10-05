@@ -8,8 +8,8 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { idleSplitDownload } from "./split-prefetch";
-import { defineSplit, useSplitPreload } from "./define-split";
+import { downloadSplit } from "./split-prefetch";
+import { defineSplit } from "./define-split";
 
 afterEach(() => {
   cleanup();
@@ -34,10 +34,10 @@ it("downloads bytes without importing and shares an in-flight download with firs
     id: "download-only",
     load,
     loading: () => <p>Waiting for bytes</p>,
-    preload: "render",
+    tier: "intent",
   });
   try {
-    const downloading = idleSplitDownload("download-only").preload();
+    const downloading = downloadSplit("download-only");
     await act(async () => {});
     expect(fetch).toHaveBeenCalledOnce();
     expect(load).not.toHaveBeenCalled();
@@ -50,7 +50,7 @@ it("downloads bytes without importing and shares an in-flight download with firs
       await downloading;
     });
     expect(await screen.findByText("Downloaded editor")).toBeTruthy();
-    await idleSplitDownload("download-only").preload();
+    await downloadSplit("download-only");
     expect(fetch).toHaveBeenCalledOnce();
     expect(load).toHaveBeenCalledOnce();
   } finally {
@@ -76,11 +76,11 @@ it("does not start a speculative download after an import has started", async ()
       return () => null;
     },
     loading: () => null,
-    preload: "render",
+    tier: "intent",
   });
   try {
     const importing = Split.preload();
-    await idleSplitDownload("import-first").preload();
+    await downloadSplit("import-first");
     expect(fetch).not.toHaveBeenCalled();
     finish();
     await importing;
@@ -103,7 +103,7 @@ it("shares a pending intent preload with rendering, preserves props, and stays m
     id: "editor",
     load,
     loading: ({ label }) => <p>Loading {label}</p>,
-    preload: "intent",
+    tier: "intent",
   });
   const view = render(<button {...Split.intentProps}>Open</button>);
   expect(load).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ it("keeps load failure local and retries a failed import instead of caching the 
     id: "retry",
     load,
     loading: () => <p>Loading</p>,
-    preload: "render",
+    tier: "intent",
   });
   render(
     <>
@@ -158,7 +158,7 @@ it("recovers from a rejected speculative preload when the feature is opened", as
     id: "preload-retry",
     load,
     loading: () => null,
-    preload: "intent",
+    tier: "intent",
   });
   await Split.preload();
   render(<Split />);
@@ -179,7 +179,7 @@ it.each(["preload", "previous mount"])(
       id: "cached-mount",
       load: async () => () => <input aria-label="Cached editor" />,
       loading: Loading,
-      preload: "render",
+      tier: "intent",
     });
     if (warmup === "preload") {
       await Split.preload();
@@ -215,7 +215,7 @@ it.each([
       id: "automatic-retry",
       load,
       loading: () => <p>Loading editor</p>,
-      preload: "intent",
+      tier: "intent",
     });
     const warm = Split.preload();
     render(<Split />);
@@ -246,7 +246,7 @@ it("stops automatic retries after three attempts and permits a new manual attemp
     id: "exhausted-retry",
     load,
     loading: () => <p>Loading editor</p>,
-    preload: "render",
+    tier: "intent",
   });
   render(<Split />);
   await act(async () => vi.runAllTimersAsync());
@@ -276,7 +276,7 @@ it.each([
       id: "non-download-failure",
       load,
       loading: () => null,
-      preload: "render",
+      tier: "intent",
     });
     render(<Split />);
     await act(async () => vi.runAllTimersAsync());
@@ -285,8 +285,33 @@ it.each([
   },
 );
 
+it("mounts only when wanted and keeps a retained split mounted after it closes", async () => {
+  const Split = defineSplit<{ open: boolean }>({
+    id: "gated",
+    load: async () => () => <input aria-label="Gated editor" />,
+    loading: () => null,
+    unmounted: () => <p>Closed shell</p>,
+    mountWhen: ({ open }) => open,
+    keepMounted: true,
+    tier: "intent",
+  });
+  const view = render(<Split open={false} />);
+  expect(screen.getByText("Closed shell")).toBeTruthy();
+  view.rerender(<Split open />);
+  fireEvent.change(
+    await screen.findByRole("textbox", { name: "Gated editor" }),
+    { target: { value: "kept" } },
+  );
+  view.rerender(<Split open={false} />);
+  expect(screen.queryByText("Closed shell")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "Gated editor" })).toHaveProperty(
+    "value",
+    "kept",
+  );
+});
+
 it.each([true, false])(
-  "warms at idle after paint and cancels on unmount (idle API: %s)",
+  "preloads preload-tier splits at idle once preloading starts, including ones defined later (idle API: %s)",
   async (hasIdleCallback) => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -295,33 +320,75 @@ it.each([true, false])(
         ? (callback: () => void) => window.setTimeout(callback, 1000)
         : undefined,
     );
-    vi.stubGlobal(
-      "cancelIdleCallback",
-      hasIdleCallback ? window.clearTimeout : undefined,
-    );
+    vi.resetModules();
+    const { defineSplit: define } = await import("./define-split");
+    const { startSplitPreloading: start } = await import("./split-prefetch");
     const load = vi.fn(async () => () => <p>Warm feature</p>);
-    const Split = defineSplit({
-      id: "idle",
+    const Split = define({
+      id: "preload",
       load,
       loading: () => null,
-      preload: "idle",
+      tier: "preload",
     });
-    function Page() {
-      useSplitPreload(Split);
-      return <p>Page stays usable</p>;
-    }
-    const first = render(<Page />);
-    await act(async () => vi.advanceTimersByTimeAsync(50));
-    expect(load).not.toHaveBeenCalled();
-    first.unmount();
+    const intentLoad = vi.fn(async () => () => null);
+    define({
+      id: "intent",
+      load: intentLoad,
+      loading: () => null,
+      tier: "intent",
+    });
     await act(async () => vi.runAllTimersAsync());
     expect(load).not.toHaveBeenCalled();
-    const second = render(<Page />);
+    start();
     await act(async () => vi.runAllTimersAsync());
     expect(load).toHaveBeenCalledOnce();
-    expect(screen.queryByText("Warm feature")).toBeNull();
-    second.rerender(<Split />);
+    expect(intentLoad).not.toHaveBeenCalled();
+    const lateLoad = vi.fn(async () => () => null);
+    define({
+      id: "late-preload",
+      load: lateLoad,
+      loading: () => null,
+      tier: "preload",
+    });
+    await act(async () => vi.runAllTimersAsync());
+    expect(lateLoad).toHaveBeenCalledOnce();
+    render(<Split />);
     expect(screen.getByText("Warm feature")).toBeTruthy();
     expect(load).toHaveBeenCalledOnce();
   },
 );
+
+it("holds preload-tier work until rendered splits have loaded", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("requestIdleCallback", undefined);
+  vi.resetModules();
+  const { defineSplit: define } = await import("./define-split");
+  const { startSplitPreloading: start } = await import("./split-prefetch");
+  let finishPage!: () => void;
+  const Page = define({
+    id: "page",
+    load: () =>
+      new Promise<React.ComponentType>((resolve) => {
+        finishPage = () => resolve(() => <p>Page content</p>);
+      }),
+    loading: () => null,
+    tier: "intent",
+  });
+  const preloadLoad = vi.fn(async () => () => null);
+  define({
+    id: "later",
+    load: preloadLoad,
+    loading: () => null,
+    tier: "preload",
+  });
+  render(<Page />);
+  start();
+  await act(async () => vi.runAllTimersAsync());
+  expect(preloadLoad).not.toHaveBeenCalled();
+  await act(async () => {
+    finishPage();
+    await vi.runAllTimersAsync();
+  });
+  expect(screen.getByText("Page content")).toBeTruthy();
+  expect(preloadLoad).toHaveBeenCalledOnce();
+});
