@@ -1,11 +1,13 @@
 import { useEffect, useRef } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { VoiceInputTextareaProps } from "@bb/shared-ui/voice-input-textarea";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { transcribeVoiceInput } from "@/lib/api";
 import { WaveformVisualizer } from "./WaveformVisualizer";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 function appendTranscript(value: string, transcript: string): string {
   return value && !/\s$/.test(value)
@@ -118,21 +120,24 @@ export function VoiceInputTextarea({
               </Button>
             </>
           ) : (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label="Start voice input"
-              className="size-8 rounded-md p-0 max-md:pointer-coarse:size-10"
-              disabled={disabled}
-              onClick={() => {
-                if (document.activeElement instanceof HTMLElement)
-                  document.activeElement.blur();
-                void voice.start();
-              }}
-            >
-              <Icon name="Mic" className="size-4" />
-            </Button>
+            <TooltipProvider>
+              <VoiceInputButton
+                warning={voice.microphoneWarning}
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Start voice input"
+                className="size-8 rounded-md p-0 max-md:pointer-coarse:size-10"
+                disabled={disabled}
+                onClick={() => {
+                  if (document.activeElement instanceof HTMLElement)
+                    document.activeElement.blur();
+                  void voice.start();
+                }}
+              >
+                <Icon name="Mic" className="size-4" />
+              </VoiceInputButton>
+            </TooltipProvider>
           )}
         </div>
       ) : null}
