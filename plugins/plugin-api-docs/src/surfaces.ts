@@ -462,6 +462,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read the draft prompt's text and every @-mention in it, whether it is empty, and how many files are attached",
           "Read draft.attachments and atomically restore text, mention pills, and uploaded attachments with replace; omit attachments to preserve them or pass an empty array to clear them",
           "Use insert(parts, { at: cursor or end }) to add text and pills; use replace(current => next) for atomic transformations of the latest immutable text, mentions, and attachments",
+          "Insert a thread pill with a thread mention containing kind: thread, threadId, projectId, and label. User-pasted same-origin thread URLs resolve into that same mention; insert and replace keep programmatic URL text literal",
           "Supply explicit mention ranges to replace: it does not infer or rebase pills from text edits; returning the current snapshot is a no-op, and throwing or returning invalid data leaves the draft unchanged",
           "Core quotes use replace to append blockquoted text and merge attachments by path, then focus; attachments belong to the draft, not to the quoted block",
           "Migrate setText and updateText to replace with explicit mentions, clear to replace({ text: empty string, mentions: [] }), insertMention to insert(..., { at: end }) plus focus, and addQuote/removeMention to replacement transforms; setText/updateText/clear/addQuote/insertMention/removeMention are runtime-only compatibility paths absent from published types",

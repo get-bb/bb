@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import { MAX_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import { Button } from "@/components/ui/button";
@@ -83,7 +84,11 @@ export function WebCard({
 
 export function Spinner() {
   return (
-    <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-border border-t-subtle-foreground" />
+    <HugeiconsIcon
+      icon={Loading03Icon}
+      className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+      aria-hidden
+    />
   );
 }
 

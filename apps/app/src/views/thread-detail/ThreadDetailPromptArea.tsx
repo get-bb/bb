@@ -70,7 +70,7 @@ import {
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPromptModeCard";
-import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
+import { ThreadWorkflowStack } from "@/components/promptbox/banner/ThreadWorkflowStack";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
@@ -653,6 +653,7 @@ export function ThreadDetailPromptArea({
       return next;
     });
   }, []);
+  const [isWorkflowStackExpanded, setIsWorkflowStackExpanded] = useState(false);
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -2112,14 +2113,13 @@ export function ThreadDetailPromptArea({
     () => (
       <>
         {childPendingInteractionBanners}
-        {activeWorkflows.map((workflow) => (
-          <ThreadWorkflowCard
-            key={workflow.id}
-            workflow={workflow}
-            isExpanded={expandedWorkflowIds.has(workflow.id)}
-            onToggle={() => toggleWorkflowExpanded(workflow.id)}
-          />
-        ))}
+        <ThreadWorkflowStack
+          workflows={activeWorkflows}
+          isStackExpanded={isWorkflowStackExpanded}
+          onToggleStack={() => setIsWorkflowStackExpanded((value) => !value)}
+          expandedWorkflowIds={expandedWorkflowIds}
+          onToggleWorkflow={toggleWorkflowExpanded}
+        />
         <ThreadBackgroundCommandsCard
           commands={activeBackgroundCommands}
           isExpanded={isBackgroundCommandsExpanded}
@@ -2242,6 +2242,7 @@ export function ThreadDetailPromptArea({
       activePromptModeCard,
       isTodoExpanded,
       activeWorkflows,
+      isWorkflowStackExpanded,
       expandedWorkflowIds,
       toggleWorkflowExpanded,
       activeBackgroundCommands,

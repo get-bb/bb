@@ -1,3 +1,4 @@
+import { rawThreadIdSchema } from "@bb/domain";
 import type { EventProjectionToolParsedIntent } from "./event-projection-types.js";
 
 const SHELL_WRAPPER_NAMES = new Set(["sh", "bash", "zsh"]);
@@ -560,4 +561,191 @@ export function parseShellCommandIntents(
     return true;
   });
   return intents;
+}
+
+const THREAD_TELL_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "--message-file",
+  "--model",
+  "--service-tier",
+  "--reasoning-level",
+  "--permission-mode",
+  "--mode",
+]);
+
+const THREAD_TELL_BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  "--json",
+  "--plan",
+]);
+
+const THREAD_TELL_HINT = /\bthread\s+(?:tell|message)\b/u;
+const BB_CLI_TOKEN = /^\$\{?BB_CLI(?::-[^}]*)?\}?$/u;
+const SHELL_VARIABLE_TOKEN = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/u;
+const SHELL_EXPANSION = /[$`]/u;
+const HEREDOC_ASSIGNMENT =
+  /^([A-Za-z_][A-Za-z0-9_]*)=\$\(cat <<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\3[ \t]*\n([\s\S]*?)\n(\t*)\4\n[ \t]*\)[ \t]*\n([^\n]*)$/u;
+const STDIN_HEREDOC =
+  /^([^\n]*?)<<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\3[ \t]*\n([\s\S]*?)\n(\t*)\4$/u;
+
+export interface ThreadTellCommand {
+  threadId: string;
+  message: string;
+}
+
+interface ThreadTellScript {
+  line: string;
+  stdin: string | null;
+  variable: { name: string; value: string } | null;
+}
+
+interface HeredocMatch {
+  body: string;
+  dash: string;
+  quote: string;
+  terminatorTabs: string;
+}
+
+function heredocBody({
+  body,
+  dash,
+  quote,
+  terminatorTabs,
+}: HeredocMatch): string | null {
+  if (terminatorTabs !== "" && dash !== "-") return null;
+  if (quote === "" && /[$`\\]/u.test(body)) return null;
+  return dash === "-" ? body.replace(/^\t+/gmu, "") : body;
+}
+
+function splitThreadTellScript(script: string): ThreadTellScript | null {
+  let line = script.trim();
+  let variable: ThreadTellScript["variable"] = null;
+  const assignment = HEREDOC_ASSIGNMENT.exec(line);
+  if (assignment) {
+    const [, name, dash, quote, , body, terminatorTabs, rest] = assignment;
+    const value = heredocBody({
+      body: body!,
+      dash: dash!,
+      quote: quote!,
+      terminatorTabs: terminatorTabs!,
+    });
+    if (value === null) return null;
+    variable = { name: name!, value };
+    line = rest!.trim();
+  }
+  let stdin: string | null = null;
+  const piped = STDIN_HEREDOC.exec(line);
+  if (piped) {
+    const [, head, dash, quote, , body, terminatorTabs] = piped;
+    stdin = heredocBody({
+      body: body!,
+      dash: dash!,
+      quote: quote!,
+      terminatorTabs: terminatorTabs!,
+    });
+    if (stdin === null) return null;
+    line = head!.trim();
+  }
+  return { line, stdin, variable };
+}
+
+function resolveThreadTellMessage(
+  value: string,
+  variable: ThreadTellScript["variable"],
+): string | null {
+  const name = SHELL_VARIABLE_TOKEN.exec(value)?.[1];
+  if (name !== undefined) {
+    return variable !== null && variable.name === name ? variable.value : null;
+  }
+  return SHELL_EXPANSION.test(value) ? null : value;
+}
+
+function parseThreadTellSegment(
+  tokens: readonly ShellToken[],
+  script: ThreadTellScript,
+): ThreadTellCommand | null {
+  const commandIndex = getCommandTokenIndex(tokens);
+  const [cli, group, verb, ...argTokens] = tokens.slice(commandIndex);
+  if (
+    cli === undefined ||
+    (baseExecutableName(cli.value) !== "bb" && !BB_CLI_TOKEN.test(cli.value)) ||
+    group?.value !== "thread" ||
+    (verb?.value !== "tell" && verb?.value !== "message")
+  ) {
+    return null;
+  }
+  const positionals: string[] = [];
+  let messageFile: string | null = null;
+  for (let index = 0; index < argTokens.length; index += 1) {
+    const token = argTokens[index]!;
+    const redirect = scanRedirectAt(argTokens, index);
+    if (redirect) {
+      index += redirect.consumedExtra;
+      continue;
+    }
+    if (!token.quoted && token.value.startsWith("-") && token.value !== "-") {
+      const equals = token.value.indexOf("=");
+      const flag = equals === -1 ? token.value : token.value.slice(0, equals);
+      if (THREAD_TELL_BOOLEAN_FLAGS.has(flag) && equals === -1) continue;
+      if (!THREAD_TELL_VALUE_FLAGS.has(flag)) return null;
+      let value: string | undefined = token.value.slice(equals + 1);
+      if (equals === -1) {
+        index += 1;
+        value = argTokens[index]?.value;
+      }
+      if (flag === "--message-file") messageFile = value ?? null;
+      continue;
+    }
+    positionals.push(token.value);
+  }
+  const [threadId, messageArg, ...extra] = positionals;
+  let message: string | null = null;
+  if (messageArg !== undefined && messageFile === null) {
+    message = resolveThreadTellMessage(messageArg, script.variable);
+  } else if (messageArg === undefined && messageFile === "-") {
+    message = script.stdin;
+  }
+  if (
+    extra.length > 0 ||
+    threadId === undefined ||
+    !rawThreadIdSchema.safeParse(threadId).success ||
+    message === null ||
+    message.trim().length === 0
+  ) {
+    return null;
+  }
+  return { threadId, message };
+}
+
+export function parseThreadTellCommand(
+  command: string,
+): ThreadTellCommand | null {
+  if (!THREAD_TELL_HINT.test(command)) return null;
+  const unwrapped = extractShellCommandFromString(command);
+  if (unwrapped === undefined) return null;
+  const script = splitThreadTellScript(unwrapped);
+  if (script === null) return null;
+  const segments: ShellToken[][] = [];
+  visitShellCommandSegments(script.line, (segment) => {
+    segments.push(segment);
+    return segments.length < 2;
+  });
+  return segments.length === 1
+    ? parseThreadTellSegment(segments[0]!, script)
+    : null;
+}
+
+interface CommandCall {
+  command: string;
+  exitCode: number | null;
+  status: string;
+}
+
+export function parseSentThreadMessage({
+  command,
+  exitCode,
+  status,
+}: CommandCall): ThreadTellCommand | null {
+  if (status !== "completed" || (exitCode !== null && exitCode !== 0)) {
+    return null;
+  }
+  return parseThreadTellCommand(command);
 }

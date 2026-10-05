@@ -91,6 +91,7 @@ export function SidebarHeaderMenuContents({
         compact ? (
           <DropdownMenuItem
             key={item.page}
+            className="[&>[data-icon-root]:last-child]:size-3 [&>[data-icon-root]:last-child]:text-subtle-foreground"
             onSelect={(event) => {
               event.preventDefault();
               onPageChange(item.page);
@@ -102,7 +103,7 @@ export function SidebarHeaderMenuContents({
           </DropdownMenuItem>
         ) : (
           <DropdownMenuSub key={item.page}>
-            <DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger className="[&>[data-icon-root]:last-child]:size-3 [&>[data-icon-root]:last-child]:text-subtle-foreground">
               <Icon name={item.icon} />
               {item.label}
             </DropdownMenuSubTrigger>

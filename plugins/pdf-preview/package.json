@@ -6,7 +6,7 @@
   "description": "Preview PDF files with the browser's built-in viewer.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.8"
+    "bbPluginSdk": ">=0.4.84"
   },
   "bb": {
     "name": "PDF preview",
