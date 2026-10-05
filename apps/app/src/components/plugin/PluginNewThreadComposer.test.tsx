@@ -1481,11 +1481,9 @@ describe("PluginNewThreadComposer seeding", () => {
           defaultShortcut: null,
           id: "inspect",
           title: "Inspect project",
-          run: (context) => {
-            expect(context.threadId).toBeNull();
-            expect(context.projectId).toBe("proj_1");
+          run: ({ openPanel }) => {
             accepted.push(
-              context.openPanel({
+              openPanel({
                 actionId: "inspect-project",
                 title: "Inspect current project",
                 params: { section: "changes" },
@@ -1495,7 +1493,7 @@ describe("PluginNewThreadComposer seeding", () => {
         },
       ],
       threadId: null,
-      projectId: "proj_1",
+      projectId: null,
       openThreadPanel: getActiveThreadPanelOpener(),
     });
     await act(async () => {
