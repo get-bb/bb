@@ -478,9 +478,10 @@ untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
 
 `history.back` / `history.forward` (Go back / Go forward) do the same thing
 as the sidebar's back and forward arrows: they move through the pages opened
-in the current window, like browser history. Desktop uses `Mod+[` / `Mod+]`;
-the web uses `Control+[` / `Control+]` so the browser keeps `Command+[` for its
-own Back. At either end the shortcut does nothing. Hovering an arrow shows its
+in the current window, like browser history. They use `Mod+[` / `Mod+]` on
+desktop and the web; in the browser, bb handles the key instead of the
+browser's own Back while it has somewhere to go. At either end the shortcut
+does nothing. Hovering an arrow shows its
 current shortcut.
 
 On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with

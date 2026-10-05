@@ -366,17 +366,6 @@ describe("app keybindings", () => {
           {
             desktopOnly: false,
             key,
-            mod: false,
-            control: true,
-            shift: false,
-            when: {
-              all: ["mainSurface", "webSurface"],
-              none: ["modalOpen"],
-            },
-          },
-          {
-            desktopOnly: true,
-            key,
             mod: true,
             control: false,
             shift: false,
@@ -631,8 +620,6 @@ describe("app keybindings", () => {
         "thread.new",
         "thread.previous",
         "thread.next",
-        "history.back",
-        "history.forward",
         ...THREAD_JUMP_APP_COMMAND_IDS,
         ...PANE_FOCUS_APP_COMMAND_IDS,
         "panel.reopenClosedTab",

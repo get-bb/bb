@@ -41,9 +41,9 @@ const mocks = vi.hoisted(() => {
       desktopOnly: false,
       shortcut: {
         key,
-        mod: false,
+        mod: true,
         meta: false,
-        control: true,
+        control: false,
         alt: false,
         shift: false,
       },

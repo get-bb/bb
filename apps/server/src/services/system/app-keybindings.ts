@@ -200,26 +200,8 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       desktopOnly: true,
     },
   ),
-  binding("history.back", "[", { control: true }, webMainWithoutModal),
-  binding(
-    "history.back",
-    "[",
-    { mod: true },
-    {
-      ...mainWithoutModal,
-      desktopOnly: true,
-    },
-  ),
-  binding("history.forward", "]", { control: true }, webMainWithoutModal),
-  binding(
-    "history.forward",
-    "]",
-    { mod: true },
-    {
-      ...mainWithoutModal,
-      desktopOnly: true,
-    },
-  ),
+  binding("history.back", "[", { mod: true }, mainWithoutModal),
+  binding("history.forward", "]", { mod: true }, mainWithoutModal),
   ...numberedChatBindings(THREAD_JUMP_APP_COMMAND_IDS, mainWithoutModal),
   ...(
     [
