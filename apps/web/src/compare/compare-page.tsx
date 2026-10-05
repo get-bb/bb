@@ -208,6 +208,18 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         </a>
       </header>
 
+      <section className="cmp-team" data-reveal>
+        <h2>Built by alumni from</h2>
+        <ul className="company-proof-logos cmp-team-logos">
+          {TEAM_COMPANIES.map(([name, logo]) => (
+            <li key={name} className="company-proof-company">
+              <img src={logo} alt="" width={20} height={20} />
+              {name}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       {comparison.highlights.map((highlight) =>
         highlight.wide ? (
           <section
@@ -231,18 +243,6 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
           </Band>
         ),
       )}
-
-      <section className="cmp-team" data-reveal>
-        <h2>Built by alumni from</h2>
-        <ul className="company-proof-logos cmp-team-logos">
-          {TEAM_COMPANIES.map(([name, logo]) => (
-            <li key={name} className="company-proof-company">
-              <img src={logo} alt="" width={20} height={20} />
-              {name}
-            </li>
-          ))}
-        </ul>
-      </section>
 
       <section className="cmp-section" data-reveal>
         <h2 id="cmp-table-title" className="sec-title cmp-table-title">
