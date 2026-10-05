@@ -712,9 +712,17 @@ nightly publication following a stable release. Successful builds replace the
 APK and version metadata used by Settings → Mobile. These builds do not submit
 to Google Play.
 
+The Android version name matches the published bb-app nightly version, including
+its full `-nightly.RUN.ATTEMPT` suffix. EAS continues to increment the integer
+Android build number independently. The APK's version name and build number
+are also used in the Settings → Mobile download metadata.
+
 For an immediate update, run **Mobile Android (EAS)**, profile `preview`,
 **publish** on, or
 `gh workflow run mobile-android-eas.yml --ref main -f profile=preview -f publish=true -f submit=false`.
+Add `-f version=X.Y.Z-nightly.RUN.ATTEMPT` to assign a specific nightly version,
+or `-f version=X.Y.Z` for a stable version. Leaving it empty uses the committed
+mobile version.
 The preview Gradle command builds `arm64-v8a` and `armeabi-v7a`, supporting
 both 64-bit and 32-bit ARM phones. It omits Intel x86/x86_64 libraries to reduce
 the direct download; Intel devices and x86 emulators cannot install this APK.

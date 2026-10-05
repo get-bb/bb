@@ -858,6 +858,7 @@ jobs:
       profile: preview
       publish: true
       submit: false
+      version: ${{ needs.publish-nightly.outputs.version || needs.publish.outputs.version }}
     secrets:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
