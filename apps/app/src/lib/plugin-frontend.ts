@@ -15,6 +15,7 @@ import * as radixPopover from "@radix-ui/react-popover";
 import * as radixSelect from "@radix-ui/react-select";
 import * as radixTooltip from "@radix-ui/react-tooltip";
 import * as sonner from "sonner";
+import { whenToasterSettled } from "@/components/ui/app-toast-runtime";
 import * as vaul from "vaul";
 import * as pierreDiffs from "@pierre/diffs";
 import * as clsx from "clsx";
@@ -990,6 +991,7 @@ export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
+    await whenToasterSettled();
     await reconcilePluginFrontends(state, browserReconcileDeps);
   })().catch((error: unknown) => {
     console.warn(

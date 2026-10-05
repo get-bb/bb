@@ -147,7 +147,8 @@
     "prosemirror-view",
     "react-resizable-panels",
     "rehype-katex",
-    "shiki"
+    "shiki",
+    "sonner"
   ],
   "splitBoundaries": {
     "src/components/code/BbDiff.tsx": [

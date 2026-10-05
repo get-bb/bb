@@ -1,5 +1,7 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { attachSonnerToast } from "@/components/ui/app-toast-runtime";
 import { HttpError } from "./api";
 import {
   getMutationErrorMessage,
@@ -71,6 +73,10 @@ function readLatestToastProps(): CapturedToastProps {
   }
   return element.props;
 }
+
+beforeAll(() => {
+  attachSonnerToast(toast);
+});
 
 afterEach(() => {
   mutationToastState.invocations.splice(0);
