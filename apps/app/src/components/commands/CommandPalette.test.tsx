@@ -1721,7 +1721,10 @@ describe("CommandPalette", () => {
     expect(projectIcon?.previousSibling?.textContent).toBe(
       "Title archived-message · ",
     );
-    expect(projectIcon?.nextSibling?.textContent).toBe("Palette project · ");
+    expect(projectIcon?.nextSibling?.textContent).toBe("Palette project");
+    expect(metadata?.textContent).toContain(
+      "Title archived-message · Palette project · ",
+    );
     fireEvent.keyDown(input, { key: "Enter" });
 
     const state = {
