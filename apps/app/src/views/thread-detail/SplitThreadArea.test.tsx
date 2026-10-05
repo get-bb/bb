@@ -265,8 +265,8 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
   },
 }));
 
-vi.mock("./ThreadDetailView", () => ({
-  ThreadDetailView: ({
+vi.mock("./LazyThreadDetailView", () => ({
+  LazyThreadDetailView: ({
     projectId = "proj_personal",
     threadId = "thr-a",
     timelineEnabled = true,
