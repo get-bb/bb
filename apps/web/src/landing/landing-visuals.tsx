@@ -177,7 +177,7 @@ export function Band({
   visual,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   flip?: boolean;
   visual: ReactNode;
   children: ReactNode;

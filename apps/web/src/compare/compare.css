@@ -1,3 +1,5 @@
+@import "@fontsource-variable/inter/wght-italic.css";
+
 .cmp-hero {
   padding-top: 40px;
 }
@@ -1568,4 +1570,13 @@
   .cmp-feed > li {
     animation: none;
   }
+}
+
+.cmp-bb {
+  font-style: italic;
+  font-weight: 700;
+}
+
+:is(h1, h2) .cmp-bb {
+  font-weight: inherit;
 }

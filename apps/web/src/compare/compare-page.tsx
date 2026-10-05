@@ -3,7 +3,7 @@ import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { isValidElement, type ReactNode } from "react";
+import { cloneElement, Fragment, isValidElement, type ReactNode } from "react";
 
 import { useInitAnalytics } from "../landing/analytics";
 import {
@@ -40,6 +40,38 @@ function plainText(node: ReactNode): string {
     return node.type === "p" ? `${text} ` : text;
   }
   return "";
+}
+
+function brandText(text: string): ReactNode {
+  const parts = text.split(/\b(bb)\b/);
+  if (parts.length === 1) return text;
+  return parts.map((part, index) =>
+    index % 2 === 1 ? (
+      <span key={index} className="cmp-bb">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
+function brandProse(node: ReactNode): ReactNode {
+  if (typeof node === "string") return brandText(node);
+  if (Array.isArray(node)) {
+    return node.map((child, index) => (
+      <Fragment key={index}>{brandProse(child)}</Fragment>
+    ));
+  }
+  if (
+    isValidElement<{ children?: ReactNode }>(node) &&
+    (node.type === Fragment ||
+      (typeof node.type === "string" && node.type !== "code")) &&
+    node.props.children !== undefined
+  ) {
+    return cloneElement(node, undefined, brandProse(node.props.children));
+  }
+  return node;
 }
 
 function faqJsonLd(comparison: Comparison): string {
@@ -200,8 +232,8 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
             {competitor.name}
           </span>
         </div>
-        <h1>{comparison.headline}</h1>
-        <p className="sub">{comparison.sub}</p>
+        <h1>{brandProse(comparison.headline)}</h1>
+        <p className="sub">{brandProse(comparison.sub)}</p>
         <InstallOptions placement="hero" />
       </header>
 
@@ -225,18 +257,18 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
             data-reveal
           >
             <div className="cmp-wide-copy">
-              <h2>{highlight.title}</h2>
-              {highlight.body}
+              <h2>{brandProse(highlight.title)}</h2>
+              {brandProse(highlight.body)}
             </div>
             {highlight.visual}
           </section>
         ) : (
           <Band
             key={highlight.title}
-            title={highlight.title}
+            title={brandProse(highlight.title)}
             visual={highlight.visual}
           >
-            {highlight.body}
+            {brandProse(highlight.body)}
           </Band>
         ),
       )}
@@ -265,14 +297,16 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
               {group.items.map((item) => (
                 <details key={item.question} className="cmp-faq-item">
                   <summary>
-                    {item.question}
+                    <span>{brandProse(item.question)}</span>
                     <HugeiconsIcon
                       icon={ArrowDown01Icon}
                       className="cmp-faq-chevron"
                       aria-hidden="true"
                     />
                   </summary>
-                  <div className="cmp-faq-answer">{item.answer}</div>
+                  <div className="cmp-faq-answer">
+                    {brandProse(item.answer)}
+                  </div>
                 </details>
               ))}
             </div>
@@ -281,8 +315,8 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       </section>
 
       <section className="closer" data-reveal>
-        <h2 className="sec-title">{comparison.closer.title}</h2>
-        <p>{comparison.closer.body}</p>
+        <h2 className="sec-title">{brandProse(comparison.closer.title)}</h2>
+        <p>{brandProse(comparison.closer.body)}</p>
         <InstallOptions placement="closer" />
       </section>
 
