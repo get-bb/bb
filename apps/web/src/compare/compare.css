@@ -723,7 +723,7 @@
 
 .cmp-us,
 .cmp-table thead th.cmp-us {
-  background: var(--surface);
+  background: color-mix(in oklab, var(--ink) 3%, var(--bg));
 }
 
 .cmp-us .cmp-mark-no {
