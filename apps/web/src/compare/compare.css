@@ -346,7 +346,7 @@
   bottom: 22px;
   left: 9px;
   width: 1px;
-  background: color-mix(in oklab, var(--ok) 35%, var(--bg));
+  background: var(--border);
 }
 
 .cmp-flow-packet {
@@ -358,10 +358,10 @@
   --glint-white: var(--bg);
   background: color-mix(in oklab, var(--glint) 35%, var(--glint-white));
   box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--glint) 80%, transparent),
+    0 0 0 1.5px var(--glint),
     0 0 5px 2px color-mix(in oklab, var(--glint-white) 90%, transparent),
-    0 0 12px 3px var(--glint);
-  animation: cmp-flow-down 3.3s ease-in-out infinite;
+    0 0 8px 1px var(--glint);
+  animation: cmp-flow-down 3.3s linear infinite backwards;
 }
 
 .dark .cmp-flow-packet {
@@ -374,32 +374,48 @@
 }
 
 @keyframes cmp-flow-down {
-  0% {
-    top: 0;
+  0%,
+  12%,
+  38%,
+  62%,
+  88%,
+  100% {
     opacity: 0;
   }
-  12%,
-  88% {
+  0% {
+    top: 0;
+  }
+  18%,
+  32%,
+  68%,
+  82% {
     opacity: 1;
   }
   100% {
     top: 100%;
-    opacity: 0;
   }
 }
 
 @keyframes cmp-flow-up {
-  0% {
-    top: 100%;
+  0%,
+  12%,
+  38%,
+  62%,
+  88%,
+  100% {
     opacity: 0;
   }
-  12%,
-  88% {
+  0% {
+    top: 100%;
+  }
+  18%,
+  32%,
+  68%,
+  82% {
     opacity: 1;
   }
   100% {
     top: 0;
-    opacity: 0;
   }
 }
 
@@ -447,7 +463,7 @@
 .cmp-machine-count {
   font-size: 11px;
   font-weight: 500;
-  color: var(--accent);
+  color: var(--dim);
   white-space: nowrap;
 }
 
