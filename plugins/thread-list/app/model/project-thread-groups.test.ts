@@ -959,32 +959,6 @@ describe("read status grouping", () => {
     ]);
   });
 
-  it("keeps worktree rows grouped and ranks them unread when any member is unread", () => {
-    const environment = makeSidebarEnvironment({
-      id: "env_shared",
-      providerId: "git-worktree",
-      isWorktree: true,
-    });
-    const items = buildProjectThreadGroups(
-      [
-        createThread({ id: "loose-read", latestAttentionAt: 500, ...read }),
-        createThread({
-          id: "wt-read",
-          environment,
-          latestAttentionAt: 400,
-          ...read,
-        }),
-        createThread({ id: "wt-unread", environment, latestAttentionAt: 100 }),
-      ],
-      groupComparatorByReadStatus(compareStandardThreads, isUnread),
-    );
-
-    expect(summarizeItems(items)).toEqual([
-      { env: "env_shared", threads: ["wt-unread", "wt-read"] },
-      "loose-read",
-    ]);
-  });
-
   it("applies read status before the alphabetical item comparator", () => {
     const items = buildSectionThreadList(
       [

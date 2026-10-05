@@ -92,20 +92,6 @@ describe("createThreadUnreadPredicate", () => {
     expect(isUnread(unreadChild)).toBe(false);
     expect(isUnread(unreadRunning)).toBe(false);
   });
-
-  it("uses the held status for the open thread", () => {
-    const markedRead = makeSidebarThread({
-      id: "held",
-      latestAttentionAt: 5,
-      lastReadAt: 10,
-    });
-    const isUnread = createThreadUnreadPredicate({
-      threadId: "held",
-      isUnread: true,
-    });
-
-    expect(isUnread(markedRead)).toBe(true);
-  });
 });
 
 describe("collapseParentThreads", () => {

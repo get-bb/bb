@@ -126,17 +126,6 @@ export function compareStandardThreads(
 
 export type ThreadUnreadPredicate = (thread: SidebarThread) => boolean;
 
-function getReadStatusThread(item: ProjectThreadItem): SidebarThread | null {
-  switch (item.kind) {
-    case "thread":
-      return item.node.thread;
-    case "environment":
-      return item.group.nodes[0].thread;
-    case "section":
-      return null;
-  }
-}
-
 function compareReadStatus(
   left: SidebarThread,
   right: SidebarThread,
@@ -154,11 +143,13 @@ export function groupComparatorByReadStatus(
   const compareItems = compareThreads.compareItems;
   if (compareItems) {
     grouped.compareItems = (left, right) => {
-      const leftThread = getReadStatusThread(left);
-      const rightThread = getReadStatusThread(right);
       const readStatusDelta =
-        leftThread && rightThread
-          ? compareReadStatus(leftThread, rightThread, isUnread)
+        left.kind !== "section" && right.kind !== "section"
+          ? compareReadStatus(
+              representativeThread(left),
+              representativeThread(right),
+              isUnread,
+            )
           : 0;
       return readStatusDelta || compareItems(left, right);
     };

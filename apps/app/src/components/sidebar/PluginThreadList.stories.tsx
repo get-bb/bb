@@ -59,14 +59,6 @@ function inboxEntry(
   });
 }
 
-const worktree = {
-  environmentId: "env_thread_organizer",
-  environmentName: "thread-organizer",
-  environmentBranchName: "bb/thread-organizer",
-  environmentProviderId: "git-worktree",
-  environmentIsWorktree: true,
-} as const;
-
 const INBOX_THREADS = [
   inboxEntry("thr_flaky", "Fix flaky composer test", 900, false),
   inboxEntry("thr_release", "Release notes draft", 800, true),
@@ -74,8 +66,8 @@ const INBOX_THREADS = [
   inboxEntry("thr_digest", "Digest: GitHub activity", 600, true),
   inboxEntry("thr_pins", "File Pins menu alignment", 500, false),
   inboxEntry("thr_places", "Saved Places import", 400, true),
-  inboxEntry("thr_sort_qa", "Thread organizer: QA pass", 950, false, worktree),
-  inboxEntry("thr_sort", "Thread organizer: unread sort", 300, true, worktree),
+  inboxEntry("thr_sort_qa", "Thread organizer: QA pass", 950, false),
+  inboxEntry("thr_sort", "Thread organizer: unread sort", 300, true),
   inboxEntry("thr_catalog", "Plugin catalog refresh", 200, false),
   inboxEntry("thr_catalog_shots", "Catalog screenshots", 190, false, {
     parentThreadId: "thr_catalog",
