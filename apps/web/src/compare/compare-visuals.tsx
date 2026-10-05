@@ -251,16 +251,25 @@ function MachinesCard() {
   return (
     <div className="cmp-machines" aria-hidden="true">
       <span className="cmp-machines-title">Machines</span>
-      {MACHINES.map((machine) => (
-        <span key={machine.name} className="cmp-machine">
-          <span className="cmp-machine-dot" />
-          <span className="cmp-machine-body">
-            <span className="cmp-machine-name">{machine.name}</span>
-            <span className="cmp-machine-detail">{machine.detail}</span>
-          </span>
-          <span className="cmp-machine-count">{machine.threads} running</span>
+      <span className="cmp-machines-list">
+        <span className="cmp-flow">
+          <span className="cmp-flow-packet" />
+          <span className="cmp-flow-packet cmp-flow-packet-up" />
         </span>
-      ))}
+        {MACHINES.map((machine, index) => (
+          <span key={machine.name} className="cmp-machine">
+            <span
+              className="cmp-machine-dot"
+              style={{ animationDelay: `${index * 1.1}s` }}
+            />
+            <span className="cmp-machine-body">
+              <span className="cmp-machine-name">{machine.name}</span>
+              <span className="cmp-machine-detail">{machine.detail}</span>
+            </span>
+            <span className="cmp-machine-count">{machine.threads} running</span>
+          </span>
+        ))}
+      </span>
     </div>
   );
 }

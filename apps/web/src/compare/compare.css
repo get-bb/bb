@@ -350,12 +350,88 @@
   border-top: 1px solid var(--border-soft);
 }
 
+.cmp-machines-list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cmp-flow {
+  position: absolute;
+  top: 22px;
+  bottom: 22px;
+  left: 9px;
+  width: 1px;
+  background: color-mix(in oklab, var(--ok) 35%, var(--bg));
+}
+
+.cmp-flow-packet {
+  position: absolute;
+  left: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--ok);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--ok) 70%, transparent);
+  animation: cmp-flow-down 3.3s ease-in-out infinite;
+}
+
+.cmp-flow-packet-up {
+  animation-name: cmp-flow-up;
+  animation-delay: 1.65s;
+}
+
+@keyframes cmp-flow-down {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+  12%,
+  88% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes cmp-flow-up {
+  0% {
+    top: 100%;
+    opacity: 0;
+  }
+  12%,
+  88% {
+    opacity: 1;
+  }
+  100% {
+    top: 0;
+    opacity: 0;
+  }
+}
+
 .cmp-machine-dot {
+  position: relative;
+  z-index: 1;
   width: 7px;
   height: 7px;
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--ok);
+  animation: cmp-machine-pulse 3.3s ease-out infinite;
+}
+
+@keyframes cmp-machine-pulse {
+  0%,
+  70%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 0%, transparent);
+  }
+  10% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--ok) 28%, transparent);
+  }
 }
 
 .cmp-machine-body {
@@ -1351,6 +1427,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cmp-flow-packet,
+  .cmp-machine-dot {
+    animation: none;
+  }
+
+  .cmp-flow-packet {
+    display: none;
+  }
+
   .cmp-feed > li {
     animation: none;
   }
