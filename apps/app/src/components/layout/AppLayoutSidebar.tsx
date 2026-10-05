@@ -75,11 +75,12 @@ export function AppLayoutSidebar({
         settingsRoutePath={settingsRoutePath}
         navRail={{
           hidden: renderedMode !== "app",
-          rail: (
+          renderRail: (customize) => (
             <AppNavRail
               isAppMode={renderedMode === "app"}
               isSettingsActive={renderedMode === "settings"}
               settingsRoutePath={settingsRoutePath}
+              customize={customize}
             />
           ),
           alternateBody:

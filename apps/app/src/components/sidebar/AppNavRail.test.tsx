@@ -1,8 +1,24 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { useState } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -24,13 +40,14 @@ import {
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import { useSidebarNavigation } from "@/lib/plugin-sidebar-navigation";
 import { AppNavRail, NavRailNewThreadButton } from "./AppNavRail";
+import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
   onNewChat: vi.fn(),
-  onOpenCustomize: vi.fn(),
 }));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
@@ -55,22 +72,34 @@ const ALL_KEYS = [
 ];
 const DOCS_PATH = getPluginPanelRoutePath({ pluginId: "garden", path: "docs" });
 
+function HostCustomizeTrigger() {
+  const { actions } = useSidebarNavigation();
+  return (
+    <button type="button" onClick={() => actions.openCustomize()}>
+      Plugin customize
+    </button>
+  );
+}
+
 function RailHarness() {
   const location = useLocation();
   const isSettings = location.pathname.startsWith(SETTINGS_ROUTE_PATH);
   const isAppMode = !isSettings && !isPluginsRoutePath(location.pathname);
+  const [isCustomizing, setCustomizing] = useState(false);
   return (
     <SidebarNavigationModelProvider
       onNewChat={mocks.onNewChat}
-      onOpenCustomize={mocks.onOpenCustomize}
+      onOpenCustomize={() => setCustomizing(true)}
       splitEnabled={false}
     >
       <AppNavRail
         isAppMode={isAppMode}
         isSettingsActive={isSettings}
         settingsRoutePath={SETTINGS_ROUTE_PATH}
+        customize={{ isOpen: isCustomizing, onOpenChange: setCustomizing }}
       />
       <NavRailNewThreadButton />
+      <HostCustomizeTrigger />
       <output data-testid="pathname">{location.pathname}</output>
     </SidebarNavigationModelProvider>
   );
@@ -126,6 +155,10 @@ function currentRailLabels(): (string | null)[] {
 function pathname(): string | null {
   return screen.getByTestId("pathname").textContent;
 }
+
+beforeAll(async () => {
+  await SidebarVisibilityCustomize.preload();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -213,20 +246,68 @@ describe("AppNavRail", () => {
     expect(railLabels()).toEqual(["Home", "Plugins", "More", "Settings"]);
   });
 
-  it("keeps hidden destinations reachable from More and opens Customize from Settings by going Home first", async () => {
+  it("keeps hidden destinations reachable from More", async () => {
+    renderRail(THREAD_PATH);
+
+    fireEvent.keyDown(railButton("More"), { key: "Enter" });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Search threads" }),
+    );
+
+    expect(mocks.dispatch).toHaveBeenCalledWith("thread.search", null);
+  });
+
+  it("customizes the rail from a popover beside it without leaving Settings", async () => {
     renderRail(THREAD_PATH);
     fireEvent.click(railButton("Settings"));
 
     fireEvent.keyDown(railButton("More"), { key: "Enter" });
-    expect(
-      await screen.findByRole("menuitem", { name: "Search threads" }),
-    ).toBeTruthy();
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Customize sidebar" }),
+      await screen.findByRole("menuitem", { name: "Customize rail" }),
     );
 
-    expect(mocks.onOpenCustomize).toHaveBeenCalledTimes(1);
-    expect(pathname()).toBe(THREAD_PATH);
+    const editor = await screen.findByTestId("nav-rail-customize");
+    expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
+    expect(currentRailLabels()).toEqual(["Settings"]);
+    expect(rail().contains(editor)).toBe(false);
+
+    const list = within(editor).getByRole("list", {
+      name: "Sidebar navigation",
+    });
+    fireEvent.click(within(list).getByRole("checkbox", { name: /Skills/u }));
+    expect(railLabels()).toEqual([
+      "Home",
+      "Plugins",
+      "Docs",
+      "More",
+      "Settings",
+    ]);
+    fireEvent.click(
+      within(list).getByRole("checkbox", { name: /Search threads/u }),
+    );
+    expect(railLabels()).toEqual([
+      "Home",
+      "Search threads",
+      "Plugins",
+      "Docs",
+      "More",
+      "Settings",
+    ]);
+
+    fireEvent.click(within(editor).getByRole("button", { name: "Done" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("nav-rail-customize")).toBeNull(),
+    );
+    expect(document.activeElement).toBe(railButton("More"));
+    expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
+  });
+
+  it("opens the same popover when a plugin asks the host to customize navigation", async () => {
+    renderRail(THREAD_PATH);
+
+    fireEvent.click(screen.getByRole("button", { name: "Plugin customize" }));
+
+    expect(await screen.findByTestId("nav-rail-customize")).toBeTruthy();
   });
 
   it("drops the header New thread button when the user hid New thread", () => {

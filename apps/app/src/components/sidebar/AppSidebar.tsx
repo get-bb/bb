@@ -55,7 +55,10 @@ import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
 import { LazySidebarFooterCustomize } from "./LazySidebarFooterCustomize";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
-import { NavRailNewThreadButton } from "./AppNavRail";
+import {
+  NavRailNewThreadButton,
+  type NavRailCustomizeState,
+} from "./AppNavRail";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 
@@ -64,7 +67,11 @@ interface AppSidebarProps {
   isResizing: boolean;
   settingsRoutePath: string;
   mobileHosted?: { hidden: boolean };
-  navRail?: { hidden: boolean; rail: ReactNode; alternateBody: ReactNode };
+  navRail?: {
+    hidden: boolean;
+    renderRail: (customize: NavRailCustomizeState) => ReactNode;
+    alternateBody: ReactNode;
+  };
 }
 
 export function AppSidebar({
@@ -171,7 +178,7 @@ export function AppSidebar({
   const isCompactCustomizeModeActive =
     isCompactViewport && isNavigationCustomizing;
   useEffect(() => {
-    if (isHiddenHostedBody || (isCompactViewport && !openMobile)) {
+    if (isCompactViewport && (!openMobile || isHiddenHostedBody)) {
       setNavigationCustomizing(false);
       setFooterCustomizing(false);
     }
@@ -232,13 +239,14 @@ export function AppSidebar({
           )
         }
       />
-      <SidebarNavigationRegion
-        isCustomizing={isNavigationCustomizing}
-        onCustomizingChange={setNavigationCustomizing}
-        focusReturnTargetRef={customizeFocusReturnRef}
-        onNavigate={closeOnMobile}
-        providerSuppressed={navRail !== undefined}
-      />
+      {navRail ? null : (
+        <SidebarNavigationRegion
+          isCustomizing={isNavigationCustomizing}
+          onCustomizingChange={setNavigationCustomizing}
+          focusReturnTargetRef={customizeFocusReturnRef}
+          onNavigate={closeOnMobile}
+        />
+      )}
       <SidebarContent
         className={cn(isCompactCustomizeModeActive && "hidden")}
         aria-hidden={isCompactCustomizeModeActive ? true : undefined}
@@ -351,7 +359,10 @@ export function AppSidebar({
         ) : navRail ? (
           <Sidebar ref={sidebarRef}>
             <div className="flex min-h-0 flex-1">
-              {navRail.rail}
+              {navRail.renderRail({
+                isOpen: isNavigationCustomizing,
+                onOpenChange: setNavigationCustomizing,
+              })}
               <div
                 data-testid="app-sidebar-body"
                 hidden={navRail.hidden}

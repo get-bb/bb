@@ -2412,8 +2412,9 @@ its customize editor in the region and keeps the provider mounted but hidden.
 
 While the default-off `navigationRail` experiment is on, wide viewports do not
 mount this slot: the host draws a persistent rail from the same navigation
-model (items, order, visibility, accessories, split drags) and keeps the
-customize editor. Registrations and `sidebar.navigationProvider` are kept, so
+model (items, order, visibility, accessories, split drags) and opens the
+customize editor in a popover beside the rail, including for `openCustomize()`
+calls. Registrations and `sidebar.navigationProvider` are kept, so
 the picked provider returns when the experiment is turned off. Compact
 viewports still mount the slot.
 

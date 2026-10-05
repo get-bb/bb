@@ -37,7 +37,14 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
       navRail,
     }: {
       mobileHosted?: { hidden: boolean };
-      navRail?: { hidden: boolean; rail: ReactNode; alternateBody: ReactNode };
+      navRail?: {
+        hidden: boolean;
+        renderRail: (customize: {
+          isOpen: boolean;
+          onOpenChange: (isOpen: boolean) => void;
+        }) => ReactNode;
+        alternateBody: ReactNode;
+      };
     }) => {
       useEffect(() => {
         mountCounts.appSidebar += 1;
@@ -45,7 +52,7 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
       if (navRail) {
         return (
           <Sidebar>
-            {navRail.rail}
+            {navRail.renderRail({ isOpen: false, onOpenChange: () => {} })}
             <div data-testid="app-sidebar-body" hidden={navRail.hidden}>
               App sidebar
             </div>

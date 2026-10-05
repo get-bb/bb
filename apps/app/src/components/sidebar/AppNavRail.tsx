@@ -5,6 +5,7 @@ import {
   useState,
   type ComponentProps,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ExperimentalSidebarNavigationItem } from "@get-bb/plugin-sdk";
@@ -25,6 +26,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -43,9 +45,15 @@ import {
 } from "@/lib/plugin-sidebar-navigation";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { NAV_RAIL_WIDTH_CLASS } from "./SidebarChrome";
+import { SidebarNavigationCustomize } from "./SidebarNavigationCustomize";
 import { SidebarNavigationIcon } from "./SidebarNavigationModel";
 import { NEW_THREAD_NAVIGATION_ITEM_ID } from "./sidebarNavigationItems";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "./sidebarRowClasses";
+
+export interface NavRailCustomizeState {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+}
 
 const RAIL_ICON_CLASS = "size-(--bb-sidebar-control-icon-size)";
 
@@ -92,9 +100,11 @@ RailButton.displayName = "RailButton";
 function RailItem({
   item,
   onCustomize,
+  onMenuCloseAutoFocus,
 }: {
   item: ExperimentalSidebarNavigationItem;
   onCustomize: () => void;
+  onMenuCloseAutoFocus: (event: Event) => void;
 }) {
   const { activeItemId, actions } = useSidebarNavigation();
   const split = useSidebarNavigationSplit(item.id);
@@ -143,6 +153,7 @@ function RailItem({
         aria-label={
           isPluginItem ? `${item.label} panel options` : `${item.label} options`
         }
+        onCloseAutoFocus={onMenuCloseAutoFocus}
       >
         {isPluginItem ? (
           <>
@@ -165,11 +176,11 @@ function RailItem({
         ) : null}
         <ContextMenuItem onSelect={() => actions.setVisible(item.id, false)}>
           <Icon name="EyeOff" aria-hidden="true" />
-          Hide from sidebar
+          Hide from rail
         </ContextMenuItem>
         <ContextMenuItem onSelect={onCustomize}>
           <Icon name="SlidersHorizontal" aria-hidden="true" />
-          Customize sidebar
+          Customize rail
         </ContextMenuItem>
         {isPluginItem ? (
           <>
@@ -195,21 +206,29 @@ function RailItem({
 }
 
 function RailMoreMenu({
+  buttonRef,
   hidden,
   onCustomize,
+  onMenuCloseAutoFocus,
 }: {
+  buttonRef: RefObject<HTMLButtonElement | null>;
   hidden: readonly ExperimentalSidebarNavigationItem[];
   onCustomize: () => void;
+  onMenuCloseAutoFocus: (event: Event) => void;
 }) {
   const { actions } = useSidebarNavigation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <RailButton label="More">
+        <RailButton ref={buttonRef} label="More">
           <Icon name="MoreHorizontal" aria-hidden="true" />
         </RailButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="right" align="start">
+      <DropdownMenuContent
+        side="right"
+        align="start"
+        onCloseAutoFocus={onMenuCloseAutoFocus}
+      >
         {hidden.map((item) => (
           <DropdownMenuItem
             key={item.id}
@@ -223,7 +242,7 @@ function RailMoreMenu({
         {hidden.length > 0 ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem onSelect={onCustomize}>
           <Icon name="SlidersHorizontal" aria-hidden="true" />
-          Customize sidebar
+          Customize rail
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -234,12 +253,16 @@ export function AppNavRail({
   isAppMode,
   isSettingsActive,
   settingsRoutePath,
+  customize,
 }: {
   isAppMode: boolean;
   isSettingsActive: boolean;
   settingsRoutePath: string;
+  customize: NavRailCustomizeState;
 }) {
-  const { items, activeItemId, actions } = useSidebarNavigation();
+  const { items, activeItemId } = useSidebarNavigation();
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const customizeAfterMenuCloseRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
   const settingsShortcut = useAppCommandShortcut("settings.open");
@@ -267,9 +290,14 @@ export function AppNavRail({
   const visible = destinations.filter((item) => item.isVisible);
   const hidden = destinations.filter((item) => !item.isVisible);
 
-  const openCustomize = () => {
-    if (!isAppMode) void navigate(homeRoutePathRef.current);
-    actions.openCustomize();
+  const requestCustomize = () => {
+    customizeAfterMenuCloseRef.current = true;
+  };
+  const handleMenuCloseAutoFocus = (event: Event) => {
+    if (!customizeAfterMenuCloseRef.current) return;
+    customizeAfterMenuCloseRef.current = false;
+    event.preventDefault();
+    customize.onOpenChange(true);
   };
 
   return (
@@ -301,9 +329,45 @@ export function AppNavRail({
             <Icon name="Home" aria-hidden="true" />
           </RailButton>
           {visible.map((item) => (
-            <RailItem key={item.id} item={item} onCustomize={openCustomize} />
+            <RailItem
+              key={item.id}
+              item={item}
+              onCustomize={requestCustomize}
+              onMenuCloseAutoFocus={handleMenuCloseAutoFocus}
+            />
           ))}
-          <RailMoreMenu hidden={hidden} onCustomize={openCustomize} />
+          <Popover
+            open={customize.isOpen}
+            onOpenChange={customize.onOpenChange}
+          >
+            <PopoverAnchor asChild>
+              <span className="flex">
+                <RailMoreMenu
+                  buttonRef={moreButtonRef}
+                  hidden={hidden}
+                  onCustomize={requestCustomize}
+                  onMenuCloseAutoFocus={handleMenuCloseAutoFocus}
+                />
+              </span>
+            </PopoverAnchor>
+            <PopoverContent
+              side="right"
+              align="start"
+              sideOffset={12}
+              aria-label="Customize rail"
+              data-testid="nav-rail-customize"
+              className="flex max-h-(--radix-popover-content-available-height) w-64 flex-col p-2"
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                moreButtonRef.current?.focus();
+              }}
+            >
+              <SidebarNavigationCustomize
+                surface="popover"
+                onClose={() => customize.onOpenChange(false)}
+              />
+            </PopoverContent>
+          </Popover>
         </div>
         <RailButton
           label={
