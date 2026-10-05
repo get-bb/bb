@@ -195,7 +195,15 @@ export function registerCli(
         "remove-dev-instances": cliCommand({
           summary:
             "Remove ~/.bb-dev instances whose source checkout no longer exists, stopping servers still running from them",
-          options: { machine: MACHINE, yes: YES },
+          options: {
+            machine: MACHINE,
+            instance: {
+              type: "string",
+              description:
+                "Remove only this ~/.bb-dev entry name (default: every instance with a missing checkout)",
+            },
+            yes: YES,
+          },
           run: (input) =>
             output(async () => {
               if (!input.options.yes)
@@ -204,6 +212,10 @@ export function registerCli(
                 );
               return storage.removeMissingDevInstances({
                 hostId: required(input.options.machine, "machine"),
+                names:
+                  input.options.instance === undefined
+                    ? null
+                    : [input.options.instance],
               });
             }),
         }),

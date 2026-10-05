@@ -970,6 +970,7 @@ it.skipIf(process.platform === "win32")(
       gone: path.join(fakeHome, "gone", "bb"),
       revived: path.join(fakeHome, "revived", "bb"),
       kept: path.join(fakeHome, "kept", "bb"),
+      spare: path.join(fakeHome, "spare", "bb"),
     };
     await fs.mkdir(checkouts.gone, { recursive: true });
     await fs.mkdir(checkouts.kept, { recursive: true });
@@ -1063,11 +1064,35 @@ it.skipIf(process.platform === "win32")(
         ["gone", "missing"],
         ["kept", "exists"],
         ["revived", "missing"],
+        ["spare", "missing"],
       ]);
+      await expect(
+        host.harness.callRpc("removeMissingDevInstances", {
+          hostId: "host_test",
+          names: ["kept"],
+        }),
+      ).rejects.toThrow("Not a development instance with a missing checkout");
+      expect(
+        await host.harness.callRpc("removeMissingDevInstances", {
+          hostId: "host_test",
+          names: ["spare"],
+        }),
+      ).toEqual({
+        removedCount: 1,
+        removedBytes: scanned.entries.find((entry) => entry.name === "spare")!
+          .sizeBytes,
+        skippedCount: 0,
+        stoppedProcessCount: 0,
+      });
+      expect(goneServer.child.exitCode).toBeNull();
+      await expect
+        .poll(async () => (await fs.readdir(rootPath)).sort())
+        .toEqual(["gone", "kept", "revived"]);
       await fs.mkdir(checkouts.revived, { recursive: true });
       expect(
         await host.harness.callRpc("removeMissingDevInstances", {
           hostId: "host_test",
+          names: null,
         }),
       ).toEqual({
         removedCount: 1,

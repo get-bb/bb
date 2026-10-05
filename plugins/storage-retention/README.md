@@ -19,6 +19,8 @@ The development section offers Remove instances for `~/.bb-dev` entries whose
 source checkout no longer exists. The host re-verifies each checkout is missing,
 stops processes whose working directory is inside it, then removes the entry. The
 matching CLI command is `bb storage remove-dev-instances --machine HOST_ID --yes`.
+A missing-checkout row's menu offers Remove instance for a single entry
+(`--instance NAME`).
 
 Large-file cleanup from the page starts a background job so slow folder walks
 can finish after the remote HTTP request returns. Each machine reports running,

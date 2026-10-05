@@ -77,9 +77,10 @@ export function createStorage(bb: BbPluginApi) {
   };
   function read(hostId: string): Scan | null {
     const row = db
-      .prepare<[string], { result_json: string }>(
-        "SELECT result_json FROM scans WHERE host_id = ?",
-      )
+      .prepare<
+        [string],
+        { result_json: string }
+      >("SELECT result_json FROM scans WHERE host_id = ?")
       .get(hostId);
     return row ? cachedScanSchema.parse(JSON.parse(row.result_json)) : null;
   }
@@ -686,7 +687,13 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
-  async function removeMissingDevInstances({ hostId }: { hostId: string }) {
+  async function removeMissingDevInstances({
+    hostId,
+    names,
+  }: {
+    hostId: string;
+    names: string[] | null;
+  }) {
     await requireHost(hostId, true);
     const release = acquire(hostId);
     try {
@@ -706,8 +713,17 @@ export function createStorage(bb: BbPluginApi) {
         projects,
       );
       const missing = developer.entries.filter(
-        (entry) => entry.sourcePathState === "missing",
+        (entry) =>
+          entry.sourcePathState === "missing" &&
+          (names === null || names.includes(entry.name)),
       );
+      const unknown = (names ?? []).filter(
+        (name) => !missing.some((entry) => entry.name === name),
+      );
+      if (unknown.length > 0)
+        throw new Error(
+          `Not a development instance with a missing checkout in the last scan: ${unknown.join(", ")}`,
+        );
       let removedCount = 0;
       let removedBytes = 0;
       let stoppedProcessCount = 0;
@@ -838,9 +854,10 @@ export function createStorage(bb: BbPluginApi) {
       hostId = (await bb.sdk.threads.storageLocation({ threadId })).hostId;
     } else {
       const matches = db
-        .prepare<[string], { host_id: string }>(
-          "SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)",
-        )
+        .prepare<
+          [string],
+          { host_id: string }
+        >("SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)")
         .all(threadId);
       const match = matches[0];
       if (matches.length !== 1 || match === undefined)

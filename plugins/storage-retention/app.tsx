@@ -861,20 +861,28 @@ function StoragePage({
                   <DeveloperStorage
                     storage={report.developerStorage}
                     removeDisabled={locked || cleanup !== null}
-                    confirmation={
-                      cleanup?.key === "dev-instances" && cleanupConfirmation
-                    }
-                    onRemoveMissing={(count, size) =>
+                    confirmationKey={cleanup?.key ?? null}
+                    confirmation={cleanupConfirmation}
+                    onRemove={(selection) =>
                       setCleanup({
-                        key: "dev-instances",
-                        action: "Remove instances",
-                        title: `Remove ${plural(count, "development instance")} (${bytes(size)})?`,
-                        detail:
-                          "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
+                        key: selection.key,
+                        ...(selection.names === null
+                          ? {
+                              action: "Remove instances",
+                              title: `Remove ${plural(selection.count, "development instance")} (${bytes(selection.bytes)})?`,
+                              detail:
+                                "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
+                            }
+                          : {
+                              action: "Remove instance",
+                              title: `Remove development instance “${selection.label}” (${bytes(selection.bytes)})?`,
+                              detail:
+                                "Delete this development instance’s database, logs, and thread files. Its source checkout no longer exists. Development servers still running from it are stopped first. This can’t be undone.",
+                            }),
                         run: async () => {
                           const result = await rpc.call(
                             "removeMissingDevInstances",
-                            { hostId: report.hostId },
+                            { hostId: report.hostId, names: selection.names },
                           );
                           return `Removed ${plural(result.removedCount, "development instance")} · ${bytes(result.removedBytes)} freed${result.stoppedProcessCount ? ` · stopped ${plural(result.stoppedProcessCount, "process", "processes")}` : ""}${result.skippedCount ? ` · ${result.skippedCount.toLocaleString()} skipped` : ""}`;
                         },
@@ -1513,13 +1521,21 @@ function ShowMoreToggle({
 function DeveloperStorage({
   storage,
   removeDisabled,
+  confirmationKey,
   confirmation,
-  onRemoveMissing,
+  onRemove,
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
   removeDisabled: boolean;
+  confirmationKey: string | null;
   confirmation: ReactNode;
-  onRemoveMissing: (count: number, bytes: number) => void;
+  onRemove: (selection: {
+    key: string;
+    names: string[] | null;
+    label: string;
+    count: number;
+    bytes: number;
+  }) => void;
 }) {
   const navigate = useBbNavigate();
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
@@ -1640,12 +1656,20 @@ function DeveloperStorage({
                 size="sm"
                 className="shrink-0"
                 disabled={removeDisabled}
-                onClick={() => onRemoveMissing(missing.length, missingBytes)}
+                onClick={() =>
+                  onRemove({
+                    key: "dev-instances",
+                    names: null,
+                    label: plural(missing.length, "instance"),
+                    count: missing.length,
+                    bytes: missingBytes,
+                  })
+                }
               >
                 Remove instances
               </Button>
             </div>
-            {confirmation}
+            {confirmationKey === "dev-instances" && confirmation}
           </div>
         )}
         <div className="divide-y divide-border border-t border-border">
@@ -1666,106 +1690,127 @@ function DeveloperStorage({
                   ).map((entry) => {
                     const label =
                       entry.threads[0]?.title ?? developerEntryLabel(entry);
+                    const removeKey = `dev-instance:${entry.name}`;
                     return (
-                      <div
-                        key={entry.name}
-                        className="flex items-start justify-between gap-3"
-                      >
-                        <div className="min-w-0 flex-1 space-y-1">
-                          {entry.threads.length > 0 ? (
-                            <div className="flex flex-wrap gap-x-3 gap-y-1">
-                              {entry.threads.map((thread) => (
-                                <button
-                                  key={thread.threadId}
-                                  className="text-left text-sm hover:underline"
-                                  onClick={() =>
-                                    navigate.toThread(thread.threadId)
-                                  }
-                                >
-                                  {thread.title}
-                                  {thread.archived && (
-                                    <span className="ml-1.5 text-xs text-muted-foreground">
-                                      archived
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="truncate text-sm">{label}</p>
-                          )}
-                          {entry.sourcePathState === "missing" && (
-                            <p className="text-xs text-muted-foreground">
-                              Checkout no longer exists
-                            </p>
-                          )}
-                          {entry.sourcePath !== null &&
-                            entry.sourcePathState === "unknown" && (
+                      <div key={entry.name} className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            {entry.threads.length > 0 ? (
+                              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                {entry.threads.map((thread) => (
+                                  <button
+                                    key={thread.threadId}
+                                    className="text-left text-sm hover:underline"
+                                    onClick={() =>
+                                      navigate.toThread(thread.threadId)
+                                    }
+                                  >
+                                    {thread.title}
+                                    {thread.archived && (
+                                      <span className="ml-1.5 text-xs text-muted-foreground">
+                                        archived
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="truncate text-sm">{label}</p>
+                            )}
+                            {entry.sourcePathState === "missing" && (
                               <p className="text-xs text-muted-foreground">
-                                Could not check whether the checkout exists
+                                Checkout no longer exists
                               </p>
                             )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span className="text-xs font-normal tabular-nums text-muted-foreground">
-                            {bytes(entry.sizeBytes)}
-                          </span>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="-my-1.5 size-7"
-                                aria-label={`Actions for ${label}`}
-                              >
-                                <Icon
-                                  name="MoreHorizontal"
-                                  className="size-4"
-                                />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {entry.threads.map((thread) => (
-                                <DropdownMenuItem
-                                  key={thread.threadId}
-                                  onSelect={() =>
-                                    navigate.toThread(thread.threadId)
-                                  }
-                                >
-                                  Open thread
-                                  {entry.threads.length > 1
-                                    ? `: ${thread.title}`
-                                    : ""}
-                                </DropdownMenuItem>
-                              ))}
-                              {entry.threads.length > 0 && (
-                                <DropdownMenuSeparator />
+                            {entry.sourcePath !== null &&
+                              entry.sourcePathState === "unknown" && (
+                                <p className="text-xs text-muted-foreground">
+                                  Could not check whether the checkout exists
+                                </p>
                               )}
-                              {entry.sourcePath !== null && (
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                              {bytes(entry.sizeBytes)}
+                            </span>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="-my-1.5 size-7"
+                                  aria-label={`Actions for ${label}`}
+                                >
+                                  <Icon
+                                    name="MoreHorizontal"
+                                    className="size-4"
+                                  />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {entry.threads.map((thread) => (
+                                  <DropdownMenuItem
+                                    key={thread.threadId}
+                                    onSelect={() =>
+                                      navigate.toThread(thread.threadId)
+                                    }
+                                  >
+                                    Open thread
+                                    {entry.threads.length > 1
+                                      ? `: ${thread.title}`
+                                      : ""}
+                                  </DropdownMenuItem>
+                                ))}
+                                {entry.threads.length > 0 && (
+                                  <DropdownMenuSeparator />
+                                )}
+                                {entry.sourcePath !== null && (
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      void copyPath(
+                                        entry.sourcePath!,
+                                        "Source checkout path",
+                                      )
+                                    }
+                                  >
+                                    Copy source checkout path
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                   onSelect={() =>
                                     void copyPath(
-                                      entry.sourcePath!,
-                                      "Source checkout path",
+                                      `${storage.path}/${entry.name}`,
+                                      "Dev data path",
                                     )
                                   }
                                 >
-                                  Copy source checkout path
+                                  Copy dev data path
                                 </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  void copyPath(
-                                    `${storage.path}/${entry.name}`,
-                                    "Dev data path",
-                                  )
-                                }
-                              >
-                                Copy dev data path
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                {entry.sourcePathState === "missing" && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      disabled={removeDisabled}
+                                      onSelect={() =>
+                                        onRemove({
+                                          key: removeKey,
+                                          names: [entry.name],
+                                          label,
+                                          count: 1,
+                                          bytes: entry.sizeBytes,
+                                        })
+                                      }
+                                    >
+                                      Remove instance…
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
+                        {confirmationKey === removeKey && confirmation}
                       </div>
                     );
                   })}
