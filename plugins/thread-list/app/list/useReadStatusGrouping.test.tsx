@@ -70,6 +70,50 @@ describe("useHeldReadStatus", () => {
 });
 
 describe("useReadThreadFold", () => {
+  it("adds the last unread thread to its rollup and keeps it folded across remounts", () => {
+    const store = createStore();
+    const isUnread = createThreadUnreadPredicate(null);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <Provider store={store}>
+        <ReadStatusGroupingContext.Provider value={isUnread}>
+          {children}
+        </ReadStatusGroupingContext.Provider>
+      </Provider>
+    );
+    const allRead = buildSectionThreadList(
+      [read("newly-read"), read("already-read")],
+      compareStandardThreads,
+    );
+    const first = renderHook(
+      ({ items, section }) => useReadThreadFold(items, undefined, section),
+      {
+        wrapper,
+        initialProps: {
+          items: buildSectionThreadList(
+            [unread("newly-read"), read("already-read")],
+            compareStandardThreads,
+          ),
+          section: "inbox",
+        },
+      },
+    );
+    expect(first.result.current.hiddenCount).toBe(1);
+    first.rerender({ items: allRead, section: "inbox" });
+    expect(first.result.current.hiddenCount).toBe(2);
+    expect(first.result.current.items).toEqual([]);
+    first.rerender({ items: allRead, section: "quiet" });
+    expect(first.result.current.hiddenCount).toBe(0);
+    expect(first.result.current.items).toEqual(allRead);
+    first.unmount();
+    const remounted = renderHook(
+      () => useReadThreadFold(allRead, undefined, "inbox"),
+      { wrapper },
+    );
+    expect(remounted.result.current.hiddenCount).toBe(2);
+    act(() => remounted.result.current.revealReadThreads());
+    expect(remounted.result.current.items).toEqual(allRead);
+  });
+
   it("reveals only its section across remounts, without persisting to a new session", () => {
     const store = createStore();
     const items = buildSectionThreadList(
