@@ -115,8 +115,8 @@ const BB_VS_SUPERSET: Comparison = {
             the release notes.
           </p>
           <p>
-            They pass work back and forth once you tell them to work together,
-            so you get finished, reviewed work without copying between tools.
+            They pass work back and forth so you don’t have to copy between
+            tools.
           </p>
           <div className="providers cmp-providers">
             <span className="label">Works with any agent</span>

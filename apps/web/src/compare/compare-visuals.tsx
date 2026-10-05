@@ -184,8 +184,11 @@ export function AgentSplit() {
             </ol>
             <div className="cmp-compose-stack">
               <div className="cmp-composer cmp-compose-prompt">
-                <span className="cmp-composer-input">
+                <span className="cmp-composer-input cmp-input-stack">
                   <span className="cmp-type">{PROMPT}</span>
+                  <span className="cmp-composer-placeholder cmp-input-after-send">
+                    Ask a follow-up
+                  </span>
                 </span>
                 <span className="composer-row">
                   <span className="model">
@@ -194,6 +197,10 @@ export function AgentSplit() {
                     <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
                   </span>
                   <span className="composer-actions" aria-hidden="true">
+                    <HugeiconsIcon
+                      icon={AttachmentIcon}
+                      className="composer-clip"
+                    />
                     <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
                     <span className="send-btn cmp-send-pulse">
                       <HugeiconsIcon
@@ -247,52 +254,54 @@ export function AgentSplit() {
             </div>
           </section>
           <section className="cmp-pane cmp-pane-child">
-            <PaneHead
-              icon={<OpenAiIcon className="cmp-pane-ic" />}
-              title="Review the rate limiter"
-              child
-            />
-            <ol className="cmp-feed">
-              <li className="cmp-user" style={{ animationDelay: "4s" }}>
-                Review the rate limiter on this branch, read-only. Report
-                anything serious.
-              </li>
-              <li className="cmp-agent" style={{ animationDelay: "4.6s" }}>
-                Reading <code>upload.ts</code> and its tests.
-              </li>
-              <li className="cmp-agent" style={{ animationDelay: "5.4s" }}>
-                Found 2 issues. Sent them to{" "}
-                <ThreadPill
-                  title="Add rate limiting to uploads"
-                  agent="claude"
-                />
-                .
-              </li>
-            </ol>
-            <div className="cmp-composer">
-              <span className="cmp-composer-input cmp-composer-placeholder">
-                Ask a follow-up
-              </span>
-              <span className="composer-row">
-                <span className="model">
-                  <OpenAiIcon className="model-ic" />
-                  Codex
-                  <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
-                </span>
-                <span className="composer-actions" aria-hidden="true">
-                  <HugeiconsIcon
-                    icon={AttachmentIcon}
-                    className="composer-clip"
+            <div className="cmp-pane-inner">
+              <PaneHead
+                icon={<OpenAiIcon className="cmp-pane-ic" />}
+                title="Review the rate limiter"
+                child
+              />
+              <ol className="cmp-feed">
+                <li className="cmp-user" style={{ animationDelay: "4s" }}>
+                  Review the rate limiter on this branch, read-only. Report
+                  anything serious.
+                </li>
+                <li className="cmp-agent" style={{ animationDelay: "4.6s" }}>
+                  Reading <code>upload.ts</code> and its tests.
+                </li>
+                <li className="cmp-agent" style={{ animationDelay: "5.4s" }}>
+                  Found 2 issues. Sent them to{" "}
+                  <ThreadPill
+                    title="Add rate limiting to uploads"
+                    agent="claude"
                   />
-                  <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
-                  <span className="send-btn">
+                  .
+                </li>
+              </ol>
+              <div className="cmp-composer">
+                <span className="cmp-composer-input cmp-composer-placeholder">
+                  Ask a follow-up
+                </span>
+                <span className="composer-row">
+                  <span className="model">
+                    <OpenAiIcon className="model-ic" />
+                    Codex
+                    <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
+                  </span>
+                  <span className="composer-actions" aria-hidden="true">
                     <HugeiconsIcon
-                      icon={ArrowMoveDownLeftIcon}
-                      className="send-ic"
+                      icon={AttachmentIcon}
+                      className="composer-clip"
                     />
+                    <HugeiconsIcon icon={Mic02Icon} className="composer-clip" />
+                    <span className="send-btn">
+                      <HugeiconsIcon
+                        icon={ArrowMoveDownLeftIcon}
+                        className="send-ic"
+                      />
+                    </span>
                   </span>
                 </span>
-              </span>
+              </div>
             </div>
           </section>
         </div>

@@ -976,6 +976,15 @@
 
 .cmp-split {
   display: flex;
+  container-type: inline-size;
+}
+
+.cmp-pane-inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: calc(50cqw - 1px);
+  min-width: calc(50cqw - 1px);
 }
 
 .cmp-split .cmp-pane {
@@ -1016,7 +1025,20 @@
 
 .cmp-compose-prompt {
   align-self: end;
-  animation: cmp-fade-out 0.25s ease 2.2s forwards;
+  animation: cmp-fade-out 0.25s ease 7.4s forwards;
+}
+
+.cmp-input-stack {
+  display: grid;
+}
+
+.cmp-input-stack > * {
+  grid-area: 1 / 1;
+}
+
+.cmp-input-after-send {
+  opacity: 0;
+  animation: cmp-fade-in 0.3s ease 2.35s forwards;
 }
 
 .cmp-compose-handoff {
@@ -1028,7 +1050,9 @@
   display: inline-block;
   white-space: nowrap;
   clip-path: inset(0 100% 0 0);
-  animation: cmp-type 1.5s steps(46) 0.4s forwards;
+  animation:
+    cmp-type 1.5s steps(46) 0.4s forwards,
+    cmp-fade-out 0.2s ease 2.2s forwards;
 }
 
 .cmp-send-pulse {
