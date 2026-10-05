@@ -17,7 +17,11 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 
 const STATUS_SORT_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
   in_progress: 0,
@@ -170,7 +174,10 @@ export function ThreadTodoCard({
             if (!isExpanded) focus.focusCollapseAfterToggle();
             onToggle();
           }}
-          className={TODO_HEADER_BUTTON_CLASS}
+          className={cn(
+            TODO_HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
           <Icon
             name="ListTodo"
@@ -185,6 +192,7 @@ export function ThreadTodoCard({
           >
             {summary.visible}
           </span>
+          <PromptStackHoverChevron isExpanded={isExpanded} />
         </button>
       </div>
       <AnimatedDisclosureBody

@@ -11,7 +11,11 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 
 const HEADER_GROUP_CLASS = activityRowClass(
   "active",
@@ -76,7 +80,10 @@ export function CollapsibleActiveStackCard({
             if (!isExpanded) focus.focusCollapseAfterToggle();
             onToggle();
           }}
-          className={HEADER_BUTTON_CLASS}
+          className={cn(
+            HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
           <Icon
             name={iconName}
@@ -91,6 +98,7 @@ export function CollapsibleActiveStackCard({
           >
             {title}
           </span>
+          <PromptStackHoverChevron isExpanded={isExpanded} />
         </button>
         {dismiss ? (
           <button

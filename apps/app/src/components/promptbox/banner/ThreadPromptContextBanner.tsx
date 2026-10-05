@@ -51,6 +51,8 @@ import {
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
 import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
   useDisclosureFocusHandoff,
   type DisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
@@ -260,6 +262,7 @@ function SectionToggleButton({
         SEGMENT_SHRINK_CLASS,
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
         fillRow && "flex-1 justify-start text-left",
+        PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
         isExpanded ? "text-foreground" : "text-muted-foreground",
       )}
     >
@@ -278,6 +281,9 @@ function SectionToggleButton({
         <span className="min-w-0 truncate" data-promptbox-compact-label="">
           {compactLabel}
         </span>
+      ) : null}
+      {fillRow ? (
+        <PromptStackHoverChevron isExpanded={isExpanded} className="ml-auto" />
       ) : null}
     </button>
   );
@@ -728,14 +734,15 @@ function ActiveChildThreadsCard({
           aria-controls={SECTION_IDS.childThreads.body}
           aria-label={`${groupLabel}: ${primaryTitle}`}
           onClick={disclosure.onToggle}
-          className={
+          className={cn(
             needsApproval
               ? PROMPT_STACK_CARD_HEADER_BUTTON_CLASS
               : activityRowClass(
                   "active",
                   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-                )
-          }
+                ),
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
           <Icon
             name={needsApproval ? "CircleQuestion" : "UserRound"}
@@ -761,6 +768,7 @@ function ActiveChildThreadsCard({
               +{otherCount} more
             </span>
           ) : null}
+          <PromptStackHoverChevron isExpanded={isExpanded} />
         </button>
       </div>
       <AnimatedDisclosureBody

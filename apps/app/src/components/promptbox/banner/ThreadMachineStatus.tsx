@@ -9,7 +9,11 @@ import {
 } from "@/components/machines/MachineLabel";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 import {
   BannerActionSlot,
   PromptBannerActionButton,
@@ -104,6 +108,7 @@ export function ThreadMachineStatusBanner({
             }}
             className={cn(
               "flex min-w-0 flex-1 cursor-pointer items-center justify-start gap-1.5 text-left text-xs transition-colors",
+              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
               PROMPT_STACK_INLAY_SEGMENT_CLASS,
               "hover:bg-state-hover",
               isExpanded ? "text-foreground" : "text-muted-foreground",
@@ -111,6 +116,10 @@ export function ThreadMachineStatusBanner({
           >
             <MachineIcon host={host} machineProvider={provider} />
             <span className="min-w-0 truncate">{status}</span>
+            <PromptStackHoverChevron
+              isExpanded={isExpanded}
+              className="ml-auto"
+            />
           </button>
         ) : (
           <div

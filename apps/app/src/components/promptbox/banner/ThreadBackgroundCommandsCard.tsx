@@ -18,7 +18,11 @@ import {
   activityTextClass,
 } from "@bb/shared-ui/activity-row-styles";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 
 const BODY_ID = "thread-background-commands-card-body";
 const TOGGLE_ID = "thread-background-commands-card-toggle";
@@ -216,7 +220,10 @@ export function ThreadBackgroundCommandsCard({
             }}
             className={activityRowClass(
               "active",
-              PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+              cn(
+                PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+                PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+              ),
             )}
           >
             <Icon
@@ -236,6 +243,10 @@ export function ThreadBackgroundCommandsCard({
                 </span>
               </>
             )}
+            <PromptStackHoverChevron
+              isExpanded={isExpanded}
+              className="ml-auto"
+            />
           </button>
         ) : (
           <div

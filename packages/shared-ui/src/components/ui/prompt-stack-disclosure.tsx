@@ -100,3 +100,25 @@ export function PromptStackPeekLayers({
     </div>
   );
 }
+
+export const PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS = "group/disclosure";
+
+export function PromptStackHoverChevron({
+  isExpanded,
+  className,
+}: {
+  isExpanded: boolean;
+  className?: string;
+}) {
+  if (isExpanded) return null;
+  return (
+    <Icon
+      name="ChevronDown"
+      className={cn(
+        "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden",
+        className,
+      )}
+      aria-hidden="true"
+    />
+  );
+}

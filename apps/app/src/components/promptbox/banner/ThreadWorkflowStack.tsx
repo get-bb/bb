@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
@@ -11,7 +12,9 @@ import {
 } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import {
   PROMPT_STACK_COUNT_PILL_CLASS,
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
+  PromptStackHoverChevron,
   PromptStackPeekLayers,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
@@ -56,12 +59,16 @@ export function ThreadWorkflowStack({
               focus.focusCollapseAfterToggle();
               onToggleStack();
             }}
-            className={PROMPT_STACK_CARD_HEADER_BUTTON_CLASS}
+            className={cn(
+              PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+            )}
           >
             <ThreadWorkflowSummary workflow={front} />
             <span className={PROMPT_STACK_COUNT_PILL_CLASS}>
               +{running.length - 1}
             </span>
+            <PromptStackHoverChevron isExpanded={false} />
           </button>
         </PromptStackCard>
       </PromptStackPeekLayers>

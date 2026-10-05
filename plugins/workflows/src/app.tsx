@@ -21,7 +21,9 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import {
   PROMPT_STACK_COUNT_PILL_CLASS,
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
+  PromptStackHoverChevron,
   PromptStackPeekLayers,
   useDisclosureFocusHandoff,
 } from "@/components/ui/prompt-stack-disclosure";
@@ -676,9 +678,13 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
             if (!expanded) focus.focusCollapseAfterToggle();
             setExpanded((value) => !value);
           }}
-          className={WORKFLOW_HEADER_BUTTON_CLASS}
+          className={cn(
+            WORKFLOW_HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
           <WorkflowComposerSummary run={run} />
+          <PromptStackHoverChevron isExpanded={expanded} />
         </button>
         <button
           type="button"
@@ -753,12 +759,17 @@ function WorkflowStackFront({
           aria-expanded={false}
           aria-label={`${runs.length} workflows running. Show all`}
           onClick={onExpand}
-          className={cn(WORKFLOW_HEADER_BUTTON_CLASS, "w-full")}
+          className={cn(
+            WORKFLOW_HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+            "w-full",
+          )}
         >
           <WorkflowComposerSummary run={front} />
           <span className={PROMPT_STACK_COUNT_PILL_CLASS}>
             +{runs.length - 1}
           </span>
+          <PromptStackHoverChevron isExpanded={false} />
         </button>
       </section>
     </PromptStackPeekLayers>

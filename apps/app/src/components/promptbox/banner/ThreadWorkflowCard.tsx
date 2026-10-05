@@ -11,7 +11,12 @@ import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText"
 import { WorkflowWorkRowBody } from "@/components/thread/timeline/WorkflowWorkRowBody";
 import { activityIconClass } from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
-import { useDisclosureFocusHandoff } from "@bb/shared-ui/prompt-stack-disclosure";
+import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 import { WorkflowPhaseStrip } from "@bb/shared-ui/workflow-progress";
 
 function agentProgressLabel(workflow: TimelineWorkflowWorkRow): string | null {
@@ -101,9 +106,13 @@ export function ThreadWorkflowCard({
           if (!isExpanded) focus.focusCollapseAfterToggle();
           onToggle();
         }}
-        className={PROMPT_STACK_CARD_HEADER_BUTTON_CLASS}
+        className={cn(
+          PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+          PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+        )}
       >
         <ThreadWorkflowSummary workflow={workflow} />
+        <PromptStackHoverChevron isExpanded={isExpanded} />
       </button>
       <AnimatedDisclosureBody
         id={bodyId}
