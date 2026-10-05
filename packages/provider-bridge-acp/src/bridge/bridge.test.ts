@@ -3554,8 +3554,109 @@ describe("acp bridge", () => {
     }, "agent exit error notification");
     expect(errors).toHaveLength(1);
     expect(errors[0]?.params).toMatchObject({ threadId: bbThreadId });
-    startedProviderThreadIds.pop();
+    expect(threadEventsOfType("turn/completed").at(-1)).toMatchObject({
+      status: "failed",
+    });
+    const response = await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "after", mentions: [] }],
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    expect(agentMessageTexts()).toContain("echo:after");
   });
+
+  it.each([
+    { loadSession: "0", failLoad: "0", activeTurn: false },
+    { loadSession: "1", failLoad: "0", activeTurn: false },
+    { loadSession: "1", failLoad: "1", activeTurn: false },
+    { loadSession: "0", failLoad: "0", activeTurn: true },
+    { loadSession: "1", failLoad: "0", activeTurn: true },
+    { loadSession: "1", failLoad: "1", activeTurn: true },
+  ])(
+    "recovers after an external agent exit (load=$loadSession, failLoad=$failLoad, active=$activeTurn)",
+    async ({ loadSession, failLoad, activeTurn }) => {
+      const readyFile = join(workspaceDir, "agent-ready");
+      const promptLog = join(workspaceDir, "prompts.jsonl");
+      const requestLog = join(workspaceDir, "requests.jsonl");
+      const { bbThreadId, providerThreadId } = await startThread({
+        envVars: {
+          FAKE_ACP_LOAD_SESSION: loadSession,
+          FAKE_ACP_FAIL_LOAD: failLoad,
+          FAKE_ACP_READY_FILE: readyFile,
+          FAKE_ACP_PROMPT_LOG: promptLog,
+          FAKE_ACP_REQUEST_LOG: requestLog,
+        },
+      });
+      await waitForResponse(
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [
+            {
+              type: "text",
+              text: activeTurn ? "hang" : "before",
+              mentions: [],
+            },
+          ],
+        }),
+      );
+      if (activeTurn) {
+        await waitFor(
+          () => loggedPrompts(promptLog).includes("hang") || undefined,
+          "pending prompt before exit",
+        );
+      } else {
+        expect(await waitForTurnCompleted()).toMatchObject({
+          status: "completed",
+        });
+      }
+      process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+      await waitForAgentExit(readyFile);
+      const error = await waitFor(
+        () => notifications("error").at(-1),
+        "external agent exit notification",
+      );
+      expect(error.params).toMatchObject({
+        threadId: bbThreadId,
+        message: expect.stringContaining("(code 0)"),
+      });
+      expect(notifications("error")).toHaveLength(1);
+      if (activeTurn) {
+        expect(threadEventsOfType("turn/completed").at(-1)).toMatchObject({
+          status: "failed",
+        });
+      }
+      const completionCount = threadEventsOfType("turn/completed").length;
+      const response = await waitForResponse(
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [{ type: "text", text: "after", mentions: [] }],
+        }),
+      );
+      expect(response.error).toBeUndefined();
+      const completed = await waitFor(
+        () => threadEventsOfType("turn/completed")[completionCount],
+        "recovered turn completion",
+      );
+      expect(completed).toMatchObject({ status: "completed" });
+      expect(agentMessageTexts()).toContain("echo:after");
+      const contextLost = loadSession === "0" || failLoad === "1";
+      expect(notifications("session/replaced").at(-1)?.params).toMatchObject({
+        threadId: bbThreadId,
+        contextLost,
+      });
+      expect(
+        loggedAcpRequests(requestLog).filter(
+          (request) => request.method === "session/load",
+        ),
+      ).toHaveLength(loadSession === "1" ? 1 : 0);
+      if (!contextLost) {
+        expect(notifications("thread/identity").at(-1)?.params).toMatchObject({
+          threadId: bbThreadId,
+          providerThreadId,
+        });
+      }
+    },
+  );
 
   it("releases a session still under construction: the agent is reaped and the pending thread/start fails", async () => {
     const readyFile = join(workspaceDir, "agent-ready");
