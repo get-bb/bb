@@ -606,7 +606,12 @@ function RefreshWarning({ message }: { message: string }) {
 function WorkflowStatusBanner() {
   const { scope } = useComposer();
   if (scope.kind !== "thread") return null;
-  return <WorkflowStatusBannerLoaded threadId={scope.threadId} />;
+  return (
+    <WorkflowStatusBannerLoaded
+      key={scope.threadId}
+      threadId={scope.threadId}
+    />
+  );
 }
 
 function WorkflowComposerSummary({ run }: { run: WorkflowRunView }) {
@@ -779,10 +784,12 @@ function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
   const listId = useId();
   const focus = useDisclosureFocusHandoff(stackExpanded);
 
+  if (stackExpanded && state.status === "ready" && state.runs.length < 2) {
+    setStackExpanded(false);
+  }
   if (state.status !== "ready" || state.runs.length === 0) return null;
 
   const runs = state.runs;
-  if (stackExpanded && runs.length < 2) setStackExpanded(false);
   const collapsed = runs.length > 1 && !stackExpanded;
   return (
     <section aria-label="Active workflows" className="flex flex-col gap-2">

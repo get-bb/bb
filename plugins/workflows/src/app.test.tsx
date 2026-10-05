@@ -194,7 +194,7 @@ describe("workflow composer banner", () => {
     );
   });
 
-  it("re-collapses the stack after the running count drops below two", async () => {
+  it("re-collapses the stack after every run finishes and new runs start", async () => {
     const runs = [1, 2].map((index) => ({
       ...run,
       id: `wfr_${index}1111111-1111-4111-8111-111111111111`,
@@ -221,7 +221,7 @@ describe("workflow composer banner", () => {
       slot.getByRole("button", { name: "Collapse 2 workflows" }),
     ).toBeTruthy();
 
-    current = [runs[0]!];
+    current = [];
     await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
     await waitFor(() =>
       expect(
