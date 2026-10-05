@@ -356,11 +356,11 @@
   height: 5px;
   border-radius: 999px;
   --glint-white: var(--bg);
-  background: color-mix(in oklab, var(--glint) 35%, var(--glint-white));
+  --glint-soft: color-mix(in oklab, var(--glint) 22%, var(--glint-white));
+  background: var(--accent);
   box-shadow:
-    0 0 0 1.5px var(--glint),
-    0 0 5px 2px color-mix(in oklab, var(--glint-white) 90%, transparent),
-    0 0 8px 1px var(--glint);
+    0 0 0 1.5px var(--glint-soft),
+    0 0 8px 3px var(--glint-soft);
   animation: cmp-flow-down 3.3s linear infinite backwards;
 }
 
@@ -463,7 +463,7 @@
 .cmp-machine-count {
   font-size: 11px;
   font-weight: 500;
-  color: var(--dim);
+  color: var(--accent);
   white-space: nowrap;
 }
 
