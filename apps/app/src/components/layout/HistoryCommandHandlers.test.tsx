@@ -211,8 +211,7 @@ describe("HistoryCommandHandlers", () => {
 
     await waitFor(() => {
       const [tooltip] = screen.queryAllByRole("tooltip");
-      expect(tooltip?.textContent).toContain("Go back");
-      expect(tooltip?.textContent).not.toContain("(");
+      expect(tooltip?.textContent?.trim()).toBe(backShortcut.label);
       expect(tooltip?.querySelector("kbd")?.textContent).toBe(
         backShortcut.label,
       );

@@ -60,13 +60,12 @@ function SidebarHistoryNavButton({
           <Icon name={icon} aria-hidden />
         </Button>
       </TooltipTrigger>
-      <TooltipContent className="flex items-center gap-1.5">
-        <span>{label}</span>
+      <TooltipContent className="px-1.5 py-1">
         {shortcut ? (
-          <kbd className="rounded-sm bg-primary-foreground/15 px-1 font-sans leading-4 tabular-nums">
-            {shortcut.label}
-          </kbd>
-        ) : null}
+          <kbd className="font-sans leading-4 tabular-nums">{shortcut.label}</kbd>
+        ) : (
+          label
+        )}
       </TooltipContent>
     </Tooltip>
   );
