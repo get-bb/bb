@@ -21,8 +21,9 @@ stops processes whose working directory is inside it, then removes the entry. Th
 matching CLI command is `bb storage remove-dev-instances --machine HOST_ID --yes`.
 Every development row's trash button removes that single entry immediately
 (`--instance NAME`), like the thread rows' trash button clears a thread's files.
-An entry whose checkout still exists is refused while its dev server runs
-(fresh daemon lock); BB only stops servers whose checkout is gone.
+If the instance's dev server is running (fresh daemon lock), the row asks
+"Stop and remove?" first; confirming stops that instance's launcher and
+removes it. The CLI's `--yes` covers that confirmation.
 
 Large-file cleanup from the page starts a background job so slow folder walks
 can finish after the remote HTTP request returns. Each machine reports running,

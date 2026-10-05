@@ -1007,9 +1007,11 @@ it.skipIf(process.platform === "win32")(
       spare: path.join(fakeHome, "spare", "bb"),
       extra: path.join(fakeHome, "extra", "bb"),
       idle: path.join(fakeHome, "idle", "bb"),
+      busy: path.join(fakeHome, "busy", "bb"),
     };
     await fs.mkdir(checkouts.gone, { recursive: true });
     await fs.mkdir(checkouts.kept, { recursive: true });
+    await fs.mkdir(checkouts.busy, { recursive: true });
     await fs.mkdir(checkouts.idle, { recursive: true });
     for (const [name, repoRoot] of Object.entries(checkouts)) {
       await fs.mkdir(path.join(rootPath, name), { recursive: true });
@@ -1023,7 +1025,7 @@ it.skipIf(process.platform === "win32")(
       );
     }
     await fs.mkdir(path.join(rootPath, ".bb-trash-stale"));
-    await fs.mkdir(path.join(rootPath, "kept", "daemon.lock.lock"));
+    await fs.mkdir(path.join(rootPath, "busy", "daemon.lock.lock"));
     const server = (checkout: string) => {
       const child = spawn(
         process.execPath,
@@ -1042,6 +1044,11 @@ it.skipIf(process.platform === "win32")(
     };
     const goneServer = server(checkouts.gone);
     const keptServer = server(checkouts.kept);
+    const busyServer = server(checkouts.busy);
+    await fs.writeFile(
+      path.join(rootPath, "busy", "bb-app-runtime.json"),
+      JSON.stringify({ pid: busyServer.child.pid }),
+    );
     await fs.rm(path.join(fakeHome, "gone"), { recursive: true });
     const worker = experimental_createHostEntryHarness(hostEntry);
     const host = createFakePluginHost({
@@ -1099,31 +1106,57 @@ it.skipIf(process.platform === "win32")(
           .map((entry) => [entry.name, entry.sourcePathState, entry.running])
           .sort(),
       ).toEqual([
+        ["busy", "exists", true],
         ["extra", "missing", false],
         ["gone", "missing", false],
         ["idle", "exists", false],
-        ["kept", "exists", true],
+        ["kept", "exists", false],
         ["revived", "missing", false],
         ["spare", "missing", false],
       ]);
       await expect(
         host.harness.callRpc("removeDevInstances", {
           hostId: "host_test",
-          names: ["kept"],
-        }),
-      ).rejects.toThrow("Stop the development server");
-      await expect(
-        host.harness.callRpc("removeDevInstances", {
-          hostId: "host_test",
           names: ["unscanned"],
+          stopRunning: false,
         }),
       ).rejects.toThrow("Not a development instance in the last scan");
+      expect(
+        await host.harness.callRpc("removeDevInstances", {
+          hostId: "host_test",
+          names: ["busy"],
+          stopRunning: false,
+        }),
+      ).toEqual({
+        removedCount: 0,
+        removedBytes: 0,
+        skippedCount: 0,
+        stoppedProcessCount: 0,
+        running: ["busy"],
+      });
+      expect(busyServer.child.exitCode).toBeNull();
+      expect(
+        await host.harness.callRpc("removeDevInstances", {
+          hostId: "host_test",
+          names: ["busy"],
+          stopRunning: true,
+        }),
+      ).toEqual({
+        removedCount: 1,
+        removedBytes: scanned.entries.find((entry) => entry.name === "busy")!
+          .sizeBytes,
+        skippedCount: 0,
+        stoppedProcessCount: 1,
+        running: [],
+      });
+      await busyServer.exited;
       const single = (name: string) => ({
         removedCount: 1,
         removedBytes: scanned.entries.find((entry) => entry.name === name)!
           .sizeBytes,
         skippedCount: 0,
         stoppedProcessCount: 0,
+        running: [],
       });
       expect(
         await Promise.all(
@@ -1131,6 +1164,7 @@ it.skipIf(process.platform === "win32")(
             host.harness.callRpc("removeDevInstances", {
               hostId: "host_test",
               names: [name],
+              stopRunning: false,
             }),
           ),
         ),
@@ -1157,6 +1191,7 @@ it.skipIf(process.platform === "win32")(
           .sizeBytes,
         skippedCount: 1,
         stoppedProcessCount: 1,
+        running: [],
       });
       await goneServer.exited;
       expect(keptServer.child.exitCode).toBeNull();
@@ -1175,6 +1210,7 @@ it.skipIf(process.platform === "win32")(
     } finally {
       goneServer.child.kill("SIGKILL");
       keptServer.child.kill("SIGKILL");
+      busyServer.child.kill("SIGKILL");
       await host.harness.dispose();
       await worker.experimental_dispose();
     }
@@ -1205,7 +1241,7 @@ it.skipIf(process.platform === "win32")(
           rootPath,
           names: ["linked", "plain"],
           candidatePaths: [],
-          condition: "checkoutMissing",
+          mode: { condition: "checkoutMissing" },
         }),
       ).toEqual({
         removed: ["linked", "plain"],

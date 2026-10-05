@@ -692,13 +692,12 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
-  async function removeDevInstances({
-    hostId,
-    names,
-  }: {
-    hostId: string;
-    names: string[] | null;
-  }) {
+  async function removeDevInstances(
+    input:
+      | { hostId: string; names: null }
+      | { hostId: string; names: string[]; stopRunning: boolean },
+  ) {
+    const { hostId, names } = input;
     await requireHost(hostId, true);
     const release =
       names === null
@@ -749,7 +748,10 @@ export function createStorage(bb: BbPluginApi) {
               .slice(offset, offset + 500)
               .map((entry) => entry.name),
             candidatePaths,
-            condition: names === null ? "checkoutMissing" : "notRunning",
+            mode:
+              input.names === null
+                ? { condition: "checkoutMissing" }
+                : { condition: "any", stopRunning: input.stopRunning },
           },
           { hostId, signal: lifecycle.signal },
         );
@@ -774,15 +776,12 @@ export function createStorage(bb: BbPluginApi) {
         stoppedProcessCount += result.stoppedProcessCount;
         running.push(...result.running);
       }
-      if (running.length > 0)
-        throw new Error(
-          `Stop the development server before removing ${running.length === 1 ? "this instance" : `these instances: ${running.join(", ")}`}. Its checkout still exists, so BB won’t stop it for you.`,
-        );
       return {
         removedCount,
         removedBytes,
-        skippedCount: targets.length - removedCount,
+        skippedCount: targets.length - removedCount - running.length,
         stoppedProcessCount,
+        running,
       };
     } finally {
       release();

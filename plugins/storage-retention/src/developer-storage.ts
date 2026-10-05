@@ -8,6 +8,8 @@ import type { hostStorageContract } from "./host-contract.js";
 
 const launchRecordSchema = z.object({ repoRoot: z.string().min(1) });
 const runtimeRecordSchema = z.object({ entryPath: z.string().min(1) });
+const runtimePidSchema = z.object({ pid: z.number().int().positive() });
+const STOP_GRACE_MS = 15_000;
 
 async function readRecord(file: string) {
   try {
@@ -190,6 +192,39 @@ export async function inspectDeveloperEntries(
   return { entries };
 }
 
+function isAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !isFsErrorWithCode(error, "ESRCH");
+  }
+}
+
+async function stopInstance(directory: string, signal: AbortSignal) {
+  const record = runtimePidSchema.safeParse(
+    await readRecord(path.join(directory, "bb-app-runtime.json")),
+  );
+  if (!record.success) return 0;
+  const { pid } = record.data;
+  if (pid === process.pid || !isAlive(pid)) return 0;
+  for (const kill of ["SIGTERM", "SIGKILL"] as const) {
+    try {
+      process.kill(pid, kill);
+    } catch (error) {
+      if (isFsErrorWithCode(error, "ESRCH")) return 1;
+      throw error;
+    }
+    const deadline = Date.now() + STOP_GRACE_MS;
+    while (Date.now() < deadline && isAlive(pid)) {
+      signal.throwIfAborted();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!isAlive(pid)) return 1;
+  }
+  return 1;
+}
+
 export async function removeDeveloperEntries(
   input: z.infer<typeof hostStorageContract.removeDeveloperEntries.input>,
   signal: AbortSignal,
@@ -211,21 +246,30 @@ export async function removeDeveloperEntries(
     (entry): entry is typeof entry & { sourcePath: string } =>
       entry.sourcePath !== null && entry.sourcePathState === "missing",
   );
+  const stopRunning = input.mode.condition === "any" && input.mode.stopRunning;
   const running =
-    input.condition === "notRunning"
+    input.mode.condition === "any"
       ? inspected.filter(
           (entry) => entry.running && entry.sourcePathState !== "missing",
         )
       : [];
   const eligible =
-    input.condition === "checkoutMissing"
+    input.mode.condition === "checkoutMissing"
       ? missing
-      : inspected.filter((entry) => !running.includes(entry));
-  const stoppedProcessCount = (
+      : stopRunning
+        ? inspected
+        : inspected.filter((entry) => !running.includes(entry));
+  let stoppedProcessCount = (
     await experimental_killProcessesWithCwdUnder({
       directories: missing.map((entry) => entry.sourcePath),
     })
   ).length;
+  if (stopRunning)
+    for (const entry of running)
+      stoppedProcessCount += await stopInstance(
+        path.join(root, entry.name),
+        signal,
+      );
   signal.throwIfAborted();
   const trashes = (await fs.readdir(root))
     .filter((name) => name.startsWith(".bb-trash-"))
@@ -269,7 +313,7 @@ export async function removeDeveloperEntries(
   }
   return {
     removed,
-    running: running.map((entry) => entry.name),
+    running: stopRunning ? [] : running.map((entry) => entry.name),
     stoppedProcessCount,
   };
 }

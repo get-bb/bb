@@ -69,13 +69,18 @@ export const storageRpc = defineRpcContract({
     }),
   },
   removeDevInstances: {
-    input: z
-      .object({
-        hostId: z.string().min(1),
-        names: z.array(z.string().min(1)).min(1).max(500).nullable(),
-      })
-      .strict(),
+    input: z.union([
+      z.object({ hostId: z.string().min(1), names: z.null() }).strict(),
+      z
+        .object({
+          hostId: z.string().min(1),
+          names: z.array(z.string().min(1)).min(1).max(500),
+          stopRunning: z.boolean(),
+        })
+        .strict(),
+    ]),
     output: z.object({
+      running: z.array(z.string()),
       removedCount: z.number().int().nonnegative(),
       removedBytes: z.number().int().nonnegative(),
       skippedCount: z.number().int().nonnegative(),

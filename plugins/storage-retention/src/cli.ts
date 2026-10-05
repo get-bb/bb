@@ -200,7 +200,7 @@ export function registerCli(
             instance: {
               type: "string",
               description:
-                "Remove only this ~/.bb-dev entry, any source state; refused while its dev server runs unless its checkout is gone (default: every instance with a missing checkout)",
+                "Remove only this ~/.bb-dev entry, stopping its dev server first if it is running (default: every instance with a missing checkout)",
             },
             yes: YES,
           },
@@ -212,10 +212,9 @@ export function registerCli(
                 );
               return storage.removeDevInstances({
                 hostId: required(input.options.machine, "machine"),
-                names:
-                  input.options.instance === undefined
-                    ? null
-                    : [input.options.instance],
+                ...(input.options.instance === undefined
+                  ? { names: null }
+                  : { names: [input.options.instance], stopRunning: true }),
               });
             }),
         }),

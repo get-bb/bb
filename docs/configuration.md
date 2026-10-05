@@ -471,7 +471,7 @@ whole storage folders, including small files, skipping pinned and running thread
 `bb storage remove-dev-instances --machine HOST_ID --yes` removes `~/.bb-dev`
 instances whose source checkout no longer exists, first stopping servers still
 running from that checkout; add `--instance NAME` to remove one entry of any
-kind, refused while its dev server runs unless its checkout is gone;
+kind, stopping its dev server first if it is running;
 `bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
 `bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
 The plugin owns the disk scanner, cached reports, classification, and host-worker

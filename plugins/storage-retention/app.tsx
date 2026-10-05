@@ -836,13 +836,35 @@ function StoragePage({
                     storage={report.developerStorage}
                     rowDisabled={rowDisabled}
                     rowActions={rowActions}
-                    onRemove={(name) =>
-                      void runRowAction(`dev:${name}`, () =>
-                        rpc.call("removeDevInstances", {
+                    confirmationKey={cleanup?.key ?? null}
+                    confirmation={cleanupConfirmation}
+                    onRemove={(entry, label) =>
+                      void runRowAction(`dev:${entry.name}`, async () => {
+                        const result = await rpc.call("removeDevInstances", {
                           hostId: report.hostId,
-                          names: [name],
-                        }),
-                      )
+                          names: [entry.name],
+                          stopRunning: false,
+                        });
+                        if (result.running.length > 0)
+                          setCleanup({
+                            key: `dev-instance:${entry.name}`,
+                            action: "Stop and remove",
+                            title: `Stop and remove “${label}” (${bytes(entry.sizeBytes)})?`,
+                            detail:
+                              "Its dev server is running. BB will stop it, then delete its database, logs, and thread files. The source checkout is kept. This can’t be undone.",
+                            run: async () => {
+                              const stopped = await rpc.call(
+                                "removeDevInstances",
+                                {
+                                  hostId: report.hostId,
+                                  names: [entry.name],
+                                  stopRunning: true,
+                                },
+                              );
+                              return `Removed ${label} · ${bytes(stopped.removedBytes)} freed${stopped.stoppedProcessCount ? " · dev server stopped" : ""}`;
+                            },
+                          });
+                      })
                     }
                   />
                 )}
@@ -1622,12 +1644,16 @@ function DeveloperStorage({
   storage,
   rowDisabled,
   rowActions,
+  confirmationKey,
+  confirmation,
   onRemove,
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
   rowDisabled: boolean;
   rowActions: Record<string, RowAction>;
-  onRemove: (name: string) => void;
+  confirmationKey: string | null;
+  confirmation: ReactNode;
+  onRemove: (entry: DeveloperEntry, label: string) => void;
 }) {
   const navigate = useBbNavigate();
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
@@ -1758,7 +1784,7 @@ function DeveloperStorage({
                     const label = primary?.title ?? developerEntryLabel(entry);
                     const removal = rowActions[`dev:${entry.name}`];
                     return (
-                      <div key={entry.name}>
+                      <div key={entry.name} className="space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1 space-y-1">
                             {primary ? (
@@ -1812,7 +1838,7 @@ function DeveloperStorage({
                               target={label}
                               action={removal}
                               disabled={rowDisabled}
-                              onClick={() => onRemove(entry.name)}
+                              onClick={() => onRemove(entry, label)}
                             />
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -1871,6 +1897,8 @@ function DeveloperStorage({
                             </DropdownMenu>
                           </div>
                         </div>
+                        {confirmationKey === `dev-instance:${entry.name}` &&
+                          confirmation}
                       </div>
                     );
                   })}
