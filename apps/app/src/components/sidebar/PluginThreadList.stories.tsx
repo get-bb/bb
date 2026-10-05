@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -66,8 +66,6 @@ const INBOX_THREADS = [
   inboxEntry("thr_digest", "Digest: GitHub activity", 600, true),
   inboxEntry("thr_pins", "File Pins menu alignment", 500, false),
   inboxEntry("thr_places", "Saved Places import", 400, true),
-  inboxEntry("thr_sort_qa", "Thread organizer: QA pass", 950, false),
-  inboxEntry("thr_sort", "Thread organizer: unread sort", 300, true),
   inboxEntry("thr_catalog", "Plugin catalog refresh", 200, false),
   inboxEntry("thr_catalog_shots", "Catalog screenshots", 190, false, {
     parentThreadId: "thr_catalog",
@@ -244,15 +242,14 @@ function OpenThreadControls() {
   );
 }
 
-function ThreadListStage({
-  preferences,
-  children,
-}: {
-  preferences: Record<string, unknown>;
-  children: ReactNode;
-}) {
+const READ_STATUS_PREFERENCES = {
+  organizationMode: "chronological",
+  groupByReadStatus: true,
+};
+
+export function InboxReadStatus() {
   const [queryClient] = useState(createThreadListQueryClient);
-  const rpcReady = useThreadListPreferenceRpc(preferences);
+  const rpcReady = useThreadListPreferenceRpc(READ_STATUS_PREFERENCES);
   useThreadListPlugin();
   if (!rpcReady) return null;
   return (
@@ -260,22 +257,9 @@ function ThreadListStage({
       <ThreadActionsProvider>
         <main className="flex gap-6 p-6">
           <ThreadListSidebar />
-          {children}
+          <OpenThreadControls />
         </main>
       </ThreadActionsProvider>
     </QueryClientProvider>
-  );
-}
-
-const READ_STATUS_PREFERENCES = {
-  organizationMode: "chronological",
-  groupByReadStatus: true,
-};
-
-export function InboxReadStatus() {
-  return (
-    <ThreadListStage preferences={READ_STATUS_PREFERENCES}>
-      <OpenThreadControls />
-    </ThreadListStage>
   );
 }
