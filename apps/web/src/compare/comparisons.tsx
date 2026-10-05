@@ -112,11 +112,8 @@ const BB_VS_SUPERSET: Comparison = {
         <>
           <p>
             Claude Code builds a feature, Codex reviews it, and Cursor writes
-            the release notes.
-          </p>
-          <p>
-            They pass work back and forth so you don’t have to copy between
-            tools.
+            the release notes. They pass work back and forth so you don’t have
+            to copy between tools.
           </p>
           <div className="providers cmp-providers">
             <span className="label">Works with any agent</span>
