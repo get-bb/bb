@@ -187,7 +187,12 @@ export async function removeDeveloperEntries(
     (entry): entry is typeof entry & { sourcePath: string } =>
       entry.sourcePath !== null && entry.sourcePathState === "missing",
   );
-  let stoppedProcessCount = 0;
+  const stoppedProcessCount = (
+    await experimental_killProcessesWithCwdUnder({
+      directories: missing.map((entry) => entry.sourcePath),
+    })
+  ).length;
+  signal.throwIfAborted();
   const trashes = (await fs.readdir(root))
     .filter((name) => name.startsWith(".bb-trash-"))
     .map((name) => path.join(root, name));
@@ -195,11 +200,6 @@ export async function removeDeveloperEntries(
   try {
     for (const entry of missing) {
       signal.throwIfAborted();
-      stoppedProcessCount += (
-        await experimental_killProcessesWithCwdUnder({
-          directory: entry.sourcePath,
-        })
-      ).length;
       const source = path.join(root, entry.name);
       try {
         const stats = await fs.lstat(source);

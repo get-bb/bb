@@ -1452,13 +1452,16 @@ unexpected-exit recovery without feature-specific core hooks.
 
 **Audit before stabilizing.**
 
-0a. **Process reap.** `experimental_killProcessesWithCwdUnder({ directory,
+0a. **Process reap.** `experimental_killProcessesWithCwdUnder({ directories,
    graceMs? })` from `@get-bb/plugin-sdk/host` is the same helper bb's own
 daemon used to reap a managed workspace before removing it: SIGTERM to
-every process whose working directory is at or under the path, SIGKILL
-after the grace, returning what it signalled. Published for the worktree
-and environment-personal-workspace plugins, which own their teardown and call it
-before deleting the directory. Confirm the platform coverage (Linux
+every process whose working directory is at or under any of the paths,
+SIGKILL after the grace, returning what it signalled. Each sweep lists
+process working directories once for all paths, so batch callers pass every
+directory in one call. Published for the worktree and
+environment-personal-workspace plugins, which own their teardown and call it
+before deleting the directory; Storage & retention passes whole cleanup
+batches. Confirm the platform coverage (Linux
 `/proc`, macOS `lsof`) and whether the grace should be per call.
 
 0. **Call timeout.** `ExperimentalHostCallOptions.timeoutMs` (default 30s,

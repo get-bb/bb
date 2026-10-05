@@ -8,11 +8,11 @@ interface ProcessWithCwd {
 }
 
 interface ListProcessesWithCwdUnderArgs {
-  directory: string;
+  directories: readonly string[];
 }
 
 interface KillProcessesWithCwdUnderArgs {
-  directory: string;
+  directories: readonly string[];
   graceMs?: number;
 }
 
@@ -99,8 +99,10 @@ export async function listProcessesWithCwdUnder(
   if (process.platform === "win32") {
     return [];
   }
-  const directory = await resolveSweepDirectory(args.directory);
-  if (directory === null) {
+  const directories = (
+    await Promise.all(args.directories.map(resolveSweepDirectory))
+  ).filter((directory) => directory !== null);
+  if (directories.length === 0) {
     return [];
   }
   const all =
@@ -109,7 +111,10 @@ export async function listProcessesWithCwdUnder(
       : await listLsofProcessCwds();
   return all.filter(
     (entry) =>
-      entry.pid !== process.pid && isPathUnderDirectory(entry.cwd, directory),
+      entry.pid !== process.pid &&
+      directories.some((directory) =>
+        isPathUnderDirectory(entry.cwd, directory),
+      ),
   );
 }
 
@@ -148,7 +153,7 @@ export async function killProcessesWithCwdUnder(
   const signalled = new Map<number, ProcessWithCwd>();
   for (let round = 0; round < MAX_CWD_SWEEP_ROUNDS; round += 1) {
     const targets = await listProcessesWithCwdUnder({
-      directory: args.directory,
+      directories: args.directories,
     });
     if (targets.length === 0) {
       break;
@@ -162,7 +167,7 @@ export async function killProcessesWithCwdUnder(
       await delay(50);
     }
     const survivors = await listProcessesWithCwdUnder({
-      directory: args.directory,
+      directories: args.directories,
     });
     if (survivors.length === 0) {
       break;

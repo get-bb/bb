@@ -141,6 +141,11 @@ export default experimental_defineHostEntry({
         if (isFsErrorWithCode(error, "ENOENT")) return { removed: [] };
         throw error;
       }
+      await experimental_killProcessesWithCwdUnder({
+        directories: names
+          .filter((name) => !name.startsWith(".bb-trash-"))
+          .map((name) => path.join(root, name)),
+      });
       const removed: string[] = [];
       const trashes: string[] = [];
       try {
@@ -153,10 +158,6 @@ export default experimental_defineHostEntry({
               throw new Error(
                 "Storage entry must be a directory, not a symbolic link",
               );
-            if (!name.startsWith(".bb-trash-"))
-              await experimental_killProcessesWithCwdUnder({
-                directory: source,
-              });
             const trash = name.startsWith(".bb-trash-")
               ? source
               : path.join(root, `.bb-trash-${name}-${randomUUID()}`);
