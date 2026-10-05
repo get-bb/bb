@@ -293,7 +293,7 @@ function ApprovalPendingInteractionBanner({
     <PendingInteractionShell
       label="Approval needed"
       title={view.title}
-      initiallyExpanded={false}
+      initiallyExpanded
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="approval-banner"
