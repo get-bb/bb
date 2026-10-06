@@ -12,6 +12,8 @@ export const policySchema = z
   .object({
     archiveAfterDays: daysSchema,
     deleteAfterDays: daysSchema,
+    deleteStorageOnArchive: z.boolean().default(false),
+    deleteDevDataOnCheckoutRemoval: z.boolean().default(false),
   })
   .strict();
 export type Policy = z.infer<typeof policySchema>;
@@ -34,6 +36,15 @@ export const previewSchema = z.object({
 export type Preview = z.infer<typeof previewSchema>;
 const machineInput = z.object({ hostId: z.string().min(1) }).strict();
 export const storageRpc = defineRpcContract({
+  startCleanup: {
+    input: z
+      .object({
+        hostId: z.string().min(1),
+        kind: z.enum(["orphans", "development", "worktrees"]),
+      })
+      .strict(),
+    output: z.null(),
+  },
   hosts: { input: z.null(), output: hostStorageListResponseSchema },
   host: { input: machineInput, output: hostStorageResponseSchema },
   scanHost: { input: machineInput, output: hostStorageResponseSchema },
@@ -61,6 +72,7 @@ export const storageRpc = defineRpcContract({
     input: z.object({ threadId: z.string().min(1) }).strict(),
     output: z.object({ ok: z.literal(true) }),
   },
+  startClearArchivedFiles: { input: machineInput, output: z.null() },
   clearArchivedFiles: {
     input: machineInput,
     output: z.object({

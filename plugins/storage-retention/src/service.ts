@@ -6,6 +6,8 @@ import { selectCandidates } from "./policy.js";
 const DEFAULT_POLICY: Policy = {
   archiveAfterDays: null,
   deleteAfterDays: null,
+  deleteStorageOnArchive: false,
+  deleteDevDataOnCheckoutRemoval: false,
 };
 const BATCH_LIMIT = 50;
 
@@ -51,7 +53,7 @@ export function createService(bb: BbPluginApi) {
   async function configure(policy: Policy) {
     requireActive();
     await bb.storage.kv.set("policy", policySchema.parse(policy));
-    bb.realtime.publish("changed", null);
+    bb.realtime.publish("policy-changed", null);
     return state();
   }
   async function sweep() {

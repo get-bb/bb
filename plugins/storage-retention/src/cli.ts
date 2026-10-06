@@ -17,6 +17,16 @@ function required(value: string | undefined, name: string) {
   if (!value) throw new Error(`Provide --${name}.`);
   return value;
 }
+function booleanSetting(
+  value: string | undefined,
+  fallback: boolean,
+  flag: string,
+) {
+  if (value === undefined) return fallback;
+  if (value !== "true" && value !== "false")
+    throw new Error(`Use true or false for --${flag}.`);
+  return value === "true";
+}
 function days(value: string | undefined, fallback: number | null) {
   if (value === undefined) return fallback;
   if (value === "never") return null;
@@ -51,6 +61,36 @@ export function registerCli(
         run: (input) => ({ exitCode: 0, stdout: input.help }),
       }),
       commands: {
+        cleanup: cliCommand({
+          summary: "Start background cleanup; read progress with storage usage",
+          options: {
+            machine: MACHINE,
+            kind: {
+              type: "string",
+              description: "orphans, development, or worktrees",
+            },
+            yes: YES,
+          },
+          run: ({ options }) =>
+            output(async () => {
+              if (!options.yes)
+                throw new Error("Pass --yes to confirm cleanup.");
+              const kind = options.kind;
+              if (
+                kind !== "orphans" &&
+                kind !== "development" &&
+                kind !== "worktrees"
+              )
+                throw new Error(
+                  "Use --kind orphans, development, or worktrees.",
+                );
+              await storage.startCleanup({
+                hostId: required(options.machine, "machine"),
+                kind,
+              });
+              return { started: true };
+            }),
+        }),
         retention: cliCommand({
           summary:
             "Show policy and last run, preview thresholds, or save with --save --yes",
@@ -63,16 +103,38 @@ export function registerCli(
               type: "string",
               description: "Archived days before deleting, or never",
             },
+            "delete-storage-on-archive": {
+              type: "string",
+              description: "Delete thread storage on archive: true or false",
+            },
+            "delete-dev-data-on-checkout-removal": {
+              type: "string",
+              description:
+                "Delete development data for missing checkouts: true or false",
+            },
             save: {
               type: "boolean",
-              description: "Save the supplied thresholds",
+              description: "Save the supplied settings",
             },
             yes: YES,
           },
           run: (input) =>
             output(async () => {
               const state = await service.state();
+              const cleanup = input.options["delete-storage-on-archive"];
+              const devCleanup =
+                input.options["delete-dev-data-on-checkout-removal"];
               const policy = policySchema.parse({
+                deleteStorageOnArchive: booleanSetting(
+                  cleanup,
+                  state.policy.deleteStorageOnArchive,
+                  "delete-storage-on-archive",
+                ),
+                deleteDevDataOnCheckoutRemoval: booleanSetting(
+                  devCleanup,
+                  state.policy.deleteDevDataOnCheckoutRemoval,
+                  "delete-dev-data-on-checkout-removal",
+                ),
                 archiveAfterDays: days(
                   input.options["archive-after"],
                   state.policy.archiveAfterDays,
@@ -91,7 +153,9 @@ export function registerCli(
               }
               if (
                 input.options["archive-after"] !== undefined ||
-                input.options["delete-after"] !== undefined
+                input.options["delete-after"] !== undefined ||
+                cleanup !== undefined ||
+                devCleanup !== undefined
               )
                 return { policy, preview: await service.preview(policy) };
               return state;

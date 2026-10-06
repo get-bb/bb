@@ -446,6 +446,30 @@ there are no general app settings for retention. Preview with
 `bb storage retention --archive-after 30 --delete-after 90`; add `--save --yes`
 to save. Use `never` to turn either policy off. Days range from 1 to 3650.
 
+The plugin also offers **Delete thread storage on archive**, off by default.
+All retention settings save immediately in the panel.
+Set it with `bb storage retention --delete-storage-on-archive true --save --yes`
+(or `false` to disable). It clears storage for future manual and automatic
+archives, including cascaded children, preserving conversations and uploaded
+attachments and skipping pinned threads. Pending cleanup persists across reloads
+and retries every minute until the core archive undo grace has elapsed (currently
+30 seconds), the thread has stopped, and its machine is online. Bulk archived-file
+cleanup also respects this grace and rechecks eligibility before each batch.
+Unarchiving cancels pending cleanup. Existing archives are not cleared by enabling
+this setting; use the explicit archived-file cleanup action for those.
+
+**Delete development data when its checkout is removed** is a separate,
+off-by-default setting: `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
+(use `false` to disable). It starts hourly scans of online persistent machines and
+cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
+scans, including existing data. The machine rechecks absence before deletion,
+stops servers working inside removed checkouts, and keeps existing or unresolved
+sources. Offline/busy machines and failed cleanup retry on later scans. Thread
+retention preview counts do not include development folders. Removal events also
+trigger scans through a durable, cursor-based feed;
+pending scans retry every minute. This requires a server with the
+environment-removal feed API.
+
 The hourly plugin schedule processes up to 50 trees per action across all projects.
 Archive eligibility uses each affected member's updatedAt; deletion requires every
 lifecycle member to have been archived past the cutoff. Pinned members exempt the

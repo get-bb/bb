@@ -26,7 +26,7 @@ interface Candidate {
 
 export function selectCandidates(
   threads: readonly RetentionThread[],
-  policy: Policy,
+  policy: Pick<Policy, "archiveAfterDays" | "deleteAfterDays">,
   now: number,
 ) {
   const live = threads.filter((thread) => thread.deletedAt === null);

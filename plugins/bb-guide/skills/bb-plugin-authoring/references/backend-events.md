@@ -5,6 +5,7 @@
 ```ts
 bb.events.on("experimental_thread.events", ({ thread, sequence }) => { ... });
 bb.events.on("experimental_terminal.input", ({ terminal }) => { ... });
+bb.events.on("experimental_environment.removed", ({ removal }) => { ... });
 bb.events.on("experimental_host.deleted", ({ host }) => { ... });
 bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
@@ -498,3 +499,13 @@ compares stored paths in the database and does not contact hosts.
 Scoped discovery omits providers whose declared requirements are unmet without
 running Git inspection or plugin availability. Without a machine scope,
 discovery includes providers structurally eligible on any persistent machine.
+
+`experimental_environment.removed` carries `{ removal }` after successful
+provider removal is committed. Removal IDs and the pre-removal host/path are
+retained independently of environment rows. Use
+`bb.sdk.environments.experimental_listRemovals({cursor, limit})` after startup
+and on this notification; durably queue work before saving `nextCursor`.
+Pages return `status`, `removals`, `nextCursor`, and `hasMore`. History lasts
+30 days; `cursorExpired` supplies a reset cursor, requiring external-state
+reconciliation. Omit cursor to read retained history. Provider success does not
+guarantee the checkout path was deleted.

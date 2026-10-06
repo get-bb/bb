@@ -1,3 +1,8 @@
+import type { EnvironmentRemovalPage } from "@bb/domain";
+import {
+  listEnvironmentRemovalsQuerySchema,
+  type ListEnvironmentRemovalsQuery,
+} from "./api/environments.js";
 import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
@@ -1110,6 +1115,14 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    listRemovals: defineRoute({
+      path: "/environments/removals",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, ListEnvironmentRemovalsQuery>(
+        listEnvironmentRemovalsQuerySchema,
+      ),
+      response: jsonResponse<EnvironmentRemovalPage>(),
+    }),
     cleanup: defineRoute({
       path: "/environments/:id/cleanup",
       method: "post",

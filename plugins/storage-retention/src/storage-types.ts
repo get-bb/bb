@@ -122,10 +122,54 @@ export type LargeFileCleanupStatus = z.infer<
   typeof largeFileCleanupStatusSchema
 >;
 
+export const archivedFileCleanupStatusSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("idle") }),
+  z.object({
+    state: z.literal("running"),
+    clearedThreads: byteCountSchema,
+    clearedBytes: byteCountSchema,
+  }),
+  z.object({
+    state: z.literal("completed"),
+    clearedThreads: byteCountSchema,
+    clearedBytes: byteCountSchema,
+  }),
+  z.object({
+    state: z.literal("failed"),
+    message: z.string(),
+    clearedThreads: byteCountSchema,
+    clearedBytes: byteCountSchema,
+  }),
+]);
+export type ArchivedFileCleanupStatus = z.infer<
+  typeof archivedFileCleanupStatusSchema
+>;
+
+export const maintenanceStatusSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("idle") }),
+  z.object({
+    state: z.literal("running"),
+    kind: z.enum(["orphans", "development", "worktrees"]),
+  }),
+  z.object({
+    state: z.literal("completed"),
+    kind: z.enum(["orphans", "development", "worktrees"]),
+    message: z.string(),
+  }),
+  z.object({
+    state: z.literal("failed"),
+    kind: z.enum(["orphans", "development", "worktrees"]),
+    message: z.string(),
+  }),
+]);
+export type MaintenanceStatus = z.infer<typeof maintenanceStatusSchema>;
+
 export const hostStorageResponseSchema = z.object({
   report: hostStorageReportSchema.nullable(),
   scan: hostStorageScanStatusSchema,
   largeFileCleanup: largeFileCleanupStatusSchema,
+  archivedFileCleanup: archivedFileCleanupStatusSchema,
+  maintenance: maintenanceStatusSchema,
 });
 export type HostStorageResponse = z.infer<typeof hostStorageResponseSchema>;
 
@@ -136,6 +180,8 @@ export const hostStorageListResponseSchema = z.object({
       report: hostStorageReportSchema.nullable(),
       scan: hostStorageScanStatusSchema,
       largeFileCleanup: largeFileCleanupStatusSchema,
+      archivedFileCleanup: archivedFileCleanupStatusSchema,
+      maintenance: maintenanceStatusSchema,
     }),
   ),
 });

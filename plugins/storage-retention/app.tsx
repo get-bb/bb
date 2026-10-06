@@ -1,7 +1,9 @@
+import { toast } from "sonner";
 import {
   Fragment,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -33,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -40,7 +43,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { storageRpc, State, Policy, Preview } from "./src/contract.js";
+import type { storageRpc, State, Policy } from "./src/contract.js";
 import {
   LARGE_FILE_MIN_BYTES,
   LARGE_FILE_NUDGE_MIN_BYTES,
@@ -81,6 +84,61 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+type ActionFeedback = {
+  title: string;
+  completed: string;
+  failed: string;
+  description: string;
+  id?: string;
+  background?: boolean;
+};
+function cleanupFeedback(
+  kind:
+    | "development"
+    | "orphans"
+    | "worktrees"
+    | "largeFileCleanup"
+    | "archivedFileCleanup",
+  hostId: string | null,
+  description: string,
+): ActionFeedback {
+  const titles = {
+    development: [
+      "Deleting development data",
+      "Development data deleted",
+      "Couldn’t delete development data",
+    ],
+    orphans: [
+      "Deleting orphaned files",
+      "Orphaned files deleted",
+      "Couldn’t delete orphaned files",
+    ],
+    worktrees: [
+      "Retrying checkout cleanup",
+      "Checkout cleanup retried",
+      "Couldn’t clean up checkouts",
+    ],
+    largeFileCleanup: [
+      "Deleting large archived files",
+      "Large archived files deleted",
+      "Couldn’t delete large archived files",
+    ],
+    archivedFileCleanup: [
+      "Deleting archived thread files",
+      "Archived thread files deleted",
+      "Couldn’t delete archived thread files",
+    ],
+  } as const;
+  const [title, completed, failed] = titles[kind];
+  return {
+    title,
+    completed,
+    failed,
+    description,
+    background: true,
+    id: `storage:${hostId ?? "all"}:${kind === "development" || kind === "orphans" || kind === "worktrees" ? "maintenance" : kind}`,
+  };
+}
 type StorageData = {
   state: State;
   hosts: Hosts;
@@ -93,7 +151,15 @@ function StoragePanel(props: PluginNavPanelProps) {
   const sdk = useSdk();
   const [data, setData] = useState<StorageData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const stateRevision = useRef(0);
+  const refreshRevision = useRef(0);
+  const updateState = useCallback((state: State) => {
+    stateRevision.current++;
+    setData((current) => (current === null ? null : { ...current, state }));
+  }, []);
   const refresh = useCallback(async () => {
+    const revision = stateRevision.current;
+    const request = ++refreshRevision.current;
     try {
       const [state, reports, machines, config] = await Promise.all([
         rpc.call("state", null),
@@ -101,21 +167,78 @@ function StoragePanel(props: PluginNavPanelProps) {
         sdk.hosts.list({ type: "persistent" }),
         sdk.system.config(),
       ]);
-      setData({
-        state,
+      if (request !== refreshRevision.current) return;
+      setData((current) => ({
+        state:
+          revision === stateRevision.current || current === null
+            ? state
+            : current.state,
         hosts: reports.hosts,
         machines: Object.fromEntries(machines.map((host) => [host.id, host])),
         primaryHostId: config.primaryHostId,
-      });
+      }));
       setLoadError(null);
     } catch (error) {
-      setLoadError(message(error));
+      if (request === refreshRevision.current) setLoadError(message(error));
     }
   }, [rpc, sdk]);
+  const previousJobs = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const host of data?.hosts ?? []) {
+      for (const kind of [
+        "largeFileCleanup",
+        "archivedFileCleanup",
+        "maintenance",
+      ] as const) {
+        const job = host[kind];
+        const key = `${host.hostId}:${kind}`;
+        const signature = JSON.stringify(job);
+        const previous = previousJobs.current.get(key);
+        if (
+          previous !== undefined &&
+          previous !== signature &&
+          job.state !== "idle"
+        ) {
+          const machine = data?.machines[host.hostId]?.name ?? host.hostId;
+          const feedback = cleanupFeedback(
+            "kind" in job
+              ? job.kind
+              : kind === "largeFileCleanup"
+                ? "largeFileCleanup"
+                : "archivedFileCleanup",
+            host.hostId,
+            machine,
+          );
+          if (job.state === "failed")
+            toast.error(feedback.failed, {
+              id: feedback.id,
+              description: `${machine} · ${job.message}`,
+            });
+          if (job.state === "completed")
+            toast.success(feedback.completed, {
+              id: feedback.id,
+              description: `${machine} · ${"message" in job ? job.message : `${bytes(job.clearedBytes)} freed`}`,
+            });
+        }
+        previousJobs.current.set(key, signature);
+      }
+    }
+  }, [data]);
   useEffect(() => {
     void refresh();
   }, [refresh]);
   useRealtime("changed", refresh);
+  useRealtime("policy-changed", async () => {
+    const revision = stateRevision.current;
+    try {
+      const state = await rpc.call("state", null);
+      if (revision === stateRevision.current) updateState(state);
+    } catch (error) {
+      toast.error("Couldn’t refresh retention settings", {
+        description: message(error),
+      });
+    }
+  });
   useEffect(() => {
     const hosts = sdk.subscribe({
       event: "host:changed",
@@ -141,6 +264,7 @@ function StoragePanel(props: PluginNavPanelProps) {
       data={data}
       loadError={loadError}
       refresh={refresh}
+      updateState={updateState}
     />
   );
 }
@@ -150,11 +274,13 @@ function StoragePage({
   data,
   loadError,
   refresh,
+  updateState,
 }: {
   hostId: string | null;
   data: StorageData | null;
   loadError: string | null;
   refresh: () => Promise<void>;
+  updateState: (state: State) => void;
 }) {
   const rpc = useRpc<typeof storageRpc>();
   const navigate = useBbNavigate();
@@ -163,78 +289,130 @@ function StoragePage({
   const machines = data?.machines ?? {};
   const primaryHostId = data?.primaryHostId ?? null;
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
-  const [actionError, setError] = useState<string | null>(null);
-  const [actionScope, setActionScope] = useState<"storage" | "retention">(
-    "storage",
-  );
-  const error = actionError ?? loadError;
+  const [savingSetting, setSavingSetting] = useState(false);
+  const settingSavePending = useRef(false);
   const [actionBusy, setBusy] = useState(false);
   const busy =
     actionBusy ||
-    hosts.some((host) => host.largeFileCleanup.state === "running");
+    hosts.some(
+      (host) =>
+        (hostId === null || host.hostId === hostId) &&
+        (host.largeFileCleanup.state === "running" ||
+          host.archivedFileCleanup.state === "running" ||
+          host.maintenance.state === "running"),
+    );
   const [rowActions, setRowActions] = useState<Record<string, RowAction>>({});
-  const [notice, setNotice] = useState<string | null>(null);
   const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
     string | null
   >(null);
-  const [draft, setDraft] = useState<Policy | null>(null);
-  const policy = draft ?? state?.policy ?? null;
-  const [confirmation, setConfirmation] = useState<{
-    policy: Policy;
-    preview: Preview;
-  } | null>(null);
-  const [cleanup, setCleanup] = useState<{
+  const policy = state?.policy ?? null;
+  const [cleanup, setCleanupState] = useState<{
     key: string;
     title: string;
     detail: string;
     action: string;
     run: () => Promise<string>;
+    feedback: ActionFeedback;
   } | null>(null);
+  function setCleanup(value: typeof cleanup) {
+    setCleanupState(value);
+  }
   async function perform<T>(
     work: () => Promise<T>,
+    feedback: ActionFeedback = {
+      title: "Starting storage scan",
+      completed: "Storage scan started",
+      failed: "Couldn’t start storage scan",
+      description: hostId
+        ? (machines[hostId]?.name ?? hostId)
+        : "Online machines",
+    },
     success?: (result: T) => string,
-    scope: "storage" | "retention" = "storage",
   ) {
-    setActionScope(scope);
-    setError(null);
-    setNotice(null);
     setBusy(true);
+    const id = toast.loading(feedback.title, {
+      id: feedback.id,
+      description: feedback.description,
+      duration: feedback.background ? 5000 : undefined,
+    });
     try {
       const result = await work();
-      await refresh();
-      if (success) setNotice(success(result));
+      if (!feedback.background)
+        toast.success(feedback.completed, {
+          id,
+          description: success?.(result) || feedback.description,
+        });
+      else if (hostId === null)
+        toast.message(feedback.title, {
+          id,
+          description: feedback.description,
+        });
+      void refresh();
     } catch (error) {
-      setError(message(error));
+      toast.error(feedback.failed, {
+        id,
+        description: `${feedback.description} · ${message(error)}`,
+      });
     } finally {
       setBusy(false);
     }
   }
-  async function preview(policy: Policy) {
-    setConfirmation(null);
-    await perform(
-      async () => {
-        setConfirmation({ policy, preview: await rpc.call("preview", policy) });
-      },
-      undefined,
-      "retention",
-    );
+  async function saveSetting<K extends keyof Policy>(key: K, value: Policy[K]) {
+    if (state === null || settingSavePending.current) return;
+    const previous = state;
+    const next = { ...state, policy: { ...state.policy, [key]: value } };
+    settingSavePending.current = true;
+    setSavingSetting(true);
+    updateState(next);
+    const description = {
+      archiveAfterDays: "Archive inactive threads",
+      deleteAfterDays: "Delete archived threads",
+      deleteStorageOnArchive: "Delete thread storage on archive",
+      deleteDevDataOnCheckoutRemoval:
+        "Delete development data when its checkout is removed",
+    }[key];
+    try {
+      updateState(await rpc.call("configure", next.policy));
+    } catch (error) {
+      updateState(previous);
+      toast.error("Couldn’t save setting", {
+        description: `${description} · ${message(error)}`,
+      });
+    } finally {
+      settingSavePending.current = false;
+      setSavingSetting(false);
+    }
   }
-  async function runRowAction(key: string, work: () => Promise<unknown>) {
+  async function runRowAction(
+    key: string,
+    feedback: ActionFeedback,
+    work: () => Promise<string | null>,
+  ) {
     if (rowActions[key]?.state === "running") return;
     setRowActions((current) => ({ ...current, [key]: { state: "running" } }));
+    const id = toast.loading(feedback.title, {
+      description: feedback.description,
+    });
     try {
-      await work();
-      await refresh();
+      const description = await work();
+      if (description === null) toast.dismiss(id);
+      else
+        toast.success(feedback.completed, {
+          id,
+          description: description || feedback.description,
+        });
+      void refresh();
+    } catch (error) {
+      toast.error(feedback.failed, {
+        id,
+        description: `${feedback.description} · ${message(error)}`,
+      });
+    } finally {
       setRowActions((current) => {
         const next = { ...current };
         delete next[key];
         return next;
       });
-    } catch (error) {
-      setRowActions((current) => ({
-        ...current,
-        [key]: { state: "failed", message: message(error) },
-      }));
     }
   }
   const retentionOn =
@@ -258,44 +436,49 @@ function StoragePage({
     (action) => action.state === "running",
   );
   const locked = busy || scanning || offline || rowActionRunning;
-  const rowDisabled = busy || scanning || offline || cleanup !== null;
-  const changed =
-    state !== null &&
-    policy !== null &&
-    (policy.archiveAfterDays !== state.policy.archiveAfterDays ||
-      policy.deleteAfterDays !== state.policy.deleteAfterDays);
+  const rowDisabled = busy || scanning || offline;
   function devInstancesCleanup(target: string, count: number, size: number) {
     return {
       key: "dev-instances",
+      feedback: cleanupFeedback(
+        "development",
+        target,
+        machines[target]?.name ?? target,
+      ),
       action: "Remove instances",
       title: `Remove ${plural(count, "development instance")} (${bytes(size)})?`,
       detail:
         "Delete the databases, logs, and thread files of development instances whose source checkout no longer exists. Development servers still running from those checkouts are stopped first. This can’t be undone.",
       run: async () => {
-        const result = await rpc.call("removeDevInstances", {
-          hostId: target,
-          names: null,
-        });
-        return `Removed ${plural(result.removedCount, "development instance")} · ${bytes(result.removedBytes)} freed${result.stoppedProcessCount ? ` · stopped ${plural(result.stoppedProcessCount, "process", "processes")}` : ""}${result.skippedCount ? ` · ${result.skippedCount.toLocaleString()} skipped` : ""}`;
+        await rpc.call("startCleanup", { hostId: target, kind: "development" });
+        return "Development storage cleanup started in the background.";
       },
     };
   }
   function largeFilesCleanup(target: string | null, totals: LargeFileTotals) {
     return {
       key: "large-files",
+      feedback: cleanupFeedback(
+        "largeFileCleanup",
+        target,
+        target ? (machines[target]?.name ?? target) : "All online machines",
+      ),
       action: "Delete large files",
       title: `Delete ${totals.fileCount.toLocaleString()} large ${totals.fileCount === 1 ? "file" : "files"} (${bytes(totals.bytes)})?`,
       detail: `Delete files of ${bytes(LARGE_FILE_MIN_BYTES)} or more from ${plural(totals.threadCount, "archived thread")}. Smaller files and conversation history will be kept. Pinned threads are skipped. This can’t be undone.`,
       run: async () => {
         await rpc.call("startClearLargeFiles", { hostId: target });
-        return "";
+        return "Large-file cleanup started in the background.";
       },
     };
   }
   const scannable = hosts.filter(
     (host) =>
       machines[host.hostId]?.status === "connected" &&
-      host.scan.state !== "scanning",
+      host.scan.state !== "scanning" &&
+      host.largeFileCleanup.state !== "running" &&
+      host.archivedFileCleanup.state !== "running" &&
+      host.maintenance.state !== "running",
   );
   const archivedLargeFiles = hosts.reduce<LargeFileTotals>(
     (totals, host) =>
@@ -313,9 +496,7 @@ function StoragePage({
   const cleanupStatuses = hosts.filter((host) => {
     const status = host.largeFileCleanup;
     return (
-      (hostId === null || host.hostId === hostId) &&
-      status.state !== "idle" &&
-      (status.state !== "completed" || status.clearedFiles > 0)
+      (hostId === null || host.hostId === hostId) && status.state === "running"
     );
   });
   const cleanupRunning = cleanupStatuses.some(
@@ -325,30 +506,17 @@ function StoragePage({
     <div className="space-y-2 border-t border-border pt-3">
       {cleanupStatuses.map((host) => {
         const status = host.largeFileCleanup;
-        if (status.state === "idle") return null;
+        if (status.state !== "running") return null;
         return (
           <p
             key={host.hostId}
-            role={status.state === "failed" ? "alert" : "status"}
-            className={cn(
-              "flex items-center gap-2 text-xs",
-              status.state === "failed"
-                ? "text-destructive"
-                : "text-muted-foreground",
-            )}
+            role="status"
+            className="flex items-center gap-2 text-xs text-muted-foreground"
           >
-            {status.state === "running" ? (
-              <Icon name="Spinner" className="size-3.5 shrink-0 animate-spin" />
-            ) : status.state === "completed" ? (
-              <Icon name="Check" className="size-3.5 shrink-0" />
-            ) : null}
+            <Icon name="Spinner" className="size-3.5 shrink-0 animate-spin" />
             {hostId === null &&
               `${machines[host.hostId]?.name ?? host.hostId}: `}
-            {status.state === "running"
-              ? "Deleting large files…"
-              : status.state === "failed"
-                ? status.message
-                : `Deleted ${plural(status.clearedFiles, "large file")} · ${bytes(status.clearedBytes)} freed`}
+            Deleting large files…
           </p>
         );
       })}
@@ -383,14 +551,11 @@ function StoragePage({
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium">{cleanup.title}</p>
         <p className="text-xs leading-snug text-subtle-foreground/75">
-          {cleanup.detail}
+          {cleanup.key === "archived-files" && report
+            ? `Delete ${bytes(report.archivedFiles.bytes)} of stored files from ${plural(report.archivedFiles.threadCount, "archived thread")} on this machine. Conversations and uploaded attachments are kept. Pinned and running threads are skipped. This can’t be undone.`
+            : cleanup.detail}
         </p>
       </div>
-      {actionError && (
-        <p role="alert" className="text-sm text-destructive">
-          {actionError}
-        </p>
-      )}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           variant="outline"
@@ -411,6 +576,7 @@ function StoragePage({
                 setCleanup(null);
                 return done;
               },
+              cleanup.feedback,
               (done) => done,
             )
           }
@@ -499,28 +665,30 @@ function StoragePage({
             </div>
           </header>
         )}
-        {error &&
-          !(actionError && (cleanup || actionScope === "retention")) && (
-            <div
-              role="alert"
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-            >
-              <p>{error}</p>
-              {loadError && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void refresh()}
-                >
-                  Try again
-                </Button>
-              )}
-            </div>
-          )}
-        {notice && actionScope === "storage" && (
-          <p role="status" className="flex items-center gap-2 text-sm">
-            <Icon name="Check" className="size-4" />
-            {notice}
+        {loadError && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            <p>{loadError}</p>
+            {loadError && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refresh()}
+              >
+                Try again
+              </Button>
+            )}
+          </div>
+        )}
+        {detail?.maintenance.state === "running" && (
+          <p role="status" className="text-xs text-muted-foreground">
+            {detail.maintenance.kind === "orphans"
+              ? "Removing orphaned storage…"
+              : detail.maintenance.kind === "development"
+                ? "Removing development instances…"
+                : "Retrying worktree cleanup…"}
           </p>
         )}
         {!state ? (
@@ -612,27 +780,45 @@ function StoragePage({
                       description={`Clear stored files of any size from ${plural(report.archivedFiles.threadCount, "archived thread")}. Pinned and running threads are skipped. Conversations and uploaded attachments are kept.`}
                       action="Clear archived files"
                       disabled={
-                        locked ||
-                        report.archivedFiles.threadCount === 0 ||
-                        cleanup !== null
+                        locked || report.archivedFiles.threadCount === 0
                       }
                       onAction={() =>
                         setCleanup({
                           key: "archived-files",
+                          feedback: cleanupFeedback(
+                            "archivedFileCleanup",
+                            report.hostId,
+                            machine?.name ?? report.hostId,
+                          ),
                           title: "Clear all archived thread files?",
                           action: "Clear archived files",
                           detail: `Delete ${bytes(report.archivedFiles.bytes)} of stored files from ${plural(report.archivedFiles.threadCount, "archived thread")} on this machine. This includes small files. Conversations and uploaded attachments will be kept. Pinned and running threads are skipped. This can’t be undone.`,
                           run: async () => {
-                            const result = await rpc.call(
-                              "clearArchivedFiles",
-                              { hostId: report.hostId },
-                            );
-                            return `Cleared ${bytes(result.clearedBytes)} from ${plural(result.clearedThreads, "archived thread")}.`;
+                            await rpc.call("startClearArchivedFiles", {
+                              hostId: report.hostId,
+                            });
+                            return "Archived-file cleanup started in the background.";
                           },
                         })
                       }
                     >
                       {cleanup?.key === "archived-files" && cleanupConfirmation}
+                      {detail?.archivedFileCleanup &&
+                        detail.archivedFileCleanup.state === "running" && (
+                          <p
+                            role="status"
+                            className="mt-3 text-xs text-muted-foreground"
+                          >
+                            Removing archived files in the background. Cleared{" "}
+                            {bytes(detail.archivedFileCleanup.clearedBytes)}{" "}
+                            from{" "}
+                            {plural(
+                              detail.archivedFileCleanup.clearedThreads,
+                              "thread",
+                            )}
+                            .
+                          </p>
+                        )}
                     </CleanupRow>
                     <CleanupRow
                       title="Large files in archived threads"
@@ -644,9 +830,7 @@ function StoragePage({
                       }
                       action="Delete large files"
                       disabled={
-                        locked ||
-                        report.archivedLargeFiles.fileCount === 0 ||
-                        cleanup !== null
+                        locked || report.archivedLargeFiles.fileCount === 0
                       }
                       onAction={() =>
                         setCleanup(
@@ -665,21 +849,25 @@ function StoragePage({
                       size={report.orphanBytes}
                       description="Files left behind by deleted threads. BB cleans these up automatically while idle."
                       action="Remove orphans"
-                      disabled={
-                        locked || report.orphanCount === 0 || cleanup !== null
-                      }
+                      disabled={locked || report.orphanCount === 0}
                       onAction={() =>
                         setCleanup({
                           key: "orphans",
+                          feedback: cleanupFeedback(
+                            "orphans",
+                            report.hostId,
+                            machine?.name ?? report.hostId,
+                          ),
                           action: "Remove orphans",
                           title: `Remove ${bytes(report.orphanBytes)} of orphaned storage?`,
                           detail:
                             "Delete folders no longer attached to a thread. Existing threads and their files will be kept. This can’t be undone.",
                           run: async () => {
-                            const removed = await rpc.call("removeOrphans", {
+                            await rpc.call("startCleanup", {
+                              kind: "orphans",
                               hostId: report.hostId,
                             });
-                            return `Removed ${bytes(removed.removedBytes)} of orphaned storage.`;
+                            return "Orphan cleanup started in the background.";
                           },
                         })
                       }
@@ -695,12 +883,16 @@ function StoragePage({
                       onAction={() =>
                         void perform(
                           async () => {
-                            await rpc.call("retryWorktreeCleanup", {
+                            await rpc.call("startCleanup", {
+                              kind: "worktrees",
                               hostId,
                             });
                           },
-                          () =>
-                            "Cleanup requested. Rescan after it finishes to update usage.",
+                          cleanupFeedback(
+                            "worktrees",
+                            hostId,
+                            machine?.name ?? hostId ?? "Machine",
+                          ),
                         )
                       }
                     >
@@ -737,9 +929,7 @@ function StoragePage({
                         size={missingDevBytes}
                         description={`${plural(missingDev.length, "development instance")} in ~/.bb-dev whose source checkout no longer exists. Servers still running from them are stopped before removal.`}
                         action="Remove instances"
-                        disabled={
-                          locked || missingDev.length === 0 || cleanup !== null
-                        }
+                        disabled={locked || missingDev.length === 0}
                         onAction={() =>
                           setCleanup(
                             devInstancesCleanup(
@@ -805,10 +995,20 @@ function StoragePage({
                               action={clear}
                               disabled={rowDisabled || thread.running}
                               onClick={() =>
-                                void runRowAction(thread.threadId, () =>
-                                  rpc.call("clearThread", {
-                                    threadId: thread.threadId,
-                                  }),
+                                void runRowAction(
+                                  thread.threadId,
+                                  {
+                                    title: "Deleting thread files",
+                                    completed: "Thread files deleted",
+                                    failed: "Couldn’t delete thread files",
+                                    description: thread.title,
+                                  },
+                                  async () => {
+                                    await rpc.call("clearThread", {
+                                      threadId: thread.threadId,
+                                    });
+                                    return thread.title;
+                                  },
                                 )
                               }
                             />
@@ -839,32 +1039,58 @@ function StoragePage({
                     confirmationKey={cleanup?.key ?? null}
                     confirmation={cleanupConfirmation}
                     onRemove={(entry, label) =>
-                      void runRowAction(`dev:${entry.name}`, async () => {
-                        const result = await rpc.call("removeDevInstances", {
-                          hostId: report.hostId,
-                          names: [entry.name],
-                          stopRunning: false,
-                        });
-                        if (result.running.length > 0)
-                          setCleanup({
-                            key: `dev-instance:${entry.name}`,
-                            action: "Stop and remove",
-                            title: `Stop and remove “${label}” (${bytes(entry.sizeBytes)})?`,
-                            detail:
-                              "Its dev server is running. BB will stop it, then delete its database, logs, and thread files. The source checkout is kept. This can’t be undone.",
-                            run: async () => {
-                              const stopped = await rpc.call(
-                                "removeDevInstances",
-                                {
-                                  hostId: report.hostId,
-                                  names: [entry.name],
-                                  stopRunning: true,
-                                },
-                              );
-                              return `Removed ${label} · ${bytes(stopped.removedBytes)} freed${stopped.stoppedProcessCount ? " · dev server stopped" : ""}`;
-                            },
+                      void runRowAction(
+                        `dev:${entry.name}`,
+                        {
+                          title: "Deleting development data",
+                          completed: "Development data deleted",
+                          failed: "Couldn’t delete development data",
+                          description: `${report.developerStorage!.path}/${entry.name}`,
+                        },
+                        async () => {
+                          const result = await rpc.call("removeDevInstances", {
+                            hostId: report.hostId,
+                            names: [entry.name],
+                            stopRunning: false,
                           });
-                      })
+                          if (result.running.length > 0)
+                            setCleanup({
+                              key: `dev-instance:${entry.name}`,
+                              feedback: {
+                                title: "Deleting development data",
+                                completed: "Development data deleted",
+                                failed: "Couldn’t delete development data",
+                                description: `${report.developerStorage!.path}/${entry.name}`,
+                              },
+                              action: "Stop and remove",
+                              title: `Stop and remove “${label}” (${bytes(entry.sizeBytes)})?`,
+                              detail:
+                                "Its dev server is running. BB will stop it, then delete its database, logs, and thread files. The source checkout is kept. This can’t be undone.",
+                              run: async () => {
+                                const stopped = await rpc.call(
+                                  "removeDevInstances",
+                                  {
+                                    hostId: report.hostId,
+                                    names: [entry.name],
+                                    stopRunning: true,
+                                  },
+                                );
+                                if (stopped.removedCount === 0)
+                                  throw new Error(
+                                    "No data was deleted. Rescan the machine to update its status.",
+                                  );
+                                return `${report.developerStorage!.path}/${entry.name} · ${bytes(stopped.removedBytes)} freed`;
+                              },
+                            });
+                          else if (result.removedCount === 0)
+                            throw new Error(
+                              "No data was deleted. Rescan the machine to update its status.",
+                            );
+                          else
+                            return `${report.developerStorage!.path}/${entry.name} · ${bytes(result.removedBytes)} freed`;
+                          return null;
+                        },
+                      )
                     }
                   />
                 )}
@@ -893,11 +1119,7 @@ function StoragePage({
                     variant="outline"
                     size="sm"
                     className="shrink-0"
-                    disabled={
-                      busy ||
-                      cleanup !== null ||
-                      archivedLargeFiles.fileCount === 0
-                    }
+                    disabled={busy || archivedLargeFiles.fileCount === 0}
                     onClick={() => setCleanup(suggestion.cleanup)}
                   >
                     {suggestion.action}
@@ -914,7 +1136,7 @@ function StoragePage({
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={busy || scannable.length === 0}
+                    disabled={actionBusy || scannable.length === 0}
                     onClick={() =>
                       void perform(() => rpc.call("scanAll", null))
                     }
@@ -942,13 +1164,25 @@ function StoragePage({
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
-                    busy={busy}
+                    busy={
+                      actionBusy ||
+                      host.largeFileCleanup.state === "running" ||
+                      host.archivedFileCleanup.state === "running" ||
+                      host.maintenance.state === "running"
+                    }
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
                     onScan={() =>
-                      void perform(() =>
-                        rpc.call("scanHost", { hostId: host.hostId }),
+                      void perform(
+                        () => rpc.call("scanHost", { hostId: host.hostId }),
+                        {
+                          title: "Starting storage scan",
+                          completed: "Storage scan started",
+                          failed: "Couldn’t start storage scan",
+                          description:
+                            machines[host.hostId]?.name ?? host.hostId,
+                        },
                       )
                     }
                   />
@@ -958,7 +1192,7 @@ function StoragePage({
             <section className="space-y-3">
               <SectionHeading
                 title="Automatic retention"
-                description="Archive or delete inactive threads across all projects. You’ll see what changes before anything is saved."
+                description="Archive or delete inactive threads across all projects. Changes save automatically."
                 badge={retentionOn ? "Checks hourly" : "Off"}
               />
               <div
@@ -974,20 +1208,6 @@ function StoragePage({
                   ones you want to keep.
                 </p>
               </div>
-              {actionError && actionScope === "retention" && !confirmation && (
-                <p role="alert" className="text-xs text-destructive">
-                  {actionError}
-                </p>
-              )}
-              {notice && actionScope === "retention" && (
-                <p
-                  role="status"
-                  className="flex items-center gap-2 text-xs text-muted-foreground"
-                >
-                  <Icon name="Check" className="size-3.5" />
-                  {notice}
-                </p>
-              )}
               {policy && (
                 <div className="divide-y divide-border rounded-lg border border-border bg-card">
                   <RetentionField
@@ -995,125 +1215,73 @@ function StoragePage({
                     description="After this long with no activity."
                     presets={ARCHIVE_PRESETS}
                     value={policy.archiveAfterDays}
-                    disabled={busy || confirmation !== null}
-                    onChange={(archiveAfterDays) => {
-                      setDraft({ ...policy, archiveAfterDays });
-                      setNotice(null);
-                    }}
+                    disabled={savingSetting}
+                    onChange={(value) =>
+                      void saveSetting("archiveAfterDays", value)
+                    }
                   />
                   <RetentionField
                     label="Delete archived threads"
                     description="Permanently, after this long in the archive."
                     presets={DELETE_PRESETS}
                     value={policy.deleteAfterDays}
-                    disabled={busy || confirmation !== null}
-                    onChange={(deleteAfterDays) => {
-                      setDraft({ ...policy, deleteAfterDays });
-                      setNotice(null);
-                    }}
+                    disabled={savingSetting}
+                    onChange={(value) =>
+                      void saveSetting("deleteAfterDays", value)
+                    }
                   />
-                  {(changed || state.lastRun || retentionOn) && (
-                    <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 px-4 py-2.5">
-                      <p className="text-xs text-muted-foreground">
-                        {changed
-                          ? "Unsaved changes"
-                          : state.lastRun
-                            ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
-                            : "The first check runs within the hour."}
-                      </p>
-                      {changed && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy || confirmation !== null}
-                            onClick={() => setDraft(null)}
-                          >
-                            Discard
-                          </Button>
-                          <Button
-                            size="sm"
-                            disabled={busy || confirmation !== null}
-                            onClick={() => void preview(policy)}
-                          >
-                            {busy ? "Working…" : "Preview changes"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              {confirmation && (
-                <div
-                  role="region"
-                  aria-label="Confirm retention policy"
-                  className="space-y-4 rounded-lg border border-border bg-muted/30 p-4"
-                >
-                  <h3 className="text-sm font-semibold">
-                    Review retention changes
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-lg font-semibold tabular-nums">
-                        {confirmation.preview.archiveCount}{" "}
-                        <span className="text-sm font-normal">to archive</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {confirmation.policy.archiveAfterDays === null
-                          ? "Never archive automatically"
-                          : `After ${duration(confirmation.policy.archiveAfterDays)} inactive`}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold tabular-nums">
-                        {confirmation.preview.deleteCount}{" "}
-                        <span className="text-sm font-normal">to delete</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {confirmation.policy.deleteAfterDays === null
-                          ? "Never delete automatically"
-                          : `After ${duration(confirmation.policy.deleteAfterDays)} archived`}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-xs leading-snug text-subtle-foreground/75">
-                    Counts reflect threads that qualify now. Archiving can
-                    remove worktrees and uncommitted changes. Deleting
-                    permanently removes history and files.
-                  </p>
-                  {actionError && actionScope === "retention" && (
-                    <p role="alert" className="text-xs text-destructive">
-                      {actionError}
-                    </p>
-                  )}
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => setConfirmation(null)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        void perform(
-                          async () => {
-                            await rpc.call("configure", confirmation.policy);
-                            setDraft(null);
-                            setConfirmation(null);
-                          },
-                          () => "Retention policy saved.",
-                          "retention",
+                  <label className="flex items-center justify-between gap-4 px-4 py-3">
+                    <span>
+                      <span className="block text-sm font-medium">
+                        Delete thread storage on archive
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        Permanently remove files after archiving. Conversations
+                        and uploaded attachments are kept. Pinned threads are
+                        skipped.
+                      </span>
+                    </span>
+                    <Switch
+                      aria-label="Delete thread storage on archive"
+                      checked={policy.deleteStorageOnArchive}
+                      disabled={savingSetting}
+                      onCheckedChange={(checked) =>
+                        void saveSetting("deleteStorageOnArchive", checked)
+                      }
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-4 px-4 py-3">
+                    <span>
+                      <span className="block text-sm font-medium">
+                        Delete development data when its checkout is removed
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        After scans, remove ~/.bb-dev folders with missing
+                        checkouts and stop their servers. Checks run hourly,
+                        including for existing development data.
+                      </span>
+                    </span>
+                    <Switch
+                      aria-label="Delete development data when its checkout is removed"
+                      checked={policy.deleteDevDataOnCheckoutRemoval}
+                      disabled={savingSetting}
+                      onCheckedChange={(checked) =>
+                        void saveSetting(
+                          "deleteDevDataOnCheckoutRemoval",
+                          checked,
                         )
                       }
-                    >
-                      Save policy
-                    </Button>
-                  </div>
+                    />
+                  </label>
+                  {(state.lastRun || retentionOn) && (
+                    <div className="px-4 py-2.5">
+                      <p className="text-xs text-muted-foreground">
+                        {state.lastRun
+                          ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
+                          : "The first check runs within the hour."}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </section>
@@ -1538,7 +1706,7 @@ function ProjectWorktrees({
   );
 }
 
-type RowAction = { state: "running" } | { state: "failed"; message: string };
+type RowAction = { state: "running" };
 
 function RowActionButton({
   label,
@@ -1586,13 +1754,9 @@ function RowActionStatus({
   runningLabel: string;
 }) {
   if (action === undefined) return null;
-  return action.state === "running" ? (
+  return (
     <p role="status" className="text-xs text-muted-foreground">
       {runningLabel}
-    </p>
-  ) : (
-    <p role="alert" className="text-xs text-destructive">
-      {action.message}
     </p>
   );
 }

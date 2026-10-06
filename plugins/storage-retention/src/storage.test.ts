@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeHostResponse,
@@ -155,6 +155,185 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
   }
 });
 
+it.each([
+  "failure",
+  "unarchive",
+  "pin",
+  "active",
+  "rearchive",
+  "orphans",
+] as const)(
+  "starts archived cleanup without waiting and handles %s between batches",
+  async (change) => {
+    const threads = Array.from({ length: 101 }, (_, i) =>
+      makeThreadResponse({ id: `thr_${i}`, status: "idle", archivedAt: 1 }),
+    );
+    const gate: {
+      pending: { resolve: () => void; reject: () => void } | null;
+    } = { pending: null };
+    let hold = true;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      experimental_hostEntry: true,
+      experimental_callHostRpc: async (call) => {
+        if (call.method === "homeDirectory") return "/missing-home";
+        if (call.method === "capacity")
+          return { totalBytes: 10000, freeBytes: 5000 };
+        if (call.method === "measure")
+          return {
+            targets: [
+              {
+                outcome: "measured",
+                path: "/storage",
+                sizeBytes: 1010,
+                children: threads.map((thread) => ({
+                  name: thread.id,
+                  sizeBytes: 10,
+                })),
+              },
+            ],
+            largeFiles: [],
+          };
+        if (call.method === "discard") {
+          const { names } = hostStorageContract.discard.input.parse(call.input);
+          if (hold)
+            await new Promise<void>((resolve, reject) => {
+              gate.pending = {
+                resolve,
+                reject: () => reject(new Error("host disconnected")),
+              };
+            });
+          return { removed: names };
+        }
+        throw new Error("Unexpected host method");
+      },
+      sdk: {
+        projects: { list: async () => [] },
+        hosts: {
+          get: async () => ({
+            ...makeHostResponse({ id: "host_test", status: "connected" }),
+            threadStorageRootPath: "/storage",
+          }),
+        },
+        threads: { list: async () => (change === "orphans" ? [] : threads) },
+        environments: { list: async () => [] },
+      },
+    });
+    const status = async () =>
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      );
+    try {
+      plugin(host.bb);
+      await host.harness.callRpc("scanHost", { hostId: "host_test" });
+      await expect
+        .poll(async () =>
+          change === "orphans"
+            ? (await status()).report?.orphanCount
+            : (await status()).report?.threadsWithStorageCount,
+        )
+        .toBe(101);
+      if (change === "orphans") {
+        const input = { hostId: "host_test", kind: "orphans" };
+        await expect(
+          host.harness.callRpc("startCleanup", input),
+        ).resolves.toBeNull();
+        await expect.poll(() => gate.pending !== null).toBe(true);
+        expect((await status()).maintenance).toEqual({
+          state: "running",
+          kind: "orphans",
+        });
+        await expect(
+          host.harness.callRpc("startCleanup", input),
+        ).rejects.toThrow("already running");
+        gate.pending!.reject();
+        await expect
+          .poll(async () => (await status()).maintenance)
+          .toEqual({
+            state: "failed",
+            kind: "orphans",
+            message: "host disconnected",
+          });
+        hold = false;
+        const result = await host.harness.runCli([
+          "cleanup",
+          "--machine",
+          "host_test",
+          "--kind",
+          "orphans",
+          "--yes",
+        ]);
+        expect(result.exitCode).toBe(0);
+        await expect
+          .poll(async () => (await status()).maintenance.state)
+          .toBe("completed");
+        expect((await status()).report?.orphanCount).toBe(0);
+        return;
+      }
+      await expect(
+        host.harness.callRpc("startClearArchivedFiles", {
+          hostId: "host_test",
+        }),
+      ).resolves.toBeNull();
+      await expect.poll(() => gate.pending !== null).toBe(true);
+      expect((await status()).archivedFileCleanup).toEqual({
+        state: "running",
+        clearedThreads: 0,
+        clearedBytes: 0,
+      });
+      await expect(
+        host.harness.callRpc("startClearArchivedFiles", {
+          hostId: "host_test",
+        }),
+      ).rejects.toThrow("already running");
+      if (change === "unarchive") threads[100]!.archivedAt = null;
+      if (change === "pin") threads[100]!.pinnedAt = Date.now();
+      if (change === "active") threads[100]!.status = "active";
+      if (change === "rearchive") threads[100]!.archivedAt = Date.now();
+      gate.pending!.resolve();
+      gate.pending = null;
+      if (change !== "failure") {
+        await expect
+          .poll(async () => (await status()).archivedFileCleanup)
+          .toEqual({
+            state: "completed",
+            clearedThreads: 100,
+            clearedBytes: 1000,
+          });
+        expect((await status()).report?.threadsWithStorageCount).toBe(1);
+        return;
+      }
+      await expect.poll(() => gate.pending !== null).toBe(true);
+      expect((await status()).archivedFileCleanup).toEqual({
+        state: "running",
+        clearedThreads: 100,
+        clearedBytes: 1000,
+      });
+      gate.pending!.reject();
+      await expect
+        .poll(async () => (await status()).archivedFileCleanup)
+        .toEqual({
+          state: "failed",
+          clearedThreads: 100,
+          clearedBytes: 1000,
+          message: "host disconnected",
+        });
+      expect((await status()).report?.archivedFiles.threadCount).toBe(1);
+      hold = false;
+      await host.harness.callRpc("startClearArchivedFiles", {
+        hostId: "host_test",
+      });
+      await expect
+        .poll(async () => (await status()).archivedFileCleanup)
+        .toEqual({ state: "completed", clearedThreads: 1, clearedBytes: 10 });
+      expect((await status()).report?.archivedFiles.threadCount).toBe(0);
+    } finally {
+      gate.pending?.resolve();
+      await host.harness.dispose();
+    }
+  },
+);
+
 it.each([false, true])(
   "scans through the host entry, preserves live storage, cleans orphans and clears only stopped threads (detached: %s)",
   async (detached) => {
@@ -261,6 +440,8 @@ it.each([false, true])(
         report: null,
         scan: { state: "idle" },
         largeFileCleanup: { state: "idle" },
+        archivedFileCleanup: { state: "idle" },
+        maintenance: { state: "idle" },
       });
       await expect(
         host.harness.callRpc("clearThread", { threadId: "thr_live" }),
@@ -1257,3 +1438,303 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it("only clears opted-in archives, retries stopped and offline threads after reload, and cancels restored or pinned threads", async () => {
+  const root = await directory();
+  const ids = [
+    "thr_default",
+    "thr_old",
+    "thr_wait",
+    "thr_restore",
+    "thr_pin",
+    "thr_recent",
+  ];
+  const threads = new Map(
+    ids.map((id) => [
+      id,
+      makeThreadResponse({
+        id,
+        status: "idle",
+        environmentId: "env_test",
+        archivedAt: 1,
+      }),
+    ]),
+  );
+  for (const id of ids) {
+    await fs.mkdir(path.join(root, id));
+    await fs.writeFile(
+      path.join(root, id, "artifact.txt"),
+      "keep until archived",
+    );
+  }
+  const worker = experimental_createHostEntryHarness(hostEntry);
+  let online = true;
+  let host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method !== "discard") throw new Error("Unexpected host method");
+      return worker.experimental_call(
+        "discard",
+        hostStorageContract.discard.input.parse(call.input),
+      );
+    },
+    sdk: {
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({
+            id: "host_test",
+            status: online ? "connected" : "disconnected",
+          }),
+          threadStorageRootPath: root,
+        }),
+      },
+      threads: {
+        get: async ({ threadId }) => threads.get(threadId)!,
+        storageLocation: async ({ threadId }) => ({
+          hostId: "host_test",
+          storageRootPath: path.join(root, threadId),
+        }),
+      },
+    },
+  });
+  try {
+    await host.bb.storage.kv.set("policy", {
+      archiveAfterDays: null,
+      deleteAfterDays: null,
+    });
+    plugin(host.bb);
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: threads.get("thr_default")!,
+    });
+    expect(await fs.readdir(path.join(root, "thr_default"))).toEqual([
+      "artifact.txt",
+    ]);
+    const saved = await host.harness.behavior.runCli([
+      "retention",
+      "--delete-storage-on-archive",
+      "true",
+      "--save",
+      "--yes",
+    ]);
+    expect(saved.exitCode).toBe(0);
+    const recent = threads.get("thr_recent")!;
+    recent.archivedAt = Date.now();
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: recent,
+    });
+    expect(await fs.readdir(path.join(root, recent.id))).toEqual([
+      "artifact.txt",
+    ]);
+    for (const id of ["thr_wait", "thr_restore", "thr_pin"]) {
+      const thread = threads.get(id)!;
+      thread.status = "active";
+      await host.harness.behavior.emitThreadEvent("thread.archived", {
+        thread,
+      });
+      expect(await fs.readdir(path.join(root, id))).toEqual(["artifact.txt"]);
+      thread.status = "idle";
+      online = false;
+    }
+    threads.get("thr_restore")!.archivedAt = null;
+    await host.harness.behavior.emitThreadEvent("thread.unarchived", {
+      thread: threads.get("thr_restore")!,
+    });
+    threads.get("thr_pin")!.pinnedAt = 2;
+    host = await host.harness.lifecycle.reload(plugin);
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    expect(await fs.readdir(path.join(root, "thr_wait"))).toEqual([
+      "artifact.txt",
+    ]);
+    online = true;
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    expect(await fs.readdir(path.join(root, "thr_wait"))).toEqual([]);
+    for (const id of ids.filter((id) => id !== "thr_wait"))
+      expect(await fs.readdir(path.join(root, id))).toEqual(["artifact.txt"]);
+    const clock = vi.spyOn(Date, "now");
+    try {
+      clock.mockReturnValue(recent.archivedAt! + 29_999);
+      await host.harness.behavior.runSchedule("archive-storage-cleanup");
+      expect(await fs.readdir(path.join(root, recent.id))).toEqual([
+        "artifact.txt",
+      ]);
+      clock.mockReturnValue(recent.archivedAt! + 30_000);
+      await host.harness.behavior.runSchedule("archive-storage-cleanup");
+      expect(await fs.readdir(path.join(root, recent.id))).toEqual([]);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(host.harness.inspection.sdk.callsTo("threads.delete")).toHaveLength(
+      0,
+    );
+  } finally {
+    await host.harness.lifecycle.dispose();
+    await worker.experimental_dispose();
+  }
+});
+
+it("automatically removes missing-checkout data only when enabled and online, retrying failures and keeping existing or unidentified sources", async () => {
+  const fakeHome = await directory();
+  const root = path.join(fakeHome, ".bb-dev");
+  const checkout = path.join(fakeHome, "checkout");
+  await fs.mkdir(checkout);
+  for (const name of ["gone", "kept", "unknown"]) {
+    await fs.mkdir(path.join(root, name), { recursive: true });
+    await fs.writeFile(path.join(root, name, "bb.db"), "development data");
+    if (name !== "unknown")
+      await fs.writeFile(
+        path.join(root, name, "bb-dev-instance.json"),
+        JSON.stringify({
+          repoRoot: name === "kept" ? checkout : path.join(fakeHome, "missing"),
+        }),
+      );
+  }
+  const worker = experimental_createHostEntryHarness(hostEntry);
+  let online = false;
+  let hostCalls = 0;
+  let failRemoval = true;
+  let host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      hostCalls++;
+      if (call.method === "homeDirectory") return fakeHome;
+      if (call.method === "capacity")
+        return { totalBytes: 10000, freeBytes: 5000 };
+      if (call.method === "measure")
+        return worker.experimental_call(
+          "measure",
+          hostStorageContract.measure.input.parse(call.input),
+        );
+      if (call.method === "inspectDeveloperEntries")
+        return worker.experimental_call(
+          "inspectDeveloperEntries",
+          hostStorageContract.inspectDeveloperEntries.input.parse(call.input),
+        );
+      if (call.method === "removeDeveloperEntries") {
+        if (failRemoval) throw new Error("temporary removal failure");
+        return worker.experimental_call(
+          "removeDeveloperEntries",
+          hostStorageContract.removeDeveloperEntries.input.parse(call.input),
+        );
+      }
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      projects: { list: async () => [] },
+      environments: {
+        list: async () => [],
+        experimental_listRemovals: async ({ cursor } = {}) => ({
+          status: "ok",
+          nextCursor: "1",
+          hasMore: false,
+          removals:
+            cursor === "1"
+              ? []
+              : [
+                  {
+                    id: "1",
+                    environmentId: "env_gone",
+                    hostId: "host_test",
+                    path: path.join(fakeHome, "missing"),
+                    providerOwnedPath: true,
+                    removedAt: Date.now(),
+                  },
+                ],
+        }),
+      },
+      threads: { list: async () => [] },
+      hosts: {
+        list: async () => [
+          makeHostResponse({
+            id: "host_test",
+            status: online ? "connected" : "disconnected",
+          }),
+        ],
+        get: async () => ({
+          ...makeHostResponse({
+            id: "host_test",
+            status: online ? "connected" : "disconnected",
+          }),
+          threadStorageRootPath: path.join(fakeHome, "storage"),
+        }),
+      },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await host.harness.behavior.runSchedule("development-storage-cleanup");
+    expect(host.harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(0);
+    const saved = await host.harness.behavior.runCli([
+      "retention",
+      "--delete-dev-data-on-checkout-removal",
+      "true",
+      "--save",
+      "--yes",
+    ]);
+    expect(saved.exitCode).toBe(0);
+    await host.harness.behavior.emitThreadEvent(
+      "experimental_environment.removed",
+      {
+        removal: {
+          id: "1",
+          environmentId: "env_gone",
+          hostId: "host_test",
+          path: path.join(fakeHome, "missing"),
+          providerOwnedPath: true,
+          removedAt: Date.now(),
+        },
+      },
+    );
+    host = await host.harness.lifecycle.reload(plugin);
+    await host.harness.behavior.runSchedule("environment-removal-feed");
+    expect(await fs.readdir(root)).toEqual(
+      expect.arrayContaining(["gone", "kept", "unknown"]),
+    );
+    expect(hostCalls).toBe(0);
+    online = true;
+    await host.harness.behavior.runSchedule("environment-removal-feed");
+    await expect
+      .poll(() =>
+        host.harness.inspection.logEntries.some((entry) =>
+          entry.message.includes("temporary removal failure"),
+        ),
+      )
+      .toBe(true);
+    expect(await fs.readFile(path.join(root, "gone", "bb.db"), "utf8")).toBe(
+      "development data",
+    );
+    failRemoval = false;
+    await host.harness.behavior.runSchedule("environment-removal-feed");
+    await expect
+      .poll(async () =>
+        (await fs.readdir(root))
+          .filter((name) => !name.startsWith(".bb-trash-"))
+          .sort(),
+      )
+      .toEqual(["kept", "unknown"]);
+    for (const name of ["kept", "unknown"])
+      expect(await fs.readFile(path.join(root, name, "bb.db"), "utf8")).toBe(
+        "development data",
+      );
+    expect(
+      (
+        await host.harness.behavior.runCli([
+          "retention",
+          "--delete-dev-data-on-checkout-removal",
+          "false",
+          "--save",
+          "--yes",
+        ])
+      ).exitCode,
+    ).toBe(0);
+    await fs.rm(checkout, { recursive: true });
+    await host.harness.behavior.runSchedule("development-storage-cleanup");
+    expect(await fs.readFile(path.join(root, "kept", "bb.db"), "utf8")).toBe(
+      "development data",
+    );
+  } finally {
+    await host.harness.lifecycle.dispose();
+    await worker.experimental_dispose();
+  }
+});

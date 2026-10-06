@@ -29,6 +29,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   listEvents,
+  listEnvironmentRemovals,
   claimEnvironmentPath,
   createEnvironment,
   environments,
@@ -1416,6 +1417,9 @@ describe("core environment orchestration", () => {
         });
         await sweepProviderEnvironment(harness.deps, environmentId);
         expect(removes).toBe(1);
+        expect(
+          listEnvironmentRemovals(harness.db, null, 100, Date.now()).removals,
+        ).toEqual([]);
         if (retry === "timer") {
           vi.setSystemTime(Date.now() + 60_001);
           await sweepProviderEnvironment(harness.deps, environmentId);
@@ -1461,6 +1465,9 @@ describe("core environment orchestration", () => {
           status: "destroyed",
           teardownStatus: "removed",
         });
+        expect(
+          listEnvironmentRemovals(harness.db, null, 100, Date.now()).removals,
+        ).toHaveLength(1);
       }),
   );
 
@@ -1570,6 +1577,18 @@ describe("core environment orchestration", () => {
       fixture.ask();
       await fixture.settled();
       const environmentId = fixture.attach();
+      const sdk = createBbSdk({
+        transport: createHttpTransport({
+          baseUrl: "http://localhost",
+          runtime: "node",
+          fetch: async (input, init) =>
+            harness.app.fetch(new Request(input, init)),
+        }),
+      });
+      expect(
+        (await sdk.environments.experimental_listRemovals()).removals,
+      ).toEqual([]);
+      const original = getEnvironment(harness.db, environmentId)!;
       await sweepProviderEnvironment(harness.deps, environmentId);
       expect(getEnvironment(harness.db, environmentId)).toMatchObject({
         retireAt: null,
@@ -1590,6 +1609,37 @@ describe("core environment orchestration", () => {
       expect(getEnvironment(harness.db, environmentId)?.status).toBe(
         "destroyed",
       );
+      const page = await sdk.environments.experimental_listRemovals({
+        limit: 1,
+      });
+      expect(page).toMatchObject({
+        status: "ok",
+        hasMore: false,
+        removals: [
+          {
+            environmentId,
+            hostId: original.hostId,
+            path: original.path,
+            providerOwnedPath: original.providerOwnsPath,
+          },
+        ],
+      });
+      expect(page.removals).toHaveLength(1);
+      await sweepProviderEnvironment(harness.deps, environmentId);
+      expect(
+        (
+          await sdk.environments.experimental_listRemovals({
+            cursor: page.nextCursor,
+          })
+        ).removals,
+      ).toEqual([]);
+      expect(
+        (
+          await harness.app.request(
+            "/api/v1/environments/removals?cursor=invalid",
+          )
+        ).status,
+      ).toBe(400);
     }));
 
   it("cancels retirement when a live thread returns", async () =>

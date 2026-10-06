@@ -37,7 +37,7 @@ export {
 } from "./vendor-plugin-roots.js";
 
 /**
- * Kills every process whose working directory is at or under `directory`,
+ * Kills every process whose working directory is at or under any of `directories`,
  * SIGTERM first and SIGKILL after the grace, for a provider tearing down a
  * workspace it made. Experimental: see docs/api_to_audit.md.
  */

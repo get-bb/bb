@@ -17,6 +17,25 @@ describe("bb environment command output", () => {
   const register: CommandRegistrar = (program) =>
     registerEnvironmentCommands(program, () => "http://server");
 
+  it("prints removal-feed reset responses and forwards the cursor and page size", async () => {
+    const page = {
+      status: "cursorExpired",
+      removals: [],
+      nextCursor: "42",
+      hasMore: false,
+    };
+    const list = vi.fn().mockResolvedValue(page);
+    stubServerApi({ "v1.environments.removals.$get": list });
+    await runCommand(
+      ["environment", "removals", "--cursor", "7", "--limit", "25", "--json"],
+      register,
+    );
+    expect(list).toHaveBeenCalledWith({ query: { cursor: "7", limit: 25 } });
+    expect(
+      JSON.parse(collectLogLines(vi.mocked(console.log)).join("\n")),
+    ).toEqual(page);
+  });
+
   const workspaceStatus: WorkspaceStatus = {
     workingTree: {
       state: "dirty_uncommitted",

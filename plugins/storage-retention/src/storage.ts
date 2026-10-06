@@ -1,3 +1,4 @@
+import { ARCHIVE_UNDO_GRACE_MS } from "@bb/domain";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -13,6 +14,8 @@ import type {
   HostStorageResponse,
   HostStorageScanStatus,
   LargeFileCleanupStatus,
+  ArchivedFileCleanupStatus,
+  MaintenanceStatus,
 } from "./storage-types.js";
 
 type Thread = Awaited<ReturnType<typeof readThreads>>[number];
@@ -44,17 +47,26 @@ const cachedScanSchema = z.object({
   ),
 });
 type Scan = z.infer<typeof cachedScanSchema>;
-const clearableArchived = (thread: Thread) =>
+const clearableArchived = (
+  thread: Pick<Thread, "archivedAt" | "pinnedAt" | "status">,
+) =>
   thread.archivedAt !== null &&
+  thread.archivedAt + ARCHIVE_UNDO_GRACE_MS <= Date.now() &&
   thread.pinnedAt === null &&
   !["starting", "active", "stopping"].includes(thread.status);
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
 
-export function createStorage(bb: BbPluginApi) {
+export function createStorage(
+  bb: BbPluginApi,
+  devCleanupEnabled: () => Promise<boolean>,
+) {
   const db = bb.storage.database();
   bb.storage.migrate(db, [
     "CREATE TABLE scans (host_id TEXT PRIMARY KEY, result_json TEXT NOT NULL)",
+    "CREATE TABLE archive_cleanup (thread_id TEXT PRIMARY KEY, archived_at INTEGER NOT NULL)",
+    "CREATE TABLE removal_cursor (id INTEGER PRIMARY KEY, cursor TEXT NOT NULL)",
+    "CREATE TABLE pending_environment_removals (sequence INTEGER PRIMARY KEY, host_id TEXT NOT NULL)",
   ]);
   const worker = bb.hosts.experimental_client({
     contract: hostStorageContract,
@@ -65,7 +77,9 @@ export function createStorage(bb: BbPluginApi) {
     string,
     { keys: Set<string>; release: () => void }
   >();
+  const maintenance = new Map<string, MaintenanceStatus>();
   const scans = new Map<string, HostStorageScanStatus>();
+  const archivedFileCleanups = new Map<string, ArchivedFileCleanupStatus>();
   const largeFileCleanups = new Map<string, LargeFileCleanupStatus>();
   const jobs = new Set<Promise<void>>();
   bb.onDispose(async () => {
@@ -77,10 +91,9 @@ export function createStorage(bb: BbPluginApi) {
   };
   function read(hostId: string): Scan | null {
     const row = db
-      .prepare<
-        [string],
-        { result_json: string }
-      >("SELECT result_json FROM scans WHERE host_id = ?")
+      .prepare<[string], { result_json: string }>(
+        "SELECT result_json FROM scans WHERE host_id = ?",
+      )
       .get(hostId);
     return row ? cachedScanSchema.parse(JSON.parse(row.result_json)) : null;
   }
@@ -351,9 +364,13 @@ export function createStorage(bb: BbPluginApi) {
     await requireHost(hostId);
     const cached = read(hostId);
     return {
+      maintenance: maintenance.get(hostId) ?? { state: "idle" },
       report: cached ? await report(hostId, cached) : null,
       scan: scans.get(hostId) ?? { state: "idle" },
       largeFileCleanup: largeFileCleanups.get(hostId) ?? { state: "idle" },
+      archivedFileCleanup: archivedFileCleanups.get(hostId) ?? {
+        state: "idle",
+      },
     };
   }
   async function hosts() {
@@ -388,9 +405,16 @@ export function createStorage(bb: BbPluginApi) {
     await requireHost(hostId, true);
     if (scans.get(hostId)?.state === "scanning") return host({ hostId });
     const release = acquire(hostId);
+    const pendingRemoval =
+      db
+        .prepare<[string], { sequence: number | null }>(
+          "SELECT max(sequence) AS sequence FROM pending_environment_removals WHERE host_id = ?",
+        )
+        .get(hostId)?.sequence ?? null;
     scans.set(hostId, { state: "scanning", startedAt: Date.now() });
     changed();
     const job = (async () => {
+      let completed = false;
       try {
         const [rootPath, threads, allEnvironments, projects] =
           await Promise.all([
@@ -536,6 +560,7 @@ export function createStorage(bb: BbPluginApi) {
               : [];
           }),
         });
+        completed = true;
       } catch (error) {
         if (!lifecycle.signal.aborted) {
           scans.set(hostId, {
@@ -548,6 +573,25 @@ export function createStorage(bb: BbPluginApi) {
       } finally {
         release();
       }
+      if (completed && !lifecycle.signal.aborted) {
+        try {
+          if (await devCleanupEnabled()) {
+            const missing = read(hostId)?.developerStorage?.entries.some(
+              (entry) => entry.sourcePathState === "missing",
+            );
+            if (missing) await removeDevInstances({ hostId, names: null });
+            if (pendingRemoval !== null)
+              db.prepare(
+                "DELETE FROM pending_environment_removals WHERE host_id = ? AND sequence <= ?",
+              ).run(hostId, pendingRemoval);
+          }
+        } catch (error) {
+          if (!lifecycle.signal.aborted)
+            bb.log.warn(
+              `Could not clean development storage on ${hostId}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+      }
     })();
     jobs.add(job);
     void job.finally(() => jobs.delete(job));
@@ -558,12 +602,22 @@ export function createStorage(bb: BbPluginApi) {
     rootPath: string,
     cached: Scan,
     entries: Scan["entries"],
+    progress: ((count: number, bytes: number) => void) | null = null,
+    eligibility: "archived" | "orphan" = "orphan",
   ) {
     let count = 0;
     let bytes = 0;
-    for (let offset = 0; offset < entries.length; offset += 500) {
+    for (let offset = 0; offset < entries.length; offset += 100) {
       lifecycle.signal.throwIfAborted();
-      const batch = entries.slice(offset, offset + 500);
+      const current = await readThreads(bb, lifecycle.signal);
+      const byId = new Map(current.map((thread) => [thread.id, thread]));
+      const batch = entries.slice(offset, offset + 100).filter((entry) => {
+        const thread = byId.get(entry.name);
+        return eligibility === "orphan"
+          ? thread === undefined
+          : thread !== undefined && clearableArchived(thread);
+      });
+      if (batch.length === 0) continue;
       await worker.call(
         "discard",
         {
@@ -571,23 +625,27 @@ export function createStorage(bb: BbPluginApi) {
           names: batch.map((entry) => entry.name),
           recreate: false,
         },
-        { hostId, signal: lifecycle.signal },
+        { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
       );
       const names = new Set(batch.map((entry) => entry.name));
       cached.entries = cached.entries.filter((entry) => !names.has(entry.name));
       cached.largeFiles = cached.largeFiles.filter(
         (entry) => !names.has(entry.name),
       );
-      store(hostId, cached);
       count += batch.length;
       bytes += batch.reduce((total, entry) => total + entry.sizeBytes, 0);
+      progress?.(count, bytes);
+      store(hostId, cached);
     }
     return { count, bytes };
   }
-  async function removeOrphans({ hostId }: { hostId: string }) {
-    await requireHost(hostId, true);
-    const release = acquire(hostId);
+  async function removeOrphans(
+    { hostId }: { hostId: string },
+    reserved: (() => void) | null = null,
+  ) {
+    const release = reserved ?? acquire(hostId);
     try {
+      await requireHost(hostId, true);
       const cached = read(hostId);
       if (!cached)
         throw new Error("Scan the machine before removing orphaned storage");
@@ -630,13 +688,21 @@ export function createStorage(bb: BbPluginApi) {
         .map((entry) => entry.name);
       let fileCount = 0;
       let bytes = 0;
-      for (let offset = 0; offset < names.length; offset += 500) {
+      for (let offset = 0; offset < names.length; offset += 100) {
         lifecycle.signal.throwIfAborted();
+        const current = await readThreads(bb, lifecycle.signal);
+        const eligible = new Set(
+          current.filter(clearableArchived).map((thread) => thread.id),
+        );
+        const batch = names
+          .slice(offset, offset + 100)
+          .filter((name) => eligible.has(name));
+        if (batch.length === 0) continue;
         const { removed } = await worker.call(
           "discardLargeFiles",
           {
             rootPath,
-            names: names.slice(offset, offset + 500),
+            names: batch,
             minBytes: LARGE_FILE_MIN_BYTES,
           },
           { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
@@ -667,7 +733,58 @@ export function createStorage(bb: BbPluginApi) {
   }
   async function clearArchivedFiles({ hostId }: { hostId: string }) {
     await requireHost(hostId, true);
+    return clearArchivedFilesOn(hostId, acquire(hostId), null);
+  }
+  async function startClearArchivedFiles({ hostId }: { hostId: string }) {
+    await requireHost(hostId, true);
+    if (!read(hostId))
+      throw new Error("Scan the machine before clearing archived thread files");
     const release = acquire(hostId);
+    let clearedThreads = 0;
+    let clearedBytes = 0;
+    archivedFileCleanups.set(hostId, {
+      state: "running",
+      clearedThreads,
+      clearedBytes,
+    });
+    changed();
+    const job = (async () => {
+      try {
+        const result = await clearArchivedFilesOn(
+          hostId,
+          release,
+          (count, bytes) => {
+            clearedThreads = count;
+            clearedBytes = bytes;
+            archivedFileCleanups.set(hostId, {
+              state: "running",
+              clearedThreads,
+              clearedBytes,
+            });
+          },
+        );
+        archivedFileCleanups.set(hostId, { state: "completed", ...result });
+      } catch (error) {
+        if (!lifecycle.signal.aborted)
+          archivedFileCleanups.set(hostId, {
+            state: "failed",
+            clearedThreads,
+            clearedBytes,
+            message: error instanceof Error ? error.message : String(error),
+          });
+      } finally {
+        changed();
+      }
+    })();
+    jobs.add(job);
+    void job.finally(() => jobs.delete(job));
+    return null;
+  }
+  async function clearArchivedFilesOn(
+    hostId: string,
+    release: () => void,
+    progress: ((count: number, bytes: number) => void) | null,
+  ) {
     try {
       const cached = read(hostId);
       if (!cached)
@@ -686,6 +803,8 @@ export function createStorage(bb: BbPluginApi) {
         rootPath,
         cached,
         cached.entries.filter((entry) => eligible.has(entry.name)),
+        progress,
+        "archived",
       );
       return { clearedThreads: removed.count, clearedBytes: removed.bytes };
     } finally {
@@ -696,18 +815,20 @@ export function createStorage(bb: BbPluginApi) {
     input:
       | { hostId: string; names: null }
       | { hostId: string; names: string[]; stopRunning: boolean },
+    reserved: (() => void) | null = null,
   ) {
     const { hostId, names } = input;
-    await requireHost(hostId, true);
     const release =
-      names === null
+      reserved ??
+      (names === null
         ? acquire(hostId)
         : acquireEntries(
             hostId,
             names.map((name) => `dev:${name}`),
             "This development instance is already being removed",
-          );
+          ));
     try {
+      await requireHost(hostId, true);
       const developer = read(hostId)?.developerStorage;
       if (!developer)
         throw new Error(
@@ -738,14 +859,14 @@ export function createStorage(bb: BbPluginApi) {
       let removedCount = 0;
       let removedBytes = 0;
       let stoppedProcessCount = 0;
-      for (let offset = 0; offset < targets.length; offset += 500) {
+      for (let offset = 0; offset < targets.length; offset += 100) {
         lifecycle.signal.throwIfAborted();
         const result = await worker.call(
           "removeDeveloperEntries",
           {
             rootPath: developer.path,
             names: targets
-              .slice(offset, offset + 500)
+              .slice(offset, offset + 100)
               .map((entry) => entry.name),
             candidatePaths,
             mode:
@@ -753,7 +874,7 @@ export function createStorage(bb: BbPluginApi) {
                 ? { condition: "checkoutMissing" }
                 : { condition: "any", stopRunning: input.stopRunning },
           },
-          { hostId, signal: lifecycle.signal },
+          { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
         );
         const removed = new Set(result.removed);
         const bytes = developer.entries
@@ -856,6 +977,86 @@ export function createStorage(bb: BbPluginApi) {
     }
     return { clearedFiles, clearedBytes };
   }
+  let readingRemovals = false;
+  function reconcileEnvironmentRemovals() {
+    if (readingRemovals || lifecycle.signal.aborted) return Promise.resolve();
+    readingRemovals = true;
+    const job = consumeEnvironmentRemovals().finally(() => {
+      readingRemovals = false;
+    });
+    jobs.add(job);
+    void job.then(
+      () => jobs.delete(job),
+      () => jobs.delete(job),
+    );
+    return job;
+  }
+  async function consumeEnvironmentRemovals() {
+    if (!(await devCleanupEnabled())) return;
+    let cursor = db
+      .prepare<[], { cursor: string }>(
+        "SELECT cursor FROM removal_cursor WHERE id = 1",
+      )
+      .get()?.cursor;
+    let reset = false;
+    for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+      lifecycle.signal.throwIfAborted();
+      const page = await bb.sdk.environments.experimental_listRemovals({
+        cursor,
+        limit: 100,
+        signal: lifecycle.signal,
+      });
+      db.transaction(() => {
+        for (const removal of page.removals) {
+          if (
+            removal.hostId !== null &&
+            removal.path !== null &&
+            removal.providerOwnedPath
+          )
+            db.prepare(
+              "INSERT OR IGNORE INTO pending_environment_removals (sequence, host_id) VALUES (?, ?)",
+            ).run(Number(removal.id), removal.hostId);
+        }
+        db.prepare(
+          "INSERT INTO removal_cursor (id, cursor) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET cursor = excluded.cursor",
+        ).run(page.nextCursor);
+      })();
+      cursor = page.nextCursor;
+      if (page.status === "cursorExpired") {
+        reset = true;
+        continue;
+      }
+      if (!page.hasMore) break;
+    }
+    if (!(await devCleanupEnabled())) return;
+    if (reset) {
+      await scanAll();
+      return;
+    }
+    const pending = db
+      .prepare<[], { host_id: string }>(
+        "SELECT DISTINCT host_id FROM pending_environment_removals",
+      )
+      .all();
+    const machines = await bb.sdk.hosts.list({ type: "persistent" });
+    for (const { host_id: hostId } of pending) {
+      if (lifecycle.signal.aborted) return;
+      if (
+        !machines.some(
+          (machine) => machine.id === hostId && machine.status === "connected",
+        ) ||
+        busy.has(hostId)
+      )
+        continue;
+      try {
+        await scanHost({ hostId });
+      } catch (error) {
+        bb.log.warn(
+          `Could not scan removed checkout on ${hostId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
   async function scanAll() {
     lifecycle.signal.throwIfAborted();
     const machines = await bb.sdk.hosts.list({ type: "persistent" });
@@ -869,6 +1070,12 @@ export function createStorage(bb: BbPluginApi) {
     return hosts();
   }
   async function clearThread({ threadId }: { threadId: string }) {
+    return clearThreadStorage(threadId, null);
+  }
+  async function clearThreadStorage(
+    threadId: string,
+    archivedAt: number | null,
+  ) {
     lifecycle.signal.throwIfAborted();
     const thread = await bb.sdk.threads.get({ threadId });
     if (["starting", "active", "stopping"].includes(thread.status))
@@ -878,10 +1085,9 @@ export function createStorage(bb: BbPluginApi) {
       hostId = (await bb.sdk.threads.storageLocation({ threadId })).hostId;
     } else {
       const matches = db
-        .prepare<
-          [string],
-          { host_id: string }
-        >("SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)")
+        .prepare<[string], { host_id: string }>(
+          "SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)",
+        )
         .all(threadId);
       const match = matches[0];
       if (matches.length !== 1 || match === undefined)
@@ -898,6 +1104,18 @@ export function createStorage(bb: BbPluginApi) {
     );
     try {
       const rootPath = await storageRoot(hostId);
+      if (archivedAt !== null) {
+        const current = await bb.sdk.threads.get({ threadId });
+        if (
+          current.archivedAt !== archivedAt ||
+          current.deletedAt !== null ||
+          current.pinnedAt !== null ||
+          current.archivedAt + ARCHIVE_UNDO_GRACE_MS > Date.now()
+        )
+          return { ok: true as const };
+        if (["starting", "active", "stopping"].includes(current.status))
+          throw new Error("Stop the thread before clearing its storage");
+      }
       await worker.call(
         "discard",
         { rootPath, names: [threadId], recreate: true },
@@ -918,35 +1136,152 @@ export function createStorage(bb: BbPluginApi) {
       release();
     }
   }
-  async function retryWorktreeCleanup({ hostId }: { hostId: string }) {
-    await requireHost(hostId);
-    const [allEnvironments, threads] = await Promise.all([
-      readEnvironments(hostId),
-      readThreads(bb, lifecycle.signal),
-    ]);
-    const environments = leftoverEnvironments(allEnvironments, threads);
-    let retriedCount = 0;
-    for (const env of environments) {
-      lifecycle.signal.throwIfAborted();
-      await bb.sdk.environments.experimental_cleanup({
-        environmentId: env.id,
-      });
-      retriedCount++;
+  let cleaningArchives = false;
+  function queueArchivedStorage(threadId: string, archivedAt: number) {
+    db.prepare(
+      "INSERT INTO archive_cleanup (thread_id, archived_at) VALUES (?, ?) ON CONFLICT(thread_id) DO UPDATE SET archived_at = excluded.archived_at",
+    ).run(threadId, archivedAt);
+  }
+  function cancelArchivedStorage(threadId: string) {
+    db.prepare("DELETE FROM archive_cleanup WHERE thread_id = ?").run(threadId);
+  }
+  function clearPendingArchives(enabled: () => Promise<boolean>) {
+    if (cleaningArchives || lifecycle.signal.aborted) return Promise.resolve();
+    cleaningArchives = true;
+    const job = drainPendingArchives(enabled).finally(() => {
+      cleaningArchives = false;
+    });
+    jobs.add(job);
+    void job.then(
+      () => jobs.delete(job),
+      () => jobs.delete(job),
+    );
+    return job;
+  }
+  async function drainPendingArchives(enabled: () => Promise<boolean>) {
+    const pending = db
+      .prepare<[], { thread_id: string; archived_at: number }>(
+        "SELECT thread_id, archived_at FROM archive_cleanup ORDER BY archived_at",
+      )
+      .all();
+    for (const entry of pending) {
+      if (lifecycle.signal.aborted) return;
+      if (!(await enabled())) {
+        db.prepare("DELETE FROM archive_cleanup").run();
+        return;
+      }
+      try {
+        const thread = await bb.sdk.threads.get({
+          threadId: entry.thread_id,
+        });
+        if (
+          thread.archivedAt !== entry.archived_at ||
+          thread.deletedAt !== null ||
+          thread.pinnedAt !== null
+        ) {
+          cancelArchivedStorage(entry.thread_id);
+          continue;
+        }
+        if (!clearableArchived(thread)) continue;
+        await clearThreadStorage(thread.id, entry.archived_at);
+        db.prepare(
+          "DELETE FROM archive_cleanup WHERE thread_id = ? AND archived_at = ?",
+        ).run(entry.thread_id, entry.archived_at);
+      } catch (error) {
+        bb.log.warn(
+          `Could not clear archived storage for ${entry.thread_id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
+  }
+  async function retryWorktreeCleanup(
+    { hostId }: { hostId: string },
+    reserved: (() => void) | null = null,
+  ) {
+    const release = reserved ?? acquire(hostId);
+    try {
+      await requireHost(hostId, true);
+      const [allEnvironments, threads] = await Promise.all([
+        readEnvironments(hostId),
+        readThreads(bb, lifecycle.signal),
+      ]);
+      const environments = leftoverEnvironments(allEnvironments, threads);
+      let retriedCount = 0;
+      for (const env of environments) {
+        lifecycle.signal.throwIfAborted();
+        await bb.sdk.environments.experimental_cleanup({
+          environmentId: env.id,
+        });
+        retriedCount++;
+      }
+      changed();
+      return { retriedCount };
+    } finally {
+      release();
+    }
+  }
+  async function startCleanup({
+    hostId,
+    kind,
+  }: {
+    hostId: string;
+    kind: "orphans" | "development" | "worktrees";
+  }) {
+    await requireHost(hostId, true);
+    if (!read(hostId))
+      throw new Error("Scan the machine before cleaning up storage");
+    const release = acquire(hostId);
+    maintenance.set(hostId, { state: "running", kind });
     changed();
-    return { retriedCount };
+    const job = (async () => {
+      try {
+        let message: string;
+        if (kind === "orphans") {
+          const result = await removeOrphans({ hostId }, release);
+          message = `Removed ${result.removedCount} orphaned storage folders`;
+        } else if (kind === "development") {
+          const result = await removeDevInstances(
+            { hostId, names: null },
+            release,
+          );
+          message = `Removed ${result.removedCount} development instances; ${result.skippedCount} skipped`;
+        } else {
+          const result = await retryWorktreeCleanup({ hostId }, release);
+          message = `Retried cleanup for ${result.retriedCount} worktrees`;
+        }
+        maintenance.set(hostId, { state: "completed", kind, message });
+      } catch (error) {
+        if (!lifecycle.signal.aborted)
+          maintenance.set(hostId, {
+            state: "failed",
+            kind,
+            message: error instanceof Error ? error.message : String(error),
+          });
+      } finally {
+        changed();
+      }
+    })();
+    jobs.add(job);
+    void job.finally(() => jobs.delete(job));
+    return null;
   }
   return {
+    startCleanup,
     host,
     hosts,
     scanHost,
     scanAll,
+    reconcileEnvironmentRemovals,
     removeOrphans,
     clearLargeFiles,
     startClearLargeFiles,
     clearArchivedFiles,
+    startClearArchivedFiles,
     removeDevInstances,
     clearThread,
+    queueArchivedStorage,
+    cancelArchivedStorage,
+    clearPendingArchives,
     retryWorktreeCleanup,
   };
 }

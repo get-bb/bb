@@ -1359,3 +1359,26 @@ export const projectAttachmentBackfills = sqliteTable(
     error: text("error"),
   },
 );
+
+export const environmentRemovals = sqliteTable(
+  "environment_removals",
+  {
+    sequence: integer("sequence").primaryKey({ autoIncrement: true }),
+    environmentId: text("environment_id").notNull(),
+    removedAt: integer("removed_at").notNull(),
+    hostId: text("host_id"),
+    path: text("path"),
+    providerOwnedPath: integer("provider_owned_path", {
+      mode: "boolean",
+    }).notNull(),
+  },
+  (table) => [index("environment_removals_removed_at_idx").on(table.removedAt)],
+);
+
+export const environmentRemovalFeedState = sqliteTable(
+  "environment_removal_feed_state",
+  {
+    id: integer("id").primaryKey(),
+    prunedThrough: integer("pruned_through").notNull(),
+  },
+);

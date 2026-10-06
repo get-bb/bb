@@ -287,3 +287,10 @@ BB source checkout startup
   preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
   sequence and source programmatic helpers. These are repository maintenance
   commands, not environment lifecycle hooks or installed `bb` commands.
+
+`bb environment removals --cursor CURSOR --limit 100 --json` reads the experimental
+30-day removal feed. Omit the cursor for retained history. Pages return
+`status`, `removals`, `nextCursor`, and `hasMore`; `cursorExpired` supplies a reset
+cursor and requires reconciling external state. Removal means the provider
+reported success, not that the path was deleted. Records survive environment
+row deletion.

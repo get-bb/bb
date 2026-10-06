@@ -243,6 +243,7 @@ type ExpectedBbSdkKey =
 type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
+  | "experimental_listRemovals"
   | "experimental_cleanup"
   | "archiveThreads"
   | "commit"

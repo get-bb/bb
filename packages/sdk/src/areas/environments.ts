@@ -1,3 +1,7 @@
+import {
+  environmentRemovalPageSchema,
+  type EnvironmentRemovalPage,
+} from "@bb/domain";
 import { z } from "zod";
 import {
   environmentSchema,
@@ -155,6 +159,12 @@ export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export interface EnvironmentsArea {
+  experimental_listRemovals(args?: {
+    cursor?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<EnvironmentRemovalPage>;
+
   experimental_cleanup(args: EnvironmentActionArgs): Promise<{ ok: true }>;
   archiveThreads(
     args: EnvironmentActionArgs,
@@ -279,6 +289,16 @@ export function createEnvironmentsArea(
 ): EnvironmentsArea {
   const { transport } = args;
   return {
+    async experimental_listRemovals(input = {}) {
+      return environmentRemovalPageSchema.parse(
+        await transport.readJson(
+          transport.api.v1.environments.removals.$get(
+            { query: { cursor: input.cursor, limit: input.limit ?? 100 } },
+            ...signalRequestArgs(input.signal),
+          ),
+        ),
+      );
+    },
     async archiveThreads(input) {
       return transport.readJson(
         transport.api.v1.environments[":id"]["archive-threads"].$post({
