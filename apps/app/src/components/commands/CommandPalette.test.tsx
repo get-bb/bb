@@ -530,6 +530,25 @@ describe("CommandPalette", () => {
     },
   );
 
+  it("keeps the split column on every row when the highlighted thread is already open", async () => {
+    modeState.activeRecents = [
+      makeThread("origin"),
+      makeThread("second", { updatedAt: 1 }),
+    ];
+    renderPalette({ layout: splitLayout });
+    openThreadSearch();
+    await screen.findByRole("option", { name: /Title origin/ });
+    const reservedColumns = () =>
+      document.querySelectorAll('button[aria-label="Open in split"]');
+    expect(reservedColumns()).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Open in split" })).toBeNull();
+    fireEvent.keyDown(searchField(), { key: "ArrowDown" });
+    expect(reservedColumns()).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Open in split" }),
+    ).toHaveLength(1);
+  });
+
   it("expands Show more on modifier Enter without opening a split, and hides the action for no matches", async () => {
     modeState.searchResponse = {
       active: {
@@ -1561,7 +1580,10 @@ describe("CommandPalette", () => {
     expect(first.querySelector(".bb-thread-title mark")?.textContent).toBe(
       "Moss plugins",
     );
-    expectText(first.querySelector("[data-palette-thread-excerpt]"), "git reset");
+    expectText(
+      first.querySelector("[data-palette-thread-excerpt]"),
+      "git reset",
+    );
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
       expect(routeNavigateMock).toHaveBeenCalledWith(

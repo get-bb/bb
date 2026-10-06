@@ -223,16 +223,19 @@ export function ThreadSearchPaletteMode({
   const activeDescendantId =
     activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
   const activeRow = options[activeIndex]?.row;
+  const splitAvailable =
+    !isCompact &&
+    splitLayout !== null &&
+    countPanes(splitLayout.root) < MAX_PANES;
   const canSplit =
     activeRow != null &&
-    !isCompact &&
+    splitAvailable &&
     splitLayout !== null &&
     findPaneByContent(splitLayout.root, {
       kind: "thread",
       projectId: activeRow.projectId,
       threadId: activeRow.threadId,
-    }) === null &&
-    countPanes(splitLayout.root) < MAX_PANES;
+    }) === null;
   const splitModifier = isMacKeyboardPlatform(navigator.platform)
     ? "⌘"
     : "Ctrl";
@@ -449,15 +452,19 @@ export function ThreadSearchPaletteMode({
                         <ThreadSearchPaletteRow row={option.row} />
                       )}
                     </div>
-                    {option.row !== null && canSplit ? (
+                    {option.row !== null && splitAvailable ? (
                       <button
                         type="button"
                         aria-label="Open in split"
-                        aria-hidden={index !== activeIndex || undefined}
-                        tabIndex={index === activeIndex ? undefined : -1}
+                        aria-hidden={
+                          index !== activeIndex || !canSplit || undefined
+                        }
+                        tabIndex={
+                          index === activeIndex && canSplit ? undefined : -1
+                        }
                         className={cn(
                           "ml-4 mr-1 inline-flex h-7 shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-subtle-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
-                          index !== activeIndex && "invisible",
+                          (index !== activeIndex || !canSplit) && "invisible",
                         )}
                         onClick={() => selectOption(option, index, true)}
                       >
