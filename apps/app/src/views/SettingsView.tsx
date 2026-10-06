@@ -887,14 +887,14 @@ export function GeneralSettingsSection({
           </SettingsWithControl>
 
           <SettingsWithControl
-            label="Show Git controls"
-            description="Show changed files above the composer and the Commit button."
+            label="Show Git changes and Commit button"
+            description="Show changed files above the composer and the Commit button in the thread header."
           >
             <Switch
               checked={showGitChanges}
               disabled={generalSettingsDisabled}
               onCheckedChange={onShowGitChangesChange}
-              aria-label="Show Git controls"
+              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 

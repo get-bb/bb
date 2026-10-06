@@ -75,7 +75,7 @@ so they carry over between navigation plugins.
 
 ## Git controls
 
-- Settings → General → Show Git controls defaults to on.
+- Settings → General → Show Git changes and Commit button defaults to on.
 - `bb settings general showGitChanges false` hides the untracked, uncommitted,
   and committed summary and file list, plus Commit in the header and overflow menu.
 - Set it to `true` to restore them across every thread and connected client.

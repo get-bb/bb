@@ -370,7 +370,7 @@ it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
-The "Show Git controls" switch in Settings → General defaults to on.
+The "Show Git changes and Commit button" switch in Settings → General defaults to on.
 Turn it off to hide the untracked, uncommitted, and committed file summary and
 expanded file list above every thread composer, plus the Commit action in the
 thread header and overflow menu. PR status, thread relationships,
