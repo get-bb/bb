@@ -27,6 +27,7 @@ import {
   appendThreadProvisioningEvent,
   appendThreadProvisioningEventInTransaction,
 } from "./thread-events.js";
+import { dispatchThreadRenameCommand } from "./thread-commands.js";
 import { inferThreadMetadata } from "./thread-metadata-inference.js";
 import { resolveEnvironmentProvider } from "./thread-environment-placement.js";
 import {
@@ -217,25 +218,57 @@ export async function ensureThreadProvisionEnvironmentReady(
         context,
       });
     }
-    if (!context.request.titleProvided) {
-      const titling = inferThreadMetadata(deps, {
-        input: context.request.input,
-        provisioningId: context.state.provisioningId,
-        threadId: thread.id,
-        writeTranscript: context.request.environmentIntent.type === "provider",
-      });
-      if (context.request.environmentIntent.type === "provider") {
-        await titling;
-      } else {
-        void titling.catch((error) => {
-          deps.logger.warn(
-            {
-              threadId: thread.id,
-              ...runtimeErrorLogFields(deps.config, error),
-            },
-            "Failed to generate thread title",
-          );
+    if (context.request.environmentIntent.type === "provider") {
+      if (!context.request.titleProvided)
+        await inferThreadMetadata(deps, {
+          input: context.request.input,
+          provisioningId: context.state.provisioningId,
+          threadId: thread.id,
+          writeTranscript: true,
         });
+    } else {
+      if (!context.request.titleProvided) {
+        void inferThreadMetadata(deps, {
+          input: context.request.input,
+          provisioningId: context.state.provisioningId,
+          threadId: thread.id,
+          writeTranscript: false,
+        })
+          .then((metadata) => {
+            if (!metadata.titleApplied || !metadata.title) {
+              return;
+            }
+            const titledThread = getThread(deps.db, thread.id);
+            const environment = titledThread?.environmentId
+              ? getEnvironment(deps.db, titledThread.environmentId)
+              : null;
+            if (
+              !titledThread ||
+              !environment ||
+              (titledThread.status !== "active" &&
+                titledThread.status !== "idle")
+            ) {
+              return;
+            }
+            dispatchThreadRenameCommand(deps, {
+              environment: {
+                id: environment.id,
+                hostId: environment.hostId,
+              },
+              providerId: titledThread.providerId,
+              threadId: titledThread.id,
+              title: metadata.title,
+            });
+          })
+          .catch((error) => {
+            deps.logger.warn(
+              {
+                threadId: thread.id,
+                ...runtimeErrorLogFields(deps.config, error),
+              },
+              "Failed to generate thread title",
+            );
+          });
       }
     }
   }
