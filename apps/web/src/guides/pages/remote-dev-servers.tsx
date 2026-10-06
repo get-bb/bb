@@ -222,7 +222,7 @@ export const REMOTE_DEV_SERVERS: Guide = {
           <CommandBlock
             label="Or from the CLI"
             command={
-              'bb terminal create --thread <thread-id> --title "Dev server" \\\n    --command \'set -a; . ./.env.local; set +a; pnpm dev --port "$WEB_PORT"\''
+              'bb terminal create --thread <thread-id> --title "Dev server" \\\n    --command \'set -a; . ./.env.local; set +a; pnpm dev --host 127.0.0.1 --port "$WEB_PORT"\''
             }
           />
         </>
@@ -240,12 +240,13 @@ export const REMOTE_DEV_SERVERS: Guide = {
       lead: "bb connect gives each port its own private link, and live reload works through it.",
       body: (
         <>
-          <CommandBlock command="bb connect expose 3001" />
+          <CommandBlock command="bb connect expose 3001 --host bb-worker-1" />
           <OutputBlock>
             <b>https://bb-worker-1--3001.getbb.app</b>
           </OutputBlock>
           <p>
-            When a branch is done, run <code>bb connect unexpose 3001</code>.
+            When a branch is done, run{" "}
+            <code>bb connect unexpose 3001 --host bb-worker-1</code>.
           </p>
         </>
       ),
@@ -326,9 +327,9 @@ export const REMOTE_DEV_SERVERS: Guide = {
       question: "What if my app's sign-in redirects to localhost?",
       answer: (
         <p>
-          Add the share link, like{" "}
-          <code>https://bb-worker-1--3001.getbb.app</code>, as an allowed
-          redirect URL or origin in your auth provider.
+          Set the share link, like{" "}
+          <code>https://bb-worker-1--3001.getbb.app</code>, as your app's base
+          URL and as an allowed redirect URL in your auth provider.
         </p>
       ),
     },
@@ -336,8 +337,9 @@ export const REMOTE_DEV_SERVERS: Guide = {
       question: "Why don't my app's cookies stick?",
       answer: (
         <p>
-          bb connect drops cookies that set a <code>Domain</code> attribute.
-          Host-only cookies work.
+          bb connect drops cookies that set a <code>Domain</code> attribute or
+          are named <code>better-auth.*</code> or <code>bb-connect.*</code>.
+          Other host-only cookies work.
         </p>
       ),
     },
@@ -351,8 +353,9 @@ export const REMOTE_DEV_SERVERS: Guide = {
       question: "Why is a new worktree missing .env or other files?",
       answer: (
         <p>
-          List the files each worktree needs in a <code>.worktreeinclude</code>{" "}
-          file at the repo root. bb copies them into every new worktree.
+          List them in a <code>.worktreeinclude</code> file at the repo root. bb
+          copies matching files from the project's checkout on that machine, so
+          put them there first.
         </p>
       ),
     },
