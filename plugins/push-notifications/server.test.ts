@@ -88,6 +88,7 @@ interface SetupOptions {
   expo?: FakeExpo;
   fetch?: PushSenderFetch;
   now?: () => number;
+  mentionResolutionFails?: boolean;
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -101,6 +102,22 @@ async function setup(options: SetupOptions = {}) {
     settings: { expoPushUrl: EXPO_URL },
     sdk: {
       threads: {
+        resolveMentions: async ({ threadIds }) => {
+          if (options.mentionResolutionFails) throw new Error("Unavailable");
+          return threadIds.flatMap((threadId) => {
+            const thread = threads.get(threadId);
+            return thread === undefined
+              ? []
+              : [
+                  {
+                    threadId,
+                    projectId: thread.projectId,
+                    label:
+                      thread.title ?? thread.titleFallback ?? "Untitled thread",
+                  },
+                ];
+          });
+        },
         get: async ({ threadId }) => {
           const thread = threads.get(threadId);
           if (!thread) throw new Error("Thread not found");
@@ -329,6 +346,85 @@ describe("push subscription RPC and CLI", () => {
 });
 
 describe("push sender", () => {
+  it("resolves thread references before truncating native notification titles and previews", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      host.setThread({ id: "thr_abcdefghij", title: "Release" });
+      host.setThread({
+        id: "thr_kmnpqrstuv",
+        title: null,
+        titleFallback: "Fix login",
+      });
+      const thread = host.setThread({
+        title: `Follow ${Array(4).fill("@thread:thr_abcdefghij").join(" / ")}`,
+      });
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText:
+          "Done: @thread:thr_abcdefghij and thr_kmnpqrstuv. See @thread:thr_23456789ab. Keep https://bb.test/thr_abcdefghij and thr_abcdefghij.log.",
+      });
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+      const expected = {
+        title: "Follow “Release” / “Release” / “Release” / “Release”",
+        body: "Done: “Release” and “Fix login”. See “Unavailable thread”. Keep https://bb.test/thr_abcdefghij and thr_abcdefghij.log.",
+      };
+      expect(host.expo.requests[0]?.[0]).toMatchObject(expected);
+      expect(host.harness.realtimeSignals[0]?.payload).toMatchObject(expected);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("shortens long mention names without splitting emoji or consuming the following text", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      host.setThread({
+        id: "thr_abcdefghij",
+        title: "Polish settings and notification preferences",
+      });
+      host.setThread({
+        id: "thr_kmnpqrstuv",
+        title: `${"a".repeat(30)}👨‍👩‍👧‍👦e\u0301 extra`,
+      });
+      const thread = host.setThread();
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "See @thread:thr_abcdefghij and thr_kmnpqrstuv next",
+      });
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+      expect(host.expo.requests[0]?.[0]?.body).toBe(
+        `See “Polish settings and notificatio…” and “${"a".repeat(30)}👨‍👩‍👧‍👦…” next`,
+      );
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("still delivers readable notifications when thread name lookup fails", async () => {
+    const host = await setup({ mentionResolutionFails: true });
+    try {
+      await host.addSubscription();
+      const thread = host.setThread();
+      const interaction = pendingQuestion(
+        thread.id,
+        "Continue with @thread:thr_abcdefghij?",
+      );
+      host.interactions.set(thread.id, [interaction]);
+      await host.harness.behavior.emitThreadEvent("interaction.pending", {
+        thread,
+        interaction,
+      });
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+      expect(host.expo.requests[0]?.[0]?.body).toBe(
+        "Continue with “Thread (name unavailable)”?",
+      );
+    } finally {
+      await host.cleanup();
+    }
+  });
+
   it("sends a root idle preview to each device and reads the relay setting at flush", async () => {
     const host = await setup();
     try {

@@ -515,6 +515,11 @@ iOS keeps its existing APNs registration behavior.
   when no hint matches. The shell accepts a bridge `badge` message
   (`useShellBridge` → `updateAppBadgeCount`), and `AppBadgeSync` writes that
   count on background; the web app does not send it yet.
+- Native notification evidence: dispatch Mobile E2E with
+  `flows=shell-push-notifications` and
+  `notification_baseline=<40-character base commit>`. Artifacts include compact
+  banner screenshots and payloads produced by the baseline and current sender,
+  displayed by the CI-built iOS app.
 - Simulator check without APNs: `xcrun simctl push <udid> app.getbb.mobile
 payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
 "threadId":"…","projectId":"…","serverUrl":"https://…"}}`

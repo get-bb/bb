@@ -1,0 +1,26 @@
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+- runFlow: ../subflows/pair-direct-server.yaml
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://settings/notifications"
+- extendedWaitUntil:
+    visible:
+      id: "notifications-settings-screen"
+    timeout: 20000
+- tapOn:
+    id: "settings-push-(?!status-).*"
+- runFlow:
+    when:
+      visible: "Turn on notifications"
+    commands:
+      - tapOn: "Turn on notifications"
+- tapOn:
+    text: "Allow"
+    optional: true
+- pressKey: Home
