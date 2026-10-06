@@ -1021,8 +1021,15 @@ function listThreadSearchMatchRows(
       FROM thread_search_segments_fts
       JOIN thread_search_segments
         ON thread_search_segments.rowid = thread_search_segments_fts.rowid
+      JOIN threads AS titled ON titled.id = thread_search_segments.thread_id
       WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
-        AND ${isTitleSegment}
+        AND (
+          thread_search_segments.source_kind = 'title'
+          OR (
+            thread_search_segments.source_kind = 'title_fallback'
+            AND COALESCE(titled.title, '') = ''
+          )
+        )
     ),
     ranked_threads AS (
       SELECT

@@ -415,6 +415,51 @@ describe("thread search data", () => {
     }
   });
 
+  it("does not rank a titled thread's fallback text as a title match", () => {
+    const { db, project } = setup();
+    try {
+      const titledWithFallback = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+        titleFallback: "fallbackneedle in the first prompt",
+      });
+      const newerMessage = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Release notes",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: newerMessage.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "a fallbackneedle message",
+          },
+        ],
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, titledWithFallback.id);
+      setUpdatedAt.run(2, newerMessage.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "fallbackneedle",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        newerMessage.id,
+        titledWithFallback.id,
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("returns title matches alongside the single best message match", () => {
     const { db, project } = setup();
     try {
