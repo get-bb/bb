@@ -719,11 +719,28 @@ function ActiveChildThreadsCard({
           ),
         )}
       >
-        <Icon
-          name="Subthread"
-          className={activityIconClass("active", "size-3.5 shrink-0")}
-          aria-hidden="true"
-        />
+        {items.some((item) => item.hasPendingInteraction) ? (
+          <span className="relative mr-1 inline-flex shrink-0">
+            <Icon
+              name="Subthread"
+              className="size-3.5 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <span className="absolute -bottom-1.5 -right-1.5 inline-flex rounded-full bg-background">
+              <Icon
+                name="CircleQuestion"
+                className="size-3 text-foreground/80"
+                aria-label="Needs input"
+              />
+            </span>
+          </span>
+        ) : (
+          <Icon
+            name="Subthread"
+            className={activityIconClass("active", "size-3.5 shrink-0")}
+            aria-hidden="true"
+          />
+        )}
         <span
           className={activityTextClass(
             "active",
