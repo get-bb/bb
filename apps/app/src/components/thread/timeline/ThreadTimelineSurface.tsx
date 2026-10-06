@@ -203,14 +203,7 @@ export function ThreadTimelineSurface({
     <TimelineReasoningExpansionProvider key={threadId}>
       <ConversationTimeline className="flex-1">
         <div className="pointer-events-none sticky top-2 z-10 h-0 self-end">
-          {showCatchUpIndicator ? (
-            <div
-              role="status"
-              className="absolute right-2 top-0 whitespace-nowrap rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground shadow-sm"
-            >
-              {CATCH_UP_INDICATOR_LABEL}
-            </div>
-          ) : null}
+          {showCatchUpIndicator ? <DelayedCatchUpIndicator /> : null}
         </div>
         {leadingContent}
         {showLoadOlderRows ? (
@@ -323,6 +316,30 @@ function LoadOlderMessages({
 
 const LOADING_INDICATOR_REVEAL_DELAY_MS = 200;
 const CATCH_UP_INDICATOR_LABEL = "Loading latest messages…";
+
+const CATCH_UP_INDICATOR_REVEAL_DELAY_MS = 1_000;
+
+function DelayedCatchUpIndicator() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => setVisible(true),
+      CATCH_UP_INDICATOR_REVEAL_DELAY_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      role="status"
+      className="absolute right-2 top-0 whitespace-nowrap rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground shadow-sm"
+    >
+      {CATCH_UP_INDICATOR_LABEL}
+    </div>
+  );
+}
 
 function DelayedThreadLoadingIndicator() {
   const [visible, setVisible] = useState(false);
