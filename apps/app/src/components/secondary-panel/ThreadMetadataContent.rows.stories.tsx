@@ -615,6 +615,34 @@ export function GitStatus() {
           />
         </RowStage>
       </StoryRow>
+      <StoryRow label="uncommitted, ahead">
+        <RowStage>
+          <GitStatusRow
+            thread={makeThread()}
+            environment={makeEnvironment()}
+            workspaceStatus={makeWorkspaceStatus({
+              workingTree: {
+                ...STORY_DIRTY_WORKING_TREE,
+                state: "dirty_and_committed_unmerged",
+              },
+              mergeBase: {
+                mergeBaseBranch: "main",
+                baseRef: "main",
+                aheadCount: 6,
+                behindCount: 0,
+                hasCommittedUnmergedChanges: true,
+                commits: [],
+                insertions: 0,
+                deletions: 0,
+                lineStatsComplete: true,
+                files: [],
+              },
+            })}
+            workspaceStatusError={null}
+            selectedMergeBaseBranch={undefined}
+          />
+        </RowStage>
+      </StoryRow>
       <StoryRow label="ahead">
         <RowStage>
           <GitStatusRow
