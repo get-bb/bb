@@ -60,7 +60,7 @@ export function ThreadStorageSection({
   return (
     <InfoSection label="Thread storage" count={loadedFiles.length}>
       {infoListCollapses(loadedFiles.length) ? (
-        <div className="relative -mx-1">
+        <div className="relative -mx-1 w-48 max-w-full">
           <Icon
             name="Search"
             className="pointer-events-none absolute top-1/2 left-1 size-3 -translate-y-1/2 text-subtle-foreground"
