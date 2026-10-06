@@ -48,11 +48,13 @@ export function useDisclosureFocusHandoff(
 
 export function PromptStackCollapseRow({
   buttonRef,
+  className,
   controlsId,
   label,
   onCollapse,
 }: {
   buttonRef: RefObject<HTMLButtonElement | null>;
+  className?: string;
   controlsId: string;
   label: string;
   onCollapse: () => void;
@@ -65,7 +67,7 @@ export function PromptStackCollapseRow({
       aria-controls={controlsId}
       aria-label={label}
       onClick={onCollapse}
-      className={COLLAPSE_ROW_CLASS}
+      className={cn(COLLAPSE_ROW_CLASS, className)}
     >
       <Icon name="ChevronUp" className="size-3.5" aria-hidden="true" />
     </button>

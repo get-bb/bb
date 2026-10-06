@@ -1584,7 +1584,7 @@ export function QueuedMessagesList({
       <header data-queued-messages-mode={mode} className="shrink-0">
         {isExpanded ? (
           <div className="flex h-8 items-center gap-1.5 border-b border-border/35 px-3">
-            <span className="text-xs font-medium text-foreground">Queue</span>
+            <span className="text-xs font-normal text-foreground">Queue</span>
             <span className="-mr-1 ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground">
               {queuedMessages.length}
             </span>
@@ -1602,7 +1602,7 @@ export function QueuedMessagesList({
               "hover:bg-state-hover focus-visible:bg-state-hover active:bg-state-hover",
             )}
           >
-            <span className="font-medium">Queue</span>
+            <span className="font-normal">Queue</span>
             <span className="-mr-1 ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground">
               {queuedMessages.length}
             </span>
@@ -1655,9 +1655,10 @@ export function QueuedMessagesList({
         ) : null}
       </div>
       {isExpanded ? (
-        <div className="shrink-0 px-1">
+        <div className="shrink-0">
           <PromptStackCollapseRow
             buttonRef={focus.collapseRef}
+            className="rounded-none"
             controlsId={listId}
             label="Collapse queued messages"
             onCollapse={focus.onCollapseClick}
