@@ -6,6 +6,8 @@ import {
 } from "@/lib/machine-removal-display";
 import {
   forwardRef,
+  useEffect,
+  useRef,
   type ButtonHTMLAttributes,
   type ReactNode,
   type RefObject,
@@ -33,6 +35,7 @@ import {
 import {
   activityIconClass,
   activityRowClass,
+  activityTextClass,
 } from "@bb/shared-ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import {
@@ -657,23 +660,26 @@ function PullRequestBannerLink({
   );
 }
 
-function SubthreadNeedsInputGlyph() {
-  return (
-    <span className="relative mr-1.5 inline-flex shrink-0">
-      <Icon
-        name="Subthread"
-        className="size-3.5 shrink-0 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <span className="absolute -bottom-1.5 -right-1.5 inline-flex rounded-full bg-background">
-        <Icon
-          name="CircleQuestion"
-          className="size-3 text-foreground/80"
-          aria-label="Needs input"
-        />
-      </span>
-    </span>
-  );
+function useExpandForNewNeedsInput(
+  items: readonly ThreadPromptChildThreadItem[],
+  isExpanded: boolean,
+  onToggle: () => void,
+) {
+  const needsInputKey = items
+    .filter((item) => item.hasPendingInteraction)
+    .map((item) => item.id)
+    .join(" ");
+  const seenNeedsInputKey = useRef("");
+  useEffect(() => {
+    const seen = new Set(seenNeedsInputKey.current.split(" "));
+    seenNeedsInputKey.current = needsInputKey;
+    const hasNewNeedsInput =
+      needsInputKey !== "" &&
+      needsInputKey.split(" ").some((id) => !seen.has(id));
+    if (hasNewNeedsInput && !isExpanded) {
+      onToggle();
+    }
+  }, [needsInputKey, isExpanded, onToggle]);
 }
 
 function ActiveChildThreadsCard({
@@ -687,93 +693,58 @@ function ActiveChildThreadsCard({
 }) {
   const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
   const items = childThreadsSection.items;
-  const first = items[0];
-  if (!first) {
+  useExpandForNewNeedsInput(items, isExpanded, onToggle);
+  if (items.length === 0) {
     return null;
   }
-  const headerSubthread = first.hasPendingInteraction ? first : null;
-  const listed = headerSubthread ? items.slice(1) : items;
-  const toggleProps = {
-    ref: focus.triggerRef,
-    type: "button" as const,
-    id: SECTION_IDS.childThreads.toggle,
-    "aria-expanded": isExpanded,
-    "aria-controls": SECTION_IDS.childThreads.body,
-    onClick: focus.onTriggerClick,
-  };
   return (
     <PromptStackCard
       ariaLabel="Subthreads"
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
-      {headerSubthread ? (
-        <div
-          className={cn(
+      <button
+        ref={focus.triggerRef}
+        type="button"
+        id={SECTION_IDS.childThreads.toggle}
+        aria-expanded={isExpanded}
+        aria-controls={SECTION_IDS.childThreads.body}
+        aria-label={`${items.length} active ${subthreadNoun(items.length)}`}
+        onClick={focus.onTriggerClick}
+        className={activityRowClass(
+          "active",
+          cn(
             PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-            "cursor-default hover:bg-transparent",
-          )}
-        >
-          <NavLink
-            to={headerSubthread.href}
-            className="flex min-w-0 flex-1 items-center gap-1.5 no-underline hover:underline"
-          >
-            <SubthreadNeedsInputGlyph />
-            <ThreadTitle
-              title={headerSubthread.title}
-              className="min-w-0 truncate font-medium text-foreground"
-              inline
-            />
-          </NavLink>
-          {listed.length > 0 ? (
-            <button
-              {...toggleProps}
-              aria-label={`${isExpanded ? "Hide" : "Show"} ${listed.length} more ${subthreadNoun(listed.length)}`}
-              className={cn(
-                PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-                "-mr-3 flex cursor-pointer items-center self-stretch pr-3",
-              )}
-            >
-              <PromptStackCountSlot count={listed.length} />
-            </button>
-          ) : null}
-        </div>
-      ) : (
-        <button
-          {...toggleProps}
-          aria-label={`${items.length} active ${subthreadNoun(items.length)}`}
-          className={activityRowClass(
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          ),
+        )}
+      >
+        <Icon
+          name="Subthread"
+          className={activityIconClass("active", "size-3.5 shrink-0")}
+          aria-hidden="true"
+        />
+        <span
+          className={activityTextClass(
             "active",
-            cn(
-              PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-            ),
+            "min-w-0 flex-1 truncate text-left",
           )}
         >
-          <Icon
-            name="Subthread"
-            className={activityIconClass("active", "size-3.5 shrink-0")}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate text-left font-medium">
-            Active subthreads
-          </span>
-          <PromptStackCountSlot count={items.length} prefix="" />
-        </button>
-      )}
-      {listed.length > 0 ? (
-        <AnimatedDisclosureBody
-          collapsedBorder="reserve"
-          id={SECTION_IDS.childThreads.body}
-          labelledBy={SECTION_IDS.childThreads.toggle}
-          isExpanded={isExpanded}
-          collapseLabel={`Collapse ${listed.length} ${subthreadNoun(listed.length)}`}
-          collapseRef={focus.collapseRef}
-          onCollapse={focus.onCollapseClick}
-        >
-          <ChildThreadsBody items={listed} />
-        </AnimatedDisclosureBody>
-      ) : null}
+          Active subthreads
+        </span>
+        <PromptStackCountSlot count={items.length} prefix="" />
+      </button>
+      <AnimatedDisclosureBody
+        collapsedBorder="reserve"
+        id={SECTION_IDS.childThreads.body}
+        labelledBy={SECTION_IDS.childThreads.toggle}
+        isExpanded={isExpanded}
+        collapseLabel={`Collapse ${items.length} ${subthreadNoun(items.length)}`}
+        collapseRef={focus.collapseRef}
+        onCollapse={focus.onCollapseClick}
+      >
+        <ChildThreadsBody items={items} />
+      </AnimatedDisclosureBody>
     </PromptStackCard>
   );
 }
