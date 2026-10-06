@@ -26,6 +26,7 @@ import {
   PromptStackCard,
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
+  PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT,
   PROMPT_STACK_INLAY_INSET_CLASS,
   PROMPT_STACK_INLAY_SEGMENT_CLASS,
 } from "@/components/promptbox/banner/PromptStackCard";
@@ -1045,7 +1046,7 @@ export function ThreadPromptContextBanner({
       <PromptStackCard
         ariaLabel="Thread context before sending"
         className="overflow-hidden"
-        style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
+        style={{ minHeight: PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT }}
       >
         <div
           className={cn(

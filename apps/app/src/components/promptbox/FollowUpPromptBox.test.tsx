@@ -9,7 +9,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Profiler, startTransition, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
@@ -360,47 +359,54 @@ beforeEach(() => {
 });
 
 describe("FollowUpPromptBox", () => {
-  it("does not commit an unchanged measurement while a height update is pending", () => {
-    const onRender = vi.fn();
-    render(
-      <Profiler id="follow-up-prompt-box" onRender={onRender}>
-        <FollowUpPromptBox
-          {...createFollowUpPromptBoxProps({ kind: "ready" })}
-          stack={<div data-testid="measured-stack">Stack</div>}
-        />
-      </Profiler>,
-    );
-    const stackElement = screen.getByTestId("measured-stack").parentElement;
-    if (!stackElement) throw new Error("Expected measured composer stack");
-    Object.defineProperty(stackElement, "offsetHeight", {
-      configurable: true,
-      value: 24,
-    });
-    let commitsAfterSynchronousSignal = -1;
-    const resizeEntries = [
-      {
-        target: stackElement,
-        borderBoxSize: [{ blockSize: 24 }],
-        contentRect: { height: 999 },
-      } as unknown as ResizeObserverEntry,
-    ];
+  it.each([
+    { height: 24, expectedMinHeight: 79 },
+    { height: 35, expectedMinHeight: 68 },
+    { height: 64, expectedMinHeight: 68 },
+  ])(
+    "compensates a $height px stack before paint without duplicate commits",
+    ({ height, expectedMinHeight }) => {
+      const onRender = vi.fn();
+      render(
+        <Profiler id="follow-up-prompt-box" onRender={onRender}>
+          <FollowUpPromptBox
+            {...createFollowUpPromptBoxProps({ kind: "ready" })}
+            stack={<div data-testid="measured-stack">Stack</div>}
+          />
+        </Profiler>,
+      );
+      const stackElement = screen.getByTestId("measured-stack").parentElement;
+      if (!stackElement) throw new Error("Expected measured composer stack");
+      Object.defineProperty(stackElement, "offsetHeight", {
+        configurable: true,
+        value: height,
+      });
+      const resizeEntries = [
+        {
+          target: stackElement,
+          borderBoxSize: [{ blockSize: height }],
+          contentRect: { height: 999 },
+        } as unknown as ResizeObserverEntry,
+      ];
 
-    act(() => {
-      startTransition(() => {
+      act(() => {
+        startTransition(() => {
+          resizeObserverCallback?.(resizeEntries, {} as ResizeObserver);
+        });
+        expect(screen.getByTestId("prompt-box").dataset.minHeight).toBe(
+          String(expectedMinHeight),
+        );
         resizeObserverCallback?.(resizeEntries, {} as ResizeObserver);
       });
-      flushSync(() => {
-        resizeObserverCallback?.(resizeEntries, {} as ResizeObserver);
-      });
-      commitsAfterSynchronousSignal = onRender.mock.calls.length;
-    });
 
-    expect(commitsAfterSynchronousSignal).toBe(1);
-    expect(onRender).toHaveBeenCalledTimes(2);
-    expect(onRender.mock.calls[0]?.[1]).toBe("mount");
-    expect(onRender.mock.calls[1]?.[1]).toBe("update");
-    expect(screen.getByTestId("prompt-box").dataset.minHeight).toBe("76");
-  });
+      expect(onRender).toHaveBeenCalledTimes(2);
+      expect(onRender.mock.calls[0]?.[1]).toBe("mount");
+      expect(onRender.mock.calls[1]?.[1]).toBe("update");
+      expect(screen.getByTestId("prompt-box").dataset.minHeight).toBe(
+        String(expectedMinHeight),
+      );
+    },
+  );
 
   it("includes expanding plugin banners in measured stack compensation", () => {
     setPluginSlotRegistrations(
@@ -465,8 +471,8 @@ describe("FollowUpPromptBox", () => {
       resizeObserverCallback?.([], {} as ResizeObserver);
     });
 
-    expect(initialMinHeight).toBe(100);
-    expect(promptBox.getAttribute("data-min-height")).toBe("76");
+    expect(initialMinHeight).toBe(103);
+    expect(promptBox.getAttribute("data-min-height")).toBe("79");
   });
 
   it("renders plugin banners above native stack content", () => {

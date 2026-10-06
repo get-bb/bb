@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
 import type { FollowUpSubmitMode, PromptDraftState } from "@bb/client-core";
@@ -59,7 +60,7 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import {
-  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT,
   PROMPT_STACK_TRACK_CLASS,
 } from "@/components/promptbox/banner/PromptStackCard";
 
@@ -109,7 +110,8 @@ function PromptBoxWithScrollAnchor({
 
 const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 68;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
-  FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT + PROMPT_STACK_CARD_ROW_HEIGHT;
+  FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
+  PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT;
 const COMPOSER_CONTROL_SELECTOR = "button, [role='button'], [aria-haspopup]";
 const COMPOSER_OVERLAY_TRIGGER_SELECTOR = "[aria-haspopup]";
 const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR = `${COMPOSER_OVERLAY_TRIGGER_SELECTOR}[aria-expanded="true"]`;
@@ -660,7 +662,7 @@ function FollowUpPromptBoxWithComposer({
     if (element) {
       applyStackHeight(element.offsetHeight);
     }
-  }, [applyStackHeight]);
+  }, [applyStackHeight, stack]);
 
   useEffect(() => {
     const element = stackRef.current;
@@ -671,7 +673,9 @@ function FollowUpPromptBoxWithComposer({
       const borderBoxSize = Array.isArray(entry.borderBoxSize)
         ? entry.borderBoxSize[0]
         : entry.borderBoxSize;
-      applyStackHeight(borderBoxSize?.blockSize ?? entry.contentRect.height);
+      const measured = borderBoxSize?.blockSize ?? entry.contentRect.height;
+      if (lastStackHeightRef.current === measured) return;
+      flushSync(() => applyStackHeight(measured));
     });
     observer.observe(element);
     return () => observer.disconnect();
