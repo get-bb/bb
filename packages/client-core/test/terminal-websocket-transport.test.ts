@@ -206,6 +206,36 @@ describe("TerminalWebSocketTransport", () => {
     harness.transport.dispose();
   });
 
+  it("stays reconnecting with growing backoff when sockets open but never attach", () => {
+    vi.useFakeTimers();
+    const harness = createHarness({ reconnectDelaysMs: [100, 250, 500] });
+
+    harness.transport.start();
+    harness.sockets[0]?.open();
+    harness.sockets[0]?.close();
+    vi.advanceTimersByTime(100);
+    harness.sockets[1]?.open();
+    harness.sockets[1]?.close();
+    vi.advanceTimersByTime(249);
+    expect(harness.sockets).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(harness.sockets).toHaveLength(3);
+    expect(harness.states).not.toContain("attached");
+
+    harness.sockets[2]?.open();
+    harness.sockets[2]?.receive({
+      type: "attached",
+      session: terminalSession(),
+      replayStartSeq: 0,
+      nextSeq: 0,
+    });
+    expect(harness.states.at(-1)).toBe("attached");
+    harness.sockets[2]?.close();
+    vi.advanceTimersByTime(100);
+    expect(harness.sockets).toHaveLength(4);
+    harness.transport.dispose();
+  });
+
   it("holds input above the socket high-water mark and flushes after drain", () => {
     vi.useFakeTimers();
     const harness = createHarness({

@@ -14,7 +14,7 @@ const DEFAULT_RECONNECT_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
 
 export type TerminalSocketConnectionState =
   | "connecting"
-  | "open"
+  | "attached"
   | "reconnecting"
   | "closed";
 
@@ -197,9 +197,7 @@ export class TerminalWebSocketTransport {
     if (this.disposed || this.socket !== socket) {
       return;
     }
-    this.reconnectAttempt = 0;
     this.lastPongAt = this.now();
-    this.options.onConnectionState?.("open");
     this.startHeartbeat(socket);
     if (this.lastResize !== null) {
       this.trySend(
@@ -229,6 +227,10 @@ export class TerminalWebSocketTransport {
     const message = parsed.data;
     if (message.type === "pong") {
       this.lastPongAt = this.now();
+    }
+    if (message.type === "attached") {
+      this.reconnectAttempt = 0;
+      this.options.onConnectionState?.("attached");
     }
     if (
       message.type === "attached" &&

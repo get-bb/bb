@@ -1052,7 +1052,7 @@ export function ThreadTerminalView({
           }
           reconnecting = false;
           clearConnectionNoticeTimeout();
-          if (state === "open" && reconnectingNoticeVisible) {
+          if (state === "attached" && reconnectingNoticeVisible) {
             setConnectionNotice("reconnected");
             connectionNoticeTimeout = setTimeout(() => {
               connectionNoticeTimeout = null;
