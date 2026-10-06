@@ -729,14 +729,29 @@ describe("bb-app launcher", () => {
     });
   });
 
-  it("runs the source update shim only for a start with --in-app-updates", () => {
-    expect(shouldRunSourceAppUpdateShim(["--in-app-updates"])).toBe(true);
+  it("runs the source update shim for a start unless --no-in-app-updates is passed", () => {
+    expect(shouldRunSourceAppUpdateShim([])).toBe(true);
+    expect(shouldRunSourceAppUpdateShim(["start"])).toBe(true);
+    expect(shouldRunSourceAppUpdateShim(["--no-in-app-updates"])).toBe(false);
+    expect(shouldRunSourceAppUpdateShim(["start", "--no-in-app-updates"])).toBe(
+      false,
+    );
+    expect(shouldRunSourceAppUpdateShim(["stop"])).toBe(false);
+    expect(shouldRunSourceAppUpdateShim(["start", "--help"])).toBe(false);
+  });
+
+  it("keeps accepting --in-app-updates from launchers started by earlier update shims", () => {
+    expect(parseLauncherArgs(["start", "--in-app-updates"])).toEqual({
+      options: { help: false, json: false },
+      positionals: ["start"],
+    });
     expect(shouldRunSourceAppUpdateShim(["start", "--in-app-updates"])).toBe(
       true,
     );
-    expect(shouldRunSourceAppUpdateShim(["start"])).toBe(false);
-    expect(shouldRunSourceAppUpdateShim(["stop", "--in-app-updates"])).toBe(
-      false,
+    expect(() =>
+      parseLauncherArgs(["--in-app-updates", "--no-in-app-updates"]),
+    ).toThrow(
+      "--in-app-updates and --no-in-app-updates cannot be used together",
     );
   });
 

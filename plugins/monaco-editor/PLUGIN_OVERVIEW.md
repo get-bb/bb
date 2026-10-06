@@ -11,7 +11,7 @@ Edit a file in bb instead of only reading it. It applies to every place where bb
 
 ## How it works
 
-The plugin claims common code, configuration, and text extensions. Binary files such as images and PDFs stay with bb's own preview. Files larger than 8 MB open in the read-only preview.
+The plugin claims common code, configuration, and text extensions. Binary files such as images and PDFs stay with bb's own preview, and so do Markdown files, which bb renders. Files larger than 8 MB open in the read-only preview.
 
 To change the opener for one file type, go to Settings and open File openers. Right-click a file link for a one-off Open with choice.
 

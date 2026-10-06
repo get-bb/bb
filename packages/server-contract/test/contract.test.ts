@@ -1006,12 +1006,21 @@ describe("public terminal contracts", () => {
   });
 
   it("defaults and validates the terminal websocket replay sequence", () => {
-    expect(terminalWebSocketQuerySchema.parse({})).toEqual({ sinceSeq: 0 });
-    expect(terminalWebSocketQuerySchema.parse({ sinceSeq: "12" })).toEqual({
+    expect(terminalWebSocketQuerySchema.parse({})).toEqual({
+      outputAcks: false,
+      sinceSeq: 0,
+    });
+    expect(
+      terminalWebSocketQuerySchema.parse({ outputAcks: "1", sinceSeq: "12" }),
+    ).toEqual({
+      outputAcks: true,
       sinceSeq: 12,
     });
     expect(
       terminalWebSocketQuerySchema.safeParse({ sinceSeq: "-1" }).success,
+    ).toBe(false);
+    expect(
+      terminalWebSocketQuerySchema.safeParse({ outputAcks: "true" }).success,
     ).toBe(false);
   });
 

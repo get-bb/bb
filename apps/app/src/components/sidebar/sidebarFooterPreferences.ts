@@ -15,6 +15,7 @@ export const sidebarFooterHiddenAtom = createSyncedPreferenceAtom(
 );
 export const SIDEBAR_FOOTER_MORE_ID = "sidebar-footer-more";
 export const sidebarFooterCapacityAtom = atom<number | null>(null);
+export const sidebarFooterSettingsInRailAtom = atom(false);
 
 export function useMeasureSidebarFooterCapacity(
   rowRef: RefObject<HTMLElement | null>,
@@ -60,6 +61,7 @@ export function useSidebarFooterPreferences() {
   const [order, setOrder] = useAtom(sidebarFooterOrderAtom);
   const [hidden, setHidden] = useAtom(sidebarFooterHiddenAtom);
   const capacity = useAtomValue(sidebarFooterCapacityAtom);
+  const settingsInRail = useAtomValue(sidebarFooterSettingsInRailAtom);
   const items: FooterItem[] = [
     {
       kind: "builtin",
@@ -90,11 +92,14 @@ export function useSidebarFooterPreferences() {
       icon: "Bug",
     },
   ];
-  const { ordered, normalizedOrder } = arrangeByStoredOrder({
+  const { ordered: arranged, normalizedOrder } = arrangeByStoredOrder({
     items,
     storedOrder: order,
     getId: (item) => item.key,
   });
+  const ordered = settingsInRail
+    ? arranged.filter((item) => item.key !== "builtin:settings")
+    : arranged;
   const footer = ordered
     .filter((item) => !hidden.includes(item.key))
     .slice(0, capacity ?? undefined);

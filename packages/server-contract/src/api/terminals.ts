@@ -174,6 +174,10 @@ export type TerminalOutputQuery = z.infer<typeof terminalOutputQuerySchema>;
 export const terminalWebSocketQuerySchema = z
   .object({
     sinceSeq: z.coerce.number().int().nonnegative().default(0),
+    outputAcks: z
+      .enum(["0", "1"])
+      .default("0")
+      .transform((value) => value === "1"),
   })
   .strict();
 
@@ -208,6 +212,18 @@ export const terminalClientMessageSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("ping"),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("ack"),
+      nextSeq: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("visibility"),
+      visible: z.boolean(),
     })
     .strict(),
 ]);

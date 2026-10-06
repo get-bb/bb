@@ -120,13 +120,13 @@ the bb you want to stop does not use the default `~/.bb/`.
 
 ### Updating from the app
 
-Start bb with `npx bb-app start --in-app-updates` to turn this on. When bb has
-an update, Settings → Updates then shows an **Update** button (or run
+When bb has an update, Settings → Updates shows an **Update** button (or run
 `bb updates app apply`). bb downloads the new version into
 `~/.bb/app-versions/`, restarts into it, and reconnects the page. bb does not
 roll back: if the new version fails to start, run a newer release
 (`npx bb-app@latest`) or fix the cause. Later `npx bb-app` runs use the newer
 installed version; pass `--bundled` to run the copy npx downloaded instead.
+Start bb with `--no-in-app-updates` to turn in-app updates off.
 
 After the server moves to another machine, the old data directory keeps
 `server-moved.json`. `bb-app` there starts no server: it runs this computer's

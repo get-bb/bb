@@ -72,7 +72,9 @@ script asserts each of those is present for that reason.
 
 The plugin claims the extensions listed in `lib/languages.ts` — common code,
 config, and text formats. Binaries like `png` and `pdf` are left to BB's own
-preview, which renders them properly.
+preview, which renders them properly. So are Markdown files (`md`,
+`markdown`): they open in BB's rendered preview, and Monaco still highlights
+them when you open one from its file tree.
 
 To change any file type back, use **Settings → File openers**, which offers
 Automatic, BB's built-in preview, or Monaco per extension. Right-clicking a
