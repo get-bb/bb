@@ -1,6 +1,12 @@
 import { Fragment, useState, type ComponentProps, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
@@ -108,7 +114,7 @@ export interface InfoListRowProps {
   target: InfoListRowTarget | null;
   title?: string;
   context?: string | null;
-  action?: ReactNode;
+  actions?: readonly InfoRowActionItem[];
   trailing?: ReactNode;
   selected?: boolean;
 }
@@ -120,7 +126,7 @@ export function InfoListRow({
   target,
   title,
   context,
-  action,
+  actions = [],
   trailing,
   selected = false,
 }: InfoListRowProps) {
@@ -174,36 +180,93 @@ export function InfoListRow({
             {context}
           </span>
         ) : null}
-        {action}
+        <InfoRowActions actions={actions} menuTitle={title ?? "Actions"} />
       </span>
       {trailing}
     </li>
   );
 }
 
-export function InfoRowAction({
-  icon,
-  label,
-  onClick,
-}: {
+export interface InfoRowActionItem {
   icon: IconName;
   label: string;
-  onClick: () => void;
+  onSelect: () => void;
+}
+
+const INFO_ROW_ACTION_CLASS =
+  "relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100";
+
+function InfoRowAction({
+  action,
+  className,
+}: {
+  action: InfoRowActionItem;
+  className?: string;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={label}
-          onClick={onClick}
-          className="relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100"
+          aria-label={action.label}
+          onClick={action.onSelect}
+          className={cn(INFO_ROW_ACTION_CLASS, className)}
         >
-          <Icon name={icon} className="size-3" aria-hidden />
+          <Icon name={action.icon} className="size-3" aria-hidden />
         </button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>{action.label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function InfoRowActions({
+  actions,
+  menuTitle,
+}: {
+  actions: readonly InfoRowActionItem[];
+  menuTitle: string;
+}) {
+  if (actions.length === 0) return null;
+  const collapsesOnTouch = actions.length > 1;
+  return (
+    <>
+      {actions.map((action) => (
+        <InfoRowAction
+          key={action.label}
+          action={action}
+          className={collapsesOnTouch ? "pointer-coarse:hidden" : undefined}
+        />
+      ))}
+      {collapsesOnTouch ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="More actions"
+              className={cn(
+                INFO_ROW_ACTION_CLASS,
+                "hidden pointer-coarse:flex",
+              )}
+            >
+              <Icon name="MoreHorizontal" className="size-3" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" mobileTitle={menuTitle}>
+            {actions.map((action) => (
+              <DropdownMenuItem
+                key={action.label}
+                onSelect={action.onSelect}
+                textValue={action.label}
+              >
+                <Icon name={action.icon} className="size-3.5" aria-hidden />
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </>
   );
 }
 

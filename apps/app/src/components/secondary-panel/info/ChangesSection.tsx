@@ -24,7 +24,6 @@ import {
   InfoList,
   InfoListRow,
   InfoMenuTrigger,
-  InfoRowAction,
   InfoSection,
 } from "./info-list";
 
@@ -131,14 +130,16 @@ function ChangedFileRow({
             }
           : null
       }
-      action={
-        onOpenChangedFile && file.status !== "D" ? (
-          <InfoRowAction
-            icon="ExternalLink"
-            label="Open in tab"
-            onClick={() => onOpenChangedFile(file.path)}
-          />
-        ) : null
+      actions={
+        onOpenChangedFile && file.status !== "D"
+          ? [
+              {
+                icon: "ExternalLink",
+                label: "Open in tab",
+                onSelect: () => onOpenChangedFile(file.path),
+              },
+            ]
+          : []
       }
       trailing={
         lineStats ? (

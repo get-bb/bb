@@ -1,13 +1,7 @@
 import type { WorkspaceStatus } from "@bb/domain";
 import { selectWorkspaceAheadCommits } from "@/components/workspace/workspace-change-summary";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import {
-  InfoList,
-  InfoListRow,
-  InfoRowAction,
-  InfoRowTime,
-  InfoSection,
-} from "./info-list";
+import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
 
 interface CommitsSectionProps {
   workspaceStatus: WorkspaceStatus | undefined;
@@ -38,27 +32,27 @@ export function CommitsSection({
                 ? { kind: "button", onSelect: () => onCommitClick(commit.sha) }
                 : null
             }
-            action={
-              <>
-                {onCommitClick ? (
-                  <InfoRowAction
-                    icon="ExternalLink"
-                    label="Open diff"
-                    onClick={() => onCommitClick(commit.sha)}
-                  />
-                ) : null}
-                <InfoRowAction
-                  icon="Copy"
-                  label="Copy commit SHA"
-                  onClick={() => {
-                    void copyToClipboardWithToast(commit.sha, {
-                      successMessage: "Commit SHA copied",
-                      errorMessage: "Failed to copy commit SHA",
-                    });
-                  }}
-                />
-              </>
-            }
+            actions={[
+              ...(onCommitClick
+                ? [
+                    {
+                      icon: "ExternalLink" as const,
+                      label: "Open diff",
+                      onSelect: () => onCommitClick(commit.sha),
+                    },
+                  ]
+                : []),
+              {
+                icon: "Copy",
+                label: "Copy commit SHA",
+                onSelect: () => {
+                  void copyToClipboardWithToast(commit.sha, {
+                    successMessage: "Commit SHA copied",
+                    errorMessage: "Failed to copy commit SHA",
+                  });
+                },
+              },
+            ]}
             trailing={
               <InfoRowTime
                 timestamp={commit.authoredAt}

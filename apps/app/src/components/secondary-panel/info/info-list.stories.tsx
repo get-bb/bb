@@ -7,7 +7,6 @@ import {
   InfoList,
   InfoListRow,
   InfoMenuTrigger,
-  InfoRowAction,
   InfoRowTime,
   InfoSection,
 } from "./info-list";
@@ -61,9 +60,7 @@ export function Rows() {
                   name={row.name}
                   context={row.id === "row-1" ? "folder" : null}
                   target={{ kind: "button", onSelect: noop }}
-                  action={
-                    <InfoRowAction icon="Copy" label="Copy" onClick={noop} />
-                  }
+                  actions={[{ icon: "Copy", label: "Copy", onSelect: noop }]}
                   trailing={<InfoRowTime timestamp={row.at} now={NOW} />}
                   selected={row.id === "row-2"}
                 />

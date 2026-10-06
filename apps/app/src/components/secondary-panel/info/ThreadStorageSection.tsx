@@ -19,7 +19,6 @@ import {
   infoListCollapses,
   InfoList,
   InfoListRow,
-  InfoRowAction,
   InfoSection,
 } from "./info-list";
 
@@ -140,13 +139,13 @@ export function ThreadStorageSection({
               title={`Open ${file.path}`}
               selected={selectedPath === file.path}
               target={{ kind: "button", onSelect: () => selectPath(file.path) }}
-              action={
-                <InfoRowAction
-                  icon="ExternalLink"
-                  label="Open in tab"
-                  onClick={() => selectPath(file.path)}
-                />
-              }
+              actions={[
+                {
+                  icon: "ExternalLink",
+                  label: "Open in tab",
+                  onSelect: () => selectPath(file.path),
+                },
+              ]}
             />
           )}
         />

@@ -23,7 +23,7 @@ export const FILE_STATUS_GLYPHS: Record<
   },
   "??": {
     icon: "DiffAdded",
-    label: "Untracked",
+    label: "Added",
     className: "text-diff-added",
   },
   D: {
