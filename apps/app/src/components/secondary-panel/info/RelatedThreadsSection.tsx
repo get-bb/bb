@@ -6,19 +6,23 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
+import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 interface RelatedThreadsSectionProps {
+  sectionId: string;
   label: string;
   threads: readonly ThreadListEntry[];
 }
 
 export function RelatedThreadsSection({
+  sectionId,
   label,
   threads,
 }: RelatedThreadsSectionProps) {
+  const collapse = useInfoSectionCollapse(sectionId);
   if (threads.length === 0) return null;
   return (
-    <InfoSection label={label} count={threads.length}>
+    <InfoSection label={label} count={threads.length} collapse={collapse}>
       <InfoList
         items={threads}
         getKey={(relatedThread) => relatedThread.id}
@@ -60,6 +64,10 @@ export function ForksSection({ thread }: { thread: Thread }) {
     archived: false,
   });
   return (
-    <RelatedThreadsSection label="Forks" threads={forksQuery.data ?? []} />
+    <RelatedThreadsSection
+      sectionId="forks"
+      label="Forks"
+      threads={forksQuery.data ?? []}
+    />
   );
 }

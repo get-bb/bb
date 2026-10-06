@@ -1,4 +1,10 @@
-import { Fragment, useState, type ComponentProps, type ReactNode } from "react";
+import {
+  Fragment,
+  useId,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -42,26 +48,65 @@ function InfoCountPill({ count }: { count: number }) {
   );
 }
 
+export interface InfoSectionCollapse {
+  collapsed: boolean;
+  setCollapsed: (collapsed: boolean) => void;
+}
+
 export interface InfoSectionHeadingProps {
   label: string;
   count?: number;
   accessory?: ReactNode;
   trailing?: ReactNode;
+  collapse?: InfoSectionCollapse;
 }
+
+const INFO_SECTION_TITLE_CLASS =
+  "m-0 flex min-w-0 items-center text-xs font-medium leading-5 text-muted-foreground";
 
 function InfoSectionHeading({
   label,
   count,
   accessory,
   trailing,
-}: InfoSectionHeadingProps) {
+  collapse,
+  bodyId,
+}: InfoSectionHeadingProps & { bodyId: string }) {
+  const countPill =
+    count === undefined ? null : <InfoCountPill count={count} />;
   return (
-    <div className="mb-1 flex h-5 min-w-0 items-center justify-between gap-3">
+    <div className="mb-1 flex min-h-5 min-w-0 items-center justify-between gap-3">
       <div className="flex min-w-0 items-center">
-        <h3 className="m-0 text-xs font-medium leading-5 text-muted-foreground">
-          {label}
-        </h3>
-        {count === undefined ? null : <InfoCountPill count={count} />}
+        {collapse ? (
+          <h3 className={INFO_SECTION_TITLE_CLASS}>
+            <button
+              type="button"
+              aria-expanded={!collapse.collapsed}
+              aria-controls={bodyId}
+              onClick={() => collapse.setCollapsed(!collapse.collapsed)}
+              className="group/heading -mx-1 flex min-w-0 items-center rounded px-1 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:min-h-8"
+            >
+              <span className="truncate">{label}</span>
+              {countPill}
+              <Icon
+                name="ChevronRight"
+                className={cn(
+                  INFO_LIST_CARET_CLASS,
+                  "ml-1 text-subtle-foreground",
+                  collapse.collapsed
+                    ? "opacity-100"
+                    : "rotate-90 opacity-0 group-hover/heading:opacity-100 group-focus-visible/heading:opacity-100 pointer-coarse:opacity-100",
+                )}
+                aria-hidden
+              />
+            </button>
+          </h3>
+        ) : (
+          <>
+            <h3 className={INFO_SECTION_TITLE_CLASS}>{label}</h3>
+            {countPill}
+          </>
+        )}
         {accessory}
       </div>
       {trailing}
@@ -74,10 +119,12 @@ export interface InfoSectionProps extends InfoSectionHeadingProps {
 }
 
 export function InfoSection({ children, ...heading }: InfoSectionProps) {
+  const bodyId = useId();
+  const collapsed = heading.collapse?.collapsed ?? false;
   return (
     <section className="min-w-0">
-      <InfoSectionHeading {...heading} />
-      {children}
+      <InfoSectionHeading {...heading} bodyId={bodyId} />
+      {collapsed ? null : <div id={bodyId}>{children}</div>}
     </section>
   );
 }

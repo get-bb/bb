@@ -26,6 +26,7 @@ import {
   InfoMenuTrigger,
   InfoSection,
 } from "./info-list";
+import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 interface ChangesSectionProps {
   workspaceStatus: WorkspaceStatus | undefined;
@@ -40,12 +41,14 @@ export function ChangesSection({
 }: ChangesSectionProps) {
   const sections = selectWorkspaceChangedFilesSections(workspaceStatus);
   const { activeSection, selectKind } = useChangedFilesBucket(sections);
+  const collapse = useInfoSectionCollapse("changes");
   if (activeSection === undefined) return null;
   const tally = toChangeTally(activeSection.stats);
   return (
     <InfoSection
       label="Changes"
       count={activeSection.files.length}
+      collapse={collapse}
       accessory={
         sections.length > 1 ? (
           <ChangedFilesBucketMenu

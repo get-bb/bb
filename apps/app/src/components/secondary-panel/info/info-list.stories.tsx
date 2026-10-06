@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { PanelStage } from "../ThreadMetadataContent.fixtures";
 import { ThreadMetadataCard } from "../ThreadMetadataContent";
@@ -97,6 +97,43 @@ export function Rows() {
           </InfoSection>
         </Stage>
       </StoryRow>
+      <StoryRow
+        label="collapsible heading"
+        hint="click the heading to collapse; the chevron stays visible while collapsed"
+      >
+        <Stage>
+          <CollapsibleSection />
+        </Stage>
+      </StoryRow>
     </StoryCard>
+  );
+}
+
+function CollapsibleSection() {
+  const [collapsed, setCollapsed] = useState(true);
+  return (
+    <InfoSection
+      label="Section"
+      count={3}
+      collapse={{ collapsed, setCollapsed }}
+    >
+      <InfoList
+        items={ROWS.slice(0, 3)}
+        getKey={(row) => row.id}
+        renderItem={(row) => (
+          <InfoListRow
+            leading={
+              <Icon
+                name="File"
+                className="size-3 text-subtle-foreground"
+                aria-hidden
+              />
+            }
+            name={row.name}
+            target={{ kind: "button", onSelect: noop }}
+          />
+        )}
+      />
+    </InfoSection>
   );
 }

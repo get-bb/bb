@@ -925,7 +925,7 @@ a transient failure.
 
 ## Sidebar preferences
 
-Sidebar layout preferences are stored on the server in a keyed registry so
+Sidebar and Info panel layout preferences are stored on the server in a keyed registry so
 every window, device, and the CLI read the same value. Each key has a typed
 schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
@@ -953,6 +953,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
 | `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
 | `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `changes`, `forks`, `threadStorage`)     |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the

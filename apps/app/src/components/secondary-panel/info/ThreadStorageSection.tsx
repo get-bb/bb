@@ -21,6 +21,7 @@ import {
   InfoListRow,
   InfoSection,
 } from "./info-list";
+import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 export interface ThreadStorageSectionProps {
   controller: ThreadStorageBrowserController;
@@ -60,6 +61,7 @@ export function ThreadStorageSection({
     setSearchQuery,
   } = controller;
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const collapse = useInfoSectionCollapse("threadStorage");
   if (loadedFiles.length === 0 && filesError == null) return null;
   const closeSearch = () => {
     setIsSearchOpen(false);
@@ -70,6 +72,7 @@ export function ThreadStorageSection({
     <InfoSection
       label="Thread storage"
       count={loadedFiles.length}
+      collapse={collapse}
       trailing={
         !searchable ? null : isSearchOpen ? (
           <div className="flex min-w-0 flex-1 items-center gap-1">

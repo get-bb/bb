@@ -2,6 +2,7 @@ import type { WorkspaceStatus } from "@bb/domain";
 import { selectWorkspaceAheadCommits } from "@/components/workspace/workspace-change-summary";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
+import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 interface CommitsSectionProps {
   workspaceStatus: WorkspaceStatus | undefined;
@@ -13,9 +14,10 @@ export function CommitsSection({
   onCommitClick,
 }: CommitsSectionProps) {
   const commits = selectWorkspaceAheadCommits(workspaceStatus);
+  const collapse = useInfoSectionCollapse("commits");
   if (commits.length === 0) return null;
   return (
-    <InfoSection label="Commits" count={commits.length}>
+    <InfoSection label="Commits" count={commits.length} collapse={collapse}>
       <InfoList
         items={commits}
         rail
