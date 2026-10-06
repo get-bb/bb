@@ -676,7 +676,16 @@ export function GitStatusRow({
         title={`${display.label} ${display.summary}`}
       >
         {summaryRepeatsLabel ? null : (
-          <span className="shrink-0 text-foreground">{display.label}</span>
+          <span
+            className={cn(
+              "shrink-0",
+              display.label === "Dirty"
+                ? "text-destructive"
+                : "text-foreground",
+            )}
+          >
+            {display.label}
+          </span>
         )}
         <span className="min-w-0 truncate text-muted-foreground">
           {display.summary}
