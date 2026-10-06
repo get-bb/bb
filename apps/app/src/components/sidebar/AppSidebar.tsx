@@ -1,11 +1,13 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
+import { useSetAtom } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { useNavigate } from "react-router-dom";
@@ -52,7 +54,10 @@ import {
   SidebarNavigationRegion,
 } from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
-import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
+import {
+  SIDEBAR_FOOTER_MORE_ID,
+  sidebarFooterSettingsInRailAtom,
+} from "./sidebarFooterPreferences";
 import { LazySidebarFooterCustomize } from "./LazySidebarFooterCustomize";
 import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
 import {
@@ -102,6 +107,12 @@ export function AppSidebar({
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
   const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
+  const setFooterSettingsInRail = useSetAtom(sidebarFooterSettingsInRailAtom);
+  const hasNavRail = navRail !== undefined;
+  useLayoutEffect(() => {
+    setFooterSettingsInRail(hasNavRail);
+    return () => setFooterSettingsInRail(false);
+  }, [hasNavRail, setFooterSettingsInRail]);
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
