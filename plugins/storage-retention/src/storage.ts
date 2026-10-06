@@ -71,6 +71,7 @@ export function createStorage(
   });
   const lifecycle = new AbortController();
   const busy = new Set<string>();
+  const pendingDevelopmentCleanups = new Set<string>();
   const entryClears = new Map<
     string,
     { keys: Set<string>; release: () => void }
@@ -121,6 +122,8 @@ export function createStorage(
     busy.add(hostId);
     return () => {
       busy.delete(hostId);
+      if (pendingDevelopmentCleanups.has(hostId))
+        void cleanDevelopmentStorage(hostId);
     };
   }
   function acquireEntries(
@@ -399,6 +402,69 @@ export function createStorage(
       ]),
     ];
   }
+  async function measureDeveloperStorage(
+    hostId: string,
+    homeDirectory: string,
+    environments: Environment[],
+    projects: Awaited<ReturnType<BbPluginApi["sdk"]["projects"]["list"]>>,
+  ): Promise<Scan["developerStorage"]> {
+    const developerRoot = `${homeDirectory.replace(/[\\/]$/, "")}/.bb-dev`;
+    const result = await worker.call(
+      "measure",
+      {
+        targets: [{ path: developerRoot, perChild: true }],
+        largeFileMinBytes: null,
+        timeoutMs: 29 * 60_000,
+      },
+      { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
+    );
+    lifecycle.signal.throwIfAborted();
+    const developer = result.targets.find(
+      (target) => target.path === developerRoot,
+    );
+    if (developer?.outcome !== "measured") return null;
+    const developerEntries = (developer.children ?? []).filter(
+      (entry) => !entry.name.startsWith(".bb-trash-"),
+    );
+    const inspected = new Map<
+      string,
+      z.infer<
+        typeof hostStorageContract.inspectDeveloperEntries.output
+      >["entries"][number]
+    >();
+    const candidatePaths = developerCandidatePaths(
+      hostId,
+      environments,
+      projects,
+    );
+    for (let offset = 0; offset < developerEntries.length; offset += 500) {
+      const inspection = await worker.call(
+        "inspectDeveloperEntries",
+        {
+          rootPath: developerRoot,
+          names: developerEntries
+            .slice(offset, offset + 500)
+            .map((entry) => entry.name),
+          candidatePaths,
+        },
+        { hostId, signal: lifecycle.signal },
+      );
+      for (const entry of inspection.entries) inspected.set(entry.name, entry);
+    }
+    return {
+      path: developer.path,
+      sizeBytes: developer.sizeBytes,
+      entries: developerEntries
+        .map((entry) => ({
+          ...entry,
+          sourcePath: inspected.get(entry.name)?.sourcePath ?? null,
+          sourcePathState:
+            inspected.get(entry.name)?.sourcePathState ?? "unknown",
+          running: inspected.get(entry.name)?.running ?? false,
+        }))
+        .sort((a, b) => b.sizeBytes - a.sizeBytes),
+    };
+  }
   async function scanHost({ hostId }: { hostId: string }) {
     await requireHost(hostId, true);
     if (scans.get(hostId)?.state === "scanning") return host({ hostId });
@@ -420,7 +486,6 @@ export function createStorage(
           hostId,
           signal: lifecycle.signal,
         });
-        const developerRoot = `${homeDirectory.replace(/[\\/]$/, "")}/.bb-dev`;
         const disk = await worker.call(
           "capacity",
           { path: rootPath },
@@ -440,10 +505,6 @@ export function createStorage(
             largeFileMinBytes: LARGE_FILE_MIN_BYTES,
           },
         ];
-        batches.push({
-          targets: [{ path: developerRoot, perChild: true }],
-          largeFileMinBytes: null,
-        });
         const worktreeTargets = environments.flatMap((env) =>
           env.path === null ? [] : [{ path: env.path, perChild: false }],
         );
@@ -476,57 +537,16 @@ export function createStorage(
           }
         }
         const root = measured.get(rootPath);
-        const developer = measured.get(developerRoot);
-        const developerEntries =
-          developer?.outcome === "measured"
-            ? (developer.children ?? []).filter(
-                (entry) => !entry.name.startsWith(".bb-trash-"),
-              )
-            : [];
-        const inspected = new Map<
-          string,
-          z.infer<
-            typeof hostStorageContract.inspectDeveloperEntries.output
-          >["entries"][number]
-        >();
-        const candidatePaths = developerCandidatePaths(
+        const developerStorage = await measureDeveloperStorage(
           hostId,
+          homeDirectory,
           allEnvironments,
           projects,
         );
-        for (let offset = 0; offset < developerEntries.length; offset += 500) {
-          const result = await worker.call(
-            "inspectDeveloperEntries",
-            {
-              rootPath: developerRoot,
-              names: developerEntries
-                .slice(offset, offset + 500)
-                .map((entry) => entry.name),
-              candidatePaths,
-            },
-            { hostId, signal: lifecycle.signal },
-          );
-          for (const entry of result.entries) inspected.set(entry.name, entry);
-        }
         scans.delete(hostId);
         store(hostId, {
           scannedAt: Date.now(),
-          developerStorage:
-            developer?.outcome === "measured"
-              ? {
-                  path: developer.path,
-                  sizeBytes: developer.sizeBytes,
-                  entries: developerEntries
-                    .map((entry) => ({
-                      ...entry,
-                      sourcePath: inspected.get(entry.name)?.sourcePath ?? null,
-                      sourcePathState:
-                        inspected.get(entry.name)?.sourcePathState ?? "unknown",
-                      running: inspected.get(entry.name)?.running ?? false,
-                    }))
-                    .sort((a, b) => b.sizeBytes - a.sizeBytes),
-                }
-              : null,
+          developerStorage,
           disk,
           largeFiles: [...largeFiles].map(([name, total]) => ({
             name,
@@ -563,22 +583,8 @@ export function createStorage(
           changed();
         }
       } finally {
+        if (completed) pendingDevelopmentCleanups.add(hostId);
         release();
-      }
-      if (completed && !lifecycle.signal.aborted) {
-        try {
-          if (await devCleanupEnabled()) {
-            const missing = read(hostId)?.developerStorage?.entries.some(
-              (entry) => entry.sourcePathState === "missing",
-            );
-            if (missing) await removeDevInstances({ hostId, names: null });
-          }
-        } catch (error) {
-          if (!lifecycle.signal.aborted)
-            bb.log.warn(
-              `Could not clean development storage on ${hostId}: ${error instanceof Error ? error.message : String(error)}`,
-            );
-        }
       }
     })();
     jobs.add(job);
@@ -965,6 +971,80 @@ export function createStorage(
     }
     return { clearedFiles, clearedBytes };
   }
+  let cleaningDevelopment = false;
+  function cleanDevelopmentStorage(hostId: string) {
+    pendingDevelopmentCleanups.add(hostId);
+    if (cleaningDevelopment || lifecycle.signal.aborted)
+      return Promise.resolve();
+    cleaningDevelopment = true;
+    const job = (async () => {
+      try {
+        for (;;) {
+          if (lifecycle.signal.aborted) return;
+          if (!(await devCleanupEnabled())) {
+            pendingDevelopmentCleanups.clear();
+            return;
+          }
+          const next = [...pendingDevelopmentCleanups].find(
+            (id) => !busy.has(id),
+          );
+          if (next === undefined) return;
+          pendingDevelopmentCleanups.delete(next);
+          try {
+            if (read(next) === null) await scanHost({ hostId: next });
+            else await removeMissingDevelopment(next, acquire(next));
+          } catch (error) {
+            if (!lifecycle.signal.aborted)
+              bb.log.warn(
+                `Could not clean development storage on ${next}: ${error instanceof Error ? error.message : String(error)}`,
+              );
+          }
+        }
+      } finally {
+        cleaningDevelopment = false;
+      }
+    })();
+    jobs.add(job);
+    void job.finally(() => jobs.delete(job));
+    return job;
+  }
+  async function removeMissingDevelopment(
+    hostId: string,
+    release: () => void,
+  ) {
+    let handedOff = false;
+    try {
+      await requireHost(hostId, true);
+      const [homeDirectory, environments, projects] = await Promise.all([
+        worker.call("homeDirectory", null, {
+          hostId,
+          signal: lifecycle.signal,
+        }),
+        readEnvironments(hostId),
+        bb.sdk.projects.list({ signal: lifecycle.signal }),
+      ]);
+      const developerStorage = await measureDeveloperStorage(
+        hostId,
+        homeDirectory,
+        environments,
+        projects,
+      );
+      const cached = read(hostId);
+      if (cached === null) return;
+      store(hostId, { ...cached, developerStorage });
+      changed();
+      if (
+        !developerStorage?.entries.some(
+          (entry) => entry.sourcePathState === "missing",
+        )
+      )
+        return;
+      handedOff = true;
+      await removeDevInstances({ hostId, names: null }, release);
+    } finally {
+      if (!handedOff) release();
+    }
+  }
   let reconcilingDevelopment = false;
   function reconcileDevelopmentStorage() {
     if (reconcilingDevelopment || lifecycle.signal.aborted)
@@ -1117,6 +1197,10 @@ export function createStorage(
           "DELETE FROM archive_cleanup WHERE thread_id = ? AND archived_at = ?",
         ).run(entry.thread_id, entry.archived_at);
       } catch (error) {
+        if (error instanceof Error && "status" in error && error.status === 404) {
+          cancelArchivedStorage(entry.thread_id);
+          continue;
+        }
         bb.log.warn(
           `Could not clear archived storage for ${entry.thread_id}: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -1201,6 +1285,7 @@ export function createStorage(
     scanHost,
     scanAll,
     reconcileDevelopmentStorage,
+    cleanDevelopmentStorage,
     removeOrphans,
     clearLargeFiles,
     startClearLargeFiles,

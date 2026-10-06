@@ -1,4 +1,7 @@
-import { experimental_killProcessesWithCwdUnder } from "@get-bb/plugin-sdk/host";
+import {
+  experimental_killProcessesWithCwdUnder,
+  experimental_readProcessIdentity,
+} from "@get-bb/plugin-sdk/host";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -8,8 +11,13 @@ import type { hostStorageContract } from "./host-contract.js";
 
 const launchRecordSchema = z.object({ repoRoot: z.string().min(1) });
 const runtimeRecordSchema = z.object({ entryPath: z.string().min(1) });
-const runtimePidSchema = z.object({ pid: z.number().int().positive() });
+const runtimeProcessSchema = z.object({
+  entryPath: z.string().min(1),
+  pid: z.number().int().positive(),
+  startedAt: z.string().min(1),
+});
 const STOP_GRACE_MS = 15_000;
+const PROCESS_START_TOLERANCE_MS = 60_000;
 
 async function readRecord(file: string) {
   try {
@@ -201,13 +209,30 @@ function isAlive(pid: number) {
   }
 }
 
+async function isRecordedLauncher(
+  record: z.infer<typeof runtimeProcessSchema>,
+) {
+  const identity = await experimental_readProcessIdentity(record.pid);
+  if (identity?.command == null || identity.startedAt === null) return false;
+  const command = identity.command;
+  const recordedStart = Date.parse(record.startedAt);
+  return (
+    [record.entryPath, path.basename(record.entryPath)].some((token) =>
+      command.includes(token),
+    ) &&
+    !Number.isNaN(recordedStart) &&
+    Math.abs(identity.startedAt - recordedStart) <= PROCESS_START_TOLERANCE_MS
+  );
+}
+
 async function stopInstance(directory: string, signal: AbortSignal) {
-  const record = runtimePidSchema.safeParse(
+  const record = runtimeProcessSchema.safeParse(
     await readRecord(path.join(directory, "bb-app-runtime.json")),
   );
   if (!record.success) return 0;
   const { pid } = record.data;
   if (pid === process.pid || !isAlive(pid)) return 0;
+  if (!(await isRecordedLauncher(record.data))) return 0;
   for (const kill of ["SIGTERM", "SIGKILL"] as const) {
     try {
       process.kill(pid, kill);

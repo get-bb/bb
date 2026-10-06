@@ -232,6 +232,49 @@ describe("retention plugin", () => {
     }
   });
 
+  it("skips a group that was pinned or unarchived after the sweep selected it", async () => {
+    let reads = 0;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: async () => {
+            reads++;
+            return [
+              makeThreadResponse({
+                id: "thr_pinned",
+                archivedAt: 1,
+                pinnedAt: reads > 1 ? Date.now() : null,
+              }),
+              makeThreadResponse({
+                id: "thr_unarchived",
+                archivedAt: reads > 1 ? null : 1,
+              }),
+              makeThreadResponse({ id: "thr_old", archivedAt: 1 }),
+            ];
+          },
+          delete: async () => ({ ok: true }),
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: null,
+        deleteAfterDays: 30,
+      });
+      await host.harness.runSchedule("retention");
+      expect(host.harness.sdk.callsTo("threads.delete")).toEqual([
+        [{ threadId: "thr_old", childThreadsConfirmed: true }],
+      ]);
+      expect(await host.harness.callRpc("state", null)).toMatchObject({
+        lastRun: { deletedCount: 1, failedCount: 0 },
+      });
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
   it("stops a running batch after the plugin is disposed", async () => {
     let entered!: () => void;
     let release!: () => void;

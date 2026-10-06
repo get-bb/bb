@@ -81,6 +81,11 @@ export function createService(bb: BbPluginApi) {
           )
             break;
           try {
+            const fresh = (await candidates(current))[action].find(
+              (entry) => entry.rootId === candidate.rootId,
+            );
+            if (disposed) return;
+            if (fresh === undefined) continue;
             if (action === "archive") {
               const result = await bb.sdk.threads.archive({
                 threadId: candidate.rootId,
@@ -91,7 +96,7 @@ export function createService(bb: BbPluginApi) {
                 threadId: candidate.rootId,
                 childThreadsConfirmed: true,
               });
-              run.deletedCount += candidate.memberIds.length;
+              run.deletedCount += fresh.memberIds.length;
             }
           } catch (error) {
             run.failedCount++;

@@ -10,7 +10,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Toaster, toast } from "sonner";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeHostResponse } from "@get-bb/plugin-sdk/testing";
-import { policySchema } from "./src/contract.js";
+import { z } from "zod";
+import { policySchema, storageRpc } from "./src/contract.js";
 import { makeSystemConfig } from "../../apps/app/src/test/fixtures/system-config.js";
 import type { State } from "./src/contract.js";
 import type { HostStorageListResponse } from "./src/storage-types.js";
@@ -83,13 +84,15 @@ function fixture(subPath = "host_test") {
     state = { ...state, policy };
     return state;
   });
-  const remove = vi.fn(async () => ({
+  const remove = vi.fn(
+    async (_input: z.infer<typeof storageRpc.removeDevInstances.input>) => ({
     running: [] as string[],
     removedCount: 1,
     removedBytes: 20,
     skippedCount: 0,
     stoppedProcessCount: 1,
-  }));
+    }),
+  );
   const start = vi.fn(async () => null);
   const Component = app.navPanels[0]!.component;
   const slot = renderSlot<{ subPath: string }>(
@@ -107,7 +110,8 @@ function fixture(subPath = "host_test") {
         state: () => state,
         configure: (input) => configure(policySchema.parse(input)),
         hosts: reports,
-        removeDevInstances: remove,
+        removeDevInstances: (input) =>
+          remove(storageRpc.removeDevInstances.input.parse(input)),
         startClearArchivedFiles: start,
         startCleanup: start,
       },
@@ -131,7 +135,7 @@ function fixture(subPath = "host_test") {
   return { slot, configure, remove, start, hosts, reports };
 }
 
-it("uses a toast for confirmed deletion and retains no inline success banner", async () => {
+it("stops a running development instance only after the user confirms stop and remove", async () => {
   const { slot, remove } = fixture();
   remove.mockResolvedValueOnce({
     running: ["after"],
@@ -147,20 +151,18 @@ it("uses a toast for confirmed deletion and retains no inline success banner", a
   const confirmation = await page.findByRole("region", {
     name: "Confirm cleanup",
   });
+  expect(remove.mock.calls.map(([input]) => input)).toEqual([
+    { hostId: "host_test", names: ["after"], stopRunning: false },
+  ]);
   fireEvent.click(
     within(confirmation).getByRole("button", { name: "Stop and remove" }),
   );
   await waitFor(() =>
-    expect(
-      document.querySelector("[data-sonner-toast]")?.textContent,
-    ).toContain("Development data deleted"),
+    expect(remove.mock.calls.map(([input]) => input)).toEqual([
+      { hostId: "host_test", names: ["after"], stopRunning: false },
+      { hostId: "host_test", names: ["after"], stopRunning: true },
+    ]),
   );
-  expect(page.queryByRole("region", { name: "Confirm cleanup" })).toBeNull();
-  expect(
-    page
-      .queryAllByRole("status")
-      .some((node) => node.textContent?.includes("Development data deleted")),
-  ).toBe(false);
 });
 
 it("shows cleanup failures as toasts, keeps other actions available, and permits retry", async () => {

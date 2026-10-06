@@ -58,7 +58,7 @@ plugin scans online persistent machines hourly and removes missing-checkout
 missing-checkout data is eligible too; retention previews count threads, not
 these folders. The host rechecks checkout absence before removal, stops servers
 working inside missing checkouts, and preserves entries whose source exists or
-cannot be identified. Environment-removal events trigger scans while the plugin runs. Startup,
+cannot be identified. An environment-removal event re-measures only that machine's `~/.bb-dev`, after any running scan or cleanup there finishes. Startup,
 machine reconnect, and hourly scans recover missed events from filesystem state.
 Offline/busy machines and failed cleanup retry on later
 hourly scans. Disabling the setting prevents cleanup after subsequent scans.

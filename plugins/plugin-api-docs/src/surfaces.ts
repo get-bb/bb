@@ -1125,6 +1125,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginHosts",
           "experimental_killProcessesWithCwdUnder",
+          "experimental_readProcessIdentity",
+          "ExperimentalProcessIdentity",
           "experimental_sanitizeInheritedChildProcessEnv",
           "ExperimentalSanitizeInheritedChildProcessEnvArgs",
           "experimental_spawnPortableOutputProcess",

@@ -465,7 +465,7 @@ cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
 scans, including existing data. The machine rechecks absence before deletion,
 stops servers working inside removed checkouts, and keeps existing or unresolved
 sources. Offline/busy machines and failed cleanup retry on later scans. Thread
-retention preview counts do not include development folders. Removal events also trigger scans while the plugin is running. Startup and
+retention preview counts do not include development folders. A removal event re-measures only that machine's `~/.bb-dev`, waiting for any running scan or cleanup there to finish. Startup and
 periodic scans recover missed events by checking the filesystem; no removal
 history is stored in the core database.
 

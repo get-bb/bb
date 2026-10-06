@@ -9,8 +9,10 @@ export default function plugin(bb: BbPluginApi) {
   const devCleanupEnabled = async () =>
     (await service.state()).policy.deleteDevDataOnCheckoutRemoval;
   const storage = createStorage(bb, devCleanupEnabled);
-  bb.events.on("experimental_environment.removed", () =>
-    storage.reconcileDevelopmentStorage(),
+  bb.events.on("experimental_environment.removed", ({ removal }) =>
+    removal.hostId === null
+      ? undefined
+      : storage.cleanDevelopmentStorage(removal.hostId),
   );
   bb.background.schedule(
     "development-storage-cleanup",

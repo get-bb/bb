@@ -44,6 +44,15 @@ export {
 export { killProcessesWithCwdUnder as experimental_killProcessesWithCwdUnder } from "@bb/process-utils";
 
 /**
+ * Reads a running process's command line and approximate start time, or null
+ * when the process cannot be inspected, so a host entry can confirm a recorded
+ * PID still belongs to the process it launched before signalling it.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export { readProcessIdentity as experimental_readProcessIdentity } from "@bb/process-utils";
+export type { ProcessIdentity as ExperimentalProcessIdentity } from "@bb/process-utils";
+
+/**
  * Spawns output-only child processes with a sanitized inherited environment
  * for host-local plugin operations such as git.
  * Experimental: see docs/api_to_audit.md.

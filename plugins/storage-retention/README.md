@@ -53,8 +53,9 @@ folders whose checkout is missing, including existing folders, while keeping
 existing and unidentified sources. Both are available through `bb storage retention`.
 
 Development cleanup reconciles filesystem state on plugin startup, machine
-reconnect, and hourly. `experimental_environment.removed` triggers a scan while
-the plugin is running; missed events need no replay or removal-history tables.
+reconnect, and hourly. `experimental_environment.removed` re-measures only the
+removing machine's `~/.bb-dev`, queued behind any scan or cleanup already
+running there; missed events need no replay or removal-history tables.
 Offline/busy machines and failed cleanup retry on subsequent scans. Provider
 removal success does not prove the path was deleted; the host always checks
 actual filesystem state.

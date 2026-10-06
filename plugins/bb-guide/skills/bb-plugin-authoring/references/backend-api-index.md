@@ -358,6 +358,8 @@ Read the installed declarations for exact current signatures.
 - `experimental_nativeRootsHostContract`
 - `experimental_nativeRootsResolveInputSchema`
 - `experimental_nativeRootsResolveOutputSchema`
+- `experimental_readProcessIdentity` — a PID's command line and start time,
+  to confirm it is still the process you recorded before signalling it
 - `experimental_resolveClaudePluginRoots`
 - `experimental_resolveVendorPluginRoots`
 - `experimental_sanitizeInheritedChildProcessEnv`
@@ -383,6 +385,7 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalNativeRootsResolveAnswer`
 - `ExperimentalNativeRootsResolveInput`
 - `ExperimentalNativeRootsResolveOutput`
+- `ExperimentalProcessIdentity`
 - `ExperimentalQuestionFormHost`
 - `ExperimentalQuestionShortcut`
 - `ExperimentalSanitizeInheritedChildProcessEnvArgs`

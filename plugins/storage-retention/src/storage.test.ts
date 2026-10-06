@@ -1178,6 +1178,52 @@ it("recovers developer checkout paths from launch records, old runtime records, 
 });
 
 it.skipIf(process.platform === "win32")(
+  "does not signal a recorded launcher PID that now belongs to another process",
+  async () => {
+    const fakeHome = await directory();
+    const rootPath = path.join(fakeHome, ".bb-dev");
+    const checkout = path.join(fakeHome, "checkout", "bb");
+    await fs.mkdir(checkout, { recursive: true });
+    await fs.mkdir(path.join(rootPath, "reused", "daemon.lock.lock"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(rootPath, "reused", "bb-dev-instance.json"),
+      JSON.stringify({ repoRoot: checkout }),
+    );
+    const unrelated = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" },
+    );
+    await fs.writeFile(
+      path.join(rootPath, "reused", "bb-app-runtime.json"),
+      JSON.stringify({
+        pid: unrelated.pid,
+        entryPath: path.join(fakeHome, "bb-app-launcher.mjs"),
+        startedAt: new Date().toISOString(),
+      }),
+    );
+    const worker = experimental_createHostEntryHarness(hostEntry);
+    try {
+      expect(
+        await worker.experimental_call("removeDeveloperEntries", {
+          rootPath,
+          names: ["reused"],
+          candidatePaths: [],
+          mode: { condition: "any", stopRunning: true },
+        }),
+      ).toMatchObject({ removed: ["reused"], stoppedProcessCount: 0 });
+      expect(unrelated.exitCode).toBeNull();
+      expect(unrelated.signalCode).toBeNull();
+    } finally {
+      unrelated.kill("SIGKILL");
+      await worker.experimental_dispose();
+    }
+  },
+);
+
+it.skipIf(process.platform === "win32")(
   "removes development instances whose checkout is gone, stopping their servers and keeping revived or existing checkouts",
   async () => {
     const fakeHome = await directory();
@@ -1208,10 +1254,12 @@ it.skipIf(process.platform === "win32")(
     }
     await fs.mkdir(path.join(rootPath, ".bb-trash-stale"));
     await fs.mkdir(path.join(rootPath, "busy", "daemon.lock.lock"));
+    const launcherPath = path.join(fakeHome, "bb-app-launcher.mjs");
+    await fs.writeFile(launcherPath, "setInterval(() => {}, 1000);\n");
     const server = (checkout: string) => {
       const child = spawn(
         process.execPath,
-        ["-e", "setInterval(() => {}, 1000)"],
+        [launcherPath],
         {
           cwd: checkout,
           stdio: "ignore",
@@ -1229,7 +1277,11 @@ it.skipIf(process.platform === "win32")(
     const busyServer = server(checkouts.busy);
     await fs.writeFile(
       path.join(rootPath, "busy", "bb-app-runtime.json"),
-      JSON.stringify({ pid: busyServer.child.pid }),
+      JSON.stringify({
+        pid: busyServer.child.pid,
+        entryPath: launcherPath,
+        startedAt: new Date().toISOString(),
+      }),
     );
     await fs.rm(path.join(fakeHome, "gone"), { recursive: true });
     const worker = experimental_createHostEntryHarness(hostEntry);
@@ -1574,6 +1626,49 @@ it("only clears opted-in archives, retries stopped and offline threads after rel
   }
 });
 
+it("stops retrying archive storage cleanup once its thread no longer exists", async () => {
+  const thread = makeThreadResponse({
+    id: "thr_gone",
+    status: "active",
+    environmentId: "env_test",
+    archivedAt: 1,
+  });
+  let exists = true;
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    sdk: {
+      threads: {
+        get: async () => {
+          if (exists) return thread;
+          throw Object.assign(new Error("HTTP 404: Thread not found"), {
+            status: 404,
+          });
+        },
+      },
+    },
+  });
+  try {
+    await host.bb.storage.kv.set("policy", {
+      archiveAfterDays: null,
+      deleteAfterDays: null,
+      deleteStorageOnArchive: true,
+      deleteDevDataOnCheckoutRemoval: false,
+    });
+    plugin(host.bb);
+    await host.harness.behavior.emitThreadEvent("thread.archived", { thread });
+    exists = false;
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    const lookups = host.harness.inspection.sdk.callsTo("threads.get").length;
+    await host.harness.behavior.runSchedule("archive-storage-cleanup");
+    expect(host.harness.inspection.sdk.callsTo("threads.get")).toHaveLength(
+      lookups,
+    );
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
 it("automatically removes missing-checkout data only when enabled and online, retrying failures and keeping existing or unidentified sources", async () => {
   const fakeHome = await directory();
   const root = path.join(fakeHome, ".bb-dev");
@@ -1597,6 +1692,8 @@ it("automatically removes missing-checkout data only when enabled and online, re
   let online = false;
   let hostCalls = 0;
   let failRemoval = true;
+  let inspectionGate: Promise<void> | null = null;
+  const measuredPaths: string[] = [];
   let host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
@@ -1605,16 +1702,18 @@ it("automatically removes missing-checkout data only when enabled and online, re
       if (call.method === "homeDirectory") return fakeHome;
       if (call.method === "capacity")
         return { totalBytes: 10000, freeBytes: 5000 };
-      if (call.method === "measure")
-        return worker.experimental_call(
-          "measure",
-          hostStorageContract.measure.input.parse(call.input),
-        );
-      if (call.method === "inspectDeveloperEntries")
+      if (call.method === "measure") {
+        const input = hostStorageContract.measure.input.parse(call.input);
+        measuredPaths.push(...input.targets.map((target) => target.path));
+        return worker.experimental_call("measure", input);
+      }
+      if (call.method === "inspectDeveloperEntries") {
+        await inspectionGate;
         return worker.experimental_call(
           "inspectDeveloperEntries",
           hostStorageContract.inspectDeveloperEntries.input.parse(call.input),
         );
+      }
       if (call.method === "removeDeveloperEntries") {
         if (failRemoval) throw new Error("temporary removal failure");
         return worker.experimental_call(
@@ -1712,19 +1811,36 @@ it("automatically removes missing-checkout data only when enabled and online, re
     host = await host.harness.lifecycle.reload(plugin);
     host.harness.behavior.runService("development-storage-recovery");
     await expectCleaned();
-    await recreateMissing();
-    await host.harness.behavior.emitThreadEvent(
-      "experimental_environment.removed",
-      {
-        removal: {
-          environmentId: "env_gone",
-          hostId: "host_test",
-          path: path.join(fakeHome, "missing"),
-          providerOwnedPath: true,
-          removedAt: Date.now(),
+    const emitRemoval = () =>
+      host.harness.behavior.emitThreadEvent(
+        "experimental_environment.removed",
+        {
+          removal: {
+            environmentId: "env_gone",
+            hostId: "host_test",
+            path: path.join(fakeHome, "missing"),
+            providerOwnedPath: true,
+            removedAt: Date.now(),
+          },
         },
-      },
-    );
+      );
+    await recreateMissing();
+    measuredPaths.length = 0;
+    await emitRemoval();
+    await expectCleaned();
+    expect(new Set(measuredPaths)).toEqual(new Set([root]));
+    let openGate!: () => void;
+    inspectionGate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    await host.harness.behavior.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(() => measuredPaths.filter((entry) => entry === root).length)
+      .toBe(2);
+    await recreateMissing();
+    await emitRemoval();
+    inspectionGate = null;
+    openGate();
     await expectCleaned();
     await recreateMissing();
     for (const subscription of subscriptions)
