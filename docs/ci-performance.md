@@ -46,11 +46,11 @@ pnpm can restore the most recent store for the same OS and architecture when a
 lockfile changes. The frozen install still resolves the exact lockfile contents
 and verifies store integrity. Turbo caches are pruned after restoration and
 before successful CI jobs save them. Windows skips the pnpm store archive and
-restores Turbo outputs for the smokes and the Windows test shards, capped at
+restores Turbo outputs for foundation checks, smokes, and test shards, capped at
 256 MB per job to bound transfer and storage costs. The Windows test shards
 also drop every entry their own Turbo run summary does not name before saving
 (`prune-turbo-cache.mjs --keep-run-summaries`). Windows installs retain
-`--ignore-scripts`; foundation tests still run with `--force`. macOS smoke jobs
+`--ignore-scripts`; foundation checks reuse Windows-only cached results. macOS smoke jobs
 still omit Turbo caching.
 
 PR runs cancel superseded work. Main concurrency groups include the commit SHA,
@@ -250,10 +250,10 @@ Approaches measured and not adopted:
   host suites failed 3 of 8 at two. The host daemon suite also failed 3 of 18
   runs on eight vCPUs with nothing beside it, where Vitest runs twice as many
   of its files at once.
-- Installing without `@bb/mobile` and `@bb/desktop` took 22–27s against
-  38–40s. It was left out because it saves 14s and makes the Windows install
-  differ from every other job. Installing only `@bb/app`'s dependencies took
-  17s but `ensure-native-modules` could not find `better-sqlite3`.
+- The October 5 install experiment excluded `@bb/mobile` and `@bb/desktop`
+  and took 22–27s against 38–40s. Installing only `@bb/app` dependencies took
+  17s but `ensure-native-modules` could not find `better-sqlite3`. The October 6
+  scoped install below includes `@bb/db` to retain that native prerequisite.
 - Running the tarball smoke and desktop packaging at the same time. The tarball
   smoke prunes and packs `packages/bb-app/dist` while packaging copies it.
 
@@ -291,3 +291,19 @@ entries. Run from the repository root at the default branch's current commit.
 The script finishes paginating and validating inventory and PR states before
 issuing any deletion. API requests time out after ten seconds; the maintenance
 job has a five-minute budget and is independent of PR checks.
+
+## October 6 scoped Windows installs
+
+The four Windows app shards install the root tools, `@bb/app` and its transitive
+dependencies, plus `@bb/db` and its dependencies for `ensure-native-modules`.
+They retain the same test commands, sharding, and frozen lockfile. Other test
+shards still install the full workspace.
+
+In [benchmark run 37539104123](https://github.com/get-bb/bb/actions/runs/37539104123),
+two scoped installs took 36s and 44s; two full installs took 66s and 72s on the
+same four-vCPU Windows runner class. Each then ran the same uncached app shard.
+This measures dependency setup, not an end-to-end two-minute CI guarantee.
+
+Foundation lint, typecheck, and tests now reuse Windows-only Turbo results,
+matching the other Windows jobs. Their saved cache is limited to 256 MB and
+entries used by the current run.

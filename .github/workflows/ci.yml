@@ -44,7 +44,7 @@ jobs:
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           cache-prefix: windows-foundation
-          turbo-cache: "false"
+          turbo-cache: "true"
           turbo-cache-max-size-mb: "256"
 
       - name: Install foundation dependencies
@@ -55,7 +55,11 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-provider-claude-code..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
 
       - name: Typecheck and test foundation packages
-        run: pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --force --continue --concurrency=2 --output-logs=full
+        shell: bash
+        run: pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --continue --concurrency=2 --output-logs=new-only --summarize
+
+      - name: Bound saved Turbo cache
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
 
   windows-app-smoke:
     name: Windows app smoke (Node 22.x)
@@ -249,7 +253,13 @@ jobs:
         shell: bash
         env:
           CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
+          APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+        run: |
+          filters=()
+          if [[ "$APP_SHARD" == "true" ]]; then
+            filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+          fi
+          bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts "${filters[@]}"
 
       - name: Setup Bun
         if: ${{ matrix.shard == 'plugins-1' }}
