@@ -96,7 +96,7 @@ export type Comparison = {
 const SUPERSET_LOGO: BrandLogo = { kind: "image", src: supersetIcon };
 
 const BB_VS_SUPERSET: Comparison = {
-  slug: "bb-vs-superset",
+  slug: "superset-alternative",
   title: "bb vs Superset: The Free, Open-Source Alternative",
   description:
     "bb is a free, open-source Superset alternative. Run Claude Code and Codex in parallel, let agents hand off work, and check in from your phone. No Pro plan.",

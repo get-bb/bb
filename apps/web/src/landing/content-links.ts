@@ -12,7 +12,7 @@ export const CONTENT_LINK_GROUPS: ContentLinkGroup[] = [
   {
     title: "Compare",
     links: [
-      { label: "bb vs Superset", href: "/compare/bb-vs-superset" },
+      { label: "bb vs Superset", href: "/compare/superset-alternative" },
       {
         label: "Vibe Kanban alternative",
         href: "/compare/vibe-kanban-alternative",
