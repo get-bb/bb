@@ -1,5 +1,5 @@
 import conductorIcon from "../assets/competitors/conductor.png";
-import type { CompareHighlight, Comparison } from "./comparisons";
+import type { Comparison } from "./comparisons";
 import {
   CLOSER,
   FAQ_AGENTS,
@@ -25,42 +25,48 @@ import {
 import {
   AGENTS_COPY,
   agentsSection,
-  ANYWHERE_COPY,
   anywhereSection,
+  PLUGINS_COPY,
+  pluginsSection,
   pricingSection,
 } from "./compare-sections";
-import { TasksBoard, type BrandLogo } from "./compare-visuals";
+import { FleetVisual, type BrandLogo } from "./compare-visuals";
 
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
-const PLUGINS_HIGHLIGHT: CompareHighlight = {
-  title: "Turn bb into the tool you need",
-  wide: false,
-  visual: <TasksBoard compact />,
+const AWAY_SECTION = anywhereSection({
+  title: "Keep working after you close your Mac",
   body: (
     <>
       <p>
-        bb comes with plugins like Tasks, a board where any card goes to an
-        agent in one click.
+        Add an always-on desktop or server to bb, and your agents keep running
+        there while you’re out. Answer them and approve their work from the bb
+        mobile app or any browser.
       </p>
       <p>
-        When you want more—or less—customize in Settings, browse the{" "}
-        <a href="/marketplace">plugin marketplace</a>, or ask an agent to build
-        exactly what you need, immediately available wherever you use bb,
-        including your phone.
+        In Conductor, closing your Mac ends local sessions, and the phone app
+        works with cloud workspaces on its $50-a-month Pro plan. In bb, it’s all
+        free.
       </p>
     </>
   ),
-};
+});
 
 const COST_SECTION = pricingSection(
   {
     title: "Free for your whole team",
     body: (
-      <p>
-        Conductor’s app is free; its Teams plan is $60 per person a month. bb is
-        free at any team size.
-      </p>
+      <>
+        <p>
+          bb is free at any team size, with the mobile app, remote machines,
+          automations, and plugins included. You only pay for the AI plans you
+          already have.
+        </p>
+        <p>
+          It’s open source under the MIT license, so you can read every line and
+          use it anywhere, including at work.
+        </p>
+      </>
     ),
   },
   {
@@ -75,13 +81,17 @@ export const BB_VS_CONDUCTOR: Comparison = {
   slug: "conductor-alternatives",
   title: "Conductor Alternatives: bb, the Free, Open-Source Option",
   description:
-    "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents together, and approve from your phone.",
+    "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents on any computer you own, and approve from your phone.",
   competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
   headline: "The free, open-source Conductor alternative",
-  sub: "Get Claude Code, Codex, or any agent working together on Mac, Windows, or Linux, and approve from your phone.",
-  heroVisual: null,
-  tailored: agentsSection(AGENTS_COPY),
-  sections: [PLUGINS_HIGHLIGHT, anywhereSection(ANYWHERE_COPY), COST_SECTION],
+  sub: "Run Claude Code, Codex, and any agent on Mac, Windows, or Linux, and approve their work from your phone.",
+  heroVisual: <FleetVisual />,
+  tailored: AWAY_SECTION,
+  sections: [
+    COST_SECTION,
+    agentsSection(AGENTS_COPY),
+    pluginsSection(PLUGINS_COPY),
+  ],
   tableNote:
     "marks features that need a paid Conductor plan, from $50 a month.",
   table: [
@@ -101,6 +111,31 @@ export const BB_VS_CONDUCTOR: Comparison = {
       ],
     },
     {
+      title: "Platforms",
+      rows: [
+        {
+          feature: "Windows support",
+          bb: cell("yes", "Native app"),
+          competitor: cell("no", "Mac only"),
+        },
+        {
+          feature: "Linux support",
+          bb: cell("yes", "Alpha"),
+          competitor: cell("no"),
+        },
+        {
+          feature: "macOS",
+          bb: cell("yes", "Apple Silicon app"),
+          competitor: cell("yes", "Mac app"),
+        },
+        {
+          feature: "Mobile app",
+          bb: cell("yes", "iOS beta, Android alpha"),
+          competitor: cell("partial", "iOS, for cloud workspaces", true),
+        },
+      ],
+    },
+    {
       title: "Away from your desk",
       rows: [
         {
@@ -115,8 +150,8 @@ export const BB_VS_CONDUCTOR: Comparison = {
         },
         {
           feature: "Scheduled automations",
-          bb: cell("yes", "Repeating or one-time"),
-          competitor: cell("no"),
+          bb: cell("yes", "On your own machines"),
+          competitor: cell("partial", "Cloud routines", true),
         },
       ],
     },
@@ -147,31 +182,6 @@ export const BB_VS_CONDUCTOR: Comparison = {
           feature: "GitHub integration",
           bb: cell("yes", "Issues, PRs, checks"),
           competitor: cell("yes", "Checks tab, PR actions"),
-        },
-      ],
-    },
-    {
-      title: "Platforms",
-      rows: [
-        {
-          feature: "Windows support",
-          bb: cell("yes", "Native app"),
-          competitor: cell("no", "Mac only"),
-        },
-        {
-          feature: "Mobile app",
-          bb: cell("yes", "iOS beta, Android alpha"),
-          competitor: cell("partial", "Listed as coming soon", true),
-        },
-        {
-          feature: "macOS",
-          bb: cell("yes", "Apple Silicon app"),
-          competitor: cell("yes", "Mac app"),
-        },
-        {
-          feature: "Linux support",
-          bb: cell("yes", "Alpha"),
-          competitor: cell("no"),
         },
       ],
     },
@@ -214,9 +224,10 @@ export const BB_VS_CONDUCTOR: Comparison = {
               Both run Claude Code, Codex, and other coding agents in parallel
               Git worktrees. bb is free for any team size, open source, and runs
               on Mac, Windows, and Linux. Conductor is a closed-source Mac app
-              that’s free locally, with cloud workspaces, multiplayer, and its
-              mobile app on the Pro plan, at $50 a month. In bb, one agent can
-              start another and hear back without you in the middle.
+              that’s free locally, with cloud workspaces, scheduled routines,
+              multiplayer, and its mobile app on the Pro plan, at $50 a month.
+              In bb, one agent can start another and hear back without you in
+              the middle.
             </p>
           ),
         },
@@ -264,14 +275,14 @@ export const BB_VS_CONDUCTOR: Comparison = {
       items: [
         FAQ_CUSTOMIZE,
         FAQ_REVIEW,
-        faqSchedule("Conductor doesn’t run agents on a schedule."),
+        faqSchedule("Conductor’s routines run only in its cloud, on Pro."),
       ],
     },
     {
       title: "Price and license",
       items: [
         faqFree(
-          ", while Conductor puts cloud workspaces, multiplayer, and its mobile app on its Pro plan, at $50 a month",
+          ", while Conductor puts its mobile app, cloud workspaces, and routines on its Pro plan, at $50 a month",
         ),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(null),
@@ -293,7 +304,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Mobile and remote",
       items: [
         faqPhone(
-          "Conductor lists a mobile app on Pro, and its docs say it’s coming soon.",
+          "Conductor’s iPhone app works with its cloud workspaces, on the $50-a-month Pro plan.",
         ),
         FAQ_LAPTOP,
       ],

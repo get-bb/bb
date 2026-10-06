@@ -2284,3 +2284,148 @@
     font-size: 13.5px;
   }
 }
+
+.cmp-fleet {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.cmp-fleet-machines {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.cmp-fleet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--shade) 6%, transparent),
+    0 26px 60px color-mix(in oklab, var(--shade) 13%, transparent);
+}
+
+.cmp-fleet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.cmp-fleet-os {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-strong);
+}
+
+.cmp-fleet-os-ic {
+  width: 20px;
+  height: 20px;
+}
+
+.cmp-fleet-who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cmp-fleet-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
+.cmp-fleet-detail {
+  font-size: 13px;
+  color: var(--subtle);
+}
+
+.cmp-fleet-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cmp-fleet-thread {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  border-radius: 8px;
+  color: var(--dim);
+}
+
+.cmp-fleet-thread:first-child {
+  background: color-mix(in oklab, var(--ink) 5%, var(--bg));
+  color: var(--ink);
+}
+
+.cmp-fleet-agent {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.cmp-fleet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px 0;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+
+.cmp-fleet-count {
+  font-weight: 500;
+  color: var(--accent);
+}
+
+@media (max-width: 860px) {
+  .cmp-fleet {
+    max-width: 480px;
+  }
+
+  .cmp-fleet-machines {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .cmp-fleet-card {
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .cmp-fleet-head {
+    gap: 10px;
+    padding-bottom: 8px;
+  }
+
+  .cmp-fleet-os {
+    width: 34px;
+    height: 34px;
+  }
+
+  .cmp-fleet-thread + .cmp-fleet-thread,
+  .cmp-fleet-foot {
+    display: none;
+  }
+}

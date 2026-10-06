@@ -15,11 +15,18 @@ import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import FilterHorizontalIcon from "@hugeicons/core-free-icons/FilterHorizontalIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
+import AppleIcon from "@hugeicons/core-free-icons/AppleIcon";
+import WindowsNewIcon from "@hugeicons/core-free-icons/WindowsNewIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { ClaudeIcon, CursorIcon, OpenAiIcon } from "../landing/icons";
+import {
+  ClaudeIcon,
+  CursorIcon,
+  LinuxIcon,
+  OpenAiIcon,
+} from "../landing/icons";
 import { useCycle } from "../landing/landing-visuals";
 
 export type BrandLogo = { kind: "bb" } | { kind: "image"; src: string };
@@ -342,6 +349,102 @@ export function AnywhereVisual() {
     <div className="cmp-anywhere">
       <PhoneApp />
       <MachinesCard />
+    </div>
+  );
+}
+
+type FleetThread = {
+  title: string;
+  agent: typeof ClaudeIcon;
+  status: "running" | "done" | "waiting";
+};
+
+const FLEET: {
+  name: string;
+  os: string;
+  where: string;
+  icon: ReactNode;
+  threads: FleetThread[];
+}[] = [
+  {
+    name: "MacBook Pro",
+    os: "macOS",
+    where: "This computer",
+    icon: <HugeiconsIcon icon={AppleIcon} className="cmp-fleet-os-ic" />,
+    threads: [
+      { title: "Rate-limit uploads", agent: ClaudeIcon, status: "running" },
+      { title: "Review the limiter", agent: OpenAiIcon, status: "done" },
+      { title: "Write release notes", agent: CursorIcon, status: "waiting" },
+    ],
+  },
+  {
+    name: "Desktop PC",
+    os: "Windows",
+    where: "At home",
+    icon: <HugeiconsIcon icon={WindowsNewIcon} className="cmp-fleet-os-ic" />,
+    threads: [
+      { title: "Fix the flaky test", agent: CursorIcon, status: "running" },
+      { title: "Add dark mode", agent: ClaudeIcon, status: "running" },
+      { title: "Update the docs", agent: OpenAiIcon, status: "done" },
+    ],
+  },
+  {
+    name: "Cloud server",
+    os: "Linux",
+    where: "Always on",
+    icon: <LinuxIcon className="cmp-fleet-os-ic" />,
+    threads: [
+      { title: "Bump dependencies", agent: OpenAiIcon, status: "running" },
+      { title: "Triage new issues", agent: ClaudeIcon, status: "done" },
+      { title: "Nightly test sweep", agent: ClaudeIcon, status: "running" },
+    ],
+  },
+];
+
+export function FleetVisual() {
+  return (
+    <div
+      className="cmp-fleet"
+      role="img"
+      aria-label="One bb running Claude Code, Codex, and Cursor threads on a MacBook, a Windows PC at home, and an always-on Linux server"
+    >
+      <div className="cmp-fleet-machines">
+        {FLEET.map((machine, index) => (
+          <div key={machine.name} className="cmp-fleet-card">
+            <span className="cmp-fleet-head">
+              <span className="cmp-fleet-os">{machine.icon}</span>
+              <span className="cmp-fleet-who">
+                <span className="cmp-fleet-name">{machine.name}</span>
+                <span className="cmp-fleet-detail">{machine.os}</span>
+              </span>
+              <span
+                className="cmp-machine-dot"
+                style={{ animationDelay: `${index * 1.1}s` }}
+              />
+            </span>
+            <ul className="cmp-fleet-threads">
+              {machine.threads.map((thread) => (
+                <li key={thread.title} className="cmp-fleet-thread">
+                  <thread.agent className="cmp-fleet-agent" />
+                  <span className="trow-title">{thread.title}</span>
+                  <PhoneStatus status={thread.status} />
+                </li>
+              ))}
+            </ul>
+            <span className="cmp-fleet-foot">
+              <span>{machine.where}</span>
+              <span className="cmp-fleet-count">
+                {
+                  machine.threads.filter(
+                    (thread) => thread.status === "running",
+                  ).length
+                }{" "}
+                running
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
