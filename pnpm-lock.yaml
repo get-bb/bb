@@ -388,6 +388,9 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
     devDependencies:
+      '@bb/plugin-registry':
+        specifier: workspace:*
+        version: link:../../packages/plugin-registry
       '@bb/test-helpers':
         specifier: workspace:*
         version: link:../../packages/test-helpers
