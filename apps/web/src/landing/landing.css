@@ -836,12 +836,20 @@ body {
     animation-play-state: paused;
   }
 
-  .company-proof:not(.is-paused) .company-proof-toggle:not(:focus-visible) {
+  .company-proof-heading {
+    position: relative;
+  }
+
+  .company-proof-toggle {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
+    top: 50%;
+    left: calc(100% + 6px);
+    transform: translateY(-50%);
+  }
+
+  .company-proof:not(.is-paused) .company-proof-toggle:not(:focus-visible) {
+    opacity: 0;
+    pointer-events: none;
   }
 }
 
