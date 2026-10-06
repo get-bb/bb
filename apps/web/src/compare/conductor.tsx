@@ -32,7 +32,7 @@ import { FleetVisual, type BrandLogo } from "./compare-visuals";
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
 const AWAY_SECTION = anywhereSection({
-  title: "Keep working after you close your Mac",
+  title: "Keep working after you close your laptop",
   body: (
     <>
       <p>

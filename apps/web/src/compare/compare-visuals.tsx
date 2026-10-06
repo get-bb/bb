@@ -397,8 +397,8 @@ const FLEET: {
     ],
   },
   {
-    name: "iPhone",
-    os: "bb mobile app",
+    name: "Mobile",
+    os: "iOS & Android",
     icon: <HugeiconsIcon icon={SmartPhone01Icon} className="cmp-fleet-os-ic" />,
     threads: [
       { title: "Nightly test sweep", agent: ClaudeIcon, status: "running" },
