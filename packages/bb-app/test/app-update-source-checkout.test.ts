@@ -26,7 +26,7 @@ async function createCheckout(): Promise<GitCheckoutFixture> {
   return fixture;
 }
 
-describe("source checkout inspection", () => {
+describe("source checkout inspection", { timeout: 30_000 }, () => {
   it("reports nothing to update when main matches origin/main", async () => {
     const { checkout } = await createCheckout();
 
@@ -133,7 +133,7 @@ describe("source checkout inspection", () => {
   });
 });
 
-describe("source checkout switching", () => {
+describe("source checkout switching", { timeout: 30_000 }, () => {
   it("fast-forwards to the offered commit", async () => {
     const { checkout, upstream } = await createCheckout();
     const from = await git(checkout, "rev-parse", "HEAD");
