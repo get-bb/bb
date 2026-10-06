@@ -84,7 +84,6 @@ interface CanSubmitFollowUpShortcutArgs {
 interface BuildFollowUpSubmitModeArgs {
   hasPendingInteraction: boolean;
   isDefaultExecutionOptionsLoading: boolean;
-  isPendingInteractionsInitialLoading: boolean;
   isStopRequested: boolean;
   onStop: () => void;
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -94,7 +93,6 @@ interface BuildSideChatSubmitModeArgs {
   childThreadId: string | null;
   hasPendingInteraction: boolean;
   isDefaultExecutionOptionsLoading: boolean;
-  isPendingInteractionsInitialLoading: boolean;
   isStopRequested: boolean;
   onStop: () => void;
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -134,16 +132,12 @@ export function shouldQueueFollowUpMessage(
 export function buildFollowUpSubmitMode({
   hasPendingInteraction,
   isDefaultExecutionOptionsLoading,
-  isPendingInteractionsInitialLoading,
   isStopRequested,
   onStop,
   runtimeDisplayStatus,
 }: BuildFollowUpSubmitModeArgs): FollowUpSubmitMode {
   if (isStopRequested) {
     return { kind: "queue-while-stopping" };
-  }
-  if (isPendingInteractionsInitialLoading) {
-    return { kind: "blocked", reason: "loading-pending-interactions" };
   }
   if (hasPendingInteraction) {
     return { kind: "blocked", reason: "pending-interaction" };
@@ -161,7 +155,6 @@ export function buildSideChatSubmitMode({
   childThreadId,
   hasPendingInteraction,
   isDefaultExecutionOptionsLoading,
-  isPendingInteractionsInitialLoading,
   isStopRequested,
   onStop,
   runtimeDisplayStatus,
@@ -174,7 +167,6 @@ export function buildSideChatSubmitMode({
   return buildFollowUpSubmitMode({
     hasPendingInteraction,
     isDefaultExecutionOptionsLoading,
-    isPendingInteractionsInitialLoading,
     isStopRequested,
     onStop,
     runtimeDisplayStatus,
