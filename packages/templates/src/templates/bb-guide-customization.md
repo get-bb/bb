@@ -128,7 +128,7 @@ unhandled-event preferences are preserved. Set it with
 `bb settings general showDiagnosticEvents <true|false>`.
 
 Settings → General → Show Git controls controls the git summary, expanded file
-list, and Commit action in the thread header and mobile menu.
+list, and Commit action in the thread header and overflow menu.
 `showGitChanges` defaults to true; use
 `bb settings general showGitChanges false` to hide them, or true to restore them.
 The server saves this preference across reloads and shares it across connected
