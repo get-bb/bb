@@ -60,10 +60,10 @@ export function ThreadStorageSection({
   return (
     <InfoSection label="Thread storage" count={loadedFiles.length}>
       {infoListCollapses(loadedFiles.length) ? (
-        <div className="relative mb-1">
+        <div className="relative -mx-1">
           <Icon
             name="Search"
-            className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 text-subtle-foreground"
+            className="pointer-events-none absolute top-1/2 left-1 size-3 -translate-y-1/2 text-subtle-foreground"
             aria-hidden
           />
           <Input
@@ -78,7 +78,7 @@ export function ThreadStorageSection({
               }
             }}
             className={cn(
-              "h-6 rounded px-6 py-0 focus-visible:ring-0 max-md:pointer-coarse:h-9",
+              "h-6 rounded border-transparent py-0 pr-6 pl-5.5 placeholder:text-subtle-foreground hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-0 max-md:pointer-coarse:h-9",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
           />
