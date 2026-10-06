@@ -197,6 +197,14 @@ the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
+The default-off `navigationRail` experiment keeps a vertical rail of
+destinations on the left edge of the sidebar on every screen. Home returns to
+the last thread, Settings sits at the bottom, and New thread moves into the
+sidebar header. The sidebar beside the rail still swaps between the thread
+list, Plugins, Skills, and Settings. While it is on, bb draws the navigation
+itself, so the Navigation and Header choices under Settings → Appearance are
+not used; they apply again when the experiment is turned off. Narrow windows
+and phones keep the regular drawer.
 Message editing is available for eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns. Opening the editor is
@@ -500,6 +508,10 @@ both public links. Add `--details --json` or call `system.mobileAppReleases()`
 upload date. The server fetches only public metadata, caches it for five minutes,
 and returns `android: null` if unavailable or inconsistent. Download links remain
 usable during metadata failures. iOS version and release date are shown in TestFlight.
+Inside the Android app, this page compares the installed native build number
+with the published APK and shows whether an update is available. Older apps
+without build-number reporting cannot determine update status. Installed version
+and build are device-local; CLI and SDK release metadata report the published APK.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
 ### Opt-in server performance diagnostics

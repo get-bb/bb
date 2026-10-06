@@ -8,6 +8,7 @@ export const declarationId = (id) =>
     : id.replace(/\.([cm]?ts|tsx)$/, ".d.$1").replace(/\.d\.tsx$/, ".d.ts");
 
 export function sharedDeclarationEmit(entries, workspaceDir, resolveSource) {
+  const workspaceRoot = path.resolve(workspaceDir) + path.sep;
   const configCache = new Map();
   const programs = new Map();
 
@@ -75,10 +76,10 @@ export function sharedDeclarationEmit(entries, workspaceDir, resolveSource) {
   );
   const roots = discovery
     .getSourceFiles()
-    .map((source) => source.fileName)
+    .map((source) => path.resolve(source.fileName))
     .filter(
       (id) =>
-        id.startsWith(workspaceDir + path.sep) &&
+        id.startsWith(workspaceRoot) &&
         !id.includes(`${path.sep}node_modules${path.sep}`) &&
         !/\.d\.[cm]?ts$/.test(id),
     );
@@ -86,7 +87,10 @@ export function sharedDeclarationEmit(entries, workspaceDir, resolveSource) {
   function programFor(file) {
     const config = compilerConfig(file);
     const previous = programs.get(config.key);
-    if (!previous || !previous.getRootFileNames().includes(file)) {
+    if (
+      !previous ||
+      !previous.getRootFileNames().some((root) => path.resolve(root) === file)
+    ) {
       programs.set(
         config.key,
         ts.createProgram(

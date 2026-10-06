@@ -97,6 +97,11 @@ export function createDesktopBrowserBroker(args: {
   }
 
   function publish(instance: InstanceEntry, threadId: string): void {
+    if (
+      instance.window.isDestroyed() ||
+      instance.window.webContents.isDestroyed()
+    )
+      return;
     instance.threads.add(threadId);
     const tabs = tabsFor(instance, threadId).map((tab) =>
       wireTab(instance, tab),
@@ -114,11 +119,6 @@ export function createDesktopBrowserBroker(args: {
     snapshots.set(key, serialized);
     if (isRawThreadId(threadId))
       for (const listener of listeners) listener(event);
-    if (
-      instance.window.isDestroyed() ||
-      instance.window.webContents.isDestroyed()
-    )
-      return;
     for (const tab of tabs) {
       instance.window.webContents.send(BB_DESKTOP_BROWSER_CONTROL_CHANNEL, {
         tabId: tab.tabId,

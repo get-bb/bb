@@ -70,6 +70,7 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalProviderModelPickerProps`
 - `ExperimentalProviderModelPickerRouting`
 - `ExperimentalProviderModelPickerValue`
+- `ExperimentalVoiceInputTextareaProps`
 - `JsonValue`
 - `ReadonlyJsonValue` — deep-readonly JSON, e.g. `context.pluginMetadata` values
 - `MarkdownProps`

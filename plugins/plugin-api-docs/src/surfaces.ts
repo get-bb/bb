@@ -260,13 +260,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Add an action to messages in a thread. With this, a plugin can:",
         bullets: [
-          "Appear under messages on hover, or on text selected in a reply",
-          "Receive the message or the selected text",
+          "Appear under messages on hover, or on text selected in a reply, in the main timeline only",
+          "Receive the message with the sequence its link uses, or the selected text",
           "Open a [side-panel tab](thread-panel) or write into the composer with the result",
         ],
         apiSymbols: [
           "PluginMessageActionRegistration",
           "PluginMessageActionContext",
+          "ThreadChatMessageReference",
         ],
         firstParty: ["Side chat"],
       },
@@ -277,8 +278,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add a form that asks the person a question and returns the answer to the agent. With this, a plugin can:",
         bullets: [
           "Replace the prompt box with your form, even after the turn has ended",
-          "Deliver the answer, or a cancellation, back to the agent",
-          "Keep a readable record of the exchange in the thread",
+          "Return the answer or cancellation to the agent and keep a record in the thread",
+          "Show bb's answer shortcuts and respond when the person presses one",
+          "Dictate editable answers and wait for voice input before navigating or submitting",
         ],
         apiSymbols: [
           "PluginUi",
@@ -438,8 +440,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       {
         id: "composer-banners",
         title: "Banners",
-        summary:
-          "Add a banner above the prompt box. With this, a plugin can:",
+        summary: "Add a banner above the prompt box. With this, a plugin can:",
         bullets: [
           "Warn or inform before someone sends, such as a rate limit or a retry",
           "Show only on new threads, open threads, or queued messages",
@@ -598,8 +599,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       {
         id: "homepage-section",
         title: "Home-screen sections",
-        summary:
-          "Add a section to bb's home page. With this, a plugin can:",
+        summary: "Add a section to bb's home page. With this, a plugin can:",
         bullets: [
           "Show shortcuts, pinned work, or recent activity before any thread exists",
           "Span the full width below the composer on desktop",
@@ -1349,7 +1349,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Use bb's own chat, prompt box, and pickers inside plugin pages. With this, a plugin can:",
         bullets: [
-          "Embed a thread or a new-thread prompt box",
+          "Embed a thread, a new-thread prompt box, or a textarea with editable voice input",
           "Render Markdown, code, diffs, and file links the way bb does",
           "Add or override app icons",
           "Match bb's styling with no extra work",
@@ -1366,6 +1366,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Markdown",
           "MarkdownProps.experimental_document",
           "experimental_NewThreadComposer",
+          "experimental_VoiceInputTextarea",
+          "ExperimentalVoiceInputTextareaProps",
           "experimental_ProviderModelPicker",
           "ExperimentalProviderModelPickerProps",
           "experimental_PermissionModePicker",

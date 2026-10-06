@@ -383,7 +383,12 @@ async function forwardDynamicToolCall(
   | { ok: false; error: string }
 > {
   const session = sessionsByBbThreadId.get(args.threadId);
-  if (!session || !session.providerThreadId || session.stopping) {
+  if (
+    !session ||
+    !session.providerThreadId ||
+    session.stopping ||
+    session.connection.exited
+  ) {
     return { ok: false, error: "No active ACP session for dynamic tool call." };
   }
 
@@ -1731,8 +1736,8 @@ async function startAgentSession(
     onExit: (info) => {
       const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
       cancelPendingPermissions(session);
-      removeSession(session);
       if (!wasCurrent || session.stopping || session.providerThreadId === "") {
+        removeSession(session);
         return;
       }
       void releaseCursorMcpApproval(session);
@@ -1742,6 +1747,7 @@ async function startAgentSession(
           `${info.code !== null ? ` (code ${info.code})` : ""}` +
           `${info.stderrTail ? `: ${info.stderrTail}` : ""}`,
       );
+      session.activePromptKind = null;
     },
   });
   session = {
@@ -2144,11 +2150,17 @@ function runTurn(
           "ACP turn failed before the steer was sent",
         );
         session.cancelRequested = false;
-        if (!session.stopping && !session.connection.exited) {
-          emitSessionError(
-            session,
-            error instanceof Error ? error.message : String(error),
-          );
+        if (!session.stopping) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (!session.connection.exited) {
+            emitSessionError(session, message);
+          } else if (session.activePromptKind === "turn") {
+            emitForSession(session, "error", {
+              threadId: session.bbThreadId,
+              message,
+            });
+          }
         }
         session.activePromptKind = null;
         return;
@@ -2207,6 +2219,7 @@ function reconcileExecutionSettings(
     ),
   );
   const restart =
+    session.connection.exited ||
     session.restartAfterCancelError ||
     launchArgsChanged ||
     !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
@@ -2227,9 +2240,11 @@ async function rebuildAgentSession(
   construction: AcpSessionParams,
 ): Promise<AcpThreadSession> {
   const previousProviderThreadId = session.providerThreadId;
-  const reason = session.restartAfterCancelError
-    ? "The ACP agent failed during cancellation; its session was rebuilt before continuing."
-    : "Execution settings changed; the ACP session was rebuilt to apply them.";
+  const reason = session.connection.exited
+    ? "The ACP agent exited unexpectedly; its session was rebuilt before continuing."
+    : session.restartAfterCancelError
+      ? "The ACP agent failed during cancellation; its session was rebuilt before continuing."
+      : "Execution settings changed; the ACP session was rebuilt to apply them.";
   const queuedInputs = session.queuedInputs.splice(0);
   const continuingTurn = session.activePromptKind === "turn";
   finishTurn(session, "cancelled");

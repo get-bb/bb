@@ -1,5 +1,5 @@
-import { useSplitPreload } from "@/lib/define-split";
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { defineSplit } from "@/lib/define-split";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   pluginCommandId,
   pluginCommandIdSchema,
@@ -33,11 +33,19 @@ import type { PluginSettingsCandidate } from "@/components/settings/plugin-setti
 import { appQueryClient } from "@/lib/app-query-client";
 import { LazyCommandPaletteBody } from "./LazyCommandPaletteBody";
 
-const ThreadSearchPaletteMode = lazy(() =>
-  import("./ThreadSearchPaletteMode").then((module) => ({
-    default: module.ThreadSearchPaletteMode,
-  })),
-);
+const ThreadSearchPaletteMode = defineSplit({
+  id: "thread-search-palette-mode",
+  load: () =>
+    import("./ThreadSearchPaletteMode").then(
+      (module) => module.ThreadSearchPaletteMode,
+    ),
+  loading: () => (
+    <p role="status" className="px-3 py-4 text-sm text-muted-foreground">
+      Loading threads
+    </p>
+  ),
+  tier: "intent",
+});
 
 const THREAD_SEARCH_ACTION_ID = paletteActionIdForCommand("thread.search");
 
@@ -56,7 +64,6 @@ export interface CommandPaletteProps {
 }
 
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
-  useSplitPreload(LazyCommandPaletteBody);
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
 
@@ -290,21 +297,10 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
             onChoose={chooseAction}
           />
         ) : (
-          <Suspense
-            fallback={
-              <p
-                role="status"
-                className="px-3 py-4 text-sm text-muted-foreground"
-              >
-                Loading threads
-              </p>
-            }
-          >
-            <ThreadSearchPaletteMode
-              onExit={exitMode}
-              runAfterClose={runAfterClose}
-            />
-          </Suspense>
+          <ThreadSearchPaletteMode
+            onExit={exitMode}
+            runAfterClose={runAfterClose}
+          />
         )}
       </DialogContent>
     </Dialog>

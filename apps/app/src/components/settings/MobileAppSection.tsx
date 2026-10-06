@@ -6,6 +6,7 @@ import { buttonVariants } from "@bb/shared-ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { sdk } from "@/lib/sdk";
+import { getNativeShell } from "@/lib/native-shell";
 
 export function MobileAppSection() {
   const releases = useQuery({
@@ -15,6 +16,8 @@ export function MobileAppSection() {
     retry: false,
   });
   const android = releases.data?.android;
+  const handshake = getNativeShell()?.handshake;
+  const installedAndroid = handshake?.platform === "android" ? handshake : null;
   return (
     <section aria-label="Mobile app downloads" className="space-y-5">
       <div>
@@ -73,8 +76,33 @@ export function MobileAppSection() {
             installation from your browser if prompted.
           </p>
           <p className="text-sm text-subtle-foreground">
-            Google Play access is under review. For now, return here for updates.
+            Google Play access is under review. For now, return here for
+            updates.
           </p>
+          {installedAndroid && (
+            <div className="space-y-1 text-sm">
+              <p>
+                Installed: {installedAndroid.appVersion}
+                {installedAndroid.androidVersionCode !== undefined &&
+                  ` (build ${installedAndroid.androidVersionCode})`}
+              </p>
+              <p role="status">
+                {installedAndroid.androidVersionCode === undefined
+                  ? "This app does not report its build number. Download the latest APK to check for updates."
+                  : releases.isPending
+                    ? "Checking for updates…"
+                    : !android
+                      ? "Unable to check for updates. You can still download the latest APK."
+                      : installedAndroid.androidVersionCode <
+                          android.versionCode
+                        ? "Update available"
+                        : installedAndroid.androidVersionCode ===
+                            android.versionCode
+                          ? "You’re up to date"
+                          : "You’re running a newer build than the latest published release"}
+              </p>
+            </div>
+          )}
           {android ? (
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
               <dt className="text-subtle-foreground">Version</dt>

@@ -528,7 +528,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -557,7 +556,6 @@ export function Overview() {
           <TimelineStage>
             <ConversationMessageContent
               role="user"
-              originKind={null}
               initiator="user"
               senderThreadId={null}
               senderThreadTitle={null}
@@ -580,7 +578,6 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -600,7 +597,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -623,7 +619,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -647,7 +642,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -670,7 +664,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -693,7 +686,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -713,7 +705,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -737,7 +728,6 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -768,7 +758,6 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="agent"
             senderThreadId="thr_ux3h8sxg65"
             senderThreadTitle="Render Rich Thread Names"
@@ -786,12 +775,11 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="from a side chat"
-        hint='a message handed back from a side chat reads "Replying to side chat"'
+        hint='a message handed back from a side chat reads "Message from side chat"'
       >
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="agent"
             onTitleAction={() => () => undefined}
             senderThreadId="thr_side_chat"
@@ -815,7 +803,6 @@ export function Overview() {
         <div className="flex w-full max-w-[760px] flex-col gap-3">
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="agent"
             senderThreadId="thr_h4u3fgr6be"
             senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
@@ -831,7 +818,6 @@ export function Overview() {
           />
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -854,7 +840,6 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -877,7 +862,6 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -900,7 +884,6 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -956,7 +939,6 @@ export function ActionOverflow() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -978,7 +960,6 @@ export function ActionOverflow() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -1002,7 +983,6 @@ export function ActionOverflow() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -1027,7 +1007,6 @@ export function ActionOverflow() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -1060,7 +1039,6 @@ export function ParentChildSystemMessages() {
               initiator="system"
               senderThreadId={null}
               senderThreadTitle={null}
-              originKind={null}
               senderIsPluginSideChat={false}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}

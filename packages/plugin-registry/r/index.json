@@ -318,6 +318,10 @@
       "type": "registry:lib"
     },
     {
+      "name": "voice-input-textarea",
+      "type": "registry:ui"
+    },
+    {
       "name": "workflow-progress",
       "type": "registry:ui"
     }

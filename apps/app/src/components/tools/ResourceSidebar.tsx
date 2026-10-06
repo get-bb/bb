@@ -17,17 +17,20 @@ export function ResourceSidebar({
   appRoutePath,
   isResizing,
   mobileHosted,
+  navRailHosted = false,
   onResizeMouseDown,
 }: {
   workspace: ToolsSectionId;
   appRoutePath: string;
   isResizing: boolean;
   mobileHosted?: boolean;
+  navRailHosted?: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }) {
   const location = useLocation();
   const activePage = resolveToolsActivePage(location.pathname, location.search);
   const pages = workspace === "plugins" ? PLUGIN_PAGES : SKILL_PAGES;
+  const title = workspace === "plugins" ? "Plugins" : "Skills";
 
   return (
     <SectionSidebar
@@ -35,12 +38,13 @@ export function ResourceSidebar({
       backTo={appRoutePath}
       isResizing={isResizing}
       mobileHosted={mobileHosted}
+      navRailHosted={navRailHosted}
       onResizeMouseDown={onResizeMouseDown}
       testIdPrefix={workspace}
     >
-      <SectionSidebarLabel>
-        {workspace === "plugins" ? "Plugins" : "Skills"}
-      </SectionSidebarLabel>
+      {navRailHosted ? null : (
+        <SectionSidebarLabel>{title}</SectionSidebarLabel>
+      )}
       <div className="mt-1 space-y-0.5">
         {pages.map((page) => (
           <SectionSidebarRow

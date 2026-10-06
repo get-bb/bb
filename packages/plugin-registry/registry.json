@@ -61,6 +61,7 @@
   ],
   "pluginFlavors": {
     "components/ui/icon.tsx": "flavors/components/ui/icon.tsx",
-    "components/ui/question-form-host.tsx": "flavors/components/ui/question-form-host.tsx"
+    "components/ui/question-form-host.tsx": "flavors/components/ui/question-form-host.tsx",
+    "components/ui/voice-input-textarea.tsx": "flavors/components/ui/voice-input-textarea.tsx"
   }
 }

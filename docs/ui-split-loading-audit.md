@@ -1,5 +1,12 @@
 # UI split loading-policy audit — 2026-09-29
 
+On 2026-10-05 the four policies became two tiers: `render` and `intent` are the
+`intent` tier, and `startup` and `idle` are the `preload` tier, which warms after
+route content paints instead of when an owning page mounts. Plugin detail and
+plugin-panel hosts, thread-search palette mode, the plugin file context menu,
+the sidebar rename editor and the external file dispatcher moved from
+`React.lazy` to intent-tier splits.
+
 Scope: app-owned runtime imports in `apps/app/src`, excluding type imports,
 stories, tests and plugin-provided URLs. This covers the shared-helper migration
 and the four new boundaries. Decisions below are based on code, emitted module
@@ -49,7 +56,7 @@ silently change these loaders.
 
 | Boundary                                                          | Existing policy retained                                                                              | Reason / explicit tradeoff                                                                                                                                                                                                                                              |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SplitWorkspaceRoute                                               | Starts its import when App's module evaluates                                                         | Primary thread/compose route begins downloading alongside shell work. This also downloads on settings-only visits. Route-aware warming is a separate routing optimization; the optional-feature audit does not move the primary route behind an extra scheduling delay. |
+| SplitWorkspaceRoute                                               | `modulepreload` links in index.html; import starts when App's module evaluates                        | Primary thread/compose route begins downloading alongside shell work. This also downloads on settings-only visits. Route-aware warming is a separate routing optimization; the optional-feature audit does not move the primary route behind an extra scheduling delay. |
 | Settings, project settings, machine settings, tools/skills routes | React.lazy on route render                                                                            | Selected page is demand; loading every settings page at startup is unnecessary. Several tools exports share one module.                                                                                                                                                 |
 | Plugin detail and plugin-panel hosts                              | React.lazy when that pane/route renders                                                               | Plugin panels are independently selected; retain existing pane fallback.                                                                                                                                                                                                |
 | Thread-search palette mode                                        | React.lazy when search mode opens                                                                     | Separate from command-mode results. Typing in the palette is not permission to fetch every search implementation.                                                                                                                                                       |

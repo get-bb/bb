@@ -55,20 +55,6 @@ export function Overview() {
             />
           </HoverRevealStage>
         </StoryRow>
-        <StoryRow
-          label="inside a side chat"
-          hint="Send to main thread, no fork/reply"
-        >
-          <HoverRevealStage>
-            <MessageActionBar
-              timestamp={STORY_TIMESTAMP}
-              messageText="A side-chat reply you can hand back to the main thread."
-              alignment="start"
-              mobileActionDisplay="inline"
-              onSendToMain={noop}
-            />
-          </HoverRevealStage>
-        </StoryRow>
       </StoryCard>
     </>
   );

@@ -5,7 +5,7 @@ import { defineSplit } from "@/lib/define-split";
 
 export const LazyPluginThreadChat = defineSplit<ThreadChatProps>({
   id: "plugin-thread-chat",
-  preload: "render",
+  tier: "intent",
   load: () =>
     import("./PluginThreadChat").then((module) => module.PluginThreadChat),
   loading: ({ className, layout = "contained" }) => (

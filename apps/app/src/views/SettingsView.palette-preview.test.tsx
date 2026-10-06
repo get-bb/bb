@@ -34,6 +34,7 @@ function renderSection({ compact = false } = {}) {
         },
       ]}
       faviconColor="default"
+      navigationRail={false}
       onAppearanceThemeChange={onAppearanceThemeChange}
       onAppearanceThemePrefetch={onAppearanceThemePrefetch}
       onAppearanceThemePreview={onAppearanceThemePreview}

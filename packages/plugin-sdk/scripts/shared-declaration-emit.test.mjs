@@ -1,14 +1,52 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import ts from "typescript";
 import { rollup } from "rollup";
 import { dts } from "rollup-plugin-dts";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   declarationId,
   sharedDeclarationEmit,
 } from "./shared-declaration-emit.mjs";
 import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
+
+it.each(["", path.sep])(
+  "shares compiler reads across entry points with workspace suffix %j",
+  async (suffix) => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-declaration-reuse-"));
+    const readFile = vi.spyOn(ts.sys, "readFile");
+    try {
+      await writeFile(
+        path.join(root, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { strict: true, types: [] } }),
+      );
+      const entries = Array.from({ length: 5 }, (_, i) =>
+        path.join(root, `entry-${i}.ts`),
+      );
+      await Promise.all(
+        entries.map((entry, i) =>
+          writeFile(entry, `export const value${i} = ${i} as const;`),
+        ),
+      );
+      const shared = sharedDeclarationEmit(entries, root + suffix, () => null);
+      for (const [i, entry] of entries.entries()) {
+        expect(shared.load(declarationId(entry))).toContain(
+          `export declare const value${i}: ${i};`,
+        );
+      }
+      for (const entry of entries) {
+        const reads = readFile.mock.calls.filter(
+          ([file]) => path.resolve(file) === entry,
+        );
+        expect(reads.length).toBeLessThanOrEqual(2);
+      }
+    } finally {
+      readFile.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 it("preserves inferred types, ambient declarations, and distinct workspace compiler options", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bb-shared-declarations-"));

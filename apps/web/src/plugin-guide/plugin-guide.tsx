@@ -4,7 +4,7 @@ import {
   GROUP_BY_SURFACE_ID,
   type PluginSurface,
 } from "../../../../plugins/plugin-api-docs/src/surfaces";
-import { BRAND_ICON_URL_BY_NAME, pluginSourceHref } from "./plugin-directory";
+import { BRAND_ICON_URL_BY_NAME, pluginPageHref } from "./plugin-directory";
 
 function renderBrandIcon(displayName: string) {
   const url = BRAND_ICON_URL_BY_NAME.get(displayName);
@@ -64,7 +64,7 @@ export default function PluginGuide({
 }) {
   return (
     <ProductMap
-      pluginPageHref={pluginSourceHref}
+      pluginPageHref={pluginPageHref}
       renderPluginIcon={renderBrandIcon}
       initialSlideId={initialSlideId}
       onSlideChange={onSlideChange}

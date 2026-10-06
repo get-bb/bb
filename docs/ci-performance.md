@@ -109,6 +109,66 @@ separately: a rerun can reuse earlier successful jobs, making the span between
 the earliest and latest job misleading. Keep failed and canceled attempts out
 of successful-run latency percentiles, but track their frequency separately.
 
+## October 5 declaration-generation investigation
+
+A sample of the 20 most recent successful runs on each sampled day, excluding
+reruns using the run API's `run_attempt`, showed these workflow durations:
+
+| Date            | First-attempt runs |  Median |
+| --------------- | -----------------: | ------: |
+| October 1, 2026 |                 16 |   4m26s |
+| October 4, 2026 |                 18 | 4m50.5s |
+| October 5, 2026 |                 15 |   7m36s |
+
+These are small time-window samples, not whole-day percentiles. The October 5
+sample ends at run [37387186039](https://github.com/get-bb/bb/actions/runs/37387186039).
+Full Windows test coverage was added on October 2 in PR #4776. Retain that
+coverage when optimizing the now-longer critical path.
+
+In first-attempt run [37386205651](https://github.com/get-bb/bb/actions/runs/37386205651),
+the Windows server shards spent 179.3s and 149.8s in
+`@get-bb/plugin-sdk#build:types`; the other-packages shard spent 170.5s there.
+All three were cache misses. Server shard 1 then spent 124.0s running tests.
+
+The shared declaration emitter compared TypeScript's forward-slash source
+filenames against a Windows backslash workspace prefix. That selected no
+workspace roots, causing repeated compiler-program construction as declaration
+sources loaded. Normalize both paths before selecting roots and checking
+program membership. The regression exercises real TypeScript emission and
+bounds source-file reads across five entry points, including an equivalent
+workspace path with a trailing separator. Before the fix that case read the
+first entry six times; afterward it reads it twice. Existing coverage checks
+inferred types, ambient declarations, and different compiler options.
+
+The controlled Windows [benchmark run 37389733655](https://github.com/get-bb/bb/actions/runs/37389733655)
+compared baseline and fixed emitters on the same Blacksmith four-vCPU Windows
+Server 2025 runner, with Node 22.23.2, unchanged dependencies, and Turbo
+`--force`. Each build started without the generated declaration directory.
+The execution order was baseline, fixed, fixed, baseline:
+
+| Emitter  | First task duration | Second task duration |     Mean |
+| -------- | ------------------: | -------------------: | -------: |
+| Baseline |            156.813s |             132.999s | 144.906s |
+| Fixed    |             18.720s |              20.083s |  19.402s |
+
+Declaration generation was 7.47 times faster (86.6% less task time). All four
+runs were cache misses, and SHA-256 manifests for all 17 declaration bundles
+matched exactly. The benchmark script and workflow are preserved in commit
+`f6abf8ad78` on `bb/ci-windows-declaration-benchmark-thr_jis82m9hmh`; its artifact
+contains per-round timings, output hashes, and Turbo execution summaries.
+
+The regular [PR CI run 37389645615](https://github.com/get-bb/bb/actions/runs/37389645615)
+passed all 26 active jobs. Its uncached Windows declaration tasks took 20.133s
+(server-1), 25.816s (server-2), and 35.365s (packages-other). The full workflow
+took seven minutes; the task speedup is not an equivalent whole-workflow
+speedup because other test jobs remain on the critical path.
+
+Infrastructure also contributes: run
+[37381624894](https://github.com/get-bb/bb/actions/runs/37381624894) had a 118s
+maximum job provisioning wait, and its Windows server-1 checkout spent 122s in
+the shallow Git fetch. Later-starting jobs in multi-attempt runs must not be
+counted as provisioning delays from the original workflow creation time.
+
 ## Cache maintenance
 
 `CI Cache Maintenance` reports GitHub-visible storage by family and runs daily.

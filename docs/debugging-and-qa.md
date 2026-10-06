@@ -13,6 +13,34 @@
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+## Desktop Browser Tab Recovery
+
+Saved desktop browser tabs keep their URL and owning host/window. Opening one
+in the desktop app attaches the existing view when that window still owns it,
+including after its connection generation changes. While the desktop or host is
+reconnecting, the panel retries for about a minute, then offers Try again.
+
+After a window closes or the app relaunches, the panel reopens the saved URL in
+the current window on the same host once the host confirms the old window is
+gone. Native history and unsaved page state are not restored. The desktop broker
+suppresses teardown snapshots from destroyed windows so closing a window does
+not delete its saved tabs before another window can recover them. The server adopts
+the restored tab from the window's browser snapshot and closes competing restored
+views if two windows reopen it concurrently. Snapshots from a stale restoring
+generation cannot adopt the tab. A newer snapshot from the same window and
+thread cancels a pending adoption, including when the newer snapshot is empty.
+
+Web clients, other hosts, and other live windows show the saved URL and its
+availability instead of attaching a native view. Copy link remains available;
+Open in browser accepts only HTTP(S) URLs. The panel's tab close control also
+works in this state. Selecting another saved tab rechecks its owning window;
+Try again also rechecks a window previously reported as live after it closes.
+Inspect the persisted owner with
+`bb thread tabs show <threadId> --json` or `sdk.threads.tabs.get`, and compare it
+with `bb browser instances --host <hostId> --json` or
+`sdk.experimental_desktopBrowsers.listInstances`. Recovery uses the existing
+native snapshot and browser APIs; no daemon wire fields change.
+
 ## Reproducing Test Order Failures
 
 CI's test shards shuffle test files and tests within each file. Vitest prints the seed for
@@ -101,6 +129,7 @@ the server's pending interaction list controls that. Clearing browser site data
 removes these drafts. Older clients ignore this new storage namespace. Only the
 native question form and Ask User Question plugin opt in; secret-request forms
 do not use this storage.
+
 
 ## Native Draft Rollback
 

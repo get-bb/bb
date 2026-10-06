@@ -1,5 +1,6 @@
 export {
   canOpenNativeScreen,
+  getNativeShell,
   isInsideNativeShell,
   resetNativeShellForTests,
   shellOpenExternal,

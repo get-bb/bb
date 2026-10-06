@@ -36,7 +36,7 @@ export function PluginCatalogInstallControl(
     ? included || props.onUninstall === undefined
     : props.disabled;
   const tooltip = included
-    ? "Included with BB; cannot be uninstalled."
+    ? "Included with BB"
     : installed
       ? "Installed"
       : disabled

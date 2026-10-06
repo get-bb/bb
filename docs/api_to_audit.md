@@ -2410,6 +2410,14 @@ retains the drawer, thread list, footer, resize handle, and hidden-body
 shortcut policy. While a provider calls `openCustomize()`, the host renders
 its customize editor in the region and keeps the provider mounted but hidden.
 
+While the default-off `navigationRail` experiment is on, wide viewports do not
+mount this slot: the host draws a persistent rail from the same navigation
+model (items, order, visibility, accessories, split drags) and opens the
+customize editor in a popover beside the rail, including for `openCustomize()`
+calls. Registrations and `sidebar.navigationProvider` are kept, so
+the picked provider returns when the experiment is turned off. Compact
+viewports still mount the slot.
+
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
 bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
@@ -2489,7 +2497,9 @@ under Settings → Appearance → Header. The component receives `width`,
 `controlSize`, and `isCompactViewport`. The host clips content to the row,
 keeps the window drag region on macOS while interactive descendants opt out,
 hides the header while the navigation customize editor is open, and removes
-it with one toast on a crash. `--bb-sidebar-control-size` and
+it with one toast on a crash. While the `navigationRail` experiment is on,
+wide viewports do not mount this slot because New thread takes the header;
+`sidebar.headerProvider` is kept and applies again when the experiment is off. `--bb-sidebar-control-size` and
 `--bb-sidebar-control-icon-size` expose the header's control sizing.
 
 A plugin that moves its navigation into the header tracks whether its header
@@ -2633,6 +2643,44 @@ files, thread-storage files, and project files that use the primary host.
 4. Confirm omission should continue to mean primary-host resolution and that
    this remains compatible with persisted opener tabs created before the field
    existed.
+
+## `experimental_VoiceInputTextarea` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** A host-owned controlled textarea with bb's voice input. It
+takes `value`, `onValueChange`, and an optional `onVoiceInputActiveChange`;
+every other textarea attribute, including `ref` and `className`, reaches the
+underlying `<textarea>`. The caller styles the textarea; the host wraps it in
+a relative container and, when the browser supports voice input, adds bottom
+padding and the microphone, waveform, cancel, and stop controls. Finished
+transcripts are appended to `value` through `onValueChange` and stay editable;
+nothing is submitted. `onVoiceInputActiveChange` is true from the start of
+recording until transcription finishes or is cancelled, and false on unmount,
+so a form can hold navigation and submission. Unmounting discards late
+transcripts. It uses the same microphone preference, transcription service,
+and error handling as the prompt box. Without voice support it renders the
+plain textarea; the test harness renders that plain textarea too.
+
+The registry's `voice-input-textarea` item re-exports it, and the registry's
+`question-form` renders its free-text answer with it. Inside bb, the built-in
+Ask User Question and pi plugins and bb's own question form reach the same
+component through the `@bb/shared-ui/voice-input-textarea` module the build
+shims.
+
+**Audit before stabilizing.**
+
+1. **Prop surface.** Every textarea attribute passes through. Decide whether a
+   narrower explicit list is the better contract, and whether callers need to
+   style the host's wrapper (it is a plain block today, so a flex child cannot
+   stretch it).
+2. **Voice lifecycle.** Verify cancellation, microphone permissions, mobile
+   capture, and late transcription isolation when the component unmounts or
+   its `value` changes mid-transcription.
+3. **Unsupported hosts.** The textarea renders without controls when voice is
+   unsupported, with no reason shown. Decide whether callers need the
+   unsupported reason or a way to hide the controls.
+4. **Consumer count.** One form (the shared question form, used by Ask User
+   Question, pi, and bb's own questions). Confirm a third-party consumer before
+   the prefix drops.
 
 ## `experimental_SourceCode` / `experimental_Diff` (`@get-bb/plugin-sdk/app`)
 
@@ -3683,3 +3731,15 @@ with third-party providers.
 `bb.sdk.experimental_promptHistory.list({ cursor?, limit?, signal? })` returns `{ entries, nextCursor }`: every accepted user prompt across projects and threads, newest first, each with `id`, `createdAt`, `input`, `projectId`, and `threadId`. `limit` is a digit string, defaulting to 100 and capped at 1000. `nextCursor` is an opaque string, or null on the last page. A page can hold fewer than `limit` entries while `nextCursor` is set, because stored rows whose input no longer parses are skipped. Prompts from a deleted thread remain listed until the thread row is removed, which cascades to its prompt history. The same route backs `bb prompt-history list`.
 
 Before stabilization, audit whether `limit` should be a number, whether the cursor format needs versioning, whether project or thread filters belong on this call rather than on `projects.promptHistory` and `threads.promptHistory`, and whether skipped rows should fill the page.
+
+## `ThreadChatMessageReference.experimental_messageSeq`
+
+The message reference handed to `messageAction` runs, `ThreadChat` consumer
+message actions, and prose selections carries the event sequence that recorded
+the message. It is the `msg` value of a message link and the seq accepted by
+`sdk.threads.message` and `bb thread log --message`, so a plugin can build or
+resolve a message link without guessing. It equals `sourceSeqEnd` except for a
+steer, which is recorded by its request and shown at its acceptance.
+Stabilize once message links have shipped and the seq has stayed stable across
+edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
+should remain alongside it.
