@@ -2095,6 +2095,81 @@ function openHttpStreamId(sent: Uint8Array[], index: number): number {
   return frame.streamId;
 }
 
+describe("TunnelDO voice transcription response head", () => {
+  async function voicePost() {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+    let settled = false;
+    const pending = Promise.resolve(
+      dob.fetch(
+        new Request("https://do.internal/api/v1/system/voice-transcription", {
+          method: "POST",
+          body: "audio",
+        }),
+      ),
+    ).then((response) => {
+      settled = true;
+      return response;
+    });
+    return {
+      dob,
+      tunnel,
+      pending,
+      streamId: openHttpStreamId(sent, 0),
+      settled: () => settled,
+    };
+  }
+
+  it("relays a transcript whose head arrives after 85 seconds", async () => {
+    vi.useFakeTimers();
+    try {
+      const { dob, tunnel, pending, streamId, settled } = await voicePost();
+      await vi.advanceTimersByTimeAsync(85_000);
+      expect(settled()).toBe(false);
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "resp-head",
+          streamId,
+          status: 200,
+          headers: [["content-type", "application/json"]],
+        }),
+      );
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "body-chunk",
+          streamId,
+          data: new TextEncoder().encode('{"text":"a long note"}'),
+        }),
+      );
+      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
+      const response = await pending;
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ text: "a long note" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("answers 504 after 90 seconds without a head", async () => {
+    vi.useFakeTimers();
+    try {
+      const { pending, settled } = await voicePost();
+      await vi.advanceTimersByTimeAsync(89_999);
+      expect(settled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await pending).status).toBe(504);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("TunnelDO response relay", () => {
   it("closes the origin stream when the visitor cancels a response body", async () => {
     const sent: Uint8Array[] = [];

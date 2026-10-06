@@ -6,9 +6,10 @@ import {
   RELAY_HAS_BODY_HEADER,
   RELAY_HEADER,
   RELAY_METHOD_HEADER,
+  TUNNEL_TARGET_HEADER,
 } from "./protocol-headers.js";
+import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
 import {
-  RELAY_RESP_HEAD_TIMEOUT_MS,
   fetchThroughRelay,
   relayUpgradeRequest,
   workerHeldResponsesEnabled,
@@ -229,13 +230,103 @@ describe("fetchThroughRelay", () => {
       stub,
       new Request("https://sawyer.getbb.app/slow"),
     );
-    await vi.advanceTimersByTimeAsync(RELAY_RESP_HEAD_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
     const response = await pending;
     expect(response?.status).toBe(504);
     await expect(response?.text()).resolves.toContain(
       "timed out waiting for the tunnel client",
     );
     expect(socket.closes).toHaveLength(1);
+  });
+
+  describe("voice transcription response head", () => {
+    function voiceRequest(
+      init: { method?: string; headers?: Record<string, string> } = {},
+    ) {
+      return new Request(
+        "https://sawyer.getbb.app/api/v1/system/voice-transcription",
+        {
+          method: init.method ?? "POST",
+          ...(init.method === "GET" ? {} : { body: "audio" }),
+          headers: init.headers ?? {},
+        },
+      );
+    }
+
+    it("relays a transcript whose head arrives after 85 seconds", async () => {
+      vi.useFakeTimers();
+      const socket = new FakeRelaySocket();
+      const { stub } = upgradedWith(socket);
+      let settled = false;
+      const pending = fetchThroughRelay(stub, voiceRequest()).then(
+        (response) => {
+          settled = true;
+          return response;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(85_000);
+      expect(settled).toBe(false);
+      socket.deliver({
+        type: "resp-head",
+        streamId: STREAM_ID,
+        status: 200,
+        headers: [["content-type", "application/json"]],
+      });
+      socket.deliver({
+        type: "body-chunk",
+        streamId: STREAM_ID,
+        data: new TextEncoder().encode('{"text":"a long note"}'),
+      });
+      socket.deliver({ type: "body-end", streamId: STREAM_ID });
+      const response = await pending;
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ text: "a long note" });
+    });
+
+    it("answers 504 and closes the relay after 90 seconds without a head", async () => {
+      vi.useFakeTimers();
+      const socket = new FakeRelaySocket();
+      const { stub } = upgradedWith(socket);
+      let settled = false;
+      const pending = fetchThroughRelay(stub, voiceRequest()).then(
+        (response) => {
+          settled = true;
+          return response;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(89_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const response = await pending;
+      expect(response?.status).toBe(504);
+      await expect(response?.text()).resolves.toContain(
+        "timed out waiting for the tunnel client",
+      );
+      expect(socket.closes).toHaveLength(1);
+    });
+
+    it.each([
+      ["a GET of the voice path", voiceRequest({ method: "GET" })],
+      [
+        "a port share at the voice path",
+        voiceRequest({ headers: { [TUNNEL_TARGET_HEADER]: "8000" } }),
+      ],
+      [
+        "another upload",
+        new Request("https://sawyer.getbb.app/api/v1/upload", {
+          method: "POST",
+          body: "file",
+        }),
+      ],
+    ])("keeps the 30 second head deadline for %s", async (_name, request) => {
+      vi.useFakeTimers();
+      const socket = new FakeRelaySocket();
+      const { stub } = upgradedWith(socket);
+      const pending = fetchThroughRelay(stub, request);
+      await vi.advanceTimersByTimeAsync(30_000);
+      const response = await pending;
+      expect(response?.status).toBe(504);
+    });
   });
 
   it("answers 502 when the tunnel drops before the response head", async () => {

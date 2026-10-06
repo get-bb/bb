@@ -19,6 +19,7 @@ import {
   type HeaderPair,
 } from "@bb/tunnel-contract";
 import { relayedResponse } from "./response-encoding.js";
+import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 import {
   HOP_HEADERS,
   RELAY_CONTENT_LENGTH_HEADER,
@@ -46,7 +47,6 @@ const TUNNEL_CLOSED_AT_KEY = "tunnelClosedAt";
 const TUNNEL_LOST_AT_KEY = "tunnelLostAt";
 const VANISHED_TUNNEL_GRACE_MS = 5_000;
 const TUNNEL_RETURN_GRACE_MS = 15_000;
-const RESP_HEAD_TIMEOUT_MS = 30_000;
 const PRESENCE_INTERVAL_MIN_MS = 40_000;
 const PRESENCE_INTERVAL_JITTER_MS = 20_000;
 const PRESENCE_ON_CHANGE_INTERVAL_MIN_MS = 25 * 60_000;
@@ -509,6 +509,12 @@ export class TunnelDO {
     const streamId = this.nextStreamId++;
     const hasBody = request.body !== null;
 
+    const headTimeoutMs = responseHeadTimeoutMs(
+      request.method,
+      url,
+      request.headers,
+    );
+
     const responsePromise = new Promise<Response>((resolve) => {
       const timeout = setTimeout(() => {
         this.failHttpStream(
@@ -516,7 +522,7 @@ export class TunnelDO {
           504,
           "timed out waiting for the tunnel client",
         );
-      }, RESP_HEAD_TIMEOUT_MS);
+      }, headTimeoutMs);
       this.pendingHttp.set(streamId, {
         resolve,
         writer: null,

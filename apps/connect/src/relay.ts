@@ -12,8 +12,8 @@ import {
   RELAY_METHOD_HEADER,
 } from "./protocol-headers.js";
 import { relayedResponse } from "./response-encoding.js";
+import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 
-export const RELAY_RESP_HEAD_TIMEOUT_MS = 30_000;
 const RELAY_DONE_CLOSE_CODE = 1000;
 const RELAY_PLACEHOLDER_STREAM_ID = 0;
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
@@ -139,9 +139,14 @@ function relayResponse(socket: WebSocket, request: Request): Promise<Response> {
       }
       finish(message);
     };
+    const headTimeoutMs = responseHeadTimeoutMs(
+      request.method,
+      new URL(request.url),
+      request.headers,
+    );
     const headTimeout = setTimeout(() => {
       fail(504, "timed out waiting for the tunnel client");
-    }, RELAY_RESP_HEAD_TIMEOUT_MS);
+    }, headTimeoutMs);
 
     const onHead = (frame: Extract<Frame, { type: "resp-head" }>) => {
       if (headSettled) return;
