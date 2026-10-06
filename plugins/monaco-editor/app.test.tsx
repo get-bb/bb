@@ -108,7 +108,9 @@ it("saves edits with the toolbar button and prevents duplicate pending saves", a
   expect(write).toHaveBeenCalledOnce();
   await act(async () => finishSave({ outcome: "written", sha256: "saved" }));
   expect(screen.queryByRole("status")).toBeNull();
-  expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(false);
+  expect(
+    screen.getByRole("button", { name: "Save" }).hasAttribute("disabled"),
+  ).toBe(false);
 });
 
 it.each([range(80), range(120, 124)])(
