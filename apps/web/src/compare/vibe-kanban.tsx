@@ -27,9 +27,9 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
   slug: "vibe-kanban-alternative",
   title: "Vibe Kanban Alternative: Bring Your Board to bb",
   description:
-    "Vibe Kanban shut down. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
+    "Vibe Kanban is sunsetting. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
   competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
-  headline: "Vibe Kanban shut down. Bring your board to bb.",
+  headline: "Vibe Kanban is sunsetting. Bring your board to bb.",
   sub: "Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
   heroVisual: <TasksBoard compact={false} />,
   tailored: LEDGER_HIGHLIGHT,
@@ -93,14 +93,15 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
       title: "Switching from Vibe Kanban",
       items: [
         {
-          question: "Is Vibe Kanban shut down?",
+          question: "Is Vibe Kanban shutting down?",
           answer: (
             <p>
-              Yes. Its maker, bloop,{" "}
+              Its maker, bloop,{" "}
               <a href="https://www.vibekanban.com/blog/shutdown">shut down</a>{" "}
               in April 2026 and turned off its cloud, including shared projects
-              and issues. Version 0.1.44 turned off Projects for everyone, and
-              there hasn’t been a release since. Local workspaces still run.
+              and issues. The open-source app continues as a community project,
+              but version 0.1.44 turned off Projects for everyone, and there
+              hasn’t been a release since. Local workspaces still run.
             </p>
           ),
         },
