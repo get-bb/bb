@@ -29,7 +29,11 @@ import {
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
+import {
+  NavRailMacosTrafficLightRow,
+  SidebarResizeHandle,
+  SidebarTopReserveRow,
+} from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -369,6 +373,7 @@ export function AppSidebar({
           </div>
         ) : navRail ? (
           <Sidebar ref={sidebarRef}>
+            <NavRailMacosTrafficLightRow />
             <div className="flex min-h-0 flex-1">
               {navRail.renderRail({
                 isOpen: isNavigationCustomizing,

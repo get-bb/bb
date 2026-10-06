@@ -30,13 +30,11 @@ import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
@@ -271,11 +269,6 @@ export function AppNavRail({
   const navigate = useNavigate();
   const settingsShortcut = useAppCommandShortcut("settings.open");
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const desktopWindowState = useDesktopWindowState();
-  const reserveMacosTrafficLights = shouldReserveMacosTrafficLights({
-    desktopInfo,
-    windowState: desktopWindowState,
-  });
 
   const isHomeActive =
     isAppMode &&
@@ -313,8 +306,7 @@ export function AppNavRail({
         aria-hidden="true"
         className={cn(
           CHROME_ROW_HEIGHT_CLASS,
-          "shrink-0",
-          !reserveMacosTrafficLights && "bg-surface-recessed",
+          "shrink-0 bg-surface-recessed",
           shouldUseMacosDesktopChrome(desktopInfo) && MACOS_WINDOW_DRAG_CLASS,
         )}
       />
