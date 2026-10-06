@@ -36,6 +36,8 @@ import {
 } from "./compare-sections";
 import type { BrandLogo } from "./compare-visuals";
 import { BB_VS_CONDUCTOR } from "./conductor";
+import { BB_VS_CURSOR } from "./cursor";
+import { BB_VS_T3_CODE } from "./t3-code";
 import { BB_VS_VIBE_KANBAN } from "./vibe-kanban";
 
 export type Mark = "yes" | "partial" | "no";
@@ -418,6 +420,8 @@ export const COMPARISONS: Comparison[] = [
   BB_VS_SUPERSET,
   BB_VS_VIBE_KANBAN,
   BB_VS_CONDUCTOR,
+  BB_VS_T3_CODE,
+  BB_VS_CURSOR,
 ];
 
 export function getComparison(slug: string): Comparison | undefined {

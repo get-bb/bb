@@ -550,6 +550,7 @@ describe("buildPaletteThreadSearchRows", () => {
       ["cafe", "Café sync"],
       ["plugin-sdk", "Plugin SDK docs"],
       ["port", "Port forwarding"],
+      ["thread_search", "Search the thread list"],
     ])(
       "matches %s against title words the way the server does",
       (query, title) => {

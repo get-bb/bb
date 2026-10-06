@@ -28,7 +28,7 @@ import {
   LinuxIcon,
   OpenAiIcon,
 } from "../landing/icons";
-import { useCycle } from "../landing/landing-visuals";
+import { SpawnRow, useCycle } from "../landing/landing-visuals";
 
 export type BrandLogo = { kind: "bb" } | { kind: "image"; src: string };
 
@@ -307,6 +307,125 @@ export function AgentSplit() {
             </div>
           </section>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineMessage({
+  label,
+  thread,
+  icon,
+  delay,
+  children,
+}: {
+  label: "Message from" | "Sent to";
+  thread: string;
+  icon: typeof ClaudeIcon;
+  delay: number;
+  children: ReactNode;
+}) {
+  return (
+    <li className="cmp-message" style={{ animationDelay: `${delay}s` }}>
+      <span className="cmp-message-head">
+        <HugeiconsIcon icon={Message01Icon} className="cmp-message-ic" />
+        <span className="cmp-message-label">{label}</span>
+        <ThreadPill title={thread} icon={icon} />
+      </span>
+      <span className="cmp-message-body">{children}</span>
+    </li>
+  );
+}
+
+export function SpawnTimeline() {
+  const { cycle, leaving } = useCycle(9800, 500);
+  return (
+    <div
+      className="cmp-crew"
+      role="img"
+      aria-label="Claude Code starts a Codex thread and a Cursor thread for a release. Each one messages its result back to Claude Code's timeline, and Claude Code answers Codex's question."
+    >
+      <div
+        className={leaving ? "cmp-crew-body leaving" : "cmp-crew-body"}
+        key={cycle}
+      >
+        <div className="spawnbar cmp-crew-threads">
+          <div className="sb-head">
+            <span aria-hidden="true" className="bb-mark sb-mark" />
+            <span className="sb-title">Threads</span>
+            <span className="sb-active">3 active</span>
+          </div>
+          <div className="sb-list">
+            <SpawnRow
+              parent
+              icon={<ClaudeIcon className="sb-ic" />}
+              name="Claude Code"
+              task="Ship the release"
+              status="managing"
+              at={0.1}
+              doneAt={6.6}
+            />
+            <div className="sb-kids">
+              <SpawnRow
+                icon={<OpenAiIcon className="sb-ic" />}
+                name="Codex"
+                task="Port module to TS"
+                status="running"
+                at={1.3}
+                doneAt={4.3}
+              />
+              <SpawnRow
+                icon={<CursorIcon className="sb-ic" />}
+                name="Cursor"
+                task="Refactor the auth flow"
+                status="running"
+                at={1.5}
+                doneAt={5.2}
+              />
+            </div>
+          </div>
+        </div>
+        <section className="cmp-pane cmp-crew-thread">
+          <PaneHead
+            icon={<ClaudeIcon className="cmp-pane-ic" />}
+            title="Ship the release"
+          />
+          <ol className="cmp-feed">
+            <li className="cmp-user" style={{ animationDelay: "0.4s" }}>
+              Ship the release. Split up the work.
+            </li>
+            <li style={{ animationDelay: "1.1s" }}>
+              Started Codex and Cursor, one task each.
+            </li>
+            <TimelineMessage
+              label="Message from"
+              thread="Port module to TS"
+              icon={OpenAiIcon}
+              delay={2.6}
+            >
+              Ported. One export changed shape. Should I update its callers?
+            </TimelineMessage>
+            <TimelineMessage
+              label="Sent to"
+              thread="Port module to TS"
+              icon={OpenAiIcon}
+              delay={3.5}
+            >
+              Yes, update them.
+            </TimelineMessage>
+            <TimelineMessage
+              label="Message from"
+              thread="Refactor the auth flow"
+              icon={CursorIcon}
+              delay={5.2}
+            >
+              Done. The auth tests pass.
+            </TimelineMessage>
+            <li style={{ animationDelay: "6.6s" }}>
+              Both are done. The release is ready.
+            </li>
+          </ol>
+        </section>
       </div>
     </div>
   );
@@ -954,6 +1073,59 @@ export function TeamCost({
       <p className="cmp-cost-foot">
         {priceNote} Your agent plans are separate either way.
       </p>
+    </div>
+  );
+}
+
+const PLANS = [
+  { agent: "Claude Code", plan: "Your Claude Max plan", icon: ClaudeIcon },
+  { agent: "Codex", plan: "Your ChatGPT Pro plan", icon: OpenAiIcon },
+  { agent: "Cursor", plan: "Your Cursor Pro plan", icon: CursorIcon },
+] as const;
+
+export function PlansVisual() {
+  return (
+    <div
+      className="cmp-plans"
+      role="img"
+      aria-label="Claude Code, Codex, and Cursor running in bb on your own Claude, ChatGPT, and Cursor plans. When one Claude account reaches its limit, the thread continues on your next account."
+    >
+      <ul className="cmp-plans-list">
+        {PLANS.map((plan) => (
+          <li key={plan.agent} className="cmp-plans-row">
+            <span className="cmp-plans-ic">
+              <plan.icon className="cmp-plans-agent" />
+            </span>
+            <span className="cmp-plans-who">
+              <span className="cmp-plans-name">{plan.agent}</span>
+              <span className="cmp-plans-plan">{plan.plan}</span>
+            </span>
+            <PhoneStatus status="running" />
+          </li>
+        ))}
+      </ul>
+      <div className="cmp-plans-thread">
+        <span className="cmp-plans-title">
+          <ClaudeIcon className="cmp-plans-agent" />
+          <span className="trow-title">Add rate limiting to uploads</span>
+        </span>
+        <span className="cmp-plans-acct cmp-plans-acct-work">
+          <span className="cmp-plans-dot" />
+          <span className="cmp-plans-acct-name">Account 1</span>
+          <span className="cmp-plans-bar">
+            <span className="cmp-plans-fill" />
+          </span>
+          <span className="cmp-plans-limit">Limit</span>
+        </span>
+        <span className="cmp-plans-acct cmp-plans-acct-personal">
+          <span className="cmp-plans-dot" />
+          <span className="cmp-plans-acct-name">Account 2</span>
+          <span className="cmp-plans-bar">
+            <span className="cmp-plans-fill" />
+          </span>
+          <span className="cmp-plans-limit" />
+        </span>
+      </div>
     </div>
   );
 }

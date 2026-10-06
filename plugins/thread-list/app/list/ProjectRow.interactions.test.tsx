@@ -218,9 +218,11 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
 
 function CustomSectionsVisibilityProbe({
   threads,
+  buildingName = "Building",
   onProjectSelect,
 }: {
   threads: SidebarThread[];
+  buildingName?: string;
   onProjectSelect: () => void;
 }) {
   const { order, persistedOrder, onOrderChange } = useSidebarModeSectionOrder({
@@ -234,7 +236,7 @@ function CustomSectionsVisibilityProbe({
       threadListState={{ status: "ready", threads }}
       compareThreads={() => 0}
       sections={[
-        { id: "sec_building", name: "Building" },
+        { id: "sec_building", name: buildingName },
         { id: "sec_review", name: "Review" },
       ]}
       collapsedThreadIds={new Set()}
@@ -744,9 +746,10 @@ describe("ProjectRow interactions", () => {
         code: "section_name_conflict",
       }),
     );
-    const { sdkCalls } = renderTree(
+    const store = createStore();
+    const slot = renderTree(
       <CustomSectionsVisibilityProbe threads={[]} onProjectSelect={vi.fn()} />,
-      { sdk: { threadSections: { update } } },
+      { sdk: { threadSections: { update } }, store },
     );
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Building section actions" }),
@@ -763,7 +766,7 @@ describe("ProjectRow interactions", () => {
     fireEvent.change(input, { target: { value: "New section" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
-      expect(sdkCalls.at(-1)).toEqual({
+      expect(slot.sdkCalls.at(-1)).toEqual({
         method: "threadSections.update",
         args: [{ id: "sec_building", name: "New section" }],
       }),
@@ -772,6 +775,15 @@ describe("ProjectRow interactions", () => {
       expect(
         screen.queryByRole("textbox", { name: "Section name" }),
       ).toBeNull(),
+    );
+    slot.rerender(
+      <Harness store={store}>
+        <CustomSectionsVisibilityProbe
+          threads={[]}
+          onProjectSelect={vi.fn()}
+          buildingName="New section"
+        />
+      </Harness>,
     );
     expect(
       screen.getByRole("button", { name: "New section section actions" }),
@@ -1183,7 +1195,7 @@ describe("ProjectRow interactions", () => {
       sdkResult({ ok: true, archivedThreadIds: [] }),
     );
     const update = vi.fn(sdkResult({ ok: true }));
-    const { sdkCalls } = renderProjectRow(
+    const { sdkCalls, sidebarActionCalls } = renderProjectRow(
       vi.fn(),
       {
         status: "ready",
@@ -1221,9 +1233,9 @@ describe("ProjectRow interactions", () => {
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-    expect(sdkCalls).toContainEqual({
-      method: "environments.archiveThreads",
-      args: [{ environmentId: "env_plain" }],
+    expect(sidebarActionCalls).toContainEqual({
+      method: "experimental_archiveEnvironmentThreads",
+      environmentId: "env_plain",
     });
 
     fireEvent.pointerDown(
