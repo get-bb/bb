@@ -32,7 +32,6 @@ export function CommitsSection({
               <span className="size-[7px] rounded-full border border-subtle-foreground/60 bg-background group-hover:border-subtle-foreground" />
             }
             name={commit.subject}
-            muted
             title={commit.subject}
             target={
               onCommitClick
