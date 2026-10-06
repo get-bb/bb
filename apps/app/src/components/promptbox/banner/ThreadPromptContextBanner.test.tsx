@@ -494,15 +494,22 @@ describe("ThreadPromptContextBanner", () => {
     expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
   });
 
-  it("expands once when a subthread newly needs input", () => {
+  it("expands once when a subthread newly needs input, even across remounts", () => {
     const onToggleSection = vi.fn();
     const renderBanner = (
       items: ReturnType<typeof subthreadItem>[],
+      {
+        gitSection = null,
+        gitSectionPending = false,
+      }: {
+        gitSection?: ReturnType<typeof makeGitSection> | null;
+        gitSectionPending?: boolean;
+      } = {},
     ) => (
       <MemoryRouter>
         <ThreadPromptContextBanner
-          gitSection={null}
-          gitSectionPending={false}
+          gitSection={gitSection}
+          gitSectionPending={gitSectionPending}
           archivedSection={null}
           environmentGoneSection={null}
           parentThreadSection={null}
@@ -527,6 +534,15 @@ describe("ThreadPromptContextBanner", () => {
     rerender(renderBanner([blocked, working]));
     expect(onToggleSection).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Active subthreads")).toBeTruthy();
+
+    rerender(
+      renderBanner([blocked, working], {
+        gitSection: makeGitSection("uncommitted"),
+      }),
+    );
+    rerender(renderBanner([blocked, working], { gitSectionPending: true }));
+    rerender(renderBanner([blocked, working]));
+    expect(onToggleSection).toHaveBeenCalledTimes(1);
     expect(
       screen
         .getByRole("button", { name: "2 active subthreads" })
