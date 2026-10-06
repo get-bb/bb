@@ -6,6 +6,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import {
+  usePublishPluginDetailOpener,
+  type PluginDetailOpener,
+} from "@/components/plugin/plugin-detail-opener";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import { AppNavigationHostProvider } from "./app-navigation-host";
@@ -216,6 +220,42 @@ describe("plugin SDK navigation components", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(results).toEqual([true]);
     expect(openUrl).toHaveBeenCalledWith({ url: "https://example.com/a" });
+  });
+
+  it("opens a plugin's detail page in the focused workspace", () => {
+    const openDetail = vi.fn<PluginDetailOpener>(() => true);
+    const results: boolean[] = [];
+    function Workspace() {
+      usePublishPluginDetailOpener(openDetail, true);
+      return null;
+    }
+    function Probe() {
+      const navigate = pluginSdkAppImplementation.useBbNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            results.push(navigate.experimental_openPluginDetail("docs"));
+            results.push(navigate.experimental_openPluginDetail(""));
+          }}
+        >
+          Details
+        </button>
+      );
+    }
+    render(
+      <MemoryRouter>
+        <Workspace />
+        <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+          <Probe />
+        </PluginSlotMount>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(results).toEqual([true, false]);
+    expect(openDetail.mock.calls).toEqual([
+      [{ pluginId: "docs", title: "docs" }],
+    ]);
   });
 
   it("exposes the file link through the real runtime", () => {

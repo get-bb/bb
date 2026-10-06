@@ -26,6 +26,13 @@ or press **Ctrl+R** in a composer to search, preview, star, and insert prompts.
 history; `bb prompts list [--json]`, `bb prompts star <text...> [--json]`, and
 `bb prompts unstar <id> [--json]` manage starred text and mentions. History restores text, mentions, and attachments into an empty composer. Inserting never sends a message.
 
+The builtin Plugin cards plugin (`bb--plugin-cards`, enabled by default) gives
+agents a `show_plugin_card` tool. It checks a plugin id against installed and
+store-listed plugins and returns a `::plugin-card{id="<id>"}` line that renders
+as a card in the reply. The card opens that plugin's detail page; enabling and
+installing happen there, never from the card. Disable it with
+`bb plugin disable bb--plugin-cards`.
+
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
@@ -727,7 +734,8 @@ useBbNavigate (including openUrl(url), which applies the current
 client's in-app/external-browser preference, plus
 experimental_openFilePreview({ target, location }) and
 experimental_openFileExternally({ target, location }) for explicit live
-workspace/host/thread-storage files), and useComposer (one stable handle for
+workspace/host/thread-storage files, and experimental_openPluginDetail(pluginId)
+for bb's plugin detail page, which owns enabling and installing), and useComposer (one stable handle for
 the bound composer: read its text, mentions, reactive picker selection, scope, layout, run and submit
 state, and why submitting is blocked; replace/update/clear text; insert text
 and mentions at the cursor or end; apply a class-based text effect, lock input,

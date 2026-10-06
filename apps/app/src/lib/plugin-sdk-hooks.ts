@@ -36,6 +36,8 @@ import {
   usePluginId,
 } from "@/components/plugin/plugin-context";
 import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
+import { openPluginDetail } from "@/components/plugin/open-plugin-detail";
+import { appQueryClient } from "@/lib/app-query-client";
 import {
   composerScopeIdentity,
   useOptionalPluginComposerView,
@@ -412,6 +414,18 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
+  const experimental_openPluginDetail = useCallback<
+    BbNavigate["experimental_openPluginDetail"]
+  >(
+    (detailPluginId) =>
+      typeof detailPluginId === "string" &&
+      openPluginDetail({
+        pluginId: detailPluginId,
+        queryClient: appQueryClient,
+        navigate: (path) => void navigate(path),
+      }),
+    [navigate],
+  );
   return useMemo<BbNavigate>(
     () => ({
       toThread,
@@ -421,6 +435,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openPluginDetail,
       openUrl,
     }),
     [
@@ -431,6 +446,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openPluginDetail,
       openUrl,
     ],
   );

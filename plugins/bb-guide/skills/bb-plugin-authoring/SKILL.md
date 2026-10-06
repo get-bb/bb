@@ -21,6 +21,9 @@ workflow. Install or reload when a live check is needed for the requested work.
 To find where a plugin can extend the app, open the Plugin Guide in bb or
 at https://getbb.app/plugin-guide.
 
+Before you create a new plugin, search the store with `bb plugin search <terms>
+--json` and offer an existing plugin that already does the job.
+
 Use bb plugin new <name> for a new plugin. The scaffold includes frontend files.
 Remove `bb.app` and those files when the plugin is headless.
 

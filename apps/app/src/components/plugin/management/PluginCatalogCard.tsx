@@ -3,18 +3,19 @@ import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
 } from "@bb/shared-ui/resource-pagination";
-import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import { PluginCard, PluginCardGrid, PluginCardAuthor } from "./PluginCard";
+import {
+  PluginBrowseCard,
+  PluginCatalogIconChip,
+  PluginCatalogInstallControl,
+} from "@bb/shared-ui/plugin-catalog-card";
+import { PluginCardGrid, PluginCardAuthor } from "./PluginCard";
 import {
   catalogEntryDetailKey,
   catalogEntryInstallBlocker,
 } from "./installed-plugin-catalog";
-import {
-  CatalogEntryIconChip,
-  pluginInstallCountPresentation,
-} from "./plugin-ui";
+import { pluginInstallCountPresentation } from "./plugin-ui";
 
 export function PluginCatalogGrid({
   entries,
@@ -69,8 +70,8 @@ export function PluginCatalogCard({
   const count = pluginInstallCountPresentation(entry);
   const installBlocker = catalogEntryInstallBlocker(entry);
   return (
-    <PluginCard
-      leading={<CatalogEntryIconChip entry={entry} compact />}
+    <PluginBrowseCard
+      leading={<PluginCatalogIconChip entry={entry} compact />}
       title={entry.displayName}
       description={entry.description || undefined}
       byline={<PluginCardAuthor entry={entry} />}

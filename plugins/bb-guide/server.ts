@@ -28,6 +28,13 @@ export default async function plugin(bb: BbPluginApi) {
       description: "Create and change BB plugins and SDK extensions.",
       default: true,
     },
+    findPlugins: {
+      type: "boolean",
+      label: "Plugin finder skill",
+      description:
+        "Search the plugin store and recommend existing plugins before building new ones.",
+      default: true,
+    },
     skillCreator: {
       type: "boolean",
       label: "Skill creator skill",
@@ -55,6 +62,7 @@ export default async function plugin(bb: BbPluginApi) {
       ? [
           ...(current.bbCli ? ["bb-cli"] : []),
           ...(current.pluginAuthoring ? ["bb-plugin-authoring"] : []),
+          ...(current.findPlugins ? ["find-plugins"] : []),
           ...(current.skillCreator ? ["skill-creator"] : []),
           ...(current.submitPlugin ? ["submit-a-plugin"] : []),
         ]

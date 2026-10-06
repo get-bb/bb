@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
-import {
-  ResourceBrowseCard,
-  ResourceBrowseGrid,
-} from "@bb/shared-ui/resource-list";
+import { PluginCatalogAuthorByline } from "@bb/shared-ui/plugin-catalog-card";
+import { ResourceBrowseGrid } from "@bb/shared-ui/resource-list";
+import { BbLogo } from "@/components/ui/bb-logo";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
@@ -13,38 +12,6 @@ export function PluginCardGrid({ children }: { children: ReactNode }) {
     <ResourceBrowseGrid className="w-full grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
       {children}
     </ResourceBrowseGrid>
-  );
-}
-
-interface PluginCardProps {
-  title: string;
-  description: ReactNode;
-  leading: ReactNode;
-  byline: ReactNode;
-  footerAction: ReactNode;
-  openLabel: string;
-  onOpen: (trigger: HTMLButtonElement) => void;
-}
-
-export function PluginCard({ byline, footerAction, ...props }: PluginCardProps) {
-  return (
-    <ResourceBrowseCard
-      {...props}
-      className="h-full min-h-36 grid-cols-[minmax(0,1fr)_0px] gap-x-0 gap-y-2 rounded-xl p-3"
-      leadingClassName="size-6"
-      description={
-        <span className="block min-h-[2lh]">{props.description}</span>
-      }
-      title={
-        <span className="line-clamp-2 whitespace-normal">{props.title}</span>
-      }
-      footer={
-        <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs text-subtle-foreground">
-          <span className="min-w-0 truncate">{byline}</span>
-          <span className="pointer-events-auto shrink-0">{footerAction}</span>
-        </div>
-      }
-    />
   );
 }
 
@@ -62,15 +29,14 @@ export function PluginAuthorByline({
   children,
 }: PluginAuthorBylineProps) {
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <PluginAuthorAvatar
-        name={name}
-        github={github}
-        official={official}
-        size="detail"
-      />
-      <span className="min-w-0 truncate">{children}</span>
-    </span>
+    <PluginCatalogAuthorByline
+      name={name}
+      github={github}
+      official={official}
+      officialMark={<BbLogo className="size-4/5" />}
+    >
+      {children}
+    </PluginCatalogAuthorByline>
   );
 }
 

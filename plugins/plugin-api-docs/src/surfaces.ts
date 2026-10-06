@@ -250,6 +250,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Browser Automation",
           "Docs",
           "Inline visualizations",
+          "Plugin cards",
           "Tasks",
           "Workflows",
         ],
@@ -1351,8 +1352,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Embed a thread, a new-thread prompt box, or a textarea with editable voice input",
           "Render Markdown, code, diffs, and file links the way bb does",
-          "Add or override app icons",
-          "Match bb's styling with no extra work",
+          "Open bb's detail page for any plugin, where people review, enable, or install it",
+          "Add or override app icons and match bb's styling with no extra work",
         ],
         apiSymbols: [
           "experimental_Icon",
@@ -1388,6 +1389,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "BbNavigate.openUrl",
           "BbNavigate.experimental_openFilePreview",
           "BbNavigate.experimental_openFileExternally",
+          "BbNavigate.experimental_openPluginDetail",
         ],
         firstParty: [
           "Account Pooler [Experimental]",
@@ -1398,6 +1400,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "File Editor",
           "GitHub",
           "Inline visualizations",
+          "Plugin cards",
           "Provider usage",
           "Side chat",
           "Tasks",

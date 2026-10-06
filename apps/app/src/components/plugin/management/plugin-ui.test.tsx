@@ -4,8 +4,10 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
 import {
-  CatalogEntryIcon,
-  CatalogEntryIconChip,
+  PluginCatalogIcon,
+  PluginCatalogIconChip,
+} from "@bb/shared-ui/plugin-catalog-card";
+import {
   pluginCatalogCategoryIconName,
   pluginInstallCountPresentation,
 } from "./plugin-ui";
@@ -15,7 +17,7 @@ afterEach(cleanup);
 it("masks a tinted icon instead of embedding it as an image", () => {
   const iconUrl = "/api/v1/plugin-catalog/icons/bb-community/agent-proxy?h=ab";
   const view = render(
-    <CatalogEntryIcon
+    <PluginCatalogIcon
       entry={{
         displayName: "Agent Proxy",
         icon: null,
@@ -45,7 +47,7 @@ it("masks a tinted icon instead of embedding it as an image", () => {
 it("embeds a marketplace listing's logo as an image", () => {
   const iconUrl = "/api/v1/plugin-catalog/icons/acme/widgets?h=cd";
   const view = render(
-    <CatalogEntryIcon
+    <PluginCatalogIcon
       entry={{ displayName: "Widgets", icon: null, iconUrl, iconTinted: false }}
       className="size-6"
     />,
@@ -62,7 +64,7 @@ it("embeds a marketplace listing's logo as an image", () => {
 it("uses one glyph box for host and marketplace catalog icons", () => {
   const view = render(
     <>
-      <CatalogEntryIconChip
+      <PluginCatalogIconChip
         entry={{
           displayName: "Push notifications",
           icon: "BellDot",
@@ -70,7 +72,7 @@ it("uses one glyph box for host and marketplace catalog icons", () => {
           iconTinted: false,
         }}
       />
-      <CatalogEntryIconChip
+      <PluginCatalogIconChip
         entry={{
           displayName: "Community notifications",
           icon: null,

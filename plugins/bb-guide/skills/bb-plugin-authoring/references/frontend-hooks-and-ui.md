@@ -43,7 +43,8 @@ Hooks:
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
 openThreadPanel({ actionId, title?, params? }), openUrl(url),
-experimental_openFilePreview(options), experimental_openFileExternally(options) }`.
+experimental_openFilePreview(options), experimental_openFileExternally(options),
+experimental_openPluginDetail(pluginId) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
@@ -52,6 +53,9 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
+  `experimental_openPluginDetail` opens bb's detail page for an installed or
+  store-listed plugin in the current side panel, or as the full plugin page.
+  The page owns enabling and installing; the call never changes plugin state.
 - `useComposer()` → one stable handle for the composer the calling surface
   belongs to: inside a composer slot, that composer; in a thread's panels,
   that thread's composer; elsewhere, the current route's draft. The same

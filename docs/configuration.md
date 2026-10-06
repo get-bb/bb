@@ -1787,7 +1787,7 @@ For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects th
 
 BB guide is installed and enabled by default. In Settings → Installed plugins
 → BB guide, `introduction` controls the BB introduction, `skills` controls all
-four bundled skills, and `bbCli`, `pluginAuthoring`, `skillCreator`, and `submitPlugin` control
+five bundled skills, and `bbCli`, `pluginAuthoring`, `findPlugins`, `skillCreator`, and `submitPlugin` control
 individual skills. All default to true. Disabling BB guide removes its
 introduction and skills; other plugins and independently installed skill
 copies retain their own configuration.

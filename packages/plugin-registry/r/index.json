@@ -158,6 +158,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "plugin-catalog-card",
+      "type": "registry:ui"
+    },
+    {
       "name": "plugin-icon",
       "type": "registry:ui"
     },

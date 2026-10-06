@@ -190,7 +190,8 @@ export type NavigateCall =
   | {
       method: "experimental_openFileExternally";
       options: ExperimentalFileOpenOptions;
-    };
+    }
+  | { method: "experimental_openPluginDetail"; pluginId: string };
 
 export interface ExperimentalFixedTabOpenCall {
   surface: ExperimentalOpenFixedTabOptions<JsonValue>["surface"];
@@ -1571,6 +1572,8 @@ export interface RenderSlotOptions<
   openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
   /** Host acceptance for preferred-external file intents. */
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for `useBbNavigate().experimental_openPluginDetail`. */
+  openPluginDetail?: (pluginId: string) => boolean;
   /** Host acceptance for an owner-scoped fixed-tab selection. */
   experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
   /** Initial session target visible to `experimental_useFixedTabTarget`. */
@@ -1951,6 +1954,10 @@ export function renderSlot<
         options: fileOptions,
       });
       return options.openFileExternally?.(fileOptions) ?? false;
+    },
+    experimental_openPluginDetail(pluginId) {
+      navigateCalls.push({ method: "experimental_openPluginDetail", pluginId });
+      return options.openPluginDetail?.(pluginId) ?? false;
     },
   };
 

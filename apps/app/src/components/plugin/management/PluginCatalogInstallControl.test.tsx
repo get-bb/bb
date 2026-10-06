@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
+import { PluginCatalogInstallControl } from "@bb/shared-ui/plugin-catalog-card";
 
 afterEach(cleanup);
 

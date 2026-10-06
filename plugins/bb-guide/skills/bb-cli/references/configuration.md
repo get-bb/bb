@@ -97,9 +97,9 @@ requests to the local server address and needs no additional configuration.
 ## BB guide instructions and skills
 
 Settings → Installed plugins → BB guide controls the BB introduction and the
-four bundled skills. All settings default to true. Use
+five bundled skills. All settings default to true. Use
 `bb plugin config bb-guide set <key> true|false` with `introduction`, `skills`
-(the master skill switch), `bbCli`, `pluginAuthoring`, `skillCreator`, or `submitPlugin`.
+(the master skill switch), `bbCli`, `pluginAuthoring`, `findPlugins`, `skillCreator`, or `submitPlugin`.
 Disabling the plugin removes its introduction and skills. Changes apply when
 agent configuration is next assembled; independently installed copies remain
 available through their own sources.

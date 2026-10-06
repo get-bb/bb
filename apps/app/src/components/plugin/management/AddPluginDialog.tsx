@@ -30,7 +30,8 @@ import {
   installPlugin,
   useCatalogInstallPlan,
 } from "@/hooks/queries/plugin-catalog-queries";
-import { CatalogEntryIcon, FullTrustWarning } from "./plugin-ui";
+import { PluginCatalogIcon } from "@bb/shared-ui/plugin-catalog-card";
+import { FullTrustWarning } from "./plugin-ui";
 
 export type AddPluginInitial = {
   entryId: string;
@@ -343,7 +344,7 @@ function AddPluginDialogContent({
         {initial !== null ? (
           <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
             <div className="flex items-center gap-2.5">
-              <CatalogEntryIcon entry={initial} className="size-6" />
+              <PluginCatalogIcon entry={initial} className="size-6" />
               <span className="text-sm font-medium text-foreground">
                 {initial.displayName}
               </span>

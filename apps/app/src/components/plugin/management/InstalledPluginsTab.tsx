@@ -11,8 +11,8 @@ import {
   pluginRuntimeStatusPresentation,
 } from "./plugin-status";
 import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
+import { PluginBrowseCard } from "@bb/shared-ui/plugin-catalog-card";
 import {
-  PluginCard,
   PluginCardGrid,
   PluginCardAuthor,
   PluginAuthorByline,
@@ -106,7 +106,7 @@ export function InstalledPluginRow({
     onOpenPlugin(plugin.id, trigger);
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
-      <PluginCard
+      <PluginBrowseCard
         leading={
           <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
             <ResourceIconFrame className="size-6 rounded border border-border bg-muted/40 text-muted-foreground">
@@ -116,7 +116,9 @@ export function InstalledPluginRow({
         }
         title={plugin.name ?? plugin.id}
         byline={
-          isLocal ? "Local" : catalogEntry !== undefined ? (
+          isLocal ? (
+            "Local"
+          ) : catalogEntry !== undefined ? (
             <PluginCardAuthor entry={catalogEntry} />
           ) : plugin.publisherLabel !== null ? (
             <PluginAuthorByline

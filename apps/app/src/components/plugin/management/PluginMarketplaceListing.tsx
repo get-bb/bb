@@ -21,8 +21,8 @@ import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOve
 import { getPluginsRoutePath } from "@/lib/route-paths";
 import { PluginCardAuthorName } from "./PluginCard";
 import { catalogEntryDetailKey } from "./installed-plugin-catalog";
+import { PluginCatalogIconChip } from "@bb/shared-ui/plugin-catalog-card";
 import {
-  CatalogEntryIconChip,
   formatUrlLabel,
   pluginCatalogCategoryIconName,
   PluginCategoryIcon,
@@ -48,7 +48,10 @@ export function PluginMarketplaceByline({
       {entry.category === undefined ||
       pluginCatalogCategoryIconName(entry.categoryId) === undefined ? null : (
         <span className="flex min-w-0 shrink-[100] items-center gap-1">
-          <PluginCategoryIcon categoryId={entry.categoryId} className="size-3" />
+          <PluginCategoryIcon
+            categoryId={entry.categoryId}
+            className="size-3"
+          />
           <Link
             to={{
               pathname: getPluginsRoutePath(),
@@ -312,7 +315,7 @@ export function PluginMoreFromAuthorSection({
         {moreEntries.map((candidate) => (
           <ResourceRow
             key={`${candidate.marketplace}/${candidate.entryId}`}
-            leading={<CatalogEntryIconChip entry={candidate} />}
+            leading={<PluginCatalogIconChip entry={candidate} />}
             title={candidate.displayName}
             description={candidate.description || undefined}
             trailingVisual={<ResourceRowDetailChevron />}

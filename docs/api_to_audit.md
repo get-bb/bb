@@ -1370,6 +1370,33 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
 7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
    required `hostId` field without breaking older opener implementations.
 
+## Plugin detail navigation (`BbNavigate.experimental_openPluginDetail`)
+
+**What it does.** Opens bb's detail page for an installed or store-listed
+plugin by plugin id, the same destination as the sidebar's plugin details
+action. When the focused surface has a side panel (a thread or the plugins
+page), the page opens as an in-memory `marketplace-plugin-detail` tab titled
+from the cached installed-plugin list, then any cached store search, then the
+id itself. Otherwise bb navigates to `/plugins/:pluginId`. The detail page
+owns every state change: enabling uses the installed plugin's switch, and
+installing goes through the install dialog with its source and trust warnings.
+The call itself never installs, enables, or reports whether the id exists; it
+returns false only for an empty id. The SDK test harness records
+`{ method: "experimental_openPluginDetail", pluginId }` and accepts an
+`openPluginDetail` behavior option. The bundled Plugin cards plugin is the
+first consumer.
+
+**Audit before stabilizing.**
+
+1. Decide whether an unknown id should return false or open the detail page's
+   "Plugin not found" state as it does today, which needs the catalog loaded
+   before the call returns.
+2. Decide whether marketplace listings need a selector (`listing`) for plugin
+   ids published by more than one marketplace.
+3. Verify panel targeting on split panes, side chat, compact drawers, and
+   plugin pages without a side panel.
+4. Confirm a third-party consumer before the prefix drops.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, and `experimental_createHostEntryHarness`)
 
 **Kept experimental (2026-08-22).** signals and watches have no consumer (decide whether to delete them or keep them experimental separately from calls), none of the lifetime/limit numbers has been measured against a plugin other than keep-awake, and the artifact-contract names (`experimental_apiVersion`, `experimental_signals`, the injected context members) are read by the daemon from installed artifacts, so renaming them needs a dual-name window plus a protocol bump.

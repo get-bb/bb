@@ -1,9 +1,11 @@
 import { pluginInstallBadge } from "@bb/domain/plugin-install-badge";
-import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
+import {
+  pluginInstallBadgePresentation,
+  type PluginInstallCountPresentation,
+} from "@bb/shared-ui/plugin-catalog-card";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -24,45 +26,12 @@ export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
 
-const PLUGIN_INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-export type PluginInstallCountPresentation = {
-  display: string;
-  accessibleLabel: string;
-  tone: "count" | "new" | "builtin";
-};
-
 export function pluginInstallCountPresentation(
   entry: Parameters<typeof pluginInstallBadge>[0],
   now: number = Date.now(),
 ): PluginInstallCountPresentation | undefined {
-  const badge = pluginInstallBadge(entry, now);
-  if (badge === null) return undefined;
-  if (badge.kind === "builtin") {
-    return {
-      display: "Built in",
-      accessibleLabel: "Built in",
-      tone: "builtin",
-    };
-  }
-  if (badge.kind === "new") {
-    return { display: "New", accessibleLabel: "New", tone: "new" };
-  }
-  return countPresentation(badge.installs);
+  return pluginInstallBadgePresentation(pluginInstallBadge(entry, now));
 }
-
-function countPresentation(installs: number): PluginInstallCountPresentation {
-  return {
-    display: PLUGIN_INSTALL_COUNT_FORMATTER.format(installs),
-    accessibleLabel: `${installs.toLocaleString()} ${installs === 1 ? "install" : "installs"}`,
-    tone: "count",
-  };
-}
-
-export const NEW_TEXT_STYLE = { color: "var(--file-accent)" } as const;
 
 const PLUGIN_CATEGORY_ACCENT_TOKENS: Record<string, string> = {
   "themes-and-appearance": "--file-accent",
@@ -82,10 +51,6 @@ const PLUGIN_CATEGORY_ACCENT_TOKENS: Record<string, string> = {
   "plugin-development": "--pr-merged",
   "tasks-and-workflows": "--success",
 };
-
-function neutral(percent: number): string {
-  return `color-mix(in oklch, var(--ink) ${percent}%, var(--canvas))`;
-}
 
 function pluginCatalogCategoryAccentToken(
   categoryId: string | undefined,
@@ -117,7 +82,9 @@ const PLUGIN_CATEGORY_ICONS: Record<string, string> = {
 export function pluginCatalogCategoryIconName(
   categoryId: string | undefined,
 ): string | undefined {
-  return categoryId === undefined ? undefined : PLUGIN_CATEGORY_ICONS[categoryId];
+  return categoryId === undefined
+    ? undefined
+    : PLUGIN_CATEGORY_ICONS[categoryId];
 }
 
 export function PluginCategoryIcon({
@@ -182,70 +149,6 @@ export function PluginLogo({
       className={cn("rounded-sm object-contain", className)}
       onError={() => setFailedLogoUrl(logoUrl)}
     />
-  );
-}
-
-export function CatalogEntryIcon({
-  entry,
-  className,
-}: {
-  entry: {
-    displayName: string;
-    icon: string | null;
-    iconUrl: string | null;
-    iconTinted: boolean;
-  };
-  className: string;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      data-catalog-entry-icon-glyph=""
-      className={cn("grid shrink-0 place-items-center", className)}
-    >
-      <PluginBrandIcon
-        icon={entry.icon}
-        iconUrl={entry.iconUrl}
-        iconTinted={entry.iconTinted}
-        className="size-full"
-      />
-    </span>
-  );
-}
-
-export function CatalogEntryIconChip({
-  entry,
-  className,
-  compact = false,
-}: {
-  entry: {
-    displayName: string;
-    icon: string | null;
-    iconUrl: string | null;
-    iconTinted: boolean;
-  };
-  className?: string;
-  compact?: boolean;
-}) {
-  return (
-    <ResourceIconFrame
-      className={cn(
-        compact ? "size-6 rounded border" : "size-10 rounded-md border",
-        className,
-      )}
-      style={{
-        background: neutral(5),
-        borderColor: neutral(14),
-        color: neutral(55),
-      }}
-    >
-      {() => (
-        <CatalogEntryIcon
-          entry={entry}
-          className={compact ? "size-4" : "size-6"}
-        />
-      )}
-    </ResourceIconFrame>
   );
 }
 

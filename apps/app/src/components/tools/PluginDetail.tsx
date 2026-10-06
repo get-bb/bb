@@ -29,7 +29,6 @@ import {
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
-  CatalogEntryIconChip,
   formatAbsoluteDate,
   PluginLogo,
   pluginInstallCountPresentation,
@@ -46,7 +45,10 @@ import {
   PluginOverviewLead,
 } from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
-import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
+import {
+  PluginCatalogIconChip,
+  PluginCatalogInstallControl,
+} from "@bb/shared-ui/plugin-catalog-card";
 import {
   catalogEntryDetailKey,
   catalogEntryInstallBlocker,
@@ -202,7 +204,7 @@ export function CatalogPluginDetail({
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
-      leading={<CatalogEntryIconChip entry={entry} compact />}
+      leading={<PluginCatalogIconChip entry={entry} compact />}
       leadingClassName="size-6"
       title={entry.displayName}
       metadataLeading={<PluginCardAuthorAvatar entry={entry} />}
@@ -514,7 +516,10 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <section className="max-w-prose" data-resource-detail-section="overview">
+          <section
+            className="max-w-prose"
+            data-resource-detail-section="overview"
+          >
             <PluginOverviewLead
               description={
                 plugin.description ?? "This plugin does not describe itself."

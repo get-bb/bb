@@ -105,6 +105,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: false,
   },
   {
+    name: "plugin-cards",
+    pluginId: "bb--plugin-cards",
+    defaultEnabled: true,
+  },
+  {
     name: "pdf-preview",
     pluginId: "pdf-preview",
     defaultEnabled: true,

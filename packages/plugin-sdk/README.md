@@ -48,6 +48,13 @@ the current host accepted the intent. Targets never infer an ambient workspace.
 The frontend harness records both methods and accepts `openFilePreview` and
 `openFileExternally` behavior options.
 
+`useBbNavigate().experimental_openPluginDetail(pluginId)` opens bb's detail
+page for an installed or store-listed plugin, in the current side panel when
+there is one and as the full plugin page otherwise. Enabling and installing
+stay on that page, with its confirmation and trust warnings; the call never
+changes plugin state and returns false only for an empty id. The frontend
+harness records it and accepts an `openPluginDetail` behavior option.
+
 A nav panel's `fixedTabs` entries must include the containing nav
 panel's `id` as `panelId`; each entry is also a stable reference to that
 plugin's own tab. Give a targeted tab an `experimental_target.validate` type guard, call

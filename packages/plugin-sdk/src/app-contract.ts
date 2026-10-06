@@ -3393,6 +3393,14 @@ export interface BbNavigate {
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,
   ): boolean;
+  /**
+   * Open bb's detail page for an installed or store-listed plugin, in the
+   * current surface's side panel when it has one and as the full plugin page
+   * otherwise. The page owns enabling, installing, and trust warnings; this
+   * call never changes plugin state. Returns false for an empty id.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_openPluginDetail(pluginId: string): boolean;
 }
 
 // ---------------------------------------------------------------------------
