@@ -291,14 +291,6 @@ export const REMOTE_DEV_SERVERS: Guide = {
               "tailscale serve --bg --https=443 http://127.0.0.1:38886\nnpx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net"
             }
           />
-          <h3 className="gd-h3">Share agent capacity</h3>
-          <p>
-            Pool your team's Claude and Codex accounts with the{" "}
-            <a href="/marketplace/builtin/account-pool">Account Pooler</a>, so
-            threads keep running when one account hits its limit. Cap how many
-            threads each machine runs with{" "}
-            <a href="/marketplace/concurrency-limit">Concurrency limit</a>.
-          </p>
           <Note
             title="Everyone with access can run commands on every machine."
             warn
