@@ -4,38 +4,22 @@ import { CLOSER, FAQ_AGENTS, FAQ_REVIEW, cell, price } from "./compare-content";
 import {
   AGENTS_COPY,
   agentsSection,
+  PLUGINS_COPY,
   pluginsSection,
-  type SectionCopy,
 } from "./compare-sections";
 import { TaskLedger, TasksBoard, type BrandLogo } from "./compare-visuals";
 
 const VIBE_KANBAN_LOGO: BrandLogo = { kind: "image", src: vibeKanbanIcon };
 
 const LEDGER_HIGHLIGHT: CompareHighlight = {
-  title: "Know where every task stands",
+  title: "Know which agent is on each task",
   wide: false,
   visual: <TaskLedger />,
   body: (
-    <>
-      <p>
-        Each card keeps its agents’ threads, branches, and progress in one
-        place. Come back after a break and see what’s running and what’s ready
-        for you.
-      </p>
-    </>
-  ),
-};
-
-const BUILD_COPY: SectionCopy = {
-  title: "Missing something? Build it.",
-  body: (
-    <>
-      <p>
-        bb is open source and made to be changed. Install a plugin from the{" "}
-        <a href="/marketplace">marketplace</a>, or ask an agent to build the
-        panel or command you miss.
-      </p>
-    </>
+    <p>
+      Each task shows the agents working on it, live, with their comments and
+      pull requests.
+    </p>
   ),
 };
 
@@ -43,13 +27,13 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
   slug: "vibe-kanban-alternative",
   title: "Vibe Kanban Alternative: Bring Your Board to bb",
   description:
-    "Vibe Kanban shut down. bb is a free, open-source app with a local kanban board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
+    "Vibe Kanban shut down. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
   competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
   headline: "Vibe Kanban shut down. Bring your board to bb.",
-  sub: "A kanban board on your own machine, with no sign-in. Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
+  sub: "Get your board back with bb's Tasks plugin. Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
   heroVisual: <TasksBoard />,
   tailored: LEDGER_HIGHLIGHT,
-  sections: [agentsSection(AGENTS_COPY), pluginsSection(BUILD_COPY)],
+  sections: [agentsSection(AGENTS_COPY), pluginsSection(PLUGINS_COPY)],
   tableNote: null,
   table: [
     {
@@ -77,7 +61,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
       rows: [
         {
           feature: "Kanban board",
-          bb: cell("yes", "Local, no sign-in"),
+          bb: cell("yes", "Tasks plugin, local"),
           competitor: cell("partial", "Projects off since 0.1.44"),
         },
         {
@@ -125,10 +109,10 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
           answer: (
             <p>
               Both run Claude Code, Codex, and other coding agents in Git
-              worktrees, and both are free and open source. bb keeps its task
-              board on your machine with no sign-in, and its agents can start,
-              message, and review each other’s work. bb is actively developed,
-              with a release every week.
+              worktrees, and both are free and open source. bb’s Tasks plugin
+              keeps your board on your machine with no sign-in, and bb’s agents
+              can start, message, and review each other’s work. bb is actively
+              developed, with a release every week.
             </p>
           ),
         },
