@@ -198,6 +198,9 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginTargetedPanelActionOpenOptions`
 - `PluginMessageActionContext`
 - `PluginMessageActionRegistration`
+- `ExperimentalMessageMetadataContext`
+- `ExperimentalMessageMetadataProps`
+- `ExperimentalMessageMetadataRegistration`
 - `PluginAppCommands`
 - `PluginCommandContext`
 - `PluginCommandShortcut`
