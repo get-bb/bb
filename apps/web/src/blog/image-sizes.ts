@@ -34,8 +34,8 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     height: 900,
   },
   "/guides/claude-code-and-codex-together/subthread-sidebar.png": {
-    width: 638,
-    height: 200,
+    width: 670,
+    height: 216,
   },
   "/guides/claude-code-and-codex-together/split-view.png": {
     width: 2880,
