@@ -44,6 +44,7 @@ type Row =
   | { kind: "recent"; key: string; row: RecentPromptRow };
 
 const TWO_PANE_MIN_WIDTH = 560;
+const SEARCH_TIMEOUT_MS = 5_000;
 
 const SCOPE_LABELS: Record<PromptScope, string> = {
   thread: "Thread",
@@ -169,11 +170,11 @@ function PromptLibraryPopup() {
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [isSearching, setIsSearching] = useState(true);
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [twoPane, setTwoPane] = useState(true);
-  const requestRef = useRef(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
 
@@ -189,29 +190,44 @@ function PromptLibraryPopup() {
   }, []);
 
   useEffect(() => {
-    const request = ++requestRef.current;
+    let pending = true;
+    let timeout: number | undefined;
+    const finish = (apply: () => void) => {
+      if (!pending) return;
+      pending = false;
+      window.clearTimeout(timeout);
+      setIsSearching(false);
+      apply();
+    };
     const handle = window.setTimeout(
-      () => {
-        rpc
-          .call("search", {
+      async () => {
+        setIsSearching(true);
+        setError(null);
+        timeout = window.setTimeout(
+          () => finish(() => setError("Loading prompts timed out. Try again.")),
+          SEARCH_TIMEOUT_MS,
+        );
+        try {
+          const next = await rpc.call("search", {
             query,
             scope,
             projectId: targets.projectId,
             threadId: targets.threadId,
-          })
-          .then((next) => {
-            if (request !== requestRef.current) return;
-            setResult(next);
-            setError(null);
-          })
-          .catch((cause: unknown) => {
-            if (request !== requestRef.current) return;
-            setError(cause instanceof Error ? cause.message : String(cause));
           });
+          finish(() => setResult(next));
+        } catch (cause: unknown) {
+          finish(() =>
+            setError(cause instanceof Error ? cause.message : String(cause)),
+          );
+        }
       },
       query.length === 0 ? 0 : 60,
     );
-    return () => window.clearTimeout(handle);
+    return () => {
+      pending = false;
+      window.clearTimeout(handle);
+      window.clearTimeout(timeout);
+    };
   }, [query, reloadCount, rpc, scope, targets.projectId, targets.threadId]);
 
   const draftText = composer.draft.text.trim();
@@ -229,8 +245,13 @@ function PromptLibraryPopup() {
       (row) => ({ kind: "recent", key: `recent:${row.id}`, row }) as const,
     ),
   ];
-  const activeIndex = Math.min(highlightedIndex, Math.max(rows.length - 1, 0));
+  const activeIndex = Math.max(
+    rows.findIndex((row) => row.key === highlightedKey),
+    0,
+  );
   const activeRow = rows[activeIndex];
+  const activeKey = activeRow?.key ?? null;
+  if (highlightedKey !== activeKey) setHighlightedKey(activeKey);
   const previewRow = twoPane
     ? activeRow
     : rows.find((row) => row.key === previewKey);
@@ -243,7 +264,7 @@ function PromptLibraryPopup() {
 
   const changeScope = (next: PromptScope) => {
     setPreferredScope(next);
-    setHighlightedIndex(0);
+    setHighlightedKey(null);
     window.localStorage.setItem(scopeStorageKey(pluginId, kind), next);
   };
 
@@ -301,9 +322,9 @@ function PromptLibraryPopup() {
     insertPrompt(row.row.prompt);
   };
 
-  const choose = (row: Row, index: number) => {
-    setHighlightedIndex(index);
-    if (twoPane || row.kind === "star-draft") {
+  const choose = (row: Row) => {
+    setHighlightedKey(row.key);
+    if (row.kind === "star-draft") {
       activate(row);
     } else {
       setPreviewKey(row.key);
@@ -316,7 +337,8 @@ function PromptLibraryPopup() {
       event.preventDefault();
       if (rows.length === 0) return;
       const step = event.key === "ArrowDown" ? 1 : -1;
-      setHighlightedIndex((activeIndex + step + rows.length) % rows.length);
+      const next = rows[(activeIndex + step + rows.length) % rows.length];
+      if (next !== undefined) setHighlightedKey(next.key);
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (row !== undefined) activate(row);
@@ -375,13 +397,12 @@ function PromptLibraryPopup() {
           "group flex items-center gap-1 rounded px-2 py-1.5 text-xs",
           selected ? "bg-state-active" : "hover:bg-state-hover",
         )}
-        onMouseEnter={() => setHighlightedIndex(index)}
       >
         <button
           type="button"
           className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => choose(row, index)}
+          onClick={() => choose(row)}
         >
           {row.kind === "star-draft" ? (
             <span className="flex items-center gap-1.5 text-foreground">
@@ -510,7 +531,7 @@ function PromptLibraryPopup() {
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            setHighlightedIndex(0);
+            setHighlightedKey(null);
           }}
           onKeyDown={handleKeyDown}
           className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
@@ -540,6 +561,24 @@ function PromptLibraryPopup() {
           ))}
         </div>
       </div>
+      {isSearching ? (
+        <div role="status" className="px-3 py-2 text-xs text-muted-foreground">
+          {result === null ? "Loading prompts…" : "Searching prompts…"}
+        </div>
+      ) : null}
+      {error !== null ? (
+        <div role="alert" className="flex items-center gap-2 px-3 py-2 text-xs">
+          <span className="flex-1 text-destructive">{error}</span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 text-foreground hover:bg-state-hover"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={reload}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       <div className="flex h-80 min-h-0">
         {showList ? (
           <div
@@ -551,13 +590,7 @@ function PromptLibraryPopup() {
               twoPane ? "w-2/5 shrink-0 border-r border-border" : "flex-1",
             )}
           >
-            {error !== null ? (
-              <div className="px-3 py-2 text-xs text-destructive">{error}</div>
-            ) : result === null ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
-                Loading prompts…
-              </div>
-            ) : rows.length === 0 ? (
+            {result === null ? null : rows.length === 0 ? (
               <div className="px-3 py-2 text-xs text-muted-foreground">
                 No prompts found
               </div>
