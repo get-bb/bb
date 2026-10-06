@@ -506,4 +506,3 @@ Lifecycle ownership:
   dependents; deleting it deletes them. Unarchive the owner before explicitly
   restoring a dependent. Stop does not cascade. Sidebar parents and ordinary
   forks keep their own policies.
-

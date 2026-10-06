@@ -116,8 +116,9 @@ migrated. The outcome is recorded in `<dataDir>/bb-app-update.json` (do not
 edit it). Only one launcher manages updates for a data directory; a second
 `bb-app start` on it runs with in-app updates off. A server the desktop app
 starts updates with the desktop app; `pnpm dev`, `bb-server`, and a standalone
-`bb-host-daemon` do not offer in-app updates. `BB_APP_UPDATE_MODE` is an
-internal marker the launcher passes to its server child; do not set it. See
+`bb-host-daemon` do not offer in-app updates. `BB_APP_UPDATE_MODE`,
+`BB_APP_INSTALL_KIND`, `BB_APP_SOURCE_ORIGIN`, and `BB_APP_SOURCE_COMMIT` are
+internal markers the launcher passes to its server child; do not set them. See
 `bb guide machines` for the `bb updates` commands.
 
 ## Common Keys

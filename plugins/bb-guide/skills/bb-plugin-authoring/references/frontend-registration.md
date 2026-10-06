@@ -496,3 +496,10 @@ failed; `providers` is empty in both cases, so fall back to the id. The
 backend counterpart is `bb.sdk.providers.list()`. Keep the hook in the plugin
 entry (`app.tsx`) and pass names down as props, so view components stay pure
 and testable outside the plugin runtime.
+
+While the default-off `navigationRail` experiment is enabled, wide viewports
+mount neither `experimental_sidebarNavigation` nor `experimental_sidebarHeader`.
+The host draws an icon rail from the same navigation model and opens its
+customize editor in a popover, including for `openCustomize()` calls. New
+thread takes the header. Provider selections are retained and apply again
+when the experiment is disabled. Compact viewports still mount these slots.

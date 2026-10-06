@@ -89,6 +89,8 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
     them automatically. Omit attachments to preserve them, or provide a list
     (including `[]`) to replace them. The updater is synchronous; invalid
     results and throws leave the draft unchanged. Returning `current` is a no-op.
+    Replacement preserves source-project attachment references; core copies
+    those files into the destination project on submission.
   - `focus()` focuses the caret. `setTextEffect({ className })` paints the
     draft (`null` clears); `setInputLock(locked)` makes the editor read-only
     and auto-releases when the slot unmounts or changes scope.
