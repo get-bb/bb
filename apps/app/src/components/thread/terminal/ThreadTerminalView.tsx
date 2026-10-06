@@ -22,7 +22,6 @@ import {
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import { appToast } from "@/components/ui/app-toast";
 import type {
@@ -651,7 +650,6 @@ export function ThreadTerminalView({
   onTitleChange,
   session,
 }: ThreadTerminalViewProps) {
-  const isCompactViewport = useIsCompactViewport();
   const isTouchDevice = useMediaQuery("(pointer: coarse)");
   const [controlActive, setControlActive] = useState(false);
   const controlActiveRef = useRef(false);
@@ -1287,7 +1285,7 @@ export function ThreadTerminalView({
           }}
         />
       </ContextMenu>
-      {isCompactViewport || isTouchDevice ? (
+      {isTouchDevice ? (
         <TerminalMobileControls
           controlActive={controlActive}
           disabled={!terminalReady || session.status !== "running"}
