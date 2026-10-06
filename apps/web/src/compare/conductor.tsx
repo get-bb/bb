@@ -235,13 +235,11 @@ export const BB_VS_CONDUCTOR: Comparison = {
           question: "What are the best Conductor alternatives?",
           answer: (
             <p>
-              It depends on how you work. Use bb if you want agents to hand work
-              to each other, free phone access, and Windows or Linux. Pick
-              Claude Code desktop or the ChatGPT desktop app if you only use one
-              company’s agent. <a href="/compare/bb-vs-superset">Superset</a>{" "}
-              suits a review-first workspace per task, Emdash starts agents from
-              Linear, GitHub, or Jira tickets, Nimbalyst edits docs and designs
-              beside the code, and Claude Squad keeps you in the terminal.
+              bb is the free, open-source choice for most people leaving
+              Conductor. It runs on Mac, Windows, and Linux, keeps agents
+              working on any computer you own, lets Claude Code, Codex, and
+              other agents hand work to each other, and puts every thread on
+              your phone at no cost.
             </p>
           ),
         },

@@ -362,14 +362,12 @@ type FleetThread = {
 const FLEET: {
   name: string;
   os: string;
-  where: string;
   icon: ReactNode;
   threads: FleetThread[];
 }[] = [
   {
     name: "MacBook Pro",
     os: "macOS",
-    where: "This computer",
     icon: <HugeiconsIcon icon={AppleIcon} className="cmp-fleet-os-ic" />,
     threads: [
       { title: "Rate-limit uploads", agent: ClaudeIcon, status: "running" },
@@ -380,7 +378,6 @@ const FLEET: {
   {
     name: "Desktop PC",
     os: "Windows",
-    where: "At home",
     icon: <HugeiconsIcon icon={WindowsNewIcon} className="cmp-fleet-os-ic" />,
     threads: [
       { title: "Fix the flaky test", agent: CursorIcon, status: "running" },
@@ -391,7 +388,6 @@ const FLEET: {
   {
     name: "Cloud server",
     os: "Linux",
-    where: "Always on",
     icon: <LinuxIcon className="cmp-fleet-os-ic" />,
     threads: [
       { title: "Bump dependencies", agent: OpenAiIcon, status: "running" },
@@ -431,17 +427,6 @@ export function FleetVisual() {
                 </li>
               ))}
             </ul>
-            <span className="cmp-fleet-foot">
-              <span>{machine.where}</span>
-              <span className="cmp-fleet-count">
-                {
-                  machine.threads.filter(
-                    (thread) => thread.status === "running",
-                  ).length
-                }{" "}
-                running
-              </span>
-            </span>
           </div>
         ))}
       </div>
