@@ -302,6 +302,7 @@ interface TestFixedTabTargetStore {
 export interface SidebarActionCall {
   method: keyof PluginSidebarThreadActions;
   threadId?: string;
+  environmentId?: string;
   options?: Record<string, unknown>;
   title?: string;
   pinned?: boolean;
@@ -1902,6 +1903,12 @@ export function renderSlot<
     },
     archive(threadId) {
       sidebarActionCalls.push({ method: "archive", threadId });
+    },
+    async experimental_archiveEnvironmentThreads(environmentId) {
+      sidebarActionCalls.push({
+        method: "experimental_archiveEnvironmentThreads",
+        environmentId,
+      });
     },
     requestDelete(threadId) {
       sidebarActionCalls.push({ method: "requestDelete", threadId });

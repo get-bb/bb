@@ -14,6 +14,10 @@ import {
   threadQueryKey,
 } from "../queries/query-keys";
 import {
+  beginArchiveThreadAndChildrenTransaction,
+  beginDeleteThreadTransaction,
+  rollbackArchiveThreadsTransaction,
+  rollbackDeleteThreadTransaction,
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
   rollbackThreadListMutationTransaction,
@@ -70,6 +74,65 @@ function makeSidebarNavigation(
 }
 
 describe("thread state cache owner", () => {
+  it.each(["archive", "delete"])(
+    "optimistically removes a whole thread family on %s and restores it without losing unrelated changes",
+    async (operation) => {
+      const { queryClient } = createQueryClientTestHarness();
+      const entries = [
+        makeThreadListEntry({ id: "root" }),
+        makeThreadListEntry({ id: "child", parentThreadId: "root" }),
+        makeThreadListEntry({ id: "grandchild", parentThreadId: "child" }),
+        makeThreadListEntry({ id: "other", title: "Unrelated" }),
+      ];
+      const listKey = threadListQueryKey({
+        projectId: "project-1",
+        archived: false,
+      });
+      const sidebarKey = sidebarNavigationQueryKey();
+      queryClient.setQueryData(listKey, entries);
+      queryClient.setQueryData(sidebarKey, makeSidebarNavigation(entries));
+      let rollback;
+      if (operation === "archive") {
+        const transaction = await beginArchiveThreadAndChildrenTransaction({
+          queryClient,
+          threadId: "root",
+        });
+        rollback = () =>
+          rollbackArchiveThreadsTransaction({ queryClient, transaction });
+      } else {
+        const transaction = await beginDeleteThreadTransaction({
+          queryClient,
+          threadId: "root",
+        });
+        rollback = () =>
+          rollbackDeleteThreadTransaction({
+            queryClient,
+            transaction,
+          });
+      }
+      const ids = () =>
+        queryClient
+          .getQueryData<SidebarBootstrapResponse>(sidebarKey)
+          ?.projects[0]?.threads.map((thread) => thread.id);
+      expect(ids()).toEqual(["other"]);
+      expect(
+        queryClient
+          .getQueryData<typeof entries>(listKey)
+          ?.map((thread) => thread.id),
+      ).toEqual(["other"]);
+      queryClient.setQueryData<typeof entries>(listKey, (list) =>
+        list?.map((thread) => ({ ...thread, title: "Concurrent rename" })),
+      );
+      rollback();
+      expect(ids()).toEqual(["root", "child", "grandchild", "other"]);
+      expect(
+        queryClient
+          .getQueryData<typeof entries>(listKey)
+          ?.find((thread) => thread.id === "other")?.title,
+      ).toBe("Concurrent rename");
+    },
+  );
+
   it.each([
     {
       source: "sidebar",

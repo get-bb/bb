@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -27,6 +28,7 @@ import {
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import { sdk } from "@/lib/sdk";
+import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useDialogState } from "@/hooks/useDialogState";
@@ -53,6 +55,7 @@ import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 
 export interface ThreadActionsContextValue {
+  archiveEnvironmentThreads: (environmentId: string) => Promise<void>;
   requestArchive: (thread: Thread) => void;
   renameThreadAsync: (threadId: string, title: string) => Promise<void>;
   requestRename: (thread: Thread) => void;
@@ -104,6 +107,7 @@ export function ThreadActionsProvider({
   const confirmThreadArchive =
     useSystemConfig().data?.generalSettings.confirmThreadArchive ?? true;
   const navigate = useRouteNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const viewedRoute = `${location.pathname}${location.search}${location.hash}`;
   const viewedRouteRef = useRef(viewedRoute);
@@ -318,6 +322,75 @@ export function ThreadActionsProvider({
     [unarchiveMutate],
   );
 
+  const archiveEnvironmentThreads = useCallback(
+    async (environmentId: string) => {
+      const browserSdk = getPluginBoundSdk(sdk, "thread-list", queryClient);
+      try {
+        const response = await browserSdk.environments.archiveThreads({
+          environmentId,
+        });
+        if (response.archivedThreadIds.length === 0) return;
+        const displacedThreadId = viewedThreadIdRef.current;
+        const displaced =
+          displacedThreadId !== undefined &&
+          response.archivedThreadIds.includes(displacedThreadId);
+        const closeResult = closePanesForThreads(response.archivedThreadIds);
+        syncNavigationAfterClose(closeResult, () => {
+          const viewed = viewedThreadIdRef.current;
+          if (viewed && response.archivedThreadIds.includes(viewed))
+            navigate(getRootComposeRoutePath());
+        });
+        const destination = displaced
+          ? closeResult.focusedRoute !== null
+            ? getThreadRoutePath(closeResult.focusedRoute)
+            : getRootComposeRoutePath()
+          : null;
+        const previousRoute = viewedRouteRef.current;
+        if (destination !== null) viewedRouteRef.current = destination;
+        appToast.success(
+          response.archivedThreadIds.length === 1
+            ? "Thread Archived"
+            : "Threads Archived",
+          {
+            description: `Archived ${response.archivedThreadIds.length} ${response.archivedThreadIds.length === 1 ? "thread" : "threads"}`,
+            cancel: {
+              label: "Undo",
+              onClick: () => {
+                void (async () => {
+                  try {
+                    for (const threadId of [
+                      ...response.archivedThreadIds,
+                    ].reverse())
+                      await browserSdk.threads.unarchive({ threadId });
+                    if (
+                      destination !== null &&
+                      viewedRouteRef.current === destination
+                    )
+                      navigate(previousRoute);
+                  } catch (error) {
+                    showMutationErrorToast({
+                      error,
+                      fallbackMessage: "Failed to restore archived threads",
+                    });
+                  }
+                })();
+              },
+            },
+            duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
+            id: `environment-archived-${environmentId}`,
+          },
+        );
+      } catch (error) {
+        showMutationErrorToast({
+          error,
+          fallbackMessage: "Failed to archive environment threads",
+        });
+        throw error;
+      }
+    },
+    [queryClient, closePanesForThreads, syncNavigationAfterClose, navigate],
+  );
+
   const performArchive = useCallback(
     ({
       childThreadsConfirmed,
@@ -485,6 +558,7 @@ export function ThreadActionsProvider({
 
   const value = useMemo<ThreadActionsContextValue>(
     () => ({
+      archiveEnvironmentThreads,
       renameThreadAsync,
       requestRename,
       requestArchive,
@@ -494,6 +568,7 @@ export function ThreadActionsProvider({
       toggleRead,
     }),
     [
+      archiveEnvironmentThreads,
       renameThreadAsync,
       requestArchive,
       requestRename,
