@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { ThreadPullRequest } from "@bb/domain";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isThreadDisplayStatusBannerActive,
   ThreadPromptContextBanner,
@@ -420,10 +420,11 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain(">1<");
     expect(markup).toContain('data-icon="Subthread"');
     expect(markup).toContain("animate-shine-icon");
+    expect(markup).toContain("animate-shine font-medium");
     expect(markup).not.toContain("running");
   });
 
-  it("lists working subthreads with a spinner when expanded", () => {
+  it("lists subthreads with needs-input and working glyphs when expanded", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
@@ -434,8 +435,10 @@ describe("ThreadPromptContextBanner", () => {
           parentThreadSection={null}
           childThreadsSection={{
             items: [
-              subthreadItem("thr_a", "Investigate failing checks"),
-              subthreadItem("thr_b", "Review the release notes"),
+              subthreadItem("thr_a", "Review the release notes", {
+                pending: true,
+              }),
+              subthreadItem("thr_b", "Investigate failing checks"),
             ],
           }}
           pullRequestSection={null}
@@ -447,6 +450,7 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain(">2<");
     expect(markup).not.toContain(">+");
+    expect(markup).toContain('aria-label="Needs input"');
     expect(markup).toContain('aria-label="Working"');
     expect(markup).toContain('data-icon="Loading"');
     expect(markup).not.toContain('data-icon="UserRoundPlus"');
@@ -490,8 +494,11 @@ describe("ThreadPromptContextBanner", () => {
     expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
   });
 
-  it("puts the most recent subthread that needs input in the header", () => {
-    const markup = renderToStaticMarkup(
+  it("expands once when a subthread newly needs input", () => {
+    const onToggleSection = vi.fn();
+    const renderBanner = (
+      items: ReturnType<typeof subthreadItem>[],
+    ) => (
       <MemoryRouter>
         <ThreadPromptContextBanner
           gitSection={null}
@@ -499,62 +506,27 @@ describe("ThreadPromptContextBanner", () => {
           archivedSection={null}
           environmentGoneSection={null}
           parentThreadSection={null}
-          childThreadsSection={{
-            items: [
-              subthreadItem("thr_blocked", "Install workspace tools", {
-                pending: true,
-              }),
-              subthreadItem("thr_blocked_2", "Approve the migration", {
-                pending: true,
-              }),
-              subthreadItem("thr_working", "Investigate failing checks"),
-            ],
-          }}
+          childThreadsSection={{ items }}
           pullRequestSection={null}
           expandedSection={null}
-          onToggleSection={noop}
+          onToggleSection={onToggleSection}
         />
-      </MemoryRouter>,
+      </MemoryRouter>
     );
+    const blocked = subthreadItem("thr_blocked", "Install workspace tools", {
+      pending: true,
+    });
+    const working = subthreadItem("thr_working", "Investigate failing checks");
+    const { rerender } = render(renderBanner([working]));
+    expect(onToggleSection).not.toHaveBeenCalled();
 
-    expect(markup).toContain("Install workspace tools");
-    expect(markup).toContain('aria-label="Needs input"');
-    expect(markup).toContain('data-icon="CircleQuestion"');
-    expect(markup).toContain('aria-label="Show 2 more subthreads"');
-    expect(markup).toContain(">+2<");
-    expect(markup).not.toContain("Active subthreads");
-    expect(markup).not.toContain("needs input<");
-    expect(markup).not.toContain("animate-shine-icon");
-  });
+    rerender(renderBanner([blocked, working]));
+    expect(onToggleSection).toHaveBeenCalledTimes(1);
+    expect(onToggleSection).toHaveBeenCalledWith("childThreads");
 
-  it("shows no toggle when every subthread needs input", () => {
-    render(
-      <MemoryRouter>
-        <ThreadPromptContextBanner
-          gitSection={null}
-          gitSectionPending={false}
-          archivedSection={null}
-          environmentGoneSection={null}
-          parentThreadSection={null}
-          childThreadsSection={{
-            items: [
-              subthreadItem("thr_blocked", "Install workspace tools", {
-                pending: true,
-              }),
-            ],
-          }}
-          pullRequestSection={null}
-          expandedSection={null}
-          onToggleSection={noop}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(
-      screen.getByRole("link", { name: /Install workspace tools/ }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.queryByText("Active subthreads")).toBeNull();
+    rerender(renderBanner([blocked, working]));
+    expect(onToggleSection).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Active subthreads")).toBeTruthy();
   });
 
   it("keeps failed-check detail accessible without a redundant label", () => {

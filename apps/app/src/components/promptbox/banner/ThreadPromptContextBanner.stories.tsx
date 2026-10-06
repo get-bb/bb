@@ -407,7 +407,6 @@ function withPending(
 }
 
 const childThreadsMixedFixture = withPending(["thr_b"]);
-const childThreadsTwoPendingFixture = withPending(["thr_b", "thr_d"]);
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   items: Array.from({ length: 12 }, (_, i) => ({
@@ -797,7 +796,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="thread with a subthread waiting for approval"
-        hint="the only subthread needs input, so there is nothing to expand"
+        hint="the banner expands on its own to show it"
       >
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
       </StoryRow>
@@ -808,16 +807,10 @@ export function Overview() {
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="a subthread needs input (collapsed)"
-        hint="the subthread that needs input replaces the header; +N shows the rest"
+        label="a subthread needs input"
+        hint="the banner expands on its own; subthreads that need input rank first"
       >
         <Row childThreads={childThreadsMixedFixture} mergeBase={null} />
-      </StoryRow>
-      <StoryRow
-        label="two subthreads need input (collapsed)"
-        hint="only the most recent one is the header; the other is behind +N"
-      >
-        <Row childThreads={childThreadsTwoPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="active child + pull request + uncommitted"
@@ -832,7 +825,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="thread with active subthreads (expanded)"
-        hint="working subthreads list below the header"
+        hint="needs-input subthreads first, then working ones"
       >
         <Row
           childThreads={childThreadsMixedFixture}
