@@ -43,7 +43,7 @@ patchedDependencies:
     hash: nd5ycvf53m5c4rdjifxcml7j54
     path: patches/react-native-webview@13.16.1.patch
   sonner@1.7.4:
-    hash: cmyzze74esm6ggsujpv6fshpbi
+    hash: 3yhhjqow6rpi2a5s5fl3n7akpm
     path: patches/sonner@1.7.4.patch
 
 importers:
@@ -365,7 +365,7 @@ importers:
         version: 1.3.1
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       sugar-high:
         specifier: ^2.0.1
         version: 2.0.1
@@ -3250,7 +3250,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -3701,7 +3701,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -3758,7 +3758,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -3991,7 +3991,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -4241,7 +4241,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -4887,7 +4887,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -5000,7 +5000,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -5170,7 +5170,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -5255,7 +5255,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       sonner:
         specifier: ^1.7.4
-        version: 1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -7068,7 +7068,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {node: '>=0.10.0'}
+    engines: {'0': node >=0.10.0}
 
   '@expo/cli@57.0.16':
     resolution: {integrity: sha512-+HyMY2nAS6QBJb0nSeMz92p11bZ1AtWSRnhWnklznN07IRoQirisnKq2vr18Ayjb/fnb5F/um+n6FRhF0fZm1Q==}
@@ -29794,7 +29794,7 @@ snapshots:
       react-native-svg: 15.15.4(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
       react-native-worklets: 0.10.1(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
 
-  sonner@1.7.4(patch_hash=cmyzze74esm6ggsujpv6fshpbi)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  sonner@1.7.4(patch_hash=3yhhjqow6rpi2a5s5fl3n7akpm)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
