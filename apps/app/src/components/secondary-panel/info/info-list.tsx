@@ -84,21 +84,20 @@ function InfoSectionHeading({
               aria-expanded={!collapse.collapsed}
               aria-controls={bodyId}
               onClick={() => collapse.setCollapsed(!collapse.collapsed)}
-              className="group/heading -mx-1 flex min-w-0 items-center rounded px-1 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:min-h-8"
+              className="-mx-1 flex min-w-0 items-center rounded px-1 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:min-h-8"
             >
               <span className="truncate">{label}</span>
               {countPill}
-              <Icon
-                name="ChevronRight"
-                className={cn(
-                  INFO_LIST_CARET_CLASS,
-                  "ml-1 text-subtle-foreground",
-                  collapse.collapsed
-                    ? "opacity-100"
-                    : "rotate-90 opacity-0 group-hover/heading:opacity-100 group-focus-visible/heading:opacity-100 pointer-coarse:opacity-100",
-                )}
-                aria-hidden
-              />
+              {collapse.collapsed ? (
+                <Icon
+                  name="ChevronRight"
+                  className={cn(
+                    INFO_LIST_CARET_CLASS,
+                    "ml-1 text-subtle-foreground",
+                  )}
+                  aria-hidden
+                />
+              ) : null}
             </button>
           </h3>
         ) : (
