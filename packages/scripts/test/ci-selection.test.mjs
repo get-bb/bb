@@ -132,6 +132,8 @@ it("selects app checks without provisioning unrelated Windows or package smoke j
     "app-4",
     "app-5",
     "app-6",
+    "app-7",
+    "app-8",
   ]);
   expect(plan["windows-tests"].include).toEqual([]);
   expect(plan.packaging).toBe(false);
