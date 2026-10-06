@@ -119,7 +119,7 @@ function ChangedFileRow({
           aria-hidden
         />
       }
-      leadingLabel={glyph.description}
+      leadingLabel={glyph.label}
       name={fileName}
       context={getParentFolderNameFromPath({ path: file.path })}
       title={`${glyph.label} · ${file.path}`}
