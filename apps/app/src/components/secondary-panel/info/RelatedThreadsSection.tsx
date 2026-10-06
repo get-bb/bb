@@ -75,6 +75,7 @@ export function SubthreadsSection({ thread }: { thread: Thread }) {
   });
   return (
     <RelatedThreadsSection
+      sectionId="subthreads"
       label="Subthreads"
       threads={(subthreadsQuery.data ?? []).filter(
         (subthread) => subthread.originKind === null,

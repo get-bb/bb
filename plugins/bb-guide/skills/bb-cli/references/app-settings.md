@@ -47,8 +47,8 @@ hide the navigation rail's destinations (see Navigation rail below).
   `sidebar.threadListProvider`).
 - The same registry stores `infoPanel.collapsedSections`, the thread Info panel
   sections collapsed from their headings (`commits`, `uncommittedChanges`,
-  `forks`, `threadStorage`). Read or change it with `bb settings ui get` and
-  `bb settings ui set`.
+  `subthreads`, `forks`, `threadStorage`). Read or change it with
+  `bb settings ui get` and `bb settings ui set`.
 - The built-in sidebar's Filter selects Active and Archived, defaulting to Active,
   including threads with saved messages. This selection is browser-local, not
   a server-backed preference or SDK/CLI setting. Selected archived rows
