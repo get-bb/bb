@@ -2,8 +2,11 @@
 
 The `Windows host packages (Node 22.x)` job in
 `.github/workflows/ci.yml` runs on Blacksmith Windows Server 2025 x64. It runs on
-every pull request and main push, alongside the existing Linux checks. A failure
-fails the job; the Windows tests are not advisory.
+every main push and on pull requests affecting foundation packages, alongside
+the Linux checks. Unknown or shared CI configuration changes select full
+coverage. Frontend-only pull requests use affected Linux checks; their Windows
+coverage remains on main. See [PR selection](ci-performance.md#pr-selection).
+A selected Windows job is blocking, not advisory.
 
 The job runs complete test suites and typechecks for nine packages:
 
