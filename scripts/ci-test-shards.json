@@ -13,22 +13,32 @@
     {
       "shard": "app-1",
       "filter": "--filter=@bb/app",
-      "args": "--shard=1/4"
+      "args": "--shard=1/6"
     },
     {
       "shard": "app-2",
       "filter": "--filter=@bb/app",
-      "args": "--shard=2/4"
+      "args": "--shard=2/6"
     },
     {
       "shard": "app-3",
       "filter": "--filter=@bb/app",
-      "args": "--shard=3/4"
+      "args": "--shard=3/6"
     },
     {
       "shard": "app-4",
       "filter": "--filter=@bb/app",
-      "args": "--shard=4/4"
+      "args": "--shard=4/6"
+    },
+    {
+      "shard": "app-5",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=5/6"
+    },
+    {
+      "shard": "app-6",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=6/6"
     },
     {
       "shard": "integration",
