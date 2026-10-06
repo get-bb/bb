@@ -75,13 +75,14 @@ function serverRow(
     (match) => isTitleMatch(match) && match.text === title,
   );
   const snippetMatch = matches.find((match) => !isTitleMatch(match));
-  const primaryMatch = snippetMatch ?? titleMatch;
+  const primaryMatch = titleMatch ?? snippetMatch;
   return {
     id: `${lifecycle}:${thread.id}`,
     lifecycle,
     primaryText: primaryMatch?.text ?? title,
     highlightRanges: primaryMatch?.highlightRanges ?? [],
-    secondaryTitle: snippetMatch === undefined ? null : title,
+    secondaryTitle:
+      titleMatch === undefined && snippetMatch !== undefined ? title : null,
     projectName: projectMetadata(thread.projectId, projectNamesById),
     projectHighlightRanges: [],
     relativeTime: formatRelativeTime({ timestamp: thread.updatedAt, now }),
@@ -173,7 +174,7 @@ function mergeActiveRows(
   const merged = localRows.map((row) => {
     const server = serverRowsById.get(row.id);
     if (server === undefined) return row;
-    return server.secondaryTitle === null
+    return row.highlightRanges.length > 0 || server.secondaryTitle === null
       ? { ...row, messageSeq: server.messageSeq }
       : {
           ...row,

@@ -1385,7 +1385,7 @@ describe("CommandPalette", () => {
     expect(optionTitles()).toEqual([
       expect.stringContaining("Fix 0"),
       expect.stringContaining("Fix 1"),
-      expect.stringContaining("please fix 2"),
+      expect.stringContaining("Fix 2"),
       expect.stringContaining("we should fix it"),
       expect.stringContaining("Fix 3"),
       expect.stringContaining("Fix 4"),

@@ -438,10 +438,52 @@ describe("buildPaletteThreadSearchRows", () => {
       ]);
       expect(result.rows[5]).toMatchObject({
         id: "active:local-4",
-        primaryText: "please fix 4",
-        secondaryTitle: "Fix 4",
+        primaryText: "Fix 4",
+        secondaryTitle: null,
         messageSeq: 12,
-        highlightRanges: [{ start: 7, end: 10 }],
+        highlightRanges: [{ start: 0, end: 3 }],
+      });
+    });
+
+    it("leads a server result with its title when both the title and a message matched", () => {
+      const thread = makeThread("archived-both", {
+        title: "Fix the importer",
+        archivedAt: NOW - 1,
+      });
+      const result = build({
+        query: "fix",
+        lifecycles: ["archived"],
+        searchResponse: {
+          active: { total: 0, results: [] },
+          archived: {
+            total: 1,
+            results: [
+              {
+                thread,
+                matches: [
+                  {
+                    sourceKind: "assistant_message",
+                    text: "the fix landed",
+                    highlightRanges: [{ start: 4, end: 7 }],
+                    sourceSeq: 9,
+                  },
+                  {
+                    sourceKind: "title",
+                    text: "Fix the importer",
+                    highlightRanges: [{ start: 0, end: 3 }],
+                    sourceSeq: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+      expect(result.rows[0]).toMatchObject({
+        primaryText: "Fix the importer",
+        secondaryTitle: null,
+        highlightRanges: [{ start: 0, end: 3 }],
+        messageSeq: 9,
       });
     });
 
