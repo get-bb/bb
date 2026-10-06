@@ -49,10 +49,15 @@ describe("ThreadTimelineSurface load-older control", () => {
           hasOlderTimelineRows={hasOlderRows}
           isLoadingOlderTimelineRows={loading}
           isThreadTimelinePending={false}
-          onLoadOlderRows={async () => {
+          onLoadOlderRows={async (commit) => {
             setLoading(true);
             await page;
-            setHasOlderRows(false);
+            const update = () => {
+              height = 1500;
+              setHasOlderRows(false);
+            };
+            if (commit) await commit(update);
+            else update();
             setLoading(false);
           }}
           showOngoingIndicator={false}
@@ -81,7 +86,6 @@ describe("ThreadTimelineSurface load-older control", () => {
     scrollArea.scrollTop = 200;
     act(() => intersect());
     await act(async () => {
-      height = 1500;
       complete();
     });
     expect(screen.queryByRole("status")).toBeNull();

@@ -1,3 +1,4 @@
+import type { LoadOlderTimelineRows } from "./load-older-timeline-rows.js";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
@@ -50,7 +51,7 @@ export interface ThreadTimelineSurfaceProps {
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
   includePluginMessageActions?: boolean;
-  onLoadOlderRows?: () => Promise<void> | void;
+  onLoadOlderRows?: LoadOlderTimelineRows;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
@@ -193,7 +194,10 @@ export function ThreadTimelineSurface({
     threadId,
   });
   const showLoadOlderRows =
-    onLoadOlderRows !== undefined && !isThreadTimelinePending && !timelineError;
+    hasOlderTimelineRows &&
+    onLoadOlderRows !== undefined &&
+    !isThreadTimelinePending &&
+    !timelineError;
 
   return (
     <TimelineReasoningExpansionProvider key={threadId}>
@@ -282,7 +286,7 @@ function LoadOlderMessages({
 }: {
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
-  onLoadOlderRows: () => Promise<void> | void;
+  onLoadOlderRows: LoadOlderTimelineRows;
 }) {
   const { sentinelRef, isAutoLoadEnabled, loadOlderRows } =
     useAutoLoadOlderRows({
@@ -290,8 +294,6 @@ function LoadOlderMessages({
       isLoadingOlderTimelineRows,
       onLoadOlderRows,
     });
-
-  if (!hasOlderTimelineRows) return null;
 
   return (
     <div ref={sentinelRef} className="flex justify-center pt-2 mb-3">
