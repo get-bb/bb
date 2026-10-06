@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { OverflowFade } from "@/components/ui/overflow-fade";
+import { COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY } from "@/components/promptbox/ComposerEditorSlot";
 import {
   MOBILE_RECENT_LABEL_HEIGHT_PX,
   MOBILE_RECENT_ROW_HEIGHT_PX,
@@ -60,6 +61,16 @@ function useCompactHomeMetrics() {
       return;
     }
     const measure = () => {
+      const editor = composer.querySelector<HTMLElement>(
+        "[data-promptbox-editor-scroll]",
+      );
+      if (editor) {
+        const editorChromeHeight = composer.offsetHeight - editor.offsetHeight;
+        composer.style.setProperty(
+          COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY,
+          `${region.offsetHeight - COMPACT_HOME_CHROME_OFFSET_PX - editorChromeHeight}px`,
+        );
+      }
       const composerHeight = composer.offsetHeight;
       scrollViewport.style.top = `${getCompactHomeScrollViewportTop({
         regionHeight: region.offsetHeight,

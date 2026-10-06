@@ -2355,10 +2355,16 @@ describe("PromptBoxInternal escape", () => {
 
 describe("PromptBoxInternal size controls", () => {
   it.each([
-    ["thread", "calc(50dvh - 3rem)"],
-    ["root-compose", "calc(70dvh - 3rem)"],
+    [
+      "thread",
+      "min(calc(50dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+    ],
+    [
+      "root-compose",
+      "min(calc(70dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+    ],
   ] as const)(
-    "caps the %s editor at its intended viewport height",
+    "caps the %s editor at its intended viewport height or the host's available space",
     (layout, maxHeight) => {
       render(
         <PromptBoxInternal

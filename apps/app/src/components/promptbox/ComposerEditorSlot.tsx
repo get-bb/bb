@@ -9,6 +9,9 @@ import {
 
 export type ComposerEditorLayout = "thread" | "root-compose";
 
+export const COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY =
+  "--composer-editor-available-height";
+
 const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   ComposerEditorLayout,
   string
@@ -55,7 +58,7 @@ export function ComposerEditorSlot({
         height: isCompactLayout ? "48px" : undefined,
         maxHeight: isCompactLayout
           ? "48px"
-          : COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout],
+          : `min(${COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout]}, var(${COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY}, 100dvh))`,
       }}
     >
       <PromptMentionLinkContext.Provider value={resolveMentionLink ?? null}>
