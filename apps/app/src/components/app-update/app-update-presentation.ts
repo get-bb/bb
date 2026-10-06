@@ -76,11 +76,14 @@ export function hasActionableNpmAppUpdate(
 
 export function restartingActivity(
   status: SystemAppUpdateStatus | undefined,
-): { startedAt: string; targetVersion: string } | null {
+): { startedAt: string; targetRevision: string } | null {
   return status?.activity.phase === "restarting"
     ? {
         startedAt: status.activity.startedAt,
-        targetVersion: status.activity.targetVersion,
+        targetRevision: formatAppUpdateRevision({
+          commit: status.activity.targetCommit,
+          version: status.activity.targetVersion,
+        }),
       }
     : null;
 }

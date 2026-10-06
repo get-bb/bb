@@ -82,6 +82,8 @@ function toPublicActivity(
       return {
         phase: "restarting",
         startedAt: activity.startedAt,
+        targetCommit:
+          activity.target.kind === "source" ? activity.target.commit : null,
         targetVersion: activity.targetVersion,
       };
   }

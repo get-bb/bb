@@ -104,7 +104,7 @@ export function AppUpdateHost({
         <AppUpdateRestartingOverlay
           key={restart.startedAt}
           patienceMs={restartPatienceMs}
-          targetVersion={restart.targetVersion}
+          targetRevision={restart.targetRevision}
           onDismiss={() => setDismissedRestart(restart.startedAt)}
         />
       )}
@@ -134,11 +134,11 @@ export function AppUpdateHost({
 export function AppUpdateRestartingOverlay({
   onDismiss,
   patienceMs,
-  targetVersion,
+  targetRevision,
 }: {
   onDismiss: () => void;
   patienceMs: number;
-  targetVersion: string;
+  targetRevision: string;
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -172,7 +172,7 @@ export function AppUpdateRestartingOverlay({
               id={titleId}
               className="text-base leading-tight font-semibold tracking-tight text-foreground"
             >
-              Updating bb to {targetVersion}
+              Updating bb to {targetRevision}
             </h2>
             <p id={descriptionId} className="text-sm text-muted-foreground">
               {overdue
