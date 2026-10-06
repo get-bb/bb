@@ -2002,9 +2002,24 @@
   }
 }
 
+.cmp-tasks-compact {
+  max-width: none;
+  margin: 0;
+}
+
+.cmp-tasks-compact .cmp-tasks-tools {
+  display: none;
+}
+
+.cmp-tasks-compact .cmp-tasks-board {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 14px 22px;
+}
+
 @media (max-width: 720px) {
   .cmp-tasks-tools,
-  .cmp-tasks-col:first-child {
+  .cmp-tasks:not(.cmp-tasks-compact) .cmp-tasks-col:first-child {
     display: none;
   }
 

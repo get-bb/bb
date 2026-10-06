@@ -17,6 +17,10 @@ export const CONTENT_LINK_GROUPS: ContentLinkGroup[] = [
         label: "Vibe Kanban alternative",
         href: "/compare/vibe-kanban-alternative",
       },
+      {
+        label: "Conductor alternatives",
+        href: "/compare/conductor-alternatives",
+      },
     ],
   },
 ];

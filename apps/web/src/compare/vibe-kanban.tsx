@@ -31,7 +31,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
   competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
   headline: "Vibe Kanban shut down. Bring your board to bb.",
   sub: "Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
-  heroVisual: <TasksBoard />,
+  heroVisual: <TasksBoard compact={false} />,
   tailored: LEDGER_HIGHLIGHT,
   sections: [agentsSection(AGENTS_COPY), pluginsSection(PLUGINS_COPY)],
   tableNote: null,

@@ -35,6 +35,7 @@ import {
   pricingSection,
 } from "./compare-sections";
 import type { BrandLogo } from "./compare-visuals";
+import { BB_VS_CONDUCTOR } from "./conductor";
 import { BB_VS_VIBE_KANBAN } from "./vibe-kanban";
 
 export type Mark = "yes" | "partial" | "no";
@@ -106,6 +107,7 @@ const BB_VS_SUPERSET: Comparison = {
     plan: "Superset Pro",
     logo: SUPERSET_LOGO,
     yearlyPerSeatMonthly: 20,
+    priceNote: "Superset Pro at $20 per user a month.",
   }),
   sections: [
     agentsSection(AGENTS_COPY),
@@ -411,7 +413,11 @@ const BB_VS_SUPERSET: Comparison = {
   closer: CLOSER,
 };
 
-export const COMPARISONS: Comparison[] = [BB_VS_SUPERSET, BB_VS_VIBE_KANBAN];
+export const COMPARISONS: Comparison[] = [
+  BB_VS_SUPERSET,
+  BB_VS_VIBE_KANBAN,
+  BB_VS_CONDUCTOR,
+];
 
 export function getComparison(slug: string): Comparison | undefined {
   return COMPARISONS.find((comparison) => comparison.slug === slug);

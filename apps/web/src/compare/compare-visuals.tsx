@@ -602,13 +602,17 @@ const BUG: TaskLabel = { name: "bug", tone: "del" };
 const UI: TaskLabel = { name: "ui", tone: "spark" };
 const INFRA: TaskLabel = { name: "infra", tone: "ok" };
 
-export function TasksBoard() {
+export function TasksBoard({ compact }: { compact: boolean }) {
   const { cycle, leaving } = useCycle(9000, 500);
   return (
     <div
-      className="cmp-tasks"
+      className={compact ? "cmp-tasks cmp-tasks-compact" : "cmp-tasks"}
       role="img"
-      aria-label="The bb Tasks board: a task in Todo is delegated to Codex and moves to In Progress, next to a task Claude Code is working on and one waiting in review"
+      aria-label={
+        compact
+          ? "The bb Tasks board: a task in Todo is delegated to Codex and moves to In Progress, next to a task Claude Code is working on"
+          : "The bb Tasks board: a task in Todo is delegated to Codex and moves to In Progress, next to a task Claude Code is working on and one waiting in review"
+      }
     >
       <div className="cmp-tasks-bar">
         <span className="cmp-tasks-project">
@@ -638,24 +642,26 @@ export function TasksBoard() {
         className={leaving ? "cmp-tasks-board leaving" : "cmp-tasks-board"}
         key={cycle}
       >
-        <TaskColumn status="backlog" count={2} nextCount={2}>
-          <TaskCard
-            id="APP-18"
-            title="Move settings to the new store"
-            agent={null}
-            priority={1}
-            labels={[INFRA]}
-            subtasks={null}
-          />
-          <TaskCard
-            id="APP-19"
-            title="Keyboard shortcuts for the board"
-            agent={null}
-            priority={1}
-            labels={[UI]}
-            subtasks={null}
-          />
-        </TaskColumn>
+        {compact ? null : (
+          <TaskColumn status="backlog" count={2} nextCount={2}>
+            <TaskCard
+              id="APP-18"
+              title="Move settings to the new store"
+              agent={null}
+              priority={1}
+              labels={[INFRA]}
+              subtasks={null}
+            />
+            <TaskCard
+              id="APP-19"
+              title="Keyboard shortcuts for the board"
+              agent={null}
+              priority={1}
+              labels={[UI]}
+              subtasks={null}
+            />
+          </TaskColumn>
+        )}
         <TaskColumn status="todo" count={2} nextCount={1}>
           <TaskCard
             id="APP-14"
@@ -695,16 +701,18 @@ export function TasksBoard() {
             className="cmp-tasks-arrive"
           />
         </TaskColumn>
-        <TaskColumn status="review" count={1} nextCount={1}>
-          <TaskCard
-            id="APP-9"
-            title="Add a dark mode toggle"
-            agent={null}
-            priority={2}
-            labels={[UI]}
-            subtasks="3/3"
-          />
-        </TaskColumn>
+        {compact ? null : (
+          <TaskColumn status="review" count={1} nextCount={1}>
+            <TaskCard
+              id="APP-9"
+              title="Add a dark mode toggle"
+              agent={null}
+              priority={2}
+              labels={[UI]}
+              subtasks="3/3"
+            />
+          </TaskColumn>
+        )}
       </div>
     </div>
   );
@@ -782,10 +790,12 @@ export function TeamCost({
   plan,
   logo,
   yearlyPerSeatMonthly,
+  priceNote,
 }: {
   plan: string;
   logo: BrandLogo;
   yearlyPerSeatMonthly: number;
+  priceNote: string;
 }) {
   const [seats, setSeats] = useState(5);
   const total = seats * yearlyPerSeatMonthly * 12;
@@ -843,8 +853,7 @@ export function TeamCost({
         </span>
       </div>
       <p className="cmp-cost-foot">
-        {plan} at ${yearlyPerSeatMonthly} per user a month. Your agent plans are
-        separate either way.
+        {priceNote} Your agent plans are separate either way.
       </p>
     </div>
   );

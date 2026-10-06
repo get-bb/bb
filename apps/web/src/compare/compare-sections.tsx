@@ -18,6 +18,7 @@ export type CompetitorPlan = {
   plan: string;
   logo: BrandLogo;
   yearlyPerSeatMonthly: number;
+  priceNote: string;
 };
 
 export const PRICING_COPY: SectionCopy = {
@@ -92,6 +93,7 @@ export function pricingSection(
         plan={competitor.plan}
         logo={competitor.logo}
         yearlyPerSeatMonthly={competitor.yearlyPerSeatMonthly}
+        priceNote={competitor.priceNote}
       />
     ),
     body: copy.body,
