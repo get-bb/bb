@@ -401,22 +401,24 @@ describe("GitStatusRow", () => {
 
   it("marks a dirty tree with an icon when the merge base branch name contains dirty", () => {
     const markup = renderToStaticMarkup(
-      <GitStatusRow
-        thread={makeThread()}
-        environment={null}
-        workspaceStatus={makeWorkspaceStatus({
-          workingTree: makeWorkspaceWorkingTree({
-            state: "dirty_and_committed_unmerged",
-            hasUncommittedChanges: true,
-          }),
-          mergeBase: makeWorkspaceMergeBase({
-            mergeBaseBranch: "fix/dirty-check",
-            aheadCount: 2,
-          }),
-        })}
-        workspaceStatusError={null}
-        selectedMergeBaseBranch={undefined}
-      />,
+      <TooltipProvider>
+        <GitStatusRow
+          thread={makeThread()}
+          environment={null}
+          workspaceStatus={makeWorkspaceStatus({
+            workingTree: makeWorkspaceWorkingTree({
+              state: "dirty_and_committed_unmerged",
+              hasUncommittedChanges: true,
+            }),
+            mergeBase: makeWorkspaceMergeBase({
+              mergeBaseBranch: "fix/dirty-check",
+              aheadCount: 2,
+            }),
+          })}
+          workspaceStatusError={null}
+          selectedMergeBaseBranch={undefined}
+        />
+      </TooltipProvider>,
     );
 
     expect(markup).toContain('aria-label="Uncommitted changes"');
