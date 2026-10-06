@@ -4,8 +4,9 @@ The main CI workflow keeps build/typecheck/lint, two server test shards, three a
 shards, integration tests, three package test groups, plugin tests, three fork
 check shards, and package
 smokes independent. Node 24/26 compatibility smokes run on main and manual runs.
-Windows runs the nine host packages, an app smoke, and seven test shards that
-cover the remaining suites; see [windows-ci.md](windows-ci.md).
+Windows runs the nine host packages, an app smoke, a desktop smoke, and
+thirteen test shards that cover the remaining suites; see
+[windows-ci.md](windows-ci.md).
 
 ## Fork checks
 
@@ -45,8 +46,10 @@ pnpm can restore the most recent store for the same OS and architecture when a
 lockfile changes. The frozen install still resolves the exact lockfile contents
 and verifies store integrity. Turbo caches are pruned after restoration and
 before successful CI jobs save them. Windows restores the pnpm store for every
-job, and Turbo outputs for app smoke and the Windows test shards, capped at
-256 MB per job to bound transfer and storage costs. Windows installs retain
+job, and Turbo outputs for the smokes and the Windows test shards, capped at
+256 MB per job to bound transfer and storage costs. The Windows test shards
+also drop every entry their own Turbo run summary does not name before saving
+(`prune-turbo-cache.mjs --keep-run-summaries`). Windows installs retain
 `--ignore-scripts`; foundation tests still run with `--force`. macOS smoke jobs
 still omit Turbo caching.
 
@@ -168,6 +171,88 @@ Infrastructure also contributes: run
 maximum job provisioning wait, and its Windows server-1 checkout spent 122s in
 the shallow Git fetch. Later-starting jobs in multi-attempt runs must not be
 counted as provisioning delays from the original workflow creation time.
+
+## Windows test shards
+
+After the declaration fix the Windows jobs still finished last. In
+[PR run 37389645615](https://github.com/get-bb/bb/actions/runs/37389645615) the
+seven Windows test shards took 243–417s and the app smoke 378s; the slowest
+other job took 264s. The Windows runners have no Defender to exclude
+(`Get-MpComputerStatus` reports an invalid class). Two costs are specific to
+Windows:
+
+- Setup takes 90–115s per job against about 50s on Linux. Unpacking the pnpm
+  store (67,596 files) takes 23–28s against 7s, and `pnpm install` 21–72s
+  against 10s.
+- Test files run about half as fast. `@bb/app` spent 0.67s per file in
+  environment setup and 0.61s in import, against 0.26s and 0.31s on Linux.
+
+The same shard on two identical runners in one run took 181s and 128s, so
+compare several copies of a job, never one against one.
+
+The workflow now runs thirteen Windows test shards instead of seven, sized so
+each test step takes about 100s on a four-vCPU runner, and splits the app smoke
+into an app smoke and a desktop smoke. Test step durations:
+
+| Shard            | Before: suites in the shard      |   Before | After (copies) |
+| ---------------- | -------------------------------- | -------: | -------------- |
+| `server-N`       | half of `@bb/server`             | 136–172s | 98–113s (3)    |
+| `app-N`          | half of `@bb/app`                | 170–213s | 80–107s (4)    |
+| `plugins-1`      | every plugin                     |     170s | 99–109s (4)    |
+| `plugins-2`      |                                  |          | 69–88s (4)     |
+| `packages-host`  | daemon, CLI, parity, integration |     237s | 81s (1)        |
+| `integration`    |                                  |          | 65s (1)        |
+| `packages-build` | every other package              |     172s | 87–107s (3)    |
+| `packages-other` |                                  |          | 90–111s (6)    |
+
+"Before" is run 37389645615. "After" is
+[run 37397194886](https://github.com/get-bb/bb/actions/runs/37397194886), which
+forced every suite to run; its 26 jobs all passed and took 159–238s each from
+start to finish. The combined
+app smoke took 251s and 310s with a forced build; split, the app smoke took
+204–249s and the desktop smoke 198–239s over four copies each.
+
+Each Windows test shard also carried 256 MB of another job's build outputs in
+its Turbo cache. A shard's first restore after a lockfile change falls back to
+any Windows job's cache, and a test shard's own entries are a few kilobytes of
+logs, so the size budget never evicted the foreign entries. The shards now keep
+only the entries their run summary names: one shard went from 131 entries and
+255.8 MB to 3 entries and 0.1 MB.
+
+Approaches measured and not adopted:
+
+- Eight-vCPU Windows runners. Test steps roughly halved (71s against 128–181s
+  for the same app shard), but those runners started 40–54s after the job was
+  created, against 2s, and spent 27–42s in checkout, against 6–10s. End to end
+  nothing was gained at twice the per-minute rate. Over seven runs the gap did
+  not narrow.
+- Two Vitest workers per package, as on Linux: 198s against 181s and 163s
+  against 128s for one app shard.
+- More suites at once. On eight vCPUs the plugin shard failed 2 of 3 runs at
+  four suites and 1 of 4 at three, always in `bb-plugin-provider-codex`; the
+  host suites failed 3 of 8 at two. The host daemon suite also failed 3 of 18
+  runs on eight vCPUs with nothing beside it, where Vitest runs twice as many
+  of its files at once.
+- Installing without `@bb/mobile` and `@bb/desktop` took 22–27s against
+  38–40s. It was left out because it saves 14s and makes the Windows install
+  differ from every other job. Installing only `@bb/app`'s dependencies took
+  17s but `ensure-native-modules` could not find `better-sqlite3`.
+- Running the tarball smoke and desktop packaging at the same time. The tarball
+  smoke prunes and packs `packages/bb-app/dist` while packaging copies it.
+
+The full [run 37398047481](https://github.com/get-bb/bb/actions/runs/37398047481)
+passed all 37 jobs in 4m54s, against about seven minutes before. Its Windows
+server, app, plugin, and `packages-build` shards ran uncached. Counted from
+workflow creation, the slowest Windows job finished at 251s and the slowest job
+overall, the macOS package smoke, at 291s.
+
+A run now starts sixteen Windows jobs instead of nine, and more of them wait
+for a runner. With nine, Windows jobs started within 2s in most sampled runs
+and 13–46s late in others. In run 37398047481 all sixteen started 29–57s after
+creation, and in the 26-job measurement run the median was 40s and one job
+waited 246s. The shard durations above exclude that wait; the 251s figure
+includes it. Watch the start delay after merge; fewer, longer shards are the
+remedy if it grows.
 
 ## Cache maintenance
 
