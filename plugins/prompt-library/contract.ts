@@ -127,7 +127,7 @@ export type RecentPromptRow = z.infer<typeof recentPromptSchema>;
 
 export const searchPromptsInputSchema = z
   .object({
-    query: z.string().max(256),
+    query: z.string(),
     scope: promptScopeSchema,
     projectId: z.string().min(1).nullable(),
     threadId: z.string().min(1).nullable(),
