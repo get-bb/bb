@@ -35,7 +35,7 @@ export const WORK_FROM_ANYWHERE: Guide = {
     {
       title: "A computer that stays on",
       icon: ComputerIcon,
-      body: "bb on macOS, Windows, or Linux (alpha). Your agents run there.",
+      body: "bb on macOS, Windows, or Linux (alpha). It runs your bb server and your agents.",
     },
     {
       title: "A getbb.app account",
@@ -144,34 +144,39 @@ export const WORK_FROM_ANYWHERE: Guide = {
   ],
   sections: [
     {
-      id: "on-the-go",
-      title: "What you can do on the go",
+      id: "how-it-connects",
+      title: "How bb connects your devices",
       body: (
         <ul className="gd-list">
           <li>
-            <strong>Answer an agent.</strong> Open a waiting thread and tap{" "}
-            <strong>Approval needed</strong> to allow or deny the request.
+            <strong>The server.</strong> One computer runs it, usually the first
+            one you set bb up on. It keeps your threads, settings, and history,
+            and everything else connects to it. While it's asleep or off,
+            nothing can reach bb.
           </li>
           <li>
-            <strong>Start new work.</strong> Start a thread from your phone. It
-            runs on your computer.
+            <strong>Machines.</strong> Every computer that runs agents runs a
+            small background program, the host daemon, that connects to the
+            server. The server's own computer is a machine too.
           </li>
           <li>
-            <strong>Try what an agent built.</strong> Open a dev server it
-            shared with <code>bb connect expose</code>.
+            <strong>Apps.</strong> The desktop app, the mobile app, and your
+            getbb.app address in any browser all open the same server. Your
+            agents run on machines, not in the app you're looking at.
           </li>
         </ul>
       ),
     },
   ],
-  faqTitle: "FAQ",
+  faqTitle: "Troubleshooting FAQ",
   faq: [
     {
-      question: "Do I need to install anything on my phone?",
+      question: "Which of my computers is the server?",
       answer: (
         <p>
-          No. bb runs in your phone's browser. Add the iOS or Android app only
-          if you want notifications.
+          Run <code>bb machine list</code>: the Role column says{" "}
+          <code>server</code>. In the app, <strong>Settings → Machines</strong>{" "}
+          marks it once you have more than one machine.
         </p>
       ),
     },
@@ -179,8 +184,85 @@ export const WORK_FROM_ANYWHERE: Guide = {
       question: "What happens to my agents when my laptop sleeps?",
       answer: (
         <p>
-          They stop, and nothing can reach bb until it wakes. Turn on Keep
-          Awake, or run bb on a computer that stays on.
+          If your laptop is the server, everything stops: your other machines
+          and your phone can't reach bb until it wakes. If it's only a machine,
+          just the agents running on it stop. Turn on Keep Awake, or make a
+          computer that stays on your server.
+        </p>
+      ),
+    },
+    {
+      question: "I set up bb on two computers. Why don't they share threads?",
+      answer: (
+        <p>
+          Each setup runs its own server with its own threads. To use one bb
+          everywhere, keep the server on the computer that stays on, and add the
+          other one from <strong>Settings → Machines</strong>. Its host daemon
+          then connects to that server, and new threads can run on either
+          computer.
+        </p>
+      ),
+    },
+    {
+      question: "Does quitting the desktop app stop my agents?",
+      answer: (
+        <p>
+          On the server's computer, yes. Quitting the app stops its server and
+          host daemon, so agents, automations, and remote access stop until you
+          open it again. On a Mac, closing the window keeps bb running.
+        </p>
+      ),
+    },
+    {
+      question: "Why does my phone say disconnected when my computer is on?",
+      answer: (
+        <p>
+          The bb connect tunnel can drop for a moment, and bb reconnects on its
+          own while the server runs. If it stays disconnected, run{" "}
+          <code>bb connect status</code> on the server's computer and check it
+          hasn't gone to sleep.
+        </p>
+      ),
+    },
+    {
+      question: "Why does a machine show as disconnected?",
+      answer: (
+        <p>
+          Its computer is off, asleep, or offline, or its access to the server
+          went stale. If it stays disconnected while it's on, run{" "}
+          <code>bb machine reconnect &lt;name&gt;</code> and run the command it
+          prints on that machine. Its threads and worktrees are kept.
+        </p>
+      ),
+    },
+    {
+      question: "Why is a machine stuck updating?",
+      answer: (
+        <p>
+          Machines update themselves to match the server's version. If an update
+          failed, retry it from <strong>Settings → Machines</strong> or with{" "}
+          <code>bb machine retry-update &lt;name&gt;</code>.
+        </p>
+      ),
+    },
+    {
+      question: "Where are bb's logs?",
+      answer: (
+        <p>
+          In the desktop app, choose{" "}
+          <strong>View → Server &amp; Daemon Logs</strong>. Otherwise, look in{" "}
+          <code>logs/server-stdio.log</code> and{" "}
+          <code>logs/host-daemon-stdio.log</code> in bb's data folder, usually{" "}
+          <code>~/.bb</code>.
+        </p>
+      ),
+    },
+    {
+      question: "Do I need to install anything on my phone?",
+      answer: (
+        <p>
+          No. bb runs in your phone's browser. Add the iOS or Android app only
+          if you want notifications.
         </p>
       ),
     },
