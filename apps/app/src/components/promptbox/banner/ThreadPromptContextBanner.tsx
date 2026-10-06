@@ -658,7 +658,6 @@ function PullRequestBannerLink({
       {showLabel && isPullRequestAutoMergeOn(pullRequest) ? (
         <Icon
           name="Zap"
-          role="img"
           aria-label="Auto-merge on"
           className="size-3 shrink-0 text-subtle-foreground"
         />
