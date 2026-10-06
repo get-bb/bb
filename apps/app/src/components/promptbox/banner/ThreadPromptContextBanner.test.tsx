@@ -566,7 +566,7 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("PR #128");
     expect(markup).not.toContain("· Checks failing");
-    expect(markup).toContain('title="Checks failing"');
+    expect(markup).toContain('title="Open, Checks failing"');
     expect(markup).not.toContain("Checks failure");
   });
 
