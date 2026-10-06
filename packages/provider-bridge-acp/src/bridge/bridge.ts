@@ -1306,9 +1306,36 @@ function buildPromptContentBlocks(
 
   for (const item of input) {
     switch (item.type) {
-      case "text":
-        blocks.push({ type: "text", text: item.text });
+      case "text": {
+        let text = item.text;
+        let nextStart = text.length;
+        const skillMentions = item.mentions
+          .filter(
+            (mention) =>
+              mention.resource.kind === "command" &&
+              mention.resource.source === "skill" &&
+              mention.resource.trigger === "/" &&
+              mention.end <= item.text.length &&
+              session.construction.bbSkillNames.includes(
+                mention.resource.name,
+              ) &&
+              item.text.slice(mention.start, mention.end) ===
+                `/${mention.resource.name}`,
+          )
+          .sort((a, b) => b.start - a.start);
+        for (const mention of skillMentions) {
+          if (mention.end > nextStart || mention.resource.kind !== "command") {
+            continue;
+          }
+          text =
+            text.slice(0, mention.start) +
+            `Use the bb skill ${JSON.stringify(mention.resource.name)}` +
+            text.slice(mention.end);
+          nextStart = mention.start;
+        }
+        blocks.push({ type: "text", text });
         break;
+      }
       case "image":
         blocks.push({ type: "text", text: `[image attachment: ${item.url}]` });
         break;

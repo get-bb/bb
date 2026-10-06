@@ -64,6 +64,7 @@ type AcpModelSelection =
 
 export interface AcpSessionParams {
   threadId: string;
+  bbSkillNames: readonly string[];
   cwd: string;
   agent: { command: string; args: string[] };
   dialectId?: string | undefined;
@@ -283,6 +284,9 @@ export function buildAcpSessionParams(
   }
   return {
     threadId: args.threadId,
+    bbSkillNames: (options.skillRoots ?? []).flatMap((root) =>
+      root.skills.map((skill) => skill.name),
+    ),
     cwd,
     agent: {
       command: launchSpec.command,
