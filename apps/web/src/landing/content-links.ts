@@ -11,7 +11,7 @@ export interface ContentLinkGroup {
 export const CONTENT_LINK_GROUPS: ContentLinkGroup[] = [
   {
     title: "Compare",
-    links: [{ label: "bb vs Superset", href: "/compare/bb-vs-superset" }],
+    links: [{ label: "bb vs Superset", href: "/compare/superset-alternative" }],
   },
 ];
 
