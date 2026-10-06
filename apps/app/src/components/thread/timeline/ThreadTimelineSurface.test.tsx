@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,11 +22,13 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("ThreadTimelineSurface load-older control", () => {
   it("preserves the reading position when the last page removes the load control", async () => {
+    vi.useFakeTimers();
     let intersect = () => {};
     vi.stubGlobal(
       "IntersectionObserver",
@@ -83,10 +92,16 @@ describe("ThreadTimelineSurface load-older control", () => {
     let height = 1000;
     Object.defineProperty(scrollArea, "scrollHeight", { get: () => height });
     Object.defineProperty(scrollArea, "clientHeight", { value: 100 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    fireEvent.wheel(scrollArea, { deltaY: -700 });
     scrollArea.scrollTop = 200;
+    fireEvent.scroll(scrollArea);
     act(() => intersect());
     await act(async () => {
       complete();
+      await vi.advanceTimersByTimeAsync(1000);
     });
     expect(screen.queryByRole("status")).toBeNull();
     expect(scrollArea.scrollTop).toBe(700);
