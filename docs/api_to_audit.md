@@ -1536,7 +1536,8 @@ the `experimental_fixedTabOpenCalls` inspection list.
 component at the trailing edge of its host-rendered sidebar row. The component
 can own an RPC query and realtime subscription, so a live count updates within
 that subtree instead of lifting plugin state into the whole sidebar. The host
-does not mount it on compact viewports. On wider viewports its layout box is
+does not mount it on compact viewports, or in the icon-only rail of the
+`navigationRail` experiment. On wider viewports its layout box is
 limited to one line at 4rem wide by 1.25rem high; overflow is clipped and
 ordinary long text is ellipsized. It shares the trailing action column and
 fades out for the host options button on row hover or keyboard focus without
@@ -2412,9 +2413,10 @@ its customize editor in the region and keeps the provider mounted but hidden.
 
 While the default-off `navigationRail` experiment is on, wide viewports do not
 mount this slot: the host draws a persistent rail from the same navigation
-model (items, order, visibility, accessories, split drags) and opens the
+model (items, order, visibility, split drags) and opens the
 customize editor in a popover beside the rail, including for `openCustomize()`
-calls. Registrations and `sidebar.navigationProvider` are kept, so
+calls. The rail is icon-only and does not mount panel sidebar accessories.
+Registrations and `sidebar.navigationProvider` are kept, so
 the picked provider returns when the experiment is turned off. Compact
 viewports still mount the slot.
 

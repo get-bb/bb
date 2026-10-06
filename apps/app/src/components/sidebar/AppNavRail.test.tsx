@@ -238,6 +238,34 @@ describe("AppNavRail", () => {
     expect(pathname()).toBe("/");
   });
 
+  it("does not mount a plugin panel's sidebar accessory", () => {
+    const accessoryMounted = vi.fn();
+    setPluginSlotRegistrations(
+      "garden",
+      registrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "BookOpen",
+            path: "docs",
+            component: () => null,
+            experimental_sidebarAccessory: () => {
+              accessoryMounted();
+              return <span>492/1</span>;
+            },
+          },
+        ],
+      }),
+    );
+
+    renderRail(THREAD_PATH);
+
+    expect(railButton("Docs")).toBeDefined();
+    expect(accessoryMounted).not.toHaveBeenCalled();
+    expect(rail().textContent).not.toContain("492/1");
+  });
+
   it("keeps hidden destinations out of the rail", () => {
     renderRail(THREAD_PATH, {
       visibleKeys: ["__bb__/new-thread", "__bb__/extensions"],

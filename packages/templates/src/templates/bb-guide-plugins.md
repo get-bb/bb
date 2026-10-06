@@ -701,7 +701,7 @@ zero-padding full-bleed body, including its scrolling; optional
 experimental_sidebarAccessory mounts a presentational live-value component at
 the trailing edge of the sidebar row on wide viewports, bounded to one short
 line, replaced visually by the host options button on hover/focus, and omitted
-on compact viewports),
+on compact viewports and in the navigationRail experiment's icon-only rail),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can

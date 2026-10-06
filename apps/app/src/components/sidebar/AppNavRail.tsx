@@ -109,13 +109,12 @@ function RailItem({
   const { activeItemId, actions } = useSidebarNavigation();
   const split = useSidebarNavigationSplit(item.id);
   const [disablePending, setDisablePending] = useState(false);
-  const Accessory = item.experimental_Accessory;
   const isPluginItem = item.pluginId !== null;
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <span className="relative flex" data-nav-rail-item={item.id}>
+        <span className="flex" data-nav-rail-item={item.id}>
           <RailButton
             label={
               item.shortcut
@@ -139,14 +138,6 @@ function RailItem({
               className={RAIL_ICON_CLASS}
             />
           </RailButton>
-          {Accessory ? (
-            <span
-              data-nav-rail-accessory=""
-              className="pointer-events-none absolute -top-1 -right-2 max-h-4 max-w-8 overflow-hidden text-center text-xs leading-4 whitespace-nowrap"
-            >
-              <Accessory />
-            </span>
-          ) : null}
         </span>
       </ContextMenuTrigger>
       <ContextMenuContent
