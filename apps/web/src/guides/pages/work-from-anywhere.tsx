@@ -57,7 +57,7 @@ export const WORK_FROM_ANYWHERE: Guide = {
         <>
           <Substeps>
             <li>
-              Open <strong>Settings → Mobile apps</strong> and choose{" "}
+              Open <strong>Settings → Mobile</strong> and choose{" "}
               <strong>Set up bb connect</strong>.
             </li>
             <li>Sign in to your getbb.app account and claim a handle.</li>
@@ -121,12 +121,11 @@ export const WORK_FROM_ANYWHERE: Guide = {
         <>
           <Substeps>
             <li>
-              In <strong>Settings → Mobile apps</strong>, join the iOS
-              TestFlight beta or download the Android app.
+              In <strong>Settings → Mobile</strong>, join the iOS TestFlight
+              beta or download the Android app.
             </li>
             <li>
-              Open <strong>Settings → bb connect</strong> and choose{" "}
-              <strong>Add mobile device</strong>.
+              On the same page, choose <strong>Add mobile device</strong>.
             </li>
             <li>
               In the app, choose <strong>Connect with bb connect</strong> and
@@ -176,7 +175,7 @@ export const WORK_FROM_ANYWHERE: Guide = {
         <p>
           Run <code>bb machine list</code>: the Role column says{" "}
           <code>server</code>. In the app, <strong>Settings → Machines</strong>{" "}
-          marks it once you have more than one machine.
+          marks it with a server badge.
         </p>
       ),
     },
@@ -184,10 +183,10 @@ export const WORK_FROM_ANYWHERE: Guide = {
       question: "What happens to my agents when my laptop sleeps?",
       answer: (
         <p>
-          If your laptop is the server, everything stops: your other machines
-          and your phone can't reach bb until it wakes. If it's only a machine,
-          just the agents running on it stop. Turn on Keep Awake, or make a
-          computer that stays on your server.
+          If your laptop is the server, your phone and other machines can't
+          reach bb until it wakes, and their running agents may stop. If it's
+          only a machine, just its agents stop. Turn on Keep Awake, or set up bb
+          on a computer that stays on and add your laptop as a machine.
         </p>
       ),
     },
@@ -250,10 +249,11 @@ export const WORK_FROM_ANYWHERE: Guide = {
       answer: (
         <p>
           In the desktop app, choose{" "}
-          <strong>View → Server &amp; Daemon Logs</strong>. Otherwise, look in{" "}
+          <strong>View → Server &amp; Daemon Logs</strong>. Otherwise, open{" "}
           <code>logs/server-stdio.log</code> and{" "}
-          <code>logs/host-daemon-stdio.log</code> in bb's data folder, usually{" "}
-          <code>~/.bb</code>.
+          <code>logs/host-daemon-stdio.log</code> in bb's data folder:{" "}
+          <code>~/.bb</code>, or <code>~/.bb-machines/&lt;server&gt;</code> on a
+          machine you added.
         </p>
       ),
     },
@@ -280,14 +280,20 @@ export const WORK_FROM_ANYWHERE: Guide = {
       question: "Who can open my getbb.app address?",
       answer: (
         <p>
-          Only you, signed in to your getbb.app account. Revoke the machine and
-          its address stops working.
+          Only you, signed in to your getbb.app account, and machines you've
+          added. To shut it off, choose <strong>Disconnect</strong> on that bb
+          in your getbb.app dashboard.
         </p>
       ),
     },
     {
       question: "Does bb store my traffic?",
-      answer: <p>No. bb connect passes it through and doesn't store it.</p>,
+      answer: (
+        <p>
+          No. bb connect passes it through without recording it. It only caches
+          bb's own static files.
+        </p>
+      ),
     },
     {
       question: "What does it cost?",
