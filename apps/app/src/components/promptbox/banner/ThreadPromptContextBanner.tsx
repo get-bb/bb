@@ -1091,7 +1091,6 @@ export function ThreadPromptContextBanner({
             <button
               type="button"
               aria-label="Dismiss git changes for this session"
-              title="Dismiss git changes for this session"
               onClick={onDismissGitSection}
               className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
             >
