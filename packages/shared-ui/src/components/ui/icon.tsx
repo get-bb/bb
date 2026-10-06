@@ -36,7 +36,7 @@ import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
 import FolderSyncIcon from "@hugeicons/core-free-icons/FolderSyncIcon";
 import FolderUnknownIcon from "@hugeicons/core-free-icons/FolderUnknownIcon";
 import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
-import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
+import Home07Icon from "@hugeicons/core-free-icons/Home07Icon";
 import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
@@ -184,7 +184,7 @@ const CORE_ICON_MAP = {
   FolderSync: FolderSyncIcon,
   FolderUnknown: FolderUnknownIcon,
   Folder02: Folder02Icon,
-  Home: Home01Icon,
+  Home: Home07Icon,
   Info: InformationCircleIcon,
   ListTodo: CheckListIcon,
   Loading: Loading03Icon,
