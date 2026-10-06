@@ -8,6 +8,10 @@ export const GUIDE_LINKS: ContentLink[] = [
     label: "Run a dev server for every branch",
     href: "/guides/remote-dev-servers",
   },
+  {
+    label: "Get Claude Code and Codex working together",
+    href: "/guides/claude-code-and-codex-together",
+  },
 ];
 
 export const COMPARE_LINKS: ContentLink[] = [

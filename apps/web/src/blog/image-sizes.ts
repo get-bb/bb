@@ -33,6 +33,22 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 1200,
     height: 900,
   },
+  "/guides/claude-code-and-codex-together/subthread-sidebar.png": {
+    width: 638,
+    height: 200,
+  },
+  "/guides/claude-code-and-codex-together/split-view.png": {
+    width: 2880,
+    height: 1800,
+  },
+  "/guides/claude-code-and-codex-together/agent-message.png": {
+    width: 1110,
+    height: 400,
+  },
+  "/guides/claude-code-and-codex-together/results-back.png": {
+    width: 1110,
+    height: 460,
+  },
   "/guides/remote-dev-servers/add-a-machine.png": { width: 1024, height: 650 },
   "/guides/remote-dev-servers/new-project-machine.png": {
     width: 1024,

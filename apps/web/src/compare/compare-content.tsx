@@ -141,7 +141,8 @@ export const FAQ_CODEX_TOGETHER: CompareFaq = {
       then fix what it finds.” It starts Codex in the same worktree, waits, and
       applies the fixes. Codex shows up as its own thread, so you can read the
       exact prompt Claude sent, watch it work, and message it mid-run. Any other
-      pair works the same way, like Cursor and OpenCode.
+      pair works the same way, like Cursor and OpenCode.{" "}
+      <a href="/guides/claude-code-and-codex-together">See how</a>.
     </p>
   ),
 };
