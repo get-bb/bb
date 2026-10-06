@@ -30,6 +30,7 @@ interface ApplyGeneratedThreadTitleArgs {
 interface ThreadMetadataGenerationArgs {
   input: PromptInput[];
   threadId: string;
+  timeoutMs?: number;
 }
 
 interface GeneratedThreadMetadata {
@@ -216,6 +217,7 @@ export async function generateThreadMetadataWithOutcome(
     label: "Thread title generation",
     logContext: { threadId: args.threadId },
     prompt,
+    ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
   });
   if (!outcome.ok) {
     return complete(

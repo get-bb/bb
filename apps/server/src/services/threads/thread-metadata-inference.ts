@@ -1,5 +1,7 @@
+import { getEnvironment, getThread } from "@bb/db";
 import type { PromptInput, ProvisioningTranscriptEntry } from "@bb/domain";
-import type { LoggedWorkSessionDeps } from "../../types.js";
+import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
+import { dispatchThreadRenameCommand } from "./thread-commands.js";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
 import {
   applyGeneratedThreadTitle,
@@ -15,10 +17,7 @@ interface ThreadMetadataInferenceArgs {
   writeTranscript: boolean;
 }
 
-interface ThreadMetadataInferenceResult {
-  titleApplied: boolean;
-  title: string | null;
-}
+const RETRY_TITLE_TIMEOUT_MS = 15_000;
 
 interface MetadataCompletedEntryArgs {
   outcome: ThreadMetadataGenerationOutcome;
@@ -43,10 +42,74 @@ function metadataCompletedEntry(
   };
 }
 
+function applyAndSyncGeneratedTitle(
+  deps: CommandResultSideEffectsDeps,
+  args: { threadId: string; title: string },
+): void {
+  let applied = false;
+  try {
+    applied = applyGeneratedThreadTitle(deps, args);
+  } catch (error) {
+    deps.logger.warn(
+      {
+        threadId: args.threadId,
+        ...runtimeErrorLogFields(deps.config, error),
+      },
+      "Failed to apply generated thread title",
+    );
+  }
+  if (!applied) {
+    return;
+  }
+  const thread = getThread(deps.db, args.threadId);
+  const environment = thread?.environmentId
+    ? getEnvironment(deps.db, thread.environmentId)
+    : null;
+  if (
+    !thread ||
+    !environment ||
+    (thread.status !== "active" && thread.status !== "idle")
+  ) {
+    return;
+  }
+  dispatchThreadRenameCommand(deps, {
+    environment: { id: environment.id, hostId: environment.hostId },
+    providerId: thread.providerId,
+    threadId: thread.id,
+    title: args.title,
+  });
+}
+
+async function retryThreadTitle(
+  deps: CommandResultSideEffectsDeps,
+  args: { input: PromptInput[]; threadId: string },
+): Promise<void> {
+  const thread = getThread(deps.db, args.threadId);
+  if (!thread || thread.title || thread.deletedAt !== null) {
+    return;
+  }
+  const outcome = await generateThreadMetadataWithOutcome(deps, {
+    input: args.input,
+    threadId: args.threadId,
+    timeoutMs: RETRY_TITLE_TIMEOUT_MS,
+  });
+  if (outcome.metadata?.title) {
+    applyAndSyncGeneratedTitle(deps, {
+      threadId: args.threadId,
+      title: outcome.metadata.title,
+    });
+    return;
+  }
+  deps.logger.info(
+    { threadId: args.threadId, reason: outcome.reason },
+    "Thread title retry produced no title",
+  );
+}
+
 export async function inferThreadMetadata(
-  deps: LoggedWorkSessionDeps,
+  deps: CommandResultSideEffectsDeps,
   args: ThreadMetadataInferenceArgs,
-): Promise<ThreadMetadataInferenceResult> {
+): Promise<void> {
   const startedAt = Date.now();
   const provisioningId = args.provisioningId;
   if (args.writeTranscript) {
@@ -82,26 +145,25 @@ export async function inferThreadMetadata(
     });
   }
 
-  let titleApplied = false;
   if (outcome.metadata?.title) {
-    try {
-      titleApplied = applyGeneratedThreadTitle(deps, {
-        threadId: args.threadId,
-        title: outcome.metadata.title,
-      });
-    } catch (error) {
+    applyAndSyncGeneratedTitle(deps, {
+      threadId: args.threadId,
+      title: outcome.metadata.title,
+    });
+    return;
+  }
+  if (outcome.reason === "timeout" || outcome.reason === "failed") {
+    void retryThreadTitle(deps, {
+      input: args.input,
+      threadId: args.threadId,
+    }).catch((error) => {
       deps.logger.warn(
         {
           threadId: args.threadId,
           ...runtimeErrorLogFields(deps.config, error),
         },
-        "Failed to apply generated thread title",
+        "Failed to retry thread title generation",
       );
-    }
+    });
   }
-
-  return {
-    title: outcome.metadata?.title ?? null,
-    titleApplied,
-  };
 }
