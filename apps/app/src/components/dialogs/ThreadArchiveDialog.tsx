@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import { formatSubthreadCount } from "@/lib/subthread-copy";
+import { formatChildThreadCount } from "@/lib/child-thread-copy";
 
 export interface ThreadArchiveDialogTarget {
   thread: Thread;
@@ -90,7 +90,7 @@ export function ThreadArchiveDialogContent({
           {active ? "This will stop current work. " : null}
           Its{" "}
           <span className="font-semibold">
-            {formatSubthreadCount(childThreadCount)}
+            {formatChildThreadCount(childThreadCount)}
           </span>{" "}
           will be archived too. Archived threads stay available and can be
           unarchived.

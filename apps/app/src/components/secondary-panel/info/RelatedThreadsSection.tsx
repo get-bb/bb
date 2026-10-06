@@ -68,19 +68,19 @@ export function RelatedThreadsSection({
   );
 }
 
-export function SubthreadsSection({ thread }: { thread: Thread }) {
-  const subthreadsQuery = useChildThreads({
+export function ChildThreadsSection({ thread }: { thread: Thread }) {
+  const childThreadsQuery = useChildThreads({
     enabled: true,
     parentThreadId: thread.id,
   });
   return (
     <RelatedThreadsSection
-      sectionId="subthreads"
-      label="Subthreads"
-      threads={(subthreadsQuery.data ?? []).filter(
-        (subthread) => subthread.originKind === null,
+      sectionId="childThreads"
+      label="Child threads"
+      threads={(childThreadsQuery.data ?? []).filter(
+        (childThread) => childThread.originKind === null,
       )}
-      idleIcon="Subthread"
+      idleIcon="ChildThread"
     />
   );
 }

@@ -30,7 +30,7 @@ import {
   ThreadTitle,
   useResolveThreadTitle,
 } from "@/components/thread/ThreadTitleMentions";
-import { SUBTHREAD_NOUN } from "@/lib/subthread-copy";
+import { CHILD_THREAD_NOUN } from "@/lib/child-thread-copy";
 
 const ALL_PROJECTS = "all";
 const ARCHIVED_THREAD_SEARCH_LIMIT = 50;
@@ -41,7 +41,7 @@ const KIND_OPTIONS: ReadonlyArray<{
 }> = [
   { label: "All threads", value: "all" },
   { label: "Threads", value: "root" },
-  { label: "Subthreads", value: "child" },
+  { label: "Child threads", value: "child" },
 ];
 
 interface ArchiveFilterMenuProps<T extends string> {
@@ -267,11 +267,11 @@ export function ArchivedThreadsSettingsSection() {
                           <Pill variant="outline" className="shrink-0">
                             <span className="inline-flex items-center gap-1 align-middle">
                               <Icon
-                                name="Subthread"
+                                name="ChildThread"
                                 className="size-3"
                                 aria-hidden
                               />
-                              {SUBTHREAD_NOUN}
+                              {CHILD_THREAD_NOUN}
                             </span>
                           </Pill>
                         ) : null}

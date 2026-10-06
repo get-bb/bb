@@ -399,7 +399,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
     expect((await screen.findByRole("dialog")).textContent).toContain(
-      "Its 4 subthreads will be archived too.",
+      "Its 4 child threads will be archived too.",
     );
     expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
   });

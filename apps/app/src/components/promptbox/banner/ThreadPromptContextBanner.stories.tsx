@@ -795,20 +795,20 @@ export function Overview() {
         <Row parentThread={forkedFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="thread with a subthread waiting for approval"
+        label="thread with a child thread waiting for approval"
         hint="the banner expands on its own to show it"
       >
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="thread with active subthreads (collapsed)"
-        hint="icon, label, and total count; click to list every subthread"
+        label="thread with active child threads (collapsed)"
+        hint="icon, label, and total count; click to list every child thread"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="a subthread needs input"
-        hint="the banner expands on its own; subthreads that need input rank first"
+        label="a child thread needs input"
+        hint="the banner expands on its own; child threads that need input rank first"
       >
         <Row childThreads={childThreadsMixedFixture} mergeBase={null} />
       </StoryRow>
@@ -824,8 +824,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="thread with active subthreads (expanded)"
-        hint="needs-input subthreads first, then working ones"
+        label="thread with active child threads (expanded)"
+        hint="needs-input child threads first, then working ones"
       >
         <Row
           childThreads={childThreadsMixedFixture}

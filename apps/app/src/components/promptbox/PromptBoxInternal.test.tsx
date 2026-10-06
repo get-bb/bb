@@ -4654,10 +4654,10 @@ describe("PromptBoxInternal mention triggers", () => {
       "Shared context · parent",
       "Shared context · same environment",
       "Shared context",
-      "Shared context · subthread",
+      "Shared context · child thread",
     ]);
     expect(within(menu).getByText("parent")).toBeTruthy();
-    expect(within(menu).getByText("subthread")).toBeTruthy();
+    expect(within(menu).getByText("child thread")).toBeTruthy();
     expect(within(menu).getByText("same environment")).toBeTruthy();
     expect(within(menu).getByText("same env").className).toContain("hidden");
   });

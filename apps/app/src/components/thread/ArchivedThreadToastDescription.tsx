@@ -2,7 +2,7 @@ import {
   ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
-import { formatSubthreadCount } from "@/lib/subthread-copy";
+import { formatChildThreadCount } from "@/lib/child-thread-copy";
 
 interface ArchivedThreadToastDescriptionProps {
   archivedThreadCount: number;
@@ -11,7 +11,7 @@ interface ArchivedThreadToastDescriptionProps {
 }
 
 function formatArchivedChildThreadLabel(childThreadCount: number): string {
-  return `and ${formatSubthreadCount(childThreadCount)}`;
+  return `and ${formatChildThreadCount(childThreadCount)}`;
 }
 
 export function ArchivedThreadToastDescription({

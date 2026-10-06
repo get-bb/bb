@@ -81,7 +81,7 @@ import {
   ThreadTitle,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
-import { subthreadNoun } from "@/lib/subthread-copy";
+import { childThreadNoun } from "@/lib/child-thread-copy";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
 
 export interface ContextBannerMergeBaseConfig {
@@ -292,7 +292,7 @@ const PARENT_SECTION_COPY: Record<
 > = {
   parent: {
     verb: "Parent",
-    bodyLead: "This thread is a subthread of ",
+    bodyLead: "This thread is a child of ",
     ariaPrefix: "Parent",
   },
   fork: {
@@ -700,7 +700,7 @@ function ActiveChildThreadsCard({
   }
   return (
     <PromptStackCard
-      ariaLabel="Subthreads"
+      ariaLabel="Child threads"
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
@@ -710,7 +710,7 @@ function ActiveChildThreadsCard({
         id={SECTION_IDS.childThreads.toggle}
         aria-expanded={isExpanded}
         aria-controls={SECTION_IDS.childThreads.body}
-        aria-label={`${items.length} active ${subthreadNoun(items.length)}`}
+        aria-label={`${items.length} active ${childThreadNoun(items.length)}`}
         onClick={focus.onTriggerClick}
         className={activityRowClass(
           "active",
@@ -723,7 +723,7 @@ function ActiveChildThreadsCard({
         {items.some((item) => item.hasPendingInteraction) ? (
           <span className="relative mr-1 inline-flex shrink-0">
             <Icon
-              name="Subthread"
+              name="ChildThread"
               className="size-3.5 text-muted-foreground"
               aria-hidden="true"
             />
@@ -737,7 +737,7 @@ function ActiveChildThreadsCard({
           </span>
         ) : (
           <Icon
-            name="Subthread"
+            name="ChildThread"
             className={activityIconClass("active", "size-3.5 shrink-0")}
             aria-hidden="true"
           />
@@ -748,7 +748,7 @@ function ActiveChildThreadsCard({
             "min-w-0 flex-1 truncate text-left",
           )}
         >
-          Active subthreads
+          Active child threads
         </span>
         <PromptStackCountSlot count={items.length} prefix="" />
       </button>
@@ -757,7 +757,7 @@ function ActiveChildThreadsCard({
         id={SECTION_IDS.childThreads.body}
         labelledBy={SECTION_IDS.childThreads.toggle}
         isExpanded={isExpanded}
-        collapseLabel={`Collapse ${items.length} ${subthreadNoun(items.length)}`}
+        collapseLabel={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
         collapseRef={focus.collapseRef}
         onCollapse={focus.onCollapseClick}
       >
