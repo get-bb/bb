@@ -1767,6 +1767,13 @@ function ThreadDetailViewInternal(
             (isThreadDisplayStatusBannerActive(entry.runtime.displayStatus) ||
               entry.hasPendingInteraction),
         )
+        .sort((left, right) =>
+          left.hasPendingInteraction === right.hasPendingInteraction
+            ? right.latestAttentionAt - left.latestAttentionAt
+            : left.hasPendingInteraction
+              ? -1
+              : 1,
+        )
         .map((entry) => ({
           id: entry.id,
           title: getThreadDisplayTitle(entry),
@@ -1775,14 +1782,7 @@ function ThreadDetailViewInternal(
             threadId: entry.id,
           }),
           hasPendingInteraction: entry.hasPendingInteraction,
-        }))
-        .sort((left, right) =>
-          left.hasPendingInteraction === right.hasPendingInteraction
-            ? 0
-            : left.hasPendingInteraction
-              ? -1
-              : 1,
-        );
+        }));
       if (activeItems.length === 0) return null;
       return { items: activeItems };
     }, [childThreadSubsetQuery.data]);
@@ -2325,7 +2325,6 @@ function ThreadDetailViewInternal(
           onCloseAutoFocus={onCloseAutoFocus}
         />
       )}
-      childPillLabel={parentThreadId ? "child" : null}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}

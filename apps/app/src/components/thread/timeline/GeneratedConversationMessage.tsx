@@ -332,7 +332,7 @@ function generatedConversationEmptyText(
 function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
-      return "UserRoundPlus";
+      return "Subthread";
     case "ownership-removed":
       return "UserRound";
     case "child-needs-attention":

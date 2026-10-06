@@ -114,7 +114,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -137,7 +136,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -166,7 +164,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -198,7 +195,6 @@ describe("ThreadDetailHeader", () => {
       >
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -247,7 +243,6 @@ describe("ThreadDetailHeader", () => {
               ) : null}
             </>
           )}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onClosePane={vi.fn()}
           onOpenThreadGitAction={vi.fn()}
@@ -306,7 +301,6 @@ describe("ThreadDetailHeader", () => {
               ) : null}
             </>
           )}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onClosePane={vi.fn()}
           onOpenThreadGitAction={vi.fn()}
@@ -332,7 +326,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -368,7 +361,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -409,7 +401,6 @@ describe("ThreadDetailHeader", () => {
           <PaneContext.Provider value={PANE_CONTEXT}>
             <ThreadDetailHeader
               actionsMenu={null}
-              childPillLabel={null}
               isSecondaryPanelOpen={false}
               onOpenThreadGitAction={vi.fn()}
               onToggleSecondaryPanel={vi.fn()}
@@ -457,7 +448,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -487,7 +477,6 @@ describe("ThreadDetailHeader", () => {
         <PaneContext.Provider value={PANE_CONTEXT}>
           <ThreadDetailHeader
             actionsMenu={null}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}
@@ -510,7 +499,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -546,7 +534,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -588,7 +575,6 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -621,7 +607,6 @@ describe("ThreadDetailHeader", () => {
       >
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -656,7 +641,6 @@ describe("ThreadDetailHeader", () => {
               menuArgs.current = args;
               return null;
             }}
-            childPillLabel={null}
             isSecondaryPanelOpen={false}
             onOpenThreadGitAction={vi.fn()}
             onToggleSecondaryPanel={vi.fn()}

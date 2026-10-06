@@ -391,18 +391,30 @@ const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
   ],
 };
 
-const childThreadsMixedFixture: ThreadPromptChildThreadsSection = {
-  items: childThreadsFixture.items.map((item, index) =>
-    index === 1 ? { ...item, hasPendingInteraction: true } : item,
-  ),
-};
+function withPending(
+  pendingIds: readonly string[],
+): ThreadPromptChildThreadsSection {
+  const items = childThreadsFixture.items.map((item) => ({
+    ...item,
+    hasPendingInteraction: pendingIds.includes(item.id),
+  }));
+  return {
+    items: [
+      ...items.filter((item) => item.hasPendingInteraction),
+      ...items.filter((item) => !item.hasPendingInteraction),
+    ],
+  };
+}
+
+const childThreadsMixedFixture = withPending(["thr_b"]);
+const childThreadsTwoPendingFixture = withPending(["thr_b", "thr_d"]);
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   items: Array.from({ length: 12 }, (_, i) => ({
     id: `thr_large_${i}`,
     title: `Child work item ${i + 1} that is busy doing thing-${i}`,
     href: `/projects/proj-1/threads/thr_large_${i}`,
-    hasPendingInteraction: i === 1,
+    hasPendingInteraction: i === 0,
   })),
 };
 
@@ -784,16 +796,28 @@ export function Overview() {
         <Row parentThread={forkedFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="parent thread with a child waiting for approval"
-        hint="the parent banner names the blocked child and drops the active shimmer"
+        label="thread with a subthread waiting for approval"
+        hint="the only subthread needs input, so there is nothing to expand"
       >
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="parent thread with active children (collapsed)"
-        hint="the primary child mirrors other background-work banners without an animated flash; click to expand the child list"
+        label="thread with active subthreads (collapsed)"
+        hint="icon, label, and total count; click to list every subthread"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="a subthread needs input (collapsed)"
+        hint="the subthread that needs input replaces the header; +N shows the rest"
+      >
+        <Row childThreads={childThreadsMixedFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="two subthreads need input (collapsed)"
+        hint="only the most recent one is the header; the other is behind +N"
+      >
+        <Row childThreads={childThreadsTwoPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="active child + pull request + uncommitted"
@@ -807,8 +831,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="parent thread with active children (expanded)"
-        hint="list of children with status + pending-approval marker on item 2"
+        label="thread with active subthreads (expanded)"
+        hint="working subthreads list below the header"
       >
         <Row
           childThreads={childThreadsMixedFixture}

@@ -393,7 +393,7 @@ function describeParentThreadInvalid({
       return errorDescription({
         operation,
         title,
-        body: "Choose a thread that is not a child of this thread.",
+        body: "Choose a thread that is not a subthread of this thread.",
       });
     case "too_deep":
       return errorDescription({

@@ -9,4 +9,4 @@ variables:
 ---
 [bb system]
 
-{{threadMention}} is now a child of this thread.
+{{threadMention}} is now a subthread of this thread.
