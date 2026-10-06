@@ -232,6 +232,9 @@ export function SiteFooter({ current }: { current?: string }) {
           <a href={DASHBOARD_PATH}>Sign in</a>
         </li>
       </FooterColumn>
+      <FooterColumn title="Guides">
+        <FooterLinks links={GUIDE_LINKS} current={current} />
+      </FooterColumn>
       <FooterColumn title="Compare">
         <FooterLinks links={COMPARE_LINKS} current={current} />
       </FooterColumn>
