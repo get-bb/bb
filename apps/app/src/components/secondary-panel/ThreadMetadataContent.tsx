@@ -625,6 +625,10 @@ function withoutTrailingPeriod(text: string): string {
   return text.replace(/\.$/, "");
 }
 
+function shortenBranchComparison(summary: string): string {
+  return withoutTrailingPeriod(summary).replace(" relative to ", " ");
+}
+
 export function describeGitStatusRow(
   display: ThreadGitStatusDisplay,
   mergeBaseBranch: string | undefined,
@@ -655,7 +659,7 @@ export function describeGitStatusRow(
       return {
         icon: "GitBranch",
         iconClassName: "text-subtle-foreground",
-        text: withoutTrailingPeriod(display.summary),
+        text: shortenBranchComparison(display.summary),
         detail: null,
       };
     case "Unknown":

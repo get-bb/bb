@@ -450,6 +450,15 @@ describe("GitStatusRow", () => {
       detail: null,
     });
     expect(
+      describeGitStatusRow(
+        {
+          label: "Diverged",
+          summary: "4 ahead, 2 behind relative to main",
+        },
+        "main",
+      ),
+    ).toMatchObject({ text: "4 ahead, 2 behind main" });
+    expect(
       describeGitStatusRow({ label: "Untracked", summary: "" }, "main"),
     ).toMatchObject({
       icon: "DiffModified",
