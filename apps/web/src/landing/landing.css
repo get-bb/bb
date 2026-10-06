@@ -3040,10 +3040,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     gap: 12px;
     font-size: 13px;
   }
-
-  .updates-label {
-    display: none;
-  }
 }
 
 @media (max-width: 359px) {
