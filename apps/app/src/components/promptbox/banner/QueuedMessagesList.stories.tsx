@@ -489,7 +489,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple messages"
-        hint="a few messages fit the drawer; the row below collapses it. Drag a row's grip to reorder, and the divider to move the send-together boundary"
+        hint="a few messages fit the drawer; toggle from the header or collapse with the row below. Drag a row's grip to reorder, and the divider to move the send-together boundary"
       >
         <ResponsivePromptStage>
           <ReorderableQueuedMessagesList />
@@ -497,7 +497,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="overflowing queue"
-        hint="long queues scroll within the drawer; collapse below the messages and reopen from the header"
+        hint="long queues scroll within the drawer; toggle from the header or collapse below the messages"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={manyMessages} />
