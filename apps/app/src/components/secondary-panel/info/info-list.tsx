@@ -180,8 +180,12 @@ export function InfoListRow({
             {context}
           </span>
         ) : null}
-        <InfoRowActions actions={actions} menuTitle={title ?? "Actions"} />
+        <InfoRowInlineActions actions={actions} />
       </span>
+      <InfoRowTouchActionsMenu
+        actions={actions}
+        menuTitle={title ?? "Actions"}
+      />
       {trailing}
     </li>
   );
@@ -220,53 +224,53 @@ function InfoRowAction({
   );
 }
 
-function InfoRowActions({
+function InfoRowInlineActions({
+  actions,
+}: {
+  actions: readonly InfoRowActionItem[];
+}) {
+  const collapsesOnTouch = actions.length > 1;
+  return actions.map((action) => (
+    <InfoRowAction
+      key={action.label}
+      action={action}
+      className={collapsesOnTouch ? "pointer-coarse:hidden" : undefined}
+    />
+  ));
+}
+
+function InfoRowTouchActionsMenu({
   actions,
   menuTitle,
 }: {
   actions: readonly InfoRowActionItem[];
   menuTitle: string;
 }) {
-  if (actions.length === 0) return null;
-  const collapsesOnTouch = actions.length > 1;
+  if (actions.length < 2) return null;
   return (
-    <>
-      {actions.map((action) => (
-        <InfoRowAction
-          key={action.label}
-          action={action}
-          className={collapsesOnTouch ? "pointer-coarse:hidden" : undefined}
-        />
-      ))}
-      {collapsesOnTouch ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="More actions"
-              className={cn(
-                INFO_ROW_ACTION_CLASS,
-                "hidden pointer-coarse:flex",
-              )}
-            >
-              <Icon name="MoreHorizontal" className="size-3" aria-hidden />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" mobileTitle={menuTitle}>
-            {actions.map((action) => (
-              <DropdownMenuItem
-                key={action.label}
-                onSelect={action.onSelect}
-                textValue={action.label}
-              >
-                <Icon name={action.icon} className="size-3.5" aria-hidden />
-                {action.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-    </>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="More actions"
+          className={cn(INFO_ROW_ACTION_CLASS, "hidden pointer-coarse:flex")}
+        >
+          <Icon name="MoreHorizontal" className="size-3" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" mobileTitle={menuTitle}>
+        {actions.map((action) => (
+          <DropdownMenuItem
+            key={action.label}
+            onSelect={action.onSelect}
+            textValue={action.label}
+          >
+            <Icon name={action.icon} className="size-3.5" aria-hidden />
+            {action.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
