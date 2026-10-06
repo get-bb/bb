@@ -19,65 +19,79 @@ import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
-type ChangesSectionKind = "uncommitted" | "committed";
-
-const CHANGES_SECTION_COPY: Record<
-  ChangesSectionKind,
-  { id: string; label: string }
-> = {
-  uncommitted: { id: "uncommittedChanges", label: "Uncommitted changes" },
-  committed: { id: "committedChanges", label: "Committed changes" },
-};
-
-interface ChangesSectionProps {
-  kind: ChangesSectionKind;
-  workspaceStatus: WorkspaceStatus | undefined;
+interface ChangedFilesHandlers {
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
   onOpenChangedFile?: (path: string) => void;
 }
 
-export function ChangesSection({
-  kind,
-  workspaceStatus,
-  onChangedFileClick,
-  onOpenChangedFile,
-}: ChangesSectionProps) {
-  const copy = CHANGES_SECTION_COPY[kind];
-  const collapse = useInfoSectionCollapse(copy.id);
-  const section = selectWorkspaceChangedFilesSections(workspaceStatus).find(
+export function selectChangedFilesSection(
+  workspaceStatus: WorkspaceStatus | undefined,
+  kind: "uncommitted" | "committed",
+): WorkspaceChangedFilesSection | undefined {
+  return selectWorkspaceChangedFilesSections(workspaceStatus).find(
     (candidate) =>
       kind === "committed"
         ? candidate.kind === "committed"
         : candidate.kind !== "committed",
   );
-  if (section === undefined) return null;
+}
+
+export function ChangedFilesTally({
+  section,
+}: {
+  section: WorkspaceChangedFilesSection;
+}) {
   const tally = toChangeTally(section.stats);
+  if (!tally.lineStatsComplete) return null;
+  return (
+    <DiffStatsTally
+      insertions={tally.insertions}
+      deletions={tally.deletions}
+      className="text-2xs tabular-nums"
+    />
+  );
+}
+
+export function ChangedFilesList({
+  section,
+  onChangedFileClick,
+  onOpenChangedFile,
+}: ChangedFilesHandlers & { section: WorkspaceChangedFilesSection }) {
+  return (
+    <InfoList
+      items={section.files}
+      getKey={(file) => `${file.status}:${file.path}`}
+      renderItem={(file) => (
+        <ChangedFileRow
+          file={file}
+          section={section}
+          onChangedFileClick={onChangedFileClick}
+          onOpenChangedFile={onOpenChangedFile}
+        />
+      )}
+    />
+  );
+}
+
+export function UncommittedChangesSection({
+  workspaceStatus,
+  onChangedFileClick,
+  onOpenChangedFile,
+}: ChangedFilesHandlers & { workspaceStatus: WorkspaceStatus | undefined }) {
+  const collapse = useInfoSectionCollapse("uncommittedChanges");
+  const section = selectChangedFilesSection(workspaceStatus, "uncommitted");
+  if (section === undefined) return null;
   return (
     <InfoSection
-      label={copy.label}
+      label="Uncommitted changes"
       count={section.files.length}
       collapse={collapse}
-      trailing={
-        tally.lineStatsComplete ? (
-          <DiffStatsTally
-            insertions={tally.insertions}
-            deletions={tally.deletions}
-            className="text-2xs tabular-nums"
-          />
-        ) : null
-      }
+      trailing={<ChangedFilesTally section={section} />}
     >
-      <InfoList
-        items={section.files}
-        getKey={(file) => `${file.status}:${file.path}`}
-        renderItem={(file) => (
-          <ChangedFileRow
-            file={file}
-            section={section}
-            onChangedFileClick={onChangedFileClick}
-            onOpenChangedFile={onOpenChangedFile}
-          />
-        )}
+      <ChangedFilesList
+        section={section}
+        onChangedFileClick={onChangedFileClick}
+        onOpenChangedFile={onOpenChangedFile}
       />
     </InfoSection>
   );

@@ -37,7 +37,7 @@ so they carry over between navigation plugins.
   `sidebar.headerProvider`, `sidebar.threadListProvider`).
 - The same registry stores `infoPanel.collapsedSections`, the thread Info panel
   sections collapsed from their headings (`commits`, `uncommittedChanges`,
-  `committedChanges`, `forks`, `threadStorage`). Read or change it with `bb settings ui get` and
+  `forks`, `threadStorage`). Read or change it with `bb settings ui get` and
   `bb settings ui set`.
 - The built-in sidebar's Filter selects Active and Archived, defaulting to Active,
   including threads with saved messages. This selection is browser-local, not

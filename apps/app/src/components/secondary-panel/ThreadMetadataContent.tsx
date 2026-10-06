@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type UIEvent,
 } from "react";
-import { ChangesSection } from "./info/ChangesSection";
+import { UncommittedChangesSection } from "./info/ChangesSection";
 import { CommitsSection } from "./info/CommitsSection";
 import { ForksSection } from "./info/RelatedThreadsSection";
 import {
@@ -853,9 +853,6 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   );
 }
 
-const THREAD_PROPERTY_GROUP_CLASS =
-  "flex min-w-0 flex-col gap-1.5 empty:hidden";
-
 export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   const {
     thread,
@@ -898,7 +895,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   return (
     <ThreadMetadataCard>
       <div className="flex min-w-0 flex-col divide-y divide-border [&>*]:py-3 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-        <div className={THREAD_PROPERTY_GROUP_CLASS}>
+        <div className="flex min-w-0 flex-col gap-1.5">
           <ParentSelectorRow
             thread={thread}
             projectId={projectId}
@@ -924,9 +921,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
             failed={environmentProvisioningFailure}
           />
           <WorkspacePathRow environment={environment} />
-          <ArchivedRow thread={thread} />
-        </div>
-        <div className={THREAD_PROPERTY_GROUP_CLASS}>
           {isHostActive ? (
             <>
               <BranchRow workspaceStatus={workspaceStatus} />
@@ -955,6 +949,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
             </>
           ) : null}
           <PullRequestRow pullRequest={pullRequest} />
+          <ArchivedRow thread={thread} />
         </div>
         <ForksSection thread={thread} />
         {isHostActive ? (
@@ -962,15 +957,10 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
             <CommitsSection
               workspaceStatus={workspaceStatus}
               onCommitClick={onCommitClick}
-            />
-            <ChangesSection
-              kind="uncommitted"
-              workspaceStatus={workspaceStatus}
               onChangedFileClick={onChangedFileClick}
               onOpenChangedFile={onOpenChangedFile}
             />
-            <ChangesSection
-              kind="committed"
+            <UncommittedChangesSection
               workspaceStatus={workspaceStatus}
               onChangedFileClick={onChangedFileClick}
               onOpenChangedFile={onOpenChangedFile}

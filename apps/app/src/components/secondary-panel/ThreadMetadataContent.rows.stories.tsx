@@ -11,7 +11,7 @@ import {
   ArchivedRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
-import { ChangesSection } from "./info/ChangesSection";
+import { UncommittedChangesSection } from "./info/ChangesSection";
 import { CommitsSection } from "./info/CommitsSection";
 import {
   PanelStage,
@@ -797,8 +797,7 @@ export function ChangedFiles() {
     <StoryCard>
       <StoryRow label="uncommitted">
         <RowStage>
-          <ChangesSection
-            kind="uncommitted"
+          <UncommittedChangesSection
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...STORY_DIRTY_WORKING_TREE,
@@ -811,8 +810,7 @@ export function ChangedFiles() {
       </StoryRow>
       <StoryRow label="committed, not merged">
         <RowStage>
-          <ChangesSection
-            kind="committed"
+          <CommitsSection
             workspaceStatus={makeWorkspaceStatus({
               mergeBase: STORY_COMMITTED_MERGE_BASE,
             })}
@@ -822,8 +820,7 @@ export function ChangedFiles() {
       </StoryRow>
       <StoryRow label="uncommitted + committed">
         <RowStage>
-          <ChangesSection
-            kind="uncommitted"
+          <UncommittedChangesSection
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...STORY_DIRTY_WORKING_TREE,
@@ -833,8 +830,7 @@ export function ChangedFiles() {
             })}
             onChangedFileClick={noop}
           />
-          <ChangesSection
-            kind="committed"
+          <CommitsSection
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...STORY_DIRTY_WORKING_TREE,

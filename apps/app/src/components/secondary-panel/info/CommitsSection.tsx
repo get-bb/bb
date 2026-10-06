@@ -1,21 +1,41 @@
 import type { WorkspaceStatus } from "@bb/domain";
+import type { WorkspaceChangedFileSelection } from "@/components/workspace/workspace-change-summary";
 import { selectWorkspaceAheadCommits } from "@/components/workspace/workspace-change-summary";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
+import {
+  ChangedFilesList,
+  ChangedFilesTally,
+  selectChangedFilesSection,
+} from "./ChangesSection";
+import {
+  InfoList,
+  InfoListRow,
+  InfoRowTime,
+  InfoSection,
+  InfoSubheading,
+} from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 interface CommitsSectionProps {
   workspaceStatus: WorkspaceStatus | undefined;
   onCommitClick?: (sha: string) => void;
+  onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
+  onOpenChangedFile?: (path: string) => void;
 }
 
 export function CommitsSection({
   workspaceStatus,
   onCommitClick,
+  onChangedFileClick,
+  onOpenChangedFile,
 }: CommitsSectionProps) {
   const commits = selectWorkspaceAheadCommits(workspaceStatus);
+  const committedFiles = selectChangedFilesSection(
+    workspaceStatus,
+    "committed",
+  );
   const collapse = useInfoSectionCollapse("commits");
-  if (commits.length === 0) return null;
+  if (commits.length === 0 && committedFiles === undefined) return null;
   return (
     <InfoSection label="Commits" count={commits.length} collapse={collapse}>
       <InfoList
@@ -64,6 +84,20 @@ export function CommitsSection({
           />
         )}
       />
+      {committedFiles ? (
+        <>
+          <InfoSubheading
+            label="Files changed"
+            count={committedFiles.files.length}
+            trailing={<ChangedFilesTally section={committedFiles} />}
+          />
+          <ChangedFilesList
+            section={committedFiles}
+            onChangedFileClick={onChangedFileClick}
+            onOpenChangedFile={onOpenChangedFile}
+          />
+        </>
+      ) : null}
     </InfoSection>
   );
 }
