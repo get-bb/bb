@@ -1,4 +1,4 @@
-import { execFile, spawn, type ExecFileException } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,10 +9,10 @@ import type {
   WorkspaceGitOperation,
 } from "@bb/domain";
 import {
-  killProcessGroup,
+  execPortableFile,
+  spawnManagedProcess,
   pathExists,
   sanitizeInheritedChildProcessEnv,
-  supportsProcessGroups,
 } from "@bb/process-utils";
 
 const execFileAsync = promisify(execFile);
@@ -40,6 +40,7 @@ export interface RunGitOptions extends GitProcessOptions {
   maxBufferBytes?: number;
   allowTruncatedStdout?: boolean;
   onStderr?: (chunk: string) => void;
+  input?: string;
 }
 
 interface ResolveGitProcessEnvArgs {
@@ -277,7 +278,6 @@ export async function runGit(
   try {
     const processOptions = {
       cwd: options.cwd,
-      encoding: "utf8",
       env: resolveGitProcessEnv({
         env: options.env,
         shellPath: options.shellPath,
@@ -286,28 +286,11 @@ export async function runGit(
       signal: options.signal,
       timeout: options.timeoutMs,
     } as const;
-    const stderrListener = options.onStderr;
-    const result =
-      stderrListener === undefined
-        ? await execFileAsync("git", args, processOptions)
-        : await new Promise<{ stdout: string; stderr: string }>(
-            (resolve, reject) => {
-              const child = execFile(
-                "git",
-                args,
-                processOptions,
-                (error, stdout, stderr) => {
-                  if (error) {
-                    error.stdout = stdout;
-                    error.stderr = stderr;
-                    reject(error);
-                  } else resolve({ stdout, stderr });
-                },
-              );
-              child.stderr?.setEncoding("utf8");
-              child.stderr?.on("data", stderrListener);
-            },
-          );
+    const result = await execPortableFile("git", args, {
+      ...processOptions,
+      input: options.input,
+      onStderr: options.onStderr,
+    });
     return {
       stdout: result.stdout,
       stderr: result.stderr,
@@ -369,14 +352,17 @@ export async function runGitWithNullRecordLimit(
   }
 
   return new Promise((resolve, reject) => {
-    const child = spawn("git", args, {
+    const managed = spawnManagedProcess({
+      command: "git",
+      args,
       cwd: options.cwd,
       env: resolveGitProcessEnv({
         env: options.env,
         shellPath: options.shellPath,
       }),
-      stdio: ["ignore", "pipe", "pipe"],
     });
+    const { child } = managed;
+    child.stdin.end();
     const stdoutRecords: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let pending = Buffer.alloc(0);
@@ -389,9 +375,19 @@ export async function runGitWithNullRecordLimit(
     let spawnError: Error | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
+    let stopping: Promise<void> | undefined;
     const stopChild = (): void => {
-      child.stdout.pause();
-      child.kill();
+      stopping ??= managed.stop({ gracePeriodMs: 0 }).then(
+        () => undefined,
+        (error: unknown) => {
+          if (timeout !== undefined) clearTimeout(timeout);
+          options.signal?.removeEventListener("abort", onAbort);
+          child.stdin.destroy();
+          child.stderr.destroy();
+          reject(error);
+        },
+      );
+      child.stdout.destroy();
     };
     const onAbort = (): void => {
       if (recordLimitReached) return;
@@ -454,7 +450,13 @@ export async function runGitWithNullRecordLimit(
     child.once("error", (error) => {
       spawnError = error;
     });
-    child.once("close", (code) => {
+    child.once("close", async (code) => {
+      try {
+        await stopping;
+      } catch (error) {
+        reject(error);
+        return;
+      }
       if (timeout !== undefined) clearTimeout(timeout);
       options.signal?.removeEventListener("abort", onAbort);
 
@@ -546,20 +548,30 @@ export async function runShellPipeline(
     throw createShellPipelineCancelledError(options.signal.reason);
   }
   try {
-    const result = await execFileAsync(
-      "/bin/sh",
+    const processOptions = {
+      cwd: options.cwd,
+      env: resolveGitProcessEnv({
+        env: undefined,
+        shellPath: options.shellPath,
+      }),
+      maxBuffer: DEFAULT_BUFFER_BYTES,
+      signal: options.signal,
+      timeout: options.timeoutMs,
+    };
+    const shell =
+      process.platform === "win32"
+        ? (
+            await execPortableFile(
+              "git",
+              ["var", "GIT_SHELL_PATH"],
+              processOptions,
+            )
+          ).stdout.trim()
+        : "/bin/sh";
+    const result = await execPortableFile(
+      shell,
       ["-c", script, "sh", ...positionalArgs],
-      {
-        cwd: options.cwd,
-        encoding: "utf8",
-        env: resolveGitProcessEnv({
-          env: undefined,
-          shellPath: options.shellPath,
-        }),
-        maxBuffer: DEFAULT_BUFFER_BYTES,
-        signal: options.signal,
-        timeout: options.timeoutMs,
-      },
+      processOptions,
     );
     return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
   } catch (error) {
@@ -1268,12 +1280,11 @@ async function fetchRemoteBranchesNonInteractively(
   cwd: string,
   options: GitTimeoutOptions,
 ): Promise<FetchRemoteBranchesResult> {
-  return new Promise((resolve) => {
-    const child = spawn("git", ["fetch", "--all", "--prune", "--quiet"], {
+  try {
+    await execPortableFile("git", ["fetch", "--all", "--prune", "--quiet"], {
       cwd,
-      detached: supportsProcessGroups(),
-      windowsHide: true,
-      stdio: "ignore",
+      timeout: options.timeoutMs,
+      maxBuffer: DEFAULT_BUFFER_BYTES,
       env: resolveGitProcessEnv({
         shellPath: options.shellPath,
         env: {
@@ -1285,21 +1296,10 @@ async function fetchRemoteBranchesNonInteractively(
         },
       }),
     });
-    const timeout =
-      options.timeoutMs === undefined
-        ? undefined
-        : setTimeout(() => {
-            killProcessGroup({ child, signal: "SIGKILL" });
-          }, options.timeoutMs);
-    child.once("error", () => {
-      clearTimeout(timeout);
-      resolve({ status: "failed" });
-    });
-    child.once("close", (code) => {
-      clearTimeout(timeout);
-      resolve({ status: code === 0 ? "fetched" : "failed" });
-    });
-  });
+    return { status: "fetched" };
+  } catch {
+    return { status: "failed" };
+  }
 }
 
 export async function fetchRemoteBranches(

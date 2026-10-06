@@ -1,12 +1,16 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
+  closeSession,
   createConnection,
   createEnvironment,
   createProject,
   createThread,
+  hostDaemonSessions,
   migrate,
   markProjectDeleted,
   noopNotifier,
+  openSession,
   updateHost,
   upsertHost,
   type DbConnection,
@@ -15,7 +19,9 @@ import type { Host, Project } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { ApiError } from "../../src/errors.js";
 import { NotificationHub } from "../../src/ws/hub.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import {
+  listPublicHostsWithStatus,
   requireConnectedHostSession,
   requireNonDestroyedHostWithStatus,
   requirePublicProject,
@@ -58,6 +64,33 @@ function setup(): SetupResult {
     updatedAt: hostRow.updatedAt,
   });
   return { db, host, hub, project };
+}
+
+function openTestSession(db: DbConnection, hostId: string) {
+  return openSession(db, {
+    hostId,
+    instanceId: "instance-entity-lookup",
+    hostName: "Entity Lookup Host",
+    dataDir: "/tmp/entity-lookup-data",
+    protocolVersion: 1,
+    heartbeatIntervalMs: 5_000,
+    leaseTimeoutMs: 30_000,
+  });
+}
+
+function closeTestSession(
+  db: DbConnection,
+  args: {
+    closeReason: "daemon-disconnect" | "expired";
+    closedAt: number;
+    sessionId: string;
+  },
+): void {
+  closeSession(db, noopNotifier, args.sessionId, args.closeReason);
+  db.update(hostDaemonSessions)
+    .set({ closedAt: args.closedAt })
+    .where(eq(hostDaemonSessions.id, args.sessionId))
+    .run();
 }
 
 function captureApiError(callback: ThrowingCallback): ApiError {
@@ -283,6 +316,57 @@ describe("entity lookup lifecycle errors", () => {
           deletedAt: 123,
         },
       });
+    } finally {
+      db.$client.close();
+    }
+  });
+});
+
+describe("host status after a lost daemon connection", () => {
+  it.each(["daemon-disconnect", "expired"] as const)(
+    "reports a host whose session closed (%s) as disconnected immediately",
+    (closeReason) => {
+      const { db, host, hub } = setup();
+      try {
+        const session = openTestSession(db, host.id);
+        closeTestSession(db, {
+          closeReason,
+          closedAt: Date.now() - 1_000,
+          sessionId: session.id,
+        });
+
+        expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
+          "disconnected",
+        );
+        expect(
+          requireNonDestroyedHostWithStatus({ db, hub }, host.id).status,
+        ).toBe("disconnected");
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
+
+  it("reports a reconnecting host as connected only once its daemon socket registers", () => {
+    const { db, host, hub } = setup();
+    try {
+      const lost = openTestSession(db, host.id);
+      closeTestSession(db, {
+        closeReason: "daemon-disconnect",
+        closedAt: Date.now() - 1_000,
+        sessionId: lost.id,
+      });
+      const reopened = openTestSession(db, host.id);
+
+      expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
+        "disconnected",
+      );
+
+      hub.registerDaemon(reopened.id, host.id, createMockHubSocket());
+
+      expect(listPublicHostsWithStatus({ db, hub })[0]?.status).toBe(
+        "connected",
+      );
     } finally {
       db.$client.close();
     }

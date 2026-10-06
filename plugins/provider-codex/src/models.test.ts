@@ -1,24 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  mapBbReasoningLevelToCodex,
-  mapCodexReasoningLevelToBb,
-  parseModelsResponse,
-} from "./models.js";
-
-describe("mapCodexReasoningLevelToBb", () => {
-  it("returns null for unknown values", () => {
-    expect(mapCodexReasoningLevelToBb("ludicrous")).toBeNull();
-    expect(mapCodexReasoningLevelToBb(42)).toBeNull();
-    expect(mapCodexReasoningLevelToBb(undefined)).toBeNull();
-  });
-});
-
-describe("mapBbReasoningLevelToCodex", () => {
-  it("returns null for none and ultracode", () => {
-    expect(mapBbReasoningLevelToCodex("none")).toBeNull();
-    expect(mapBbReasoningLevelToCodex("ultracode")).toBeNull();
-  });
-});
+import { parseModelsResponse } from "./models.js";
 
 describe("parseModelsResponse", () => {
   it("parses a live-shaped Codex payload with max and ultra", () => {
@@ -91,6 +72,27 @@ describe("parseModelsResponse", () => {
     expect(models[0]?.defaultReasoningEffort).toBe("low");
   });
 
+  it("skips effort entries without a string level and defaults to the first effort when none is named", () => {
+    const models = parseModelsResponse({
+      data: [
+        {
+          id: "sparse-model",
+          model: "sparse-model",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "high", description: "High" },
+            { reasoningEffort: 42, description: "Numeric" },
+            { description: "Missing" },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["high"]);
+    expect(models[0]?.defaultReasoningEffort).toBe("high");
+  });
+
   it("falls back to default efforts when every effort is unknown", () => {
     const models = parseModelsResponse({
       data: [
@@ -141,6 +143,7 @@ describe("parseModelsResponse", () => {
           { reasoningEffort: "medium", description: "Medium" },
         ],
         defaultReasoningEffort: "medium",
+        supportedServiceTiers: [{ id: "fast" }],
         isDefault: true,
       },
     ]);
@@ -183,5 +186,61 @@ describe("parseModelsResponse", () => {
         data: [{ missing: "id" }, null, 3],
       }),
     ).toThrow("Codex model/list returned no supported models.");
+  });
+
+  describe("service tiers", () => {
+    function tiersFor(model: Record<string, unknown>) {
+      return parseModelsResponse({
+        data: [{ id: "gpt-6-astra", model: "gpt-6-astra", ...model }],
+      })[0]?.supportedServiceTiers;
+    }
+
+    it("reports the tiers Codex lists, naming its priority tier fast", () => {
+      expect(
+        tiersFor({
+          additionalSpeedTiers: ["fast"],
+          serviceTiers: [
+            {
+              id: "priority",
+              name: "Fast",
+              description: "1.5x speed, increased usage",
+            },
+            { id: "ultrafast", name: "Ultrafast", description: "" },
+          ],
+        }),
+      ).toEqual([
+        {
+          id: "fast",
+          label: "Fast",
+          description: "1.5x speed, increased usage",
+        },
+        { id: "ultrafast", label: "Ultrafast" },
+      ]);
+    });
+
+    it("reports no tiers for a model Codex lists none for", () => {
+      expect(tiersFor({ serviceTiers: [] })).toEqual([]);
+    });
+
+    it("falls back to the legacy speed tiers, then to fast alone", () => {
+      expect(tiersFor({ additionalSpeedTiers: ["fast"] })).toEqual([
+        { id: "fast" },
+      ]);
+      expect(tiersFor({ additionalSpeedTiers: [] })).toEqual([]);
+      expect(tiersFor({})).toEqual([{ id: "fast" }]);
+    });
+
+    it("skips malformed and repeated tier entries", () => {
+      expect(
+        tiersFor({
+          serviceTiers: [
+            { name: "No id" },
+            null,
+            { id: "priority" },
+            { id: "fast", name: "Duplicate of priority" },
+          ],
+        }),
+      ).toEqual([{ id: "fast" }]);
+    });
   });
 });

@@ -7,6 +7,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
+import { formatByteSize } from "@/lib/format-byte-size";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { DiffImageSizeStat } from "./GitDiffCardBody";
 
@@ -30,20 +31,6 @@ interface GitDiffCardHeaderProps {
   hasChanges: boolean;
   statSlot?: ReactNode;
   actionSlot?: ReactNode;
-}
-
-const BYTES_PER_UNIT = 1024;
-
-function formatByteSize(bytes: number): string {
-  if (bytes < BYTES_PER_UNIT) {
-    return `${bytes} B`;
-  }
-  const kb = bytes / BYTES_PER_UNIT;
-  if (kb < BYTES_PER_UNIT) {
-    return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
-  }
-  const mb = kb / BYTES_PER_UNIT;
-  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
 }
 
 interface GitDiffCardImageSizeStatProps {

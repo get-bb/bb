@@ -6,13 +6,10 @@ import {
   type NotifyOnChangeProps,
   type QueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
-import type {
-  PendingInteraction,
-  ThreadListEntry,
-} from "@bb/domain";
+import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
@@ -57,6 +54,7 @@ import {
 } from "./query-placeholders";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
+  requireEnabledQueryArg,
   requireThreadId,
   shouldRetryTransientReadQuery,
   TRANSIENT_READ_RETRY_DELAY_MS,
@@ -90,6 +88,11 @@ import {
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
+import { clearThreadTimelineUnseenEvents } from "../cache-owners/thread-timeline-unseen-events";
+import {
+  THREAD_OPEN_CACHE_GC_MS,
+  touchThreadOpenCache,
+} from "../cache-owners/thread-open-cache-owner";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -393,6 +396,42 @@ export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
   });
 }
 
+interface MachineThreadPreview {
+  threads: ThreadListResponse;
+  total: number;
+}
+
+export function useMachineThreadPreview({
+  hostId,
+  limit,
+}: {
+  hostId: string | null;
+  limit: number;
+}) {
+  const enabled = hostId !== null;
+  useThreadListRealtimeSubscription({ enabled });
+  return useQuery<MachineThreadPreview>({
+    queryKey:
+      hostId === null
+        ? disabledThreadListQueryKey({ archived: false, limit })
+        : threadListQueryKey({ archived: false, hostId, limit }),
+    queryFn: async ({ signal }) => {
+      const id = requireEnabledQueryArg({
+        value: hostId,
+        hookName: "useMachineThreadPreview",
+        argName: "host id",
+      });
+      const [threads, count] = await Promise.all([
+        sdk.threads.list({ archived: false, hostId: id, limit, signal }),
+        sdk.threads.count({ hostId: id, signal }),
+      ]);
+      return { threads, total: count.total };
+    },
+    enabled,
+    staleTime: THREAD_LIST_STALE_TIME_MS,
+  });
+}
+
 interface UseChildThreadsArgs {
   enabled: boolean;
   parentThreadId: string | undefined;
@@ -466,7 +505,6 @@ export function useProjectThreadSubset({
   const enabled = (enabledOption ?? true) && Boolean(projectId);
   useThreadListRealtimeSubscription({ enabled });
   const { hasParent, parentThreadId } = filters;
-  const canDeriveFromActiveProjectThreads = true;
   const activeProjectThreadListQueryKey =
     enabled && projectId
       ? threadListQueryKey({ archived: false, projectId })
@@ -474,7 +512,6 @@ export function useProjectThreadSubset({
           projectId ? { archived: false, projectId } : { archived: false },
         );
   const activeProjectThreadListIsCached =
-    canDeriveFromActiveProjectThreads &&
     enabled &&
     projectId !== undefined &&
     queryClient.getQueryData<ThreadListResponse>(
@@ -655,6 +692,7 @@ function liftThreadListPlaceholder(
   return {
     ...thread,
     activeBackgroundAgentCount: thread.activity.activeBackgroundAgentCount,
+    canRestoreEnvironment: false,
     canSpawnChild: false,
     queuedMessageCount: 0,
   };
@@ -699,6 +737,7 @@ export function useThreadDetailBootstrap(
     },
     enabled,
     staleTime: Infinity,
+    gcTime: THREAD_OPEN_CACHE_GC_MS,
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
   });
@@ -935,9 +974,11 @@ async function fetchThreadTimeline({
       ? { afterSequence: String(previous.maxSeq) }
       : {}),
   });
-  return mergeThreadTimelineDelta(previous, response, () =>
+  const timeline = await mergeThreadTimelineDelta(previous, response, () =>
     sdk.threads.timeline({ threadId, signal, ...pageArgs }),
   );
+  clearThreadTimelineUnseenEvents(queryClient, threadId);
+  return timeline;
 }
 
 export function useThreadTimeline(
@@ -947,6 +988,11 @@ export function useThreadTimeline(
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
+  useEffect(() => {
+    if (enabled) {
+      touchThreadOpenCache(queryClient, id);
+    }
+  }, [enabled, id, queryClient]);
 
   return useQuery<ThreadTimelineResponse>({
     queryKey: threadTimelineQueryKey(id),
@@ -959,6 +1005,7 @@ export function useThreadTimeline(
       });
     },
     enabled,
+    gcTime: THREAD_OPEN_CACHE_GC_MS,
     ...(options?.notifyOnChangeProps === undefined
       ? {}
       : { notifyOnChangeProps: options.notifyOnChangeProps }),
@@ -1058,11 +1105,4 @@ export function getLatestPendingInteraction(
       interaction.createdAt > latest.createdAt ? interaction : latest,
     firstInteraction,
   );
-}
-
-export function isPendingInteractionStateUnknown(
-  interactions: readonly PendingInteraction[] | undefined,
-  isFetching: boolean,
-): boolean {
-  return getLatestPendingInteraction(interactions) === null && isFetching;
 }

@@ -1,9 +1,6 @@
 import { archiveThread, markThreadDeleted } from "@bb/db";
 import { GENERATED_ID_ALPHABET, GENERATED_ID_SUFFIX_LENGTH } from "@bb/domain";
-import {
-  resolveThreadMentionsResponseSchema,
-  THREAD_MENTION_RESOLVE_MAX_IDS,
-} from "@bb/server-contract";
+import { resolveThreadMentionsResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { readJson } from "../helpers/json.js";
 import {
@@ -85,32 +82,8 @@ describe("public thread mention resolution route", () => {
     });
   });
 
-  it("enforces the request-array cap and raw-ID grammar at the route boundary", async () => {
+  it("rejects an ID outside the raw thread-ID grammar at the route boundary", async () => {
     await withTestHarness(async (harness) => {
-      const atCap = await resolveMentionsRequest(
-        harness,
-        Array.from({ length: THREAD_MENTION_RESOLVE_MAX_IDS }, (_, index) =>
-          validThreadId(index),
-        ),
-      );
-      expect(atCap.status).toBe(200);
-
-      const duplicatesBeyondArrayCap = await resolveMentionsRequest(
-        harness,
-        Array.from({ length: THREAD_MENTION_RESOLVE_MAX_IDS + 5 }, () =>
-          validThreadId(1),
-        ),
-      );
-      expect(duplicatesBeyondArrayCap.status).toBe(400);
-
-      const overCap = await resolveMentionsRequest(
-        harness,
-        Array.from({ length: THREAD_MENTION_RESOLVE_MAX_IDS + 1 }, (_, index) =>
-          validThreadId(index),
-        ),
-      );
-      expect(overCap.status).toBe(400);
-
       const invalidId = await resolveMentionsRequest(harness, ["thr_legacy"]);
       expect(invalidId.status).toBe(400);
     });

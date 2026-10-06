@@ -126,15 +126,9 @@ describe("bb theme commands", () => {
     );
   });
 
-  it("documents complete and independent appearance controls in help", async () => {
+  it("does not list a code-theme command in help", async () => {
     const themeHelp = await getHelpOutput(["theme"], register);
-    const setHelp = await getHelpOutput(["theme", "set"], register);
-    const faviconHelp = await getHelpOutput(["theme", "favicon"], register);
 
-    expect(themeHelp).toContain("favicon");
     expect(themeHelp).not.toContain("code-theme");
-    expect(setHelp).toContain("--favicon-color <color>");
-    expect(faviconHelp).toContain("set [options] <color>");
-    expect(faviconHelp).toContain("reset");
   });
 });

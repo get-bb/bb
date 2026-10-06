@@ -33,11 +33,6 @@ function bunBinary(): string | null {
   return "bun";
 }
 
-// pi ships as a Bun standalone binary whose node:net cannot attach a read
-// handle to a borrowed stdio fd, so the extension's bridge channel was dead
-// and every dynamic tool result was dropped. This test runs the same fake pi
-// through the Bun runtime so the fd channel is exercised the way production
-// does. It covers a single fd-4 delivery; sequential messages are untested.
 it.skipIf(bunBinary() === null)(
   "delivers dynamic tool results when pi runs under the Bun runtime",
   async () => {

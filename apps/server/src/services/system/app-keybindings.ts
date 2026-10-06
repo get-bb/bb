@@ -144,12 +144,19 @@ const webMainWithoutModal = {
   none: ["modalOpen"],
 } as const;
 
+const mainWithoutModalOrBrowser = {
+  all: ["mainSurface"],
+  none: ["modalOpen", "browserFocus"],
+} as const;
+
 const splitWithoutModal = {
   all: ["mainSurface", "splitActive"],
   none: ["modalOpen"],
 } as const;
 
 export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
+  binding("history.back", "[", { mod: true }, mainWithoutModalOrBrowser),
+  binding("history.forward", "]", { mod: true }, mainWithoutModalOrBrowser),
   binding("palette.open", "p", { mod: true, shift: true }, mainWithoutModal),
   binding("thread.new", "o", { mod: true, shift: true }, mainWithoutModal),
   binding(
@@ -168,6 +175,8 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
   unassignedBinding("notifications.open", mainWithoutModal),
+  unassignedBinding("plugins.enterSafeMode", mainWithoutModal),
+  unassignedBinding("plugins.exitSafeMode", mainWithoutModal),
   binding(
     "thread.previous",
     "[",
@@ -207,7 +216,12 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       ["pane.focus.down", "ArrowDown"],
     ] as const
   ).flatMap(([command, key]) =>
-    macArrowBindings(command, key, { mod: true, shift: true }, splitWithoutModal),
+    macArrowBindings(
+      command,
+      key,
+      { mod: true, control: true, shift: true },
+      splitWithoutModal,
+    ),
   ),
   unassignedBinding("pane.focus.previous", splitWithoutModal),
   unassignedBinding("pane.focus.next", splitWithoutModal),
@@ -255,6 +269,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   ),
   binding("panel.close", "w", { mod: true }, mainWithoutModal),
   binding("panel.toggle", "j", { mod: true }, mainWithoutModal),
+  unassignedBinding("panel.fullScreen.toggle", mainWithoutModal),
   binding("file.quickOpen", "p", { mod: true }, mainWithoutModal),
   binding(
     "diff.toggle",
@@ -371,6 +386,16 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       none: ["modalOpen"],
     },
   ),
+  binding(
+    "window.find",
+    "f",
+    { mod: true },
+    {
+      all: ["mainSurface"],
+      desktopOnly: true,
+      none: ["modalOpen", "browserFocus"],
+    },
+  ),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
   ...QUESTION_SELECT_APP_COMMAND_IDS.map((command, index) =>
     binding(
@@ -394,6 +419,11 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   ),
   unassignedBinding("logs.openServerDaemon", {
     all: ["mainSurface", "macPlatform"],
+    desktopOnly: true,
+    none: ["modalOpen"],
+  }),
+  unassignedBinding("dataDirectory.open", {
+    all: ["mainSurface"],
     desktopOnly: true,
     none: ["modalOpen"],
   }),

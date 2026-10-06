@@ -580,7 +580,6 @@ describe("setPluginSdkPin", () => {
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
-      app: false,
     });
 
     expect(result).toEqual({
@@ -598,38 +597,8 @@ describe("setPluginSdkPin", () => {
       ">=0.2.0",
     );
     expect(
-      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false }),
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
     ).toBeNull();
-  });
-
-  it("moves a runtime-declared SDK into devDependencies rather than duplicating it", async () => {
-    await writeFile(
-      join(rootDir, "package.json"),
-      `${JSON.stringify(
-        {
-          name: "bb-plugin-runtime-dep",
-          bb: { server: "./server.ts" },
-          dependencies: { "@get-bb/plugin-sdk": "0.2.0", zod: "^4.3.6" },
-        },
-        null,
-        2,
-      )}\n`,
-    );
-
-    const result = await setPluginSdkPin({
-      rootDir,
-      sdkVersion: SDK_VERSION,
-      app: false,
-    });
-
-    expect(result?.movedFromDependencies).toBe(true);
-    const manifest = await readJson(join(rootDir, "package.json"));
-    expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(SDK_VERSION);
   });
 
   it("moves an already-exact pin out of dependencies", async () => {
@@ -649,7 +618,6 @@ describe("setPluginSdkPin", () => {
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
-      app: false,
     });
 
     expect(result).toEqual({
@@ -663,7 +631,7 @@ describe("setPluginSdkPin", () => {
       "@get-bb/plugin-sdk": SDK_VERSION,
     });
     expect(
-      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false }),
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
     ).toBeNull();
   });
 
@@ -688,12 +656,22 @@ describe("setPluginSdkPin", () => {
       )}\n`,
     );
 
+    const original = await readFile(join(rootDir, "package.json"), "utf8");
+    const pending = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      dryRun: true,
+    });
+    expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(
+      original,
+    );
+
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
-      app: true,
     });
 
+    expect(result).toEqual(pending);
     expect(result?.pin).toBeNull();
     expect(result?.shimmedTypePins).toContainEqual({
       name: "sonner",
@@ -707,26 +685,42 @@ describe("setPluginSdkPin", () => {
       to: hostVaul,
       movedFromDependencies: true,
     });
-    expect(result?.shimmedTypePins).toContainEqual({
-      name: "@radix-ui/react-popover",
-      from: null,
-      to: PLUGIN_SHIMMED_TYPE_DEPENDENCIES["@radix-ui/react-popover"],
-      movedFromDependencies: false,
-    });
+    expect(result?.shimmedTypePins).toHaveLength(2);
     const manifest = await readJson(join(rootDir, "package.json"));
     expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
-    const devDependencies = manifest.devDependencies as Record<string, string>;
-    for (const [name, version] of Object.entries(
-      PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
-    )) {
-      expect(devDependencies[name], name).toBe(version);
-    }
-    expect(devDependencies["@get-bb/plugin-sdk"]).toBe(SDK_VERSION);
-    expect(devDependencies.typescript).toBe("^5.7.0");
+    expect(manifest.devDependencies).toEqual({
+      "@get-bb/plugin-sdk": SDK_VERSION,
+      sonner: hostSonner,
+      vaul: hostVaul,
+      typescript: "^5.7.0",
+    });
     expect(
-      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: true }),
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
     ).toBeNull();
   });
+
+  it.each([true, false])(
+    "allows an app plugin with no shim packages (dryRun: %s)",
+    async (dryRun) => {
+      const original = JSON.stringify({
+        name: "bb-plugin-pruned",
+        bb: { server: "./server.ts", app: "./app.tsx" },
+        devDependencies: { "@get-bb/plugin-sdk": SDK_VERSION },
+      });
+      await writeFile(join(rootDir, "package.json"), original);
+
+      expect(
+        await setPluginSdkPin({
+          rootDir,
+          sdkVersion: SDK_VERSION,
+          dryRun,
+        }),
+      ).toBeNull();
+      expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(
+        original,
+      );
+    },
+  );
 
   it("only repins the shimmed packages a headless plugin already declares", async () => {
     await writeFile(
@@ -748,7 +742,6 @@ describe("setPluginSdkPin", () => {
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
-      app: false,
     });
 
     expect(result?.shimmedTypePins).toEqual([

@@ -47,17 +47,48 @@ function renderPanel(isExpanded: boolean) {
   );
 }
 
-function fireResize(): void {
+function fireResize(entries: ResizeObserverEntry[] = []): void {
   const observer = ResizeObserverStub.instances.at(-1);
   if (!observer) {
     throw new Error("No ResizeObserver was installed");
   }
   act(() => {
-    observer.callback([], observer);
+    observer.callback(entries, observer);
   });
 }
 
 describe("ExpandablePanel body height", () => {
+  it("lets resize observation measure mounting and streaming content without synchronous layout reads", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    const readHeight = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get");
+    const view = renderPanel(true);
+    view.rerender(
+      <ExpandablePanel
+        isExpanded
+        summaryContent="Tool call"
+        headerToneClass="text-foreground"
+        collapsedContent={<span>Collapsed summary</span>}
+      >
+        <span>Streaming body update</span>
+      </ExpandablePanel>,
+    );
+    expect(readHeight).not.toHaveBeenCalled();
+    const target = screen.getByText("Streaming body update").parentElement
+      ?.parentElement;
+    if (!target) throw new Error("Panel content was not rendered");
+    fireResize([
+      {
+        target,
+        borderBoxSize: [{ blockSize: 120, inlineSize: 320 }],
+        contentBoxSize: [{ blockSize: 120, inlineSize: 320 }],
+        devicePixelContentBoxSize: [],
+        contentRect: new DOMRect(0, 0, 320, 120),
+      },
+    ]);
+    expect(target.parentElement?.style.height).toBe("120px");
+    expect(readHeight).not.toHaveBeenCalled();
+  });
+
   it("snaps content growth inside an open body but eases the toggle", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     const view = renderPanel(true);
@@ -149,6 +180,7 @@ describe("ExpandablePanel deferred body realization", () => {
   });
 
   it("keeps the preview, its height and the in-flight window until the body's commit", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
       function (this: HTMLElement) {
         return this.textContent?.length ?? 0;
@@ -167,6 +199,7 @@ describe("ExpandablePanel deferred body realization", () => {
     if (!region) {
       throw new Error("Panel body region was not rendered");
     }
+    fireResize();
     const previewHeight = `${"Collapsed summary".length}px`;
     const bodyHeight = `${"Expanded body".length}px`;
     expect(region.style.height).toBe(previewHeight);

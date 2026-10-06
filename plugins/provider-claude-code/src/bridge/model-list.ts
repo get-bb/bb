@@ -1,23 +1,22 @@
 import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
-import { translateMissingClaudeCliError } from "./missing-cli-error.js";
+import { translateMissingClaudeCliCatalogError } from "./missing-cli-error.js";
 import { resolveClaudeCodeExecutable } from "./session-options.js";
 
 function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   return {
     cwd: process.cwd(),
+    env,
     maxTurns: 0,
     persistSession: false,
-    settingSources: [],
+    settingSources: ["user", "project", "local"],
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
   };
 }
 
-export async function listClaudeCodeBridgeModels(
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<{
+async function probeClaudeCodeModels(env: NodeJS.ProcessEnv): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
@@ -28,7 +27,7 @@ export async function listClaudeCodeBridgeModels(
       options: buildModelProbeOptions(env),
     });
   } catch (error) {
-    throw translateMissingClaudeCliError(error);
+    throw translateMissingClaudeCliCatalogError(error);
   }
 
   try {
@@ -38,9 +37,27 @@ export async function listClaudeCodeBridgeModels(
     }
     return buildClaudeCodeModels(initialization.models);
   } catch (error) {
-    throw translateMissingClaudeCliError(error);
+    throw translateMissingClaudeCliCatalogError(error);
   } finally {
     session.close();
+  }
+}
+
+export async function listClaudeCodeBridgeModels(
+  env: NodeJS.ProcessEnv = process.env,
+): ReturnType<typeof probeClaudeCodeModels> {
+  try {
+    return await probeClaudeCodeModels(env);
+  } catch (error) {
+    if (
+      env.ANTHROPIC_MODEL &&
+      error instanceof Error &&
+      error.message.includes("--client-data-url:") &&
+      error.message.includes("pass the matching --model")
+    ) {
+      return probeClaudeCodeModels({ ...env, ANTHROPIC_MODEL: undefined });
+    }
+    throw error;
   }
 }
 

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createConnectServerSync,
   fetchConnectAccountServers,
-  selectTargetableConnectServers,
   type ConnectAccountServer,
 } from "../src/connect-server-sync.js";
 
@@ -121,20 +120,6 @@ describe("fetchConnectAccountServers", () => {
         }),
       }),
     ).resolves.toEqual({ ok: false, reason: "unavailable" });
-  });
-});
-
-describe("selectTargetableConnectServers", () => {
-  it("drops the self handle and keeps everything else, live or not", () => {
-    const servers = selectTargetableConnectServers({
-      selfHandle: "me",
-      servers: [
-        { handle: "me", name: "primary", live: true, url: "https://me.x" },
-        { handle: "laptop", name: "Laptop", live: true, url: "https://l.x" },
-        { handle: "phone", name: "Phone", live: false, url: "https://p.x" },
-      ],
-    });
-    expect(servers.map((server) => server.handle)).toEqual(["laptop", "phone"]);
   });
 });
 
@@ -286,6 +271,7 @@ describe("createConnectServerSync without a local server", () => {
             servers: [
               { handle: "me", name: "This Mac", live: true },
               { handle: "other", name: "Other", live: true },
+              { handle: "phone", name: "Phone", live: false },
             ],
           }),
         ),
@@ -316,6 +302,12 @@ describe("createConnectServerSync without a local server", () => {
         name: "Other",
         live: true,
         url: "https://other.getbb.app",
+      },
+      {
+        handle: "phone",
+        name: "Phone",
+        live: false,
+        url: "https://phone.getbb.app",
       },
     ]);
   });

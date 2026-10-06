@@ -27,19 +27,17 @@ function registerNavigation(pluginId: string, id: string, title: string) {
 }
 
 describe("SidebarNavigationSetting", () => {
-  it("defaults to the bundled Navigation plugin and offers no Automatic or built-in choice", async () => {
+  it("defaults to Automatic, which prefers an installed plugin over the bundled Navigation", async () => {
     registerNavigation("navigation", "navigation", "Navigation");
     registerNavigation("navbar", "grid", "Navigation grid");
     const store = createStore();
     render(
       <Provider store={store}>
-        <SidebarNavigationSetting />
+        <SidebarNavigationSetting navigationRail={false} />
       </Provider>,
     );
 
-    expect(store.get(sidebarNavigationProviderAtom)).toBe(
-      "navigation/navigation",
-    );
+    expect(store.get(sidebarNavigationProviderAtom)).toBe("__automatic__");
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Sidebar navigation" }),
       { button: 0 },
@@ -47,12 +45,34 @@ describe("SidebarNavigationSetting", () => {
     const options = (await screen.findAllByRole("menuitem")).map(
       (item) => item.textContent ?? "",
     );
-    expect(options.some((option) => option.startsWith("Automatic"))).toBe(
-      false,
+    expect(options.find((option) => option.startsWith("Automatic"))).toContain(
+      "Chooses Navigation grid (navbar).",
     );
-    expect(options.some((option) => option.includes("built-in"))).toBe(false);
+    expect(options).toHaveLength(3);
+    expect(options[1]).toContain("Navigation gridFrom the navbar plugin.");
+    expect(options[2]).toContain("Navigation (built-in)BB default.");
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /Navigation grid/u }));
-    expect(store.get(sidebarNavigationProviderAtom)).toBe("navbar/grid");
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /^Navigation \(built-in\)/u }),
+    );
+    expect(store.get(sidebarNavigationProviderAtom)).toBe(
+      "navigation/navigation",
+    );
+  });
+
+  it("says the choice is on hold while the navigation rail experiment draws the navigation", () => {
+    registerNavigation("navigation", "navigation", "Navigation");
+    render(
+      <Provider store={createStore()}>
+        <SidebarNavigationSetting navigationRail />
+      </Provider>,
+    );
+
+    expect(
+      screen.getByText(/Not used while the Navigation rail experiment is on/u),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Sidebar navigation" }),
+    ).toBeTruthy();
   });
 });

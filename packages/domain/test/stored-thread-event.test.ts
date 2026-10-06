@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import {
   parseStoredThreadEvent,
   parseThreadEventRow,
@@ -162,16 +161,5 @@ describe("parseStoredThreadEvent", () => {
     } as const;
 
     expect(systemThreadInterruptedEventDataSchema.parse(data)).toEqual(data);
-
-    const legacySchema = z.object({
-      reason: z.enum([
-        "manual-stop",
-        "host-daemon-restarted",
-        "provider-turn-idle",
-      ]),
-    });
-    expect(legacySchema.parse(data)).toEqual({
-      reason: "host-daemon-restarted",
-    });
   });
 });

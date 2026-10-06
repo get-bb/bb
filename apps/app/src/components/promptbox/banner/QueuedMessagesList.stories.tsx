@@ -10,10 +10,8 @@ import {
   applyQueuedMessageReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
-import {
-  QueuedMessagesList,
-  type QueuedMessageGroupBoundaryRequest,
-} from "@/components/promptbox/banner/QueuedMessagesList";
+import type { QueuedMessageGroupBoundaryRequest } from "@/components/promptbox/banner/LazyQueuedMessagesList";
+import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -491,7 +489,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple messages"
-        hint="a few messages fit the drawer; the caret collapses it. Drag a row's grip to reorder, and the divider to move the send-together boundary"
+        hint="a few messages fit the drawer; toggle from the header or collapse with the row below. Drag a row's grip to reorder, and the divider to move the send-together boundary"
       >
         <ResponsivePromptStage>
           <ReorderableQueuedMessagesList />
@@ -499,7 +497,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="overflowing queue"
-        hint="the caret expands an overflowing drawer into the pull-up workspace"
+        hint="long queues scroll within the drawer; toggle from the header or collapse below the messages"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={manyMessages} />
@@ -530,7 +528,7 @@ export function Blockquotes() {
     <StoryCard>
       <StoryRow
         label="mixed: quoted + plain"
-        hint="rows stay one line in both drawer and workspace modes"
+        hint="rows stay one line in the drawer and while editing another message"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={mixedMessages} />

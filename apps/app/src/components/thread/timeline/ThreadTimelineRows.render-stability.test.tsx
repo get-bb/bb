@@ -4,17 +4,18 @@ import { Profiler, type ProfilerOnRenderCallback } from "react";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { sdk } from "@/lib/sdk";
+import { createQueryNotificationScheduler } from "@/test/queryNotificationScheduler";
 
-function flushCacheNotifications(): Promise<void> {
-  return act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
-}
+const notifications = createQueryNotificationScheduler();
+
+beforeEach(() => notifications.install());
 
 function timelineRowsFixture() {
   const rows = [
@@ -68,6 +69,7 @@ function renderProfiledTimeline(queryClient: QueryClient) {
 
 afterEach(() => {
   cleanup();
+  notifications.restore();
   vi.restoreAllMocks();
 });
 
@@ -87,7 +89,7 @@ describe("ThreadTimelineRows render stability", () => {
     expect(
       view.getByRole("link", { name: "Personal sender" }).getAttribute("href"),
     ).toBe("/threads/thr_sender");
-    await flushCacheNotifications();
+    await notifications.flush();
     expect(getThread).not.toHaveBeenCalled();
   });
 
@@ -98,7 +100,7 @@ describe("ThreadTimelineRows render stability", () => {
     ]);
     const { commits, view } = renderProfiledTimeline(queryClient);
     expect(view.getByText("Sender thread")).toBeTruthy();
-    await flushCacheNotifications();
+    await notifications.flush();
     const settledCommitCount = commits.length;
 
     for (let round = 0; round < 10; round += 1) {
@@ -108,7 +110,7 @@ describe("ThreadTimelineRows render stability", () => {
         ]);
       });
     }
-    await flushCacheNotifications();
+    await notifications.flush();
 
     expect(commits.length).toBe(settledCommitCount);
   });

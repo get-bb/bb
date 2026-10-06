@@ -59,6 +59,7 @@ function Row({
           now={now}
           onRename={noop}
           onRemove={noop}
+          onReconnect={noop}
           onRetryUpdate={noop}
           onSuspend={noop}
           onResume={noop}
@@ -110,6 +111,22 @@ export function Rows() {
           })}
           machineProvider={MANUAL_MACHINE_PROVIDER}
           projectCount={2}
+        />
+      </StoryRow>
+      <StoryRow
+        label="offline"
+        hint="an active machine that stopped connecting, for example after its access was revoked; reconnecting is offered in the row menu"
+      >
+        <Row
+          host={makeHost({
+            id: "host_offline",
+            name: "michael-old-laptop",
+            machineProviderId: MANUAL_MACHINE_PROVIDER.id,
+            status: "disconnected",
+            lastSeenAt: now - 2 * 24 * 60 * 60_000,
+          })}
+          machineProvider={MANUAL_MACHINE_PROVIDER}
+          projectCount={1}
         />
       </StoryRow>
       <StoryRow

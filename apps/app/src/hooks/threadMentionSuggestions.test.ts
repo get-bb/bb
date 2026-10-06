@@ -55,6 +55,7 @@ function getSuggestionThreadIds(
       ["proj-2", "Docs Site"],
     ]),
     limit: args.limit ?? 8,
+    resolveTitle: (title) => title,
   }).map((suggestion) => suggestion.threadId);
 }
 
@@ -209,44 +210,6 @@ describe("buildThreadMentionSuggestions", () => {
     ]);
   });
 
-  it("ranks children of the current parent as directly related", () => {
-    const threads = [
-      makeThread({
-        id: "thr_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_same_project_parent",
-        environmentId: "env-3",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_child",
-        parentThreadId: "thr_parent",
-        title: "Shared context",
-      }),
-      makeThread({
-        id: "thr_other_project_parent",
-        environmentId: "env-2",
-        projectId: "proj-2",
-        title: "Shared context",
-      }),
-    ];
-
-    expect(
-      getSuggestionThreadIds({
-        threads,
-        query: "shared",
-        currentProjectId: "proj-1",
-        currentThreadId: "thr_parent",
-      }),
-    ).toEqual([
-      "thr_child",
-      "thr_same_project_parent",
-      "thr_other_project_parent",
-    ]);
-  });
-
   it("adds project names only for threads outside the current project", () => {
     const suggestions = buildThreadMentionSuggestions({
       threads: [
@@ -269,6 +232,7 @@ describe("buildThreadMentionSuggestions", () => {
         ["proj-2", "Docs Site"],
       ]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -312,6 +276,7 @@ describe("buildThreadMentionSuggestions", () => {
         ["proj-2", "Docs Site"],
       ]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -356,6 +321,7 @@ describe("buildThreadMentionSuggestions", () => {
         ["proj-2", "Docs Site"],
       ]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -410,6 +376,7 @@ describe("buildThreadMentionSuggestions", () => {
       currentThreadId: "thr_current",
       projectNamesById: new Map([["proj-1", "Core App"]]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(
@@ -450,6 +417,7 @@ describe("buildThreadMentionSuggestions", () => {
       currentThreadId: "thr_current",
       projectNamesById: new Map([["proj-1", "Core App"]]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([
@@ -477,6 +445,7 @@ describe("buildThreadMentionSuggestions", () => {
       currentThreadId: "thr_current",
       projectNamesById: new Map([["proj-1", "Core App"]]),
       limit: 8,
+      resolveTitle: (title) => title,
     });
 
     expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([
@@ -642,5 +611,31 @@ describe("buildThreadMentionSuggestions", () => {
         limit: 1,
       }),
     ).toEqual(["thr_unrelated_exact"]);
+  });
+  it("matches a title mention by the mentioned thread's visible name", () => {
+    const threads = [
+      makeThread({
+        id: "thr_follow_up",
+        projectId: "proj-1",
+        title: "Continue from @thread:thr_design",
+      }),
+    ];
+    const buildWithResolver = (resolveTitle: (title: string) => string) =>
+      buildThreadMentionSuggestions({
+        threads,
+        query: "design review",
+        currentEnvironmentId: null,
+        currentProjectId: "proj-1",
+        projectNamesById: new Map(),
+        limit: 8,
+        resolveTitle,
+      }).map((suggestion) => suggestion.threadId);
+
+    expect(buildWithResolver((title) => title)).toEqual([]);
+    expect(
+      buildWithResolver((title) =>
+        title.replace("@thread:thr_design", "Design review"),
+      ),
+    ).toEqual(["thr_follow_up"]);
   });
 });

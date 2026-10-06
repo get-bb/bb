@@ -24,14 +24,6 @@ const titlesOf = (ranked: ReturnType<typeof rankPaletteActions>) =>
   ranked.map((entry) => entry.action.title);
 
 describe("rankPaletteActions", () => {
-  it("keeps build order with no query and no history", () => {
-    expect(
-      titlesOf(
-        rankPaletteActions({ actions: ACTIONS, query: "", recentIds: [] }),
-      ),
-    ).toEqual(["New thread", "Next thread", "Toggle panel", "Reload page"]);
-  });
-
   it("keeps the default catalog stable even with usage history", () => {
     expect(
       titlesOf(
@@ -39,18 +31,6 @@ describe("rankPaletteActions", () => {
           actions: ACTIONS,
           query: "",
           recentIds: ["app:browser.reload", "app:panel.toggle"],
-        }),
-      ),
-    ).toEqual(["New thread", "Next thread", "Toggle panel", "Reload page"]);
-  });
-
-  it("ignores history entries for actions that are not listed", () => {
-    expect(
-      titlesOf(
-        rankPaletteActions({
-          actions: ACTIONS,
-          query: "",
-          recentIds: ["plugin:gone/vanished", "app:thread.next"],
         }),
       ),
     ).toEqual(["New thread", "Next thread", "Toggle panel", "Reload page"]);

@@ -15,6 +15,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_FileLink`
 - `UrlLink`
 - `experimental_NewThreadComposer`
+- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
+  input
 - `experimental_ProviderModelPicker`
 - `experimental_PermissionModePicker`
 - `experimental_BranchPicker` — the host's branch picker with its options
@@ -30,11 +32,16 @@ Read the installed SDK declarations for the exact current signatures.
 - `useRealtimeConnectionState`
 - `useSettings`
 - `useBbContext`
+- `experimental_usePluginId` — this plugin's id, for keying browser-side
+  state such as localStorage entries
+- `experimental_useQuestionFormHost` — bb's answer shortcuts inside a
+  `pendingInteraction` form
 - `useBbNavigate`
 - `experimental_useAppPanel`
 - `experimental_useFixedTabTarget`
 - `useComposer`
-- `useComposerView`
+- `useComposers`
+- `useComposerView` — deprecated, runtime-only for older plugins; use `useComposer`
 - `experimental_useSidebarThreads`
 - `experimental_useSidebarThreadActions`
 - `experimental_useSidebarThreadPullRequest`
@@ -82,6 +89,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginNewThreadPanelProps`
 - `PluginPendingInteractionView`
 - `PluginPendingInteractionProps`
+- `ExperimentalQuestionFormHost`
+- `ExperimentalQuestionShortcut`
 - `BranchPickerProps`
 - `UseBranchesArgs`
 - `BranchesState`
@@ -193,6 +202,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCommandContext`
 - `PluginCommandShortcut`
 - `PluginCommandRegistration`
+- `ExperimentalComposerCommandRegistration`
 - `PluginProviderIconRegistration`
 - `PluginTimelineRowPresentation`
 - `PluginTimelineRowStatus`
@@ -213,12 +223,19 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginRealtimeConnectionState`
 - `PluginComposerScope`
 - `ComposerCustomization`
+- `ExperimentalComposerPopupRegistration`
 - `ComposerPlusMenuItem`
-- `ComposerView`
-- `ExperimentalComposerSubmitOptions`
-- `ExperimentalComposerSelection`
+- `ComposerSendMenuItem`
+- `ComposerSubmitOptions`
+- `ComposerSelection`
 - `ComposerRichTextSpec`
-- `ComposerStructuredDraft`
+- `ComposerDraft`
+- `ComposerDraftSnapshot`
+- `ComposerDraftReplacement`
+- `ComposerAttachment`
+- `ComposerMention`
+- `ComposerInsertPart`
+- `ComposerInsertOptions`
 - `PluginComposerTextEffect`
 - `PluginComposerThreadRowStatus`
 - `PluginComposerMention`
@@ -231,6 +248,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalPermissionModePickerProps`
 - `NewThreadRequest`
 - `NewThreadComposerProps`
+- `ExperimentalVoiceInputTextareaProps`
 - `MarkdownProps`
 - `UrlLinkProps`
 - `ExperimentalLiveFileTarget`

@@ -83,8 +83,10 @@ describe("reply-in-side-chat message action", () => {
         role: "assistant",
         text: "whole message text",
         sourceSeqEnd: 42,
+        experimental_messageSeq: 42,
       },
       openPanel,
+      composer: null,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -134,8 +136,10 @@ describe("reply-in-side-chat message action", () => {
         role: "assistant" as const,
         text: "whole message text",
         sourceSeqEnd: 42,
+        experimental_messageSeq: 42,
       },
       openPanel,
+      composer: null,
     };
 
     const first = app.messageActions[0]!.run(context);
@@ -164,9 +168,11 @@ describe("reply-in-side-chat message action", () => {
         role: "assistant",
         text: "whole message text",
         sourceSeqEnd: 42,
+        experimental_messageSeq: 42,
       },
       selectedText: "just this part",
       openPanel,
+      composer: null,
     });
 
     expect(openPanel).toHaveBeenCalledWith(

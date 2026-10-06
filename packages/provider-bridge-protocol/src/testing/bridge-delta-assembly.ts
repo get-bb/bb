@@ -55,9 +55,3 @@ export function assembleCapturedThreadEvents(
   const collector = createBridgeDeltaEventCollector(providerId);
   return messages.flatMap((message) => collector.assembleMessage(message));
 }
-
-export function toConformanceMessages(): never {
-  throw new Error(
-    "experimental_toConformanceMessages was removed: experimental_runBridgeConformance assembles thread/delta itself. Hand it a transport whose takeMessages returns the raw captured messages (CapturedBridgeJsonRpcOutput.takeMessages) and pass the bridge's providerId.",
-  );
-}

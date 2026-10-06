@@ -19,11 +19,19 @@ import { RuntimeManager } from "../runtime-manager.js";
 import { runtimeErrorLogFields } from "../error-utils.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
+import {
+  resolveWindowsTerminalShell,
+  terminalShellArgs,
+  terminalShellTitle,
+} from "./terminal-shell.js";
 
 const DEFAULT_SCROLLBACK_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
 const MAX_OUTPUT_CHUNK_BYTES = 64 * 1024;
 const DEFAULT_OUTPUT_BATCH_DELAY_MS = 4;
+const OUTPUT_FLOW_PAUSE_BYTES = 1024 * 1024;
+const OUTPUT_FLOW_RESUME_BYTES = 512 * 1024;
+const PAUSED_PROCESS_EXIT_POLL_MS = 50;
 const DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS = 2_000;
 const DEFAULT_MAX_EXITED_TERMINALS = 32;
 const DEFAULT_MAX_EXITED_SCROLLBACK_BYTES = 16 * 1024 * 1024;
@@ -51,10 +59,13 @@ export interface TerminalPtyExit {
 
 export interface TerminalPtyProcess {
   dispose(): void;
+  hasExited(): boolean;
   kill(signal?: NodeJS.Signals): void;
   onData(listener: (data: string) => void): TerminalPtyDisposable;
   onExit(listener: (event: TerminalPtyExit) => void): TerminalPtyDisposable;
+  pause(): void;
   resize(cols: number, rows: number): void;
+  resume(): void;
   write(data: Buffer | string): void;
 }
 
@@ -88,7 +99,6 @@ export interface TerminalManagerOptions {
   logger: HostDaemonLogger;
   maxExitedScrollbackBytes?: number;
   maxExitedTerminals?: number;
-  platform?: NodeJS.Platform;
   ptyAdapter?: TerminalPtyAdapter;
   resolveShell?: ResolveTerminalShell;
   runtimeManager: RuntimeManager;
@@ -111,16 +121,30 @@ interface ExitedTerminalSession {
   terminalId: string;
 }
 
+interface UnacknowledgedOutputChunk {
+  byteLength: number;
+  seq: number;
+}
+
+interface TerminalOutputFlow {
+  acknowledgedNextSeq: number;
+  pausedExitPoll: ReturnType<typeof setInterval> | null;
+  unacknowledgedBytes: number;
+  unacknowledgedChunks: UnacknowledgedOutputChunk[];
+}
+
 interface TerminalSession {
   closeReason: TerminalSessionCloseReason | null;
   closeTimeout: ReturnType<typeof setTimeout> | null;
   cols: number;
   disposables: TerminalPtyDisposable[];
   environmentId: string | null;
+  lastOutputFlushAt: number;
   nextSeq: number;
   outputBuffers: Buffer[];
   outputBytes: number;
-  outputFlushTimeout: ReturnType<typeof setTimeout> | null;
+  outputFlow: TerminalOutputFlow | null;
+  outputFlushCancel: (() => void) | null;
   pendingPrimaryDeviceAttributesQuery: PendingPrimaryDeviceAttributesQuery;
   pty: TerminalPtyProcess;
   rows: number;
@@ -203,6 +227,15 @@ interface TerminalOperationCompletion {
   resolve: () => void;
 }
 
+function processIsRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
+}
+
 function disposeNodePty(pty: ReturnType<typeof spawnPty>): void {
   const destroy = "destroy" in pty ? pty.destroy : undefined;
   if (typeof destroy !== "function") {
@@ -223,11 +256,17 @@ const nodePtyAdapter: TerminalPtyAdapter = {
     });
     return {
       dispose: () => disposeNodePty(pty),
-      kill: (signal) =>
+      kill: (signal) => {
+        if (process.platform === "win32") {
+          pty.kill();
+          return;
+        }
         killProcessGroup({
           child: { pid: pty.pid, kill: (groupSignal) => pty.kill(groupSignal) },
           signal: signal ?? "SIGHUP",
-        }),
+        });
+      },
+      hasExited: () => !processIsRunning(pty.pid),
       onData: (listener) => pty.onData(listener),
       onExit: (listener) =>
         pty.onExit((event) =>
@@ -235,7 +274,9 @@ const nodePtyAdapter: TerminalPtyAdapter = {
             exitCode: event.exitCode,
           }),
         ),
+      pause: () => pty.pause(),
       resize: (cols, rows) => pty.resize(cols, rows),
+      resume: () => pty.resume(),
       write: (data) => pty.write(data),
     };
   },
@@ -344,6 +385,12 @@ function isNonEmptyString(value: string | undefined): value is string {
 }
 
 async function resolveDefaultTerminalShell(): Promise<string> {
+  if (process.platform === "win32") {
+    return resolveWindowsTerminalShell({
+      env: process.env,
+      fileExists: pathIsExecutable,
+    });
+  }
   const candidates = [
     process.env.SHELL,
     "/bin/zsh",
@@ -373,10 +420,6 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
   };
 }
 
-function terminalTitleFromShell(shell: string): string {
-  return path.basename(shell) || "Terminal";
-}
-
 function terminalTitleFromCommand(command: string): string {
   const normalized = command.trim().replace(/\s+/g, " ");
   if (displayWidth(normalized) <= 80) {
@@ -385,24 +428,17 @@ function terminalTitleFromCommand(command: string): string {
   return `${truncateToWidth(normalized, 77)}...`;
 }
 
-function terminalSpawnArgsForStart(message: TerminalOpenMessage): string[] {
-  switch (message.start.mode) {
-    case "shell":
-      return [];
-    case "command":
-      return ["-lc", message.start.command];
-  }
-}
-
 function terminalTitleForStart(
   message: TerminalOpenMessage,
   shell: string,
 ): string {
   switch (message.start.mode) {
     case "shell":
-      return terminalTitleFromShell(shell);
+      return terminalShellTitle(shell);
     case "command":
       return terminalTitleFromCommand(message.start.command);
+    case "argv":
+      return terminalTitleFromCommand(message.start.argv.join(" "));
   }
 }
 
@@ -463,7 +499,6 @@ export class TerminalManager {
   private readonly exitedRetentionMs: number;
   private readonly maxExitedScrollbackBytes: number;
   private readonly maxExitedTerminals: number;
-  private readonly platform: NodeJS.Platform;
   private readonly ptyAdapter: TerminalPtyAdapter;
   private readonly resolveShell: ResolveTerminalShell;
   private readonly terminalOperations = new Map<string, Promise<void>>();
@@ -481,14 +516,20 @@ export class TerminalManager {
       options.maxExitedScrollbackBytes ?? DEFAULT_MAX_EXITED_SCROLLBACK_BYTES;
     this.maxExitedTerminals =
       options.maxExitedTerminals ?? DEFAULT_MAX_EXITED_TERMINALS;
-    this.platform = options.platform ?? process.platform;
     this.ptyAdapter = options.ptyAdapter ?? nodePtyAdapter;
     this.resolveShell = options.resolveShell ?? resolveDefaultTerminalShell;
   }
 
   dispose(): void {
+    this.releaseOutputFlowControl();
     for (const terminalId of [...this.exitedSessions.keys()]) {
       this.forgetExitedSession(terminalId);
+    }
+  }
+
+  releaseOutputFlowControl(): void {
+    for (const session of this.sessions.values()) {
+      this.disableOutputFlow(session);
     }
   }
 
@@ -525,6 +566,12 @@ export class TerminalManager {
           terminalId: message.terminalId,
         });
         return;
+      case "terminal.flow-control":
+        this.setOutputFlowControl(message.terminalId, message.enabled);
+        return;
+      case "terminal.ack":
+        this.acknowledgeOutput(message.terminalId, message.nextSeq);
+        return;
     }
   }
 
@@ -556,22 +603,12 @@ export class TerminalManager {
       return;
     }
 
-    if (this.platform === "win32") {
-      this.sendTerminalError({
-        code: "unsupported_platform",
-        message: "Native Windows terminals are not supported",
-        requestId: message.requestId,
-        terminalId: message.terminalId,
-      });
-      return;
-    }
-
     this.openingTerminalIds.add(message.terminalId);
     try {
       const target = await this.resolveTerminalOpenTarget(message);
       const shell = await this.resolveShell();
       const pty = this.ptyAdapter.spawn({
-        args: terminalSpawnArgsForStart(message),
+        args: terminalShellArgs({ shell, start: message.start }),
         cols: message.cols,
         cwd: target.cwd,
         env: operationEnvironment(
@@ -591,10 +628,12 @@ export class TerminalManager {
         cols: message.cols,
         disposables: [],
         environmentId: target.environmentId,
+        lastOutputFlushAt: 0,
         nextSeq: 0,
         outputBuffers: [],
         outputBytes: 0,
-        outputFlushTimeout: null,
+        outputFlow: null,
+        outputFlushCancel: null,
         pendingPrimaryDeviceAttributesQuery: "",
         pty,
         rows: message.rows,
@@ -772,6 +811,7 @@ export class TerminalManager {
       return;
     }
     session.closeReason = args.reason;
+    this.disableOutputFlow(session);
     session.closeTimeout = setTimeout(() => {
       session.closeTimeout = null;
       void this.runTerminalOperation({
@@ -828,6 +868,7 @@ export class TerminalManager {
     if (!session) {
       return;
     }
+    this.disableOutputFlow(session);
     try {
       session.pty.kill();
     } catch (error) {
@@ -878,19 +919,29 @@ export class TerminalManager {
       this.flushTerminalOutput(session);
       return;
     }
-    if (session.outputFlushTimeout !== null) {
+    if (session.outputFlushCancel !== null) {
       return;
     }
-    session.outputFlushTimeout = setTimeout(() => {
-      session.outputFlushTimeout = null;
+    const flush = () => {
+      session.outputFlushCancel = null;
       this.flushTerminalOutput(session);
-    }, DEFAULT_OUTPUT_BATCH_DELAY_MS);
+    };
+    if (
+      performance.now() - session.lastOutputFlushAt >=
+      DEFAULT_OUTPUT_BATCH_DELAY_MS
+    ) {
+      const immediate = setImmediate(flush);
+      session.outputFlushCancel = () => clearImmediate(immediate);
+      return;
+    }
+    const timeout = setTimeout(flush, DEFAULT_OUTPUT_BATCH_DELAY_MS);
+    session.outputFlushCancel = () => clearTimeout(timeout);
   }
 
   private flushTerminalOutput(session: TerminalSession): void {
-    if (session.outputFlushTimeout !== null) {
-      clearTimeout(session.outputFlushTimeout);
-      session.outputFlushTimeout = null;
+    if (session.outputFlushCancel !== null) {
+      session.outputFlushCancel();
+      session.outputFlushCancel = null;
     }
     if (
       this.sessions.get(session.terminalId) !== session ||
@@ -904,6 +955,7 @@ export class TerminalManager {
     const buffer = Buffer.concat(session.outputBuffers, session.outputBytes);
     session.outputBuffers = [];
     session.outputBytes = 0;
+    session.lastOutputFlushAt = performance.now();
     for (
       let offset = 0;
       offset < buffer.byteLength;
@@ -925,12 +977,102 @@ export class TerminalManager {
       session.scrollback.push(entry);
       session.scrollbackBytes += entry.byteLength;
       this.pruneScrollback(session);
+      this.recordUnacknowledgedOutput(session, entry);
       this.options.sendMessage({
         type: "terminal.output",
         terminalId: session.terminalId,
         chunk,
       });
     }
+  }
+
+  private setOutputFlowControl(terminalId: string, enabled: boolean): void {
+    const session = this.sessions.get(terminalId);
+    if (!session) {
+      return;
+    }
+    if (!enabled) {
+      this.disableOutputFlow(session);
+      return;
+    }
+    if (session.outputFlow !== null || session.closeReason !== null) {
+      return;
+    }
+    session.outputFlow = {
+      acknowledgedNextSeq: session.nextSeq,
+      pausedExitPoll: null,
+      unacknowledgedBytes: 0,
+      unacknowledgedChunks: [],
+    };
+  }
+
+  private acknowledgeOutput(terminalId: string, nextSeq: number): void {
+    const session = this.sessions.get(terminalId);
+    const flow = session?.outputFlow;
+    if (!session || !flow || nextSeq <= flow.acknowledgedNextSeq) {
+      return;
+    }
+    flow.acknowledgedNextSeq = nextSeq;
+    let acknowledgedChunks = 0;
+    for (const chunk of flow.unacknowledgedChunks) {
+      if (chunk.seq >= nextSeq) {
+        break;
+      }
+      flow.unacknowledgedBytes -= chunk.byteLength;
+      acknowledgedChunks += 1;
+    }
+    flow.unacknowledgedChunks.splice(0, acknowledgedChunks);
+    if (
+      flow.pausedExitPoll !== null &&
+      flow.unacknowledgedBytes <= OUTPUT_FLOW_RESUME_BYTES
+    ) {
+      this.resumeOutput(session, flow);
+    }
+  }
+
+  private recordUnacknowledgedOutput(
+    session: TerminalSession,
+    entry: ScrollbackEntry,
+  ): void {
+    const flow = session.outputFlow;
+    if (flow === null) {
+      return;
+    }
+    flow.unacknowledgedChunks.push({
+      byteLength: entry.byteLength,
+      seq: entry.chunk.seq,
+    });
+    flow.unacknowledgedBytes += entry.byteLength;
+    if (
+      flow.pausedExitPoll !== null ||
+      flow.unacknowledgedBytes <= OUTPUT_FLOW_PAUSE_BYTES
+    ) {
+      return;
+    }
+    session.pty.pause();
+    flow.pausedExitPoll = setInterval(() => {
+      if (session.pty.hasExited()) {
+        this.disableOutputFlow(session);
+      }
+    }, PAUSED_PROCESS_EXIT_POLL_MS);
+  }
+
+  private resumeOutput(session: TerminalSession, flow: TerminalOutputFlow): void {
+    if (flow.pausedExitPoll === null) {
+      return;
+    }
+    clearInterval(flow.pausedExitPoll);
+    flow.pausedExitPoll = null;
+    session.pty.resume();
+  }
+
+  private disableOutputFlow(session: TerminalSession): void {
+    const flow = session.outputFlow;
+    if (flow === null) {
+      return;
+    }
+    session.outputFlow = null;
+    this.resumeOutput(session, flow);
   }
 
   private pruneScrollback(session: TerminalSession): void {
@@ -958,6 +1100,7 @@ export class TerminalManager {
       args.session.pendingPrimaryDeviceAttributesQuery = "";
     }
     this.flushTerminalOutput(args.session);
+    this.disableOutputFlow(args.session);
     if (args.session.closeTimeout !== null) {
       clearTimeout(args.session.closeTimeout);
       args.session.closeTimeout = null;

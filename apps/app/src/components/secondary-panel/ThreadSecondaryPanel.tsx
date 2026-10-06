@@ -38,8 +38,7 @@ import {
 } from "./panelChromeClasses";
 import {
   CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+  useSecondaryPanelMinimum,
 } from "./secondaryPanelSizing";
 import {
   RIGHT_PANEL_TOGGLE_ICON_NAME,
@@ -56,10 +55,7 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
-import {
-  DEFAULT_CODE_OVERFLOW_MODE,
-  type CodeOverflowMode,
-} from "@/lib/code-overflow-mode";
+import { useGitDiffLineOverflowModePreference } from "@/lib/git-diff-view-preferences";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
@@ -67,7 +63,10 @@ import {
   summarizeDiffFileEntries,
   useDiffFilesCollapseControls,
 } from "./git-diff/diffFilesStore";
-import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
+import {
+  buildGitDiffIdentity,
+  filterDiffFilesByPath,
+} from "./git-diff/gitDiffPanelHelpers";
 import { useSecondaryPanelResize } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
@@ -146,8 +145,7 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
   const reserves =
     reserveMacosTrafficLights &&
-    (renderAsDrawer ||
-      (isConversationCollapsed && isSidebarShowing === false));
+    (renderAsDrawer || (isConversationCollapsed && isSidebarShowing === false));
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
@@ -183,6 +181,7 @@ export interface ThreadSecondaryPanelProps {
   splitPanelStateId?: string;
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
+  showFullScreenShortcut?: boolean;
   showNewTabButton?: boolean;
   inlinePanelToggle?: "button" | "hidden";
   resizablePanelId?: string;
@@ -222,6 +221,7 @@ function ThreadSecondaryPanelContent({
   splitPanelStateId,
   isOpen,
   showConversationCollapseControl = true,
+  showFullScreenShortcut = false,
   showNewTabButton = true,
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
@@ -245,6 +245,12 @@ function ThreadSecondaryPanelContent({
     gitDiffTabStatus ?? (canUseGitUi ? "eligible" : "ineligible");
   const newTabShortcut = useAppCommandShortcut("panel.newTab");
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
+  const boundFullScreenShortcut = useAppCommandShortcut(
+    "panel.fullScreen.toggle",
+  );
+  const fullScreenShortcut = showFullScreenShortcut
+    ? boundFullScreenShortcut
+    : null;
   const diffShortcut = useAppCommandShortcut("diff.toggle");
   const visibleTabs = useMemo(
     () => tabs.filter((tab) => tab.isHidden !== true),
@@ -275,6 +281,8 @@ function ThreadSecondaryPanelContent({
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
+    panelId: resizablePanelId,
+    renderAsDrawer,
   });
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {
@@ -289,6 +297,7 @@ function ThreadSecondaryPanelContent({
     },
     [handleSecondaryPanelResize],
   );
+  const minimumSize = useSecondaryPanelMinimum();
   const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
     if (!isOpen || hostLayout?.isSuppressed) {
@@ -329,10 +338,12 @@ function ThreadSecondaryPanelContent({
     (resolvedGitDiffTabStatus === "loading" ||
       resolvedGitDiffTabStatus === "error");
   const {
+    gitDiffFileFilter,
     gitDiffTarget,
     gitDiffSelectOptions,
     gitDiffSelectValue,
     onGitDiffSelectionChange,
+    setGitDiffFileFilter,
   } = useGitDiffPanelState({
     environmentId,
     isDiffPanelActive: isDiffPanelLive,
@@ -371,18 +382,26 @@ function ThreadSecondaryPanelContent({
       }),
     [diffMergeBaseRef, environmentId, gitDiffTarget],
   );
+  const filteredDiffFiles = useMemo(
+    () => filterDiffFilesByPath(diffFiles, gitDiffFileFilter ?? ""),
+    [diffFiles, gitDiffFileFilter],
+  );
   const gitDiffStats = useMemo(
-    () => summarizeDiffFileEntries(diffFiles),
-    [diffFiles],
+    () => summarizeDiffFileEntries(filteredDiffFiles),
+    [filteredDiffFiles],
   );
   const { areAllCollapsed, toggleAllCollapsed, hasFiles } =
-    useDiffFilesCollapseControls(diffIdentity, diffFiles);
+    useDiffFilesCollapseControls(
+      diffIdentity,
+      filteredDiffFiles,
+      diffFiles.length,
+    );
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
-    useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
+    useGitDiffLineOverflowModePreference();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
@@ -528,6 +547,7 @@ function ThreadSecondaryPanelContent({
           isFullScreen={isFullScreen ?? false}
           onMoveToSide={onMoveActiveTabToSide}
           onToggleFullScreen={onToggleFullScreen}
+          shortcut={fullScreenShortcut ?? undefined}
         />
       );
     }
@@ -548,13 +568,21 @@ function ThreadSecondaryPanelContent({
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
             )}
             onClick={conversationCollapseControl.onClick}
-            aria-label={conversationCollapseControl.label}
+            aria-label={
+              fullScreenShortcut
+                ? `${conversationCollapseControl.label} (${fullScreenShortcut.label})`
+                : conversationCollapseControl.label
+            }
+            aria-keyshortcuts={fullScreenShortcut?.ariaKeyshortcuts}
             aria-pressed={conversationCollapseControl.isFullScreen}
           >
             <Icon name={conversationCollapseControl.iconName} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{conversationCollapseControl.label}</TooltipContent>
+        <TooltipContent>
+          <span>{conversationCollapseControl.label}</span>
+          {fullScreenShortcut ? ` (${fullScreenShortcut.label})` : ""}
+        </TooltipContent>
       </Tooltip>
     );
   };
@@ -807,7 +835,10 @@ function ThreadSecondaryPanelContent({
                 isDiffFilesLoading || gitDiffTarget === undefined
               }
               stats={gitDiffStats}
+              totalFilesCount={diffFiles.length}
               isTruncated={isGitDiffTruncated}
+              fileFilter={gitDiffFileFilter}
+              onFileFilterChange={setGitDiffFileFilter}
               areAllFilesCollapsed={areAllCollapsed}
               isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
               onToggleAllCollapsed={toggleAllCollapsed}
@@ -878,6 +909,7 @@ function ThreadSecondaryPanelContent({
               target={gitDiffTarget}
               isPanelOpen={isLayoutOpen}
               gitDiffPresentation={gitDiffPresentation}
+              fileFilter={gitDiffFileFilter ?? ""}
               onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
               onOpenFileInEditor={onOpenFileInEditor}
               onOpenFilePreview={onOpenFilePreview}
@@ -889,11 +921,11 @@ function ThreadSecondaryPanelContent({
             <div className="flex min-h-0 flex-1 flex-col">
               {metadataContent}
             </div>
-          ) : (
+          ) : isLayoutOpen ? (
             <EmptyStatePanel className="m-4 rounded-lg">
               This panel view is unavailable.
             </EmptyStatePanel>
-          )}
+          ) : null}
         </div>
       </ImageTabLightboxProvider>
     );
@@ -1082,12 +1114,8 @@ function ThreadSecondaryPanelContent({
               : persistedWidthPercent
             : 0
         }
-        minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
-        maxSize={
-          isConversationCollapsed
-            ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
-            : THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT
-        }
+        minSize={(1 - minimumSize.max) * 100}
+        maxSize={isConversationCollapsed ? 100 : (1 - minimumSize.min) * 100}
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}
         onTransitionEnd={handlePanelTransitionEnd}

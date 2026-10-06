@@ -188,18 +188,6 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     sourceEl.remove();
   });
 
-  it("a vertical in-sidebar drag never engages: reorder is untouched, no drop", () => {
-    const config = baseConfig();
-    beginSplitDrag(config);
-
-    fireWindowPointer("pointermove", 24, 380);
-    fireWindowPointer("pointermove", 26, 520);
-    fireWindowPointer("pointerup", 26, 520);
-
-    expect(escapeKeydowns).toBe(0);
-    expect(config.onDrop).not.toHaveBeenCalled();
-  });
-
   it("a plain click (press and release, no movement) does not drop", () => {
     const onEngage = vi.fn();
     const onEnd = vi.fn();
@@ -224,6 +212,49 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     expect(onEngage).toHaveBeenCalledTimes(1);
     expect(config.onDrop).not.toHaveBeenCalled();
     expect(onEnd).toHaveBeenCalledWith({ dropped: false });
+  });
+
+  it("cancels an engaged split drag on Escape before pointer release", () => {
+    const onEnd = vi.fn();
+    const config = baseConfig({ onEnd });
+    beginSplitDrag(config);
+
+    fireWindowPointer("pointermove", 900, 400);
+    expect(document.querySelector("[data-split-drag-label]")).not.toBeNull();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        code: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    fireWindowPointer("pointerup", 900, 400);
+
+    expect(document.querySelector("[data-split-drag-label]")).toBeNull();
+    expect(config.onDrop).not.toHaveBeenCalled();
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(onEnd).toHaveBeenCalledWith({ dropped: false });
+  });
+
+  it("cancels a pending split drag on Escape", () => {
+    const onEngage = vi.fn();
+    const config = baseConfig({ onEngage });
+    beginSplitDrag(config);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        code: "Escape",
+        bubbles: true,
+      }),
+    );
+    fireWindowPointer("pointermove", 900, 400);
+    fireWindowPointer("pointerup", 900, 400);
+
+    expect(onEngage).not.toHaveBeenCalled();
+    expect(config.onDrop).not.toHaveBeenCalled();
   });
 
   it("falls back to the container when no marked pane is under the pointer", () => {

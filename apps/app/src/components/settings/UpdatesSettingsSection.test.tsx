@@ -15,6 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Host } from "@bb/domain";
 import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
+import { BbHttpError } from "@bb/sdk/browser";
+import type { SystemAppUpdateStatus } from "@bb/server-contract";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   type ProviderCliKey,
@@ -30,6 +32,7 @@ import {
   getProviderCliInstallSnapshot,
   resetProviderCliInstallStoreForTests,
 } from "@/components/provider-cli/provider-cli-install-store";
+import { appToast } from "@/components/ui/app-toast";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import {
@@ -37,7 +40,10 @@ import {
   type UpdateInventory,
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
-import { UpdatesSettingsSection } from "./UpdatesSettingsSection";
+import {
+  UpdateActionButton,
+  UpdatesSettingsSection,
+} from "./UpdatesSettingsSection";
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
@@ -56,6 +62,9 @@ vi.mock("@/lib/sdk", async () => {
   return {
     sdk: {
       system: {
+        acknowledgeAppUpdate: vi.fn(),
+        appUpdate: vi.fn(),
+        applyAppUpdate: vi.fn(),
         version: vi.fn(),
         config: vi.fn(async () =>
           makeSystemConfig({ primaryHostId: "host_primary" }),
@@ -248,6 +257,8 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
     systemVersion: {
       currentVersion: "0.0.5",
       latestVersion: "0.0.5",
+      currentCommit: null,
+      installKind: "npm",
       source: "npm",
       updateAvailable: false,
       isDevelopment: false,
@@ -292,8 +303,54 @@ const useUpdateInventoryMock = vi.mocked(useUpdateInventory);
 const useDesktopUpdateInfoMock = vi.mocked(useDesktopUpdateInfo);
 const useProviderCliInstallRunnerMock = vi.mocked(useProviderCliInstallRunner);
 
+function makeAppUpdateStatus(
+  overrides: Partial<SystemAppUpdateStatus> = {},
+): SystemAppUpdateStatus {
+  return {
+    activity: { phase: "idle" },
+    available: {
+      channel: "latest",
+      commit: null,
+      commitCount: null,
+      subjects: [],
+      version: "0.0.6",
+    },
+    blocked: null,
+    current: { commit: null, version: "0.0.5" },
+    lastResult: null,
+    runningThreadCount: 0,
+    support: { kind: "supported", mode: "npm" },
+    ...overrides,
+  };
+}
+
+function useWebApp(): void {
+  useDesktopUpdateInfoMock.mockReturnValue({
+    desktopApi: null,
+    desktopInfo: null,
+    isDesktop: false,
+  });
+  useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+  vi.mocked(sdk.system.version).mockResolvedValue({
+    currentVersion: "0.0.5",
+    isDevelopment: false,
+    latestVersion: "0.0.6",
+    currentCommit: null,
+    installKind: "npm",
+    source: "npm",
+    updateAvailable: true,
+    upgradeCommand: "npx bb-app@latest",
+  });
+}
+
 beforeEach(() => {
   hostDaemon.localDaemonHostId = null;
+  vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+    makeAppUpdateStatus({
+      available: null,
+      support: { kind: "unsupported", reason: "unmanaged" },
+    }),
+  );
   vi.stubGlobal(
     "fetch",
     vi.fn().mockRejectedValue(new Error("Changelog unavailable offline")),
@@ -850,12 +907,10 @@ The canonical release summary.
       screen.getByText("bb daemon").closest("[data-resource-row]")?.className,
     ).not.toContain("bg-surface-destructive");
     expect(screen.queryByText(/^Up to date/)).toBeNull();
-    const stalledMessage = screen.getByText("Update didn't finish");
-    expect(stalledMessage.tagName).toBe("SPAN");
-    expect(stalledMessage.className).toContain("font-semibold");
-    expect(stalledMessage.className).toContain("text-destructive");
-    expect(stalledMessage.className).not.toContain("rounded");
-    expect(stalledMessage.className).not.toContain("font-mono");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByRole("img", { name: "Update didn't finish" }).className,
+    ).toContain("text-destructive");
     expect(
       screen.getAllByRole("button", { name: /^Failed · Retry on/ }),
     ).toHaveLength(1);
@@ -1195,28 +1250,24 @@ The canonical release summary.
     expect(screen.queryByText("Checking provider CLIs…")).toBeNull();
   });
 
-  it("offers a way out of a failed CLI check", async () => {
-    useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: null,
-      desktopInfo: null,
-      isDesktop: false,
-    });
-    const host = makeHost({ id: "host_1", name: "workstation" });
-    useUpdateInventoryMock.mockReturnValue(
-      makeInventory({
-        machines: [makeMachine({ host, statusError: true })],
-      }),
+  it("ignores repeat Retry clicks while the retry is running", () => {
+    const onClick = vi.fn();
+    render(
+      <TooltipProvider>
+        <UpdateActionButton
+          label="Retry on homelab now"
+          icon="RotateCcw"
+          loading
+          onClick={onClick}
+        />
+      </TooltipProvider>,
     );
 
-    renderSection();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry on homelab now" }),
+    );
 
-    await waitFor(() => {
-      expect(screen.getByText("Couldn't check for updates")).toBeDefined();
-    });
-    const retry = screen.getByRole("button", {
-      name: /Check workstation's CLIs again/,
-    });
-    expect(retry.hasAttribute("disabled")).toBe(false);
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   it("keeps error red on the reason and off the recovery", () => {
@@ -1234,30 +1285,14 @@ The canonical release summary.
 
     renderSection();
 
-    const failedStatus = screen.getByText("Couldn't check for updates");
-    expect(failedStatus.tagName).toBe("SPAN");
-    for (const className of [
-      "shrink-0",
-      "text-xs",
-      "font-semibold",
-      "text-destructive",
-    ]) {
-      expect(failedStatus.className).toContain(className);
-    }
-    for (const className of [
-      "rounded",
-      "border",
-      "px-",
-      "py-",
-      "bg-",
-      "font-mono",
-    ]) {
-      expect(failedStatus.className).not.toContain(className);
-    }
     expect(
-      screen.getByRole("button", { name: /Check workstation's CLIs again/ })
-        .className,
-    ).not.toContain("text-destructive");
+      screen.getByRole("img", { name: "Couldn't check for updates" }).className,
+    ).toContain("text-destructive");
+    const retry = screen.getByRole("button", {
+      name: /Check workstation's CLIs again/,
+    });
+    expect(retry.className).not.toContain("text-destructive");
+    expect(retry.hasAttribute("disabled")).toBe(false);
   });
 
   it("leaves never-installed CLIs off an update page", () => {
@@ -1361,7 +1396,11 @@ The canonical release summary.
       failuresByJobKey: new Map([
         [
           "host_1:claude-code",
-          { issueFingerprint: issue.fingerprint, logDialogState },
+          {
+            issueFingerprint: issue.fingerprint,
+            kind: "interrupted",
+            logDialogState,
+          },
         ],
       ]),
       queuedJobKeys: new Set(),
@@ -1371,10 +1410,10 @@ The canonical release summary.
 
     renderSection();
 
-    expect(screen.getByText("Failed")).toBeDefined();
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Command exited with code 1",
-    );
+    expect(
+      screen.getByText("Connection lost during update").className,
+    ).toContain("sr-only");
+    expect(screen.queryByText("Command exited with code 1")).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "Failed · Retry Claude Code on workstation",
@@ -1397,6 +1436,8 @@ The canonical release summary.
     const availableVersion = {
       currentVersion: "0.0.5",
       latestVersion: "0.0.6",
+      currentCommit: null,
+      installKind: "npm" as const,
       source: "npm" as const,
       updateAvailable: true,
       isDevelopment: false,
@@ -1472,6 +1513,75 @@ The canonical release summary.
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
     });
     expect(sdk.system.version).not.toHaveBeenCalled();
+  });
+
+  it("explains an unknown desktop release and retries through the desktop bridge", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      downloadState: "idle",
+      lastCheckedAt: "2026-07-19T00:00:00.000Z",
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.5",
+    };
+    const checkForUpdates = vi.fn().mockResolvedValue(desktopInfo);
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
+      desktopInfo,
+      isDesktop: true,
+    });
+    useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
+
+    renderSection();
+    await waitFor(() => {
+      expect(checkForUpdates).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Retry the desktop release check/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+    expect(
+      screen.getByText("Couldn't determine the latest desktop release."),
+    ).toBeTruthy();
+
+    let finishCheck: (() => void) | undefined;
+    checkForUpdates.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCheck = resolve;
+        }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Retry the desktop release check/ }),
+    );
+    await waitFor(() => {
+      expect(checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Retry the desktop release check/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+    });
+    expect(
+      screen.getByText("Checking for a newer desktop release…"),
+    ).toBeTruthy();
+    await act(async () => finishCheck?.());
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Retry the desktop release check/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
   });
 
   it("does not claim a legacy desktop shell is downloading an available update", () => {
@@ -1611,5 +1721,503 @@ The canonical release summary.
     expect(document.querySelector("[data-updates-machine]")).toBeNull();
     expect(screen.queryByText("No machines yet.")).toBeNull();
     expect(screen.getByText("No machines available.")).toBeDefined();
+  });
+
+  it("updates bb from the app when the launcher supports it", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
+    vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        activity: {
+          output: [],
+          phase: "preparing",
+          startedAt: "2026-09-23T00:00:00.000Z",
+          step: "Downloading bb-app 0.0.6",
+          targetVersion: "0.0.6",
+        },
+      }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
+        confirmInterruptingThreads: false,
+      });
+    });
+    expect(await screen.findByText("Downloading bb-app 0.0.6")).toBeDefined();
+    expect(sdk.system.appUpdate).toHaveBeenCalledWith({ force: true });
+  });
+
+  it("asks before an update interrupts running threads", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 2 }),
+    );
+    vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(
+      makeAppUpdateStatus(),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/2 threads are running/)).toBeDefined();
+    expect(sdk.system.applyAppUpdate).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Update and restart" }),
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
+        confirmInterruptingThreads: true,
+      });
+    });
+  });
+
+  it("asks for confirmation when threads started after the status was fetched", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
+    vi.mocked(sdk.system.applyAppUpdate)
+      .mockRejectedValueOnce(
+        new BbHttpError({
+          body: {
+            code: "threads_running",
+            details: { runningThreadCount: 1 },
+            message: "1 thread is running.",
+          },
+          code: "threads_running",
+          message: "1 thread is running.",
+          status: 409,
+        }),
+      )
+      .mockResolvedValueOnce(makeAppUpdateStatus());
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();
+    expect(appToast.error).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Update and restart" }),
+    );
+    await waitFor(() => {
+      expect(sdk.system.applyAppUpdate).toHaveBeenLastCalledWith({
+        confirmInterruptingThreads: true,
+      });
+    });
+  });
+
+  it("retries an unavailable release check from the app row", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        available: null,
+        blocked: {
+          reason: "fetch-failed",
+          message: "Couldn't check npm for a newer release.",
+        },
+      }),
+    );
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        systemVersion: {
+          currentVersion: "0.0.5",
+          currentCommit: null,
+          installKind: "npm",
+          source: "npm",
+          latestVersion: null,
+          updateAvailable: false,
+          isDevelopment: false,
+          upgradeCommand: "npx bb-app@latest",
+        },
+      }),
+    );
+    renderSection();
+    const retry = await screen.findByRole("button", {
+      name: "Latest unknown · Retry the release check",
+    });
+    expect(
+      screen.getByText("Couldn't check npm for a newer release."),
+    ).toBeDefined();
+    expect(retry.querySelector('[data-icon="CircleQuestion"]')).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", {
+            name: "Latest unknown · Retry the release check",
+          })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    vi.mocked(sdk.system.version).mockClear();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ available: null, blocked: null }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Latest unknown · Retry the release check",
+      }),
+    );
+    await waitFor(() =>
+      expect(sdk.system.version).toHaveBeenCalledWith({ force: true }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: "Latest unknown · Retry the release check",
+        }),
+      ).toBeNull(),
+    );
+  });
+
+  it("shows why a source checkout could not check for updates", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        available: null,
+        blocked: {
+          message:
+            "Could not fetch origin/main: Permission denied (publickey).",
+          reason: "fetch-failed",
+        },
+        current: { commit: "a".repeat(40), version: "0.0.5" },
+        support: { kind: "supported", mode: "source" },
+      }),
+    );
+
+    renderSection();
+
+    expect(
+      await screen.findByText(
+        "Could not fetch origin/main: Permission denied (publickey).",
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps a failed update on the row with its details and a retry", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        lastResult: {
+          acknowledged: false,
+          finishedAt: "2026-09-23T00:00:00.000Z",
+          from: { commit: null, version: "0.0.5" },
+          id: "update-1",
+          logTail: ["npm error code E404"],
+          message: "npm install failed",
+          outcome: "failed",
+          phase: "install",
+          to: { commit: null, version: "0.0.6" },
+        },
+      }),
+    );
+
+    renderSection();
+
+    expect(await screen.findByText("Last update failed")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "View the failed bb update" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", {
+        name: "Failed · Download the update and restart bb",
+      }),
+    ).toBeDefined();
+  });
+
+  it("marks a failed update once when no retry is available", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        available: null,
+        lastResult: {
+          acknowledged: false,
+          finishedAt: "2026-09-23T00:00:00.000Z",
+          from: { commit: null, version: "0.0.5" },
+          id: "update-1",
+          logTail: ["npm error code E404"],
+          message: "npm install failed",
+          outcome: "failed",
+          phase: "install",
+          to: { commit: null, version: "0.0.6" },
+        },
+      }),
+    );
+
+    renderSection();
+
+    expect(
+      await screen.findByRole("button", { name: "View the failed bb update" }),
+    ).toBeDefined();
+    expect(document.querySelector('[data-update-state="failed"]')).toBeNull();
+  });
+
+  it.each([
+    {
+      installKind: "source" as const,
+      currentCommit: "a".repeat(40),
+      latestVersion: "9.9.9",
+      updateAvailable: true,
+    },
+    {
+      installKind: "source" as const,
+      currentCommit: null,
+      latestVersion: null,
+      updateAvailable: false,
+    },
+    {
+      installKind: "npm" as const,
+      currentCommit: null,
+      latestVersion: null,
+      updateAvailable: false,
+    },
+  ])(
+    "does not claim freshness without a relevant check: %j",
+    async (version) => {
+      useWebApp();
+      useUpdateInventoryMock.mockReturnValue(
+        makeInventory({
+          machines: [
+            {
+              ...makeMachine({
+                host: makeHost({ id: "host_primary", name: "workstation" }),
+                isPrimary: true,
+              }),
+              providerStatus: null,
+            },
+          ],
+          systemVersion: {
+            currentVersion: "0.0.5",
+            source: "npm",
+            isDevelopment: false,
+            upgradeCommand: "npx bb-app@latest",
+            ...version,
+          },
+        }),
+      );
+
+      renderSection();
+
+      await screen.findByText("bb app");
+      expect(screen.queryByText("Latest unknown")).toBeNull();
+      expect(document.querySelector('[data-icon="CircleQuestion"]')).toBeNull();
+      expect(screen.queryByText("Up to date")).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: "Update available · Copy the upgrade command",
+        }),
+      ).toBeNull();
+      if (version.installKind === "npm") {
+        expect(
+          await screen.findByText("Couldn't check npm for a newer release."),
+        ).toBeDefined();
+      }
+      if (version.installKind === "source") {
+        expect(
+          screen.queryByText(
+            "Update this checkout with Git. Automatic update checks are off.",
+          ),
+        ).toBeNull();
+        expect(screen.getByText("Source checkout")).toBeDefined();
+        expect(
+          screen.getByText(
+            version.currentCommit === null ? "Build 0.0.5" : "aaaaaaa",
+          ),
+        ).toBeDefined();
+        expect(screen.queryByText(/9.9.9/)).toBeNull();
+      }
+    },
+  );
+
+  it.each([true, false])(
+    "explains why a source checkout cannot update without an action (incoming: %s)",
+    async (incoming) => {
+      useWebApp();
+      useUpdateInventoryMock.mockReturnValue(
+        makeInventory({
+          systemVersion: {
+            currentVersion: "0.0.5",
+            latestVersion: null,
+            source: "npm",
+            currentCommit: null,
+            installKind: "source",
+            updateAvailable: false,
+            isDevelopment: false,
+            upgradeCommand: "npx bb-app@latest",
+          },
+        }),
+      );
+      vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+        makeAppUpdateStatus({
+          available: incoming
+            ? {
+                channel: "main",
+                commit: "b".repeat(40),
+                commitCount: 3,
+                subjects: ["Fix bug"],
+                version: "0.0.5",
+              }
+            : null,
+          blocked: {
+            message:
+              "The checkout is on feature. Only main can be updated from the app.",
+            reason: "not-on-main",
+          },
+          current: { commit: "a".repeat(40), version: "0.0.5" },
+          support: { kind: "supported", mode: "source" },
+        }),
+      );
+
+      renderSection();
+
+      expect(
+        await screen.findByText(
+          "The checkout is on feature. Only main can be updated from the app.",
+        ),
+      ).toBeDefined();
+      if (incoming)
+        expect(screen.getByText("bbbbbbb (+3 commits)")).toBeDefined();
+      else expect(screen.queryByText("bbbbbbb (+3 commits)")).toBeNull();
+      expect(document.querySelector('[data-icon="Terminal"]')).toBeNull();
+      expect(
+        document.querySelector('[data-update-state="update-available"]'),
+      ).toBeNull();
+      expect(screen.getByText("Source checkout")).toBeDefined();
+      expect(
+        screen.queryByRole("button", {
+          name: "Update available · Download the update and restart bb",
+        }),
+      ).toBeNull();
+    },
+  );
+
+  function useDesktopApp(): { checkForUpdates: ReturnType<typeof vi.fn> } {
+    const desktopInfo: BbDesktopInfo = {
+      downloadState: "idle",
+      lastCheckedAt: null,
+      latestVersion: "0.0.5",
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.5",
+    };
+    const checkForUpdates = vi.fn().mockResolvedValue(desktopInfo);
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: {
+        checkForUpdates,
+        installUpdate: vi.fn(),
+      } as unknown as BbDesktopApi,
+      desktopInfo,
+      isDesktop: true,
+    });
+    return { checkForUpdates };
+  }
+
+  function desktopFleet(): UpdateInventory {
+    return makeInventory({
+      machines: [
+        makeMachine({
+          host: makeHost({ id: "host_primary", name: "bee" }),
+          isPrimary: true,
+        }),
+        makeMachine({ host: makeHost({ id: "host_laptop", name: "laptop" }) }),
+      ],
+    });
+  }
+
+  it("updates a server the desktop does not own separately from the desktop itself", async () => {
+    const { checkForUpdates } = useDesktopApp();
+    hostDaemon.localDaemonHostId = "host_laptop";
+    useUpdateInventoryMock.mockReturnValue(desktopFleet());
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
+    vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(
+      makeAppUpdateStatus(),
+    );
+
+    renderSection();
+
+    const serverSection = document.querySelector<HTMLElement>(
+      '[data-updates-machine="host_primary"]',
+    );
+    const laptopSection = document.querySelector<HTMLElement>(
+      '[data-updates-machine="host_laptop"]',
+    );
+    if (serverSection === null || laptopSection === null) {
+      throw new Error("expected both machine sections");
+    }
+    fireEvent.click(
+      await within(serverSection).findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+    expect(within(serverSection).getByText("bb server")).toBeDefined();
+    expect(within(laptopSection).getByText("bb desktop")).toBeDefined();
+    expect(within(serverSection).queryByText("bb desktop")).toBeNull();
+    await waitFor(() => {
+      expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
+        confirmInterruptingThreads: false,
+      });
+    });
+    await waitFor(() => {
+      expect(checkForUpdates).toHaveBeenCalledOnce();
+      expect(sdk.system.appUpdate).toHaveBeenCalledWith({ force: true });
+    });
+  });
+
+  it("lists the desktop under This device when it has no machine on that server", async () => {
+    useDesktopApp();
+    useUpdateInventoryMock.mockReturnValue(desktopFleet());
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
+
+    renderSection();
+
+    const device = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        '[data-updates-device="desktop"]',
+      );
+      if (element === null) throw new Error("expected the device section");
+      return element;
+    });
+    expect(within(device).getByText("This device")).toBeDefined();
+    expect(within(device).getByText("bb desktop")).toBeDefined();
+  });
+
+  it("keeps one desktop row when the desktop runs the server itself", async () => {
+    useDesktopApp();
+    hostDaemon.localDaemonHostId = "host_primary";
+    useUpdateInventoryMock.mockReturnValue(desktopFleet());
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        support: { kind: "unsupported", reason: "desktop" },
+      }),
+    );
+
+    renderSection();
+
+    await waitFor(() => expect(sdk.system.appUpdate).toHaveBeenCalled());
+    expect(screen.getByText("bb app")).toBeDefined();
+    expect(screen.queryByText("bb server")).toBeNull();
+    expect(screen.queryByText("bb desktop")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    ).toBeNull();
   });
 });

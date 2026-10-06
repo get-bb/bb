@@ -1,5 +1,7 @@
 import type { FeatureFlags } from "@bb/domain";
+import type { AppInstallKind, AppSourceOrigin } from "./app-install.js";
 import type { AppSurface } from "./app-surface.js";
+import type { AppUpdateMode } from "./app-update.js";
 import {
   loadCommonConfig,
   type CommonConfig,
@@ -13,32 +15,29 @@ import {
   resolveEnvLoader,
 } from "./env.js";
 import {
+  BB_APP_INSTALL_KIND_ENV,
+  BB_APP_SOURCE_COMMIT_ENV,
+  BB_APP_SOURCE_ORIGIN_ENV,
   BB_APP_URL_ENV,
   BB_APP_SURFACE_ENV,
   BB_APP_VERSION_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INHERITED_SKILLS_ROOTS_ENV,
-  BB_INFERENCE_FALLBACK_ENV,
-  BB_INFERENCE_ENV,
   BB_MARKETPLACE_URL_ENV,
   BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
+  BB_APP_UPDATE_MODE_ENV,
   BB_TELEMETRY_ENV,
-  BB_TRANSCRIPTION_ENV,
+  BB_PERF_DIAGNOSTICS_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
   DEFAULT_BB_EXTERNAL_URL,
-  DEFAULT_BB_INFERENCE_FALLBACK,
-  DEFAULT_BB_INFERENCE,
   DEFAULT_BB_MARKETPLACE_URL,
   DEFAULT_BB_POSTHOG_API_KEY,
   DEFAULT_BB_SERVER_BIND_HOST,
   DEFAULT_BB_TELEMETRY,
-  DEFAULT_BB_TRANSCRIPTION,
-  DEFAULT_OPENAI_API_KEY,
-  OPENAI_API_KEY_ENV,
   parseServerBindHost,
   type ServerBindHost,
 } from "./env-vars.js";
@@ -49,6 +48,9 @@ import { loadServerPortConfig, type ServerPortConfig } from "./server-port.js";
 
 export interface ServerConfig
   extends CommonConfig, DatabaseConfig, ServerPortConfig {
+  BB_APP_INSTALL_KIND?: AppInstallKind;
+  BB_APP_SOURCE_COMMIT?: string;
+  BB_APP_SOURCE_ORIGIN?: AppSourceOrigin;
   BB_APP_URL: string;
   BB_APP_SURFACE: AppSurface;
   BB_APP_VERSION: string;
@@ -56,15 +58,13 @@ export interface ServerConfig
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
   BB_INHERITED_SKILLS_ROOTS: string[];
-  BB_INFERENCE: string;
-  BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
   BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_SERVER_LAUNCH_ID?: string;
+  BB_APP_UPDATE_MODE?: AppUpdateMode;
   BB_TELEMETRY: boolean;
-  BB_TRANSCRIPTION: string;
-  OPENAI_API_KEY: string;
+  BB_PERF_DIAGNOSTICS: boolean;
   featureFlags: FeatureFlags;
 }
 
@@ -141,18 +141,6 @@ export function loadServerConfig(
       definition: BB_INHERITED_SKILLS_ROOTS_ENV,
       env: loader.env,
     }),
-    BB_INFERENCE: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_INFERENCE,
-      definition: BB_INFERENCE_ENV,
-      env: loader.env,
-    }),
-    BB_INFERENCE_FALLBACK: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_INFERENCE_FALLBACK,
-      definition: BB_INFERENCE_FALLBACK_ENV,
-      env: loader.env,
-    }),
     BB_MARKETPLACE_URL: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_MARKETPLACE_URL,
@@ -171,22 +159,16 @@ export function loadServerConfig(
       definition: BB_SERVER_BIND_HOST_ENV,
       env: loader.env,
     }),
+    BB_PERF_DIAGNOSTICS: readEnvVarWithDefault({
+      context: loader.context,
+      definition: BB_PERF_DIAGNOSTICS_ENV,
+      env: loader.env,
+      defaultValue: false,
+    }),
     BB_TELEMETRY: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_TELEMETRY,
       definition: BB_TELEMETRY_ENV,
-      env: loader.env,
-    }),
-    BB_TRANSCRIPTION: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_TRANSCRIPTION,
-      definition: BB_TRANSCRIPTION_ENV,
-      env: loader.env,
-    }),
-    OPENAI_API_KEY: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_OPENAI_API_KEY,
-      definition: OPENAI_API_KEY_ENV,
       env: loader.env,
     }),
     featureFlags: loadFeatureFlags({
@@ -200,6 +182,42 @@ export function loadServerConfig(
     key: "BB_DEV_APP_PORT",
     target: config,
     value: devAppConfig.BB_DEV_APP_PORT,
+  });
+  assignIfDefined({
+    key: "BB_APP_UPDATE_MODE",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_APP_UPDATE_MODE_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_APP_INSTALL_KIND",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_APP_INSTALL_KIND_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_APP_SOURCE_ORIGIN",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_APP_SOURCE_ORIGIN_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_APP_SOURCE_COMMIT",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_APP_SOURCE_COMMIT_ENV,
+      env: loader.env,
+    }),
   });
   assignIfDefined({
     key: "BB_SERVER_LAUNCH_ID",

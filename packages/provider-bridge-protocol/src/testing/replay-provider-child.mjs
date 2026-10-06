@@ -354,6 +354,70 @@ function readNewlineDelimitedLines(input, onLine) {
 // Player
 // ---------------------------------------------------------------------------
 
+function servePiCatalog(entries) {
+  const models = new Map();
+  let state = {};
+  for (const entry of entries) {
+    if (entry.dir !== "provider→bridge") continue;
+    const message = parseLine(entry.line);
+    if (message?.type !== "response" || message.success !== true) continue;
+    const candidates = [];
+    if (message.command === "get_state" && message.data?.model) {
+      candidates.push(message.data.model);
+      if (!state.model) state = message.data;
+    }
+    if (
+      message.command === "get_available_models" &&
+      Array.isArray(message.data?.models)
+    ) {
+      candidates.push(...message.data.models);
+    }
+    for (const model of candidates) {
+      if (typeof model?.provider === "string" && typeof model.id === "string") {
+        models.set(`${model.provider}/${model.id}`, model);
+      }
+    }
+  }
+  const channelOut = createWriteStream(null, { fd: 3 });
+  const channelIn = new Socket({ fd: 4, readable: true, writable: false });
+  channelIn.on("error", () => {});
+  channelIn.unref();
+  readNewlineDelimitedLines(channelIn, (line) => {
+    const message = parseLine(line);
+    if (message?.kind !== "request" || message.method !== "model-scope") return;
+    channelOut.write(
+      `${JSON.stringify({
+        kind: "reply",
+        id: message.id,
+        result: {
+          scopedModelIds: [...models.keys()],
+          ...(state.model
+            ? { defaultModelId: `${state.model.provider}/${state.model.id}` }
+            : {}),
+        },
+      })}\n`,
+    );
+  });
+  readNewlineDelimitedLines(process.stdin, (line) => {
+    const message = parseLine(line);
+    if (typeof message?.id !== "string") return;
+    process.stdout.write(
+      `${JSON.stringify({
+        id: message.id,
+        type: "response",
+        command: message.type,
+        success: true,
+        data:
+          message.type === "get_available_models"
+            ? { models: [...models.values()] }
+            : state,
+      })}\n`,
+    );
+  });
+  process.stdin.on("end", () => process.exit(0));
+  process.on("SIGTERM", () => process.exit(0));
+}
+
 function main() {
   // A bridge's install gate may probe `<cli> --version` through the replay
   // command; answer like a CLI instead of claiming a segment and waiting.
@@ -369,6 +433,14 @@ function main() {
     ...readLane(args.recording, "provider→bridge"),
     ...readLane(args.recording, "bridge→provider"),
   ].sort((left, right) => left.run - right.run || left.seq - right.seq);
+  if (
+    args.dialect === "pi-rpc" &&
+    process.argv.includes("--no-session") &&
+    !process.argv.includes("--session-dir")
+  ) {
+    servePiCatalog(entries);
+    return;
+  }
   const segments = buildSegments(entries, dialect);
   const segmentIndex = claimSegmentIndex(args.state);
   let script = segments[segmentIndex] ?? [];

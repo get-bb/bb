@@ -321,12 +321,6 @@ interface ProviderUnhandledArgs extends ProviderTurnEventOptions {
   rawType?: string;
 }
 
-interface WarningArgs extends EventFactoryRowOptions {
-  category?: ThreadEventWarningCategory;
-  details?: string;
-  summary?: string;
-}
-
 export interface TimelineEventFactory {
   assistantDelta(
     args: AssistantDeltaArgs,
@@ -426,9 +420,6 @@ export interface TimelineEventFactory {
   searchCompleted(
     args: SearchEventArgs,
   ): ThreadEventRowOfType<"item/completed">;
-  planStepsStarted(
-    args: PlanStepsEventArgs,
-  ): ThreadEventRowOfType<"item/started">;
   planStepsCompleted(
     args: PlanStepsEventArgs,
   ): ThreadEventRowOfType<"item/completed">;
@@ -467,7 +458,6 @@ export interface TimelineEventFactory {
   webFetchStarted(
     args: WebFetchStartedArgs,
   ): ThreadEventRowOfType<"item/started">;
-  warning(args?: WarningArgs): ThreadEventRowOfType<"provider/warning">;
 }
 
 export function decodeThreadEventRow(row: ThreadEventRow): ThreadEventWithMeta {
@@ -1192,28 +1182,6 @@ export function createTimelineEventFactory(
         },
       };
     },
-    planStepsStarted(args) {
-      const base = nextProviderTurnScopedRowBase("plan-steps-started", args);
-      return {
-        ...base,
-        type: "item/started",
-        data: {
-          ...providerFields(args),
-          item: {
-            type: "planSteps",
-            id: args.itemId ?? `plan-steps-${base.seq}`,
-            steps: args.steps,
-            ...(args.explanation === undefined
-              ? {}
-              : { explanation: args.explanation }),
-            status: args.status ?? "pending",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
-          },
-        },
-      };
-    },
     planStepsCompleted(args) {
       const base = nextProviderTurnScopedRowBase("plan-steps-completed", args);
       return {
@@ -1459,20 +1427,42 @@ export function createTimelineEventFactory(
         },
       };
     },
-    warning(args = {}) {
-      const base = nextThreadScopedRowBase("warning", args);
-      return {
-        ...base,
-        type: "provider/warning",
-        data: {
-          providerThreadId: defaults.providerThreadId ?? "provider-thread-1",
-          category: args.category ?? "general",
-          summary: args.summary,
-          details: args.details,
-        },
-      };
-    },
   };
+}
+
+export function flattenTimelineRows(
+  rows: readonly TimelineRow[],
+): TimelineRow[] {
+  return rows.flatMap((row) => {
+    if (row.kind === "turn") {
+      return [row, ...flattenTimelineRows(row.children ?? [])];
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      return [row, ...flattenTimelineRows(row.childRows)];
+    }
+    return [row];
+  });
+}
+
+export function rowsOfKind<K extends TimelineRow["kind"]>(
+  rows: readonly TimelineRow[],
+  kind: K,
+): Extract<TimelineRow, { kind: K }>[] {
+  return flattenTimelineRows(rows).filter(
+    (row): row is Extract<TimelineRow, { kind: K }> => row.kind === kind,
+  );
+}
+
+type TimelineWorkRow = Extract<TimelineRow, { kind: "work" }>;
+
+export function workRowsOfKind<K extends TimelineWorkRow["workKind"]>(
+  rows: readonly TimelineRow[],
+  workKind: K,
+): Extract<TimelineWorkRow, { workKind: K }>[] {
+  return flattenTimelineRows(rows).filter(
+    (row): row is Extract<TimelineWorkRow, { workKind: K }> =>
+      row.kind === "work" && row.workKind === workKind,
+  );
 }
 
 export function renderTimelineFixture(

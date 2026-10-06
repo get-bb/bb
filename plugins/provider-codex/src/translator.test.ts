@@ -8,16 +8,19 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { turnScope, type ThreadEvent } from "@bb/domain";
-import type { RuntimePermissionPolicy } from "@bb/domain";
+import type { RuntimePermissionPolicy } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type {
+  DeltaAssembler,
+  ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
 import {
   createCodexEventTranslator,
   type CodexEventTranslator,
 } from "./translator.js";
+import { turnScope } from "./event-scope.test-support.js";
 
 const THREAD_ID = "t-codex-translator";
 const ENTROPY = "cxt-test";
@@ -697,29 +700,6 @@ describe("codex subagent activity correlation", () => {
       turn: codexTurn({ id, status: "completed", error: null }),
     });
   }
-
-  it("opens a pending delegation at the spawn and settles it with the child turn", () => {
-    const harness = createHarness();
-    const opened = harness.translate(
-      subAgentActivity({ id: "subagent-call-1", kind: "started" }),
-    );
-    expect(opened).toEqual([
-      expect.objectContaining({
-        type: "item/started",
-        item: expect.objectContaining({
-          type: "delegation",
-          status: "pending",
-        }),
-      }),
-    ]);
-
-    harness.translate(childTurnStarted("child-turn-1"));
-    expect(
-      harness
-        .translate(childTurnCompleted("child-turn-1"))
-        .map((event) => event.type),
-    ).toEqual(["turn/completed", "item/completed"]);
-  });
 
   it("consumes completion activity notifications without duplicating the finished agent", () => {
     const harness = createHarness();

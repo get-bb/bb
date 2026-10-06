@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
-import { rename, rm, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { open, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Command } from "commander";
@@ -24,6 +24,11 @@ import {
   resolveLocalDataDir,
   unlockServerCopy,
 } from "./server-local.js";
+import {
+  findLocalMachineServiceFile,
+  formatMachineServiceRemoval,
+  installMachineService,
+} from "./server-machine-service.js";
 import {
   blockedStartItems,
   callServerMoveRoute,
@@ -132,11 +137,16 @@ async function writeExportFile(args: {
       await reader.cancel().catch(() => undefined);
     }
   }
+  const file = await open(tempPath, "wx", 0o600).catch(async (error) => {
+    await args.body.cancel().catch(() => undefined);
+    throw error;
+  });
   try {
-    await pipeline(
-      chunks,
-      createWriteStream(tempPath, { flags: "wx", mode: 0o600 }),
+    const destination = file.createWriteStream();
+    const closed = new Promise<void>((resolve) =>
+      destination.once("close", resolve),
     );
+    await pipeline(chunks, destination).finally(() => closed);
     if (hash.digest("hex") !== args.expectedSha256) {
       throw new Error(
         `The downloaded export does not match the SHA-256 digest the server sent, so ${outPath} was not written. Try the export again.`,
@@ -144,6 +154,7 @@ async function writeExportFile(args: {
     }
     await rename(tempPath, outPath);
   } catch (error) {
+    await file.close();
     await rm(tempPath, { force: true });
     throw error;
   }
@@ -269,7 +280,7 @@ export function registerServerCommands(
 
   const move = server
     .command("move")
-    .description("Move the bb server to another machine")
+    .description("Move the bb server to another machine (experimental)")
     .option("--to <machine>", "Machine ID or name that should run the server")
     .option(
       "--address <url>",
@@ -457,6 +468,12 @@ export function registerServerCommands(
             `The old server copy in ${dataDir} was deleted, so there is nothing to unlock. Unlocking would start an empty bb server.`,
           );
         }
+        const serviceFile = await findLocalMachineServiceFile(dataDir);
+        if (serviceFile !== null) {
+          throw new Error(
+            `A background service (${serviceFile}) runs this computer as a machine from ${dataDir}. Unlocking would start a second host daemon on the same data. Remove the service first: ${formatMachineServiceRemoval(serviceFile)}`,
+          );
+        }
         if (!opts.force) {
           const probe = await probeMovedServer({ dataDir, lock });
           if (probe.kind === "running") {
@@ -502,9 +519,39 @@ export function registerServerCommands(
     );
 
   server
+    .command("install-machine-service")
+    .description(
+      "Keep this computer connected as a machine with a background service after its server moved away",
+    )
+    .option(
+      "--data-dir <dir>",
+      "Data directory the server moved away from (default: BB_DATA_DIR or ~/.bb)",
+    )
+    .option("--yes", "Skip the confirmation prompt")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: LocalServerCommandOptions) => {
+        const result = await installMachineService({
+          confirm: (message) =>
+            opts.yes
+              ? Promise.resolve(true)
+              : confirmDestructiveAction(message),
+          dataDir: resolveLocalDataDir(opts.dataDir),
+          installerOutput: opts.json ? "stderr" : "stdout",
+          report: (line) => console.error(line),
+        });
+        if (result === null) return;
+        if (outputJson(opts, result)) return;
+        console.log(
+          `This computer now stays connected to ${result.toHostName} as a machine, even when bb is closed. The service updates bb whenever the server does.`,
+        );
+      }),
+    );
+
+  server
     .command("allow-connect")
     .description(
-      "Let bb connect start from an imported server copy (does not call a server)",
+      "Let bb account and bb connect start from an imported server copy (does not call a server)",
     )
     .option(
       "--data-dir <dir>",
@@ -522,12 +569,12 @@ export function registerServerCommands(
           return;
         }
         console.error(
-          "Stop the original bb server first. Two servers holding the same bb connect credential take each other's tunnel.",
+          "Stop the original bb server first. Two servers holding the same bb account credential take each other's tunnel and spend the same hosted quota.",
         );
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(
-            `Let bb connect start from the imported bb server in ${dataDir}?`,
+            `Let bb account and bb connect start from the imported bb server in ${dataDir}?`,
           ))
         ) {
           return;
@@ -535,7 +582,7 @@ export function registerServerCommands(
         const connectHoldRemoved = await removeServerConnectHoldFile(dataDir);
         if (outputJson(opts, { dataDir, connectHoldRemoved })) return;
         console.log(
-          `Removed the bb connect hold from ${dataDir}. bb connect starts the next time this server starts; restart bb if it's already running.`,
+          `Removed the bb connect hold from ${dataDir}. bb account and bb connect start the next time this server starts; restart bb if it's already running.`,
         );
       }),
     );

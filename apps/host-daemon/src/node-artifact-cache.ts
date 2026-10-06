@@ -25,7 +25,6 @@ interface EnsureCachedNodeArtifactArgs {
   digest: string;
   byteLength: number;
   fileName: string;
-  legacyFileNames?: readonly string[];
   fetchArtifact: FetchNodeArtifact;
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
 }
@@ -80,18 +79,6 @@ async function ensureCachedNodeArtifactUnlocked(
       { cacheDir: args.cacheDir, digest: args.digest },
       "Using cached host artifact",
     );
-    await removeLegacyArtifactFiles(directory, args);
-    await touchDirectory(directory);
-    await pruneStaleDigests(args);
-    return artifactPath;
-  }
-
-  const migratedLegacyPath = await migrateLegacyArtifact(
-    directory,
-    artifactPath,
-    args,
-  );
-  if (migratedLegacyPath) {
     await touchDirectory(directory);
     await pruneStaleDigests(args);
     return artifactPath;
@@ -121,58 +108,12 @@ async function ensureCachedNodeArtifactUnlocked(
       await rm(staged, { force: true });
       throw error;
     }
-    await removeLegacyArtifactFiles(directory, args);
     await pruneStaleDigests(args);
     return artifactPath;
   }
   throw new Error(
     `Host artifact download failed verification after retry: ${lastMismatch}`,
   );
-}
-
-async function migrateLegacyArtifact(
-  directory: string,
-  artifactPath: string,
-  args: EnsureCachedNodeArtifactArgs,
-): Promise<boolean> {
-  for (const legacyFileName of args.legacyFileNames ?? []) {
-    if (legacyFileName === args.fileName) continue;
-    const legacyPath = join(directory, legacyFileName);
-    if (!(await isVerifiedCachedArtifact(legacyPath, args))) continue;
-
-    await rename(legacyPath, artifactPath);
-    args.logger.debug(
-      {
-        cacheDir: args.cacheDir,
-        digest: args.digest,
-        legacyFileName,
-        fileName: args.fileName,
-      },
-      "Migrated cached host artifact",
-    );
-    await removeLegacyArtifactFiles(directory, args);
-    return true;
-  }
-  return false;
-}
-
-async function removeLegacyArtifactFiles(
-  directory: string,
-  args: EnsureCachedNodeArtifactArgs,
-): Promise<void> {
-  const legacyPaths = (args.legacyFileNames ?? [])
-    .filter((fileName) => fileName !== args.fileName)
-    .map((fileName) => join(directory, fileName));
-  const results = await Promise.allSettled(
-    legacyPaths.map((path) => rm(path, { force: true })),
-  );
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled") return;
-    args.logger.warn(
-      { path: legacyPaths[index], err: result.reason },
-      "Failed to remove legacy host artifact",
-    );
-  });
 }
 
 async function isVerifiedCachedArtifact(

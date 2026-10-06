@@ -5,7 +5,7 @@ import {
   useRpc,
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
-import { Input } from "@bb/shared-ui/input";
+import { Input } from "@/components/ui/input";
 import { MAX_LIMIT_VALUE, parseLimitValue } from "./limits.js";
 import type { concurrencyLimitRpcContract } from "./server.js";
 

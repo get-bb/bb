@@ -6,7 +6,7 @@ import type { HostDaemonRpcCommand } from "@bb/host-daemon-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { errorToResponse } from "../../src/errors.js";
+import { createServerErrorHandler } from "../../src/errors.js";
 import { setAuthenticatedDaemon } from "../../src/internal/auth.js";
 import { registerInternalServerMoveRoutes } from "../../src/internal/server-move.js";
 import { createServerMoveCoordinator } from "../../src/services/server-move/coordinator.js";
@@ -88,7 +88,7 @@ describe("server move downloads", () => {
           },
         });
         const app = new Hono();
-        app.onError((error) => errorToResponse(error, testLogger));
+        app.onError(createServerErrorHandler(testLogger));
         app.use("*", async (context, next) => {
           setAuthenticatedDaemon(context, {
             hostId: context.req.header("x-test-host") ?? "",

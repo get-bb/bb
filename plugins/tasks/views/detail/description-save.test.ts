@@ -1,55 +1,46 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDescriptionSaver,
   type DescriptionSaveOutcome,
 } from "./description-save.js";
 
-function manualTimer() {
-  let queued: (() => void) | undefined;
-  return {
-    schedule(run: () => void) {
-      queued = run;
-      return () => {
-        if (queued === run) queued = undefined;
-      };
-    },
-    fire() {
-      const run = queued;
-      queued = undefined;
-      run?.();
-    },
-  };
-}
+const DELAY_MS = 800;
 
 function setup(
   save: (taskId: string, markdown: string) => Promise<DescriptionSaveOutcome>,
 ) {
-  const timer = manualTimer();
   const errors: string[] = [];
   const saver = createDescriptionSaver({
     save,
     onError: (message) => errors.push(message),
-    delayMs: 800,
-    schedule: timer.schedule,
+    delayMs: DELAY_MS,
   });
-  return { timer, errors, saver };
+  return { errors, saver };
 }
 
-const flushMicrotasks = () =>
-  new Promise<void>((resolve) => setTimeout(resolve, 0));
+const flushMicrotasks = () => vi.advanceTimersByTimeAsync(0);
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("createDescriptionSaver", () => {
   it("clears the pending draft only after the server confirms the save", async () => {
     const calls: string[] = [];
-    const { timer, errors, saver } = setup(async (_taskId, markdown) => {
+    const { errors, saver } = setup(async (_taskId, markdown) => {
       calls.push(markdown);
       return { ok: true };
     });
 
     saver.onChange("task-1", "draft v1");
     expect(saver.hasPending()).toBe(true);
-    timer.fire();
-    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(DELAY_MS - 1);
+    expect(calls).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
     expect(calls).toEqual(["draft v1"]);
     expect(saver.hasPending()).toBe(false);
     expect(errors).toEqual([]);
@@ -61,15 +52,14 @@ describe("createDescriptionSaver", () => {
   it("keeps the draft after a transport failure so the unmount flush retries", async () => {
     const calls: string[] = [];
     let fail = true;
-    const { timer, errors, saver } = setup(async (_taskId, markdown) => {
+    const { errors, saver } = setup(async (_taskId, markdown) => {
       calls.push(markdown);
       if (fail) throw new Error("network down");
       return { ok: true };
     });
 
     saver.onChange("task-1", "draft v1");
-    timer.fire();
-    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(DELAY_MS);
     expect(errors).toEqual(["network down"]);
     expect(saver.hasPending()).toBe(true);
 
@@ -83,7 +73,7 @@ describe("createDescriptionSaver", () => {
   it("does not clear a newer draft typed while a save is in flight", async () => {
     const calls: string[] = [];
     let release: (() => void) | undefined;
-    const { timer, saver } = setup(async (_taskId, markdown) => {
+    const { saver } = setup(async (_taskId, markdown) => {
       calls.push(markdown);
       await new Promise<void>((resolve) => {
         release = resolve;
@@ -92,13 +82,12 @@ describe("createDescriptionSaver", () => {
     });
 
     saver.onChange("task-1", "draft v1");
-    timer.fire();
-    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(DELAY_MS);
     saver.onChange("task-1", "draft v2");
     release?.();
     await flushMicrotasks();
     expect(saver.hasPending()).toBe(true);
-    timer.fire();
+    await vi.advanceTimersByTimeAsync(DELAY_MS);
     release?.();
     await flushMicrotasks();
     expect(calls).toEqual(["draft v1", "draft v2"]);

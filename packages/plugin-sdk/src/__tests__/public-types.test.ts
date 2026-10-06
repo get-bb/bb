@@ -8,7 +8,12 @@ import type {
   PluginEnvironments,
   ReadonlyJsonValue,
 } from "../index.js";
-import type { PluginProviderIconRegistration } from "../app-contract.js";
+import type {
+  ComposerAttachment,
+  ComposerDraftReplacement,
+  ComposerDraftSnapshot,
+  PluginProviderIconRegistration,
+} from "../app-contract.js";
 
 type ExpectedBbPluginApiKey =
   | "agents"
@@ -41,9 +46,11 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "MessageDispatchHookContext",
   "MessageDispatchHookDecision",
   "PluginAgents",
+  "PluginAiCompleteOptions",
   "PluginAiServiceDeclaration",
-  "PluginAiServiceKind",
+  "PluginAiServiceStatus",
   "PluginAiServices",
+  "PluginAiTranscribeOptions",
   "PluginAgentConfiguration",
   "PluginAgentConfigurationContext",
   "PluginAgentToolContentPart",
@@ -145,6 +152,9 @@ const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [
 ] as const;
 
 const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
+  "ExperimentalPluginRpcCaller",
+  "ExperimentalPluginRpcHandlerContext",
+  "ExperimentalPluginRpcHandlersWithContext",
   "PluginRpcCallArgs",
   "PluginRpcContract",
   "PluginRpcError",
@@ -398,4 +408,22 @@ it("requires provider presentation fields in author-facing declarations", () => 
     description: string;
     icon: string;
   }>();
+});
+
+it("gives composer attachments one owner and round-trips draft snapshots", () => {
+  const base = {
+    type: "localFile",
+    path: "/tmp/a.txt",
+    name: "a.txt",
+  } as const;
+  expectTypeOf({
+    ...base,
+    hostId: "host_1",
+    sourceProjectId: "proj_1",
+  }).not.toMatchTypeOf<ComposerAttachment>();
+  expectTypeOf({
+    ...base,
+    hostId: "host_1",
+  }).toMatchTypeOf<ComposerAttachment>();
+  expectTypeOf<ComposerDraftSnapshot>().toMatchTypeOf<ComposerDraftReplacement>();
 });

@@ -1,5 +1,9 @@
 import { advanceThreadPruning } from "../src/data/thread-pruning.js";
-import { findEnvironmentPathClaim } from "../src/data/environments.js";
+import {
+  findEnvironmentPathClaim,
+  listProviderLifecycleEnvironments,
+  releaseFinishedEnvironmentPreparationOwners,
+} from "../src/data/environments.js";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
 import {
@@ -17,7 +21,8 @@ import {
 import {
   appendDaemonEventsInTransaction,
   getFirstParentedTimelineBoundarySequence,
-  hasTimelineGroupingContextRowsInRange,
+  getTimelineGroupingContextChangesInRange,
+  hasStoredSpawnAgentToolCall,
   listStoredEventRowsInSequenceRange,
   getLastStoredProviderThreadId,
   insertEvents,
@@ -31,15 +36,12 @@ import {
   listStoredEventRowsByParentToolCallIds,
   listStoredTurnCompletedKeys,
   listTodoSnapshotEventRowsForThread,
-  pruneContextWindowUsageEvents,
-  pruneResolvedItemDeltas,
 } from "../src/data/events.js";
 import {
   MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
-  pruneDestroyedEnvironments,
 } from "../src/data/sweeps.js";
 import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../src/retained-event-output.js";
 import {
@@ -56,7 +58,6 @@ import {
 import { listEnvironments } from "../src/data/environments.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
-import { createEnvironment } from "../src/data/environments.js";
 import {
   createThread,
   listRunningThreads,
@@ -242,6 +243,58 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("checks spawn-agent history without reading unrelated event payloads", () => {
+    const { db, thread } = setup();
+    try {
+      const captured = captureStatements(db, () => {
+        expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      });
+      expect(captured).toHaveLength(1);
+      expect(queryPlanDetails({ db, ...captured[0]! })).toContain(
+        "USING INDEX events_delegating_item_lookup_idx (thread_id=?)",
+      );
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', ?, 'item/started', ?, ?, 0)`)
+        .run(
+          "ordinary-tool",
+          thread.id,
+          1,
+          "toolCall",
+          JSON.stringify({ item: { tool: "exec" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', 3, 'item/completed', 'delegation', ?, 0)`)
+        .run(
+          "delegation",
+          thread.id,
+          JSON.stringify({ item: { tool: "spawnAgent" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+      db.$client
+        .prepare(`INSERT INTO events
+        (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
+        VALUES (?, ?, 'thread', ?, 'item/completed', ?, ?, 0)`)
+        .run(
+          "spawn-tool",
+          thread.id,
+          2,
+          "toolCall",
+          JSON.stringify({ item: { tool: "spawnAgent" } }),
+        );
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(true);
+      expect(hasStoredSpawnAgentToolCall(db, "other-thread")).toBe(false);
+      db.$client.prepare("DELETE FROM events WHERE id = ?").run("spawn-tool");
+      expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("resolves a provider session with two indexed lookups regardless of history length", () => {
     const { db, thread } = setup();
     try {
@@ -405,9 +458,13 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it.each([undefined, 20])(
-    "uses the thread/type/sequence index for filtered event pages after %s",
-    (afterSequence) => {
+  it.each([
+    { afterSequence: undefined, limit: 25, queryCount: 2 },
+    { afterSequence: 20, limit: 25, queryCount: 2 },
+    { afterSequence: 20, limit: undefined, queryCount: 1 },
+  ])(
+    "uses the thread/type/sequence index for filtered event pages after $afterSequence with limit $limit",
+    ({ afterSequence, limit, queryCount }) => {
       const { db, thread } = setup();
 
       const captured = captureStatements(db, () => {
@@ -415,14 +472,14 @@ describe("slow query index plans", () => {
           listStoredEventRows(db, {
             afterSequence,
             beforeSequence: 100,
-            limit: 25,
+            limit,
             order: "desc",
             threadId: thread.id,
             types: ["provider/error", "turn/completed"],
           }),
         ).toEqual([]);
       });
-      expect(captured).toHaveLength(2);
+      expect(captured).toHaveLength(queryCount);
       for (const query of captured) {
         const details = queryPlanDetails({
           db,
@@ -612,6 +669,13 @@ describe("slow query index plans", () => {
       /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
     );
     expect(details).toMatch(
+      /SEARCH events USING COVERING INDEX events_parent_tool_call_thread_parent_sequence_idx \(thread_id=\? AND parent_tool_call_id>\?\)/u,
+    );
+    expect(details.indexOf("SCAN nested_history")).toBeGreaterThanOrEqual(0);
+    expect(details.indexOf("SCAN nested_history")).toBeLessThan(
+      details.indexOf("INDEX events_delegating_item_lookup_idx"),
+    );
+    expect(details).toMatch(
       /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
     );
 
@@ -622,7 +686,7 @@ describe("slow query index plans", () => {
     {
       name: "probes appended grouping-context rows",
       run: (db: DbConnection, threadId: string) =>
-        hasTimelineGroupingContextRowsInRange(db, {
+        getTimelineGroupingContextChangesInRange(db, {
           afterSequence: 10,
           threadId,
           throughSequence: 30,
@@ -864,62 +928,44 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses the environment index for bounded event detaches", () => {
-    const { db, host, logger, project, thread } = setup();
-    const now = Date.now();
-    const environment = createEnvironment(db, noopNotifier, {
-      providerOwnsPath: false,
-      hostId: host.id,
-      projectId: project.id,
-      status: "destroyed",
+  it("skips removed environments in the provider lifecycle sweep", () => {
+    const { db } = setup();
+    const captured = captureStatements(db, () => {
+      expect(
+        listProviderLifecycleEnvironments(db, "git-worktree", {
+          pluginId: "environment-git-worktree",
+          teardownMessage: "blocked",
+        }),
+      ).toEqual([]);
     });
-    insertEvents(db, noopNotifier, [
-      {
-        data: JSON.stringify({ text: "environment prune query plan" }),
-        environmentId: environment.id,
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: threadScope(),
-        sequence: 1,
-        threadId: thread.id,
-        type: "system/manager/user_message",
-      },
-    ]);
-    const updatedBefore = now - 5_000;
-    db.$client
-      .prepare("UPDATE environments SET updated_at = ? WHERE id = ?")
-      .run(now - 10_000, environment.id);
-    logger.clear();
+    expect(captured).toHaveLength(1);
+    const details = queryPlanDetails({
+      db,
+      params: captured[0]!.params,
+      sql: captured[0]!.sql,
+    });
+    expect(details).toContain(
+      "USING INDEX environments_provider_lifecycle_idx",
+    );
+    expect(details).not.toContain("SCAN environments");
+    db.$client.close();
+  });
 
-    expect(
-      pruneDestroyedEnvironments(db, noopNotifier, {
-        eventBatchSize: 50,
-        limit: 1,
-        updatedBefore,
-      }),
-    ).toEqual({ deleted: 0, detachedEvents: 1 });
-
+  it("releases preparation owners through the owner index", () => {
+    const { db, logger } = setup();
+    releaseFinishedEnvironmentPreparationOwners(db);
     const debugLog = findOnlyDebugLog({
       logger,
       predicate: (fields) =>
-        fields.operation === "all" &&
-        fields.sql.startsWith("SELECT rowid, octet_length(data)"),
+        fields.operation === "run" &&
+        fields.sql.startsWith('update "environments" set "owner_thread_id"'),
     });
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog,
-      indexName: "events_environment_idx",
-      params: [environment.id, 50],
+      indexName: "environments_owner_thread_idx",
+      params: [null, "removed"],
     });
-    expect(
-      queryPlanDetails({
-        db,
-        params: [environment.id, 50],
-        sql: debugLog.fields.sql,
-      }),
-    ).not.toContain("USE TEMP B-TREE");
-
     db.$client.close();
   });
 
@@ -967,88 +1013,52 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses the thread/type/sequence index for emitted context-window prune SQL", () => {
-    const { db, logger, thread } = setup();
-    insertEvents(db, noopNotifier, [
-      {
-        data: JSON.stringify({
-          contextWindowUsage: {
-            modelContextWindow: 200_000,
-            usedTokens: 10,
-          },
-        }),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: turnScope("turn_query_plan"),
-        sequence: 1,
-        threadId: thread.id,
-        type: "thread/contextWindowUsage/updated",
-      },
-      {
-        data: JSON.stringify({
-          contextWindowUsage: {
-            modelContextWindow: null,
-            usedTokens: 20,
-          },
-        }),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: turnScope("turn_query_plan"),
-        sequence: 2,
-        threadId: thread.id,
-        type: "thread/contextWindowUsage/updated",
-      },
-      {
-        data: "{}",
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: threadScope(),
-        sequence: 3,
-        threadId: thread.id,
-        type: "system/error",
-      },
-    ]);
-    const eventId = db.$client
-      .prepare<[string, number], { id: string }>(
-        "SELECT id FROM events WHERE thread_id = ? AND sequence = ?",
-      )
-      .get(thread.id, 1)?.id;
-    if (!eventId) {
-      throw new Error("Expected completed output migration event");
-    }
-    logger.clear();
-
-    pruneContextWindowUsageEvents(db, {
-      threadId: thread.id,
-    });
-
-    const debugLog = findOnlyDebugLog({
-      logger,
-      predicate: (fields) =>
-        fields.operation === "run" &&
-        fields.sql.startsWith("DELETE FROM events"),
-    });
-    assertEmittedQueryPlanUsesIndex({
-      db,
-      debugLog,
-      indexName: "events_thread_type_sequence_idx",
-      params: [
-        thread.id,
-        "thread/contextWindowUsage/updated",
-        500,
-        thread.id,
-        "thread/contextWindowUsage/updated",
-        thread.id,
-        2,
-        1,
-      ],
-    });
-
-    db.$client.close();
-  });
+  it.each([
+    ["agentMessage", "item/agentMessage/delta"],
+    ["reasoning", "item/reasoning/textDelta"],
+  ] as const)(
+    "does not parse %s completion payloads for retention support",
+    (itemKind, deltaType) => {
+      const { db, thread } = setup();
+      try {
+        insertEvents(
+          db,
+          noopNotifier,
+          [1, 2, 3].map((sequence) => ({
+            data: "{}",
+            itemId: "item",
+            itemKind: sequence === 3 ? itemKind : null,
+            parentToolCallId: null,
+            scope: turnScope("support-turn"),
+            sequence,
+            threadId: thread.id,
+            type: sequence === 3 ? "item/completed" : deltaType,
+          })),
+        );
+        const statements = captureStatements(db, () => {
+          expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
+        });
+        const supportQueries = statements.filter((statement) =>
+          statement.sql.includes(
+            "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+          ),
+        );
+        expect(supportQueries.length).toBeGreaterThan(0);
+        for (const statement of supportQueries) {
+          const instructions = db.$client
+            .prepare<SqliteParameter[], { p4: string | null }>(
+              `EXPLAIN ${statement.sql}`,
+            )
+            .all(...statement.params);
+          expect(instructions.some((row) => row.p4?.startsWith("json_"))).toBe(
+            false,
+          );
+        }
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
 
   it("uses the active-thread maintenance index for emitted idle checks", () => {
     const { db, logger } = setup();
@@ -1069,31 +1079,6 @@ describe("slow query index plans", () => {
       indexName: "threads_active_maintenance_idx",
       params: ["active", "provisioning"],
     });
-
-    db.$client.close();
-  });
-
-  it("uses rowid lookups for thread search FTS segment hydration", () => {
-    const { db } = setup();
-
-    const details = queryPlanDetails({
-      db,
-      params: ['"queryplanneedle"*', 20],
-      sql: `
-        SELECT s.id
-        FROM thread_search_segments_fts
-        JOIN thread_search_segments AS s
-          ON s.rowid = thread_search_segments_fts.rowid
-        WHERE thread_search_segments_fts MATCH ?
-        LIMIT ?
-      `,
-    });
-
-    expect(details).toContain(
-      "SCAN thread_search_segments_fts VIRTUAL TABLE INDEX",
-    );
-    expect(details).toContain("SEARCH s USING INTEGER PRIMARY KEY (rowid=?)");
-    expect(details).not.toContain("SCAN s");
 
     db.$client.close();
   });
@@ -1504,7 +1489,7 @@ describe("slow query index plans", () => {
     logger.clear();
 
     const statements = captureStatements(db, () => {
-      expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+      expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
     });
     const discovery = statements.find((statement) =>
       statement.sql.includes("WITH candidate_ids AS MATERIALIZED"),
@@ -1512,9 +1497,11 @@ describe("slow query index plans", () => {
     if (!discovery) throw new Error("Missing typed delta candidate discovery");
     const discoveryPlan = queryPlanDetails({ db, ...discovery });
     expect(
-      discoveryPlan.match(/USING INDEX events_thread_type_sequence_idx/gu),
+      discoveryPlan.match(
+        /USING COVERING INDEX events_thread_type_sequence_idx/gu,
+      ),
     ).toHaveLength(4);
-    expect(discoveryPlan).toContain("USING INDEX sqlite_autoindex_events_1");
+    expect(discoveryPlan).toContain("USING INTEGER PRIMARY KEY (rowid=?)");
     expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
     const supportQueries = statements.filter((statement) =>
       statement.sql.includes(
@@ -1538,88 +1525,109 @@ describe("slow query index plans", () => {
     expect(pruneQuery.fields.bindingArgumentCount).toBeLessThanOrEqual(500);
     expect(pruneQuery.fields.sql).not.toContain("json_extract");
 
-    const completedLookupPlan = queryPlanDetails({
-      db,
-      params: [thread.id, turnId, itemId],
-      sql: `
-        SELECT 1
-        FROM events AS completed
-        WHERE completed.thread_id = ?
-          AND completed.turn_id = ?
-          AND completed.type = 'item/completed'
-          AND completed.item_kind = 'commandExecution'
-          AND completed.item_id = ?
-          AND json_type(completed.data, '$.item.aggregatedOutput') IS NOT NULL
-        LIMIT 1
-      `,
-    });
-    const earlierDeltaLookupPlan = queryPlanDetails({
-      db,
-      params: [thread.id, turnId, itemId, 3],
-      sql: `
-        SELECT 1
-        FROM events AS earlier_delta
-        WHERE earlier_delta.thread_id = ?
-          AND earlier_delta.turn_id = ?
-          AND earlier_delta.type = 'item/commandExecution/outputDelta'
-          AND earlier_delta.item_id = ?
-          AND earlier_delta.sequence < ?
-        LIMIT 1
-      `,
-    });
-
-    expect(completedLookupPlan).toContain(
-      "events_thread_turn_type_item_sequence_idx",
-    );
-    expect(earlierDeltaLookupPlan).toContain(
-      "events_thread_turn_type_item_sequence_idx",
-    );
-    expect(completedLookupPlan).not.toContain(
-      "events_thread_turn_type_item_kind_item_idx",
-    );
-
     db.$client.close();
   });
 
-  it("pins the latest-thread-state lookup to the partial index with no temp sort", () => {
+  it("discovers token usage keepers without reading payloads or computing unused byte totals", () => {
     const { db, thread } = setup();
-    insertEvents(db, noopNotifier, [
-      {
-        data: JSON.stringify({ goal: "guard the query plan" }),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        scope: threadScope(),
-        sequence: 1,
-        threadId: thread.id,
-        type: "thread/goal/updated",
-      },
-    ]);
+    try {
+      insertEvents(
+        db,
+        noopNotifier,
+        [1, 2].map((sequence) => ({
+          data: JSON.stringify({ tokenUsage: { modelContextWindow: 200000 } }),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          scope: turnScope("usage-turn"),
+          sequence,
+          threadId: thread.id,
+          type: "thread/tokenUsage/updated" as const,
+        })),
+      );
+      advanceThreadPruning(db, "usage");
+      advanceThreadPruning(db, "usage");
+      const statements = captureStatements(db, () => {
+        const result = advanceThreadPruning(db, "usage");
+        expect(result.scanned).toBe(2);
+        expect(result.removed).toBe(0);
+        expect(result.removedBytes).toBe(0);
+        expect(result.cursor.latestRootSequence).toBe(2);
+      });
+      for (const statement of statements) {
+        const instructions = db.$client
+          .prepare<SqliteParameter[], { p4: string | null }>(
+            `EXPLAIN ${statement.sql}`,
+          )
+          .all(...statement.params);
+        expect(
+          instructions.filter((row) => /^(json_|sum\()/u.test(row.p4 ?? "")),
+        ).toEqual([]);
+      }
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("pins multi-thread latest state lookups to one candidate seek per requested thread", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    insertEvents(
+      db,
+      noopNotifier,
+      [thread, otherThread].flatMap((stateThread, threadIndex) =>
+        Array.from({ length: 64 }, (_, index) => ({
+          data: JSON.stringify(
+            index === 63
+              ? { goal: `goal-${threadIndex}` }
+              : { kind: "other-plugin/state", payload: { index } },
+          ),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          scope: threadScope(),
+          sequence: index + 1,
+          threadId: stateThread.id,
+          type:
+            index === 63
+              ? ("thread/goal/updated" as const)
+              : ("thread/extensionState/updated" as const),
+        })),
+      ),
+    );
 
     const captured = captureStatements(db, () => {
       expect(
         listLatestThreadStateEventRowsByThreadIds(db, {
-          threadIds: [thread.id],
+          threadIds: [thread.id, otherThread.id],
           kind: "provider-codex/goal",
         }),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
     const statement = captured.find((entry) =>
-      entry.sql.includes("latest_state"),
+      entry.sql.includes("events_thread_state_thread_sequence_idx"),
     );
     if (!statement) {
       throw new Error("Expected the latest-thread-state lookup SQL");
     }
 
+    expect(statement.sql).toContain("VALUES");
     const details = queryPlanDetails({
       db,
       params: statement.params,
       sql: statement.sql,
     });
     expect(
-      details.match(/events_thread_state_thread_sequence_idx/gu),
-    ).toHaveLength(2);
-    expect(details).not.toContain("USING INDEX events_thread_sequence_idx");
+      details.match(
+        /USING (?:COVERING )?INDEX events_thread_state_thread_sequence_idx/gu,
+      ),
+    ).toHaveLength(1);
+    expect(details).not.toMatch(
+      /USING (?:COVERING )?INDEX events_thread_sequence_idx/u,
+    );
     expect(details).not.toContain("USE TEMP B-TREE");
 
     db.$client.close();

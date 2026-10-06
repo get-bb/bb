@@ -306,10 +306,15 @@ describe("standalone restart command", () => {
     expect(command).toContain('[ "$connected" = 1 ]');
     expect(command).not.toContain("&;");
     expect(command).not.toContain("do; if");
-    expect(command).not.toContain("test-openai-key");
   });
 
-  it("does not map whitespace-only QA OpenAI opt-in restart keys", async () => {
+  it("does not map whitespace-only QA OpenAI opt-in restart keys", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "the standalone QA restart command is a POSIX shell script",
+    );
     await expect(
       runRestartProviderEnvBlock(buildTestRestartProviderEnvBlock(), {
         OPENAI_API_KEY: "ambient-openai-key",
@@ -318,13 +323,25 @@ describe("standalone restart command", () => {
     ).resolves.toBe("unset");
   });
 
-  it("keeps OpenAI unset during restart when ambient and opt-in keys are absent", async () => {
+  it("keeps OpenAI unset during restart when ambient and opt-in keys are absent", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "the standalone QA restart command is a POSIX shell script",
+    );
     await expect(
       runRestartProviderEnvBlock(buildTestRestartProviderEnvBlock(), {}),
     ).resolves.toBe("unset");
   });
 
-  it("maps a non-empty QA OpenAI opt-in key during restart", async () => {
+  it("maps a non-empty QA OpenAI opt-in key during restart", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "the standalone QA restart command is a POSIX shell script",
+    );
     await expect(
       runRestartProviderEnvBlock(buildTestRestartProviderEnvBlock(), {
         OPENAI_API_KEY: "ambient-openai-key",
@@ -353,7 +370,13 @@ describe("standalone restart command", () => {
     expect(command).toContain("daemon_pid=''");
   });
 
-  it("starts a detached daemon repeatedly and replaces the current pid", async () => {
+  it("starts a detached daemon repeatedly and replaces the current pid", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "the standalone QA restart command is a POSIX shell script",
+    );
     const tempDir = await fs.mkdtemp(
       path.join(tmpdir(), "bb-restart-command-"),
     );

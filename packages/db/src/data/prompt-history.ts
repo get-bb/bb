@@ -1,6 +1,6 @@
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import { projectAttachmentPaths } from "@bb/domain";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
   type PromptHistoryScope,
@@ -14,9 +14,19 @@ export interface StoredPromptHistoryEntryRow {
   createdAt: number;
   id: string;
   input: string;
+  projectId: string;
   requestSequence: number;
   threadId: string;
 }
+
+const storedPromptHistoryEntryColumns = {
+  createdAt: promptHistoryEntries.createdAt,
+  id: promptHistoryEntries.id,
+  input: promptHistoryEntries.input,
+  projectId: promptHistoryEntries.projectId,
+  requestSequence: promptHistoryEntries.requestSequence,
+  threadId: promptHistoryEntries.threadId,
+};
 
 export interface CreatePromptHistoryEntryInput {
   createdAt?: number;
@@ -31,14 +41,23 @@ export interface ListStoredPromptHistoryArgs {
   limit: number;
 }
 
-export interface ListStoredProjectPromptHistoryArgs
-  extends ListStoredPromptHistoryArgs {
+export interface ListStoredProjectPromptHistoryArgs extends ListStoredPromptHistoryArgs {
   projectId: string;
 }
 
-export interface ListStoredThreadPromptHistoryArgs
-  extends ListStoredPromptHistoryArgs {
+export interface ListStoredThreadPromptHistoryArgs extends ListStoredPromptHistoryArgs {
   threadId: string;
+}
+
+export interface PromptHistoryPosition {
+  createdAt: number;
+  requestSequence: number;
+  id: string;
+}
+
+export interface ListPromptHistoryPageArgs {
+  before: PromptHistoryPosition | null;
+  limit: number;
 }
 
 function rawPromptHistoryRowLimit(limit: number): number {
@@ -71,13 +90,7 @@ export function createPromptHistoryEntry(
           input: JSON.stringify(input.input),
           createdAt,
         })
-        .returning({
-          createdAt: promptHistoryEntries.createdAt,
-          id: promptHistoryEntries.id,
-          input: promptHistoryEntries.input,
-          requestSequence: promptHistoryEntries.requestSequence,
-          threadId: promptHistoryEntries.threadId,
-        })
+        .returning(storedPromptHistoryEntryColumns)
         .get();
     },
     { behavior: "immediate" },
@@ -89,13 +102,7 @@ export function listStoredProjectPromptHistoryRows(
   args: ListStoredProjectPromptHistoryArgs,
 ): StoredPromptHistoryEntryRow[] {
   return db
-    .select({
-      createdAt: promptHistoryEntries.createdAt,
-      id: promptHistoryEntries.id,
-      input: promptHistoryEntries.input,
-      requestSequence: promptHistoryEntries.requestSequence,
-      threadId: promptHistoryEntries.threadId,
-    })
+    .select(storedPromptHistoryEntryColumns)
     .from(promptHistoryEntries)
     .innerJoin(threads, eq(threads.id, promptHistoryEntries.threadId))
     .where(
@@ -119,13 +126,7 @@ export function listStoredThreadPromptHistoryRows(
   args: ListStoredThreadPromptHistoryArgs,
 ): StoredPromptHistoryEntryRow[] {
   return db
-    .select({
-      createdAt: promptHistoryEntries.createdAt,
-      id: promptHistoryEntries.id,
-      input: promptHistoryEntries.input,
-      requestSequence: promptHistoryEntries.requestSequence,
-      threadId: promptHistoryEntries.threadId,
-    })
+    .select(storedPromptHistoryEntryColumns)
     .from(promptHistoryEntries)
     .where(
       and(
@@ -139,5 +140,27 @@ export function listStoredThreadPromptHistoryRows(
       desc(promptHistoryEntries.id),
     )
     .limit(rawPromptHistoryRowLimit(args.limit))
+    .all();
+}
+
+export function listPromptHistoryPage(
+  db: DbQueryConnection,
+  args: ListPromptHistoryPageArgs,
+): StoredPromptHistoryEntryRow[] {
+  const before = args.before;
+  return db
+    .select(storedPromptHistoryEntryColumns)
+    .from(promptHistoryEntries)
+    .where(
+      before === null
+        ? undefined
+        : sql`(${promptHistoryEntries.createdAt}, ${promptHistoryEntries.requestSequence}, ${promptHistoryEntries.id}) < (${before.createdAt}, ${before.requestSequence}, ${before.id})`,
+    )
+    .orderBy(
+      desc(promptHistoryEntries.createdAt),
+      desc(promptHistoryEntries.requestSequence),
+      desc(promptHistoryEntries.id),
+    )
+    .limit(args.limit)
     .all();
 }

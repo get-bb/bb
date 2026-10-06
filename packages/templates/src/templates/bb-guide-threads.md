@@ -45,10 +45,12 @@ Spawning:
                                    none). Required when the provider declares inputs,
                                    refused when it does not
     --machine <id-or-name>         Run on a machine (--host is an alias)
-    --service-tier <tier>          Service tier: fast, default
+    --service-tier <tier>          Service tier id the provider lists for the model, such as
+                                   default or fast (see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
+    --pinned                       Create the thread in Pinned
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
@@ -108,7 +110,7 @@ Forking:
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new worktree; omit for the project default
-    --title <title>                Thread title
+    --title <title>                Thread title (idle forks default to "(1) <source title>")
     --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
     --visibility <visibility>      visible (default) or hidden
     --agent-context-seed <text>    Persist agent-only context without a first run
@@ -127,7 +129,9 @@ Forking:
   source machine; --environment can select another environment or unmanaged
   path on that machine. A different machine is rejected because the source
   provider session lives on its original machine. Omit --prompt to create an
-  idle fork.
+  idle fork. A visible idle fork without --title is named after its source with
+  a numbered prefix: "foo" becomes "(1) foo" and "(1) foo" becomes "(2) foo".
+  Forks created with a first prompt get a title from that prompt.
 
 Editing a sent message:
 
@@ -141,8 +145,11 @@ Editing a sent message:
   Failed and incomplete turns are eligible. If the thread is running,
   submission stops the current turn and waits for it to settle. It then
   replaces the selected turn and every later turn while retaining workspace
-  changes. From an agent thread, the command carries `BB_THREAD_ID` so the
-  replacement runs under agent permission policy.
+  changes. Unsent queued messages remain in the queue and dispatch after the
+  replacement turn when their waits clear. An already-sending queued message
+  must finish before the edit can start. Retries of turns replaced by the edit
+  are removed from the queue. From an agent thread, the command
+  carries `BB_THREAD_ID` so the replacement runs under agent permission policy.
   An edit is refused if removing its history would erase ownership evidence
   shared with another thread. Use bb thread clear <id> to start a new session
   while keeping the history and its ownership evidence.
@@ -152,6 +159,7 @@ Listing:
   bb thread list                           List threads
     --project <id>                         Filter by project
     --environment <id>                     Filter by environment
+    --machine <id-or-name>                 Filter by the machine the environment is on (alias --host)
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
     --section <id>                         Filter by section
@@ -208,6 +216,8 @@ Inspecting:
                                            user-message turns for minimal/verbose (newest first, default 20, max 100)
     --after-seq <seq>                      Paginate after sequence number (json only)
     --all                                  Print the whole thread, paging through every entry
+    --message <seq>                        Print one message
+    --context <count>                      With --message, also print this many messages around it (max 20)
 
   Human formats end with a notice when older history was omitted; --json warns
   on stderr when more events exist beyond the printed page. Human-format --all
@@ -227,6 +237,14 @@ Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
   BB renders the correct project-aware link; do not construct thread URLs manually.
+  Pasting a bare thread URL from the current bb origin into a composer turns it
+  into the same thread pill when the target resolves. Undo restores the URL;
+  paste without formatting (Cmd/Ctrl+Shift+V) keeps it literal. Links with query
+  strings or fragments, quoted/code text, and links to other origins stay literal.
+  CLI prompts can use @thread:<id> directly; URL conversion only runs on a user paste.
+  Reference one message as @thread:thr_abc123#msg=42, taking the number from
+  sourceSeq in `bb thread search --json`. Read it, or a copied message link
+  (…/threads/thr_abc123#msg=42), with `bb thread log thr_abc123 --message 42`.
 
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
@@ -235,9 +253,8 @@ Opening threads and files in the app:
   bb thread pane <action> [thread-id]      Maximize, restore, toggle, spotlight, or clear spotlight
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
-  the thread ID argument is omitted for file-only opens. Pass an explicit thread
-  ID with --split to open another thread. Outside a BB thread, pass the thread ID
-  as the first argument. A thread already open in a pane is focused instead of
+  the thread ID argument is omitted for file-only opens. Outside a BB thread,
+  pass the thread ID as the first argument. A thread already open in a pane is focused instead of
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
   Pane actions broadcast to connected BB app windows and affect the matching
@@ -349,7 +366,7 @@ Interactions:
 Queued messages:
 
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
-  bb thread queue create <thread-id> <message>
+  bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
   bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
@@ -426,6 +443,22 @@ Lifecycle:
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread
 
+  bb thread restore-environment [id]       Restore a destroyed workspace
+    --self                                 Restore current thread
+
+  Archiving a thread retires its environment, and a managed workspace is removed
+  from disk once the provider's grace window passes. Sending to a thread whose
+  workspace is gone fails; `restore-environment` asks the environment provider
+  to build it again and attaches it, leaving the conversation where it was.
+  Each provider decides what that means: a worktree is re-created on the branch
+  it held, a project checkout switches back to that branch, and a personal
+  workspace cannot be restored. It starts no turn — the thread settles back to
+  idle with a live workspace (check `canRestoreEnvironment` on `bb thread show
+  --json`). Unarchive the thread first; the command is refused while the thread
+  is archived, while its workspace is still there, and when the provider does
+  not restore, is gone, or its machine is gone. Uncommitted changes in the
+  removed workspace are not recoverable.
+
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
 
@@ -451,3 +484,9 @@ Lifecycle ownership:
   recursively deletes them after runtime/storage cleanup. Failed cleanup retries
   durably. Unarchive the owner before explicitly restoring a dependent. Stop does
   not cascade. Sidebar parents and ordinary forks retain their existing policies.
+
+Thread storage deletion and orphan cleanup stop processes whose working
+directories are inside that storage before removing files, including dev
+servers in nested checkouts. On macOS and Linux this uses the same SIGTERM
+grace period and SIGKILL fallback as worktree removal. Windows does not
+enumerate process working directories.

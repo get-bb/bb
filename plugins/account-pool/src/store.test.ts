@@ -127,11 +127,13 @@ describe("QuotaStore", () => {
       );
     database.exec(familyMigration);
     database.exec(windowMigration);
+    for (const migration of QUOTA_MIGRATIONS.slice(3)) database.exec(migration);
     const quotas = new QuotaStore(database);
 
     const migrated = quotas.get("11111111-1111-4111-8111-111111111111");
     expect(migrated.sevenDayUtilization).toBe(0.5);
     expect(migrated.limitWindows).toEqual([]);
+    expect(migrated.extraUsage).toBeNull();
     expect(migrated.familyWeekly).toEqual({
       fable: null,
       sonnet: null,

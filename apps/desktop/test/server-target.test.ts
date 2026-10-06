@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  builtinServerName,
+  BUILTIN_SERVER_NAME,
   createServerTargetStore,
   normalizeCustomServerUrl,
   type ServerTargetFs,
 } from "../src/server-target.js";
+
+describe("builtinServerName", () => {
+  it("uses the operating system's local server label", () => {
+    expect(builtinServerName("darwin")).toBe("This Mac");
+    expect(builtinServerName("linux")).toBe("This Computer");
+    expect(BUILTIN_SERVER_NAME).toBe(builtinServerName(process.platform));
+  });
+});
 
 function createMemoryFs(initial: Record<string, string> = {}): {
   files: Map<string, string>;
@@ -170,23 +180,6 @@ describe("server target store", () => {
     await store.load();
     expect(await store.setTarget("custom")).toBe(false);
     expect(store.getTarget()).toEqual({ kind: "builtin" });
-  });
-
-  it("clears the custom URL and re-targets builtin on null", async () => {
-    const { fs } = createMemoryFs();
-    const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });
-    await store.load();
-    await store.setCustomServerUrl("https://example.com");
-    await store.setCustomServerUrl(null);
-    expect(store.getTarget()).toEqual({ kind: "builtin" });
-    expect(store.getCustomServerUrl()).toBeNull();
-
-    const reloaded = createServerTargetStore({
-      fs,
-      storagePath: "/tmp/t.json",
-    });
-    await reloaded.load();
-    expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
   });
 
   it("selects, persists, and refreshes a connect server target", async () => {

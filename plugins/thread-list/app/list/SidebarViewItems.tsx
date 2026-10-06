@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon } from "@/components/ui/icon";
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -10,8 +10,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
-} from "@bb/shared-ui/dropdown-menu";
-import type { SidebarSectionId } from "@bb/client-core";
+} from "@/components/ui/dropdown-menu";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import type { HeaderCreationActions } from "./SidebarHeaderControls.js";
 import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility.js";
 import {
@@ -21,6 +21,8 @@ import {
   sidebarSortDirectionAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarEnvironmentGroupingAtom,
+  sidebarGroupByReadStatusAtom,
+  sidebarShowProviderIconsAtom,
 } from "../preferences/atoms.js";
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
@@ -89,6 +91,7 @@ export function SidebarHeaderMenuContents({
         compact ? (
           <DropdownMenuItem
             key={item.page}
+            className="[&>[data-icon-root]:last-child]:size-3 [&>[data-icon-root]:last-child]:text-subtle-foreground"
             onSelect={(event) => {
               event.preventDefault();
               onPageChange(item.page);
@@ -100,7 +103,7 @@ export function SidebarHeaderMenuContents({
           </DropdownMenuItem>
         ) : (
           <DropdownMenuSub key={item.page}>
-            <DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger className="[&>[data-icon-root]:last-child]:size-3 [&>[data-icon-root]:last-child]:text-subtle-foreground">
               <Icon name={item.icon} />
               {item.label}
             </DropdownMenuSubTrigger>
@@ -137,6 +140,12 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
+  const [groupByReadStatus, setGroupByReadStatus] = useAtom(
+    sidebarGroupByReadStatusAtom,
+  );
+  const [showProviderIcons, setShowProviderIcons] = useAtom(
+    sidebarShowProviderIconsAtom,
+  );
   const selectedSort = sort === "none" ? "updated" : sort;
   if (page === "filter") {
     return (
@@ -203,11 +212,42 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
             onSelect={(event) => {
               event.preventDefault();
               setEnvironmentGrouping(!groupByEnvironment);
+              if (!groupByEnvironment) setGroupByReadStatus(false);
             }}
           >
             By environment
             <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
               {groupByEnvironment && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={groupByReadStatus}
+            onSelect={(event) => {
+              event.preventDefault();
+              setGroupByReadStatus(!groupByReadStatus);
+            }}
+          >
+            By read status
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {groupByReadStatus && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup aria-label="Rows">
+          <DropdownMenuLabel>Rows</DropdownMenuLabel>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={showProviderIcons}
+            onSelect={(event) => {
+              event.preventDefault();
+              setShowProviderIcons(!showProviderIcons);
+            }}
+          >
+            Provider icons
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {showProviderIcons && <Icon name="Check" className="size-4" />}
             </span>
           </DropdownMenuItem>
         </DropdownMenuGroup>

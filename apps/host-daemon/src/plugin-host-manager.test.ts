@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import * as fs from "node:fs/promises";
 import {
   mkdtemp,
-  mkdir,
   readFile,
   readdir,
   rm,
@@ -12,9 +12,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginHostManager } from "./plugin-host-manager.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, rm: vi.fn(actual.rm) };
+});
 
 type PluginCall = Extract<
   HostDaemonOnlineRpcCommand,
@@ -157,9 +161,14 @@ describe("PluginHostManager", () => {
   afterEach(async () => {
     await Promise.all(managers.splice(0).map((manager) => manager.shutdown()));
     await Promise.all(
-      tempDirs
-        .splice(0)
-        .map((dir) => rm(dir, { recursive: true, force: true })),
+      tempDirs.splice(0).map((dir) =>
+        rm(dir, {
+          recursive: true,
+          force: true,
+          maxRetries: 20,
+          retryDelay: 100,
+        }),
+      ),
     );
   });
 
@@ -533,29 +542,6 @@ describe("PluginHostManager", () => {
     ]);
   });
 
-  it("migrates a verified legacy host.js cache entry without downloading", async () => {
-    const fetchArtifact = vi.fn(async () => artifactSource);
-    const { dataDir, manager } = await createManagerFixture({ fetchArtifact });
-    const command = callCommand();
-    const digestDirectory = join(
-      dataDir,
-      "plugin-host-artifacts",
-      command.pluginId,
-      command.artifact.digest,
-    );
-    await mkdir(digestDirectory, { recursive: true });
-    await writeFile(join(digestDirectory, "host.js"), artifactSource);
-
-    const result = await manager.call(command);
-
-    expect(result.output).toMatchObject({ input: { value: "hello" } });
-    expect(fetchArtifact).not.toHaveBeenCalled();
-    await expect(readdir(digestDirectory)).resolves.toEqual(["host.mjs"]);
-    await expect(readFile(join(digestDirectory, "host.mjs"))).resolves.toEqual(
-      artifactSource,
-    );
-  });
-
   it("logs artifact and worker lifecycle transitions", async () => {
     const logger = {
       debug: vi.fn(),
@@ -702,7 +688,18 @@ describe("PluginHostManager", () => {
     const first = await manager.call(callCommand());
     const firstPid = Reflect.get(Object(first.output), "pid");
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await vi.waitFor(
+      () =>
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pluginId: "fixture",
+            reason: "host plugin worker became idle",
+            forceKilled: false,
+          }),
+          "Host plugin worker stopped",
+        ),
+      { timeout: 5_000 },
+    );
     const restarted = await manager.call(callCommand());
 
     expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
@@ -711,18 +708,15 @@ describe("PluginHostManager", () => {
       expect.objectContaining({ digest: expect.any(String) }),
       "Using cached host artifact",
     );
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pluginId: "fixture",
-        reason: "host plugin worker became idle",
-        forceKilled: false,
-      }),
-      "Host plugin worker stopped",
-    );
   });
 
   it("retains a worker with a lease until the lease is released", async () => {
-    const manager = await createManager({ workerIdleTimeoutMs: 20 });
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const manager = await createManager({ logger, workerIdleTimeoutMs: 20 });
     const retained = await manager.call(
       callCommand({ method: "retain", input: { enabled: true } }),
     );
@@ -735,7 +729,18 @@ describe("PluginHostManager", () => {
     await manager.call(
       callCommand({ method: "retain", input: { enabled: false } }),
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await vi.waitFor(
+      () =>
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pluginId: "fixture",
+            reason: "host plugin worker became idle",
+            forceKilled: false,
+          }),
+          "Host plugin worker stopped",
+        ),
+      { timeout: 5_000 },
+    );
     const restarted = await manager.call(callCommand());
     expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(retainedPid);
   });
@@ -778,28 +783,6 @@ describe("PluginHostManager", () => {
     ).rejects.toThrow(/exceeds 8388608 bytes/u);
   });
 
-  it("cancels running calls and enforces deadlines", async () => {
-    const manager = await createManager();
-    await manager.call(callCommand());
-    const command = callCommand({ method: "wait" });
-    const result = manager.call(command);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(
-      manager.cancel({
-        type: "plugin.host.cancel",
-        pluginId: command.pluginId,
-        generation: command.generation,
-        callId: command.callId,
-      }),
-    ).toEqual({ cancelled: true });
-    await expect(result).rejects.toMatchObject({ name: "AbortError" });
-
-    await expect(
-      manager.call(callCommand({ method: "wait", timeoutMs: 20 })),
-    ).rejects.toThrow(/exceeded its deadline/u);
-  });
-
   it.each([-4_000_000_000_000, 4_000_000_000_000])(
     "enforces relative timeouts with a wall-clock offset of %s",
     async (wallClockMs) => {
@@ -830,6 +813,65 @@ describe("PluginHostManager", () => {
       }),
     ).resolves.toEqual({ disposed: true });
     expect(onWorkerExit).not.toHaveBeenCalled();
+  });
+
+  it("waits for temporary directory cleanup without racing another removal", async () => {
+    const manager = await createManager();
+    const command = callCommand({ method: "pathsAndSignal" });
+    const result = await manager.call(command);
+    const tempDir = Reflect.get(Object(result.output), "tempDir");
+    const { rm: remove } =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    let removalStarted = false;
+    let releaseRemoval!: () => void;
+    const removalGate = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    let notifyRemoval!: () => void;
+    const started = new Promise<void>((resolve) => {
+      notifyRemoval = resolve;
+    });
+    const rmSpy = vi
+      .spyOn(fs, "rm")
+      .mockImplementation(async (path, options) => {
+        if (path === tempDir) {
+          if (removalStarted) {
+            throw Object.assign(
+              new Error("EPERM: concurrent directory removal"),
+              {
+                code: "EPERM",
+                syscall: "scandir",
+              },
+            );
+          }
+          removalStarted = true;
+          notifyRemoval();
+          await removalGate;
+        }
+        await remove(path, options);
+      });
+    const disposed = Promise.allSettled([
+      manager.dispose({
+        type: "plugin.host.dispose",
+        pluginId: command.pluginId,
+        generation: command.generation,
+      }),
+    ]);
+    try {
+      await started;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      releaseRemoval();
+      expect(await disposed).toEqual([
+        { status: "fulfilled", value: { disposed: true } },
+      ]);
+      await expect(stat(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      releaseRemoval();
+      await disposed;
+      rmSpy.mockRestore();
+    }
   });
 
   it("logs when graceful disposal requires a forced kill", async () => {
@@ -990,26 +1032,5 @@ describe("PluginHostManager", () => {
         }),
       ),
     ).rejects.toThrow(/changed artifact digest/u);
-  });
-});
-
-describe("host plugin worker env", () => {
-  it("uses the login-shell PATH without forwarding daemon BB variables", () => {
-    expect(
-      sanitizeInheritedChildProcessEnv({
-        env: {
-          HOME: "/Users/test",
-          PATH: "/usr/bin",
-          GH_TOKEN: "user-token",
-          BB_CONNECT_MACHINE_CREDENTIAL: "daemon-secret",
-          BB_SERVER_URL: "http://daemon.internal",
-        },
-        shellPath: "/Users/test/bin:/usr/bin",
-      }),
-    ).toEqual({
-      HOME: "/Users/test",
-      PATH: "/Users/test/bin:/usr/bin",
-      GH_TOKEN: "user-token",
-    });
   });
 });

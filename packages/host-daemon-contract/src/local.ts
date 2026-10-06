@@ -140,7 +140,13 @@ export const pathsExistResponseSchema = z.object({
 });
 export type PathsExistResponse = z.infer<typeof pathsExistResponseSchema>;
 
-export const hostPlatformSchema = z.enum(["darwin", "linux", "wsl", "unknown"]);
+export const hostPlatformSchema = z.enum([
+  "darwin",
+  "linux",
+  "wsl",
+  "win32",
+  "unknown",
+]);
 export type HostPlatform = z.infer<typeof hostPlatformSchema>;
 
 export const statusResponseSchema = z.object({
@@ -241,9 +247,6 @@ const providerCliInstallCompletedEventSchema = z.object({
   signal: z.string().min(1).nullable(),
   success: z.boolean(),
 });
-export type ProviderCliInstallCompletedEvent = z.infer<
-  typeof providerCliInstallCompletedEventSchema
->;
 
 const providerCliInstallErrorEventSchema = z.object({
   type: z.literal("error"),

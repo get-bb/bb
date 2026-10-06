@@ -48,6 +48,30 @@ afterEach(() => {
 });
 
 describe("split resize snapping", () => {
+  it("retains the 15% width limit for nested splits", () => {
+    const source = divider(
+      rect({ left: 500 }),
+      rect({ height: 600, left: 100, width: 800 }),
+    );
+    const session = createSplitResizeSnapSession(source, "x", {
+      boundaryIndex: 1,
+      childCount: 2,
+    });
+
+    expect(session.resolve({ start: 100, end: 900, pointer: 100 }).fraction).toBe(
+      0.15,
+    );
+    session.clear();
+    const opposite = createSplitResizeSnapSession(source, "x", {
+      boundaryIndex: 1,
+      childCount: 2,
+    });
+    expect(opposite.resolve({ start: 100, end: 900, pointer: 900 }).fraction).toBe(
+      0.85,
+    );
+    opposite.clear();
+  });
+
   it("snaps the first vertical divider to the one-third boundary", () => {
     const source = divider(
       rect({ left: 650 }),
@@ -61,12 +85,12 @@ describe("split resize snapping", () => {
     const result = session.resolve({
       end: 900,
       pointer: 366.5 + SNAP_CAPTURE_PX,
-      start: 250,
+      start: 100,
     });
 
     expect(result).toEqual({
       coordinate: 366.5,
-      fraction: 116 / 649,
+      fraction: 266 / 799,
       snapped: true,
     });
     const guide = document.querySelector<HTMLElement>(
@@ -149,7 +173,7 @@ describe("split resize snapping", () => {
 
     expect(result.snapped).toBe(false);
     expect(result.fraction).toBeCloseTo(
-      (500 + SNAP_RELEASE_PX + 2 - 100) / 800,
+      (500 + SNAP_RELEASE_PX + 2 - 100 - 0.5) / 799,
       6,
     );
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();

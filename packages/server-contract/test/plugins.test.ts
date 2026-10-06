@@ -87,6 +87,7 @@ describe("plugin contracts", () => {
       official: false,
       author: null,
       installed: false,
+      conflictingInstallSource: null,
       compatible: true,
       incompatibleReason: null,
     };
@@ -138,6 +139,7 @@ describe("plugin contracts", () => {
           pluginIds: ["notes", "tasks"],
         },
       ],
+      categories: [],
     });
     expect(
       pluginCatalogSearchResponseSchema.safeParse({ results: [] }).success,

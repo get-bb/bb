@@ -507,6 +507,11 @@ function createConnection(
           session.controller.signal,
         );
       }
+      if (method === "Page.bringToFront") {
+        await adapter.activateTab(scope, page.tabId, controller.signal);
+        controller.signal.throwIfAborted();
+        return {};
+      }
       if (!forwardedDomains.has(method.split(".")[0])) {
         throw new Error("CDP method is not supported for scoped page sessions");
       }

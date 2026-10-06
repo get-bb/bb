@@ -7,22 +7,26 @@ import plugin, {
   EMPTY_FORK_MAX_AGE_MS,
   EMPTY_FORK_SWEEP_PAGE_SIZE,
   REPLY_SEED_PREFIX,
-  resolveReplySeedText,
-  timelineRowsContainUserMessage,
-  type SideChatTimelineRowLike,
 } from "./server";
 
 const PLUGIN_ID = "side-chat";
+
+interface TimelineRow {
+  kind: string;
+  role?: string;
+  text?: string;
+  children?: TimelineRow[] | null;
+}
 
 function conversationRow(text: string, role = "assistant") {
   return { kind: "conversation", role, text };
 }
 
-function turnRow(children: SideChatTimelineRowLike[] | null) {
+function turnRow(children: TimelineRow[] | null) {
   return { kind: "turn", children };
 }
 
-function timelineResult(rows: SideChatTimelineRowLike[]) {
+function timelineResult(rows: TimelineRow[]) {
   return { rows };
 }
 
@@ -34,20 +38,6 @@ async function loadPlugin(sdkThreads: Record<string, unknown>) {
   await plugin(host.bb);
   return host;
 }
-
-describe("resolveReplySeedText", () => {
-  it("returns the trimmed anchor even when it is the latest source message", () => {
-    expect(resolveReplySeedText("  latest answer  ")).toBe("latest answer");
-  });
-
-  it("returns the trimmed anchor for an earlier message", () => {
-    expect(resolveReplySeedText(" earlier answer ")).toBe("earlier answer");
-  });
-
-  it("returns null for an empty anchor (tip forks carry no seed)", () => {
-    expect(resolveReplySeedText("  ")).toBeNull();
-  });
-});
 
 describe("createSideChat rpc", () => {
   it("does not read the source timeline to decide whether to include the anchor", async () => {
@@ -84,7 +74,7 @@ describe("createSideChat rpc", () => {
     const result = await harness.callRpc("createSideChat", {
       sourceThreadId: "thr_src",
       sourceSeqEnd: 42,
-      anchorText: "earlier answer",
+      anchorText: "  earlier answer  ",
     });
 
     expect(result).toEqual({ threadId: "thr_fork" });
@@ -184,7 +174,7 @@ describe("createSideChat rpc", () => {
 
     await harness.callRpc("createSideChat", {
       sourceThreadId: "thr_src",
-      anchorText: "",
+      anchorText: "   ",
     });
 
     expect(fork).toHaveBeenCalledWith({
@@ -198,17 +188,6 @@ describe("createSideChat rpc", () => {
 });
 
 describe("empty-fork sweep", () => {
-  it("timelineRowsContainUserMessage finds nested user rows", () => {
-    expect(
-      timelineRowsContainUserMessage([
-        turnRow([conversationRow("hi", "user")]),
-      ]),
-    ).toBe(true);
-    expect(
-      timelineRowsContainUserMessage([conversationRow("reply", "assistant")]),
-    ).toBe(false);
-  });
-
   it("archives only old forks without user messages and logs what it drops", async () => {
     const now = Date.now();
     const old = now - EMPTY_FORK_MAX_AGE_MS - 60_000;

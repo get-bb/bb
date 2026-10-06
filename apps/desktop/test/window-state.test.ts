@@ -1,9 +1,8 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  hasVisibleArea,
   readPersistedWindowStateEntries,
   restoreWindowState,
   writePersistedWindowStateEntries,
@@ -89,16 +88,20 @@ describe("window state helpers", () => {
 
   it("requires meaningful overlap with a display work area", () => {
     expect(
-      hasVisibleArea({
-        bounds: {
-          height: 400,
-          width: 400,
-          x: 1_435,
-          y: 895,
-        },
+      restoreWindowState({
         displayWorkAreas,
+        persistedState: {
+          bounds: {
+            height: 400,
+            width: 400,
+            x: 1_435,
+            y: 895,
+          },
+          isFullScreen: false,
+          isMaximized: false,
+        },
       }),
-    ).toBe(false);
+    ).toEqual(DEFAULT_WINDOW_STATE);
   });
 
   it("persists and reads multiple window states across restart", async () => {
@@ -136,34 +139,5 @@ describe("window state helpers", () => {
     await expect(
       readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
     ).resolves.toEqual(persistedStates);
-  });
-
-  it("reads legacy single-window state as the main window entry", async () => {
-    const tempDir = await createTempDir();
-    const legacyState: PersistedWindowState = {
-      bounds: {
-        height: 720,
-        width: 1100,
-        x: 40,
-        y: 60,
-      },
-      isFullScreen: false,
-      isMaximized: true,
-    };
-
-    await writeFile(
-      join(tempDir.path, "window-state.json"),
-      `${JSON.stringify(legacyState, null, 2)}\n`,
-      "utf8",
-    );
-
-    await expect(
-      readPersistedWindowStateEntries({ userDataPath: tempDir.path }),
-    ).resolves.toEqual([
-      {
-        ...legacyState,
-        stateKey: "main",
-      },
-    ]);
   });
 });

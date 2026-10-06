@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS `prompt_history_entries_created_idx` ON `prompt_history_entries` (`created_at`,`request_sequence`,`id`);

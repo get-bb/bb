@@ -78,13 +78,14 @@ describe("appearance settings", () => {
       const put = await harness.app.request("/api/v1/settings/appearance", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "midnight", faviconColor: "default" }),
+        body: JSON.stringify({ themeId: "midnight", faviconColor: "teal" }),
       });
       expect(put.status).toBe(200);
       expect(appThemeSchema.parse(await readJson(put))).toEqual({
         ...defaultAppTheme,
         themeId: "midnight",
         customCss: css,
+        faviconColor: "teal",
       });
       expect(getStoredThemeId(harness.db)).toBe("midnight");
 
@@ -95,6 +96,7 @@ describe("appearance settings", () => {
         ...defaultAppTheme,
         themeId: "midnight",
         customCss: css,
+        faviconColor: "teal",
       });
       expect(config.customThemes).toEqual(["midnight"]);
     });
@@ -347,19 +349,6 @@ describe("appearance settings", () => {
           files: { "bb:ocean:dark": { ...darkTheme, name: "bb:ocean:dark" } },
         },
       });
-    });
-  });
-
-  it("follows a built-in palette's matching Shiki pair", async () => {
-    await withTestHarness(async (harness) => {
-      const put = await harness.app.request("/api/v1/settings/appearance", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "dracula", faviconColor: "default" }),
-      });
-      expect(appThemeSchema.parse(await readJson(put))).toEqual(
-        appearanceForPalette("dracula"),
-      );
     });
   });
 });

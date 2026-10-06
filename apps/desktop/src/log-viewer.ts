@@ -5,6 +5,10 @@ import { join } from "node:path";
 import { escapeHtmlText } from "@bb/text-utils";
 import { z } from "zod";
 import {
+  createLogFileFollower,
+  type LogFileFollower,
+} from "./log-file-follower.js";
+import {
   LOG_VIEWER_VISIBLE_LINE_LIMIT,
   type LogViewerComponent,
   type LogViewerLine,
@@ -132,7 +136,8 @@ interface LogFileCandidate {
 }
 
 interface TailProcess {
-  childProcess: ChildProcess;
+  childProcess: ChildProcess | null;
+  follower: LogFileFollower | null;
 }
 
 interface ComponentTailState {
@@ -599,7 +604,8 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     if (tailProcess === null) {
       return;
     }
-    tailProcess.childProcess.kill("SIGTERM");
+    tailProcess.follower?.stop();
+    tailProcess.childProcess?.kill("SIGTERM");
   }
 
   function handleDirectoryWatchError(
@@ -622,6 +628,25 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     stopTailProcess({ state: restartArgs.state });
     restartArgs.state.currentFilePath = restartArgs.filePath;
 
+    if (process.platform === "win32") {
+      restartArgs.state.tailProcess = {
+        childProcess: null,
+        follower: createLogFileFollower({
+          filePath: restartArgs.filePath,
+          initialLines: LOG_VIEWER_INITIAL_TAIL_LINES,
+          onChunk: (chunk) => {
+            handleTailChunk({ chunk, state: restartArgs.state });
+          },
+          onError: (error) => {
+            emitSystemLine({
+              text: `${restartArgs.state.component} tail failed: ${error.message}`,
+            });
+          },
+        }),
+      };
+      return;
+    }
+
     const childProcess = spawn(
       "tail",
       ["-n", String(LOG_VIEWER_INITIAL_TAIL_LINES), "-F", restartArgs.filePath],
@@ -631,6 +656,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     );
     const tailProcess: TailProcess = {
       childProcess,
+      follower: null,
     };
     restartArgs.state.tailProcess = tailProcess;
 
@@ -724,7 +750,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
   return {
     processIds() {
       return componentStates.flatMap((state) => {
-        const pid = state.tailProcess?.childProcess.pid;
+        const pid = state.tailProcess?.childProcess?.pid;
         return pid === undefined ? [] : [pid];
       });
     },

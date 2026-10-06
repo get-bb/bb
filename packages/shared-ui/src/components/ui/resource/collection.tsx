@@ -226,7 +226,7 @@ export function ResourceSourceShelf({
 }) {
   return (
     <section className="w-full max-w-full space-y-[var(--resource-source-shelf-section-gap)] text-popover-foreground">
-      <div className="flex min-w-0 items-end gap-[var(--resource-source-shelf-label-gap)] px-[var(--resource-source-shelf-inset)] text-xs text-muted-foreground">
+      <div className="flex min-w-0 items-end gap-[var(--resource-source-shelf-label-gap)] px-[var(--resource-source-shelf-header-inset,var(--resource-source-shelf-inset))] text-xs text-muted-foreground">
         <div
           className={cn(
             "min-w-0 flex-1",

@@ -355,14 +355,9 @@ describe("bb plugin update commands", () => {
     );
   });
 
-  it("documents update commands and flags in help", async () => {
-    const pluginHelp = await getHelpOutput(["plugin"], register);
-    expect(pluginHelp).toContain("outdated");
-    expect(pluginHelp).toContain("update [options] [id]");
+  it("does not offer the removed update flags in help", async () => {
     const updateHelp = await getHelpOutput(["plugin", "update"], register);
-    expect(updateHelp).toContain("--all");
     expect(updateHelp).not.toContain("--dry-run");
     expect(updateHelp).not.toContain("--latest");
-    expect(updateHelp).toContain("--yes");
   });
 });

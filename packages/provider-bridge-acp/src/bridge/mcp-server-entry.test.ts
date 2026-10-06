@@ -1,3 +1,4 @@
+import { stopProcessGroupLeaderFirst } from "@bb/process-utils";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,11 +33,18 @@ interface AdvertisedMcpServer {
   env: { name: string; value: string }[];
 }
 
-const children: ChildProcess[] = [];
+const children: { child: ChildProcess; closed: Promise<void> }[] = [];
 const tempDirs: string[] = [];
 const bridgeLines: BridgeLine[] = [];
 let bridgeStderr = "";
 let nextRequestId = 1;
+
+function trackChild(child: ChildProcess): void {
+  const closed = new Promise<void>((resolve) => {
+    child.once("close", () => resolve());
+  });
+  children.push({ child, closed });
+}
 
 function makeTempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -91,7 +99,7 @@ function spawnBridgeLikeTheAgentRuntime(dataDir: string): ChildProcess {
     ],
     { stdio: ["pipe", "pipe", "pipe"] },
   );
-  children.push(bridge);
+  trackChild(bridge);
   bridge.stderr?.on("data", (chunk: Buffer) => {
     bridgeStderr += chunk.toString();
     process.stderr.write(`[bridge] ${chunk.toString()}`);
@@ -205,7 +213,7 @@ async function runMcpInitialize(config: AdvertisedMcpServer): Promise<{
     env,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  children.push(mcp);
+  trackChild(mcp);
   let stderr = "";
   mcp.stderr?.on("data", (chunk: Buffer) => {
     stderr += chunk.toString();
@@ -241,10 +249,17 @@ async function runMcpInitialize(config: AdvertisedMcpServer): Promise<{
   return { exitCode, stderr, stdoutLines };
 }
 
-afterEach(() => {
-  for (const child of children.splice(0)) {
-    child.kill("SIGKILL");
-  }
+afterEach(async () => {
+  await Promise.all(
+    children.splice(0).map(async ({ child, closed }) => {
+      await stopProcessGroupLeaderFirst({
+        child,
+        timeoutMs: 0,
+        killGraceMs: 0,
+      });
+      await closed;
+    }),
+  );
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }

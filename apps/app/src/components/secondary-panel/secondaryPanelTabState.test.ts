@@ -277,39 +277,6 @@ describe("secondaryPanelTabState", () => {
     });
   });
 
-  it("keeps the active tab when closing an inactive file tab", () => {
-    const activeTab = createHostFilePreviewFixedPanelTab({
-      environmentId: "env-1",
-      tab: {
-        lineRange: null,
-        path: "/tmp/active.txt",
-      },
-      threadId: "thr-1",
-    });
-    const inactiveTab = createHostFilePreviewFixedPanelTab({
-      environmentId: "env-1",
-      tab: {
-        lineRange: null,
-        path: "/tmp/inactive.txt",
-      },
-      threadId: "thr-1",
-    });
-    const state = createEmptyFixedPanelTabsState({
-      secondary: {
-        activeTabId: activeTab.id,
-        isOpen: true,
-        tabs: [activeTab, inactiveTab],
-      },
-    });
-
-    const nextState = closeSecondaryPanelTabInState(state, inactiveTab.id);
-
-    expect(nextState.secondary.activeTabId).toBe(activeTab.id);
-    expect(nextState.secondary.tabs.map((tab) => tab.id)).toEqual([
-      activeTab.id,
-    ]);
-  });
-
   it("does not collide workspace tabs for the same path in different environments", () => {
     const firstTab = makeWorkspaceTab("env-1");
     const secondTab = makeWorkspaceTab("env-2");
@@ -350,24 +317,6 @@ describe("secondaryPanelTabState", () => {
     expect(state.secondary.tabs.map((tab) => tab.id)).toEqual([
       workspaceTab.id,
     ]);
-  });
-
-  it("replaces the transient new tab when opening a browser tab", () => {
-    const newTab = createNewTabFixedPanelTab();
-    const browserTab = createBrowserFixedPanelTab({
-      environmentId: null,
-      url: "https://example.com",
-    });
-    let state = createEmptyFixedPanelTabsState();
-
-    state = openSecondaryPanelTabInState({ state, tab: newTab });
-    state = replaceNewTabWithSecondaryPanelTabInState({
-      state,
-      tab: browserTab,
-    });
-
-    expect(state.secondary.activeTabId).toBe(browserTab.id);
-    expect(state.secondary.tabs.map((tab) => tab.id)).toEqual([browserTab.id]);
   });
 });
 

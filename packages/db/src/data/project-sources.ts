@@ -1,3 +1,4 @@
+import { hostPathEquals } from "./host-path-sql.js";
 import { and, count, eq, inArray, ne } from "drizzle-orm";
 import type { ProjectSource } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
@@ -268,6 +269,6 @@ export function deleteProjectSource(
 
 export function projectSourceOwnsPath(db: DbConnection, projectId: string, hostId: string, path: string): boolean {
   return db.select({ ownsPath: projectSources.ownsPath }).from(projectSources).where(and(
-    eq(projectSources.projectId, projectId), eq(projectSources.hostId, hostId), eq(projectSources.path, path),
+    eq(projectSources.projectId, projectId), eq(projectSources.hostId, hostId), hostPathEquals(projectSources.path, path),
   )).get()?.ownsPath ?? false;
 }

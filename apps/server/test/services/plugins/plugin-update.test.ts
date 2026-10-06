@@ -236,6 +236,7 @@ describe("plugin update scheduling", () => {
         rootDir: join(schedulingWorkDir, id),
         version: "1.0.0",
         enabled: false,
+        enabledFollowsDefault: false,
       });
     };
     const restartWithScheduler = async () => {
@@ -409,6 +410,7 @@ describe("plugin update service and routes", () => {
         rootDir: join(workDir, id),
         version: "1.0.0",
         enabled: false,
+        enabledFollowsDefault: false,
       });
     }
     vi.stubGlobal(
@@ -501,6 +503,7 @@ describe("plugin update service and routes", () => {
       rootDir: join(workDir, "legacy-marketplace"),
       version: "0.2.0",
       enabled: false,
+      enabledFollowsDefault: false,
     });
     const fetched: string[] = [];
     vi.stubGlobal("fetch", async (input: string | URL | Request) => {
@@ -975,6 +978,7 @@ describe("plugin update service and routes", () => {
       rootDir: join(workDir, id),
       version: "1.0.0",
       enabled: false,
+      enabledFollowsDefault: false,
     });
   }
 
@@ -1253,6 +1257,7 @@ describe("plugin update service and routes", () => {
       rootDir: legacyRoot,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     await service.reload("updater");
     expect(service.list()).toMatchObject([

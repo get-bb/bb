@@ -77,7 +77,7 @@ export function deriveRepoDirName(sourcePath: string): string {
 }
 
 export function resolveWorktreesRoot(dataDir: string): string {
-  return path.posix.join(dataDir, "worktrees");
+  return path.join(dataDir, "worktrees");
 }
 
 export function resolveWorktreeAttemptRoot(args: {
@@ -97,7 +97,7 @@ export function resolveWorktreeAttemptRoot(args: {
       "A worktree path key must be a single path segment",
     );
   }
-  return path.posix.join(resolveWorktreesRoot(args.dataDir), args.pathKey);
+  return path.join(resolveWorktreesRoot(args.dataDir), args.pathKey);
 }
 
 export function resolveWorktreeTargetPath(args: {
@@ -105,7 +105,7 @@ export function resolveWorktreeTargetPath(args: {
   pathKey: string;
   sourcePath: string;
 }): string {
-  return path.posix.join(
+  return path.join(
     resolveWorktreeAttemptRoot(args),
     deriveRepoDirName(args.sourcePath),
   );
@@ -127,5 +127,5 @@ export function resolveWorktreeChildPath(args: {
       "A managed worktree directory name must be a safe path segment",
     );
   }
-  return path.posix.join(resolveWorktreeAttemptRoot(args), args.childName);
+  return path.join(resolveWorktreeAttemptRoot(args), args.childName);
 }

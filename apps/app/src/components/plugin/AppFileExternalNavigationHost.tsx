@@ -1,7 +1,6 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,15 +8,28 @@ import {
 } from "react";
 import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { defineSplit } from "@/lib/define-split";
 
 const MAX_PENDING_EXTERNAL_FILE_INTENTS = 32;
-const LazyAppFileExternalNavigationDispatcher = lazy(() =>
-  import("./AppFileExternalNavigationDispatcher").then(
-    ({ AppFileExternalNavigationDispatcher }) => ({
-      default: AppFileExternalNavigationDispatcher,
-    }),
-  ),
-);
+
+function SettleOnLoadFailure({ onSettled }: { onSettled: () => void }) {
+  useEffect(() => onSettled(), [onSettled]);
+  return null;
+}
+
+const LazyAppFileExternalNavigationDispatcher = defineSplit<{
+  intent: ExperimentalFileOpenOptions;
+  onSettled: () => void;
+}>({
+  id: "app-file-external-navigation-dispatcher",
+  load: () =>
+    import("./AppFileExternalNavigationDispatcher").then(
+      (module) => module.AppFileExternalNavigationDispatcher,
+    ),
+  loading: () => null,
+  error: SettleOnLoadFailure,
+  tier: "intent",
+});
 
 interface ExternalFileIntentRequest {
   id: number;
@@ -61,13 +73,11 @@ export function AppFileExternalNavigationHost({
     <AppNavigationHostProvider capabilities={capabilities}>
       {children}
       {current === null ? null : (
-        <Suspense fallback={null}>
-          <LazyAppFileExternalNavigationDispatcher
-            key={current.id}
-            intent={current.intent}
-            onSettled={settleCurrent}
-          />
-        </Suspense>
+        <LazyAppFileExternalNavigationDispatcher
+          key={current.id}
+          intent={current.intent}
+          onSettled={settleCurrent}
+        />
       )}
     </AppNavigationHostProvider>
   );

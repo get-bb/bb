@@ -205,7 +205,11 @@ export function ConversationAttachments({
                 type="button"
                 className={cn(className, "cursor-pointer hover:bg-state-hover")}
                 onClick={() => {
-                  onOpenLocalFileLink({ lineRange: null, path });
+                  onOpenLocalFileLink({
+                    lineRange: null,
+                    openTargetId: null,
+                    path,
+                  });
                 }}
               >
                 {label}

@@ -192,23 +192,15 @@ function Stage({ children }: { children: ReactNode }) {
   );
 }
 
-function ShelfStory({
-  initialPresentation,
-}: {
-  initialPresentation: "shelf" | "full";
-}) {
-  const [activeTab, setActiveTab] = useState<SecondaryFixedPanelTab>(
-    initialPresentation === "shelf" ? createThreadInfoFixedPanelTab() : fileTab,
-  );
+export function FullPage() {
+  const [activeTab, setActiveTab] = useState<SecondaryFixedPanelTab>(fileTab);
   const [open, setOpen] = useState(true);
-  const presentation = activeTab.kind === "thread-info" ? "shelf" : "full";
 
   return (
     <Stage>
       <CompactSecondaryPanelShelf
         open={open}
         onClose={() => setOpen(false)}
-        presentation={presentation}
         srLabel="Right panel"
       >
         <ShelfPanel
@@ -221,25 +213,11 @@ function ShelfStory({
   );
 }
 
-export function Shelf() {
-  return <ShelfStory initialPresentation="shelf" />;
-}
-
-export function FullPage() {
-  return <ShelfStory initialPresentation="full" />;
-}
-
 export function ManyTabs() {
   const [activeTab, setActiveTab] = useState<SecondaryFixedPanelTab>(fileTab);
-  const presentation = activeTab.kind === "thread-info" ? "shelf" : "full";
   return (
     <Stage>
-      <CompactSecondaryPanelShelf
-        open
-        onClose={noop}
-        presentation={presentation}
-        srLabel="Right panel"
-      >
+      <CompactSecondaryPanelShelf open onClose={noop} srLabel="Right panel">
         <ShelfPanel
           activeTab={activeTab}
           filePaths={MANY_TAB_PATHS}
@@ -257,7 +235,6 @@ export function Closed() {
       <CompactSecondaryPanelShelf
         open={false}
         onClose={noop}
-        presentation="shelf"
         srLabel="Right panel"
       >
         <ShelfPanel

@@ -91,7 +91,6 @@ function makeThreadResponse(
     environmentId: null,
     runtime: {
       displayStatus: "pending",
-      hostReconnectGraceExpiresAt: null,
     },
     canSpawnChild: false,
     queuedMessageCount: 1,
@@ -423,7 +422,6 @@ describe("thread runtime mutations", () => {
         status: "starting",
         runtime: {
           displayStatus: "provisioning",
-          hostReconnectGraceExpiresAt: null,
         },
       }),
     );

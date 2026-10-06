@@ -21,7 +21,6 @@ describe("desktop browser command boundaries", () => {
           generation: scope.generation,
           sourceId,
           sourceProfileDirectory: "Default",
-          profile: { kind: "personal" },
         }).success,
       ).toBe(true);
       expect(
@@ -82,7 +81,6 @@ describe("desktop browser command boundaries", () => {
           ...scope,
           tabId: "tab",
           url,
-          profile: { kind: "personal" },
           presentation: "hidden",
         }).success,
       ).toBe(false);

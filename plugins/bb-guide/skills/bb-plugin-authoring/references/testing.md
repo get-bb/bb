@@ -154,9 +154,8 @@ import {
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 
-// The thunk matters: app.tsx binds the plugin runtime at module load, so
-// loadPluginApp installs the test runtime BEFORE importing it. (For static
-// imports, call installTestPluginRuntime() in a vitest setup file instead.)
+// loadPluginApp and renderSlot install the test runtime. The SDK looks it up
+// when a hook runs, so a static `import app from "./app"` works as well.
 const app = await loadPluginApp(() => import("./app"));
 const contentScripts = await mountPluginContentScripts(app, {
   pluginId: "my-plugin",

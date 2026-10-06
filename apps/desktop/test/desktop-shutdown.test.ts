@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  createDesktopShutdownState,
-  handleDesktopShutdownSignal,
   registerDesktopShutdownSignalHandlers,
   type DesktopSignalListener,
   type DesktopSignalProcess,
@@ -32,57 +30,36 @@ async function flushPromises(): Promise<void> {
 }
 
 describe("desktop shutdown supervision", () => {
-  it("stops the owned runtime before quitting on SIGTERM", async () => {
-    const state = createDesktopShutdownState();
-    const calls: string[] = [];
-    let exitCode: number | null = null;
+  it.each([
+    ["SIGINT", "SIGTERM", 130],
+    ["SIGTERM", "SIGINT", 143],
+  ] as const)(
+    "stops the owned runtime before quitting once on %s",
+    async (first, second, expectedExitCode) => {
+      const fakeProcess = new FakeSignalProcess();
+      const calls: string[] = [];
+      let exitCode: number | null = null;
 
-    await handleDesktopShutdownSignal({
-      exitProcess(code) {
-        exitCode = code;
-      },
-      quitApplication() {
-        calls.push("quit");
-      },
-      signal: "SIGTERM",
-      state,
-      async stopOwnedRuntime() {
-        calls.push("stop");
-      },
-    });
+      registerDesktopShutdownSignalHandlers({
+        exitProcess(code) {
+          exitCode = code;
+        },
+        processEvents: fakeProcess,
+        quitApplication() {
+          calls.push("quit");
+        },
+        async stopOwnedRuntime() {
+          calls.push("stop");
+        },
+      });
 
-    expect(calls).toEqual(["stop", "quit"]);
-    expect(exitCode).toBe(143);
-  });
+      fakeProcess.emit(first);
+      await flushPromises();
+      fakeProcess.emit(second);
+      await flushPromises();
 
-  it("registers SIGINT and SIGTERM handlers that shut down once", async () => {
-    const fakeProcess = new FakeSignalProcess();
-    const state = createDesktopShutdownState();
-    let stopCount = 0;
-    let quitCount = 0;
-    let exitCode: number | null = null;
-
-    registerDesktopShutdownSignalHandlers({
-      exitProcess(code) {
-        exitCode = code;
-      },
-      processEvents: fakeProcess,
-      quitApplication() {
-        quitCount += 1;
-      },
-      state,
-      async stopOwnedRuntime() {
-        stopCount += 1;
-      },
-    });
-
-    fakeProcess.emit("SIGINT");
-    await flushPromises();
-    fakeProcess.emit("SIGTERM");
-    await flushPromises();
-
-    expect(stopCount).toBe(1);
-    expect(quitCount).toBe(1);
-    expect(exitCode).toBe(130);
-  });
+      expect(calls).toEqual(["stop", "quit"]);
+      expect(exitCode).toBe(expectedExitCode);
+    },
+  );
 });

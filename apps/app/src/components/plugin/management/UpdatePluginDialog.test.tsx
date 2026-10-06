@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import type { QueryClient } from "@tanstack/react-query";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -38,16 +39,33 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-afterEach(() => {
+const queryClients: QueryClient[] = [];
+
+function createDialogTestHarness() {
+  const harness = createQueryClientTestHarness();
+  queryClients.push(harness.queryClient);
+  return harness;
+}
+
+afterEach(async () => {
   cleanup();
-  resetNotificationStore();
-  vi.unstubAllGlobals();
+  try {
+    await vi.waitFor(() => {
+      expect(queryClients.every((client) => client.isMutating() === 0)).toBe(
+        true,
+      );
+    });
+  } finally {
+    for (const client of queryClients.splice(0)) client.clear();
+    resetNotificationStore();
+    vi.unstubAllGlobals();
+  }
 });
 
 describe("UpdatePluginDialog", () => {
   it("always shows the rollback promise for a compatible update and keeps details collapsed", () => {
     vi.stubGlobal("fetch", vi.fn());
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
@@ -70,7 +88,7 @@ describe("UpdatePluginDialog", () => {
 
   it("renders the incompatible variant pre-expanded with Update disabled", () => {
     vi.stubGlobal("fetch", vi.fn());
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
         plugin={plugin({
@@ -110,7 +128,7 @@ describe("UpdatePluginDialog", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const onOpenChange = vi.fn();
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper } = createDialogTestHarness();
     const failedAt = new Date(2026, 6, 22).getTime();
     render(
       <UpdatePluginDialog
@@ -147,7 +165,7 @@ describe("UpdatePluginDialog", () => {
 
   it("keeps a persisted failure actionable without offering an unavailable retry", () => {
     vi.stubGlobal("fetch", vi.fn());
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
         plugin={plugin({
@@ -180,7 +198,7 @@ describe("UpdatePluginDialog", () => {
         }),
       ),
     );
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
@@ -208,7 +226,7 @@ describe("UpdatePluginDialog", () => {
         jsonResponse({ error: "plugin source is unavailable" }, 502),
       ),
     );
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
@@ -240,7 +258,7 @@ describe("UpdatePluginDialog", () => {
       "fetch",
       vi.fn(async () => jsonResponse({ status: "ok" })),
     );
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
@@ -251,6 +269,11 @@ describe("UpdatePluginDialog", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    await vi.waitFor(() => {
+      expect(getNotifications()).toHaveLength(1);
+    });
+    expect(getNotifications()[0]?.title).toBe("Plugin update failed");
 
     await vi.waitFor(() => {
       expect(

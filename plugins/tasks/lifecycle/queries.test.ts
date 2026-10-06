@@ -1,24 +1,49 @@
 import {
-  createConnection,
-  type SlowDbQueryLogFields,
-} from "../../../packages/db/src/connection";
-import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
+import type Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
-import { initializeTasksSchema as migrate } from "../db/schema";
 import { registerLifecycle } from ".";
 
-function fixture(taskCount: number, mappingCount: number) {
-  const queries: SlowDbQueryLogFields[] = [];
-  const connection = createConnection(":memory:", {
-    slowQueryThresholdMs: 0,
-    slowQueryLogger: { info: (fields) => queries.push(fields) },
+interface ExecutedStatement {
+  sql: string;
+}
+
+function recordStatements(
+  db: Database.Database,
+  executed: ExecutedStatement[],
+): void {
+  const prepare = db.prepare.bind(db);
+  Object.defineProperty(db, "prepare", {
+    configurable: true,
+    writable: true,
+    value(source: string): Database.Statement {
+      const statement = prepare(source);
+      const sql = source.replace(/\s+/gu, " ").trim();
+      const all = statement.all.bind(statement);
+      const get = statement.get.bind(statement);
+      const run = statement.run.bind(statement);
+      statement.all = (...params: unknown[]) => {
+        executed.push({ sql });
+        return all(...params);
+      };
+      statement.get = (...params: unknown[]) => {
+        executed.push({ sql });
+        return get(...params);
+      };
+      statement.run = (...params: unknown[]) => {
+        executed.push({ sql });
+        return run(...params);
+      };
+      return statement;
+    },
   });
-  const db = connection.$client;
-  migrate(db);
+}
+
+function fixture(taskCount: number, mappingCount: number) {
+  const queries: ExecutedStatement[] = [];
   const host = createFakePluginHost({
     pluginId: "tasks",
     sdk: {
@@ -28,10 +53,10 @@ function fixture(taskCount: number, mappingCount: number) {
       },
     },
   });
-  const bb = {
-    ...host.bb,
-    storage: { ...host.bb.storage, database: () => db },
-  };
+  const bb = host.bb;
+  const db = bb.storage.database();
+  db.pragma("synchronous = OFF");
+  recordStatements(db, queries);
   const store = createStore(bb);
   const project = store.tasks.createProject({
     name: "Query counts",
@@ -60,7 +85,6 @@ function fixture(taskCount: number, mappingCount: number) {
     queries,
     async dispose() {
       await host.harness.dispose();
-      db.close();
     },
   };
 }
@@ -93,15 +117,6 @@ describe("lifecycle SQL scope", () => {
         await registerLifecycle(f.bb, f.store);
         f.queries.length = 0;
         await emitAllEvents(f, "thr_unrelated");
-        console.log(
-          JSON.stringify({
-            tasks,
-            mappings,
-            events: 5,
-            statements: f.queries.length,
-            sql: [...new Set(f.queries.map((q) => q.sql))],
-          }),
-        );
         expect(f.harness.realtimeSignals).toEqual([]);
         expect(f.queries).toHaveLength(5);
         expect(
@@ -153,14 +168,6 @@ describe("lifecycle SQL scope", () => {
               error: "failed",
             });
           else await f.harness.emitThreadEvent("thread.deleted", { thread });
-          console.log(
-            JSON.stringify({
-              status,
-              expected,
-              statements: f.queries.length,
-              statementsPerMapping,
-            }),
-          );
           expect(f.queries).toHaveLength(1 + count * statementsPerMapping);
           expect(f.harness.realtimeSignals.length - signalsBefore).toBe(
             statementsPerMapping === 0 ? 0 : count * 2,
@@ -276,12 +283,6 @@ describe("lifecycle SQL scope", () => {
           "EXPLAIN QUERY PLAN SELECT * FROM task_threads WHERE thread_id = 'thr_worker_0' ORDER BY task_id, id",
         )
         .all();
-      console.log(
-        JSON.stringify({
-          plan,
-          indexes: f.db.pragma("index_list(task_threads)"),
-        }),
-      );
       expect(
         plan.some((row) =>
           row.detail.includes(

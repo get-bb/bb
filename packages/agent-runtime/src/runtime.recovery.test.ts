@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
 import { AgentRuntimeRecoveryError } from "./runtime.js";
 import {
   createScriptedEchoLaunch,
@@ -766,43 +765,6 @@ describe("runtime recovery hints", () => {
         retryable: false,
       }),
     ]);
-  });
-
-  it("staleTurn: a rejected steer is dropped as stale instead of failing", async () => {
-    const { events, runtime } = createRecoveryRuntime({
-      failMethods: [
-        {
-          method: "turn/steer",
-          code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-          message: "the turn already ended",
-          recovery: { kind: "staleTurn", retryable: false },
-        },
-      ],
-    });
-    await startThread(runtime, "t-stale");
-    await runtime.runTurn({
-      clientRequestId: "creq_rcvrhint27",
-      input: [promptTextInput({ text: "hold_turn" })],
-      options: fullRuntimeOptions,
-      threadId: "t-stale",
-    });
-    const { turnId } = await waitForThreadTurnStarted({
-      events,
-      providerId: PROVIDER_ID,
-      runtime,
-      threadId: "t-stale",
-    });
-
-    const result = await runtime.steerTurn({
-      clientRequestId: "creq_rcvrhint28",
-      expectedTurnId: turnId,
-      input: [promptTextInput({ text: "too late" })],
-      options: fullRuntimeOptions,
-      threadId: "t-stale",
-    });
-
-    expect(result).toEqual({ status: "stale", activeTurnId: null });
-    expect(runtime.getActiveTurnId("t-stale")).toBeNull();
   });
 
   it("restartRecommended: an idle thread is moved to a fresh bridge process right away", async () => {

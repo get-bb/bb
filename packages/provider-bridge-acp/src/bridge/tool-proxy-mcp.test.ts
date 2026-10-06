@@ -20,17 +20,20 @@ afterEach(async () => {
 });
 
 async function listenFakeBridge(args: {
-  responseDelayMs: number;
+  responseDelayMs: number | null;
   response?: unknown;
 }): Promise<{
   port: number;
   server: Server;
   requests: unknown[];
   cancelled: unknown[];
+  releaseResponses(): void;
 }> {
   const requests: unknown[] = [];
   const cancelled: unknown[] = [];
   const sockets = new Set<Socket>();
+  const heldResponses: Array<() => void> = [];
+  const responseTimers = new Set<ReturnType<typeof setTimeout>>();
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on("error", () => {});
@@ -57,10 +60,19 @@ async function listenFakeBridge(args: {
         ok: true,
         content: '{"answers":{"Which?":"B"}}',
       };
-      setTimeout(() => {
+      const respond = () => {
         responded = true;
         socket.end(`${JSON.stringify(response)}\n`);
-      }, args.responseDelayMs);
+      };
+      if (args.responseDelayMs === null) {
+        heldResponses.push(respond);
+      } else {
+        const timer = setTimeout(() => {
+          responseTimers.delete(timer);
+          respond();
+        }, args.responseDelayMs);
+        responseTimers.add(timer);
+      }
     });
   });
   await new Promise<void>((resolveListen) =>
@@ -69,6 +81,9 @@ async function listenFakeBridge(args: {
   cleanups.push(
     () =>
       new Promise<void>((resolveClose) => {
+        for (const timer of responseTimers) clearTimeout(timer);
+        responseTimers.clear();
+        heldResponses.length = 0;
         for (const socket of sockets) socket.destroy();
         server.close(() => resolveClose());
       }),
@@ -77,7 +92,15 @@ async function listenFakeBridge(args: {
   if (!address || typeof address === "string") {
     throw new Error("fake bridge did not bind a port");
   }
-  return { port: address.port, server, requests, cancelled };
+  return {
+    port: address.port,
+    server,
+    requests,
+    cancelled,
+    releaseResponses() {
+      for (const respond of heldResponses.splice(0)) respond();
+    },
+  };
 }
 
 async function connectLikeOpenCode(port: number): Promise<Client> {
@@ -184,7 +207,7 @@ describe("bb-bridge MCP cancellation", () => {
   it.each(["timeout", "abort", "disconnect"] as const)(
     "closes the bridge call on %s without a late MCP reply",
     async (kind) => {
-      const bridge = await listenFakeBridge({ responseDelayMs: 1_500 });
+      const bridge = await listenFakeBridge({ responseDelayMs: null });
       const client = await connectLikeOpenCode(bridge.port);
       const errors: string[] = [];
       client.onerror = (error) => errors.push(error.message);
@@ -206,7 +229,12 @@ describe("bb-bridge MCP cancellation", () => {
       await expect
         .poll(() => bridge.cancelled.length, { timeout: 1_000 })
         .toBe(1);
-      await new Promise((resolve) => setTimeout(resolve, 1_600));
+      bridge.releaseResponses();
+      if (kind !== "disconnect") {
+        expect((await client.listTools()).tools).toContainEqual(
+          expect.objectContaining({ name: "AskUserQuestion" }),
+        );
+      }
       expect(
         errors.filter((error) => error.includes("unknown message ID")),
       ).toEqual([]);

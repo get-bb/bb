@@ -14,13 +14,10 @@ const DEFERRED_REALIZATION_TIMEOUT_MS = 120;
 export function scheduleDeferredRealization(
   realize: () => void,
   scheduler: FrameScheduler,
-  options: { frames?: number; timeoutMs?: number } = {},
 ): () => void {
-  const frames = options.frames ?? DEFERRED_REALIZATION_FRAMES;
-  const timeoutMs = options.timeoutMs ?? DEFERRED_REALIZATION_TIMEOUT_MS;
   let done = false;
   let frameHandle: number | null = null;
-  let remaining = frames;
+  let remaining = DEFERRED_REALIZATION_FRAMES;
 
   const finish = () => {
     if (done) return;
@@ -40,12 +37,11 @@ export function scheduleDeferredRealization(
     frameHandle = scheduler.requestAnimationFrame(tick);
   };
 
-  const timeoutHandle = scheduler.setTimeout(finish, timeoutMs);
-  if (frames <= 0) {
-    finish();
-  } else {
-    frameHandle = scheduler.requestAnimationFrame(tick);
-  }
+  const timeoutHandle = scheduler.setTimeout(
+    finish,
+    DEFERRED_REALIZATION_TIMEOUT_MS,
+  );
+  frameHandle = scheduler.requestAnimationFrame(tick);
 
   return () => {
     if (done) return;

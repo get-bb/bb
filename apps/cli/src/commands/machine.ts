@@ -285,7 +285,10 @@ export function registerMachineCommands(
                 signal: controller.signal,
               });
             if (enrollmentCommand !== null) {
+              console.error("On macOS or Linux, run:");
               console.error(enrollmentCommand.command);
+              console.error("On Windows, run in PowerShell:");
+              console.error(enrollmentCommand.windowsCommand);
               console.error(
                 enrollmentExpiryNotice(enrollmentCommand.expiresAt),
               );
@@ -354,10 +357,10 @@ export function registerMachineCommands(
     .action(
       action(async (opts: MachineEnumerationOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hosts = selectMachines(
-          await sdk.hosts.list({ includeCreating: true }),
-          opts.all ? "all" : "persistent",
-        );
+        const hosts = await sdk.hosts.list({
+          includeCreating: true,
+          ...(opts.all ? {} : { type: "persistent" }),
+        });
         if (outputJson(opts, hosts)) return;
         if (hosts.length === 0) {
           console.log("No machines found");
@@ -382,6 +385,44 @@ export function registerMachineCommands(
         const host = await sdk.hosts.get({ hostId });
         if (outputJson(opts, host)) return;
         console.log(JSON.stringify(host, null, 2));
+      }),
+    );
+
+  machine
+    .command("reconnect <id-or-name>")
+    .description("Reconnect a machine, keeping its host ID")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
+          target,
+        });
+        const sdk = createCliBbSdk(getUrl());
+        const reconnect = await sdk.hosts.experimental_reconnect({ hostId });
+        if (opts.json) {
+          outputJson(opts, reconnect);
+          return;
+        }
+        console.log(
+          `Machine ${hostId} keeps its host ID. Run this command on the machine within 15 minutes:`,
+        );
+        console.log("");
+        console.log(reconnect.command);
+        console.error(`Waiting for machine ${hostId} to reconnect…`);
+        const deadline = Date.now() + MACHINE_LIFECYCLE_TIMEOUT_MS;
+        for (;;) {
+          const host = await sdk.hosts.get({ hostId });
+          if (host.status === "connected") break;
+          if (Date.now() >= deadline)
+            throw new Error(
+              `Timed out waiting for machine ${hostId} to reconnect`,
+            );
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, MACHINE_LIFECYCLE_POLL_MS),
+          );
+        }
+        console.log(`Machine ${hostId} reconnected successfully.`);
       }),
     );
 

@@ -19,10 +19,10 @@ machine cannot be removed.
 
 ## Open bb from another browser
 
-The simplest managed route is **bb connect**. Pair the server from Settings →
-Connect (or `bb connect --code ... --server
-...`), then open its getbb.app URL. The server owns the tunnel and reconnects
-after restart.
+The simplest managed route is **bb connect**. Sign the server in to your bb
+account from Settings → bb connect (or `bb account login`, or
+`bb connect --code ...` with a dashboard code), then open its getbb.app URL.
+The server owns the tunnel and reconnects after restart.
 
 For a private tailnet route, keep bb on its loopback default and publish it
 through Tailscale Serve:
@@ -98,21 +98,18 @@ bb connect it pairs the same way the desktop app does: the phone enrolls as a
 connect machine with its own credential, which the getbb.app dashboard lists
 and can revoke.
 
-1. Pair the bb server with bb connect first (Settings → Remote access, or
-   `bb connect --code … --server …`).
-2. Turn on the **Mobile app** experiment (Settings → Experiments, or
-   `bb settings experiment mobileApp true`). Mobile pairing stays hidden
-   without it while the app is in early access.
-3. Mint a pairing code for the phone: Settings → Remote access → **Add mobile
-   device** (QR code plus the code as text, with a countdown), or run
+1. Sign the bb server in to your bb account first (Settings → bb account, `bb account login`, or `bb connect --code …`).
+2. Mint a pairing code for the phone: Settings → Mobile → **Add mobile device** (QR code plus the code as text, with a countdown), or run
    `bb connect machine-code` (`--json` prints
    `{code, serverUrl, apex, expiresAt}`).
-4. In the mobile app, add a server over bb connect and scan the QR code or type
+3. In the mobile app, add a server over bb connect and scan the QR code or type
    the code. Codes last 10 minutes and work once.
 
-The phone keeps its credential in the device keychain and mints short-lived
-sessions from it; it never holds the server's pairing secret. To cut a phone
-off, revoke it in the getbb.app dashboard machine list. Every phone takes one of
+The phone keeps its credential in the device keychain and mints sessions from
+it; it never holds the server's pairing secret. A session lasts seven days and
+renews while the phone is in use. To cut a phone off, revoke it in the
+getbb.app dashboard machine list; its session stops working within about 20
+seconds. Every phone takes one of
 the account's machine slots, so a machine-limit error means an unused device
 should be revoked first. On a trusted network the app can also use a direct
 server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
@@ -130,7 +127,7 @@ The token cannot read notifications. It cannot access the phone or authenticate
 to the bb server. Treat the token as private because a leak can cause unwanted
 notifications.
 
-The server sends a thread title and a short preview. Use these commands to
+The server sends a thread title and a short plain-text preview. Use these commands to
 manage device registrations and inspect the sender:
 
 ```bash
@@ -173,7 +170,9 @@ them when it starts, when it becomes active, and every five minutes.
 
 Open Settings → Machines and choose Add a machine. Run the generated one-line
 installer on the computer that should
-execute work. It installs and enrolls a host daemon; when bb connect is paired,
+execute work. Choose Windows in the dialog for a PowerShell command; a Windows
+machine needs Node.js 22.19 or newer and Git for Windows, and its daemon starts
+when you sign in to Windows. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
 through the account gate. Without bb connect, open the server through a
 Tailscale Serve URL before generating the installer; the loopback listener is
@@ -196,6 +195,14 @@ slightly early through a paired tunnel is an accepted tradeoff. npm installs
 the package into the machine's bb data directory, not its system-wide global
 prefix, so enrollment needs neither `sudo` nor a PATH change.
 
+The Connect gate consumes platform authentication cookies without forwarding
+them to tunnels, including public installer requests and port shares. Tenant
+responses may set host-only cookies outside the `better-auth.*` and
+`bb-connect.*` namespaces (including their `__Secure-` variants); cookies
+with a `Domain` attribute are dropped. Only the gate can renew platform
+cookies. Public installer responses are served as sandboxed plain text, or
+as an attachment for `/install/bb-app.tgz`, with content sniffing disabled.
+
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
 installer), local API port, and launchd/systemd service. The installer persists
@@ -205,6 +212,19 @@ serve several bb servers at once, and joining never touches a full local bb
 install's `~/.bb`. Each instance keeps its own `bb-app` under that data
 directory and self-updates against its own server, so servers running different
 bb versions on one machine remain isolated.
+
+On Linux, the installer uses the current user's systemd manager (or a system
+unit when run as root on a non-container systemd host). If the user bus is not
+reachable from the installer's environment, it retries using the current
+user's runtime path reported by `loginctl`. If the bus remains unavailable on
+a systemd host, installation fails before enrolling or creating a unit; rerun
+it from a systemd user session. In containers and on machines without systemd
+as init, the installer runs a detached daemon instead. Set
+`BB_INSTALL_SKIP_SERVICE=1` only when a detached daemon is acceptable: no
+service starts it after a reboot. The temporary daemon used
+for a first join is not supervised. When the installer starts a previously
+joined daemon without a service, its launcher restarts it after crashes and
+self-updates while the launcher remains running.
 
 The installed launchd/systemd service enables `--auto-update`. If session open
 reports a newer server protocol, the daemon downloads the server artifact,

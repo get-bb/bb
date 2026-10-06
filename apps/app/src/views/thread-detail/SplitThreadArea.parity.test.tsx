@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { LazyThreadDetailView } from "./LazyThreadDetailView";
+
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { SplitThreadArea } from "./SplitThreadArea";
+
+beforeAll(() => LazyThreadDetailView.preload());
 
 vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: (props: { threadId?: string }) => (
@@ -59,7 +64,9 @@ function renderArea(layout: SplitLayout) {
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/projects/p1/threads/t1"]}>
-          <SplitThreadArea />
+          <RouteNavigationProvider>
+            <SplitThreadArea />
+          </RouteNavigationProvider>
         </MemoryRouter>
       </QueryClientProvider>
     </Provider>,
@@ -83,18 +90,5 @@ describe("SplitThreadArea single-pane parity", () => {
     expect(container.firstElementChild?.getAttribute("data-testid")).toBe(
       "thread-view",
     );
-  });
-
-  it("wraps each pane once the layout actually splits", () => {
-    const { container } = renderArea({
-      root: {
-        type: "split",
-        dir: "row",
-        sizes: [0.5, 0.5],
-        children: [pane("pane-1", "t1"), pane("pane-2", "t2")],
-      },
-      focusedPaneId: "pane-1",
-    });
-    expect(container.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
   });
 });

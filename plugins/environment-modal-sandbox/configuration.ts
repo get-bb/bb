@@ -46,6 +46,7 @@ export interface RawSettings {
 }
 
 export const SANDBOX_LIFETIME_MS = 24 * 60 * 60_000;
+export const DEFAULT_SANDBOX_SIZE = { cpu: 1, memoryMiB: 2048 } as const;
 const MAX_IDLE_MINUTES = 24 * 60;
 
 export function resolveSettings(raw: RawSettings): SettingsResolution {

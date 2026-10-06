@@ -1,12 +1,12 @@
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import type { UsageMachine, UsageProvider } from "./usage-schema.js";
 
 export const usageFeedbackMessages = {
   loading: "Loading usage…",
   noSources: "No usage sources available.",
   loadFailed: "Couldn’t load usage.",
-  refreshFailed: "Couldn’t refresh usage. Showing the last available update.",
+  refreshFailed: "Couldn’t refresh. Showing last update.",
   unavailable: "Usage unavailable.",
 } as const;
 
@@ -25,7 +25,7 @@ export function offlineUsageMessage(
   hasUsage: boolean,
 ): string {
   return hasUsage
-    ? `${machine.displayName} is offline. Showing the last available update.`
+    ? `${machine.displayName} is offline. Showing last update.`
     : `${machine.displayName} is offline. Usage will refresh when it reconnects.`;
 }
 

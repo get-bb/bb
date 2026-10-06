@@ -2,13 +2,15 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { getThread, listEvents, markThreadDeleted } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import type { Thread } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   finalizeStoppedThread,
   hasLiveThreadStopInFlight,
   requestThreadStorageDeletion,
   requestThreadStopForCurrentState,
+  stopThreadForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
+import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
 import {
   listQueuedThreadCommands,
   reportQueuedCommandError,
@@ -208,6 +210,39 @@ describe("thread stop dispatch", () => {
       expect(
         threadEvents.filter((event) => event.type === "turn/completed"),
       ).toHaveLength(0);
+    });
+  });
+
+  it("settles a thread whose host never answers the stop", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedActiveThreadStopFixture({
+        harness,
+        value: 7,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        turnId: "turn-stop-unanswered",
+      });
+      const rpc = vi
+        .spyOn(harness.hub, "requestHostOnlineRpc")
+        .mockRejectedValue(new HostOnlineRpcTimeoutError());
+
+      await stopThreadForCurrentState(harness.deps, thread, environment);
+
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "idle",
+      });
+      expect(rpc).toHaveBeenCalledOnce();
+      const threadEvents = listEvents(harness.db, { threadId: thread.id });
+      expect(
+        threadEvents.filter(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toHaveLength(1);
+      expect(
+        threadEvents.filter((event) => event.type === "turn/completed"),
+      ).toHaveLength(1);
     });
   });
 

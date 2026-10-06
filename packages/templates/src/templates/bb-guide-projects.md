@@ -32,6 +32,13 @@ A project maps to a code repository. All threads belong to a project.
   bb project delete <id>                  Delete project and all threads
     --yes                                 Skip confirmation
 
+Global prompt history:
+
+  bb prompt-history list [--cursor <cursor>] [--limit <number>]
+
+  Lists accepted prompts across projects and threads newest first. Pass the
+  returned cursor to continue from the next page.
+
 Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source

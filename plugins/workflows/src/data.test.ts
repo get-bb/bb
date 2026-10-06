@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachCallThread,
+  isWorkerRetired,
   retiredWorkers,
   recordWorkerCleanup,
   workerOrigins,
@@ -207,11 +208,71 @@ describe("workflow durable data", () => {
     ]);
   });
 
-  it("records replay safety without a concurrency barrier", () => {
+  it("rechecks one worker's retirement against its current call and run", () => {
+    const expectRetired = (threadId: string, retired: boolean) => {
+      expect(isWorkerRetired(db, threadId)).toBe(retired);
+      expect(
+        retiredWorkers(db, Number.MAX_SAFE_INTEGER).some(
+          (worker) => worker.threadId === threadId,
+        ),
+      ).toBe(retired);
+    };
+    const run = newRun();
+    markRunning(run.id);
+    const startWork = (cacheKey: string, callIndex: number) =>
+      startCall(db, {
+        runId: run.id,
+        callIndex,
+        cacheKey,
+        prompt: "work",
+        options: {
+          title: null,
+          phase: null,
+          outputSchema: null,
+          selection: null,
+        },
+        selection: resolvedSelection,
+        replay: null,
+      });
+
+    const live = startWork("live", 0);
+    ownWorker(db, "live-worker", run.id, live.id, run.originThreadId);
+    expectRetired("live-worker", true);
+    expect(attachCallThread(db, live.id, "live-worker")).toBe(true);
+    expectRetired("live-worker", false);
+
+    const retried = startWork("retried", 1);
+    ownWorker(db, "first-attempt", run.id, retried.id, run.originThreadId);
+    expect(attachCallThread(db, retried.id, "first-attempt")).toBe(true);
+    db.prepare(
+      `UPDATE workflow_calls SET child_thread_id = 'second-attempt' WHERE id = ?`,
+    ).run(retried.id);
+    expectRetired("first-attempt", true);
+
+    settleCall(db, {
+      id: live.id,
+      status: "succeeded",
+      result: null,
+      error: null,
+    });
+    expectRetired("live-worker", true);
+    recordWorkerCleanup(db, "live-worker", true);
+    expectRetired("live-worker", false);
+
+    const cancelled = startWork("cancelled", 2);
+    ownWorker(db, "cancelled-worker", run.id, cancelled.id, run.originThreadId);
+    expect(attachCallThread(db, cancelled.id, "cancelled-worker")).toBe(true);
+    expectRetired("cancelled-worker", false);
+    cancelRun(db, run.id);
+    expectRetired("cancelled-worker", true);
+
+    expectRetired("unknown-worker", false);
+  });
+
+  it("records replay safety", () => {
     const run = newRun();
     expect(getRunRequired(db, run.id)).toMatchObject({
       replaySafetyVersion: 1,
-      replayBarrierIndex: null,
     });
 
     markRunning(run.id);
@@ -219,16 +280,6 @@ describe("workflow durable data", () => {
     expect(getRunRequired(db, run.id)).toMatchObject({
       status: "queued",
       replaySafetyVersion: 1,
-      replayBarrierIndex: null,
-    });
-
-    db.prepare(
-      `UPDATE workflow_runs SET replay_safety_version = 0,
-       replay_barrier_index = NULL WHERE id = ?`,
-    ).run(run.id);
-    expect(getRunRequired(db, run.id)).toMatchObject({
-      replaySafetyVersion: 0,
-      replayBarrierIndex: null,
     });
   });
 
@@ -398,7 +449,7 @@ describe("workflow durable data", () => {
     });
   });
 
-  it("persists JSON null but requires it to rerun instead of replaying", () => {
+  it("persists a successful call's JSON null result", () => {
     const first = newRun();
     markRunning(first.id);
     const original = startCall(db, {
@@ -422,43 +473,6 @@ describe("workflow durable data", () => {
       error: null,
     });
     expect(getCall(db, first.id, 0)?.resultJson).toBe("null");
-    const second = createRun(db, {
-      projectId: "project-1",
-      originThreadId: "thread-1",
-      environmentId: "environment-1",
-      originProvider: "codex",
-      originModel: "gpt-test",
-      originReasoningLevel: "medium",
-      originPermissionMode: "full",
-      name: "test-workflow",
-      source: "return null",
-      sourceHash: "hash-2",
-      argsJson: "null",
-      settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
-      resumedFromRunId: first.id,
-    });
-    markRunning(second.id);
-    startCall(db, {
-      runId: second.id,
-      callIndex: 0,
-      cacheKey: "null-cache",
-      prompt: "return null",
-      options: {
-        selection: null,
-        outputSchema: null,
-        title: null,
-        phase: null,
-      },
-      selection: resolvedSelection,
-      replay: null,
-    });
-
-    expect(getCall(db, second.id, 0)).toMatchObject({
-      status: "queued",
-      resultJson: null,
-      replayedFromCallId: null,
-    });
   });
 
   it("atomically preserves the first structured value", () => {
@@ -702,7 +716,6 @@ describe("workflow durable data", () => {
 
     expect(sweepExpired(Date.now(), 100)).toBe(1);
     expect(getRunRequired(db, parent.id).id).toBe(parent.id);
-    expect(getRunRequired(db, parent.id).replayBarrierIndex).toBeNull();
     expect(getRunRequired(db, retainedChild.id).status).toBe("queued");
     expect(() => getRunRequired(db, expired.id)).toThrow(
       "Unknown workflow run",

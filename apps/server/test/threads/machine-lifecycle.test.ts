@@ -340,9 +340,7 @@ describe("composed machine thread lifecycle", () => {
           ({ command }) => command.type === "turn.submit",
         );
         expect(followup.row.hostId).toBe(hostId);
-        await reportQueuedCommandSuccess(harness, followup, {
-          appliedAs: "new-turn",
-        });
+        await reportQueuedCommandSuccess(harness, followup, {});
         await reportEvents([
           {
             type: "turn/started",

@@ -342,7 +342,7 @@ export const VOICE_APP_PROBE = String.raw`
   }, 700);
 
   setTimeout(function () {
-    var stop = document.querySelector('[aria-label="Stop and transcribe recording"]');
+    var stop = document.querySelector('[aria-label="Stop and add to draft"]');
     if (!stop) {
       post({ kind: "voice-app", step: "stop", ok: false, error: "no stop button" });
       return;

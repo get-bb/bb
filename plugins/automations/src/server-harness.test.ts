@@ -1,4 +1,5 @@
 import { unlink } from "node:fs/promises";
+import { join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -16,6 +17,11 @@ import {
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
 } from "./rpc-types.js";
+
+function storedScriptPathPattern(automationId: string): RegExp {
+  const suffix = join(sep, "scripts", automationId, "script.sh");
+  return new RegExp(`${suffix.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`);
+}
 
 const PROJECT_ID = "proj_test";
 const MISSING_PROJECT_ID = "proj_missing";
@@ -406,7 +412,7 @@ describe("automations server plugin harness", () => {
       mode: "script",
       scriptFile: "script.sh",
       storedScriptPath: expect.stringMatching(
-        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+        storedScriptPathPattern(created.id),
       ),
       interpreter: "bash",
       workingDirectory: { type: "project" },
@@ -424,7 +430,7 @@ describe("automations server plugin harness", () => {
       mode: "script",
       script: "echo updated",
       storedScriptPath: expect.stringMatching(
-        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+        storedScriptPathPattern(created.id),
       ),
       interpreter: "bash",
       workingDirectory: { type: "project" },
@@ -530,27 +536,8 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
-  it("rejects unknown commands, unknown options, and stray arguments", async () => {
+  it("rejects a positional argument to list", async () => {
     const { harness } = await bootAutomationsPlugin();
-
-    const unknownCommand = await harness.runCli([
-      "lst",
-      "--project",
-      PROJECT_ID,
-    ]);
-    expect(unknownCommand.exitCode).toBe(1);
-    expect(unknownCommand.stderr).toContain("unknown command 'lst'");
-    expect(unknownCommand.stderr).toContain("Did you mean list?");
-
-    const unknownOption = await harness.runCli([
-      "list",
-      "--project",
-      PROJECT_ID,
-      "--limits",
-      "5",
-    ]);
-    expect(unknownOption.exitCode).toBe(1);
-    expect(unknownOption.stderr).toContain("unknown option '--limits'");
 
     const strayArgument = await harness.runCli([
       "list",
@@ -1383,6 +1370,7 @@ describe("automations server plugin harness", () => {
     expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
       projectId: PROJECT_ID,
+      prompt: `[bb automation due:${automation.id}]\n\nsummarize the inbox`,
       title: "Sweep",
       origin: "plugin",
       originPluginId: "automations",

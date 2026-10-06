@@ -171,7 +171,8 @@ the current engine values and the entries for its generated surfaces.
   package-name component minus the `bb-plugin-` prefix. BB lowercases it,
   replaces non-alphanumeric runs with `-`, and trims separators. An empty
   result is invalid. Every bundled plugin id is reserved for its bundled
-  source. The id namespaces routes, storage, settings, and CLI commands.
+  source, and ids starting with `bb--` are reserved for plugins bundled with
+  BB. The id namespaces routes, storage, settings, and CLI commands.
 
 Backend API imports normally stay type-only. The root runtime exports are
 `defineRpcContract`, `experimental_defineHostEntry`, and the numeric

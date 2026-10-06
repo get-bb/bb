@@ -40,16 +40,6 @@ interface ReconnectDisplay {
 function reconnectDisplay(
   message: EventProjectionErrorMessage,
 ): ReconnectDisplay | null {
-  if (
-    message.reconnectAttempt !== undefined &&
-    message.reconnectTotal !== undefined
-  ) {
-    return {
-      progress: `Reconnecting... ${message.reconnectAttempt}/${message.reconnectTotal}`,
-      cause: nonEmpty(message.detail),
-    };
-  }
-
   if (message.detail === null) {
     return null;
   }

@@ -1,17 +1,14 @@
+import type { LoadOlderTimelineRows } from "./load-older-timeline-rows.js";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type {
-  ActiveThinking,
-  ThreadOriginKind,
-  ThreadRuntimeDisplayStatus,
-} from "@bb/domain";
+import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { Button } from "@bb/shared-ui/button";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
+import { useDelayedBusyIndicator } from "@/components/ui/route-navigation-indicator";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
@@ -24,7 +21,6 @@ import type {
   ThreadTimelineEditMessageHandler,
   ThreadTimelineInlineMessageEditor,
   ThreadTimelineAddToChatHandler,
-  ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineConsumerMessageAction,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -34,16 +30,15 @@ import type {
 
 export interface HostConnectionNotice {
   label: string;
-  tone: "pending" | "error";
 }
 
 export interface ThreadTimelineSurfaceProps {
   activeThinking: ActiveThinking | null;
   canSpawnChild?: boolean;
   contextBoundarySeq: number | null;
-  threadOriginKind?: ThreadOriginKind | null;
   hasOlderTimelineRows?: boolean;
   hostConnectionNotice?: HostConnectionNotice | null;
+  isCatchingUpTimeline?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   isThreadTimelinePending: boolean;
   timelineError: boolean;
@@ -53,11 +48,10 @@ export interface ThreadTimelineSurfaceProps {
   onEditMessage?: ThreadTimelineEditMessageHandler;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
-  onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
   includePluginMessageActions?: boolean;
-  onLoadOlderRows?: () => Promise<void> | void;
+  onLoadOlderRows?: LoadOlderTimelineRows;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
@@ -143,9 +137,9 @@ export function ThreadTimelineSurface({
   activeThinking,
   canSpawnChild,
   contextBoundarySeq,
-  threadOriginKind = null,
   hasOlderTimelineRows = false,
   hostConnectionNotice,
+  isCatchingUpTimeline = false,
   isLoadingOlderTimelineRows = false,
   isThreadTimelinePending,
   timelineError,
@@ -155,7 +149,6 @@ export function ThreadTimelineSurface({
   onEditMessage,
   inlineMessageEditor,
   onMessageAddToChat,
-  onSendToMainMessage,
   onSelectionAddToChat,
   consumerMessageActions,
   includePluginMessageActions,
@@ -179,9 +172,10 @@ export function ThreadTimelineSurface({
   unreadDividerPlacement,
   workspaceRootPath,
 }: ThreadTimelineSurfaceProps) {
-  const systemConfigQuery = useSystemConfig();
-  const timelineWindowingEnabled =
-    systemConfigQuery.data?.experiments.timelineWindowing ?? false;
+  const showCatchUpIndicator =
+    useDelayedBusyIndicator(
+      isCatchingUpTimeline && !isThreadTimelinePending && !timelineError,
+    ) && !showOngoingIndicator;
   const showActiveThinking =
     activeThinking !== null && ongoingIndicatorLabel === undefined;
   const activeThinkingText = activeThinking?.text.trim() ?? "";
@@ -227,12 +221,10 @@ export function ThreadTimelineSurface({
         ) : timelineRowsWithPendingStop.length > 0 ? (
           <ThreadTimelineRows
             canSpawnChild={canSpawnChild}
-            threadOriginKind={threadOriginKind}
             onForkMessage={onForkMessage}
             onEditMessage={onEditMessage}
             inlineMessageEditor={inlineMessageEditor}
             onMessageAddToChat={onMessageAddToChat}
-            onSendToMainMessage={onSendToMainMessage}
             onSelectionAddToChat={onSelectionAddToChat}
             consumerMessageActions={consumerMessageActions}
             includePluginMessageActions={includePluginMessageActions}
@@ -248,7 +240,6 @@ export function ThreadTimelineSurface({
             onLoadOlderRows={onLoadOlderRows}
             timelineRows={timelineRowsWithPendingStop}
             timelineNavigationTargetRowId={timelineNavigationTargetRowId}
-            timelineWindowingEnabled={timelineWindowingEnabled}
             threadId={threadId}
             threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
             unreadDividerAutoScroll={unreadDividerAutoScroll}
@@ -259,13 +250,21 @@ export function ThreadTimelineSurface({
         {hostConnectionNotice ? (
           <TimelineStatusIndicator
             label={hostConnectionNotice.label}
-            className={
-              hostConnectionNotice.tone === "error"
-                ? "mt-4 text-destructive"
-                : "mt-4"
-            }
+            className="mt-4 text-destructive"
           />
         ) : null}
+        <HeightTransition visible={showCatchUpIndicator}>
+          {showCatchUpIndicator ? (
+            <TimelineStatusIndicator
+              label={
+                <span role="status" className="animate-shine">
+                  {CATCH_UP_INDICATOR_LABEL}
+                </span>
+              }
+              className="mt-4 flex min-h-7 items-center"
+            />
+          ) : null}
+        </HeightTransition>
         <HeightTransition visible={showOngoingIndicator}>
           <TimelineWorkingIndicator
             key={ongoingIndicatorKey}
@@ -287,7 +286,7 @@ function LoadOlderMessages({
 }: {
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
-  onLoadOlderRows: () => Promise<void> | void;
+  onLoadOlderRows: LoadOlderTimelineRows;
 }) {
   const { sentinelRef, isAutoLoadEnabled, loadOlderRows } =
     useAutoLoadOlderRows({
@@ -325,6 +324,7 @@ function LoadOlderMessages({
 }
 
 const LOADING_INDICATOR_REVEAL_DELAY_MS = 200;
+const CATCH_UP_INDICATOR_LABEL = "Loading latest messages…";
 
 function DelayedThreadLoadingIndicator() {
   const [visible, setVisible] = useState(false);

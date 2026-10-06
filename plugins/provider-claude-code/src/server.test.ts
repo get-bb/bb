@@ -33,15 +33,28 @@ function providerOptions(
 }
 
 describe("the Claude Code provider settings", () => {
-  it("keeps Claude in Chrome off by default and derives an explicit opt-in", () => {
+  it.each(["chromeEnabled", "disable1MContext"])(
+    "keeps %s off by default and derives an explicit opt-in",
+    (key) => {
+      const { declaration, host } = loadClaudeCodePlugin();
+
+      expect(host.harness.registrations.settingsDescriptors[key]).toMatchObject(
+        { type: "boolean", default: false },
+      );
+      expect(providerOptions(declaration, {})[key]).toBe(false);
+      expect(providerOptions(declaration, { [key]: true })[key]).toBe(true);
+    },
+  );
+
+  it("keeps the Claude Code sandbox on by default and derives an explicit opt-out", () => {
     const { declaration, host } = loadClaudeCodePlugin();
 
     expect(
-      host.harness.registrations.settingsDescriptors.chromeEnabled,
-    ).toMatchObject({ type: "boolean", default: false });
-    expect(providerOptions(declaration, {}).chromeEnabled).toBe(false);
+      host.harness.registrations.settingsDescriptors.sandboxEnabled,
+    ).toMatchObject({ type: "boolean", default: true });
+    expect(providerOptions(declaration, {}).sandboxEnabled).toBe(true);
     expect(
-      providerOptions(declaration, { chromeEnabled: true }).chromeEnabled,
-    ).toBe(true);
+      providerOptions(declaration, { sandboxEnabled: false }).sandboxEnabled,
+    ).toBe(false);
   });
 });

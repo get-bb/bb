@@ -1,3 +1,5 @@
+import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import {
   useCallback,
   useEffect,
@@ -101,14 +103,21 @@ export function ShowcaseHeroCarousel({
     return () => document.removeEventListener("visibilitychange", update);
   }, []);
 
+  const composerActions = useMemo(
+    () =>
+      createCoreComposerActions({
+        ...promptDraft,
+        focus: () => requestComposerFocus(promptDraft.storageKey),
+      }),
+    [promptDraft],
+  );
   const composingRef = useRef(false);
   const setSeedAndNotify = useCallback(
     (seed: string | null, options?: { replaceDraft?: boolean }) => {
       if (seed !== null && options?.replaceDraft === true) {
-        promptDraft.setDraft({
+        composerActions.replace({
           text: seed,
           mentions: [],
-          attachments: promptDraft.getCurrent().attachments,
         });
       }
       const willCompose = seed !== null;
@@ -119,7 +128,7 @@ export function ShowcaseHeroCarousel({
       setComposerSeed(seed);
       if (seed !== null) setComposerKey((current) => current + 1);
     },
-    [onComposingChange, promptDraft],
+    [onComposingChange, composerActions],
   );
 
   const handledRequestNonce = useRef<number | null>(null);

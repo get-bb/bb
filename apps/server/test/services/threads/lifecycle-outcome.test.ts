@@ -202,7 +202,6 @@ describe("applyLoggedThreadLifecycleEvent", () => {
           status: "active",
           runtime: {
             displayStatus: "active",
-            hostReconnectGraceExpiresAt: null,
           },
           activity: NO_ACTIVITY,
           latestAttentionAt: row?.latestAttentionAt,

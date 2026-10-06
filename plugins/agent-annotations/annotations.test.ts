@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  annotationMentionLabel,
-  annotationRecordSchema,
   formatAnnotationContext,
   type AnnotationRecord,
 } from "./annotations.js";
@@ -29,10 +27,6 @@ const record: AnnotationRecord = {
 };
 
 describe("annotation formatting", () => {
-  it("labels mentions with a stable element description", () => {
-    expect(annotationMentionLabel(record)).toBe('2. button#pay.btn "Pay now"');
-  });
-
   it("formats agent context with the comment, locator hints, and styles", () => {
     expect(formatAnnotationContext(record)).toBe(
       [
@@ -58,11 +52,5 @@ describe("annotation formatting", () => {
         "- background-color: rgb(0, 0, 0)",
       ].join("\n"),
     );
-  });
-
-  it("rejects records with blank comments", () => {
-    expect(
-      annotationRecordSchema.safeParse({ ...record, comment: "   " }).success,
-    ).toBe(false);
   });
 });

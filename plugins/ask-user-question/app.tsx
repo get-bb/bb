@@ -3,8 +3,8 @@ import {
   definePluginApp,
   type PluginPendingInteractionProps,
 } from "@get-bb/plugin-sdk/app";
-import { Button } from "@bb/shared-ui/button";
-import { QuestionForm } from "@bb/shared-ui/question-form";
+import { Button } from "@/components/ui/button";
+import { QuestionForm } from "@/components/ui/question-form";
 import {
   ASK_USER_QUESTION_RENDERER_ID,
   interactionPayloadSchema,
@@ -38,16 +38,15 @@ function AskUserQuestionInteraction({
   return (
     <QuestionForm
       key={interaction.id}
+      draftKey={`${interaction.threadId}:${interaction.id}`}
       questions={parsed.data.questions}
       disabled={busy}
       cancelDisabled={busy}
       onSubmit={(answers) => {
         setBusy(true);
-        void submit({ answers })
-          .catch(() => {})
-          .finally(() => setBusy(false));
+        return submit({ answers }).finally(() => setBusy(false));
       }}
-      onCancel={handleCancel}
+      onCancel={cancel}
     />
   );
 }

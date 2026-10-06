@@ -25,6 +25,10 @@ import {
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { resolveEnvironmentDisplayName } from "@bb/core-ui";
+import {
+  ThreadTitle,
+  useResolveThreadTitle,
+} from "@/components/thread/ThreadTitleMentions";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -40,6 +44,7 @@ const REUSE_SEARCH_MIN_OPTIONS = 7;
 function reuseOptionSearchText(
   option: ReuseThreadOption,
   providers: readonly SystemEnvironmentProvider[] | undefined,
+  resolveTitle: (title: string) => string,
 ): string {
   const { label, secondaryText } = reuseThreadOptionDisplay(option, providers);
   return [
@@ -48,7 +53,10 @@ function reuseOptionSearchText(
     option.branchName,
     option.path,
     secondaryText,
-    ...option.threads.map((thread) => thread.title),
+    ...option.threads.flatMap((thread) => [
+      thread.title,
+      resolveTitle(thread.title),
+    ]),
   ]
     .filter((part): part is string => Boolean(part))
     .join(" ")
@@ -59,11 +67,12 @@ export function filterReuseThreadOptions(
   options: readonly ReuseThreadOption[],
   query: string,
   providers: readonly SystemEnvironmentProvider[] | undefined,
+  resolveTitle: (title: string) => string,
 ): readonly ReuseThreadOption[] {
   const terms = query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
   if (terms.length === 0) return options;
   return options.filter((option) => {
-    const haystack = reuseOptionSearchText(option, providers);
+    const haystack = reuseOptionSearchText(option, providers, resolveTitle);
     return terms.every((term) => haystack.includes(term));
   });
 }
@@ -120,6 +129,7 @@ export function ReuseEnvironmentPicker({
   modal,
 }: ReuseEnvironmentPickerProps) {
   const { providers } = useSystemEnvironmentProviders();
+  const resolveTitle = useResolveThreadTitle();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const activeOption = useMemo(
@@ -130,9 +140,14 @@ export function ReuseEnvironmentPicker({
   const visibleOptions = useMemo(
     () =>
       showSearch
-        ? filterReuseThreadOptions(options, searchQuery, providers)
+        ? filterReuseThreadOptions(
+            options,
+            searchQuery,
+            providers,
+            resolveTitle,
+          )
         : options,
-    [options, providers, searchQuery, showSearch],
+    [options, providers, resolveTitle, searchQuery, showSearch],
   );
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -294,9 +309,7 @@ function ReuseEnvironmentMenuItem({
       {previewThreads.length > 0 ? (
         <span className="flex flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
           {previewThreads.map((thread) => (
-            <span key={thread.id} className="truncate">
-              {thread.title}
-            </span>
+            <ThreadTitle key={thread.id} title={thread.title} />
           ))}
           {additionalCount > 0 ? (
             <span className="text-muted-foreground">

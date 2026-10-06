@@ -7,7 +7,6 @@ import {
   createPendingInteraction,
   getActivePendingInteractionForThread,
   getPendingInteractionByProviderRequest,
-  interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
   setPendingInteractionResolved,
@@ -237,43 +236,6 @@ describe("pending interactions", () => {
             providerId: "codex",
             threadIds,
             statusReason: "Provider exited",
-          }).map((row) => row.threadId),
-        ),
-      ).toEqual(new Set(targetThreadIds));
-    },
-  );
-
-  it(
-    "chunks thread-id interrupts to stay under SQLite variable limits",
-    () => {
-      const { db, siblingThread, thread } = setup();
-      const threadIds = Array.from(
-        { length: 1_050 },
-        (_, index) => `thr_missing_batch_${index}`,
-      );
-      threadIds[0] = thread.id;
-      threadIds[1_000] = siblingThread.id;
-      const targetThreadIds = [thread.id, siblingThread.id];
-
-      for (const [index, threadId] of targetThreadIds.entries()) {
-        createPendingInteraction(db, {
-          threadId,
-          turnId: `turn-batched-interrupt-thread-${index}`,
-          providerId: "codex",
-          providerThreadId: `provider-thread-batched-interrupt-thread-${index}`,
-          providerRequestId: `request-batched-interrupt-thread-${index}`,
-          payload: commandApprovalPayload(
-            "git push",
-            `item-batched-interrupt-thread-${index}`,
-          ),
-        });
-      }
-
-      expect(
-        new Set(
-          interruptPendingInteractionsForThreadIds(db, {
-            threadIds,
-            statusReason: "Thread stopped",
           }).map((row) => row.threadId),
         ),
       ).toEqual(new Set(targetThreadIds));

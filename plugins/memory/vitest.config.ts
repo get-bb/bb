@@ -1,12 +1,7 @@
-import path from "node:path";
-import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkspaceTestConfig({
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "."),
-    },
-  },
+export default defineConfig({
+  resolve: { tsconfigPaths: true },
   test: {
     silent: "passed-only",
     name: "bb-plugin-memory",

@@ -79,35 +79,6 @@ describe("bb thread open command output", () => {
     ]);
   });
 
-  it("uses an explicit thread id when BB_THREAD_ID is not set", async () => {
-    const { openThread } = stubThreadOpenApi({
-      open: async () => ({ delivered: 1 }),
-    });
-
-    await runCommand(
-      ["thread", "open", "thread-explicit", "reports/status.md"],
-      register,
-    );
-
-    expect(openThread).toHaveBeenCalledWith({
-      param: { id: "thread-explicit" },
-      json: {
-        file: {
-          source: "workspace",
-          path: "reports/status.md",
-          lineNumber: null,
-        },
-      },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Thread: thread-explicit",
-      "Split: replace",
-      "Source: workspace",
-      "Path: reports/status.md",
-      "Delivered: 1",
-    ]);
-  });
-
   it("resolves an absolute workspace path through the target thread environment", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-workspace");
     const thread = fixtures.makeThread({
@@ -210,18 +181,6 @@ describe("bb thread open command output", () => {
     );
   });
 
-  it("rejects a different explicit thread id when BB_THREAD_ID is set", async () => {
-    vi.stubEnv("BB_THREAD_ID", "thread-current");
-    stubThreadOpenApi({});
-
-    await expect(
-      runCommand(
-        ["thread", "open", "thread-other", "reports/status.md"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-  });
-
   it("returns the opened path as JSON", async () => {
     const { openThread } = stubThreadOpenApi({
       open: async () => ({ delivered: 3 }),
@@ -250,19 +209,9 @@ describe("bb thread open command output", () => {
     expect(payloads.join("\n")).toContain('"delivered": 3');
   });
 
-  it("documents the current-thread or explicit-thread command shape", async () => {
+  it("does not offer the removed flags in help", async () => {
     const help = await getHelpOutput(["thread", "open"], register);
 
-    expect(help).toContain("Usage:");
-    expect(help).toContain("[id] [path]");
-    expect(help).toContain(
-      "Open a BB thread, optionally with a file in its panel",
-    );
-    expect(help).toContain("--line");
-    expect(help).toContain("--split <placement>");
-    expect(help).toContain("right, down, left, top, or replace");
-    expect(help).toContain("add panes through pane 8");
-    expect(help).toMatch(/replace\s+the focused pane/u);
     expect(help).not.toContain("--preview");
     expect(help).not.toContain("--source");
     expect(help).not.toContain("--self");
@@ -289,41 +238,44 @@ describe("bb thread open command output", () => {
     ]);
   });
 
-  it("treats an explicit --split target as a thread id inside a BB thread", async () => {
-    vi.stubEnv("BB_THREAD_ID", "thread-current");
+  it("opens another thread from a lone thread id inside a BB thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thr_currentabc");
     const { openThread } = stubThreadOpenApi({});
 
-    await runCommand(
-      ["thread", "open", "thread-other", "--split", "left"],
-      register,
-    );
+    await runCommand(["thread", "open", "thr_2thread345"], register);
 
     expect(openThread).toHaveBeenCalledWith({
-      param: { id: "thread-other" },
-      json: { split: "left", file: null },
+      param: { id: "thr_2thread345" },
+      json: { file: null },
     });
   });
 
-  it("opens a file for an explicit split target inside a BB thread", async () => {
+  it("opens a ./-prefixed file named like a thread id in the current thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thr_currentabc");
+    const { openThread } = stubThreadOpenApi({});
+
+    await runCommand(["thread", "open", "./thr_2thread345"], register);
+
+    expect(openThread).toHaveBeenCalledWith({
+      param: { id: "thr_currentabc" },
+      json: {
+        file: { source: "workspace", path: "thr_2thread345", lineNumber: null },
+      },
+    });
+  });
+
+  it("opens a file in another thread inside a BB thread", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-current");
     const { openThread } = stubThreadOpenApi({});
 
     await runCommand(
-      [
-        "thread",
-        "open",
-        "thread-other",
-        "reports/status.md",
-        "--split",
-        "down",
-      ],
+      ["thread", "open", "thread-other", "reports/status.md"],
       register,
     );
 
     expect(openThread).toHaveBeenCalledWith({
       param: { id: "thread-other" },
       json: {
-        split: "down",
         file: {
           source: "workspace",
           path: "reports/status.md",

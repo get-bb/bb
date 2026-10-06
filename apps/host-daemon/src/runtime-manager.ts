@@ -175,7 +175,6 @@ export interface RuntimeManagerOptions {
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
-  providerInstallationGateTtlMs?: number;
   providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   applyMachineEnvironment?: (
@@ -299,9 +298,7 @@ export class RuntimeManager {
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
     this.providerInstallationGate = createProviderInstallationGate({
-      ttlMs:
-        options.providerInstallationGateTtlMs ??
-        PROVIDER_INSTALLATION_GATE_TTL_MS,
+      ttlMs: PROVIDER_INSTALLATION_GATE_TTL_MS,
     });
     this.ensureDataDirSkillsWatcher();
   }

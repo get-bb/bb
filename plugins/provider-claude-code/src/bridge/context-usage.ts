@@ -178,18 +178,25 @@ export function normalizeClaudeContextUsage(
 
 export class ClaudeContextUsageCollector {
   private revision = 0;
+  private capacityRevision = 0;
 
   invalidate(): void {
     this.revision += 1;
   }
 
+  invalidateCapacity(): void {
+    this.capacityRevision += 1;
+    this.invalidate();
+  }
+
   async capture(args: {
     read: () => Promise<unknown>;
     isCurrent: () => boolean;
-    publish: (snapshot: ContextSnapshot) => void;
+    publish: (snapshot: ContextSnapshot, snapshotCurrent: boolean) => void;
     providerSessionId: string;
   }): Promise<void> {
     const revision = ++this.revision;
+    const capacityRevision = ++this.capacityRevision;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const report = await Promise.race([
@@ -199,7 +206,11 @@ export class ClaudeContextUsageCollector {
           timeout.unref();
         }),
       ]);
-      if (report === null || revision !== this.revision || !args.isCurrent())
+      if (
+        report === null ||
+        capacityRevision !== this.capacityRevision ||
+        !args.isCurrent()
+      )
         return;
       args.publish(
         normalizeClaudeContextUsage(report, {
@@ -207,6 +218,7 @@ export class ClaudeContextUsageCollector {
           providerSessionId: args.providerSessionId,
           providerTurnId: null,
         }),
+        revision === this.revision,
       );
     } catch {
       return;

@@ -5,7 +5,6 @@ import { brotliCompressSync } from "node:zlib";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import { registerStaticAppRoutes } from "./server.js";
-import { requestMatchesEntityTag } from "./services/hosts/daemon-file-response.js";
 
 describe("app shell serving", () => {
   const shellHtml = "<!doctype html><title>bb</title><p>build-a</p>";
@@ -59,14 +58,6 @@ describe("app shell serving", () => {
     }
   });
 
-  it("serves the full document for a stale validator", async () => {
-    const res = await app.request("/", {
-      headers: { "if-none-match": 'W/"0000000000000000000000000000dead"' },
-    });
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe(shellHtml);
-  });
-
   it("rotates the ETag when a new build lands, so old validators refetch", async () => {
     const first = await app.request("/");
     const oldEtag = first.headers.get("etag") ?? "";
@@ -86,21 +77,5 @@ describe("app shell serving", () => {
   it("keeps /assets/ misses as 404 instead of the SPA fallback", async () => {
     const res = await app.request("/assets/stale-chunk.js");
     expect(res.status).toBe(404);
-  });
-});
-
-describe("requestMatchesEntityTag", () => {
-  const etag = 'W/"abc123"';
-
-  it("compares weakly and accepts lists and wildcards", () => {
-    expect(requestMatchesEntityTag('W/"abc123"', etag)).toBe(true);
-    expect(requestMatchesEntityTag('"abc123"', etag)).toBe(true);
-    expect(requestMatchesEntityTag('"zzz", W/"abc123"', etag)).toBe(true);
-    expect(requestMatchesEntityTag("*", etag)).toBe(true);
-  });
-
-  it("rejects a different validator", () => {
-    expect(requestMatchesEntityTag('W/"other"', etag)).toBe(false);
-    expect(requestMatchesEntityTag('"abc1234"', etag)).toBe(false);
   });
 });

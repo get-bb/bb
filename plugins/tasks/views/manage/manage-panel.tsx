@@ -15,11 +15,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@bb/shared-ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@bb/shared-ui/tabs";
-import { Button } from "@bb/shared-ui/button";
-import { Input } from "@bb/shared-ui/input";
-import { Icon } from "@bb/shared-ui/icon";
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Icon } from "@/components/ui/icon";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import {
   PERMISSION_LABELS,
@@ -526,7 +526,7 @@ function FoldersSection() {
   const projects = useProjects();
   const { error, setError, run } = useActionError();
   const [confirmDelete, setConfirmDelete] = useState<Folder | null>(null);
-  const folderList = folders.data ?? [];
+  const folderList = useMemo(() => folders.data ?? [], [folders.data]);
   const rootFolders = useMemo(
     () => folderList.filter((folder) => folder.parentFolderId === null),
     [folderList],

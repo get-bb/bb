@@ -58,6 +58,8 @@ were excluded. See the [audit](../MAINTENANCE.md) and
 | [Fallback question cards](plugin-ask-user-question.md) | 5 | 3 passed, 1 failed, 1 partial/blocked |
 | [Scheduled agent and script automations](plugin-automations.md) | 8 | 8 passed |
 | [Agent concurrency limits](plugin-concurrency-limit.md) | 5 | 4 passed, 1 partial/blocked |
+| [bb account sign-in](plugin-bb-account.md) | 5 | 5 not run |
+| [bb cloud AI](plugin-bb-ai.md) | 5 | 5 not run |
 | [Remote Connect and port sharing](plugin-connect.md) | 7 | 5 passed, 2 partial/blocked |
 | [Custom agent instructions](plugin-custom-instructions.md) | 3 | 2 passed, 1 partial/blocked |
 | [Docs vaults and editing](plugin-docs.md) | 9 | 7 passed, 2 partial/blocked |
@@ -70,7 +72,7 @@ were excluded. See the [audit](../MAINTENANCE.md) and
 | [Plugin Guide](plugin-plugin-api-docs.md) | 4 | 3 passed, 1 partial/blocked |
 | [Plugin API tester](plugin-plugin-api-tester.md) | 2 | 2 passed |
 | [ACP providers](plugin-provider-acp.md) | 6 | 2 passed, 4 partial/blocked |
-| [Claude Code provider](plugin-provider-claude-code.md) | 7 | 2 passed, 5 partial/blocked |
+| [Claude Code provider](plugin-provider-claude-code.md) | 8 | 2 passed, 5 partial/blocked, 1 not run |
 | [Codex provider](plugin-provider-codex.md) | 7 | 1 passed, 6 partial/blocked |
 | [Pi provider](plugin-provider-pi.md) | 5 | 2 passed, 3 partial/blocked |
 | [Automatic provider retry](plugin-provider-retry.md) | 5 | 5 partial/blocked |

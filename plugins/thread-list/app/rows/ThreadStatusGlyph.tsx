@@ -1,11 +1,11 @@
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import {
   getThreadListIndicatorLabel,
   resolveThreadListIndicator,
   type ThreadListIndicatorKind,
   type ThreadListIndicatorState,
-} from "@bb/client-core";
+} from "../model/thread-activity.js";
 import type { PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import {
   SIDEBAR_STATUS_ICON_CLASS,

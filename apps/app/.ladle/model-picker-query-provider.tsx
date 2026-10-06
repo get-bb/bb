@@ -134,7 +134,9 @@ function makeExecutionOptions(
   };
 }
 
-function createStoryQueryClient(environmentId: string | null): QueryClient {
+function createStoryQueryClient(
+  environmentIds: readonly string[],
+): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -174,17 +176,19 @@ function createStoryQueryClient(environmentId: string | null): QueryClient {
     ),
   };
 
-  for (const [providerId, executionOptions] of Object.entries(
-    executionOptionsByProviderId,
-  )) {
-    queryClient.setQueryData<SystemExecutionOptionsResponse>(
-      systemExecutionOptionsQueryKey({
-        environmentId,
-        hostId: null,
-        providerId,
-      }),
-      executionOptions,
-    );
+  for (const environmentId of [null, ...environmentIds]) {
+    for (const [providerId, executionOptions] of Object.entries(
+      executionOptionsByProviderId,
+    )) {
+      queryClient.setQueryData<SystemExecutionOptionsResponse>(
+        systemExecutionOptionsQueryKey({
+          environmentId,
+          hostId: null,
+          providerId,
+        }),
+        executionOptions,
+      );
+    }
   }
 
   queryClient.setQueryData(hostsQueryKey(), []);
@@ -193,16 +197,18 @@ function createStoryQueryClient(environmentId: string | null): QueryClient {
   return queryClient;
 }
 
+const PRIMARY_ROUTING_ONLY: readonly string[] = [];
+
 export function ModelPickerStoryQueryProvider({
   children,
-  environmentId = null,
+  environmentIds = PRIMARY_ROUTING_ONLY,
 }: {
   children: ReactNode;
-  environmentId?: string | null;
+  environmentIds?: readonly string[];
 }) {
   const queryClient = useMemo(
-    () => createStoryQueryClient(environmentId),
-    [environmentId],
+    () => createStoryQueryClient(environmentIds),
+    [environmentIds],
   );
 
   return (

@@ -30,7 +30,9 @@ types are unreachable. The committed tree is therefore pruned to the
 transitive type-import closure of the hand-written importers:
 
 - `translator.ts`, `visibility.ts`, `interactive-requests.ts`,
-  `session-params.ts`, `bridge/bridge.ts`, and their `*.test.ts` files.
+  `session-params.ts`, `schemas.ts`, `bridge/bridge.ts`, and the test files
+  `translator.test.ts`, `delta-translation.test.ts`, `presentation.test.ts`
+  and `bridge/bridge.calibration.test.ts`.
 
 At the last regenerate (Codex 0.149.1) that was 235 of the 663 emitted
 files; the unreachable files and all three `export *` barrels (`index.ts`,
@@ -55,6 +57,7 @@ the kept subset is complete. Keep it pruned to avoid re-vendoring dead types.
 
 ## Source of truth
 
+- Upstream reference: [openai/codex app-server README](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md).
 - `schema/*.ts`: generated from Codex app-server, pruned to the reachable subset (see above).
 - `index.ts` / barrels: intentionally **not** committed; the adapter imports concrete `schema/**` files directly.
-- `plugins/provider-codex/src/event-translation.ts`: translates Codex app-server events into bb thread events.
+- `plugins/provider-codex/src/delta-translation.ts`: translates Codex app-server events into bb thread deltas.

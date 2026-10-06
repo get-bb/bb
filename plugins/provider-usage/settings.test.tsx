@@ -168,7 +168,7 @@ it("retains measured accounts when reloading fails", async () => {
   );
   failed = true;
   fireEvent.click(slot.getByLabelText("Reload usage data"));
-  await slot.findByText(/Showing the last available update/);
+  await slot.findByText(/Showing last update/);
   expect(slot.getByText("first@example.com")).toBeTruthy();
   expect(slot.getByText("42% used")).toBeTruthy();
 });

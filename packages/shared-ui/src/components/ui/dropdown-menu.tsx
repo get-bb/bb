@@ -146,11 +146,14 @@ const DropdownMenuContent = React.forwardRef<
           open={open}
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Menu"}
+          onEscapeKeyDown={props.onEscapeKeyDown}
+          onPointerDownOutside={props.onPointerDownOutside}
+          onInteractOutside={props.onInteractOutside}
         >
           <div
             ref={ref}
             className={cn(
-              "flex flex-col gap-0.5 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+              "flex flex-col gap-0.5 overflow-y-auto p-2",
               className,
             )}
             {...domProps}
@@ -169,7 +172,10 @@ const DropdownMenuContent = React.forwardRef<
           {...scopeProps}
           sideOffset={sideOffset}
           onCloseAutoFocus={(event) => {
-            if (!isLastInputKeyboard()) {
+            const focusTaken =
+              document.activeElement !== null &&
+              document.activeElement !== document.body;
+            if (!isLastInputKeyboard() || focusTaken) {
               event.preventDefault();
             }
             onCloseAutoFocus?.(event);
@@ -221,15 +227,23 @@ const DropdownMenuItem = React.forwardRef<
       onKeyDown: callerKeyDown,
       onFocus: callerFocus,
       onBlur: callerBlur,
+      onPointerMove: callerPointerMove,
+      onPointerLeave: callerPointerLeave,
       ...domProps
     },
     ref,
   ) => {
-    const { isCompactViewport, onOpenChange } = useResponsiveMenu();
+    const { isCompactViewport, open, onOpenChange } = useResponsiveMenu();
     const { hoverProps } = useMenuItemHover({
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
     });
+    const keepFocusWhileClosing =
+      (handler: React.PointerEventHandler<HTMLDivElement> | undefined) =>
+      (event: React.PointerEvent<HTMLDivElement>) => {
+        handler?.(event);
+        if (!open) event.preventDefault();
+      };
 
     if (isCompactViewport) {
       return (
@@ -282,6 +296,8 @@ const DropdownMenuItem = React.forwardRef<
         textValue={_textValue}
         onFocus={callerFocus}
         onBlur={callerBlur}
+        onPointerMove={keepFocusWhileClosing(callerPointerMove)}
+        onPointerLeave={keepFocusWhileClosing(callerPointerLeave)}
         {...domProps}
         {...hoverProps}
       >

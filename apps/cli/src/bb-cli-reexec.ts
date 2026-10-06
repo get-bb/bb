@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, win32 } from "node:path";
 
 export const BB_CLI_REEXEC_ENV = "BB_CLI_REEXEC";
 
@@ -13,6 +13,22 @@ interface MaybeReexecViaBbCliArgs {
     argv: string[];
     env: NodeJS.ProcessEnv;
   }) => void;
+}
+
+interface ResolveBbCliLaunchArgs {
+  argv: string[];
+  nodePath: string;
+  platform: NodeJS.Platform;
+  target: string;
+}
+
+export function resolveBbCliLaunch(args: ResolveBbCliLaunchArgs): {
+  command: string;
+  args: string[];
+} {
+  return args.platform === "win32" && win32.extname(args.target) === ""
+    ? { command: args.nodePath, args: [args.target, ...args.argv] }
+    : { command: args.target, args: args.argv };
 }
 
 function tryRealpath(path: string): string | null {
@@ -58,7 +74,13 @@ export function maybeReexecViaBbCli(
     return;
   }
 
-  const result = spawnSync(target, argv, {
+  const launch = resolveBbCliLaunch({
+    argv,
+    nodePath: process.execPath,
+    platform: process.platform,
+    target,
+  });
+  const result = spawnSync(launch.command, launch.args, {
     env: childEnv,
     stdio: "inherit",
   });

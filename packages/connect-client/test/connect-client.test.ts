@@ -29,6 +29,9 @@ describe("connect URL helpers", () => {
     expect(deriveConnectBaseUrl("https://laptop.bb.example:8443")).toBe(
       "https://bb.example:8443",
     );
+    expect(deriveConnectBaseUrl("https://my-box.vibecodethis.site/")).toBe(
+      "https://vibecodethis.site",
+    );
     expect(connectPublicProtocol("bb.localhost:42745")).toBe("http:");
     expect(connectPublicProtocol("getbb.app")).toBe("https:");
   });

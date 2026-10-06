@@ -166,7 +166,7 @@ export class TarReader {
       }
       this.#unreadBodyBytes = size;
       return {
-        path: header.path ?? "",
+        path: extended?.path ?? header.path ?? "",
         type: header.type,
         size,
         mode: header.mode ?? null,

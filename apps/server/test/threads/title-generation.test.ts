@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PromptInput } from "@bb/domain";
 import {
   collectInvokedPromptCommands,
+  deriveForkTitle,
   deriveTitleFallback,
   sanitizeGeneratedTitle,
   shouldGenerateThreadTitle,
@@ -89,21 +90,13 @@ describe("thread title generation", () => {
     expect(shouldGenerateThreadTitle([textInput("バグを直して")])).toBe(false);
   });
 
-  it("limits generated titles to five words", () => {
-    expect(
-      sanitizeGeneratedTitle(
-        "Investigate Extremely Long Generated Thread Title Output",
-      ),
-    ).toBe("Investigate Extremely Long Generated Thread");
-  });
-
   it("keeps generated titles that already fit", () => {
     expect(sanitizeGeneratedTitle("修复分叉后侧边栏徽章")).toBe(
       "修复分叉后侧边栏徽章",
     );
-    expect(sanitizeGeneratedTitle("포크 후 사이드바 스레드 행의 배지 조사")).toBe(
-      "포크 후 사이드바 스레드 행의 배지 조사",
-    );
+    expect(
+      sanitizeGeneratedTitle("포크 후 사이드바 스레드 행의 배지 조사"),
+    ).toBe("포크 후 사이드바 스레드 행의 배지 조사");
   });
 
   it("bounds unspaced generated titles instead of passing them through", () => {
@@ -165,7 +158,9 @@ describe("thread title generation", () => {
   it("elides long latin fallbacks at eighty characters", () => {
     const input = [textInput("word ".repeat(40).trim())];
 
-    expect(deriveTitleFallback(input)).toBe(`${"word ".repeat(40).trim().slice(0, 77)}...`);
+    expect(deriveTitleFallback(input)).toBe(
+      `${"word ".repeat(40).trim().slice(0, 77)}...`,
+    );
   });
 
   it("elides wide-script fallbacks by display width, not code units", () => {
@@ -180,5 +175,27 @@ describe("thread title generation", () => {
 
     expect(fallback).toBe(`${"𠮷".repeat(38)}...`);
     expect(fallback).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+  });
+});
+
+describe("deriveForkTitle", () => {
+  it.each([
+    [{ title: "foo", titleFallback: null }, "(1) foo"],
+    [{ title: "(1) foo", titleFallback: null }, "(2) foo"],
+    [{ title: "(41) foo (1) bar", titleFallback: null }, "(42) foo (1) bar"],
+    [{ title: "(1)foo", titleFallback: null }, "(1) (1)foo"],
+    [{ title: "(1) ", titleFallback: null }, "(1) (1)"],
+    [{ title: "(x) foo", titleFallback: null }, "(1) (x) foo"],
+    [{ title: "  ", titleFallback: "from prompt" }, "(1) from prompt"],
+    [
+      { title: "(99999999999999999999) foo", titleFallback: null },
+      "(100000000000000000000) foo",
+    ],
+  ])("numbers %j as %s", (source, expected) => {
+    expect(deriveForkTitle(source)).toBe(expected);
+  });
+
+  it("leaves an untitled source without a fork title", () => {
+    expect(deriveForkTitle({ title: null, titleFallback: null })).toBeNull();
   });
 });

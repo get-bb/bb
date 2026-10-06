@@ -313,11 +313,6 @@ bb thread wait "$PROTOCOL_CHILD_ID" --status idle --timeout 240
 bb thread show "$PROTOCOL_PARENT_ID" --json | jq '.thread | {id, parentThreadId, providerId, status}'
 bb thread show "$PROTOCOL_CHILD_ID" --json | jq '.thread | {id, parentThreadId, providerId, status}'
 bb thread output "$PROTOCOL_CHILD_ID"
-if bb manager list; then
-  echo "expected bb manager list to fail"
-  exit 1
-fi
-bb manager list 2>&1 | rg "Managers were replaced by parent threads|bb thread"
 printf 'thread protocol smoke started at UTC minute: %s\n' "$THREAD_PROTOCOL_STARTED_AT"
 rg -n "invalid-message|1008|host_unavailable|command_result_type_mismatch|Ignoring host RPC response" \
   "$SERVER_LOG_DIR" "$DAEMON_LOG_DIR" || true
@@ -327,7 +322,6 @@ Expected result:
 
 - the parent and child threads reach `idle`
 - the child thread reports the parent thread ID
-- `bb manager list` exits non-zero with a parent-thread replacement message
 - server and daemon logs have no matching protocol disconnect or host-RPC
   mismatch entries at or after `$THREAD_PROTOCOL_STARTED_AT`
 

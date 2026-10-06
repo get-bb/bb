@@ -6,8 +6,8 @@
    silently rendered unstyled here while working in the real app, which builds
    the plugin's CSS separately. */
 @source "../../../plugins/automations";
-@source "../../../plugins/provider-retry";
 @source "../../../plugins/provider-usage";
+@source "../../../plugins/secrets";
 
 .ladle-main {
   padding: 0;

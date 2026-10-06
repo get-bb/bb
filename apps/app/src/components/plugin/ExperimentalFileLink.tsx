@@ -1,12 +1,13 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useMemo,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { ExperimentalFileLinkProps } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalFileLinkProps,
+  ExperimentalFileOpenOptions,
+} from "@get-bb/plugin-sdk";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -16,12 +17,19 @@ import {
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
+import { defineSplit } from "@/lib/define-split";
 
-const LazyExperimentalFileLinkMenu = lazy(() =>
-  import("./ExperimentalFileLinkMenu").then(({ ExperimentalFileLinkMenu }) => ({
-    default: ExperimentalFileLinkMenu,
-  })),
-);
+const LazyExperimentalFileLinkMenu = defineSplit<{
+  intent: ExperimentalFileOpenOptions;
+}>({
+  id: "experimental-file-link-menu",
+  load: () =>
+    import("./ExperimentalFileLinkMenu").then(
+      (module) => module.ExperimentalFileLinkMenu,
+    ),
+  loading: () => <ContextMenuItem disabled>Loading…</ContextMenuItem>,
+  tier: "intent",
+});
 
 function shouldHandleFileClick(
   event: ReactMouseEvent<HTMLAnchorElement>,
@@ -72,11 +80,7 @@ export function ExperimentalFileLink({
       <ContextMenuTrigger asChild>{anchor}</ContextMenuTrigger>
       <ContextMenuContent className="min-w-52">
         {isMenuOpen ? (
-          <Suspense
-            fallback={<ContextMenuItem disabled>Loading…</ContextMenuItem>}
-          >
-            <LazyExperimentalFileLinkMenu intent={intent} />
-          </Suspense>
+          <LazyExperimentalFileLinkMenu intent={intent} />
         ) : null}
       </ContextMenuContent>
     </ContextMenu>

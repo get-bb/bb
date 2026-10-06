@@ -2,7 +2,7 @@ import { Component, type ReactNode } from "react";
 import type { PluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { usePluginCss } from "@/lib/plugin-css";
-import { PluginIcon } from "./PluginIcon";
+import { PluginItemIcon } from "./PluginIcon";
 import { PluginContext } from "./plugin-context";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
@@ -35,7 +35,7 @@ export function PluginPanelHeaderCenter({
 }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <PluginIcon
+      <PluginItemIcon
         pluginId={chrome.pluginId}
         icon={chrome.icon}
         className="text-muted-foreground"
@@ -49,10 +49,12 @@ export function PluginPanelHeaderActions({
   panel,
   paneId,
   subPath,
+  paneActions,
 }: {
   panel: PluginNavPanelSlot;
   paneId?: string;
   subPath: string;
+  paneActions?: ReactNode;
 }) {
   const paneContext = useOptionalPaneContext();
   const HeaderContent = panel.headerContent;
@@ -80,6 +82,7 @@ export function PluginPanelHeaderActions({
           </PluginContext.Provider>
         </HeaderContentBoundary>
       )}
+      {paneActions}
       <div data-plugin-right-panel-toggle-portal={panelStateId} />
     </div>
   );

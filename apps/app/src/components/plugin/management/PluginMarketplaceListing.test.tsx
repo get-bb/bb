@@ -32,6 +32,8 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
       url: "https://github.com/patlee",
     },
     installed: false,
+    conflictingInstallSource: null,
+    installedByDefault: false,
     installs: null,
     compatible: true,
     incompatibleReason: null,

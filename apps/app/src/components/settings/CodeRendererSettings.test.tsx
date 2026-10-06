@@ -98,17 +98,19 @@ describe("CodeRendererSettings", () => {
     expect(trigger.textContent).toContain("Automatic");
     fireEvent.pointerDown(trigger, { button: 0 });
     expect(
-      screen.getByRole("menuitem", { name: /Currently using Inkwell diffs/u }),
+      screen.getByRole("menuitem", { name: /Chooses Inkwell diffs/u }),
     ).toBeTruthy();
     const items = screen
       .getAllByRole("menuitem")
       .map((item) => item.textContent ?? "");
     expect(items).toHaveLength(4);
+    expect(items[3]).toContain("bb (built-in)");
     expect(items.some((text) => text.includes("From the inkwell plugin"))).toBe(
       true,
     );
     expect(
       items.some((text) => text.includes("Side-by-side with word highlights.")),
     ).toBe(true);
+    expect(items.some((text) => text.includes("zed plugin."))).toBe(true);
   });
 });

@@ -34,7 +34,7 @@ import {
   sortPluginEntries,
   type PluginBrowseShelf,
 } from "./plugin-browse-discovery";
-import { pluginCatalogCategoryMutedAccentStyle } from "./plugin-ui";
+import { PluginCategoryIcon } from "./plugin-ui";
 
 const SHELF_ENTRY_LIMIT = 6;
 
@@ -75,7 +75,11 @@ export function BrowsePluginsTab({
   const searchQuery = usePluginCatalogSearch(trimmedQuery, { enabled: true });
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const activeQuery = shelfKey === null ? searchQuery : catalogQuery;
-  const catalog = activeQuery.data ?? { entries: [], collections: [] };
+  const catalog = activeQuery.data ?? {
+    entries: [],
+    collections: [],
+    categories: [],
+  };
   const entries = useMemo(
     () => catalog.entries.filter((entry) => entry.compatible),
     [catalog.entries],
@@ -97,8 +101,9 @@ export function BrowsePluginsTab({
         : pluginBrowseShelves({
             entries,
             collections: catalog.collections,
+            categories: catalog.categories,
           }).find((shelf) => shelf.key === shelfKey),
-    [catalog.collections, entries, shelfKey],
+    [catalog.categories, catalog.collections, entries, shelfKey],
   );
   useResourceRouteLabel(selectedShelf?.label ?? null);
   const shelfEntries = useMemo(
@@ -109,8 +114,13 @@ export function BrowsePluginsTab({
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
   const categoryOptions = useMemo(
-    () => pluginCategoryFilterOptions(shelfEntries, selectedCategories),
-    [shelfEntries, selectedCategories],
+    () =>
+      pluginCategoryFilterOptions(
+        shelfEntries,
+        selectedCategories,
+        catalog.categories,
+      ),
+    [catalog.categories, shelfEntries, selectedCategories],
   );
   const filteredEntries = useMemo(() => {
     const selected = new Set(selectedCategories);
@@ -145,6 +155,7 @@ export function BrowsePluginsTab({
               (entry) => entry.compatible,
             ),
             collections: catalogQuery.data?.collections ?? [],
+            categories: catalogQuery.data?.categories ?? [],
           })
         : [],
     [catalogQuery.data, shelvesMode],
@@ -215,12 +226,9 @@ export function BrowsePluginsTab({
               <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
                 <span className="inline-flex min-w-0 items-center gap-2">
                   {selectedShelf.key.startsWith("category:") ? (
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={pluginCatalogCategoryMutedAccentStyle(
-                        selectedShelf.categoryId,
-                      )}
-                      aria-hidden
+                    <PluginCategoryIcon
+                      categoryId={selectedShelf.categoryId}
+                      className="size-5"
                     />
                   ) : null}
                   {selectedShelf.label}
@@ -257,7 +265,7 @@ export function BrowsePluginsTab({
         {composing && shelfKey === null ? (
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
-          <section className="space-y-6 [--resource-source-shelf-inset:0px]">
+          <section className="space-y-6 [--resource-source-shelf-header-inset:calc(var(--spacing)*3)] [--resource-source-shelf-inset:0px]">
             <PluginCollectionToolbar
               query={query}
               selectedCategories={selectedCategories}
@@ -362,11 +370,7 @@ function BrowseShelf({
         ) : shelf.key === "collection:new-and-notable" ? (
           <Icon name="News01" className="size-4 text-foreground" aria-hidden />
         ) : (
-          <span
-            className="size-2 rounded-full"
-            style={pluginCatalogCategoryMutedAccentStyle(shelf.categoryId)}
-            aria-hidden
-          />
+          <PluginCategoryIcon categoryId={shelf.categoryId} className="size-4" />
         )
       }
       browseAction={
@@ -383,9 +387,9 @@ function BrowseShelf({
                 pathname: getPluginsRoutePath(),
                 search: shelfParams.toString(),
               }}
-              aria-label={`See all ${shelf.label}`}
+              aria-label={`View all ${shelf.label}`}
             >
-              See all
+              View all
             </Link>
           </ResourceShelfAction>
         ) : undefined

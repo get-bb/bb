@@ -128,6 +128,22 @@ const threadInterruptedManualStop: TimelineRow = systemRow({
   completedAt: 1776810312000,
 });
 
+const threadInterruptedHostLost: TimelineRow = systemRow({
+  id: "thr_m8dsv5hjpi:op:thread-interrupted:1776810313",
+  threadId: "thr_m8dsv5hjpi",
+  turnId: null,
+  sourceSeqStart: 319,
+  sourceSeqEnd: 319,
+  startedAt: 1776810313000,
+  createdAt: 1776810313000,
+  systemKind: "operation",
+  operationKind: "thread-interrupted",
+  title: "Stopped — connection to host was lost",
+  detail: null,
+  status: "interrupted",
+  completedAt: 1776810313000,
+});
+
 const providerUnhandled: TimelineRow = systemRow({
   id: "thr_m22cr9ggq7:op:provider-unhandled:1776898870",
   threadId: "thr_m22cr9ggq7",
@@ -502,6 +518,23 @@ export function NonOperations() {
           />
         </TimelineStage>
       </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function IconAlignment() {
+  return (
+    <StoryCard>
+      {[
+        threadInterruptedHostLost,
+        compactionCompleted,
+        contextCleared,
+        parentChangeAssign,
+      ].map((row) => (
+        <section key={row.id} className="w-full max-w-[760px]">
+          <ThreadTimelineRows {...baseProps} timelineRows={[row]} />
+        </section>
+      ))}
     </StoryCard>
   );
 }

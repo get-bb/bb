@@ -1,0 +1,16 @@
+diff --git a/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt b/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt
+index f9648bc29b24554299bd52d951c2bafa2ccbea6b..5e2a19ec0a78ecad4e9da409d9ea7ddca836514a 100644
+--- a/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt
++++ b/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt
+@@ -230,7 +230,10 @@ class ScreenStackHeaderConfig(
+ 
+     fun onUpdate() {
+         val stack = screenStack
+-        val isTop = stack == null || stack.topScreen == parent
++        if (stack == null) {
++            return
++        }
++        val isTop = stack.topScreen == parent
+ 
+         if (!isAttachedToWindow || !isTop || isDestroyed) {
+             return

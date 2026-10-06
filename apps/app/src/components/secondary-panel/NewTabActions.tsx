@@ -10,7 +10,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
 import { useReorderDnd } from "@/components/ui/useReorderDnd";
@@ -118,7 +118,7 @@ export function NewTabActions({
     actions.push({
       id: action.id,
       icon: (
-        <PluginIcon
+        <PluginItemIcon
           pluginId={action.pluginId}
           icon={action.icon}
           className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}

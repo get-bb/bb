@@ -9,6 +9,7 @@ import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_NAV_RAIL_TRAFFIC_LIGHT_ROW_HEIGHT_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
@@ -21,12 +22,40 @@ const BROWSER_HEADER_SLOT_START_CLASS =
 const MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS =
   "pl-[calc(84px_+_var(--bb-sidebar-control-size)_-_4px)]";
 
+export const NAV_RAIL_WIDTH_CLASS =
+  "w-[calc(var(--bb-sidebar-control-size)_+_24px)]";
+const NAV_RAIL_HEADER_SLOT_START_CLASS = "pl-0";
+
+export function NavRailMacosTrafficLightRow() {
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const desktopWindowState = useDesktopWindowState();
+  const reserveMacosTrafficLights = shouldReserveMacosTrafficLights({
+    desktopInfo,
+    windowState: desktopWindowState,
+  });
+  if (!reserveMacosTrafficLights) return null;
+
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="nav-rail-macos-traffic-light-row"
+      className={cn(
+        MACOS_NAV_RAIL_TRAFFIC_LIGHT_ROW_HEIGHT_CLASS,
+        "shrink-0",
+        MACOS_WINDOW_DRAG_CLASS,
+      )}
+    />
+  );
+}
+
 export function SidebarTopReserveRow({
   testId,
   renderHeaderSlot,
+  besideNavRail = false,
 }: {
   testId: string;
   renderHeaderSlot?: (startInsetClassName: string) => ReactNode;
+  besideNavRail?: boolean;
 }) {
   const closeOnMobile = useCloseMobileSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -47,9 +76,11 @@ export function SidebarTopReserveRow({
       )}
     >
       {renderHeaderSlot?.(
-        reserveMacosTrafficLights
-          ? MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
-          : BROWSER_HEADER_SLOT_START_CLASS,
+        besideNavRail
+          ? NAV_RAIL_HEADER_SLOT_START_CLASS
+          : reserveMacosTrafficLights
+            ? MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
+            : BROWSER_HEADER_SLOT_START_CLASS,
       )}
       <SidebarHistoryNavigationControls
         onNavigate={closeOnMobile}

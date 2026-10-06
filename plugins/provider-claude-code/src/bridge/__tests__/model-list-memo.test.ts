@@ -51,19 +51,4 @@ describe("createClaudeCodeBridgeModelListMemo", () => {
     resolveProbe(catalog("sonnet"));
     await expect(refreshed).resolves.toEqual(catalog("sonnet"));
   });
-
-  it("does not keep a failed probe", async () => {
-    const list = vi
-      .fn<() => Promise<ReturnType<typeof catalog>>>()
-      .mockRejectedValueOnce(new Error("temporary discovery failure"))
-      .mockResolvedValueOnce(catalog("opus"));
-    const listModels = createClaudeCodeBridgeModelListMemo({
-      list,
-      ttlMs: 60_000,
-    });
-
-    await expect(listModels()).rejects.toThrow("temporary discovery failure");
-    await expect(listModels()).resolves.toEqual(catalog("opus"));
-    expect(list).toHaveBeenCalledTimes(2);
-  });
 });

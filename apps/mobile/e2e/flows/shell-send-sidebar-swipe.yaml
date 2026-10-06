@@ -3,6 +3,7 @@ env:
   METRO_URL: "http://127.0.0.1:8082"
   SERVER_URL: "http://127.0.0.1:41999"
 ---
+- evalScript: ${output.sidebarMessage = "Sidebar swipe after send " + Date.now()}
 - runFlow: ../subflows/launch-app.yaml
 - runFlow: ../subflows/pair-direct-server.yaml
 - runFlow:
@@ -34,15 +35,16 @@ env:
 - tapOn: ".*follow-up.*"
 - waitForAnimationToEnd:
     timeout: 5000
-- inputText: "reproduce sidebar swipe after send"
+- inputText: "${output.sidebarMessage}"
 - tapOn: ".*Submit.*"
 - extendedWaitUntil:
-    visible: ".*Response to: reproduce sidebar swipe after send.*"
+    visible: ".*Response to: ${output.sidebarMessage}.*"
     timeout: 90000
 - takeScreenshot: sidebar-after-send-before-swipe
 - swipe:
-    start: 10%, 45%
-    end: 85%, 45%
+    from:
+      text: ".*Response to: ${output.sidebarMessage}.*"
+    direction: RIGHT
     duration: 500
 - takeScreenshot: sidebar-after-send-swipe
 - stopRecording

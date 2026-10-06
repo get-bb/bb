@@ -3,6 +3,7 @@ import {
   defaultExperiments,
   experimentKeys,
   experimentKeySchema,
+  type ExperimentUpdates,
   type Experiments,
 } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
@@ -28,17 +29,19 @@ export function getExperiments(db: DbConnection): Experiments {
 
 export function setExperiments(
   db: DbConnection,
-  experiments: Experiments,
+  updates: ExperimentUpdates,
 ): void {
   const updatedAt = Date.now();
   db.transaction((transaction) => {
     for (const key of experimentKeys) {
+      const value = updates[key];
+      if (value === undefined) continue;
       transaction
         .insert(systemExperiments)
-        .values({ key, value: experiments[key], updatedAt })
+        .values({ key, value, updatedAt })
         .onConflictDoUpdate({
           target: systemExperiments.key,
-          set: { value: experiments[key], updatedAt },
+          set: { value, updatedAt },
         })
         .run();
     }

@@ -60,6 +60,8 @@ const GUIDE_ENTRY: PluginCatalogSearchEntry = {
   collections: [],
   repositoryUrl: null,
   installed: false,
+  conflictingInstallSource: null,
+  installedByDefault: false,
   installs: null,
   compatible: true,
   incompatibleReason: null,

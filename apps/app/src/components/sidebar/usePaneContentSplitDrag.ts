@@ -162,6 +162,7 @@ export function beginSidebarPaneContentSplitDrag({
   const fallback = singlePaneFallback(startLayout);
   beginSplitDrag({
     ghostLabel: label,
+    cancelSidebarReorderOnEngage: true,
     resolveAuxiliaryTarget:
       content.kind === "thread"
         ? (x, y) =>

@@ -63,7 +63,6 @@ interface MachinePickerUIProps {
   className?: string;
   modal?: boolean;
   machineProviders?: readonly MachineProviderPresentation[];
-  multiMachinePickerEnabled?: boolean;
 }
 
 export function MachinePickerUI({
@@ -77,7 +76,6 @@ export function MachinePickerUI({
   className,
   modal = true,
   machineProviders = [],
-  multiMachinePickerEnabled = false,
 }: MachinePickerUIProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -95,9 +93,7 @@ export function MachinePickerUI({
     () => orderLocalHostFirst(availableHosts, localDaemonHostId),
     [availableHosts, localDaemonHostId],
   );
-  const showSearch =
-    multiMachinePickerEnabled &&
-    availableHosts.length > MACHINE_SEARCH_MIN_OPTIONS;
+  const showSearch = availableHosts.length > MACHINE_SEARCH_MIN_OPTIONS;
   const filteredHosts = useMemo(
     () =>
       showSearch ? searchMachineHosts(orderedHosts, searchQuery) : orderedHosts,

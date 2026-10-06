@@ -146,7 +146,7 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     expect(disabledIcon.status).toBe(200);
   });
 
-  it("validates the exact compact icon bytes before snapshotting them; a logo is snapshotted as declared", async () => {
+  it("validates the exact compact icon bytes before snapshotting them", async () => {
     const iconPath = join(harness.config.dataDir, "mutable-icon.svg");
     await writeFile(iconPath, "<html/>");
 
@@ -155,15 +155,6 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
         branding: { compactIconPath: iconPath, icons: new Map() },
       }),
     ).rejects.toThrow(/bb\.branding\.icon must have an <svg> root element/);
-
-    const logoPath = join(harness.config.dataDir, "mutable-logo.svg");
-    const scripted = `<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>`;
-    await writeFile(logoPath, scripted);
-    const assets = await loadPluginBrandingAssets("mutable", {
-      branding: { logo: { lightPath: logoPath }, icons: new Map() },
-    });
-    expect(assets.logo).not.toBeNull();
-    expect(new TextDecoder().decode(assets.logo?.bytes)).toBe(scripted);
   });
 
   it("installs a plugin whose logos are Illustrator and Inkscape exports, runs it, and serves both with the untrusted-image headers", async () => {
@@ -301,20 +292,6 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
       harness.pluginService.installPath(rootDir),
     ).rejects.toThrowError(
       /bb\.branding\.logo\.light escapes the plugin directory/,
-    );
-  });
-
-  it("rejects a light logo with an unsupported extension", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-logoe");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-logoe",
-      logoLight: "./logo.gif",
-      files: { "logo.gif": PNG_STUB },
-    });
-    await expect(
-      harness.pluginService.installPath(rootDir),
-    ).rejects.toThrowError(
-      /bb\.branding\.logo\.light must point at a \.svg, \.png, or \.webp file/,
     );
   });
 
@@ -470,55 +447,6 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     );
     expect(noHash.status).toBe(200);
     expect(noHash.headers.get("cache-control")).toBe("no-store");
-  });
-
-  it("serves an explicit dark PNG as image/png", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkb");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-darkb",
-      logoLight: "./logo.svg",
-      logoDark: "./logo-dark.png",
-      files: { "logo.svg": SVG_LOGO, "logo-dark.png": PNG_STUB },
-    });
-    const entry = await harness.pluginService.installPath(rootDir);
-    expect(entry.logoUrl).not.toBeNull();
-    const dark = await harness.app.request(`${BASE}${entry.logoDarkUrl}`);
-    expect(dark.status).toBe(200);
-    expect(dark.headers.get("content-type")).toBe("image/png");
-  });
-
-  it("honors a relocated bb.branding.logo.dark webp", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkc");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-darkc",
-      logoLight: "./logo.svg",
-      logoDark: "./assets/mark-dark.webp",
-      files: {
-        "logo.svg": SVG_LOGO,
-        "logo-dark.svg": DARK_SVG_LOGO,
-        "assets/mark-dark.webp": WEBP_STUB,
-      },
-    });
-    const entry = await harness.pluginService.installPath(rootDir);
-    expect(entry.status).toBe("running");
-    const dark = await harness.app.request(`${BASE}${entry.logoDarkUrl}`);
-    expect(dark.status).toBe(200);
-    expect(dark.headers.get("content-type")).toBe("image/webp");
-  });
-
-  it("rejects a dark logo that escapes the plugin directory", async () => {
-    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-darkd");
-    await writeLogoPluginFixture(rootDir, {
-      name: "bb-plugin-darkd",
-      logoLight: "./logo.svg",
-      logoDark: "../outside-dark.svg",
-      files: { "logo.svg": SVG_LOGO },
-    });
-    await expect(
-      harness.pluginService.installPath(rootDir),
-    ).rejects.toThrowError(
-      /bb\.branding\.logo\.dark escapes the plugin directory/,
-    );
   });
 
   it("rejects a dark logo with an unsupported extension", async () => {

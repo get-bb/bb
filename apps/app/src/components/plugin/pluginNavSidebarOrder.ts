@@ -53,40 +53,23 @@ export function getPluginNavPanelKey(panel: PluginNavPanelIdentity): string {
   return `${panel.pluginId}/${panel.id}`;
 }
 
-interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
-  panels: readonly TPanel[];
-  storedOrder: readonly string[];
-}
-
-interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
-  ordered: TPanel[];
-  normalizedOrder: string[];
-}
-
 interface ArrangePluginNavPanelPreferencesArgs<
   TPanel extends PluginNavPanelIdentity,
-> extends ArrangePluginNavPanelsArgs<TPanel> {
+> {
+  panels: readonly TPanel[];
+  storedOrder: readonly string[];
   storedVisibleKeys: readonly string[] | null;
   defaultHiddenKeys: readonly string[];
 }
 
 interface ArrangedPluginNavPanelPreferences<
   TPanel extends PluginNavPanelIdentity,
-> extends ArrangedPluginNavPanels<TPanel> {
+> {
+  ordered: TPanel[];
+  normalizedOrder: string[];
   visible: TPanel[];
   visibleKeys: string[];
   normalizedVisibleKeys: string[] | null;
-}
-
-export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
-  panels,
-  storedOrder,
-}: ArrangePluginNavPanelsArgs<TPanel>): ArrangedPluginNavPanels<TPanel> {
-  return arrangeByStoredOrder({
-    items: panels,
-    getId: getPluginNavPanelKey,
-    storedOrder,
-  });
 }
 
 export function arrangePluginNavPanelPreferences<
@@ -97,8 +80,9 @@ export function arrangePluginNavPanelPreferences<
   storedVisibleKeys,
   defaultHiddenKeys,
 }: ArrangePluginNavPanelPreferencesArgs<TPanel>): ArrangedPluginNavPanelPreferences<TPanel> {
-  const { ordered, normalizedOrder } = arrangePluginNavPanels({
-    panels,
+  const { ordered, normalizedOrder } = arrangeByStoredOrder({
+    items: panels,
+    getId: getPluginNavPanelKey,
     storedOrder,
   });
   const normalizedVisibleKeys =

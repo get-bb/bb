@@ -121,7 +121,10 @@ export async function executeAgentRun(
       await bb.sdk.threads.spawn({
         projectId: args.automation.projectId,
         environment: args.execution.environment,
-        prompt: args.execution.prompt,
+        prompt: renderAutomationDueMessage({
+          automationId: args.automation.id,
+          prompt: args.execution.prompt,
+        }),
         title: args.automation.name,
         providerId: args.execution.providerId,
         model: args.execution.model,
@@ -439,9 +442,6 @@ async function reconcileOutcome(
         status: "failed",
         error: "Turn failed while the automations plugin was not running",
       };
-    // Still going somewhere: leave the run marked running and re-check later.
-    // `pending` belongs here — the thread's first dispatch is queued, not
-    // failed, so the run has neither succeeded nor finished.
     case "pending":
     case "starting":
     case "active":

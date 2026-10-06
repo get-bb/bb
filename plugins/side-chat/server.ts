@@ -10,19 +10,19 @@ export const EMPTY_FORK_SWEEP_PAGE_SIZE = 100;
 
 const KEPT_FORK_KEY_PREFIX = "kept-fork:";
 
-export interface SideChatTimelineRowLike {
+interface SideChatTimelineRowLike {
   kind: string;
   text?: string;
   role?: string;
   children?: readonly SideChatTimelineRowLike[] | null;
 }
 
-export function resolveReplySeedText(anchorText: string): string | null {
+function resolveReplySeedText(anchorText: string): string | null {
   const anchor = anchorText.trim();
   return anchor.length > 0 ? anchor : null;
 }
 
-export function timelineRowsContainUserMessage(
+function timelineRowsContainUserMessage(
   rows: readonly SideChatTimelineRowLike[],
 ): boolean {
   const visit = (row: SideChatTimelineRowLike): boolean => {

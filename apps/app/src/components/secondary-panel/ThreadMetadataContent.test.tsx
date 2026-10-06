@@ -30,9 +30,11 @@ import {
   makeHost,
   makeThread as makeThreadFixture,
 } from "@bb/test-helpers/domain-fixtures";
+import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
+  formatBranchComparison,
   GitStatusRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
@@ -247,10 +249,19 @@ describe("EnvironmentRow", () => {
     expect(markup).not.toContain("Modal machine");
   });
 
-  it("shows the create-thread action for a ready environment", () => {
-    expect(renderEnvironmentRow(makeEnvironment())).toContain(
-      'aria-label="New thread in this environment"',
+  it("marks a removed machine and hides execution on a retained environment", () => {
+    const markup = renderEnvironmentRow(
+      makeEnvironment({ status: "ready", hostLifecycle: "removed" }),
+      [],
+      {
+        locality: "remote",
+        identity: { name: "Old laptop", connected: false },
+      },
     );
+    expect(markup).toContain("Unavailable — machine removed");
+    expect(markup).toContain("Old laptop");
+    expect(markup).not.toContain("(offline)");
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("explains the create-thread action in a tooltip", async () => {
@@ -270,12 +281,12 @@ describe("EnvironmentRow", () => {
 
     focusWithKeyboard(
       screen.getByRole("button", {
-        name: "New thread in this environment",
+        name: "New thread in environment",
       }),
     );
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "New thread in this environment",
+      "New thread in environment",
     );
   });
 
@@ -287,7 +298,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("hides the create-thread action before an environment has a path", () => {
@@ -297,7 +308,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("offers the create-thread action on a project's own checkout", () => {
@@ -305,7 +316,7 @@ describe("EnvironmentRow", () => {
       makeEnvironment({ environmentProviderId: null }),
     );
 
-    expect(markup).toContain('aria-label="New thread in this environment"');
+    expect(markup).toContain('aria-label="New thread in environment"');
   });
 
   it("shows a custom provider label with its machine", () => {
@@ -333,16 +344,16 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain('data-icon="Folder"');
   });
 
-  it("shows an explicit environment name before its machine", () => {
+  it("shows the provider and machine without the custom environment name", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({ name: "Design system polish" }),
       [worktreeProvider],
       connectedLocalHost,
     );
 
-    expect(markup).toContain("Design system polish");
+    expect(markup).not.toContain("Design system polish");
     expect(markup).toContain("Michael-M4");
-    expect(markup).not.toContain("· Worktree");
+    expect(markup).toContain("Worktree");
   });
 
   it("shows no provider id while the registered provider list is still loading", () => {
@@ -378,10 +389,39 @@ describe("GitStatusRow", () => {
         })}
         workspaceStatus={undefined}
         workspaceStatusError={new Error("should not have queried")}
-        selectedMergeBaseBranch={undefined}
       />,
     );
 
     expect(markup).toBe("");
+  });
+
+  it("compares the branch with the merge base the daemon reported", () => {
+    const render = (
+      mergeBase: ReturnType<typeof makeWorkspaceMergeBase> | null,
+    ) =>
+      renderToStaticMarkup(
+        <GitStatusRow
+          thread={makeThread()}
+          environment={null}
+          workspaceStatus={makeWorkspaceStatus({ mergeBase })}
+          workspaceStatusError={null}
+        />,
+      );
+
+    expect(
+      render(
+        makeWorkspaceMergeBase({ mergeBaseBranch: "release", aheadCount: 2 }),
+      ),
+    ).toContain("2 ahead of release");
+    expect(render(null)).toBe("");
+  });
+
+  it("phrases the branch comparison against its merge base", () => {
+    const compare = (aheadCount: number, behindCount: number) =>
+      formatBranchComparison({ aheadCount, behindCount, baseBranch: "main" });
+    expect(compare(0, 0)).toBe("Even with main");
+    expect(compare(6, 0)).toBe("6 ahead of main");
+    expect(compare(0, 3)).toBe("3 behind main");
+    expect(compare(4, 2)).toBe("4 ahead, 2 behind main");
   });
 });

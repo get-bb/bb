@@ -147,7 +147,6 @@ export function RootComposeSecondaryContent({
         mainPanelId="root-compose-main-panel"
         main={mainContent}
         composerHost={composerHost}
-        compactPresentation="full"
         renderPanel={({
           presentation,
           canShowNativeBrowserView,

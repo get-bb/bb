@@ -262,7 +262,6 @@ describe("bb thread fork command output", () => {
   it("does not offer a host selector", async () => {
     const help = await getHelpOutput(["thread", "fork"], register);
 
-    expect(help).toContain("personal or worktree");
     expect(help).not.toContain("--host");
     expect(help).not.toContain("--machine");
   });

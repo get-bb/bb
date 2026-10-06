@@ -268,7 +268,7 @@ export function dispatchEnvironmentAndHost(
   // The same DTO `GET /threads/:id?include=host` serves, so a handler reading
   // `host.status` sees the live connection state rather than a stored row.
   return {
-    environment: toEnvironmentResponse(environment),
+    environment: toEnvironmentResponse(deps.db, environment),
     host: getNonDestroyedHostWithStatus(deps, environment.hostId),
   };
 }

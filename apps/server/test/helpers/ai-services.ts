@@ -1,64 +1,68 @@
 import type {
-  ExperimentalAiInferenceCompleteInput,
-  ExperimentalAiInferenceCompleteOutput,
-  ExperimentalAiVoiceTranscribeInput,
-  ExperimentalAiVoiceTranscribeOutput,
-} from "@get-bb/plugin-sdk/ai-services";
-import type { PluginAiServiceKind } from "@get-bb/plugin-sdk";
-import type {
-  AiServiceCallOptions,
-  AiServiceRegistry,
-} from "../../src/services/ai/ai-service-registry.js";
+  PluginAiCompleteOptions,
+  PluginAiServiceStatus,
+  PluginAiTranscribeOptions,
+} from "@get-bb/plugin-sdk";
+import type { AiServiceRegistry } from "../../src/services/ai/ai-service-registry.js";
 
-export interface FakeAiServiceCall<Input> {
-  input: Input;
-  options: AiServiceCallOptions;
+export interface FakeCompleteCall {
+  prompt: string;
+  options: PluginAiCompleteOptions;
+}
+
+export interface FakeTranscribeCall {
+  audio: File;
+  options: PluginAiTranscribeOptions;
+}
+
+export interface RegisterFakeAiServiceArgs {
+  id?: string;
+  displayName?: string;
+  pluginId?: string;
+  builtin?: boolean;
+  complete?:
+    | ((prompt: string, options: PluginAiCompleteOptions) => Promise<string>)
+    | null;
+  transcribe?:
+    | ((audio: File, options: PluginAiTranscribeOptions) => Promise<string>)
+    | null;
+  status?: (() => Promise<PluginAiServiceStatus>) | null;
 }
 
 export function registerFakeAiService(
   registry: AiServiceRegistry,
-  args: {
-    id?: string;
-    kinds?: readonly PluginAiServiceKind[];
-    completeInference?: (
-      input: ExperimentalAiInferenceCompleteInput,
-    ) =>
-      | ExperimentalAiInferenceCompleteOutput
-      | Promise<ExperimentalAiInferenceCompleteOutput>;
-    transcribeVoice?: (
-      input: ExperimentalAiVoiceTranscribeInput,
-    ) =>
-      | ExperimentalAiVoiceTranscribeOutput
-      | Promise<ExperimentalAiVoiceTranscribeOutput>;
-  } = {},
+  args: RegisterFakeAiServiceArgs = {},
 ): {
-  inferenceCalls: FakeAiServiceCall<ExperimentalAiInferenceCompleteInput>[];
-  voiceCalls: FakeAiServiceCall<ExperimentalAiVoiceTranscribeInput>[];
+  completeCalls: FakeCompleteCall[];
+  transcribeCalls: FakeTranscribeCall[];
   dispose(): void;
 } {
-  const inferenceCalls: FakeAiServiceCall<ExperimentalAiInferenceCompleteInput>[] =
-    [];
-  const voiceCalls: FakeAiServiceCall<ExperimentalAiVoiceTranscribeInput>[] =
-    [];
+  const completeCalls: FakeCompleteCall[] = [];
+  const transcribeCalls: FakeTranscribeCall[] = [];
+  const complete = args.complete;
+  const transcribe = args.transcribe;
   const registration = registry.register({
-    id: args.id ?? "codex",
-    displayName: "Fake service",
-    kinds: args.kinds ?? ["inference", "voice"],
-    pluginId: "provider-fake",
-    async completeInference(input, options) {
-      inferenceCalls.push({ input, options });
-      if (!args.completeInference) {
-        throw new Error("fake AI service has no inference handler");
-      }
-      return args.completeInference(input);
-    },
-    async transcribeVoice(input, options) {
-      voiceCalls.push({ input, options });
-      if (!args.transcribeVoice) {
-        throw new Error("fake AI service has no voice handler");
-      }
-      return args.transcribeVoice(input);
-    },
+    id: args.id ?? "fake-ai",
+    displayName: args.displayName ?? "Fake AI",
+    pluginId: args.pluginId ?? "fake-ai-plugin",
+    builtin: args.builtin ?? false,
+    complete:
+      complete === null
+        ? null
+        : async (prompt, options) => {
+            completeCalls.push({ prompt, options });
+            if (complete === undefined) return "Fake reply";
+            return complete(prompt, options);
+          },
+    transcribe:
+      transcribe === null
+        ? null
+        : async (audio, options) => {
+            transcribeCalls.push({ audio, options });
+            if (transcribe === undefined) return "fake transcript";
+            return transcribe(audio, options);
+          },
+    status: args.status ?? null,
   });
-  return { inferenceCalls, voiceCalls, dispose: registration.dispose };
+  return { completeCalls, transcribeCalls, dispose: registration.dispose };
 }

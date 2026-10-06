@@ -1,23 +1,63 @@
-import type { ThreadListEntry } from "@bb/domain";
-import { isThreadRead } from "@bb/client-core";
 import type {
   PluginSidebarProject,
   PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
-import { getThreadDisplayTitle } from "./sidebar-thread.js";
 import type { SidebarProject } from "./use-sidebar-data.js";
 
+export type SidebarThreadEnvironment = NonNullable<
+  PluginSidebarThread["environment"]
+>;
+
+export type SidebarThreadOverrides = Partial<
+  Omit<PluginSidebarThread, "activity">
+> & {
+  activity?: Partial<PluginSidebarThread["activity"]>;
+};
+
+function defaultDisplayTitle(
+  id: string,
+  title: string | null,
+  titleFallback: string | null,
+): string {
+  if (title && title.trim().length > 0) return title;
+  if (titleFallback && titleFallback.trim().length > 0) return titleFallback;
+  return `Thread ${id.slice(0, 8)}`;
+}
+
+export function makeSidebarEnvironment(
+  overrides: Partial<SidebarThreadEnvironment> = {},
+): SidebarThreadEnvironment {
+  return {
+    id: "env_test",
+    name: null,
+    branchName: null,
+    path: null,
+    isWorktree: null,
+    providerId: null,
+    workspaceDisplayKind: "other",
+    ...overrides,
+  };
+}
+
 export function makeSidebarThread(
-  overrides: Partial<PluginSidebarThread> = {},
+  overrides: SidebarThreadOverrides = {},
 ): PluginSidebarThread {
   const id = overrides.id ?? "thr_test";
   const projectId = overrides.projectId ?? "proj_test";
+  const title = overrides.title === undefined ? "Thread" : overrides.title;
+  const titleFallback =
+    overrides.titleFallback === undefined ? "Thread" : overrides.titleFallback;
+  const lastReadAt =
+    overrides.lastReadAt === undefined ? 0 : overrides.lastReadAt;
+  const latestAttentionAt = overrides.latestAttentionAt ?? 1;
+  const pinnedAt = overrides.pinnedAt ?? null;
+  const archivedAt = overrides.archivedAt ?? null;
   return {
     id,
     projectId,
-    title: "Thread",
-    titleFallback: "Thread",
-    displayTitle: overrides.title ?? "Thread",
+    title,
+    titleFallback,
+    displayTitle: defaultDisplayTitle(id, title, titleFallback),
     parentThreadId: null,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
@@ -29,90 +69,31 @@ export function makeSidebarThread(
     runtimeStatus: "idle",
     queuedWork: "none",
     hasPendingInteraction: false,
-    activity: {
-      workflows: 0,
-      backgroundAgents: 0,
-      backgroundCommands: 0,
-      planMode: 0,
-      goals: 0,
-    },
     indicator: "none",
     indicatorLabel: null,
-    isUnread: false,
-    isPinned: false,
-    pinnedAt: null,
+    isUnread: (lastReadAt ?? 0) < latestAttentionAt,
+    isPinned: pinnedAt !== null,
+    pinnedAt,
     pinSortKey: null,
-    isArchived: false,
-    archivedAt: null,
+    isArchived: archivedAt !== null,
+    archivedAt,
     href: `/projects/${projectId}/threads/${id}`,
     isHidden: false,
     environment: null,
     host: null,
     createdAt: 1,
     updatedAt: 1,
-    lastReadAt: 0,
-    latestAttentionAt: 1,
+    lastReadAt,
+    latestAttentionAt,
     ...overrides,
-  };
-}
-
-export function toPluginSidebarThread(
-  entry: ThreadListEntry,
-  host: { id: string; name: string } | null = entry.environmentHostId === null
-    ? null
-    : { id: entry.environmentHostId, name: entry.environmentHostId },
-): PluginSidebarThread {
-  return {
-    id: entry.id,
-    projectId: entry.projectId,
-    title: entry.title,
-    titleFallback: entry.titleFallback,
-    displayTitle: getThreadDisplayTitle(entry),
-    parentThreadId: entry.parentThreadId,
-    lifecycleOwnerThreadId: entry.lifecycleOwnerThreadId,
-    sourceThreadId: entry.sourceThreadId,
-    sectionId: entry.sectionId,
-    originKind: entry.originKind,
-    originPluginId: entry.originPluginId,
-    providerId: entry.providerId,
-    status: entry.status,
-    runtimeStatus: entry.runtime.displayStatus,
-    queuedWork: entry.queuedWork,
-    hasPendingInteraction: entry.hasPendingInteraction,
     activity: {
-      workflows: entry.activity.activeWorkflowCount,
-      backgroundAgents: entry.activity.activeBackgroundAgentCount,
-      backgroundCommands: entry.activity.activeBackgroundCommandCount,
-      planMode: entry.activity.activePlanModeCount,
-      goals: entry.activity.activeGoalCount,
+      workflows: 0,
+      backgroundAgents: 0,
+      backgroundCommands: 0,
+      planMode: 0,
+      goals: 0,
+      ...overrides.activity,
     },
-    indicator: "none",
-    indicatorLabel: null,
-    isUnread: !isThreadRead(entry),
-    isPinned: entry.pinnedAt !== null,
-    pinnedAt: entry.pinnedAt,
-    pinSortKey: entry.pinSortKey,
-    isArchived: entry.archivedAt !== null,
-    archivedAt: entry.archivedAt,
-    href: `/projects/${entry.projectId}/threads/${entry.id}`,
-    isHidden: entry.visibility === "hidden",
-    environment:
-      entry.environmentId === null
-        ? null
-        : {
-            id: entry.environmentId,
-            name: entry.environmentName,
-            branchName: entry.environmentBranchName,
-            path: entry.environmentPath,
-            providerId: entry.environmentProviderId,
-            isWorktree: entry.environmentIsWorktree,
-            workspaceDisplayKind: entry.environmentWorkspaceDisplayKind,
-          },
-    host,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt,
-    lastReadAt: entry.lastReadAt,
-    latestAttentionAt: entry.latestAttentionAt,
   };
 }
 

@@ -6,6 +6,10 @@ const fakeSocketState = vi.hoisted(() => {
   type CloseHandler = () => void;
   type MessageHandler = (event: MessageEvent) => void;
   type OpenHandler = () => void;
+  interface ReconnectOptions {
+    minReconnectionDelay?: number;
+    reconnectionDelayGrowFactor?: number;
+  }
 
   class FakeReconnectingWebSocket {
     onclose: CloseHandler | null = null;
@@ -13,8 +17,14 @@ const fakeSocketState = vi.hoisted(() => {
     onopen: OpenHandler | null = null;
     readyState = 1;
     readonly sentMessages: string[] = [];
+    readonly options: ReconnectOptions | undefined;
 
-    constructor() {
+    constructor(
+      _url: string,
+      _protocols?: unknown,
+      options?: ReconnectOptions,
+    ) {
+      this.options = options;
       instances.push(this);
     }
 
@@ -52,6 +62,8 @@ vi.mock("./dev-websocket-url", () => ({
 import {
   REALTIME_PING_INTERVAL_MS,
   REALTIME_PONG_TIMEOUT_MS,
+  REALTIME_RESUME_HIDDEN_THRESHOLD_MS,
+  REALTIME_RESUME_PONG_TIMEOUT_MS,
   WebSocketManager,
   type WebSocketConnectedEvent,
   type WebSocketManagerBrowserEvents,
@@ -276,8 +288,8 @@ interface FakeBrowserEvents extends WebSocketManagerBrowserEvents {
   goOnline: () => void;
 }
 
-function createFakeBrowserEvents(): FakeBrowserEvents {
-  let visible = true;
+function createFakeBrowserEvents(initiallyVisible = true): FakeBrowserEvents {
+  let visible = initiallyVisible;
   const visibilityListeners = new Set<() => void>();
   const onlineListeners = new Set<() => void>();
   return {
@@ -433,7 +445,7 @@ describe("WebSocketManager liveness", () => {
     browserEvents.setVisible(true);
 
     expect(pingCount(socket)).toBe(1);
-    vi.advanceTimersByTime(REALTIME_PONG_TIMEOUT_MS);
+    vi.advanceTimersByTime(REALTIME_RESUME_PONG_TIMEOUT_MS);
     expect(fakeSocketState.instances).toHaveLength(2);
   });
 
@@ -451,9 +463,101 @@ describe("WebSocketManager liveness", () => {
       id: "thr_1",
       changes: ["events-appended"],
     });
-    vi.advanceTimersByTime(REALTIME_PONG_TIMEOUT_MS);
+    vi.advanceTimersByTime(REALTIME_RESUME_PONG_TIMEOUT_MS);
 
     expect(fakeSocketState.instances).toHaveLength(2);
+  });
+
+  it("reconnects a silent socket 1.5 s after a resume probe, not after 5 s", () => {
+    const { browserEvents, socket } = createLiveManager();
+
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(REALTIME_PING_INTERVAL_MS * 4);
+    browserEvents.setVisible(true);
+    expect(pingCount(socket)).toBe(1);
+
+    vi.advanceTimersByTime(REALTIME_RESUME_PONG_TIMEOUT_MS - 100);
+    expect(fakeSocketState.instances).toHaveLength(1);
+    vi.advanceTimersByTime(100);
+    expect(fakeSocketState.instances).toHaveLength(2);
+  });
+
+  it("shortens a pending interval pong timer when a resume probe fires", () => {
+    const { browserEvents, socket } = createLiveManager();
+
+    vi.advanceTimersByTime(REALTIME_PING_INTERVAL_MS);
+    expect(pingCount(socket)).toBe(1);
+    browserEvents.goOnline();
+    expect(pingCount(socket)).toBe(2);
+
+    vi.advanceTimersByTime(REALTIME_RESUME_PONG_TIMEOUT_MS);
+    expect(fakeSocketState.instances).toHaveLength(2);
+  });
+
+  it("keeps a pending resume pong timer when the interval ping fires", () => {
+    const { browserEvents, socket } = createLiveManager();
+
+    vi.advanceTimersByTime(REALTIME_PING_INTERVAL_MS - 100);
+    browserEvents.goOnline();
+    vi.advanceTimersByTime(100);
+    expect(pingCount(socket)).toBe(2);
+
+    vi.advanceTimersByTime(REALTIME_RESUME_PONG_TIMEOUT_MS - 100);
+    expect(fakeSocketState.instances).toHaveLength(2);
+  });
+
+  it("fires onResumed once after a long hide, never after a short hide, and on online", () => {
+    const { browserEvents, manager } = createLiveManager();
+    const onResumed = vi.fn();
+    manager.onResumed(onResumed);
+
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(REALTIME_RESUME_HIDDEN_THRESHOLD_MS - 3_000);
+    browserEvents.setVisible(true);
+    expect(onResumed).not.toHaveBeenCalled();
+
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(REALTIME_RESUME_HIDDEN_THRESHOLD_MS + 1_000);
+    browserEvents.setVisible(true);
+    browserEvents.setVisible(true);
+    expect(onResumed).toHaveBeenCalledTimes(1);
+
+    browserEvents.goOnline();
+    expect(onResumed).toHaveBeenCalledTimes(2);
+  });
+
+  it("fires onResumed when a tab that started hidden becomes visible after the threshold", () => {
+    const { browserEvents, manager } = createLiveManager(
+      createFakeBrowserEvents(false),
+    );
+    const onResumed = vi.fn();
+    manager.onResumed(onResumed);
+
+    vi.advanceTimersByTime(REALTIME_RESUME_HIDDEN_THRESHOLD_MS + 1_000);
+    browserEvents.setVisible(true);
+
+    expect(onResumed).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire onResumed for online events while hidden", () => {
+    const { browserEvents, manager } = createLiveManager();
+    const onResumed = vi.fn();
+    manager.onResumed(onResumed);
+
+    browserEvents.setVisible(false);
+    browserEvents.goOnline();
+
+    expect(onResumed).not.toHaveBeenCalled();
+  });
+
+  it("schedules the first automatic reconnect within 500 ms of a close", () => {
+    createLiveManager();
+    const options = fakeSocketState.instances[0]?.options;
+    const minDelay = options?.minReconnectionDelay ?? Infinity;
+
+    expect(minDelay).toBeGreaterThanOrEqual(250);
+    expect(minDelay).toBeLessThan(500);
+    expect(options?.reconnectionDelayGrowFactor).toBe(2);
   });
 
   it("reconnects immediately on visible or online when the socket is closed", () => {

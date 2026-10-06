@@ -45,6 +45,7 @@ export function beginSplitDrag(config: SplitDragConfig): void {
   let target: SplitDropTarget | null = null;
   let ghostEl: HTMLElement | null = null;
   let overlayEl: HTMLElement | null = null;
+  let cancelingSidebarReorder = false;
 
   const preventNativeDrag = (event: DragEvent): void => {
     event.preventDefault();
@@ -54,13 +55,18 @@ export function beginSplitDrag(config: SplitDragConfig): void {
   const engage = (): void => {
     engaged = true;
     if (config.cancelSidebarReorderOnEngage) {
-      document.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Escape",
-          code: "Escape",
-          bubbles: true,
-        }),
-      );
+      cancelingSidebarReorder = true;
+      try {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Escape",
+            code: "Escape",
+            bubbles: true,
+          }),
+        );
+      } finally {
+        cancelingSidebarReorder = false;
+      }
     }
     ghostEl =
       config.renderGhost === false ? null : createGhost(config.ghostLabel);
@@ -156,6 +162,7 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     window.removeEventListener("pointermove", handleMove);
     window.removeEventListener("pointerup", handleUp);
     window.removeEventListener("pointercancel", handleCancel);
+    window.removeEventListener("keydown", handleKeyDown, true);
     window.removeEventListener("dragstart", preventNativeDrag);
     ghostEl?.remove();
     overlayEl?.remove();
@@ -193,9 +200,16 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     }
   }
 
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (event.code !== "Escape" || cancelingSidebarReorder) return;
+    event.preventDefault();
+    handleCancel();
+  }
+
   window.addEventListener("pointermove", handleMove);
   window.addEventListener("pointerup", handleUp);
   window.addEventListener("pointercancel", handleCancel);
+  window.addEventListener("keydown", handleKeyDown, true);
 }
 
 function swallowNextClick(): void {

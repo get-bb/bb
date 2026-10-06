@@ -7,13 +7,16 @@ import {
   CommandList,
 } from "@bb/shared-ui/command";
 import {
-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import {
+  ThreadTitle,
+  useResolveThreadTitle,
+} from "@/components/thread/ThreadTitleMentions";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
@@ -48,15 +51,16 @@ export function ParentThreadPicker({
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const resolveTitle = useResolveThreadTitle();
   const filteredOptions = useMemo(
     () =>
       searchPickerOptions({
         options,
         query: searchQuery,
         getLabel: (option) => option.label,
-        getAliases: (option) => [option.value],
+        getAliases: (option) => [option.value, resolveTitle(option.label)],
       }),
-    [options, searchQuery],
+    [options, resolveTitle, searchQuery],
   );
   const selectedLabel =
     options.find((option) => option.value === value)?.label ?? "None";
@@ -82,20 +86,13 @@ export function ParentThreadPicker({
             COARSE_POINTER_TEXT_SM_CLASS,
           )}
         >
-          <span
-            className={cn(
-              "min-w-0 truncate text-foreground",
-              COARSE_POINTER_TEXT_SM_CLASS,
-            )}
-          >
-            {selectedLabel}
-          </span>
+          <ThreadTitle
+            title={selectedLabel}
+            className={cn("text-foreground", COARSE_POINTER_TEXT_SM_CLASS)}
+          />
           <Icon
             name="ChevronDown"
-            className={cn(
-              COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-              "text-muted-foreground",
-            )}
+            className="size-3 shrink-0 text-subtle-foreground max-md:pointer-coarse:size-5"
           />
         </button>
       </PopoverTrigger>
@@ -150,9 +147,7 @@ export function ParentThreadPicker({
                         }}
                         className="flex items-center justify-between gap-3"
                       >
-                        <span className="truncate" title={option.label}>
-                          {option.label}
-                        </span>
+                        <ThreadTitle title={option.label} tooltip />
                         <Icon
                           name="Check"
                           aria-hidden

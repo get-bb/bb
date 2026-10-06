@@ -10,10 +10,16 @@ import {
   type ProvisioningTranscriptEntry,
   type Thread,
 } from "@bb/domain";
-import type { AppDeps } from "../../types.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
-import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
+import {
+  advanceEnvironmentProvisioning,
+  cancelProviderEnvironmentCreation,
+} from "../environments/environment-engine.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
@@ -31,6 +37,8 @@ import {
   type ThreadProvisionContext,
 } from "./thread-startup-store.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { isParentNotifiableChildThread } from "./thread-parent.js";
+import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
 interface EnsureWorkspaceReadyEventArgs {
@@ -142,9 +150,29 @@ export function failThreadProvisioning(
     detail: args.detail,
     scope: threadScope(),
   });
-  applyLoggedThreadLifecycleEvent(deps, {
+  const outcome = applyLoggedThreadLifecycleEvent(deps, {
     event: { type: "run.failed" },
     threadId: args.thread.id,
+  });
+  void cancelProviderEnvironmentCreation(deps, args.thread.id).catch((error) =>
+    deps.logger.warn(
+      { threadId: args.thread.id, error },
+      "Failed environment preparation cleanup will retry",
+    ),
+  );
+  if (outcome.applied) queueChildSetupFailureNotification(deps, args.thread);
+}
+
+export function queueChildSetupFailureNotification(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+): void {
+  if (!isParentNotifiableChildThread(thread)) return;
+  void queueChildThreadTurnNotificationBestEffort(deps, {
+    childThread: thread,
+    parentThreadId: thread.parentThreadId,
+    turnStatus: "failed",
+    failureContext: "failed during workspace setup before a turn began",
   });
 }
 

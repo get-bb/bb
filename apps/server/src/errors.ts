@@ -1,4 +1,5 @@
 import { ProjectAttachmentError } from "@bb/domain";
+import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ThreadEventScopeKind, ThreadEventType } from "@bb/domain";
 import type { ServerLogger } from "./types.js";
@@ -75,9 +76,23 @@ export class TurnStartGuardError extends ApiError {
   }
 }
 
-export function errorToResponse(
+interface FailedRequest {
+  method: string;
+  path: string;
+}
+
+export function createServerErrorHandler(logger: ServerLogger): ErrorHandler {
+  return (error, context) =>
+    errorToResponse(error, logger, {
+      method: context.req.method,
+      path: context.req.path,
+    });
+}
+
+function errorToResponse(
   error: unknown,
   logger: ServerLogger,
+  request: FailedRequest,
 ): Response {
   if (error instanceof ProjectAttachmentError) {
     return new ApiError(400, "invalid_request", error.message).toResponse();
@@ -88,6 +103,17 @@ export function errorToResponse(
       "Rejected turn-scoped server event before turn/started",
     );
     return error.toResponse();
+  }
+  if (error instanceof HTTPException && error.status >= 500) {
+    logger.error(
+      {
+        err: error,
+        ...request,
+        status: error.status,
+        ...(error instanceof ApiError ? { body: error.body } : {}),
+      },
+      "Server error response",
+    );
   }
   if (error instanceof ApiError) {
     return error.toResponse();
@@ -106,7 +132,7 @@ export function errorToResponse(
       },
     );
   }
-  logger.error({ err: error }, "Unhandled server error");
+  logger.error({ err: error, ...request }, "Unhandled server error");
   return new Response(
     JSON.stringify({
       code: "internal_error",

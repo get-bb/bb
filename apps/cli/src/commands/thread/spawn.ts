@@ -35,6 +35,7 @@ import {
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   parseServiceTier,
+  SERVICE_TIER_HELP,
 } from "./helpers.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 
@@ -68,6 +69,7 @@ interface ThreadSpawnCommandOptions {
   file?: string[];
   image?: string[];
   section?: string;
+  pinned?: boolean;
   originKind?: string;
   sourceThread?: string;
   sourceSeqEnd?: string;
@@ -76,7 +78,13 @@ interface ThreadSpawnCommandOptions {
 }
 
 export function looksLikePath(value: string): boolean {
-  return value.includes("/") || value.startsWith(".") || value.startsWith("~");
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:/u.test(value) ||
+    value.startsWith(".") ||
+    value.startsWith("~")
+  );
 }
 
 export function requireHostId(hostId: string | null): string {
@@ -363,7 +371,7 @@ export function registerSpawnCommand(
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--title <title>", "Thread title")
-    .option("--service-tier <tier>", "Service tier: fast or default")
+    .option("--service-tier <tier>", SERVICE_TIER_HELP)
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--plan", PLAN_HELP)
     .option(
@@ -379,6 +387,7 @@ export function registerSpawnCommand(
       [],
     )
     .option("--section <id>", "Create the thread in a section")
+    .option("--pinned", "Create the thread in Pinned")
     .option(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
@@ -593,6 +602,7 @@ export function registerSpawnCommand(
               ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
               : {}),
             ...(opts.section ? { sectionId: opts.section } : {}),
+            ...(opts.pinned ? { pinned: true } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
             ...(sendAt !== undefined ? { sendAt } : {}),

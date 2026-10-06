@@ -8,9 +8,10 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarRenameProvider } from "../rows/SidebarInlineRename.js";
 import { Provider, createStore } from "jotai";
 import {
   installTestPluginRuntime,
@@ -20,15 +21,14 @@ import {
 } from "@get-bb/plugin-sdk/testing/app";
 import type { SectionThreadDndState } from "../dnd/useSectionThreadDnd.js";
 import type { ProjectThreadListState } from "./ProjectRow.js";
+import { buildPinnedSidebarState } from "../model/pinned-sidebar-threads.js";
+import { buildSidebarEntitySectionId } from "../model/sidebar-section-order.js";
 import {
-  buildPinnedSidebarState,
-  buildSidebarEntitySectionId,
-} from "@bb/client-core";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
-import {
+  makeSidebarEnvironment,
   makeSidebarProject,
+  makeSidebarThread,
   sdkResult,
-  toPluginSidebarThread,
+  type SidebarThreadOverrides,
 } from "../model/fixtures.js";
 import {
   sidebarHiddenGroupsAtom,
@@ -40,20 +40,28 @@ installTestPluginRuntime();
 const {
   ChronologicalSectionThreadSections,
   ProjectRow,
+  PinnedEnvironmentThreadGroupRow,
   SectionThreadDragOverlay,
   ThreadTreeNodeRow,
 } = await import("./ProjectRow.js");
+const { ThreadCreationPlacementScope } =
+  await import("./ThreadCreationPlacement.js");
 const { useSidebarModeSectionOrder } =
   await import("./useSidebarModeSectionOrder.js");
 const { SidebarHeaderControls } = await import("./SidebarHeaderControls.js");
+const { SidebarDraftPresenceSync } = await import("./sidebarDraftPresence.js");
 const { ThreadListVisibilityMenuItems } =
   await import("./ThreadListVisibility.js");
 
-function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
-  return makeThreadListEntry({
+function makeThread(overrides: SidebarThreadOverrides = {}): SidebarThread {
+  return makeSidebarThread({
     id: "thr_test",
     title: "Test thread",
     titleFallback: "Test thread",
+    lastReadAt: 100,
+    latestAttentionAt: 100,
+    createdAt: 0,
+    updatedAt: 100,
     ...overrides,
   });
 }
@@ -91,13 +99,16 @@ interface HarnessProps {
 function Harness({ children, store }: HarnessProps) {
   return (
     <TooltipProvider>
-      <Provider store={store}>{children}</Provider>
+      <SidebarDraftPresenceSync />
+      <Provider store={store}>
+        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      </Provider>
     </TooltipProvider>
   );
 }
 
 interface RenderTreeOptions {
-  threads?: readonly ThreadListEntry[];
+  threads?: readonly SidebarThread[];
   draftThreadIds?: readonly string[];
   sdk?: PluginSdkTestFakes;
   store?: ReturnType<typeof createStore>;
@@ -112,7 +123,7 @@ function renderTree(
     { children, store: store ?? createStore() },
     {
       sidebarThreads: {
-        threads: threads.map((thread) => toPluginSidebarThread(thread)),
+        threads,
         projects: [makeSidebarProject()],
       },
       sidebarDraftThreadIds: draftThreadIds,
@@ -150,7 +161,6 @@ function renderPinnedParentWithChild({
       isEnvGrouped={false}
       collapsedThreadIds={isCollapsed ? new Set(["thr_parent"]) : new Set()}
       collapsedEnvironmentIds={new Set()}
-      variant="section"
       onToggleThreadCollapsed={vi.fn()}
       onToggleEnvironmentCollapsed={vi.fn()}
       sectionDnd={sectionDnd}
@@ -208,9 +218,11 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
 
 function CustomSectionsVisibilityProbe({
   threads,
+  buildingName = "Building",
   onProjectSelect,
 }: {
-  threads: ThreadListEntry[];
+  threads: SidebarThread[];
+  buildingName?: string;
   onProjectSelect: () => void;
 }) {
   const { order, persistedOrder, onOrderChange } = useSidebarModeSectionOrder({
@@ -224,7 +236,7 @@ function CustomSectionsVisibilityProbe({
       threadListState={{ status: "ready", threads }}
       compareThreads={() => 0}
       sections={[
-        { id: "sec_building", name: "Building" },
+        { id: "sec_building", name: buildingName },
         { id: "sec_review", name: "Review" },
       ]}
       collapsedThreadIds={new Set()}
@@ -258,7 +270,7 @@ function CustomSectionsVisibilityProbe({
 function renderCollapsedSection(
   sectionId: string,
   name: string,
-  thread: ThreadListEntry,
+  thread: SidebarThread,
   draftThreadIds: readonly string[] = [],
 ) {
   renderTree(
@@ -293,20 +305,24 @@ function renderCollapsedSection(
 const ENVIRONMENT_THREADS = [
   makeThread({
     id: "thr_worktree_a",
-    environmentId: "env_test",
-    environmentName: "Feature workspace",
-    environmentBranchName: "feat/menu-close",
-    environmentProviderId: "git-worktree",
-    environmentIsWorktree: true,
+    environment: makeSidebarEnvironment({
+      id: "env_test",
+      name: "Feature workspace",
+      branchName: "feat/menu-close",
+      providerId: "git-worktree",
+      isWorktree: true,
+    }),
     queuedWork: "none",
   }),
   makeThread({
     id: "thr_worktree_b",
-    environmentId: "env_test",
-    environmentName: "Feature workspace",
-    environmentBranchName: "feat/menu-close",
-    environmentProviderId: "git-worktree",
-    environmentIsWorktree: true,
+    environment: makeSidebarEnvironment({
+      id: "env_test",
+      name: "Feature workspace",
+      branchName: "feat/menu-close",
+      providerId: "git-worktree",
+      isWorktree: true,
+    }),
     queuedWork: "none",
   }),
 ];
@@ -542,6 +558,54 @@ describe("ProjectRow interactions", () => {
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
   });
 
+  it("aligns a nested environment group with its parent guide", () => {
+    const environment = makeSidebarEnvironment({
+      id: "env_nested",
+      name: "Nested workspace",
+      providerId: "git-worktree",
+      isWorktree: true,
+    });
+    const { container } = renderProjectRow(vi.fn(), {
+      status: "ready",
+      threads: [
+        makeThread({ id: "thr_parent", title: "Parent" }),
+        makeThread({
+          id: "thr_child_a",
+          parentThreadId: "thr_parent",
+          environment,
+        }),
+        makeThread({
+          id: "thr_child_b",
+          parentThreadId: "thr_parent",
+          environment,
+        }),
+      ],
+    });
+
+    const group = screen
+      .getByRole("button", { name: "Collapse Nested workspace threads" })
+      .closest("[data-sidebar-sticky-group]");
+    const header = group?.querySelector<HTMLElement>(
+      ".bb-sidebar-hover-actions-row",
+    );
+    const child = group?.querySelector<HTMLElement>(
+      '[data-sidebar-thread-id="thr_child_a"]',
+    );
+    const guide = group?.querySelector<HTMLElement>(
+      ":scope > div.relative > span.bg-border-hairline",
+    );
+
+    expect(
+      container.querySelector('[data-sidebar-thread-id="thr_parent"]'),
+    ).not.toBeNull();
+    expect(header?.style.paddingLeft).toBe("8px");
+    expect(guide?.style.left).toBe("16px");
+    expect(
+      child?.closest<HTMLElement>(".bb-sidebar-hover-actions-row")?.style
+        .paddingLeft,
+    ).toBe("32px");
+  });
+
   it("shows generic runtime activity before a named workflow rollup", () => {
     renderProjectRow(
       vi.fn(),
@@ -551,31 +615,32 @@ describe("ProjectRow interactions", () => {
           makeThread({
             id: "thr_worktree_workflow",
             status: "active",
-            environmentId: "env_test",
-            environmentName: "Feature workspace",
-            environmentBranchName: "feat/menu-close",
-            environmentProviderId: "git-worktree",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env_test",
+              name: "Feature workspace",
+              branchName: "feat/menu-close",
+              providerId: "git-worktree",
+              isWorktree: true,
+            }),
             queuedWork: "none",
             activity: {
-              activeWorkflowCount: 1,
-              activeBackgroundAgentCount: 0,
-              activeBackgroundCommandCount: 0,
-              activePlanModeCount: 0,
-              activeGoalCount: 0,
+              workflows: 1,
+              backgroundAgents: 0,
+              backgroundCommands: 0,
+              planMode: 0,
+              goals: 0,
             },
-            runtime: {
-              displayStatus: "active",
-              hostReconnectGraceExpiresAt: null,
-            },
+            runtimeStatus: "active",
           }),
           makeThread({
             id: "thr_worktree_sibling",
-            environmentId: "env_test",
-            environmentName: "Feature workspace",
-            environmentBranchName: "feat/menu-close",
-            environmentProviderId: "git-worktree",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env_test",
+              name: "Feature workspace",
+              branchName: "feat/menu-close",
+              providerId: "git-worktree",
+              isWorktree: true,
+            }),
             queuedWork: "none",
           }),
         ],
@@ -593,6 +658,40 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
   });
 
+  it.each([
+    { isCollapsed: true, expectedHoverReveal: false },
+    { isCollapsed: false, expectedHoverReveal: true },
+  ])(
+    "sets environment disclosure hover reveal to $expectedHoverReveal when collapsed is $isCollapsed",
+    ({ expectedHoverReveal, isCollapsed }) => {
+      const environment = makeSidebarEnvironment({
+        id: "env_disclosure",
+        name: "Disclosure workspace",
+        providerId: "git-worktree",
+        isWorktree: true,
+      });
+      renderProjectRow(
+        vi.fn(),
+        {
+          status: "ready",
+          threads: [
+            makeThread({ id: "thr_disclosure_one", environment }),
+            makeThread({ id: "thr_disclosure_two", environment }),
+          ],
+        },
+        false,
+        new Set(isCollapsed ? ["env_disclosure"] : []),
+      );
+
+      const toggle = screen.getByRole("button", {
+        name: `${isCollapsed ? "Expand" : "Collapse"} Disclosure workspace threads`,
+      });
+      expect(toggle.classList.contains("bb-sidebar-hover-actions")).toBe(
+        expectedHoverReveal,
+      );
+    },
+  );
+
   it("shows a working draft before named work for a collapsed environment", () => {
     renderProjectRow(
       vi.fn(),
@@ -601,26 +700,30 @@ describe("ProjectRow interactions", () => {
         threads: [
           makeThread({
             id: "thr_worktree_plan",
-            environmentId: "env_draft",
-            environmentName: "Draft workspace",
+            environment: makeSidebarEnvironment({
+              id: "env_draft",
+              name: "Draft workspace",
+              providerId: "git-worktree",
+              isWorktree: true,
+            }),
             queuedWork: "none",
-            environmentProviderId: "git-worktree",
-            environmentIsWorktree: true,
             activity: {
-              activeWorkflowCount: 0,
-              activeBackgroundAgentCount: 0,
-              activeBackgroundCommandCount: 0,
-              activePlanModeCount: 1,
-              activeGoalCount: 0,
+              workflows: 0,
+              backgroundAgents: 0,
+              backgroundCommands: 0,
+              planMode: 1,
+              goals: 0,
             },
           }),
           makeThread({
             id: "thr_worktree_draft",
-            environmentId: "env_draft",
-            environmentName: "Draft workspace",
+            environment: makeSidebarEnvironment({
+              id: "env_draft",
+              name: "Draft workspace",
+              providerId: "git-worktree",
+              isWorktree: true,
+            }),
             queuedWork: "none",
-            environmentProviderId: "git-worktree",
-            environmentIsWorktree: true,
           }),
         ],
       },
@@ -643,9 +746,10 @@ describe("ProjectRow interactions", () => {
         code: "section_name_conflict",
       }),
     );
-    const { sdkCalls } = renderTree(
+    const store = createStore();
+    const slot = renderTree(
       <CustomSectionsVisibilityProbe threads={[]} onProjectSelect={vi.fn()} />,
-      { sdk: { threadSections: { update } } },
+      { sdk: { threadSections: { update } }, store },
     );
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Building section actions" }),
@@ -662,7 +766,7 @@ describe("ProjectRow interactions", () => {
     fireEvent.change(input, { target: { value: "New section" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
-      expect(sdkCalls.at(-1)).toEqual({
+      expect(slot.sdkCalls.at(-1)).toEqual({
         method: "threadSections.update",
         args: [{ id: "sec_building", name: "New section" }],
       }),
@@ -672,6 +776,21 @@ describe("ProjectRow interactions", () => {
         screen.queryByRole("textbox", { name: "Section name" }),
       ).toBeNull(),
     );
+    slot.rerender(
+      <Harness store={store}>
+        <CustomSectionsVisibilityProbe
+          threads={[]}
+          onProjectSelect={vi.fn()}
+          buildingName="New section"
+        />
+      </Harness>,
+    );
+    expect(
+      screen.getByRole("button", { name: "New section section actions" }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Building section actions" }),
+    ).toBeNull();
   });
 
   it("uses shared runtime precedence when a top-level section is collapsed", () => {
@@ -683,16 +802,13 @@ describe("ProjectRow interactions", () => {
         id: "thr_section_active",
         sectionId,
         status: "active",
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
+        runtimeStatus: "active",
         activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 1,
-          activeGoalCount: 1,
+          workflows: 0,
+          backgroundAgents: 0,
+          backgroundCommands: 0,
+          planMode: 1,
+          goals: 1,
         },
       }),
     );
@@ -720,11 +836,11 @@ describe("ProjectRow interactions", () => {
         id: "thr_section_draft",
         sectionId,
         activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 1,
-          activeGoalCount: 1,
+          workflows: 0,
+          backgroundAgents: 0,
+          backgroundCommands: 0,
+          planMode: 1,
+          goals: 1,
         },
       }),
       ["thr_section_draft"],
@@ -902,11 +1018,11 @@ describe("ProjectRow interactions", () => {
         threads: [
           makeThread({
             activity: {
-              activeWorkflowCount: 0,
-              activeBackgroundAgentCount: 0,
-              activeBackgroundCommandCount: 0,
-              activePlanModeCount: 0,
-              activeGoalCount: 1,
+              workflows: 0,
+              backgroundAgents: 0,
+              backgroundCommands: 0,
+              planMode: 0,
+              goals: 1,
             },
           }),
         ],
@@ -954,13 +1070,13 @@ describe("ProjectRow interactions", () => {
         threads: [
           makeThread({
             id: "thr_side_chat",
-            visibility: "hidden",
+            isHidden: true,
             activity: {
-              activeWorkflowCount: 0,
-              activeBackgroundAgentCount: 0,
-              activeBackgroundCommandCount: 0,
-              activePlanModeCount: 1,
-              activeGoalCount: 0,
+              workflows: 0,
+              backgroundAgents: 0,
+              backgroundCommands: 0,
+              planMode: 1,
+              goals: 0,
             },
           }),
         ],
@@ -1007,6 +1123,7 @@ describe("ProjectRow interactions", () => {
           options: {
             projectId: "proj_test",
             environmentId: "env_test",
+            experimental_placement: { sectionId: null, pinned: false },
             focusPrompt: true,
           },
         },
@@ -1049,16 +1166,20 @@ describe("ProjectRow interactions", () => {
       threads: [
         makeThread({
           id: "thr_checkout_a",
-          environmentId: "env_checkout",
-          environmentBranchName: "main",
-          environmentProviderId: null,
+          environment: makeSidebarEnvironment({
+            id: "env_checkout",
+            branchName: "main",
+            providerId: null,
+          }),
           queuedWork: "none",
         }),
         makeThread({
           id: "thr_checkout_b",
-          environmentId: "env_checkout",
-          environmentBranchName: "main",
-          environmentProviderId: null,
+          environment: makeSidebarEnvironment({
+            id: "env_checkout",
+            branchName: "main",
+            providerId: null,
+          }),
           queuedWork: "none",
         }),
       ],
@@ -1074,25 +1195,29 @@ describe("ProjectRow interactions", () => {
       sdkResult({ ok: true, archivedThreadIds: [] }),
     );
     const update = vi.fn(sdkResult({ ok: true }));
-    const { sdkCalls } = renderProjectRow(
+    const { sdkCalls, sidebarActionCalls } = renderProjectRow(
       vi.fn(),
       {
         status: "ready",
         threads: [
           makeThread({
             id: "thr_plain_a",
-            environmentId: "env_plain",
-            environmentBranchName: "main",
-            environmentProviderId: "personal-workspace",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env_plain",
+              branchName: "main",
+              providerId: "personal-workspace",
+              isWorktree: true,
+            }),
             queuedWork: "none",
           }),
           makeThread({
             id: "thr_plain_b",
-            environmentId: "env_plain",
-            environmentBranchName: "main",
-            environmentProviderId: "personal-workspace",
-            environmentIsWorktree: true,
+            environment: makeSidebarEnvironment({
+              id: "env_plain",
+              branchName: "main",
+              providerId: "personal-workspace",
+              isWorktree: true,
+            }),
             queuedWork: "none",
           }),
         ],
@@ -1108,9 +1233,9 @@ describe("ProjectRow interactions", () => {
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-    expect(sdkCalls).toContainEqual({
-      method: "environments.archiveThreads",
-      args: [{ environmentId: "env_plain" }],
+    expect(sidebarActionCalls).toContainEqual({
+      method: "experimental_archiveEnvironmentThreads",
+      environmentId: "env_plain",
     });
 
     fireEvent.pointerDown(
@@ -1130,4 +1255,62 @@ describe("ProjectRow interactions", () => {
       }),
     );
   });
+});
+
+describe("environment creation placement", () => {
+  afterEach(cleanup);
+  it.each([
+    ["pinned", "sec_managers", true],
+    ["pinned-mixed", null, true],
+    ["section:sec_visible", "sec_visible", false],
+    ["project:proj_test", null, false],
+    ["machine:host_test", null, false],
+    ["threads", null, false],
+  ] as const)(
+    "creates in the containing %s group",
+    (groupId, sectionId, pinned) => {
+      const threads = ENVIRONMENT_THREADS.map((thread) => ({
+        ...thread,
+        sectionId:
+          groupId === "pinned-mixed" && thread.id === ENVIRONMENT_THREADS[0].id
+            ? "sec_other"
+            : "sec_managers",
+        pinnedAt: 1,
+      }));
+      const group = buildPinnedSidebarState({
+        threads,
+        groupEnvironmentThreads: true,
+      }).rootItems[0];
+      if (group.kind !== "environment")
+        throw new Error("Expected environment group");
+      const { sidebarActionCalls } = renderTree(
+        <ThreadCreationPlacementScope
+          group={groupId === "pinned-mixed" ? "pinned" : groupId}
+        >
+          <PinnedEnvironmentThreadGroupRow
+            group={group.group}
+            collapsedThreadIds={new Set()}
+            collapsedEnvironmentIds={new Set()}
+            onToggleThreadCollapsed={vi.fn()}
+            onToggleEnvironmentCollapsed={vi.fn()}
+          />
+        </ThreadCreationPlacementScope>,
+        { threads },
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "New thread in environment" }),
+      );
+      expect(sidebarActionCalls).toEqual([
+        {
+          method: "openNewThread",
+          options: {
+            projectId: "proj_test",
+            environmentId: "env_test",
+            focusPrompt: true,
+            experimental_placement: { sectionId, pinned },
+          },
+        },
+      ]);
+    },
+  );
 });

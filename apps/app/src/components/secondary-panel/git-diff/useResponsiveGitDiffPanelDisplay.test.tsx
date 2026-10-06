@@ -1,71 +1,254 @@
 // @vitest-environment jsdom
 
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { act, cleanup, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, expect, it } from "vitest";
-import { useResponsiveGitDiffPanelDisplay } from "./useResponsiveGitDiffPanelDisplay";
+import {
+  GIT_DIFF_DISPLAY_MODE_STORAGE_KEY,
+  GIT_DIFF_LINE_OVERFLOW_MODE_STORAGE_KEY,
+  useGitDiffLineOverflowModePreference,
+} from "@/lib/git-diff-view-preferences";
+import {
+  resolveGitDiffDisplayMode,
+  useResponsiveGitDiffPanelDisplay,
+} from "./useResponsiveGitDiffPanelDisplay";
 
-afterEach(cleanup);
+const NARROW_WIDTH_PX = 500;
+const WIDE_WIDTH_PX = 900;
 
-function renderPanelDisplay(isSecondaryPanelOpen = true) {
-  return renderHook(
-    (props: { isSecondaryPanelOpen: boolean }) =>
-      useResponsiveGitDiffPanelDisplay(props),
-    { initialProps: { isSecondaryPanelOpen } },
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
+
+function renderDisplay() {
+  return renderHook(() =>
+    useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: true }),
   );
 }
 
-it("derives the display mode from the panel width until the user picks one", () => {
-  const { result } = renderPanelDisplay();
+function renderCompactDisplay() {
+  return renderHook(
+    () => useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: true }),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <CompactViewportOverrideProvider isCompactViewport>
+          {children}
+        </CompactViewportOverrideProvider>
+      ),
+    },
+  );
+}
 
-  act(() => result.current.handleSecondaryPanelWidthChange(900));
+it("follows panel width while no explicit preference is stored", () => {
+  const { result } = renderDisplay();
+
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
   expect(result.current.gitDiffDisplayMode).toBe("split");
 
-  act(() => result.current.handleSecondaryPanelWidthChange(500));
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(NARROW_WIDTH_PX);
+  });
+  expect(result.current.gitDiffDisplayMode).toBe("unified");
+
+  expect(
+    window.localStorage.getItem(GIT_DIFF_DISPLAY_MODE_STORAGE_KEY),
+  ).toBeNull();
+});
+
+it("honors an explicit choice at any panel width", () => {
+  const { result } = renderDisplay();
+
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+  act(() => {
+    result.current.handleGitDiffDisplayModeChange("unified");
+  });
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(NARROW_WIDTH_PX);
+  });
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+
   expect(result.current.gitDiffDisplayMode).toBe("unified");
 });
 
-it("keeps an explicit mode while the panel is resized within the same breakpoint", () => {
-  const { result } = renderPanelDisplay();
+it("keeps a stored split choice on a panel narrower than the breakpoint", () => {
+  const { result } = renderDisplay();
 
-  act(() => result.current.handleSecondaryPanelWidthChange(900));
-  act(() => result.current.handleGitDiffDisplayModeChange("unified"));
-
-  act(() => result.current.handleSecondaryPanelWidthChange(880));
-  act(() => result.current.handleSecondaryPanelWidthChange(940));
-
-  expect(result.current.gitDiffDisplayMode).toBe("unified");
-});
-
-it("keeps an explicit mode when a resize crosses the split-view breakpoint", () => {
-  const { result } = renderPanelDisplay();
-
-  act(() => result.current.handleSecondaryPanelWidthChange(500));
-  act(() => result.current.handleGitDiffDisplayModeChange("split"));
-
-  act(() => result.current.handleSecondaryPanelWidthChange(900));
-  act(() => result.current.handleSecondaryPanelWidthChange(400));
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+  act(() => {
+    result.current.handleGitDiffDisplayModeChange("split");
+  });
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(NARROW_WIDTH_PX);
+  });
 
   expect(result.current.gitDiffDisplayMode).toBe("split");
 });
 
-it("keeps an explicit mode across closing and reopening the panel", () => {
-  const { result, rerender } = renderPanelDisplay();
+it("keeps an explicit choice across closing and reopening the panel", () => {
+  const { result, rerender } = renderHook(
+    (props: { isSecondaryPanelOpen: boolean }) =>
+      useResponsiveGitDiffPanelDisplay(props),
+    { initialProps: { isSecondaryPanelOpen: true } },
+  );
 
-  act(() => result.current.handleSecondaryPanelWidthChange(900));
-  act(() => result.current.handleGitDiffDisplayModeChange("unified"));
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+  act(() => {
+    result.current.handleGitDiffDisplayModeChange("unified");
+  });
 
   rerender({ isSecondaryPanelOpen: false });
-  act(() => result.current.handleSecondaryPanelWidthChange(900));
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
   rerender({ isSecondaryPanelOpen: true });
-  act(() => result.current.handleSecondaryPanelWidthChange(900));
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
 
   expect(result.current.gitDiffDisplayMode).toBe("unified");
 });
 
-it("ignores width changes reported while the panel is closed", () => {
-  const { result } = renderPanelDisplay(false);
+it("restores the stored display mode on a fresh mount", () => {
+  const first = renderDisplay();
+  act(() => {
+    first.result.current.handleSecondaryPanelWidthChange(NARROW_WIDTH_PX);
+  });
+  act(() => {
+    first.result.current.handleGitDiffDisplayModeChange("split");
+  });
+  cleanup();
 
-  act(() => result.current.handleSecondaryPanelWidthChange(900));
+  const { result } = renderDisplay();
+  expect(result.current.gitDiffDisplayMode).toBe("split");
+});
+
+it("ignores an unrecognized stored display mode", () => {
+  window.localStorage.setItem(GIT_DIFF_DISPLAY_MODE_STORAGE_KEY, "sideways");
+
+  const { result } = renderDisplay();
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+
+  expect(result.current.gitDiffDisplayMode).toBe("split");
+});
+
+it("does not track width changes while the panel is closed", () => {
+  const { result } = renderHook(() =>
+    useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: false }),
+  );
+
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
 
   expect(result.current.gitDiffDisplayMode).toBe("unified");
+});
+
+it("defaults a compact viewport to unified even with split stored", () => {
+  window.localStorage.setItem(GIT_DIFF_DISPLAY_MODE_STORAGE_KEY, "split");
+
+  const { result } = renderCompactDisplay();
+
+  expect(result.current.gitDiffDisplayMode).toBe("unified");
+});
+
+it("lets a compact viewport toggle to split", () => {
+  const { result } = renderCompactDisplay();
+
+  act(() => {
+    result.current.handleGitDiffDisplayModeChange("split");
+  });
+
+  expect(result.current.gitDiffDisplayMode).toBe("split");
+});
+
+it("does not persist a compact viewport toggle", () => {
+  const first = renderCompactDisplay();
+  act(() => {
+    first.result.current.handleGitDiffDisplayModeChange("split");
+  });
+  expect(
+    window.localStorage.getItem(GIT_DIFF_DISPLAY_MODE_STORAGE_KEY),
+  ).toBeNull();
+  cleanup();
+
+  const { result } = renderCompactDisplay();
+  expect(result.current.gitDiffDisplayMode).toBe("unified");
+});
+
+it("leaves an existing stored preference untouched when toggling on compact", () => {
+  window.localStorage.setItem(GIT_DIFF_DISPLAY_MODE_STORAGE_KEY, "split");
+
+  const compact = renderCompactDisplay();
+  act(() => {
+    compact.result.current.handleGitDiffDisplayModeChange("unified");
+  });
+  cleanup();
+
+  expect(window.localStorage.getItem(GIT_DIFF_DISPLAY_MODE_STORAGE_KEY)).toBe(
+    "split",
+  );
+
+  const { result } = renderDisplay();
+  expect(result.current.gitDiffDisplayMode).toBe("split");
+});
+
+it("resolves display mode from viewport, preference, and width", () => {
+  const resolve = (
+    isCompactViewport: boolean,
+    compactDisplayMode: "unified" | "split" | null,
+    displayModePreference: "unified" | "split" | null,
+    isWideEnoughForSplit: boolean | null,
+  ) =>
+    resolveGitDiffDisplayMode({
+      isCompactViewport,
+      compactDisplayMode,
+      displayModePreference,
+      isWideEnoughForSplit,
+    });
+
+  expect(resolve(true, null, "split", true)).toBe("unified");
+  expect(resolve(true, "split", "unified", false)).toBe("split");
+  expect(resolve(true, "unified", "split", true)).toBe("unified");
+
+  expect(resolve(false, null, null, null)).toBe("unified");
+  expect(resolve(false, null, null, false)).toBe("unified");
+  expect(resolve(false, null, null, true)).toBe("split");
+  expect(resolve(false, "split", null, false)).toBe("unified");
+  expect(resolve(false, null, "split", false)).toBe("split");
+  expect(resolve(false, null, "unified", true)).toBe("unified");
+});
+
+it("restores the stored line overflow mode on a fresh mount", () => {
+  const first = renderHook(() => useGitDiffLineOverflowModePreference());
+  act(() => {
+    first.result.current[1]("wrap");
+  });
+  expect(
+    window.localStorage.getItem(GIT_DIFF_LINE_OVERFLOW_MODE_STORAGE_KEY),
+  ).toBe("wrap");
+  cleanup();
+
+  const { result } = renderHook(() => useGitDiffLineOverflowModePreference());
+  expect(result.current[0]).toBe("wrap");
+});
+
+it("falls back to scroll for an unrecognized stored line overflow mode", () => {
+  window.localStorage.setItem(GIT_DIFF_LINE_OVERFLOW_MODE_STORAGE_KEY, "fold");
+
+  const { result } = renderHook(() => useGitDiffLineOverflowModePreference());
+  expect(result.current[0]).toBe("scroll");
 });

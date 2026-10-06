@@ -21,8 +21,18 @@ describe("loadPluginReferences", () => {
     }));
     const search = vi.fn(async () => ({
       results: [
-        { pluginId: "github", icon: "Github", iconUrl: null, iconTinted: false },
-        { pluginId: "tasks", icon: "ListTodo", iconUrl: null, iconTinted: true },
+        {
+          pluginId: "github",
+          icon: "Github",
+          iconUrl: null,
+          iconTinted: false,
+        },
+        {
+          pluginId: "tasks",
+          icon: "ListTodo",
+          iconUrl: null,
+          iconTinted: true,
+        },
       ],
       collections: [],
     }));
@@ -30,9 +40,7 @@ describe("loadPluginReferences", () => {
       { plugins: { list, catalog: { search } } } as never,
       new AbortController().signal,
     );
-    expect(search).toHaveBeenCalledWith(
-      expect.objectContaining({ query: "" }),
-    );
+    expect(search).toHaveBeenCalledWith(expect.objectContaining({ query: "" }));
     expect([...references.keys()].sort()).toEqual(["docs", "github", "tasks"]);
     expect(references.get("github")).toEqual({
       id: "github",
@@ -53,7 +61,12 @@ describe("loadPluginReferences", () => {
           catalog: {
             search: async () => ({
               results: [
-                { pluginId: "tasks", icon: null, iconUrl: null, iconTinted: false },
+                {
+                  pluginId: "tasks",
+                  icon: null,
+                  iconUrl: null,
+                  iconTinted: false,
+                },
               ],
               collections: [],
             }),

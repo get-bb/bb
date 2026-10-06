@@ -43,7 +43,7 @@ export function AccountServersList({
   return (
     <SettingsSection
       title="Servers on this account"
-      footnote="One pairing covers every server on the account: the credential and the session cookie are account-wide. Servers paired later show up here too."
+      footnote="Your paired servers appear here automatically."
       testID="connect-account-servers"
     >
       {state.status === "loading" || state.status === "idle" ? (
@@ -81,17 +81,8 @@ export function AccountServersList({
             <GroupedRow
               key={server.handle}
               title={server.name}
-              subtitle={server.url}
+              subtitle={`${isSelf ? "This server" : saved ? "Saved" : server.live ? "Online" : "Offline"} · ${server.url}`}
               leading="Globe"
-              value={
-                isSelf
-                  ? "This server"
-                  : saved
-                    ? "Saved"
-                    : server.live
-                      ? "Online"
-                      : "Offline"
-              }
               trailing={
                 isSelf ? (
                   "checkmark"

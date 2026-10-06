@@ -411,36 +411,6 @@ describe("completed event output migration", () => {
     db.$client.close();
   });
 
-  it("persists progress across an in-memory database restart", () => {
-    const migratedAt = 1_800_000_000_000;
-    const output = "r".repeat(40_000);
-    const setupResult = setup();
-    for (const sequence of [1, 2]) {
-      insertLegacyOutput({
-        createdAt: migratedAt - 1,
-        db: setupResult.db,
-        eventId: `evt_restart_${sequence}`,
-        itemKind: "commandExecution",
-        output: `${sequence}-${output}`,
-        outputPath: "aggregatedOutput",
-        sequence,
-        threadId: setupResult.thread.id,
-      });
-    }
-    expect(migrateCommandOutput(setupResult.db, migratedAt).eventId).toBe(
-      "evt_restart_1",
-    );
-    const serialized = setupResult.db.$client.serialize();
-    setupResult.db.$client.close();
-
-    const restarted = createConnection(serialized);
-    expect(migrateCommandOutput(restarted, migratedAt).eventId).toBe(
-      "evt_restart_2",
-    );
-    expect(restarted.select().from(retainedEventOutputs).all()).toHaveLength(2);
-    restarted.$client.close();
-  });
-
   it("advances past a byte-large value below the UTF-16 threshold across restart", () => {
     const migratedAt = 1_800_000_000_000;
     const setupResult = setup();

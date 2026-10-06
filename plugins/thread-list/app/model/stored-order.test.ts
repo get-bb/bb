@@ -1,56 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  arrangeByStoredOrder,
-  haveSameOrder,
-  reorderStoredOrder,
-} from "./stored-order.js";
-
-const getId = (item: { id: string }) => item.id;
-
-describe("arrangeByStoredOrder", () => {
-  it("keeps registration order before anything has been reordered", () => {
-    const { ordered, normalizedOrder } = arrangeByStoredOrder({
-      items: [{ id: "browser" }, { id: "terminal" }],
-      getId,
-      storedOrder: [],
-    });
-
-    expect(ordered.map(getId)).toEqual(["browser", "terminal"]);
-    expect(normalizedOrder).toEqual(["browser", "terminal"]);
-  });
-
-  it("appends items that appeared after the user customized the order", () => {
-    const { ordered } = arrangeByStoredOrder({
-      items: [{ id: "browser" }, { id: "terminal" }, { id: "side-chat" }],
-      getId,
-      storedOrder: ["terminal", "browser"],
-    });
-
-    expect(ordered.map(getId)).toEqual(["terminal", "browser", "side-chat"]);
-  });
-
-  it("keeps the slot of an absent item so its position survives a reload", () => {
-    const { ordered, normalizedOrder } = arrangeByStoredOrder({
-      items: [{ id: "browser" }, { id: "terminal" }],
-      getId,
-      storedOrder: ["side-chat", "terminal", "browser"],
-    });
-
-    expect(ordered.map(getId)).toEqual(["terminal", "browser"]);
-    expect(normalizedOrder).toEqual(["side-chat", "terminal", "browser"]);
-  });
-
-  it("drops duplicate stored ids", () => {
-    const { ordered, normalizedOrder } = arrangeByStoredOrder({
-      items: [{ id: "browser" }],
-      getId,
-      storedOrder: ["browser", "browser"],
-    });
-
-    expect(ordered.map(getId)).toEqual(["browser"]);
-    expect(normalizedOrder).toEqual(["browser"]);
-  });
-});
+import { haveSameOrder, reorderStoredOrder } from "./stored-order.js";
 
 describe("reorderStoredOrder", () => {
   it("moves an item onto its drop target", () => {

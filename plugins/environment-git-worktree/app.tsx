@@ -48,7 +48,7 @@ const EXISTING_WORKTREE_LABEL = "Existing worktree";
 
 type WorktreeIntent = "new" | "existing";
 
-export function selectedBranchName(value: JsonValue | null): string | null {
+function selectedBranchName(value: JsonValue | null): string | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
@@ -61,7 +61,7 @@ export function selectedBranchName(value: JsonValue | null): string | null {
     : null;
 }
 
-export function selectedExistingPath(value: JsonValue | null): string | null {
+function selectedExistingPath(value: JsonValue | null): string | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
@@ -70,7 +70,7 @@ export function selectedExistingPath(value: JsonValue | null): string | null {
     : null;
 }
 
-export function worktreePathLabel(path: string): string {
+function worktreePathLabel(path: string): string {
   return path.split("/").filter(Boolean).slice(-2).join("/") || path;
 }
 

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   Account,
   AccountPoolConfig,
@@ -12,7 +13,36 @@ import type { AccountStore, QuotaStore } from "./store.js";
 const OAUTH_REFRESH_TIMEOUT_MS = 15_000;
 const OAUTH_REFRESH_WINDOW_MS = 5 * 60 * 1_000;
 
-export class TransientOAuthRefreshError extends Error {
+const oauthErrorCodeSchema = z.enum([
+  "invalid_grant",
+  "invalid_client",
+  "invalid_request",
+  "unauthorized_client",
+  "unsupported_grant_type",
+  "invalid_scope",
+  "access_denied",
+  "server_error",
+  "temporarily_unavailable",
+  "refresh_token_expired",
+  "refresh_token_reused",
+  "refresh_token_invalidated",
+]);
+const oauthErrorDescriptionSchema = z.enum([
+  "Refresh token expired",
+  "Refresh token revoked",
+  "Invalid refresh token",
+]);
+const oauthErrorSchema = z.object({
+  error: z.union([
+    oauthErrorCodeSchema,
+    z.object({ code: oauthErrorCodeSchema }),
+  ]),
+  error_description: z.unknown().optional(),
+});
+
+export class OAuthRefreshError extends Error {}
+
+export class TransientOAuthRefreshError extends OAuthRefreshError {
   constructor(
     message: string,
     readonly retryAfterMs: number,
@@ -143,20 +173,16 @@ export async function fetchOAuthRefresh(
       );
     }
     if (!response.ok) {
-      const message = `OAuth refresh failed with HTTP ${response.status}.`;
       const retryAfterMs = retryAfterMilliseconds(
         response.headers.get("retry-after"),
         context.now(),
       );
-      void response.body?.cancel().catch(() => undefined);
-      if (
-        response.status === 408 ||
-        response.status === 429 ||
-        response.status >= 500
-      ) {
-        throw new TransientOAuthRefreshError(message, retryAfterMs);
+      const detail = await oauthRefreshErrorDetail(response, timedOut);
+      const message = `OAuth refresh failed with HTTP ${response.status}.${detail}`;
+      if (response.status === 400 || response.status === 401) {
+        throw new OAuthRefreshError(message);
       }
-      throw new Error(message);
+      throw new TransientOAuthRefreshError(message, retryAfterMs);
     }
     try {
       return await Promise.race([response.text(), timedOut]);
@@ -169,6 +195,75 @@ export async function fetchOAuthRefresh(
   } finally {
     signal.removeEventListener("abort", onTimeout);
   }
+}
+
+async function oauthRefreshErrorDetail(
+  response: Response,
+  timedOut: Promise<never>,
+): Promise<string> {
+  if (
+    !response.headers.get("content-type")?.includes("application/json") ||
+    response.body === null
+  ) {
+    void response.body?.cancel().catch(() => undefined);
+    return "";
+  }
+  const reader = response.body.getReader();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("OAuth error body timed out")),
+      1_000,
+    );
+  });
+  try {
+    const bytes: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const chunk = await Promise.race([reader.read(), timedOut, deadline]);
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > 4_096) return "";
+      bytes.push(chunk.value);
+    }
+    const parsed = oauthErrorSchema.safeParse(
+      JSON.parse(Buffer.concat(bytes).toString("utf8")),
+    );
+    if (!parsed.success) return "";
+    const code =
+      typeof parsed.data.error === "string"
+        ? parsed.data.error
+        : parsed.data.error.code;
+    const description = oauthErrorDescriptionSchema.safeParse(
+      parsed.data.error_description,
+    );
+    return ` ${code}${description.success ? `: ${description.data}` : ""}.`;
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+    void reader.cancel().catch(() => undefined);
+  }
+}
+
+export function parseOAuthRefreshResponse<T>(
+  text: string,
+  schema: z.ZodType<T>,
+): T {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = undefined;
+  }
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    throw new TransientOAuthRefreshError(
+      "OAuth refresh returned an unreadable response.",
+      0,
+    );
+  }
+  return parsed.data;
 }
 
 export function filterRequestHeaders(

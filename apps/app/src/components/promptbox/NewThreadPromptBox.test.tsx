@@ -60,7 +60,6 @@ describe("ProjectlessMachineSlot", () => {
       primaryHostId: string | null;
     } | null;
     machineProviders?: readonly SystemMachineProvider[];
-    multiMachinePickerEnabled?: boolean;
   }) {
     return {
       value: "provider:personal-workspace",
@@ -77,7 +76,6 @@ describe("ProjectlessMachineSlot", () => {
             },
       providers: [personalWorkspaceProvider],
       machineProviders: overrides?.machineProviders,
-      multiMachinePickerEnabled: overrides?.multiMachinePickerEnabled,
       selectedProviderHostId: overrides?.selectedProviderHostId ?? host.id,
       onSelectProvider: overrides?.onSelectProvider ?? vi.fn(),
     };
@@ -149,20 +147,6 @@ describe("ProjectlessMachineSlot", () => {
     expect(chip.textContent).not.toContain("Modal Sandbox");
   });
 
-  it("names the selected machine in the chip", () => {
-    render(
-      <ProjectlessMachineSlot
-        environment={makeEnvironment({
-          selectedProviderHostId: secondHost.id,
-        })}
-      />,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Machine" }).textContent,
-    ).toContain("Mac Studio");
-  });
-
   it("routes a machine pick through the selected provider", () => {
     const onSelectProvider = vi.fn();
     render(
@@ -183,29 +167,6 @@ describe("ProjectlessMachineSlot", () => {
       personalWorkspaceProvider,
       host.id,
     );
-  });
-
-  it("passes the experiment through to machine search", () => {
-    const manyHosts = Array.from({ length: 6 }, (_, index) =>
-      makeHost({ id: `host_${index}`, name: `Machine ${index}` }),
-    );
-    render(
-      <ProjectlessMachineSlot
-        environment={makeEnvironment({
-          machines: {
-            hosts: manyHosts,
-            localDaemonHostId: manyHosts[0]!.id,
-            primaryHostId: manyHosts[0]!.id,
-          },
-          multiMachinePickerEnabled: true,
-        })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Machine" }));
-    expect(
-      screen.getByRole("combobox", { name: "Search machines" }),
-    ).toBeTruthy();
   });
 });
 
@@ -273,7 +234,6 @@ describe("EnvironmentSlot", () => {
     value?: string;
     providers?: readonly SystemEnvironmentProvider[];
     machineProviders?: readonly SystemMachineProvider[];
-    multiMachinePickerEnabled?: boolean;
     onSelectProvider?: (
       provider: SystemEnvironmentProvider,
       hostId: string | null,
@@ -294,7 +254,6 @@ describe("EnvironmentSlot", () => {
       selectedProviderHostId: host.id,
       onSelectProvider: overrides.onSelectProvider ?? vi.fn(),
       machineProviders: overrides.machineProviders,
-      multiMachinePickerEnabled: overrides.multiMachinePickerEnabled,
     };
   }
 
@@ -338,19 +297,6 @@ describe("EnvironmentSlot", () => {
     );
     expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
     expect(screen.getByRole("button", { name: "Machine" })).not.toBeNull();
-  });
-
-  it("keeps the machine slot when only one provider is available", () => {
-    render(
-      <EnvironmentSlot
-        projectless
-        environment={makeEnvironment({ providers: [personalProvider] })}
-        worktree={makeWorktree()}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "Machine" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
   });
 
   it("omits project-only providers from the projectless picker", () => {

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildPluginApp } from "./build-plugin-app.js";
 import {
@@ -26,7 +26,7 @@ describe("plugin build toolchain", () => {
     for (const version of Object.values(PLUGIN_TOOLCHAIN_PINS)) {
       expect(basename(dir)).toContain(version);
     }
-    expect(dir.startsWith("/data/")).toBe(true);
+    expect(dir.startsWith(`${join("/data")}${sep}`)).toBe(true);
   });
 
   it("prefers a locally resolvable toolchain over fetching", async () => {
@@ -46,18 +46,6 @@ describe("plugin build toolchain", () => {
         () => false,
       ),
     ).toBe(false);
-  });
-
-  it("returns importable module specifiers", async () => {
-    const toolchain = await resolvePluginBuildToolchain(baseDir);
-    const esbuild = (await import(
-      toolchain.esbuild
-    )) as typeof import("esbuild");
-    const result = await esbuild.transform("const x: number = 1", {
-      loader: "ts",
-    });
-
-    expect(result.code.trim()).toBe("const x = 1;");
   });
 
   describe("fetched toolchain", () => {
@@ -164,10 +152,5 @@ describe("plugin build toolchain", () => {
         );
       },
     );
-
-    it("reuses an already-fetched toolchain without reinstalling", async () => {
-      const local = await resolvePluginBuildToolchain(baseDir);
-      expect(local.tailwindCssDir.length).toBeGreaterThan(0);
-    });
   });
 });

@@ -12,9 +12,7 @@ export function getFollowUpPromptPlaceholder(
     case "stopping":
       return "Queue a message to run after the stop";
     case "waiting-for-host":
-      return "Host disconnected";
-    case "host-reconnecting":
-      return "Waiting for host to reconnect...";
+      return "Queue a message for when the host reconnects";
     case "error":
       return "Retry by sending a follow-up message";
     case "pending":
@@ -37,9 +35,7 @@ export function getCompactFollowUpPromptPlaceholder(
     case "stopping":
       return "Queue for after the stop";
     case "waiting-for-host":
-      return "Host disconnected";
-    case "host-reconnecting":
-      return "Reconnecting...";
+      return "Queue for when the host is back";
     case "error":
       return "Send a follow-up";
     case "pending":

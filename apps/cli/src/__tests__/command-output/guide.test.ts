@@ -59,12 +59,11 @@ describe("bb guide command output", () => {
     expect(errorOutput).toContain("Command groups: browser, status");
   }, 30_000);
 
-  it("bb guide terminals documents explicit scopes and ID-only mutations", async () => {
+  it("bb guide terminals renders the terminals chapter", async () => {
     await runCommand(["guide", "terminals"], registerGuideCommand);
 
-    const output = collectLogLines(vi.mocked(console.log)).join("\n");
-    expect(output).toContain("exactly one explicit scope");
-    expect(output).toContain("bb terminal list --thread <thread-id>");
-    expect(output).toContain("bb terminal rename <terminal-id> <title>");
+    expect(collectLogLines(vi.mocked(console.log)).join("\n")).toContain(
+      "bb terminal list --thread <thread-id>",
+    );
   });
 });

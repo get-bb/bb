@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   areEnvironmentFilePreviewSourcesEqual,
+  FILE_PREVIEW_TEXT_MAX_BYTES,
   buildFilePreview,
+  buildFilePreviewFromSample,
   isCsvFilePreview,
   isMarkdownFilePreview,
   normalizeFilePreviewMimeType,
@@ -114,12 +116,71 @@ describe("file-preview", () => {
       mimeType: "text/plain",
       path: "broken.txt",
       url: "/files/broken.txt",
+      reason: "binary",
+      sizeBytes: 3,
     });
     expect(binaryPreview).toEqual({
       kind: "unsupported",
       mimeType: "application/octet-stream",
       path: "archive.bin",
       url: "/files/archive.bin",
+      reason: "binary",
+      sizeBytes: 4,
+    });
+  });
+
+  describe("buildFilePreviewFromSample", () => {
+    const target = { path: "qa/sample", url: "/raw/qa/sample" };
+
+    it("classifies a binary sample without needing the rest of the file", () => {
+      expect(
+        buildFilePreviewFromSample({
+          ...target,
+          mimeType: "application/zip",
+          sampleBytes: Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff]),
+          sizeBytes: 90_000_000,
+        }),
+      ).toEqual({
+        kind: "unsupported",
+        mimeType: "application/zip",
+        ...target,
+        reason: "binary",
+        sizeBytes: 90_000_000,
+      });
+    });
+
+    it("treats a UTF-8 sample cut inside a character as text needing full content", () => {
+      const euro = new TextEncoder().encode("price: €");
+      expect(
+        buildFilePreviewFromSample({
+          ...target,
+          mimeType: "application/octet-stream",
+          sampleBytes: euro.subarray(0, euro.length - 1),
+          sizeBytes: 200_000,
+        }),
+      ).toBeNull();
+    });
+
+    it("refuses to fetch text larger than the preview limit", () => {
+      expect(
+        buildFilePreviewFromSample({
+          ...target,
+          mimeType: "text/plain",
+          sampleBytes: new TextEncoder().encode("log line\n"),
+          sizeBytes: FILE_PREVIEW_TEXT_MAX_BYTES + 1,
+        }),
+      ).toMatchObject({ kind: "unsupported", reason: "too-large" });
+    });
+
+    it("keeps media previews on the raw URL", () => {
+      expect(
+        buildFilePreviewFromSample({
+          ...target,
+          mimeType: "video/mp4",
+          sampleBytes: Uint8Array.from([0x00, 0x00, 0x00, 0x18, 0xff]),
+          sizeBytes: 5_000_000,
+        }),
+      ).toMatchObject({ kind: "video", url: target.url });
     });
   });
 

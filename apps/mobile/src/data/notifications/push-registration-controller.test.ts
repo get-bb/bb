@@ -18,10 +18,11 @@ function setup() {
   let tokenListener: ((deviceToken: string) => void) | null = null;
   const notifications: PushNotificationsModule = {
     projectId: "eas",
-    platform: "ios",
+    platform: "android",
     getPermission: async () => "granted",
     requestPermission: async () => "granted",
     getExpoPushToken: vi.fn(() => tokenGate.promise),
+    unregisterDevicePushToken: vi.fn(async () => undefined),
     addTokenListener(listener) {
       tokenListener = listener;
       return () => {
@@ -117,13 +118,8 @@ describe("createPushRegistrationController", () => {
   });
 
   it("ignores repeated device token events and events caused by an active sync", async () => {
-    const {
-      controller,
-      store,
-      notifications,
-      tokenGate,
-      emitDeviceToken,
-    } = setup();
+    const { controller, store, notifications, tokenGate, emitDeviceToken } =
+      setup();
     store.setEnabled(profile.id, true);
     tokenGate.resolve("expo-token");
     await controller.sync(profile);
@@ -157,5 +153,66 @@ describe("createPushRegistrationController", () => {
     expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(3);
     activeTokenGate.resolve("expo-token");
     await activeSync;
+  });
+});
+
+describe("device push token consent", () => {
+  it("releases the Android token after OS permission is revoked without fetching a replacement", async () => {
+    const { controller, notifications, tokenGate } = setup();
+    tokenGate.resolve("tok");
+    await controller.setEnabled(profile, true);
+    notifications.getPermission = async () => "denied";
+    vi.mocked(notifications.getExpoPushToken).mockClear();
+    await controller.sync(profile);
+    expect(notifications.getExpoPushToken).not.toHaveBeenCalled();
+    expect(notifications.unregisterDevicePushToken).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a shared token until the last server opts out, including failed server cleanup", async () => {
+    const { controller, notifications, tokenGate, api, store } = setup();
+    tokenGate.resolve("tok");
+    const other = { ...profile, id: "p2", serverUrl: "https://b" };
+    await controller.setEnabled(profile, true);
+    await controller.setEnabled(other, true);
+    await controller.setEnabled(profile, false);
+    expect(notifications.unregisterDevicePushToken).not.toHaveBeenCalled();
+    api.unregister.mockRejectedValueOnce(new Error("offline"));
+    expect(await controller.setEnabled(other, false)).toMatchObject({
+      action: "failed",
+      step: "unregister",
+    });
+    expect(notifications.unregisterDevicePushToken).toHaveBeenCalledOnce();
+    expect(store.getRegistration(other.id)).not.toBeNull();
+  });
+
+  it("cleans up a token when a profile with a failed registration is removed", async () => {
+    const { controller, notifications, tokenGate, api, store } = setup();
+    tokenGate.resolve("tok");
+    api.register.mockRejectedValueOnce(new Error("offline"));
+    await controller.setEnabled(profile, true);
+    await controller.reconcileRemovedProfiles([]);
+    expect(store.isEnabled(profile.id)).toBe(false);
+    expect(notifications.unregisterDevicePushToken).toHaveBeenCalledOnce();
+  });
+
+  it("waits for token deletion before registering a newly enabled server", async () => {
+    const { controller, notifications, tokenGate } = setup();
+    tokenGate.resolve("old-token");
+    await controller.setEnabled(profile, true);
+    const deletion = deferred<void>();
+    vi.mocked(notifications.unregisterDevicePushToken).mockImplementationOnce(
+      () => deletion.promise,
+    );
+    const disable = controller.setEnabled(profile, false);
+    await vi.waitFor(() =>
+      expect(notifications.unregisterDevicePushToken).toHaveBeenCalledOnce(),
+    );
+    vi.mocked(notifications.getExpoPushToken).mockClear();
+    const enable = controller.setEnabled({ ...profile, id: "p2" }, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(notifications.getExpoPushToken).not.toHaveBeenCalled();
+    deletion.resolve();
+    await Promise.all([disable, enable]);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledOnce();
   });
 });

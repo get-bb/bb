@@ -1,6 +1,6 @@
 import * as React from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { Skeleton } from "@bb/shared-ui/skeleton";
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const SIDEBAR_CONTENT_SELECTOR = '[data-sidebar="content"]';
 

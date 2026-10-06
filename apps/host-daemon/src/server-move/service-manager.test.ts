@@ -127,32 +127,35 @@ describe("restartService", () => {
     ]);
   });
 
-  it("runs launchctl bootout before bootstrap in the helper script", async () => {
-    const root = await mkdtemp(join(tmpdir(), "bb-launchd-helper-test-"));
-    roots.push(root);
-    const callsPath = join(root, "calls.log");
-    const launchctlPath = join(root, "launchctl");
-    await writeFile(
-      launchctlPath,
-      `#!/bin/sh\nprintf '%s\\n' "$*" >> "${callsPath}"\n`,
-    );
-    await chmod(launchctlPath, 0o755);
+  it.skipIf(process.platform === "win32")(
+    "runs launchctl bootout before bootstrap in the helper script",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "bb-launchd-helper-test-"));
+      roots.push(root);
+      const callsPath = join(root, "calls.log");
+      const launchctlPath = join(root, "launchctl");
+      await writeFile(
+        launchctlPath,
+        `#!/bin/sh\nprintf '%s\\n' "$*" >> "${callsPath}"\n`,
+      );
+      await chmod(launchctlPath, 0o755);
 
-    await execFileAsync(
-      "/bin/sh",
-      [
-        "-c",
-        LAUNCHD_RESTART_SCRIPT,
-        "bb-server-move-restart",
-        "gui/501",
-        "/Users/me/Library/LaunchAgents/app.plist",
-      ],
-      { env: { PATH: `${root}${delimiter}${process.env.PATH ?? ""}` } },
-    );
+      await execFileAsync(
+        "/bin/sh",
+        [
+          "-c",
+          LAUNCHD_RESTART_SCRIPT,
+          "bb-server-move-restart",
+          "gui/501",
+          "/Users/me/Library/LaunchAgents/app.plist",
+        ],
+        { env: { PATH: `${root}${delimiter}${process.env.PATH ?? ""}` } },
+      );
 
-    expect((await readFile(callsPath, "utf8")).trim().split("\n")).toEqual([
-      "bootout gui/501 /Users/me/Library/LaunchAgents/app.plist",
-      "bootstrap gui/501 /Users/me/Library/LaunchAgents/app.plist",
-    ]);
-  });
+      expect((await readFile(callsPath, "utf8")).trim().split("\n")).toEqual([
+        "bootout gui/501 /Users/me/Library/LaunchAgents/app.plist",
+        "bootstrap gui/501 /Users/me/Library/LaunchAgents/app.plist",
+      ]);
+    },
+  );
 });

@@ -9,7 +9,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { EventCodeBlock } from "../../ui/event-code-block.js";
 import { ImageLightbox } from "../../ui/image-lightbox.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { TerminalOutputBlock } from "./TerminalOutputBlock.js";
+import { LazyTerminalOutputBlock } from "./LazyTerminalOutputBlock.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { LazyTimelineFileDiffBlock } from "./LazyTimelineFileDiffBlock.js";
 import { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
@@ -192,7 +192,7 @@ function CommandWorkRowBody({ row }: CommandWorkRowBodyProps) {
   const fullOutput = useTimelineWorkRowFullOutput(row);
   return (
     <div className="space-y-1">
-      <TerminalOutputBlock
+      <LazyTerminalOutputBlock
         commandLine={`$ ${row.command}`}
         metadataLines={row.source ? [`source: ${row.source}`] : []}
         output={fullOutput.output}

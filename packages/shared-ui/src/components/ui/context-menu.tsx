@@ -146,7 +146,7 @@ ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 const ContextMenuContent = React.forwardRef<
   ContextMenuContentElement,
   ContextMenuContentProps
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onPointerUpCapture, ...props }, ref) => (
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.Content
       ref={ref}
@@ -157,6 +157,10 @@ const ContextMenuContent = React.forwardRef<
         className,
       )}
       {...props}
+      onPointerUpCapture={(event) => {
+        onPointerUpCapture?.(event);
+        if (event.button !== 0) event.preventDefault();
+      }}
     >
       <MenuHoverProvider>{children}</MenuHoverProvider>
     </ContextMenuPrimitive.Content>

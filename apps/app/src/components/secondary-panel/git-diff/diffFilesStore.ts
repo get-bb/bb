@@ -74,6 +74,7 @@ interface DiffFilesCollapseControls {
 export function useDiffFilesCollapseControls(
   diffIdentity: string,
   files: readonly DiffFileEntry[],
+  fileCount: number,
 ): DiffFilesCollapseControls {
   const areAllCollapsedAtom = useMemo(
     () =>
@@ -87,11 +88,11 @@ export function useDiffFilesCollapseControls(
               diffFileCardStateAtomFamily({ diffIdentity, path: entry.path }),
             ),
             entry,
-            files.length,
+            fileCount,
           ),
         );
       }),
-    [diffIdentity, files],
+    [diffIdentity, fileCount, files],
   );
   const areAllCollapsed = useAtomValue(areAllCollapsedAtom);
 

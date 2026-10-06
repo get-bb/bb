@@ -32,6 +32,8 @@
  *                              advertising a thought_level config option
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
  *                            → fail session/set_config_option for model values
+ * - FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE
+ *                            → fail session/set_config_option for one model
  * - FAKE_ACP_SET_CONFIG_FAST_ERROR=1
  *                            → fail session/set_config_option for Fast values
  * - FAKE_ACP_CURSOR_PARAMETERIZED_MODELS=1
@@ -57,7 +59,10 @@
  *                              session/fork responses
  * - FAKE_ACP_IGNORE_CANCEL=1 → never answer a prompt after session/cancel
  * - FAKE_ACP_READY_FILE      → written once the agent process is up
- * - FAKE_ACP_SIGNAL_FILE     → written with "SIGTERM" when the agent is reaped
+ * - FAKE_ACP_LINGERING_DESCENDANT_PID_FILE
+ *                            → spawn a descendant that ignores SIGTERM, so
+ *                              process-tree cleanup outlasts the agent's exit,
+ *                              and write its pid here
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
@@ -69,8 +74,9 @@
  *                            → stop reason returned for /compact
  */
 
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { appendFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
@@ -87,6 +93,8 @@ const unmappedReasoningConfig =
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
+const setConfigModelErrorValue =
+  process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE;
 const setConfigFastError = process.env.FAKE_ACP_SET_CONFIG_FAST_ERROR === "1";
 const cursorParameterizedModels =
   process.env.FAKE_ACP_CURSOR_PARAMETERIZED_MODELS === "1";
@@ -124,6 +132,7 @@ const fakeModels = [
 ];
 
 let activePromptId = null;
+let stuckAfterCancel = false;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
@@ -146,19 +155,30 @@ for (let i = fakeModels.length; i < modelCount; i += 1) {
 }
 
 process.on("SIGTERM", () => {
-  if (process.env.FAKE_ACP_SIGNAL_FILE) {
-    const signalFile = process.env.FAKE_ACP_SIGNAL_FILE;
-    const stagedSignalFile = `${signalFile}.${process.pid}.tmp`;
-    // The final path is the test's completion boundary: publish it only after
-    // the marker bytes are complete.
-    writeFileSync(stagedSignalFile, "SIGTERM\n");
-    renameSync(stagedSignalFile, signalFile);
-  }
   process.exit(0);
 });
 
+if (process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE) {
+  spawn(
+    process.execPath,
+    [
+      "-e",
+      [
+        "process.on('SIGTERM', () => {});",
+        "const fs = require('node:fs');",
+        "const pidFile = process.argv[1];",
+        "fs.writeFileSync(pidFile + '.tmp', String(process.pid));",
+        "fs.renameSync(pidFile + '.tmp', pidFile);",
+        "setInterval(() => {}, 1000);",
+      ].join(" "),
+      process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE,
+    ],
+    { stdio: "ignore" },
+  );
+}
+
 if (process.env.FAKE_ACP_READY_FILE) {
-  writeFileSync(process.env.FAKE_ACP_READY_FILE, "ready\n");
+  writeFileSync(process.env.FAKE_ACP_READY_FILE, String(process.pid));
 }
 
 if (process.env.FAKE_ACP_LAUNCH_LOG) {
@@ -417,6 +437,15 @@ function captureMcpServers(message) {
 }
 
 async function handlePrompt(message) {
+  if (stuckAfterCancel) {
+    notifyUpdate(messageChunk("Queued for the next turn. (1 queued)"));
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { stopReason: "end_turn" },
+    });
+    return;
+  }
   activePromptId = message.id;
   const text = promptText(message.params?.prompt);
   if (process.env.FAKE_ACP_PROMPT_LOG) {
@@ -517,6 +546,20 @@ async function handlePrompt(message) {
       outcome = "error";
     }
     notifyUpdate(messageChunk(`permission:${outcome}`));
+  } else if (text.includes("permission-probe")) {
+    let wrote = false;
+    try {
+      await requestClient("fs/write_text_file", {
+        sessionId: activeSessionId,
+        path: process.env.FAKE_ACP_WRITE_PATH,
+        content: "permission probe\n",
+      });
+      wrote = true;
+    } catch {}
+    notifyUpdate(
+      messageChunk(JSON.stringify({ wrote, args: process.argv.slice(2) })),
+    );
+    if (text.includes("hold")) return;
   } else if (text.includes("write-file")) {
     try {
       const result = await requestClient("fs/write_text_file", {
@@ -539,6 +582,15 @@ async function handlePrompt(message) {
   } else if (text.includes("slow")) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
+  } else if (text.includes("echo-question-env")) {
+    notifyUpdate(
+      messageChunk(
+        JSON.stringify({
+          client: process.env.OPENCODE_CLIENT,
+          question: process.env.OPENCODE_ENABLE_QUESTION_TOOL,
+        }),
+      ),
+    );
   } else if (text.includes("echo-argv")) {
     // Lets bridge tests assert the launch args (e.g. the --model pin).
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
@@ -751,7 +803,7 @@ async function handleMessage(message) {
       const configId = message.params?.configId;
       const value = message.params?.value;
       if (configId === "model") {
-        if (setConfigModelError) {
+        if (setConfigModelError || value === setConfigModelErrorValue) {
           send({
             jsonrpc: "2.0",
             id: message.id,
@@ -850,6 +902,19 @@ async function handleMessage(message) {
       if (activePromptId !== null) {
         const id = activePromptId;
         activePromptId = null;
+        if (process.env.FAKE_ACP_CANCEL_ERROR === "1") {
+          stuckAfterCancel = true;
+          send({
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: -32603,
+              message:
+                "Internal error: 'NoneType' object has no attribute 'startswith'",
+            },
+          });
+          return;
+        }
         send({ jsonrpc: "2.0", id, result: { stopReason: "cancelled" } });
       }
       return;

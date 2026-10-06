@@ -88,6 +88,25 @@ export function resolveHostEnvironmentProvider({
   );
 }
 
+export function resolveNewThreadHostEnvironmentProvider({
+  currentProviderId,
+  providers,
+}: {
+  currentProviderId: string | null;
+  providers: readonly SystemEnvironmentProvider[];
+}): SystemEnvironmentProvider | null {
+  const usable = providers.filter(
+    (provider) =>
+      provider.machineProviderId === null &&
+      provider.availability?.status !== "unavailable",
+  );
+  return (
+    usable.find((provider) => provider.id === currentProviderId) ??
+    usable[0] ??
+    null
+  );
+}
+
 export function buildReuseThreadOptions(
   threads: readonly ThreadListEntry[],
   hostNameById: ReadonlyMap<string, string> | null = null,

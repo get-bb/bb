@@ -11,7 +11,11 @@ function stop() {
   if (stopping) return;
   stopping = true;
   kill('SIGTERM');
-  setTimeout(() => { kill('SIGKILL'); setTimeout(() => process.exit(0), 100); }, 1500);
+  setTimeout(() => {
+    kill('SIGKILL');
+    if (child.exitCode !== null || child.signalCode !== null) process.exit(0);
+    else child.once('exit', () => process.exit(0));
+  }, 1500);
 }
 child.on('error', () => process.exit(1));
 child.on('exit', () => { if (!stopping) { kill('SIGKILL'); process.exit(1); } });

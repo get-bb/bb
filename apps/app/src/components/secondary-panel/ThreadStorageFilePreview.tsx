@@ -15,6 +15,7 @@ import type {
   WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
 import {
+  FILE_PREVIEW_HTML_MAX_BYTES,
   isCsvFilePreview,
   isHtmlFilePreviewPath,
   isMarkdownFilePreview,
@@ -104,28 +105,26 @@ function resolveSecondaryPanelFilePreviewState({
   isLoading,
   lineRange,
 }: ResolveSecondaryPanelFilePreviewStateArgs): FilePreviewState {
-  if (error) {
-    if (asHttpError(error)?.status === 404) {
-      return { kind: "not-found" };
-    }
+  const hasCurrentPreview = filePreview?.path === activePath;
+  if (asHttpError(error)?.status === 404) {
+    return { kind: "not-found" };
+  }
+  if (error && !hasCurrentPreview) {
     const message = resolveFilePreviewErrorMessage(error);
     return message === null ? { kind: "error" } : { kind: "error", message };
   }
 
-  if (isLoading || !filePreview || filePreview.path !== activePath) {
+  if (isLoading || !filePreview || !hasCurrentPreview) {
     return { kind: "loading" };
   }
 
-  if (htmlPreviewUrl !== null && isHtmlFilePreviewPath(activePath)) {
-    if (filePreview.kind !== "text") {
-      return {
-        kind: "iframe",
-        sandbox: GENERIC_HTML_IFRAME_SANDBOX,
-        title: activePath,
-        url: htmlPreviewUrl,
-      };
-    }
-
+  if (
+    htmlPreviewUrl !== null &&
+    isHtmlFilePreviewPath(activePath) &&
+    filePreview.kind === "text" &&
+    new TextEncoder().encode(filePreview.content).byteLength <=
+      FILE_PREVIEW_HTML_MAX_BYTES
+  ) {
     return {
       kind: "html",
       file: buildTextPreviewFile({ activePath, filePreview }),
@@ -160,7 +159,13 @@ function resolveSecondaryPanelFilePreviewState({
 
   return {
     kind: "unsupported",
-    message: `Preview not available for ${filePreview.mimeType}.`,
+    file: {
+      mimeType: filePreview.mimeType,
+      name: filePreview.name ?? activePath.split("/").at(-1) ?? activePath,
+      reason: filePreview.reason,
+      sizeBytes: filePreview.sizeBytes,
+      url: filePreview.url,
+    },
   };
 }
 

@@ -7,12 +7,42 @@ import {
   getHost,
   setAppSettings,
 } from "@bb/db";
-import { mkdtemp, writeFile, mkdir, rm, readFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdtemp,
+  writeFile,
+  mkdir,
+  rm,
+  readFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { resolveHostEnvironment } from "./host-environment.js";
 import { replaceMachineEnvironment } from "../machines/environment-settings.js";
+
+async function writeFakeGh(bin: string): Promise<void> {
+  if (process.platform !== "win32") {
+    await writeFile(
+      join(bin, "gh"),
+      `#!/bin/sh
+if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octocat","id":123,"email":null}\\n'; fi
+`,
+      { mode: 0o700 },
+    );
+    return;
+  }
+  const preload = join(bin, "fake-gh.cjs");
+  await writeFile(
+    preload,
+    `const out = require("node:path").basename(process.argv[1] ?? "") === "auth" ? "test-gh-secret\\n" : '{"login":"octocat","id":123,"email":null}\\n';
+require("node:fs").writeSync(1, out);
+process.exit(0);
+`,
+  );
+  await copyFile(process.execPath, join(bin, "gh.exe"));
+  vi.stubEnv("NODE_OPTIONS", `--require ${JSON.stringify(preload)}`);
+}
 
 it("gives every host user environment while forwarding automatic gh credentials only to non-primary hosts", async () => {
   const db = createConnection(":memory:");
@@ -42,14 +72,8 @@ it("gives every host user environment while forwarding automatic gh credentials 
     });
     const bin = join(dataDir, "bin");
     await mkdir(bin);
-    await writeFile(
-      join(bin, "gh"),
-      `#!/bin/sh
-if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octocat","id":123,"email":null}\\n'; fi
-`,
-      { mode: 0o700 },
-    );
-    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    await writeFakeGh(bin);
+    vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
     const deps = { db, config: { dataDir } };
     expect(
       await resolveHostEnvironment(deps, {

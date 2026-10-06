@@ -13,7 +13,7 @@ const base: ModelPickerToggleInput = {
   isSplitPane: true,
   isPrimaryComposer: true,
   caretInThisComposer: true,
-  caretInOtherComposerOfPane: false,
+  caretInOtherComposer: false,
   editableOutsideComposer: false,
 };
 
@@ -56,7 +56,7 @@ describe("resolveModelPickerToggle", () => {
       resolveModelPickerToggle({
         ...base,
         caretInThisComposer: false,
-        caretInOtherComposerOfPane: true,
+        caretInOtherComposer: true,
       }),
     ).toBe("ignore");
   });
@@ -64,16 +64,6 @@ describe("resolveModelPickerToggle", () => {
   it("opens the focused split pane's primary composer when the caret is outside every composer", () => {
     expect(
       resolveModelPickerToggle({ ...base, caretInThisComposer: false }),
-    ).toBe("open");
-  });
-
-  it("retains the split-pane fallback from unrelated editable controls", () => {
-    expect(
-      resolveModelPickerToggle({
-        ...base,
-        caretInThisComposer: false,
-        editableOutsideComposer: true,
-      }),
     ).toBe("open");
   });
 
@@ -108,7 +98,7 @@ describe("ownsModelPickerCycleChord", () => {
         { caretInThisComposer: false },
         { caretInThisComposer: false, isSplitPane: false },
         { caretInThisComposer: false, isPrimaryComposer: false },
-        { caretInThisComposer: false, caretInOtherComposerOfPane: true },
+        { caretInThisComposer: false, caretInOtherComposer: true },
       ]) {
         const input = { ...base, ...overrides, open };
         expect(ownsModelPickerCycleChord(input)).toBe(
@@ -116,16 +106,6 @@ describe("ownsModelPickerCycleChord", () => {
         );
       }
     }
-  });
-
-  it("leaves a closed picker's cycle chord to unrelated editable controls", () => {
-    expect(
-      ownsModelPickerCycleChord({
-        ...base,
-        caretInThisComposer: false,
-        editableOutsideComposer: true,
-      }),
-    ).toBe(false);
   });
 
   it("owns the chord while the picker is open and the caret is nowhere", () => {

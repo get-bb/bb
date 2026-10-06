@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CURSOR_ACP_DIALECT } from "./dialect.js";
 import {
@@ -252,42 +253,8 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
       subject: {
         kind: "file_change",
         itemId: "write-tool-1",
-        writeScope: "/tmp/qa-1719/notes.md",
+        writeScope: path.normalize("/tmp/qa-1719/notes.md"),
         sessionGrant: null,
-      },
-    });
-  });
-
-  it("classifies an opencode external_directory permission as a file_change subject when the in-flight tool call is an edit", () => {
-    const payload = buildAcpPermissionInteractionPayload({
-      toolCall: {
-        toolCallId: "write-tool-1",
-        title: "/tmp/qa-1719",
-        kind: "other",
-        locations: [
-          { path: "/tmp/qa-1719/notes.md" },
-          { path: "/tmp/qa-1719" },
-        ],
-        rawInput: {
-          filepath: "/tmp/qa-1719/notes.md",
-          parentDir: "/tmp/qa-1719",
-        },
-        startedToolCall: {
-          sessionUpdate: "tool_call",
-          toolCallId: "write-tool-1",
-          title: "Editing notes.md",
-          kind: "edit",
-          locations: [{ path: "/tmp/qa-1719/notes.md" }],
-        },
-      },
-      options: allowDenyOptions,
-    });
-
-    expect(payload).toMatchObject({
-      subject: {
-        kind: "file_change",
-        itemId: "write-tool-1",
-        writeScope: "/tmp/qa-1719",
       },
     });
   });
@@ -373,7 +340,10 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
     });
 
     expect(payload).toMatchObject({
-      subject: { kind: "file_change", writeScope: "/tmp/qa-1719/notes.md" },
+      subject: {
+        kind: "file_change",
+        writeScope: path.normalize("/tmp/qa-1719/notes.md"),
+      },
     });
   });
 });
@@ -463,7 +433,7 @@ describe("permission reason", () => {
       kind: "approval",
       subject: {
         kind: "file_change",
-        writeScope: "/workspace/app/notes/todo.md",
+        writeScope: path.resolve("/workspace/app/notes/todo.md"),
       },
     });
   });

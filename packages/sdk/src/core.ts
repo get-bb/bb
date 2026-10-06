@@ -17,6 +17,10 @@ import {
 import { createProjectsArea, type ProjectsArea } from "./areas/projects.js";
 import { createProvidersArea, type ProvidersArea } from "./areas/providers.js";
 import { createPluginsArea, type PluginsArea } from "./areas/plugins.js";
+import {
+  createPromptHistoryArea,
+  type ExperimentalPromptHistoryArea,
+} from "./areas/prompt-history.js";
 import { createBbRealtimeClient } from "./realtime-client.js";
 import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea, type StatusArea } from "./areas/status.js";
@@ -44,6 +48,7 @@ export interface CreateBbSdkWithGuideArgs extends CreateBbSdkArgs {
 
 export interface BbSdkAreas extends BbRealtime {
   experimental_desktopBrowsers: ExperimentalDesktopBrowsersArea;
+  experimental_promptHistory: ExperimentalPromptHistoryArea;
   experimental_server: ExperimentalServerArea;
   environments: EnvironmentsArea;
   files: FilesArea;
@@ -75,6 +80,7 @@ export function createBbSdk(
   });
   const areas: BbSdkAreas = {
     experimental_desktopBrowsers: createDesktopBrowsersArea(sdkContext),
+    experimental_promptHistory: createPromptHistoryArea(sdkContext),
     experimental_server: createServerArea(sdkContext),
     environments: createEnvironmentsArea(sdkContext),
     files: createFilesArea(sdkContext),

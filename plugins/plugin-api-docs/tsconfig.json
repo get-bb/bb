@@ -5,10 +5,25 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "resolveJsonModule": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "noUnusedLocals": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "paths": {
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
+      ],
+      "@/*": ["../../packages/shared-ui/src/*"]
+    }
   },
-  "include": ["app.tsx", "server.ts"]
+  "include": [
+    "app.tsx",
+    "app.test.tsx",
+    "server.ts",
+    "src",
+    "test",
+    "vitest.config.ts"
+  ]
 }

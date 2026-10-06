@@ -21,7 +21,8 @@ async function createRemoteRepo(root: string): Promise<string> {
   await fs.mkdir(source, { recursive: true });
   await runGit(["init"], { cwd: source });
   await fs.writeFile(path.join(source, "README.md"), "hello\n");
-  await runGit(["add", "README.md"], { cwd: source });
+  await fs.writeFile(path.join(source, ".gitattributes"), "* -text\n");
+  await runGit(["add", "README.md", ".gitattributes"], { cwd: source });
   await runGit(
     [
       "-c",
@@ -98,7 +99,9 @@ describe("project.clone", () => {
     expect(isExpectedCommandDispatchError(error)).toBe(true);
     expect(error).toMatchObject({ code: "git_command_failed" });
     expect(error.message).toContain(
-      `fatal: repository '${missingRemote}' does not exist`,
+      process.platform === "win32"
+        ? `fatal: '${missingRemote}' does not appear to be a git repository`
+        : `fatal: repository '${missingRemote}' does not exist`,
     );
   });
 

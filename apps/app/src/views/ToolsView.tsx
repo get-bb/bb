@@ -1,5 +1,6 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useAtom } from "jotai";
+import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
@@ -23,7 +24,13 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
-import { installedPluginCatalogEntry } from "@/components/plugin/management/installed-plugin-catalog";
+import { resolvePluginDetailKey } from "@/components/plugin/management/installed-plugin-catalog";
+import {
+  parsePluginDetailKey,
+  pluginDetailKeyFromRoute,
+  pluginDetailLocation,
+  withoutPluginListing,
+} from "@/components/plugin/plugin-detail-key";
 import {
   ResourceListState,
   useResourceRouteLabel,
@@ -53,6 +60,7 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   REGISTRY_SKILLS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
+  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
@@ -147,9 +155,53 @@ function PluginsToolView({
   );
 }
 
-function PluginDetailToolView({ pluginId }: { pluginId: string }) {
+function PluginDetailToolView({ detailKey }: { detailKey: string }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { pluginId: detailPluginId } = parsePluginDetailKey(detailKey);
+  const routeOwnsDetail =
+    pluginDetailKeyFromRoute(detailPluginId, location.search) === detailKey &&
+    (location.pathname ===
+      getPluginDetailRoutePath({ pluginId: detailPluginId }) ||
+      location.pathname ===
+        getPluginConfigurationRoutePath({ pluginId: detailPluginId }));
+  const [locallyConfiguredDetailKey, setLocallyConfiguredDetailKey] = useState<
+    string | null
+  >(null);
+  const configurationOpen = routeOwnsDetail
+    ? new URLSearchParams(location.search).get("configure") === detailKey
+    : locallyConfiguredDetailKey === detailKey;
+  const setConfigurationOpen = (open: boolean) => {
+    if (!routeOwnsDetail) {
+      setLocallyConfiguredDetailKey(open ? detailKey : null);
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    if (open) params.set("configure", detailKey);
+    else params.delete("configure");
+    navigate({ pathname: location.pathname, search: params.toString() });
+  };
+  const configurationParams = new URLSearchParams(location.search);
+  configurationParams.set("configure", detailKey);
+  const configurationPath = routeOwnsDetail
+    ? `${location.pathname}?${configurationParams.toString()}`
+    : undefined;
+  useEffect(() => {
+    if (!routeOwnsDetail || location.hash !== "#configuration") return;
+    const params = new URLSearchParams(location.search);
+    params.set("configure", detailKey);
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true },
+    );
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+    detailKey,
+    routeOwnsDetail,
+  ]);
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
@@ -208,18 +260,13 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     },
   });
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
-  const selectedPlugin =
-    plugins.find((plugin) => plugin.id === pluginId) ?? null;
-  const selectedCatalogEntry =
-    selectedPlugin === null
-      ? (catalogQuery.data?.entries.find(
-          (entry) => entry.pluginId === pluginId,
-        ) ?? null)
-      : (installedPluginCatalogEntry(
-          selectedPlugin,
-          catalogQuery.data?.entries ?? [],
-          { allowSourceFallback: false },
-        ) ?? null);
+  const { plugin: selectedPlugin, entry: selectedCatalogEntry } =
+    resolvePluginDetailKey(
+      detailKey,
+      plugins,
+      catalogQuery.data?.entries ?? [],
+      { allowSourceFallback: false },
+    );
   useResourceRouteLabel(
     selectedPlugin?.name ??
       selectedPlugin?.id ??
@@ -258,11 +305,8 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     [canOpenPreferredDirectoryTarget, openPathInPreferredDirectoryTarget],
   );
   const handleOpenCatalogPlugin = useCallback(
-    (nextPluginId: string) => {
-      navigate({
-        pathname: getPluginDetailRoutePath({ pluginId: nextPluginId }),
-        search: location.search,
-      });
+    (nextDetailKey: string) => {
+      navigate(pluginDetailLocation(nextDetailKey, location.search));
     },
     [location.search, navigate],
   );
@@ -287,6 +331,13 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         maxWidthClassName="max-w-5xl"
       />
     );
+  } else if (selectedPlugin !== null && configurationOpen) {
+    detailContent = (
+      <PluginSettingsPage
+        pluginId={selectedPlugin.id}
+        onBackToDetails={() => setConfigurationOpen(false)}
+      />
+    );
   } else if (selectedPlugin !== null) {
     detailContent = (
       <PluginDetail
@@ -298,6 +349,8 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         onEdit={handleEditPlugin}
         onOpenSource={handleOpenPluginSource}
         onDelete={setDeleteTarget}
+        onConfigure={() => setConfigurationOpen(true)}
+        configurationPath={configurationPath}
         catalogEntry={selectedCatalogEntry ?? undefined}
         catalogEntries={catalogQuery.data?.entries ?? []}
         onOpenPlugin={handleOpenCatalogPlugin}
@@ -355,9 +408,17 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {selectedPlugin !== null ? (
-        <PluginDetailBanners plugin={selectedPlugin} />
+        <PluginDetailBanners
+          plugin={selectedPlugin}
+          configurationPath={configurationPath}
+          catalogEntries={catalogQuery.data?.entries ?? []}
+          onOpenPlugin={handleOpenCatalogPlugin}
+        />
       ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
-        <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
+        <CatalogPluginDetailBanner
+          entry={selectedCatalogEntry}
+          onOpenPlugin={handleOpenCatalogPlugin}
+        />
       ) : null}
       <div className="min-h-0 flex-1">
         <ResourceScrollPage>
@@ -402,61 +463,59 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<ResourceBodyFallback />}>
-          <PluginDetailToolView pluginId={pluginId} />
+          <PluginDetailToolView detailKey={pluginId} />
         </Suspense>
       </div>
     </div>
   );
 }
 
-export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
+export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const focusReturnRef = useRef<HTMLButtonElement | null>(null);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
   const [workspace, setWorkspace] = useAtom(pluginWorkspaceAtom);
   const isCompact = useIsCompactViewport();
-  const activePluginId = pluginId ?? workspace.activePluginId;
+  const activePluginId = detailKey ?? workspace.activePluginId;
   const isPanelOpen =
-    activePluginId !== null && (!isCompact || pluginId !== undefined);
+    activePluginId !== null && (!isCompact || detailKey !== undefined);
   const catalogQuery = usePluginCatalogSearch("", { enabled: isPanelOpen });
   const listQuery = usePluginList({ enabled: true });
   const openIds = useMemo(
     () =>
-      pluginId !== undefined && !workspace.tabs.includes(pluginId)
-        ? [...workspace.tabs, pluginId]
+      detailKey !== undefined && !workspace.tabs.includes(detailKey)
+        ? [...workspace.tabs, detailKey]
         : workspace.tabs,
-    [pluginId, workspace.tabs],
+    [detailKey, workspace.tabs],
   );
 
   useEffect(() => {
-    if (pluginId === undefined) return;
+    if (detailKey === undefined) return;
     setWorkspace((current) =>
-      current.activePluginId === pluginId && current.tabs.includes(pluginId)
+      current.activePluginId === detailKey && current.tabs.includes(detailKey)
         ? current
         : {
-            tabs: current.tabs.includes(pluginId)
+            tabs: current.tabs.includes(detailKey)
               ? current.tabs
-              : [...current.tabs, pluginId],
-            activePluginId: pluginId,
+              : [...current.tabs, detailKey],
+            activePluginId: detailKey,
           },
     );
-  }, [pluginId, setWorkspace]);
+  }, [detailKey, setWorkspace]);
 
   const selectPlugin = useCallback(
-    (nextPluginId: string) => {
+    (nextDetailKey: string) => {
       const params = new URLSearchParams(location.search);
-      navigate({
-        pathname: getPluginDetailRoutePath({ pluginId: nextPluginId }),
-        search: params.toString(),
-      });
+      params.delete("configure");
+      navigate(pluginDetailLocation(nextDetailKey, params.toString()));
     },
     [location.search, navigate],
   );
   const openPlugin = useCallback(
-    (nextPluginId: string, trigger: HTMLButtonElement) => {
+    (nextDetailKey: string, trigger: HTMLButtonElement) => {
       focusReturnRef.current = trigger;
-      selectPlugin(nextPluginId);
+      selectPlugin(nextDetailKey);
     },
     [selectPlugin],
   );
@@ -469,7 +528,8 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
   const closePanel = useCallback(() => {
     setIsPluginDetailFullPage(false);
     setWorkspace((current) => ({ ...current, activePluginId: null }));
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(withoutPluginListing(location.search));
+    params.delete("configure");
     navigate({ pathname: getPluginsRoutePath(), search: params.toString() });
     restoreFocus();
   }, [location.search, navigate, restoreFocus, setWorkspace]);
@@ -507,24 +567,17 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
   const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(
     () =>
       openIds.map((id) => {
-        const plugin = listQuery.data?.plugins.find(
-          (candidate) => candidate.id === id,
+        const { plugin, entry } = resolvePluginDetailKey(
+          id,
+          listQuery.data?.plugins ?? [],
+          catalogQuery.data?.entries ?? [],
         );
-        const entry =
-          plugin === undefined
-            ? catalogQuery.data?.entries.find(
-                (candidate) => candidate.pluginId === id,
-              )
-            : installedPluginCatalogEntry(
-                plugin,
-                catalogQuery.data?.entries ?? [],
-              );
         return {
           contentFillsRegion: true,
           label: entry?.displayName ?? plugin?.name ?? id,
           leadingVisual: (
             <PluginIcon
-              pluginId={id}
+              pluginId={plugin?.id ?? entry?.pluginId ?? id}
               icon={entry?.icon ?? plugin?.icon ?? null}
               compactIconUrl={plugin?.compactIconUrl}
               className="size-3.5"
@@ -532,7 +585,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
           ),
           onClose: () => closeTab(id),
           onSelect: () => selectPlugin(id),
-          renderContent: () => <PluginDetailToolView key={id} pluginId={id} />,
+          renderContent: () => <PluginDetailToolView key={id} detailKey={id} />,
           statusLabel: null,
           tab: {
             id: `marketplace-plugin:${id}`,
@@ -608,7 +661,6 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
         }}
         renderPanel={renderPanel}
         composerHost={null}
-        compactPresentation="full"
       />
     </div>
   );

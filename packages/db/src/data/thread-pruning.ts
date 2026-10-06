@@ -209,9 +209,10 @@ function advanceThreadPruningTransaction(
               candidateIds: rows.map((row) => row.id),
             };
             const relevantIds = rows.map((row) => row.id);
-            const bytesQuery = sql`SELECT COALESCE(SUM(length(CAST(data AS BLOB))), 0) AS bytes FROM events WHERE ${inArray(events.id, relevantIds)} AND ${events.type} = ${type}`;
+            const bytesQuery = sql`SELECT COALESCE(SUM(octet_length(data)), 0) AS bytes FROM events WHERE ${inArray(events.id, relevantIds)} AND ${events.type} = ${type}`;
             const before =
-              threadScope !== undefined || relevantIds.length === 0
+              threadScope !== undefined ||
+              (policy === "usage" && (cursor.step === 0 || cursor.step === 2))
                 ? 0
                 : (tx.get<{ bytes: number }>(bytesQuery)?.bytes ?? 0);
             if (policy === "turn-diffs") {
@@ -242,15 +243,15 @@ function advanceThreadPruningTransaction(
                     cursor.step === 0
                       ? "thread/contextWindowUsage/updated"
                       : "thread/tokenUsage/updated";
-                  const path =
+                  const hasContext =
                     cursor.step === 0
-                      ? "$.contextWindowUsage.modelContextWindow"
-                      : "$.tokenUsage.modelContextWindow";
+                      ? sql`CASE WHEN json_valid(data) THEN json_extract(data, '$.contextWindowUsage.modelContextWindow') IS NOT NULL ELSE 0 END`
+                      : sql`0`;
                   const usage = tx.all<{
                     sequence: number;
                     hasContext: number;
                   }>(sql`
-                  SELECT sequence, CASE WHEN json_valid(data) THEN json_extract(data, ${path}) IS NOT NULL ELSE 0 END AS hasContext FROM events candidate INDEXED BY events_thread_type_sequence_idx
+                  SELECT sequence, ${hasContext} AS hasContext FROM events candidate INDEXED BY events_thread_type_sequence_idx
                   WHERE thread_id = ${threadId} AND sequence > ${window.afterSequence} AND sequence <= ${window.throughSequence} AND type = ${type}
                   AND NOT EXISTS (SELECT 1 FROM events nested WHERE nested.thread_id = candidate.thread_id AND nested.turn_id = candidate.turn_id AND nested.type = 'turn/started' AND nested.parent_tool_call_id IS NOT NULL)
                   ORDER BY sequence

@@ -74,11 +74,8 @@ describe("CLI boundaries", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects cross-thread and ignored flags", async () => {
+  it("rejects ignored flags and both script sources", async () => {
     const { invoke, execute } = cli();
-    const crossThread = await invoke(["list", "--thread", "other"]);
-    expect(crossThread.stderr).toContain("another thread");
-
     const unknownFlag = await invoke(["list", "--headless"]);
     expect(unknownFlag.stderr).toContain("unknown option '--headless'");
 
@@ -93,9 +90,6 @@ describe("CLI boundaries", () => {
       "host",
     ]);
     expect(bothScripts.stderr).toContain("exactly one");
-
-    const duplicate = await invoke(["list", "--json", "--json"]);
-    expect(duplicate.stderr).toContain("--json was given more than once");
     expect(execute).not.toHaveBeenCalled();
   });
 

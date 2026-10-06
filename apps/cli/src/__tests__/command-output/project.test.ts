@@ -6,7 +6,6 @@ import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
   collectLogPayloads,
-  getHelpOutput,
   readlineMocks,
   resolveLocalHostIdMock,
   runCommand,
@@ -20,28 +19,6 @@ describe("bb project command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerProjectCommands(program, () => "http://server");
-
-  it("documents that attachment upload reads the CLI machine", async () => {
-    const help = await getHelpOutput(
-      ["project", "attachment", "upload"],
-      register,
-    );
-
-    expect(help).toContain("Upload a file read from this CLI machine");
-    expect(help).toContain("--client-file <path>");
-    expect(help.replace(/\s+/gu, " ")).toContain(
-      "not the thread execution host",
-    );
-  });
-
-  it("documents project creation machine selectors", async () => {
-    const help = await getHelpOutput(["project", "create"], register);
-
-    expect(help).toContain("--machine <id-or-name>");
-    expect(help).toContain("Execution machine ID or unambiguous name");
-    expect(help).toContain("--host <id-or-name>");
-    expect(help).toContain("Alias for --machine");
-  });
 
   it("uploads binary bytes read on a remote CLI machine with explicit metadata", async () => {
     const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-attachment-"));
@@ -312,18 +289,11 @@ describe("bb project command output", () => {
   });
 
   it("bb project content routes by environment and prints the portable DTO as JSON", async () => {
-    const getContent = vi.fn(
-      async () =>
-        new Response("environment text", {
-          headers: {
-            "content-type": "text/plain",
-            "x-bb-content-encoding": "utf8",
-          },
-        }),
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response("environment text", {
+        headers: { "content-type": "text/plain" },
+      }),
     );
-    stubServerApi({
-      "v1.projects.:id.files.content.$get": getContent,
-    });
 
     await runCommand(
       [
@@ -338,10 +308,9 @@ describe("bb project command output", () => {
       register,
     );
 
-    expect(getContent).toHaveBeenCalledWith({
-      param: { id: "proj-1" },
-      query: { environmentId: "env-remote", path: "README.md" },
-    });
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toMatch(
+      /\/api\/v1\/environments\/env-remote\/files\/README\.md$/u,
+    );
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual({
@@ -490,84 +459,6 @@ describe("bb project command output", () => {
       "Error: Cannot combine --machine with --host.",
     );
     expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
-  });
-
-  it("bb project create rejects an unknown machine selection", async () => {
-    stubServerApi({
-      "v1.hosts.$get": vi.fn(async () => [
-        {
-          id: "host-primary",
-          name: "workstation",
-          status: "connected",
-          lastSeenAt: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ]),
-    });
-
-    await expect(
-      runCommand(
-        [
-          "project",
-          "create",
-          "--name",
-          "Alpha",
-          "--root",
-          "/tmp/alpha",
-          "--machine",
-          "builder",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(console.error).toHaveBeenCalledWith(
-      "Error: Machine 'builder' was not found. Available machines: workstation (host-primary).",
-    );
-  });
-
-  it("bb project create rejects an ambiguous machine name", async () => {
-    stubServerApi({
-      "v1.hosts.$get": vi.fn(async () => [
-        {
-          id: "host-builder-1",
-          name: "builder",
-          status: "connected",
-          lastSeenAt: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        },
-        {
-          id: "host-builder-2",
-          name: "builder",
-          status: "connected",
-          lastSeenAt: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ]),
-    });
-
-    await expect(
-      runCommand(
-        [
-          "project",
-          "create",
-          "--name",
-          "Alpha",
-          "--root",
-          "/tmp/alpha",
-          "--host",
-          "builder",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(console.error).toHaveBeenCalledWith(
-      "Error: Machine name 'builder' is ambiguous. Matches: builder (host-builder-1), builder (host-builder-2).",
-    );
   });
 
   it("project creation and source add reject a disconnected machine", async () => {

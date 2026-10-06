@@ -56,8 +56,18 @@ prior token valid for ten minutes. Agents should pipe API keys to
 process arguments, shell history, and agent transcripts. Prefer `--import` for
 an existing Claude Code login. The CLI Codex import path reads
 `~/.codex/auth.json` on the bb server host. OAuth quota refreshes on add or
-enable and every five minutes while an account is idle. Use
+enable and every five minutes while an account is idle. When a request finds no
+eligible account, the pool first refreshes the OAuth accounts it considers
+exhausted, at most once every 30 seconds per account, so a plan upgrade or an
+early reset takes effect on the next turn. Use
 `bb pool account refresh <id>` to request an immediate refresh for one account.
+For an OAuth account in error, `refresh` also forces a new token with the stored
+refresh token and clears the error when that succeeds, so a spurious error does
+not require logging in again.
+An account enters error only when its OAuth refresh token is rejected (HTTP 400
+or 401 from the token endpoint) or an API key is rejected. A 401 or 403 on a
+freshly refreshed OAuth token is treated as an upstream failure instead: the
+request gets HTTP 503, and that token is held out of routing for one minute.
 Account tables add columns for observed model-family buckets; JSON status
 exposes their utilization, reset, status, observation time, and source under
 `familyWeekly`. Selection skips an account whose requested family is spent
@@ -78,6 +88,32 @@ conversations can advance. A model-family limit detours only requests for that
 family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
+
+Claude accounts with an exhausted subscription window remain eligible as a
+fallback when Anthropic reports extra usage enabled with remaining allowance,
+or an allowed overage response header. Accounts below the switch threshold
+are preferred, including for conversations pinned to an extra-usage fallback;
+those conversations return to subscription quota when it recovers. Before using
+extra usage, the pool rechecks exhausted OAuth accounts (at most every 30 seconds).
+Disabled, spent, or unobserved extra usage does not override subscription limits.
+This does not enable extra usage or change spending limits on Claude.
+`account list` and `status` show an Extra usage column; JSON and the corresponding
+plugin RPCs expose `extraUsage` with status, observation time, and source.
+This state survives hub restarts. Model entitlement differences between plans
+are not inferred from missing quota buckets.
+
+Codex credits use the same fallback policy and availability pill. The pool reads
+`credits.has_credits` and `credits.unlimited` from usage responses and the
+corresponding `x-codex-credits-*` headers. Credit-only updates are accepted;
+omitted fields preserve prior observations. Workspace hard stops (the
+`workspace_{owner,member}_{credits_depleted,usage_limit_reached}` limit types,
+or a reached spend control) block routing even below the subscription switch
+threshold and survive restarts. Other limit types, including unknown ones, do
+not restrict the account. A refreshed allowance or spending-control observation can
+clear the matching restriction. JSON account/status responses expose
+`usageRestriction` (reason and optional reset time); the pool does not change
+workspace spending controls or purchase credits. Availability is not current
+billing activity.
 
 Drag an account’s handle in Account Pooler settings (or focus the handle and use
 Space, arrow keys, and Space again), or

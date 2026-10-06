@@ -1,4 +1,5 @@
 import { statfs } from "node:fs/promises";
+import type { AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import type {
   AppDeps,
@@ -14,7 +15,8 @@ import type {
 } from "./coordinator.js";
 import { exportServerArchive } from "./export.js";
 import { createFullBbAppArtifactService } from "./full-artifact.js";
-import { CONNECT_PLUGIN_SOURCE, resolveServerMoveMode } from "./mode.js";
+import { CONNECT_HOLD_SOURCES } from "./connect-hold.js";
+import { resolveServerMoveMode } from "./mode.js";
 import { stopRunningServerWork } from "./stop-work.js";
 
 export const SERVER_MOVE_ALLOW_LOOPBACK_URL_ENV =
@@ -37,6 +39,7 @@ export const SERVER_MOVE_TIMINGS: ServerMoveTimings = {
 };
 
 export interface CreateDefaultServerMoveEnvironmentArgs {
+  appSurface: AppSurface;
   bindHost: ServerBindHost | null;
   deps: AppDeps;
   env: NodeJS.ProcessEnv;
@@ -81,7 +84,7 @@ export function resumeServerMoveDeferredWork(
   for (const hostId of deps.hub.listConnectedHostIds()) {
     const daemonSessionId = deps.hub.getDaemonSessionIdForHost(hostId);
     if (daemonSessionId !== null) {
-      deps.terminalSessions.expireDisconnectedHostTerminals({
+      deps.terminalSessions.reconcileDisconnectedHostTerminals({
         daemonSessionId,
         hostId,
       });
@@ -131,7 +134,8 @@ export function createDefaultServerMoveEnvironment(
       stop: () => pluginService.stop(),
       suspendAllButConnect: async () => {
         await pluginService.suspendPlugins({
-          keep: (plugin) => plugin.source === CONNECT_PLUGIN_SOURCE,
+          keep: (plugin) =>
+            CONNECT_HOLD_SOURCES.some((source) => source === plugin.source),
         });
       },
     },
@@ -147,6 +151,7 @@ export function createDefaultServerMoveEnvironment(
     },
     resumeDeferredWork: () => resumeServerMoveDeferredWork(deps),
     retireProcess: args.retireProcess,
+    serverAppSurface: args.appSurface,
     serverTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     stopRunningWork: (stopArgs) => stopRunningServerWork(deps, stopArgs),
     targetServerPort: () => targetPortOverride ?? deps.config.serverPort,

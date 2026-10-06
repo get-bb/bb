@@ -116,7 +116,6 @@ export async function loadHostIdentity(options: {
   fallbackHostName?: () => string;
   platform?: NodeJS.Platform;
   providedHostId?: string;
-  providedHostName?: string;
 }): Promise<HostIdentity> {
   await fs.mkdir(options.dataDir, { recursive: true });
   const [hostId, hostName] = await Promise.all([
@@ -125,13 +124,11 @@ export async function loadHostIdentity(options: {
       createId: options.createId,
       providedHostId: options.providedHostId,
     }),
-    options.providedHostName
-      ? Promise.resolve(options.providedHostName)
-      : detectHostName({
-          platform: options.platform,
-          execFile: options.execFile,
-          fallbackHostName: options.fallbackHostName,
-        }),
+    detectHostName({
+      platform: options.platform,
+      execFile: options.execFile,
+      fallbackHostName: options.fallbackHostName,
+    }),
   ]);
 
   return { hostId, hostName };

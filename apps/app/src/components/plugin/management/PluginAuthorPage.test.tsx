@@ -43,6 +43,8 @@ function catalogEntry(
       url: "https://github.com/patlee",
     },
     installed: false,
+    conflictingInstallSource: null,
+    installedByDefault: false,
     installs: 10,
     compatible: true,
     incompatibleReason: null,

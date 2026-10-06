@@ -7,13 +7,20 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import type { AvailableModel, ReasoningLevel } from "@bb/domain";
+import type {
+  AvailableModel,
+  ProviderInfo,
+  ProviderOptionDescriptor,
+  ReasoningLevel,
+  ServiceTier,
+} from "@bb/domain";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import type {
   SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -27,6 +34,7 @@ import {
   ModelReasoningPicker,
   type ModelReasoningPickerHandoff,
 } from "./ModelReasoningPicker";
+import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import type { PickerOption } from "./OptionPicker";
 import type { ProviderPickerOption } from "./model-brand-prefix";
 import type { ModelPickerOption } from "./model-picker-option";
@@ -130,12 +138,14 @@ function availableModel({
 function executionOptions({
   models,
   selectedOnlyModels = [],
+  providers = [],
 }: {
   models: AvailableModel[];
   selectedOnlyModels?: AvailableModel[];
+  providers?: ProviderInfo[];
 }): SystemExecutionOptionsResponse {
   return {
-    providers: [],
+    providers,
     models,
     selectedOnlyModels,
     permissionCeiling: "full",
@@ -147,6 +157,11 @@ function renderPicker({
   onSelectedProviderChange = vi.fn(),
   onModelChange = vi.fn(),
   onReasoningChange = vi.fn(),
+  onServiceTierChange = vi.fn(),
+  serviceTierValue,
+  serviceTierOptions = [],
+  serviceTierSupportByProvider,
+  alternateProvider,
   modelOptions = codexModels,
   modelValue = modelOptions[0]?.value ?? "",
   pickerReasoningOptions = reasoningOptions,
@@ -166,6 +181,11 @@ function renderPicker({
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
   onReasoningChange?: (value: ReasoningLevel) => void;
+  onServiceTierChange?: (value: ServiceTier) => void;
+  serviceTierValue?: ServiceTier;
+  serviceTierOptions?: readonly ProviderOptionDescriptor[];
+  serviceTierSupportByProvider?: Record<string, boolean>;
+  alternateProvider?: ProviderInfo;
   modelOptions?: readonly ModelPickerOption[];
   modelValue?: string;
   pickerReasoningOptions?: readonly PickerOption<ReasoningLevel>[];
@@ -197,6 +217,9 @@ function renderPicker({
           isDefault: true,
         }),
       ],
+      ...(alternateProvider === undefined
+        ? {}
+        : { providers: [alternateProvider] }),
     }),
   );
 
@@ -217,9 +240,10 @@ function renderPicker({
         reasoningValue={reasoningValue}
         reasoningOptions={pickerReasoningOptions}
         onReasoningChange={onReasoningChange}
-        fastModeEnabled={false}
-        onFastModeChange={vi.fn()}
-        showFastModeToggle={false}
+        serviceTierValue={serviceTierValue}
+        serviceTierOptions={serviceTierOptions}
+        onServiceTierChange={onServiceTierChange}
+        serviceTierSupportByProvider={serviceTierSupportByProvider}
         muted={muted}
         modal={false}
         handoff={handoff}
@@ -245,7 +269,12 @@ function renderPicker({
     { wrapper },
   );
 
-  return { onSelectedProviderChange, onModelChange, onReasoningChange };
+  return {
+    onSelectedProviderChange,
+    onModelChange,
+    onReasoningChange,
+    onServiceTierChange,
+  };
 }
 
 afterEach(() => {
@@ -255,6 +284,8 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  beforeAll(() => ModelReasoningMenu.preload());
+
   it.each([
     ["ArrowRight", "medium", "high"],
     ["ArrowLeft", "high", "medium"],
@@ -389,6 +420,7 @@ describe("ModelReasoningPicker", () => {
       modelLoadError: {
         providerId: "codex",
         code: "provider_unavailable",
+        detail: null,
       },
     });
 
@@ -397,9 +429,68 @@ describe("ModelReasoningPicker", () => {
     );
 
     expect(screen.getByTitle("Codex")).not.toBeNull();
+    expect(screen.getByText("Could not load models for Codex.")).not.toBeNull();
+    expect(screen.getByText("Provider plugin failed to load")).not.toBeNull();
+  });
+
+  it("names the missing CLI in one short line and links it to the install page", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      pickerProviderOptions: [
+        {
+          value: "codex",
+          label: "Codex",
+          brandPrefix: "GPT-",
+          installUrl: "https://developers.openai.com/codex/cli",
+        },
+        { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
+      ],
+      modelLoadError: {
+        providerId: "codex",
+        code: "missing_executable",
+        detail:
+          "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByText("Could not load models for Codex.")).not.toBeNull();
+    const reason = screen.getByText("CLI not found");
+    expect(reason.tagName).toBe("A");
+    expect(reason.getAttribute("href")).toBe(
+      "https://developers.openai.com/codex/cli",
+    );
+    expect(screen.queryByText(/put `codex` on PATH/)).toBeNull();
+  });
+
+  it("shows the underlying failure detail beneath a generic model-load error", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "failed",
+        detail: "bb could not find the Codex CLI on this machine.",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByText("Could not load models for Codex.")).not.toBeNull();
     expect(
-      screen.getByText(
-        "Codex is unavailable because its provider plugin failed to load.",
+      screen.getByText("bb could not find the Codex CLI on this machine."),
+    ).not.toBeNull();
+    expect(
+      screen.getByTitle(
+        "Could not load models for Codex. bb could not find the Codex CLI on this machine.",
       ),
     ).not.toBeNull();
   });
@@ -1002,8 +1093,8 @@ describe("ModelReasoningPicker", () => {
     });
 
     fireEvent.click(trigger);
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
     const search = screen.getByPlaceholderText(
       "Search models",
     ) as HTMLInputElement;
@@ -1057,8 +1148,8 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    act(() => frames.splice(0).forEach((callback) => callback(0)));
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
 
     const modelList = screen.getByRole("listbox", { name: "Models" });
     const reasoning = screen.getByRole("radiogroup", { name: "Reasoning" });
@@ -1179,5 +1270,134 @@ describe("buildModelNavRows", () => {
       { kind: "model", option: primary[0] },
       { kind: "model", option: primary[1] },
     ]);
+  });
+});
+
+describe("ModelReasoningPicker service tiers", () => {
+  beforeAll(() => ModelReasoningMenu.preload());
+
+  const fast = { id: "fast", label: "Fast", description: "1.5x speed" };
+  const ultrafast = { id: "ultrafast", label: "Ultrafast" };
+
+  function openPicker(): void {
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+  }
+
+  it("offers a single tier as an on/off switch", () => {
+    const { onServiceTierChange } = renderPicker({
+      serviceTierOptions: [fast],
+      serviceTierValue: "default",
+    });
+    openPicker();
+
+    expect(screen.queryByRole("radiogroup", { name: "Speed" })).toBeNull();
+    const toggle = screen.getByRole("switch", { name: "Fast mode" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onServiceTierChange).toHaveBeenCalledExactlyOnceWith("fast");
+  });
+
+  it("turns a single selected tier back to default", () => {
+    const { onServiceTierChange } = renderPicker({
+      serviceTierOptions: [fast],
+      serviceTierValue: "fast",
+    });
+    openPicker();
+
+    const toggle = screen.getByRole("switch", { name: "Fast mode" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(onServiceTierChange).toHaveBeenCalledExactlyOnceWith("default");
+  });
+
+  it("offers several tiers as a choice that includes default", () => {
+    const { onServiceTierChange } = renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "fast",
+    });
+    openPicker();
+
+    expect(screen.queryByRole("switch")).toBeNull();
+    const speed = screen.getByRole("radiogroup", { name: "Speed" });
+    const choices = [...speed.querySelectorAll('[role="radio"]')];
+    expect(choices.map((choice) => choice.textContent)).toEqual([
+      "Default",
+      "Fast",
+      "Ultrafast",
+    ]);
+    expect(
+      choices.map((choice) => choice.getAttribute("aria-checked")),
+    ).toEqual(["false", "true", "false"]);
+    fireEvent.click(screen.getByRole("radio", { name: "Ultrafast" }));
+    expect(onServiceTierChange).toHaveBeenCalledExactlyOnceWith("ultrafast");
+  });
+
+  it("shows a tier the model no longer offers as default", () => {
+    renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "flex",
+    });
+    openPicker();
+
+    expect(
+      screen
+        .getByRole("radio", { name: "Default" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("hides the control when the model has no tiers", () => {
+    renderPicker({ serviceTierOptions: [], serviceTierValue: "fast" });
+    openPicker();
+
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Speed" })).toBeNull();
+  });
+
+  it("names the selected tier on the trigger", () => {
+    renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "ultrafast",
+    });
+
+    expect(screen.getByTitle(/\(Ultrafast mode\)$/)).toBeTruthy();
+  });
+
+  it("previews another provider with that provider's tiers for its model", async () => {
+    renderPicker({
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "default",
+      serviceTierSupportByProvider: { codex: true, "claude-code": true },
+      alternateProvider: makeProviderInfo({
+        id: "claude-code",
+        capabilities: { supportsServiceTier: true },
+        serviceTiers: [
+          { id: "default", label: "Default" },
+          { id: "fast", label: "Fast" },
+          { id: "turbo", label: "Turbo" },
+        ],
+      }),
+      alternateProviderModels: [
+        {
+          ...availableModel({
+            value: "claude-opus-4-7",
+            label: "Claude Opus 4.7",
+            isDefault: true,
+          }),
+          supportedServiceTiers: [{ id: "turbo" }],
+        },
+      ],
+    });
+    openPicker();
+    expect(screen.getByRole("radiogroup", { name: "Speed" })).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle("Claude Code"));
+
+    expect(
+      await screen.findByRole("switch", { name: "Turbo mode" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: "Speed" })).toBeNull();
   });
 });

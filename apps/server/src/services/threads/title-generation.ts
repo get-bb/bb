@@ -4,6 +4,7 @@ import {
   removeCommandMentionsFromPromptInput,
   type PromptInput,
   type PromptMentionCommandTrigger,
+  type Thread,
 } from "@bb/domain";
 import {
   countWords,
@@ -12,17 +13,13 @@ import {
   truncateToWidthAtWordBoundary,
 } from "@bb/text-utils";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { Type } from "@earendil-works/pi-ai";
-import {
-  INFERENCE_POLICY,
-  InferenceTimeoutError,
-  inferenceCompleteWithFallback,
-} from "../ai/inference.js";
+import { runTextAiTask } from "../ai/ai-tasks.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WIDTH = 48;
 const MAX_TITLE_FALLBACK_WIDTH = 80;
-const TITLE_FALLBACK_ELLIPSIS = "...";
+const MAX_TITLE_PROMPT_WIDTH = 4000;
+const ELLIPSIS = "...";
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
 interface ApplyGeneratedThreadTitleArgs {
@@ -33,8 +30,6 @@ interface ApplyGeneratedThreadTitleArgs {
 interface ThreadMetadataGenerationArgs {
   input: PromptInput[];
   threadId: string;
-  timeoutMaxAttempts?: number;
-  timeoutMs?: number;
 }
 
 interface GeneratedThreadMetadata {
@@ -54,10 +49,6 @@ export interface ThreadMetadataGenerationOutcome {
   reason?: ThreadMetadataGenerationOutcomeReason;
 }
 
-interface RawGeneratedThreadMetadata {
-  title: string;
-}
-
 function cleanPromptText(input: PromptInput[]): string {
   return input
     .filter((part) => part.type === "text")
@@ -67,15 +58,12 @@ function cleanPromptText(input: PromptInput[]): string {
     .trim();
 }
 
-function clampPromptText(text: string): string {
-  if (displayWidth(text) <= MAX_TITLE_FALLBACK_WIDTH) {
+function clampToWidth(text: string, maxWidth: number): string {
+  if (displayWidth(text) <= maxWidth) {
     return text;
   }
-  const body = truncateToWidth(
-    text,
-    MAX_TITLE_FALLBACK_WIDTH - TITLE_FALLBACK_ELLIPSIS.length,
-  );
-  return `${body}${TITLE_FALLBACK_ELLIPSIS}`;
+  const body = truncateToWidth(text, maxWidth - ELLIPSIS.length);
+  return `${body}${ELLIPSIS}`;
 }
 
 export function deriveTitleFallback(input: PromptInput[]): string | null {
@@ -83,7 +71,23 @@ export function deriveTitleFallback(input: PromptInput[]): string | null {
   if (text.length === 0) {
     return null;
   }
-  return clampPromptText(text);
+  return clampToWidth(text, MAX_TITLE_FALLBACK_WIDTH);
+}
+
+const FORK_TITLE_PATTERN = /^\((\d+)\) (.+)$/s;
+
+export function deriveForkTitle(
+  source: Pick<Thread, "title" | "titleFallback">,
+): string | null {
+  const sourceTitle = source.title?.trim() || source.titleFallback?.trim();
+  if (!sourceTitle) {
+    return null;
+  }
+  const numbered = FORK_TITLE_PATTERN.exec(sourceTitle);
+  if (numbered === null) {
+    return `(1) ${sourceTitle}`;
+  }
+  return `(${BigInt(numbered[1]) + 1n}) ${numbered[2]}`;
 }
 
 interface InvokedPromptCommand {
@@ -167,23 +171,22 @@ export function sanitizeGeneratedBranchSlug(value: string): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-const threadMetadataSchema = Type.Object({
-  title: Type.String(),
-});
-
-function normalizeGeneratedThreadMetadata(
-  parsed: RawGeneratedThreadMetadata | null,
-): GeneratedThreadMetadata | null {
-  if (!parsed) {
+export function buildThreadTitlePrompt(input: PromptInput[]): string | null {
+  const text = cleanPromptText(input);
+  if (!text) {
     return null;
   }
-
-  const title = parsed.title ? sanitizeGeneratedTitle(parsed.title) : null;
-  if (!title) {
-    return null;
-  }
-
-  return { title };
+  const commands = collectInvokedPromptCommands(input);
+  const body = promptTextWithoutCommands(input, commands);
+  return renderTemplate("generateThreadMetadata", {
+    cleanedPrompt: clampToWidth(
+      body.length > 0 ? body : text,
+      MAX_TITLE_PROMPT_WIDTH,
+    ),
+    ...(commands.length > 0
+      ? { invokedCommands: formatInvokedCommands(commands) }
+      : {}),
+  });
 }
 
 export async function generateThreadMetadataWithOutcome(
@@ -191,7 +194,6 @@ export async function generateThreadMetadataWithOutcome(
   args: ThreadMetadataGenerationArgs,
 ): Promise<ThreadMetadataGenerationOutcome> {
   const startedAt = Date.now();
-  const fallback = deriveTitleFallback(args.input);
   const complete = (
     metadata: GeneratedThreadMetadata | null,
     reason?: ThreadMetadataGenerationOutcomeReason,
@@ -201,41 +203,32 @@ export async function generateThreadMetadataWithOutcome(
     ...(reason ? { reason } : {}),
   });
 
-  if (!fallback) {
+  const prompt = buildThreadTitlePrompt(args.input);
+  if (prompt === null) {
     return complete(null, "empty-input");
   }
   if (!shouldGenerateThreadTitle(args.input)) {
     return complete(null, "too-short");
   }
 
-  const commands = collectInvokedPromptCommands(args.input);
-  const body = promptTextWithoutCommands(args.input, commands);
-  const prompt = renderTemplate("generateThreadMetadata", {
-    cleanedPrompt: body.length > 0 ? clampPromptText(body) : fallback,
-    ...(commands.length > 0
-      ? { invokedCommands: formatInvokedCommands(commands) }
-      : {}),
+  const outcome = await runTextAiTask(deps, {
+    task: "thread-title",
+    label: "Thread title generation",
+    logContext: { threadId: args.threadId },
+    prompt,
   });
-  const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
-
-  try {
-    const inference = await inferenceCompleteWithFallback(deps, {
-      label: "Thread metadata inference",
-      logContext: { threadId: args.threadId },
-      maxAttempts,
-      prompt,
-      retryDelayMs: INFERENCE_POLICY.threadMetadata.retryDelayMs,
-      schema: threadMetadataSchema,
-      timeoutMs: args.timeoutMs ?? INFERENCE_POLICY.threadMetadata.timeoutMs,
-    });
-    const metadata = normalizeGeneratedThreadMetadata(inference);
-    return complete(metadata, metadata ? undefined : "inference-unavailable");
-  } catch (error) {
+  if (!outcome.ok) {
     return complete(
       null,
-      error instanceof InferenceTimeoutError ? "timeout" : "failed",
+      outcome.reason === "timeout"
+        ? "timeout"
+        : outcome.reason === "failed"
+          ? "failed"
+          : "inference-unavailable",
     );
   }
+  const title = sanitizeGeneratedTitle(outcome.value);
+  return title === null ? complete(null, "failed") : complete({ title });
 }
 
 export function applyGeneratedThreadTitle(

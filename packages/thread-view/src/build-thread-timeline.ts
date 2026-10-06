@@ -26,7 +26,6 @@ import {
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
-  EventProjectionErrorMessage,
   EventProjectionFileEditChange,
   EventProjectionMessage,
   EventProjection,
@@ -103,14 +102,11 @@ export interface ThreadTimelineFromEventsResult {
   rows: TimelineRow[];
 }
 
-interface ThreadTimelineSourceSeqRange {
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
-}
-
-interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
+interface BuildThreadTimelineTurnDetailsFromEventsOptions {
   completedTurnDisplay: CompletedTurnDisplay;
   includeDiagnosticOperations: boolean;
+  sourceSeqStart: number;
+  turnId: string;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
   threadName: string;
@@ -317,12 +313,6 @@ function filterDelegationChildRows(childRows: TimelineRow[]): TimelineRow[] {
   return childRows.filter((row) => !isDelegationLifecycleChildRow(row));
 }
 
-function isReconnectErrorMessage(
-  message: EventProjectionErrorMessage,
-): boolean {
-  return message.reconnectAttempt !== undefined || message.willRetry === true;
-}
-
 function toConversationAttachments(
   attachments: Extract<EventProjectionMessage, { kind: "user" }>["attachments"],
 ): TimelineConversationAttachments | null {
@@ -497,6 +487,7 @@ function convertMessage(
           ...buildTimelineRowBase(message, options.rowIdPrefix),
           kind: "conversation",
           role: "user",
+          messageSeq: message.messageSeq,
           text: message.text,
           mentions: message.mentions,
           attachments: toConversationAttachments(message.attachments),
@@ -513,6 +504,7 @@ function convertMessage(
           ...buildTimelineRowBase(message, options.rowIdPrefix),
           kind: "conversation",
           role: "assistant",
+          messageSeq: message.sourceSeqEnd,
           text: message.text,
           attachments: null,
           turnRequest: null,
@@ -812,7 +804,7 @@ function convertMessage(
     }
     case "error": {
       const errorDisplay = buildTimelineErrorDisplay(message);
-      const isReconnect = isReconnectErrorMessage(message);
+      const isReconnect = message.willRetry === true;
       return [
         {
           ...buildTimelineRowBase(message, options.rowIdPrefix),
@@ -850,6 +842,7 @@ function convertSteerMessage(
     ...buildTimelineRowBase(message, rowIdPrefix),
     kind: "conversation",
     role: "user",
+    messageSeq: message.messageSeq,
     text: message.text,
     mentions: message.mentions,
     attachments: toConversationAttachments(message.attachments),
@@ -1221,6 +1214,28 @@ export function buildThreadTimelineFromEvents(
   };
 }
 
+function findTurnSummaryStartingAt(
+  plan: readonly TimelineRowPlan[],
+  turnId: string,
+  sourceSeqStart: number,
+): Extract<TimelineRowPlan, { kind: "summary" }> | undefined {
+  let match: Extract<TimelineRowPlan, { kind: "summary" }> | undefined;
+  let matchSeq = Infinity;
+  for (const item of plan) {
+    if (item.kind !== "summary" || item.row.turnId !== turnId) continue;
+    for (const message of item.messages) {
+      if (
+        message.sourceSeqStart >= sourceSeqStart &&
+        message.sourceSeqStart < matchSeq
+      ) {
+        match = item;
+        matchSeq = message.sourceSeqStart;
+      }
+    }
+  }
+  return match;
+}
+
 export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
@@ -1242,13 +1257,12 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     options.completedTurnDisplay,
     options.rowIdPrefix,
   );
-  const matchingSummary = plan.find(
-    (item) =>
-      item.kind === "summary" &&
-      item.row.sourceSeqStart === args.options.sourceSeqStart &&
-      item.row.sourceSeqEnd === args.options.sourceSeqEnd,
+  const matchingSummary = findTurnSummaryStartingAt(
+    plan,
+    args.options.turnId,
+    args.options.sourceSeqStart,
   );
-  if (matchingSummary?.kind === "summary") {
+  if (matchingSummary) {
     return {
       kind: "matched",
       rows: matchingSummary.messages.flatMap((message) =>

@@ -29,7 +29,7 @@ export function SidebarFooterSettings() {
   return (
     <SettingsWithControl
       label="Sidebar footer"
-      description="Drag to reorder. Hidden actions remain available in the footer’s More menu."
+      description="Drag to reorder."
       controlPlacement="below"
     >
       <div
@@ -45,9 +45,14 @@ export function SidebarFooterSettings() {
               <FooterSettingsRow
                 key={item.key}
                 item={item}
-                visible={!preferences.hidden.includes(item.key)}
+                visible={preferences.footer.includes(item)}
+                disabled={
+                  preferences.isFull && !preferences.footer.includes(item)
+                }
                 onVisibleChange={(visible) =>
-                  preferences.setVisible(item.key, visible)
+                  visible
+                    ? preferences.addToFooter(item.key)
+                    : preferences.hideFromFooter(item.key)
                 }
               />
             ))}
@@ -61,10 +66,12 @@ export function SidebarFooterSettings() {
 function FooterSettingsRow({
   item,
   visible,
+  disabled,
   onVisibleChange,
 }: {
   item: FooterItem;
   visible: boolean;
+  disabled: boolean;
   onVisibleChange(visible: boolean): void;
 }) {
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
@@ -93,6 +100,7 @@ function FooterSettingsRow({
       <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
       <Switch
         checked={visible}
+        disabled={disabled}
         onCheckedChange={onVisibleChange}
         aria-label={`Show ${item.label} in footer`}
       />

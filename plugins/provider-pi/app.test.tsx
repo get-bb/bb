@@ -38,7 +38,7 @@ describe("pi extension ui interaction", () => {
       { submit },
     );
     fireEvent.click(view.getByText("Allow once"));
-    fireEvent.click(view.getByText("Submit"));
+    fireEvent.click(view.getByText("Submit answer"));
     await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("Allow once"));
   });
 
@@ -48,9 +48,11 @@ describe("pi extension ui interaction", () => {
       method: "select",
       options: ["A", "B"],
     });
-    expect((view.getByText("Submit") as HTMLButtonElement).disabled).toBe(true);
+    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled)
+      .toBe(true);
     fireEvent.click(view.getByText("B"));
-    expect((view.getByText("Submit") as HTMLButtonElement).disabled).toBe(false);
+    expect((view.getByText("Submit answer") as HTMLButtonElement).disabled)
+      .toBe(false);
   });
 
   it("submits a boolean for a confirm dialog", async () => {
@@ -91,17 +93,6 @@ describe("pi extension ui interaction", () => {
     );
   });
 
-  it("renders the unwrapped payload the host passes to plugin components", async () => {
-    const submit = vi.fn(async () => undefined);
-    const view = render(
-      { requestId: "ui-1", method: "select", options: ["Allow once", "Keep blocked"] },
-      { submit },
-    );
-    fireEvent.click(view.getByText("Allow once"));
-    fireEvent.click(view.getByText("Submit"));
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("Allow once"));
-  });
-
   it("still renders the wrapped stored-payload shape for robustness", async () => {
     const submit = vi.fn(async () => undefined);
     const view = render(
@@ -114,7 +105,7 @@ describe("pi extension ui interaction", () => {
       },
     );
     fireEvent.click(view.getByText("A"));
-    fireEvent.click(view.getByText("Submit"));
+    fireEvent.click(view.getByText("Submit answer"));
     await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("A"));
   });
 

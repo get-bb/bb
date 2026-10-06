@@ -81,13 +81,8 @@ interface RenameDialogContentProps {
   entityLabel: string;
   initialName: string;
   pending: boolean;
-  errorMessage?: string | null;
-  placeholder?: string;
-  inputDetails?: ReactNode;
-  maxLength?: { limit: number; message: string };
   autoCapitalize: "words" | "sentences";
   compact?: boolean;
-  clearAction?: { label: string; onClear: () => void };
   onRename: (name: string) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
@@ -96,13 +91,8 @@ export function RenameDialogContent({
   entityLabel,
   initialName,
   pending,
-  errorMessage,
-  placeholder,
-  inputDetails,
-  maxLength,
   autoCapitalize,
   compact = false,
-  clearAction,
   onRename,
   inputRef,
 }: RenameDialogContentProps) {
@@ -110,7 +100,6 @@ export function RenameDialogContent({
   const [nextName, setNextName] = useState(initialName);
   const { validationMessage, validate, clearMessage } = useNameValidation({
     emptyMessage: `${capitalize(entityLabel)} name cannot be empty.`,
-    maxLength,
   });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -122,7 +111,6 @@ export function RenameDialogContent({
 
     onRename(trimmedName);
   };
-  const displayedErrorMessage = validationMessage ?? errorMessage;
 
   return (
     <>
@@ -142,8 +130,6 @@ export function RenameDialogContent({
             id={inputId}
             aria-label={`${capitalize(entityLabel)} name`}
             value={nextName}
-            placeholder={placeholder}
-            maxLength={maxLength?.limit}
             autoCapitalize={autoCapitalize}
             autoCorrect="off"
             spellCheck={false}
@@ -153,22 +139,11 @@ export function RenameDialogContent({
               clearMessage();
             }}
           />
-          {inputDetails}
-          {displayedErrorMessage ? (
-            <p className="text-sm text-destructive">{displayedErrorMessage}</p>
+          {validationMessage ? (
+            <p className="text-sm text-destructive">{validationMessage}</p>
           ) : null}
         </div>
         <DialogFooter>
-          {clearAction ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={clearAction.onClear}
-            >
-              {clearAction.label}
-            </Button>
-          ) : null}
           <Button type="submit" disabled={pending}>
             Rename {entityLabel}
           </Button>

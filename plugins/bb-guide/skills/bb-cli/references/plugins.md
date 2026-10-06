@@ -24,7 +24,8 @@
     plugin code, and a failed refresh keeps the last catalog bb validated.
   - `bb plugin search <query> [--json]` — search the catalog by id,
     name, description, category, or tag; status shows installed / compatible /
-    requires newer bb. The table includes a **Category** column. An
+    requires newer bb / id in use by `<source>` (another installed plugin, such
+    as a local `path:` checkout, already uses the entry's id). The table includes a **Category** column. An
     **Installs** column appears once the curated
     marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
     null when unknown): anonymous-telemetry install counts for published
@@ -128,12 +129,21 @@
     repository subdirectory for a nested plugin, the semver range with its tag
     prefix and resolved tag for a Git range install, engine ranges, install
     time, integrity/registry details, and recent activation history.
-  - `bb plugin enable|disable <id>`, `bb plugin reload [id]` (exits 1 when a
+  - `bb plugin enable|disable <id>` — a plugin included with bb that you have
+    never enabled or disabled follows bb's default, so a later release can turn
+    it on; once you enable or disable it, that choice survives every release.
+  - `bb plugin reload [id]` (exits 1 when a
     reloaded plugin does not come up on its current sources: the previous
     instance was kept, or it is degraded because a service ignored its abort),
     `bb plugin remove <id>` (deletes the plugin's settings, secrets, and
     schedules; managed git/npm files are deleted, and local path sources stay
     on disk).
+  - `bb plugin safe-mode [on|off] [--json]` — show or change plugin safe
+    mode. `on` stops every plugin you installed, official store plugins
+    included, while keeping each plugin's enabled setting; plugins included
+    with bb keep running. `off` restarts the ones that were enabled and exits 1
+    naming any that fail to start. Installing or updating a stopped plugin is
+    refused while safe mode is on. The command palette offers the same toggle.
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings; boolean and number arguments are converted to their declared
     types. Reload the plugin after configuring (`bb plugin reload <id>`).

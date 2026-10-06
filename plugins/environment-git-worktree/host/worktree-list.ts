@@ -1,3 +1,5 @@
+import path from "node:path";
+
 export interface GitWorktreeEntry {
   path: string;
   branch: string | null;
@@ -30,7 +32,7 @@ export function parseWorktreeListPorcelain(stdout: string): GitWorktreeEntry[] {
     if (key === "worktree") {
       flush();
       current = {
-        path: value,
+        path: path.sep === "\\" ? value.replaceAll("/", path.sep) : value,
         branch: null,
         isMain: entries.length === 0,
         isBare: false,
@@ -68,12 +70,23 @@ export function selectAdoptableWorktrees(args: {
 }
 
 function isInside(root: string, candidate: string): boolean {
-  return candidate === root || candidate.startsWith(`${root}/`);
+  const relativePath = path.relative(root, candidate);
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." &&
+      !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath))
+  );
 }
 
 export function findWorktreeEntry(
   entries: readonly GitWorktreeEntry[],
-  path: string,
+  targetPath: string,
 ): GitWorktreeEntry | null {
-  return entries.find((entry) => entry.path === path) ?? null;
+  return (
+    entries.find(
+      (entry) =>
+        entry.path !== "" && path.relative(entry.path, targetPath) === "",
+    ) ?? null
+  );
 }

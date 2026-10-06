@@ -35,6 +35,7 @@ export interface PluginManifest {
   };
   bbEngineRange: string | undefined;
   bbPluginSdkRange: string | undefined;
+  providerCatalog: Array<{ id: string; displayName: string }>;
   serverEntry: string;
   appEntry: string | undefined;
   hostEntry: string | undefined;
@@ -235,6 +236,9 @@ export async function readPluginManifest(
     },
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,
+    providerCatalog: (bb.experimental_providers ?? []).map(
+      ({ id, displayName }) => ({ id, displayName }),
+    ),
     serverEntry,
     appEntry: bb.app ? resolveManifestPath(rootDir, bb.app, "bb.app") : undefined,
     hostEntry,

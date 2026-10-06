@@ -174,7 +174,8 @@ function useApprovalDecisionSubmission({
   interaction,
   threadId,
 }: UseApprovalDecisionSubmissionArgs): ApprovalDecisionSubmission {
-  const resolvePendingInteraction = useResolveThreadPendingInteraction();
+  const resolvePendingInteraction =
+    useResolveThreadPendingInteraction(threadId);
   const isResolving = interaction.status === "resolving";
   const errorMessage = resolvePendingInteraction.error
     ? getMutationErrorMessage({
@@ -222,7 +223,7 @@ function PlanReviewRequestBanner({
     <PendingInteractionShell
       label="Plan review"
       title={approval.reason ?? "Ready to code?"}
-      initiallyExpanded={false}
+      initiallyExpanded
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="plan-review-banner"

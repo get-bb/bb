@@ -7,10 +7,14 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  NEW_TEXT_STYLE,
+  type PluginInstallCountPresentation,
+} from "./plugin-ui";
 
 type PluginCatalogInstallControlProps = {
   displayName: string;
-  count?: { display: string; accessibleLabel: string };
+  count?: PluginInstallCountPresentation;
   showLabel?: boolean;
   subtle?: boolean;
 } & (
@@ -32,12 +36,17 @@ export function PluginCatalogInstallControl(
     ? included || props.onUninstall === undefined
     : props.disabled;
   const tooltip = included
-    ? "Included with BB; cannot be uninstalled."
+    ? "Included with BB"
     : installed
       ? "Installed"
       : disabled
         ? (props.unavailableReason ?? "Unavailable for this version of BB.")
         : `Install ${displayName}`;
+  const stateIcon = installed
+    ? "Check"
+    : disabled
+      ? "AlertTriangle"
+      : "Download";
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -67,11 +76,18 @@ export function PluginCatalogInstallControl(
               else props.onInstall();
             }}
           >
-            <span className="grid place-items-center" aria-hidden>
+            <span
+              className={cn(
+                "grid place-items-center",
+                count?.tone === "builtin" && "hidden",
+              )}
+              aria-hidden
+            >
               <Icon
-                name="Download"
+                name={stateIcon}
                 className={cn(
                   "col-start-1 row-start-1 size-3.5",
+                  !installed && disabled && "text-warning-text",
                   installed &&
                     !disabled &&
                     "group-hover/install:opacity-0 group-focus-visible/install:opacity-0",
@@ -86,7 +102,14 @@ export function PluginCatalogInstallControl(
             </span>
             {props.showLabel ? (installed ? "Installed" : "Install") : null}
             {count === undefined ? null : (
-              <span aria-hidden className="text-2xs">
+              <span
+                aria-hidden
+                className={cn(
+                  "text-2xs",
+                  count.tone === "new" && "font-semibold",
+                )}
+                style={count.tone === "new" ? NEW_TEXT_STYLE : undefined}
+              >
                 {count.display}
               </span>
             )}

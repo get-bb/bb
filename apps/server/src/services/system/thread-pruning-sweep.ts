@@ -24,6 +24,7 @@ export async function runThreadPruningSweep(
 ): Promise<void> {
   const startedAt = performance.now();
   const completed = new Set<string>();
+  const compactedThreadIds = new Set<string>();
   let advances = 0;
   let removed = 0;
   let scanned = 0;
@@ -61,7 +62,7 @@ export async function runThreadPruningSweep(
       removed += result.removed;
       removedBytes += result.removedBytes;
       if (result.removed > 0 && result.threadId !== null)
-        deps.hub.notifyThread(result.threadId, ["history-rewritten"]);
+        compactedThreadIds.add(result.threadId);
       deps.logger.debug(
         { ...result, advanceElapsedMs },
         "Thread pruning policy advanced",
@@ -75,6 +76,8 @@ export async function runThreadPruningSweep(
     reason = "failed";
     throw error;
   } finally {
+    for (const threadId of compactedThreadIds)
+      deps.hub.notifyThread(threadId, ["history-compacted"]);
     deps.logger.debug(
       {
         advances,

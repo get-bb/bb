@@ -110,6 +110,7 @@ async function openImportedDataDir() {
     rootDir: `${SOURCE_DATA_DIR}/plugins/npm/tasks`,
     version: "1.0.0",
     enabled: true,
+    enabledFollowsDefault: false,
   });
   const registrationDir = join(dataDir, "plugins", "snapshots", "tasks", "1");
   await mkdir(registrationDir, { recursive: true });
@@ -144,7 +145,13 @@ function rootDirOf(db: DbConnection, pluginId: string): string | undefined {
 }
 
 describe("imported server boot", () => {
-  it("applies fixups once to a real migrated database and keeps a move pending", async () => {
+  it("applies fixups once to a real migrated database and keeps a move pending", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "server moves only target macOS and Linux",
+    );
     const { dataDir, db, registrationPath } = await openImportedDataDir();
     try {
       await writeServerImportFile(dataDir, moveMarker());
@@ -225,6 +232,38 @@ describe("imported server boot", () => {
     }
   });
 
+  it("leaves machineServerUrl alone for bb connect moves when bb account holds the pairing", async () => {
+    const { dataDir, db } = await openImportedDataDir();
+    try {
+      setPluginKvValue(
+        db,
+        "bb-account",
+        "credential",
+        JSON.stringify({
+          baseUrl: "https://getbb.test",
+          serverUrl: "https://laptop.getbb.test",
+          serverId: "srv_1",
+          credential: "bbcred_secret",
+        }),
+      );
+      await writeServerImportFile(
+        dataDir,
+        moveMarker({ serverUrl: "https://laptop.getbb.test/" }),
+      );
+
+      await applyServerImportAtBoot({
+        dataDir,
+        db,
+        logger: testLogger,
+        now: 1,
+      });
+
+      expect(getAppSettings(db).machineServerUrl).toBeNull();
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("leaves machineServerUrl alone for bb connect moves", async () => {
     const { dataDir, db } = await openImportedDataDir();
     try {
@@ -256,7 +295,13 @@ describe("imported server boot", () => {
     }
   });
 
-  it("finishes a manual import at boot and removes the marker, even with the serverMove experiment off", async () => {
+  it("finishes a manual import at boot and removes the marker, even with the serverMove experiment off", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "server moves only target macOS and Linux",
+    );
     const { dataDir, db } = await openImportedDataDir();
     try {
       await writeFile(join(dataDir, "host-id"), "host-new\n");
@@ -285,7 +330,13 @@ describe("imported server boot", () => {
     }
   });
 
-  it("keeps a manual import pending until this machine enrolls, then swaps roles at a later boot", async () => {
+  it("keeps a manual import pending until this machine enrolls, then swaps roles at a later boot", async ({
+    skip,
+  }) => {
+    skip(
+      process.platform === "win32",
+      "server moves only target macOS and Linux",
+    );
     const { dataDir, db } = await openImportedDataDir();
     try {
       await writeServerImportFile(dataDir, manualMarker());
@@ -646,6 +697,7 @@ describe("manual import completion", () => {
       });
       const app = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: true,
           pending: null,
@@ -684,6 +736,7 @@ describe("pending server mode", () => {
       upsertHost(harness.db, harness.hub, { id: "host-new", name: "Desktop" });
       const pendingApp = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: false,
           pending: {
@@ -793,6 +846,7 @@ describe("pending server mode", () => {
     withTestHarness(async (harness) => {
       const pendingApp = createApp(harness.deps, {
         serverMove: {
+          appSurface: "web",
           bindHost: null,
           manualImportPending: false,
           pending: {

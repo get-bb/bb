@@ -5,6 +5,7 @@ import {
   findPane,
   findPaneByContent,
   findPaneByThread,
+  isSamePaneContent,
   MAX_PANES,
   replacePaneContent,
   setFocus,
@@ -122,6 +123,22 @@ export function reconcileLayoutForContent(
       : setFocus(withRouteState, existing.paneId);
   }
   return replacePaneContent(layout, layout.focusedPaneId, content);
+}
+
+export function replaceOriginPaneContent(
+  layout: SplitLayout,
+  paneId: string,
+  originContent: PaneContent,
+  content: PaneContent,
+): SplitLayout | null {
+  const pane = findPane(layout.root, paneId);
+  if (pane === null || !isSamePaneContent(pane.content, originContent)) {
+    return null;
+  }
+  return {
+    ...replacePaneContent(layout, paneId, content),
+    focusedPaneId: layout.focusedPaneId,
+  };
 }
 
 export function focusedPaneRoute(layout: SplitLayout): string | null {

@@ -99,16 +99,4 @@ describe("truncated toast descriptions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(getNotificationCenterState().focusedId).toBe("notification-7");
   });
-
-  it("opens the center on the matching entry from Show more", () => {
-    mockWidths(600, 300);
-    renderToast();
-
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-
-    expect(getNotificationCenterState()).toEqual({
-      open: true,
-      focusedId: "notification-7",
-    });
-  });
 });

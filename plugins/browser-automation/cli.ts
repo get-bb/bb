@@ -90,7 +90,7 @@ export function createBrowserAutomationCli(deps: {
     commands: {
       open: cliCommand({
         summary:
-          "Open an isolated desktop or local headless session; --tab hands off an existing tab",
+          "Open a desktop or local headless session; --tab takes over an existing tab",
         options: {
           backend: {
             type: "enum",

@@ -70,8 +70,8 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
   }),
 }));
 
-vi.mock("@/components/secondary-panel/useThreadStorageViewer", () => ({
-  useThreadStorageViewer: () => ({ threadStorageRootPath: null }),
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  useThreadStorageLocation: () => ({ data: undefined }),
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({

@@ -110,7 +110,6 @@ export const usageFetchInputSchema = z.object({
       "False permits a cached measurement but still returns actual usage. True requests a fresh collection attempt for this resource only.",
     ),
 });
-export type UsageResourceList = z.infer<typeof usageResourceListSchema>;
 export type UsageMeasurement = z.infer<typeof usageMeasurementSchema>;
 export type UsageResource = z.infer<typeof usageResourceSchema> &
   UsageMeasurement;

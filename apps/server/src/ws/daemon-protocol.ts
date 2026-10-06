@@ -11,13 +11,19 @@ import { verifyAuthenticatedDaemon } from "../internal/auth.js";
 import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
+  WorkSessionDeps,
 } from "../types.js";
 import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import {
   getInactiveSessionLogFields,
   requireAuthorizedOpenSession,
 } from "../internal/session-state.js";
-import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
+import {
+  handleDaemonSessionSilent,
+  handleDaemonSocketClosed,
+  handleDaemonSocketOpened,
+} from "../internal/session-owner-side-effects.js";
+import { HEARTBEAT_INTERVAL_MS, LEASE_TIMEOUT_MS } from "../constants.js";
 import {
   notifyDaemonEnvironmentChange,
   recordDaemonEnvironmentMetadataChange,
@@ -101,9 +107,10 @@ export function onDaemonSocketOpen(
     "Daemon WebSocket opened",
   );
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
+  handleDaemonSocketOpened(deps, { hostId: args.hostId });
   deps.sharedPorts.pushCurrentSharedPortsForHost(args.hostId);
   if (!isServerMoveSnapshotFenced(deps.db)) {
-    deps.terminalSessions.expireDisconnectedHostTerminals({
+    deps.terminalSessions.reconcileDisconnectedHostTerminals({
       daemonSessionId: args.sessionId,
       hostId: args.hostId,
     });
@@ -134,14 +141,12 @@ export function onDaemonSocketOpen(
 }
 
 export function onDaemonSocketMessage(
-  deps: Pick<
-    AppDeps,
-    "config" | "db" | "hub" | "logger" | "sharedPorts" | "terminalSessions"
-  >,
+  deps: WorkSessionDeps & Pick<AppDeps, "sharedPorts" | "terminalSessions">,
   args: DaemonSocketMessageArgs,
   plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): void {
+  deps.hub.recordDaemonActivity(args.sessionId);
   const message = parseSocketMessage(
     args.socket,
     args.raw,
@@ -157,14 +162,19 @@ export function onDaemonSocketMessage(
         hostId: args.hostId,
         sessionId: args.sessionId,
       });
-      heartbeatSession(
-        deps.db,
-        session.id,
-        Math.max(
-          Date.now() + session.leaseTimeoutMs,
-          session.leaseExpiresAt + 1,
-        ),
-      );
+      const now = Date.now();
+      if (
+        message.type === "heartbeat" ||
+        now < session.updatedAt ||
+        now - session.updatedAt >= session.heartbeatIntervalMs ||
+        session.leaseExpiresAt <= now + session.heartbeatIntervalMs
+      ) {
+        heartbeatSession(
+          deps.db,
+          session.id,
+          Math.max(now + session.leaseTimeoutMs, session.leaseExpiresAt + 1),
+        );
+      }
       if (
         isServerMoveSnapshotFenced(deps.db) &&
         SERVER_MOVE_FENCED_DAEMON_MESSAGE_TYPES.has(message.type)
@@ -239,9 +249,7 @@ export function onDaemonSocketMessage(
           generation: message.generation,
           threadId: message.threadId,
         };
-        try {
-          syncDesktopBrowserTabs(deps, scope, message.tabs);
-        } catch (error) {
+        const logDropped = (error: unknown) => {
           deps.logger.warn(
             {
               sessionId: args.sessionId,
@@ -250,7 +258,10 @@ export function onDaemonSocketMessage(
             },
             "Dropping desktop browser snapshot the server cannot apply",
           );
-        }
+        };
+        void syncDesktopBrowserTabs(deps, scope, message.tabs).catch(
+          logDropped,
+        );
         return;
       }
       if (message.type === "plugin-host.worker-exited") {
@@ -330,17 +341,27 @@ export function onDaemonSocketMessage(
   }
 }
 
+const DAEMON_LIVENESS_CHECK_INTERVAL_MS = HEARTBEAT_INTERVAL_MS;
+const DAEMON_LIVENESS_MAX_QUIET_CHECKS = Math.ceil(
+  LEASE_TIMEOUT_MS / DAEMON_LIVENESS_CHECK_INTERVAL_MS,
+);
+
+export function startDaemonLivenessChecks(
+  deps: LoggedPendingInteractionWorkSessionDeps & Pick<AppDeps, "sharedPorts">,
+): () => void {
+  const interval = setInterval(() => {
+    for (const sessionId of deps.hub.takeSilentDaemonSessionIds(
+      DAEMON_LIVENESS_MAX_QUIET_CHECKS,
+    )) {
+      handleDaemonSessionSilent(deps, { sessionId });
+    }
+  }, DAEMON_LIVENESS_CHECK_INTERVAL_MS);
+  interval.unref();
+  return () => clearInterval(interval);
+}
+
 export function onDaemonSocketClose(
-  deps: Pick<
-    AppDeps,
-    | "db"
-    | "hub"
-    | "logger"
-    | "pendingInteractions"
-    | "providerRegistry"
-    | "sharedPorts"
-    | "terminalSessions"
-  >,
+  deps: LoggedPendingInteractionWorkSessionDeps & Pick<AppDeps, "sharedPorts">,
   sessionId: string,
 ): void {
   handleDaemonSocketClosed(deps, {

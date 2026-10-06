@@ -48,7 +48,9 @@ describe("browser credential output", () => {
         (program) => registerBrowserCommands(program, () => "http://server"),
       );
       expect(JSON.parse(await readFile(output, "utf8"))).toEqual(connection);
-      expect((await stat(output)).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect((await stat(output)).mode & 0o777).toBe(0o600);
+      }
       expect(
         JSON.stringify(collectLogPayloads(vi.mocked(console.log))),
       ).not.toContain("private-token");
@@ -127,8 +129,6 @@ describe("browser cookie import output", () => {
           sourceId,
           "--profile",
           "Default",
-          "--into",
-          "automation:agent-1",
         ],
         (program) => registerBrowserCommands(program, () => "http://server"),
       );
@@ -139,7 +139,6 @@ describe("browser cookie import output", () => {
           generation: "generation",
           sourceId,
           sourceProfileDirectory: "Default",
-          profile: { kind: "automation", id: "agent-1" },
         },
       });
       expect(collectLogLines(vi.mocked(console.log))).toEqual([

@@ -12,7 +12,7 @@ import {
   SECRET_REQUEST_RENDERER_ID,
   secretNameSchema,
   secretRequestResponseSchema,
-} from "@bb/plugin-interaction-contracts";
+} from "./secret-request.js";
 import { assertNoDuplicateAssignments, reconcileDotenv } from "./dotenv.js";
 
 interface ParsedRequest {

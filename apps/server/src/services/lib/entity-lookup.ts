@@ -8,8 +8,8 @@ import {
   listPublicHosts,
   type HostDaemonSessionRow,
 } from "@bb/db";
-import type { EnvironmentRow } from "@bb/db";
-import type { Host } from "@bb/domain";
+import type { EnvironmentRow, HostRow } from "@bb/db";
+import type { Host, HostType } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
@@ -24,7 +24,6 @@ import {
   threadEnvironmentUnavailableDetails,
 } from "./lifecycle-api-errors.js";
 
-type HostRow = NonNullable<ReturnType<typeof getHost>>;
 type ProjectRow = NonNullable<ReturnType<typeof getProject>>;
 type ThreadRow = NonNullable<ReturnType<typeof getThread>>;
 type StandardProject = ProjectRow & { kind: "standard" };
@@ -63,18 +62,14 @@ function getOpenDaemonSessionForHost(
   return session;
 }
 
-function toHostStatus(deps: HostLookupDeps, hostId: string): Host["status"] {
-  const host = getNonDestroyedHost(deps.db, hostId);
-  if (!host) {
-    return "disconnected";
-  }
-
-  return getOpenDaemonSessionForHost(deps, hostId)
-    ? "connected"
-    : "disconnected";
+export function toHostWithStatus(deps: HostLookupDeps, row: HostRow): Host {
+  return toHostRecord(
+    row,
+    getOpenDaemonSessionForHost(deps, row.id) ? "connected" : "disconnected",
+  );
 }
 
-function toHostRecord(row: HostRow, status: Host["status"]): Host {
+export function toHostRecord(row: HostRow, status: Host["status"]): Host {
   return {
     id: row.id,
     name: row.name,
@@ -112,15 +107,10 @@ function isStandardProject(project: ProjectRow): project is StandardProject {
 
 export function listPublicHostsWithStatus(
   deps: HostLookupDeps,
-  options?: { includeCreating?: boolean },
+  options?: { includeCreating?: boolean; type?: HostType },
 ): Host[] {
-  const rows = listPublicHosts(deps.db, options);
-
-  return rows.map((row) =>
-    toHostRecord(
-      row,
-      getOpenDaemonSessionForHost(deps, row.id) ? "connected" : "disconnected",
-    ),
+  return listPublicHosts(deps.db, options).map((row) =>
+    toHostWithStatus(deps, row),
   );
 }
 
@@ -139,7 +129,7 @@ export function requireNonDestroyedHostWithStatus(
       destroyedHostUnavailableDetails(host.destroyedAt),
     );
   }
-  return toHostRecord(host, toHostStatus(deps, host.id));
+  return toHostWithStatus(deps, host);
 }
 
 export function getNonDestroyedHostWithStatus(
@@ -150,7 +140,7 @@ export function getNonDestroyedHostWithStatus(
   if (!host) {
     return null;
   }
-  return toHostRecord(host, toHostStatus(deps, host.id));
+  return toHostWithStatus(deps, host);
 }
 
 export function requireConnectedHostSession(
@@ -283,7 +273,7 @@ function ensureThreadEnvironmentAvailable(environment: EnvironmentRow): void {
   }
 }
 
-function requireThreadEnvironmentAllowingDestroyed(
+export function requireThreadEnvironmentAllowingDestroyed(
   db: DbConnection,
   threadId: string,
 ): ThreadEnvironmentLookupResult {

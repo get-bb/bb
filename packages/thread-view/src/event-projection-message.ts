@@ -98,6 +98,7 @@ export interface EventProjectionTurnRequest {
 
 export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   kind: "user";
+  messageSeq: number;
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
   systemMessageKind: SystemMessageKind;
@@ -487,8 +488,6 @@ export interface EventProjectionErrorMessage extends EventProjectionMessageBase 
   detail: string | null;
   rawType: string;
   providerErrorInfo?: ProviderErrorInfo;
-  reconnectAttempt?: number;
-  reconnectTotal?: number;
   willRetry?: boolean;
 }
 

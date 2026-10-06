@@ -15,6 +15,7 @@ import {
   type PersistBrowserWindowStateSnapshot,
   type StatefulBrowserWindow,
 } from "./window-state.js";
+import { resolveDesktopExternalUrl } from "./desktop-external-url.js";
 import type { DesktopContextMenuWebContents } from "./desktop-context-menu.js";
 
 type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
@@ -170,7 +171,7 @@ function createWindowOptions(
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
         }
-      : {}),
+      : { autoHideMenuBar: true }),
     height: args.bounds.height,
     icon: args.icon,
     minHeight: MIN_WINDOW_HEIGHT,
@@ -260,7 +261,10 @@ export function createDesktopWindowFactory(
         }
       });
       browserWindow.webContents.setWindowOpenHandler((details) => {
-        args.openExternalUrl({ url: details.url });
+        const url = resolveDesktopExternalUrl(details.url);
+        if (url !== null) {
+          args.openExternalUrl({ url });
+        }
         return { action: "deny" };
       });
 

@@ -1,7 +1,7 @@
 # @bb/mobile
 
 Native iOS/Android client for bb (Expo SDK 57, React Native 0.86, Expo
-Router, NativeWind v5). Plan and decisions: `plans/bb-mobile-expo.md`.
+Router, NativeWind v5).
 
 Status: a native shell around the web interface (#2515). `app/webview.tsx`
 loads the active server's web app in `react-native-webview` and talks to it
@@ -101,8 +101,6 @@ e2e/subflows/            shared steps (launch-app.yaml: cold start through the
                          clear-open-confirmation.yaml: accept or cancel the
                          native `bb://` confirmation), called with
                          `runFlow: ../subflows/<name>.yaml`
-e2e/spike/               Phase 0 spike helpers (tap, tap-point, swipe, type,
-                         pair-direct) for the WebView spike screen
 e2e/scripts/             ci-run-flows.sh (the CI flow set against a Release
                          build; see "CI"), connect-stub-control.js (drives the
                          bb connect stub), pick-simulator.mjs (newest iPhone
@@ -117,6 +115,146 @@ Rules: import `@bb/sdk/browser` (never `@bb/sdk`); no `@bb/shared-ui`; no DOM
 APIs; keep RN-dependent code out of `src/lib/**` except `src/lib/native`.
 
 ## Prerequisites (macOS)
+
+For Android development, install Android Studio's SDK, a current Android SDK
+platform and build tools, and Java 17. Set `ANDROID_HOME` to the SDK directory
+(`$HOME/Library/Android/sdk` on macOS) and add its `platform-tools` and `emulator`
+directories to PATH. Start an emulator or attach an Android phone with USB
+debugging enabled.
+
+### Android local APK and verification
+
+For development threads, build the standalone **bb dev** app from the repo root:
+
+```bash
+pnpm mobile:apk:dev
+adb install -r apps/mobile/build-output/bb-dev.apk
+```
+
+The APK is `apps/mobile/build-output/bb-dev.apk`. It has an orange bb launcher
+icon, favicon, and splash logo, the name **bb dev**, and package `app.getbb.mobile.dev`, so it
+installs alongside the regular app with separate saved servers and data. It
+embeds the Release JS bundle and runs without Metro, EAS, Firebase, or production
+signing credentials. Pair it with the development server through Add server or
+a pairing code. It does not claim production HTTPS app links or use the
+production Firebase configuration; Android themed icons use the system tint.
+Dev launcher assets tint the existing shaded mobile artwork using the orange
+palette and tinting method from `apps/app/scripts/generate-pwa-icons.mjs`,
+preserving the original dimensions, alpha, and launcher padding. The transparent
+splash asset stores the original light logo's shading in orange RGB and uses
+the dark logo's silhouette alpha. This keeps transparency at the edges rather
+than throughout the shaded mark, avoiding darkening during native image
+generation. Both light and dark splash screens use the orange logo.
+
+Use `pnpm mobile:apk:dev -- x86_64` for an Intel emulator. The default is
+`arm64-v8a` for a physical phone. Install Android SDK/build tools and JDK 17
+first; the script detects the standard macOS SDK and Homebrew JDK 17 paths when
+`ANDROID_HOME` and `JAVA_HOME` are unset. Both local commands regenerate the
+gitignored Android project, so do not run them concurrently in the same checkout
+or keep manual edits in `apps/mobile/android`.
+Concurrent builds are rejected. If a force-killed build leaves a stale lock,
+remove `apps/mobile/build-output/.android-build-lock` after confirming no build
+is running, then retry.
+
+When a thread is asked to build a dev APK, use this command, wait for successful
+completion, and provide a clickable link to the resulting APK. Record the
+source commit and any uncommitted changes. For a durable per-thread copy, copy
+the APK into `$BB_THREAD_STORAGE` and link that absolute path. Do not publish it
+to the public `android-testing` release. Builds use the generated debug signing
+key; Android updates require the same key as the installed dev app.
+
+The existing local build retains the regular app identity for smoke tests:
+
+```bash
+pnpm exec turbo run build:android:local --filter=@bb/mobile
+adb install -r apps/mobile/build-output/bb-android-local.apk
+```
+
+This builds an ARM64 APK with an embedded Release JS bundle and the generated
+Android debug signing key. It runs without Metro, Firebase, EAS, or production
+signing credentials. It is for local testing, not Play distribution. Uninstall
+it before installing an app signed with another key (which removes local app
+data). For an Intel emulator, append `-- x86_64` to the Turbo command.
+
+Run the mobile backend described below, then `adb reverse tcp:41999 tcp:41999`
+so the Android app can reach it at `http://127.0.0.1:41999`. Keep the reverse
+mapping active during tests. Android does not share the Mac loopback directly.
+
+Run `pnpm exec turbo run e2e:android --filter=@bb/mobile` with only the intended
+Android emulator/device connected. The smoke flow clears this app's local data,
+pairs the fixture, sends a message, checks Android back navigation, relaunches,
+and opens native device settings. Use a normal embedded build, not
+`EXPO_PUBLIC_BB_E2E=1`, so the relaunch step can verify saved profiles.
+
+`e2e/android/keyboard.yaml` uses the same backend and checks repeated keyboard
+opening, Back dismissal, draft retention, and sending after dismissal. Run it
+with `maestro test apps/mobile/e2e/android/keyboard.yaml` from the repo root.
+It clears this app's local data, like the main smoke flow.
+
+`plugins/with-selection-accent.js` sets the Android theme accent used by
+WebView selection handles: blue in light mode and pale blue in dark mode.
+The single insertion handle is transparent; the caret and two range-selection
+handles remain visible. This applies to Android native text fields too and is
+separate from the web app's CSS selection highlight.
+The Expo prebuild applies it to both framework and AppCompat theme attributes.
+
+The `react-native-webview` patch zeroes the Android IME inset before WebView
+receives it. `WebViewKeyboardFrame` already resizes the native container for
+the keyboard; forwarding that inset lets newer WebViews shrink the visual
+viewport a second time during opening. Keep the native keyboard frame around
+WebViews when using this patch. System bar and display-cutout insets remain
+unchanged. Recheck this patch when upgrading WebView or changing keyboard
+ownership; see [Android's inset handling guidance](https://developer.android.com/develop/ui/views/layout/webapps/understand-window-insets).
+
+`e2e/android/connect.yaml` additionally needs the local TLS connect stub started
+with `BB_MOBILE_E2E_COOKIE_DOMAIN=stub.localhost`, a
+trusted fixture CA and DNS for `stub.localhost`/`other.localhost` on the test
+emulator, and `adb reverse tcp:42998 tcp:42998`. It resets the stub and checks
+invalid codes, pairing, WebView cookie authentication, relaunch and session
+expiry recovery. Chromium rejects the fixture's default `.localhost` cookie
+domain; the host-specific override tests one server, not account-wide cookie
+sharing across servers. Do not change release TLS validation to run this fixture.
+
+The Hugeicons React Native patch restores missing SVG ellipse/polygon support
+(the globe otherwise renders as a circle with a minus sign).
+
+The cookie-library pnpm patch replaces its obsolete JCenter repository and
+declares its Android namespace for current Gradle. If adding/changing a native
+dependency leaves stale pnpm paths in Android autolinking, regenerate the
+ignored native project before rebuilding.
+
+The `react-native-screens` patch skips header updates for detached Android
+screens, matching the fix proposed in upstream
+[PR #4498](https://github.com/software-mansion/react-native-screens/pull/4498).
+It addresses a release-build crash reproduced immediately after pairing on
+Android 16. Recheck and remove it when upgrading to a version with the fix.
+
+### Android production setup
+
+The manual `Mobile Android (EAS)` workflow builds preview APKs or production
+AABs. It needs the existing `EXPO_TOKEN` and an Android signing key configured
+through `pnpm exec eas credentials -p android` in `apps/mobile`. Submission is
+opt-in and uploads a draft to the internal Play track; it does not release to
+the public. The first Play upload must be completed manually.
+
+Firebase is optional for builds. Place the Android Firebase config in the
+gitignored `apps/mobile/google-services.json`, or set `GOOGLE_SERVICES_JSON`
+to its absolute path. For EAS, create a file environment variable with that
+name in each build environment used (preview/production). `app.config.js`
+loads the file when present. Upload the FCM V1 service-account credential to
+EAS separately, then rebuild to test push on a device.
+
+For Play uploads, add the GitHub secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+Local EAS Submit reads the gitignored `google-play-service-account.json` in
+`apps/mobile`. Register the **Play app-signing certificate**, not only the
+upload certificate, in `ASSETLINKS_SHA256_FINGERPRINTS` on the apex and connect
+gate. Verify real HTTPS app links after installing the Play-signed build.
+The native `bb://` scheme works without those certificates.
+
+Pending credentials do not establish push delivery or verified HTTPS app-link
+coverage. Test those separately once Firebase/signing are configured.
+
+### iOS prerequisites
 
 - Xcode 26.2 with an iOS 26 simulator runtime (`xcodebuild -downloadPlatform iOS`).
 - CocoaPods (`brew install cocoapods`), `export LANG=en_US.UTF-8`.
@@ -206,6 +344,15 @@ as the first argument drives a dev client through Metro instead.
 
 ## CI
 
+- **Android emulator smoke** (`mobile-android-e2e.yml`) runs on PRs labeled
+  `mobile-e2e`, on manual dispatch, and nightly. It builds a debug-key-signed
+  Release APK for an Android 16 x86_64 emulator and runs the existing smoke
+  flow: direct pairing, send/provider reply, Android Back, saved connection
+  after relaunch, and native settings. It uses the isolated backend and needs
+  no Firebase, EAS, or Play credentials. The `mobile-e2e-android` artifact
+  contains screenshots, JUnit results, Maestro output, logcat, and backend logs.
+  Keyboard animation, push delivery, and bb connect are outside this basic job.
+
 - Typecheck, lint, and unit tests run on Linux in the regular `CI` workflow
   (`pnpm exec turbo run build typecheck lint` in `Checks`, the `packages`
   test shard for `vitest`), like every workspace package.
@@ -226,10 +373,7 @@ as the first argument drives a dev client through Metro instead.
 
 ## bb connect (Phase 5)
 
-- The pairing surfaces on the bb side (Settings → Remote access → Add mobile
-  device, `bb connect machine-code`) sit behind the `mobileApp` experiment
-  while the app is in early access: turn it on in Settings → Experiments or
-  with `bb settings experiment mobileApp true` before you mint a code.
+- Pair through Settings → Mobile → Add mobile device or `bb connect machine-code`. No experiment is required.
 - Enrollment (`src/screens/connect`, `src/data/connect`, route `/connect`):
   "Add server" offers "Connect with bb connect" above the Direct URL form.
   The screen scans the pairing QR (`expo-camera`; payload = the connect
@@ -240,7 +384,13 @@ as the first argument drives a dev client through Metro instead.
   self-hosted apex; the apex defaults to `deriveConnectBaseUrl(serverUrl)`
   or `https://getbb.app` (`resolveEnrollmentTarget`). `redeemEnrollment`
   calls `redeemMachineCredential` (`POST <apex>/api/connect/redeem-machine`)
-  and saves `{mode:"connect", serverUrl, handle, credential(bbcm_…), label}`
+  with the phone’s device name (for example, `Pixel 9 Pro`). The account
+  service stores it on the machine so the dashboard shows a recognizable name.
+  The request accepts an optional `deviceName` string, trimmed and limited to
+  128 characters; older clients may omit it. Existing unnamed devices are not
+  renamed automatically. Both the account service update and a new mobile build
+  are needed for names to appear on new pairings.
+  Enrollment saves `{mode:"connect", serverUrl, handle, credential(bbcm_…), label}`
   in SecureStore, then activates it: the connector mints the desktop-session
   cookie and opens realtime (the enrolled screen shows that status live).
   Errors map to copy per wire code (`describeEnrollmentError`: invalid /
@@ -249,8 +399,8 @@ as the first argument drives a dev client through Metro instead.
 - Account servers: the machine credential is account-scoped (the apex stores
   it against the user, `apps/web/src/server/api.ts` `redeemMachineCode`; the
   gate checks it against the label's owner), and the desktop-session cookie
-  is a `.getbb.app` cookie carrying only the user id, so one enrollment
-  covers every server the account owns — the same as the desktop app's
+  is a `.getbb.app` cookie carrying the user id and the minting credential, so
+  one enrollment covers every server the account owns — the same as the desktop app's
   Server menu. After pairing, "Servers on this account"
   (`GET <serverUrl>/api/connect/servers` with the credential,
   `listAccountServers`) adds any other server as a profile in one tap with
@@ -258,12 +408,25 @@ as the first argument drives a dev client through Metro instead.
 - Session: `src/lib/session` mints `POST <serverUrl>/api/connect/desktop-session`
   with the credential, installs the cookie in both native jars (`Secure`
   follows the server URL's scheme so a plain-http stub gate works), renews
-  five minutes before expiry and on AppState active. The connector
+  five minutes before expiry and on AppState active. Each minted session
+  (server URL, pairing credential and the full cookie, value included) is kept
+  per profile in SecureStore (`bb.connectSession.<profileId>`); a cold start
+  whose record matches the profile's server URL and credential and is more
+  than five minutes from expiry reinstalls that cookie into both jars instead
+  of minting, so the page loads
+  without a round trip to the gate. Re-pairing with a new credential mints a
+  fresh session. Older cache records without a credential are ignored.
+  A refused mint and Clear website data clear the record. The cookie lasts seven
+  days; the gate re-issues it once a day on ordinary responses and rejects it
+  within about 20 seconds of the machine being revoked. The connector
   (`src/lib/connection`) re-checks the session on any 401/403 (an API call
   or the `/ws` upgrade — React Native reports the refused upgrade as the
   close reason "Received bad response code from server: 401.") and on
   repeated connection failures (throttled): a fresh cookie reconnects the
   socket at once; a refused re-mint flips the profile to `auth-required`.
+  Installing a fresh session reloads a WebView showing a 401/403 page, even
+  before the previous cookie expires; routine renewal leaves a healthy page
+  alone.
   Queries that raced the first mint (or a re-mint) and hit the gate's 401
   page are fetched again once the cookie lands
   (`refetchQueriesRejectedBeforeSession`); a 401 within two seconds of a
@@ -313,6 +476,17 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
   the profile once.
 
 ## Push notifications and deep links (Phase 5)
+
+Android disables Firebase Messaging auto-initialization and Analytics collection
+in the generated manifest. The app requests a push token only for a server with
+notifications enabled and OS permission granted. It refreshes registration on
+foreground/sync and token-change events. Turning notifications off for every
+server, removing the last enabled server, or revoking OS permission deletes the
+Android FCM token. Disabling one server preserves the shared token for other
+enabled servers. Failed server-subscription removal is retained for retry;
+local token deletion does not require that server to be reachable. This does not
+delete the Firebase installation ID or previously processed provider data.
+iOS keeps its existing APNs registration behavior.
 
 - Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)
   registers the phone's Expo push token with each enabled server through
@@ -474,9 +648,10 @@ group, App Store Connect needs all of this:
   path works for a reviewer: a bb server's API is unauthenticated and runs
   commands, so it cannot be on the internet, and connect pairing codes are
   single-use and expire in ten minutes. Give them the **demo server** instead:
-  `apps/demo-server` is a Cloudflare Worker that answers the launch-path API
-  from fixed data, runs nothing, and isolates each client address. Deploy it
-  with `pnpm --filter @bb/demo-server deploy`, and rehearse the review notes
+  `apps/demo-server` is a Cloudflare Worker that serves the web app shell, sidebar plugin frontends, and API
+  from fixed data, runs nothing, and isolates each client address. Build it
+  with `pnpm exec turbo run build --filter=@bb/demo-server`, then deploy it
+  with `pnpm --filter @bb/demo-server exec wrangler deploy`, and rehearse the review notes
   below before every submission. Disclose it in the notes: a disclosed demo
   mode is sanctioned by guideline 2.1.
 
@@ -490,13 +665,19 @@ you. It serves sample conversations and scripted replies; it does not run a
 real coding agent.
 
 1. Open the app. It shows "Connect to a bb server".
-2. Under "Direct URL", in "Server URL", enter: https://<DEMO-HOST>
+2. In "Server URL", enter: https://bb-demo-server.sawyer-7bb.workers.dev
 3. Tap "Connect".
 4. The app shows a list of conversations. Open any of them to read it.
-5. Type a message and send it. The agent replies after a moment.
+5. Browse the sample conversations. No credentials or pairing code are needed.
 
 Write to <EMAIL> if the server does not respond.
 ```
+
+The same demo URL and connection steps apply to Google Play app access
+instructions. No sign-in or pairing code is needed. See
+[the demo server README](../demo-server/README.md) for build, local verification,
+and deployment steps. Verify the deployed shell with the actual store build
+before submitting either platform.
 
 Rehearse it before submitting: hand a colleague a phone that has never run bb,
 give them only these notes, and check that they reach a thread.
@@ -509,6 +690,9 @@ Beta App Review and another build of the same version usually does not.
 
 - Server profiles: `expo-secure-store`, one key per profile
   (`bb.profile.<id>`) plus `bb.profiles.index`.
+- Connect sessions: `expo-secure-store`, one key per profile
+  (`bb.connectSession.<profileId>`) holding the last minted desktop-session
+  cookie and its server URL.
 - Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`): MMKV
   store `bb.preferences`, one shared instance from
   `src/lib/native/preferences-storage.ts`. Push state shares it:
@@ -548,3 +732,111 @@ palette, run `pnpm --filter @bb/mobile theme:generate` and commit the result;
 - Maestro on iOS: `back` is not a thing; tap `id: BackButton`. The dev
   client's floating gear can sit over the header's right icons on larger
   simulators.
+
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
+
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Inside the Android app, Settings → Mobile also shows the installed version and
+compares its native build number with the published APK: up to date, update
+available, or newer than the published release. Older apps without build-number
+reporting and unavailable release metadata show that update status cannot be
+determined. The download button remains available in every state.
+The nightly release pipeline builds and publishes an Android preview APK after
+a successful npm nightly publication, alongside the iOS build. This runs on the
+daily 3 AM America/Los_Angeles schedule, a manual nightly publish, and the
+nightly publication following a stable release. Successful builds replace the
+APK and version metadata used by Settings → Mobile. These builds do not submit
+to Google Play.
+
+The Android version name matches the published bb-app nightly version, including
+its full `-nightly.RUN.ATTEMPT` suffix. EAS continues to increment the integer
+Android build number independently. The APK's version name and build number
+are also used in the Settings → Mobile download metadata.
+
+For an immediate update, run **Mobile Android (EAS)**, profile `preview`,
+**publish** on, or
+`gh workflow run mobile-android-eas.yml --ref main -f profile=preview -f publish=true -f submit=false`.
+Add `-f version=X.Y.Z-nightly.RUN.ATTEMPT` to assign a specific nightly version,
+or `-f version=X.Y.Z` for a stable version. Leaving it empty uses the committed
+mobile version.
+The preview Gradle command builds `arm64-v8a` and `armeabi-v7a`, supporting
+both 64-bit and 32-bit ARM phones. It omits Intel x86/x86_64 libraries to reduce
+the direct download; Intel devices and x86 emulators cannot install this APK.
+Production AABs retain all architectures so Google Play can deliver
+device-specific packages. Keep EAS signing credentials unchanged so existing
+sideload installations can update. The smaller APK still undergoes browser
+security scanning; reduced size does not guarantee a fix for scanning hangs.
+
+## Android keyboard image paste
+
+The `react-native-webview` patch receives keyboard image content through
+AndroidX `InputConnectionCompat`. It is enabled only for WebViews with BB's
+injected mobile bridge. The bridge captures the focused prompt editor, then
+replays the image as a clipboard file through the existing web paste handler.
+The WebView serves a temporary, single-use URL from the keyboard's content
+stream. Image bytes stay binary instead of passing through base64 or a
+JavaScript string. Reads run off the UI thread, stop at the composer's 35 MB
+attachment limit, and must complete within 30 seconds. At most four transfers
+can be pending per WebView. Completion, timeout, navigation, and WebView
+destruction close the stream and release URI permissions. The bridge delivers
+the file only after the complete body and native success confirmation arrive;
+failed reads and removed or navigated editors discard the result. This requires
+an updated Android APK but works with the existing web composer without a
+server update.
+
+For a device smoke test:
+
+1. Copy a screenshot to the Android clipboard and focus a thread composer.
+2. Open Gboard's clipboard panel and tap the image. Check that its attachment
+   preview appears and finishes uploading.
+3. Paste ordinary clipboard text and check that it still appears in the editor.
+4. Paste a large image up to 35 MB and check that it completes without closing
+   the app. An image above the limit must not create an attachment.
+5. With a test content provider, delay one image read beyond 30 seconds, then
+   paste another image. The second image must arrive while the first expires.
+6. Navigate away during a delayed read and check that its result does not attach
+   to another composer.
+7. Remove the test attachments and text without sending a message.
+
+Bridge regression tests run with
+`pnpm exec turbo run test typecheck --filter=@bb/mobile-bridge`.
+
+## Android message copy
+
+For messages containing text and an image, Android Copy uses the shell's
+`copyRichText` method to publish `text/plain` plus `text/html`. The HTML carries
+hidden, versioned BB metadata with the exact message text and an image URL.
+BB's regular Paste handler validates that metadata, inserts the text and
+fetches the image from the same server with the current session. Downloads
+reject redirects and non-image responses, enforce the 35 MB attachment limit,
+and time out after 30 seconds. A failed download preserves the pasted text and
+reports that the image could not be attached. Results from removed editors or
+pages that navigated away are discarded.
+
+Android WebView's long-press Paste delivers the HTML. Gboard's text suggestion
+and clipboard-history text entries insert plain text without a rich paste
+event, so those paths paste text only. BB does not compare inserted text with
+previous messages or retain a copied-message cache. HTML-aware destinations
+can also render the text and image reference; plain text destinations receive
+only the text. The image reference requires access to the original server and
+image. Copying image bytes for external image targets uses the image-only path.
+
+Image-only messages use `copyTextAndImage` to download the image into the app
+cache and expose its URI through the WebView FileProvider. Downloads are
+limited to 35 MB, reject redirects, and expire after 25 seconds with 10-second
+network timeouts. Old cache files are removed on the next copy after 24 hours.
+
+Both the APK and served BB web app need this change. Older APKs retain the
+previous combined image/text item behavior. Verify mixed-message Copy followed
+by long-press Paste, Gboard text insertion, image-only Copy/Paste, ordinary text,
+and a missing image. Remove test drafts without sending them.

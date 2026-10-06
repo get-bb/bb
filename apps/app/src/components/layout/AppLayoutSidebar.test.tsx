@@ -7,7 +7,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -32,10 +32,34 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
   >("@/components/ui/sidebar");
   const { useEffect } = await vi.importActual<typeof import("react")>("react");
   return {
-    AppSidebar: ({ mobileHosted }: { mobileHosted?: { hidden: boolean } }) => {
+    AppSidebar: ({
+      mobileHosted,
+      navRail,
+    }: {
+      mobileHosted?: { hidden: boolean };
+      navRail?: {
+        hidden: boolean;
+        renderRail: (customize: {
+          isOpen: boolean;
+          onOpenChange: (isOpen: boolean) => void;
+        }) => ReactNode;
+        alternateBody: ReactNode;
+      };
+    }) => {
       useEffect(() => {
         mountCounts.appSidebar += 1;
       }, []);
+      if (navRail) {
+        return (
+          <Sidebar>
+            {navRail.renderRail({ isOpen: false, onOpenChange: () => {} })}
+            <div data-testid="app-sidebar-body" hidden={navRail.hidden}>
+              App sidebar
+            </div>
+            {navRail.alternateBody}
+          </Sidebar>
+        );
+      }
       if (mobileHosted) {
         return (
           <div data-testid="app-sidebar-body" hidden={mobileHosted.hidden}>
@@ -48,13 +72,35 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
   };
 });
 
+vi.mock("@/components/sidebar/AppNavRail", () => ({
+  AppNavRail: ({
+    isAppMode,
+    isSettingsActive,
+  }: {
+    isAppMode: boolean;
+    isSettingsActive: boolean;
+  }) => (
+    <div
+      data-testid="app-nav-rail"
+      data-app-mode={isAppMode}
+      data-settings-active={isSettingsActive}
+    />
+  ),
+}));
+
 vi.mock("@/components/settings/SettingsSidebar", async () => {
   const { Sidebar } = await vi.importActual<
     typeof import("@/components/ui/sidebar")
   >("@/components/ui/sidebar");
   return {
-    SettingsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
-      mobileHosted ? (
+    SettingsSidebar: ({
+      mobileHosted,
+      navRailHosted,
+    }: {
+      mobileHosted?: boolean;
+      navRailHosted?: boolean;
+    }) =>
+      mobileHosted || navRailHosted ? (
         <div data-testid="settings-sidebar-body">Settings sidebar</div>
       ) : (
         <Sidebar>Settings sidebar</Sidebar>
@@ -69,14 +115,16 @@ vi.mock("@/components/tools/ResourceSidebar", async () => {
   return {
     ResourceSidebar: ({
       mobileHosted,
+      navRailHosted,
       workspace,
     }: {
       mobileHosted?: boolean;
+      navRailHosted?: boolean;
       workspace: "plugins" | "skills";
     }) => {
       const title =
         workspace === "plugins" ? "Plugins sidebar" : "Skills sidebar";
-      return mobileHosted ? (
+      return mobileHosted || navRailHosted ? (
         <div data-testid={`${workspace}-sidebar-body`}>{title}</div>
       ) : (
         <Sidebar>{title}</Sidebar>
@@ -115,8 +163,10 @@ function getAppSidebarBody(): HTMLElement {
 
 function SidebarModeHarness({
   onMode,
+  navigationRail = false,
 }: {
   onMode?: (mode: AppLayoutSidebarMode) => void;
+  navigationRail?: boolean;
 }) {
   const [mode, setMode] = useState<AppLayoutSidebarMode>("app");
   const closeMobileSidebar = useCloseMobileSidebar();
@@ -147,6 +197,7 @@ function SidebarModeHarness({
       </button>
       <AppLayoutSidebar
         mode={mode}
+        navigationRail={navigationRail}
         onResizeMouseDown={() => {}}
         isResizing={false}
         appRoutePath="/"
@@ -289,5 +340,67 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Navigate to skills" }));
     expect(screen.getByText("Skills sidebar")).toBeTruthy();
     expect(screen.queryByText("Plugins sidebar")).toBeNull();
+  });
+
+  it("keeps the rail and the app sidebar mounted while the body swaps in rail mode", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider>
+          <SidebarModeHarness navigationRail />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const rail = screen.getByTestId("app-nav-rail");
+    expect(rail.dataset.appMode).toBe("true");
+    expect(rail.dataset.settingsActive).toBe("false");
+    expect(getAppSidebarBody().hidden).toBe(false);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Change route without closing" }),
+    );
+    expect(screen.getByTestId("app-nav-rail")).toBe(rail);
+    expect(rail.dataset.appMode).toBe("false");
+    expect(rail.dataset.settingsActive).toBe("true");
+    expect(getAppSidebarBody().hidden).toBe(true);
+    expect(screen.getByTestId("settings-sidebar-body")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate to plugins" }),
+    );
+    expect(screen.getByTestId("app-nav-rail")).toBe(rail);
+    expect(rail.dataset.settingsActive).toBe("false");
+    expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
+    expect(screen.getByTestId("plugins-sidebar-body")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Navigate to skills" }));
+    expect(screen.queryByTestId("plugins-sidebar-body")).toBeNull();
+    expect(screen.getByTestId("skills-sidebar-body")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate back to app" }),
+    );
+    expect(screen.getByTestId("app-nav-rail")).toBe(rail);
+    expect(screen.queryByTestId("skills-sidebar-body")).toBeNull();
+    expect(getAppSidebarBody().hidden).toBe(false);
+    expect(mountCounts.appSidebar).toBe(1);
+    expect(document.querySelectorAll('[data-sidebar="panel"]')).toHaveLength(1);
+  });
+
+  it("leaves the compact drawer without a rail when the experiment is on", () => {
+    vi.useFakeTimers();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <SidebarModeHarness navigationRail />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+
+    expect(screen.queryByTestId("app-nav-rail")).toBeNull();
+    expect(getAppSidebarBody().hidden).toBe(false);
   });
 });

@@ -22,14 +22,3 @@ export function reasoningLevelLabel(
   );
   return declared?.label ?? FALLBACK_REASONING_LABELS[level] ?? level;
 }
-
-const FAST_SERVICE_TIER_ID = "fast";
-
-export function fastServiceTierLabel(
-  provider: Pick<ProviderInfo, "serviceTiers"> | undefined,
-): string {
-  return (
-    provider?.serviceTiers?.find((tier) => tier.id === FAST_SERVICE_TIER_ID)
-      ?.label ?? "Fast"
-  );
-}

@@ -133,6 +133,20 @@ export function getThreadTimelineWindowInvalidationQueryKeys({
     : [allThreadTimelineQueryKeyPrefix()];
 }
 
+export function getThreadCompactedHistoryInvalidationQueryKeys({
+  threadId,
+}: ThreadScopedInvalidationArgs): QueryKey[] {
+  return threadId
+    ? [
+        threadTimelineQueryKeyPrefix(threadId),
+        threadTimelineTurnSummaryDetailsQueryKeyPrefix(threadId),
+      ]
+    : [
+        allThreadTimelineQueryKeyPrefix(),
+        allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
+      ];
+}
+
 export function getThreadQueueContentInvalidationQueryKeys({
   threadId,
 }: ThreadScopedInvalidationArgs): QueryKey[] {

@@ -21,7 +21,8 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| Capabilities and selection | Inspect discovered models/reasoning and supported accept-edits/auto/full modes; start a short turn. | Execution honors selected supported settings and correctly reports unavailable CLI/auth. |
+| Capabilities and selection | Inspect discovered models/reasoning, Fast service tier, and supported accept-edits/auto/full modes; start a short turn. | Execution honors selected supported settings and correctly reports unavailable CLI/auth. |
+| Fast service tier | Select a supported Opus model and Fast in the composer, then switch the thread to Default on a later turn. Repeat with `bb thread spawn --service-tier fast` and `bb thread tell --service-tier default` on a disposable account with fast-mode access and usage credits. | Claude reports fast mode active on the first turn and standard mode after the switch; unsupported models or missing account access report their actual limitation. |
 | Plans, questions, and tools | Drive a harmless plan, native question, and fixture edit under review. | Native decisions and tool results return to the right session with correct permission limits. |
 | Session operations | Fork at a supported checkpoint, compact, and stop/retry. | History/session ancestry and resumability follow actual supported operations without duplicate output. |
 | Native skills and memory | Select a native skill and change the native-memory/CLAUDE.md setting using a fixture instruction. | Subsequent sessions include only the intended configured native context. |

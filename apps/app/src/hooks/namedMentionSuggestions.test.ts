@@ -96,14 +96,4 @@ describe("buildSectionMentionSuggestions", () => {
       },
     ]);
   });
-
-  it("matches by section id", () => {
-    expect(
-      buildSectionMentionSuggestions({
-        sections: SECTIONS,
-        query: "sec_beta",
-        limit: 8,
-      }).map((suggestion) => suggestion.sectionId),
-    ).toEqual(["sec_beta"]);
-  });
 });

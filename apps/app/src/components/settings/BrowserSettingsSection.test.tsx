@@ -132,7 +132,6 @@ describe("BrowserSettingsSectionContent", () => {
       expect(desktopBrowser.importCookies).toHaveBeenCalledWith({
         sourceId,
         sourceProfileDirectory: "Profiles/p1",
-        profile: { kind: "personal" },
       });
       expect(
         screen.getByText("1 skipped (accounts.example.com)"),

@@ -197,6 +197,7 @@ export function Overview() {
             showActions={true}
             mobileActionDisplay="inline"
             streaming={false}
+            timestamp={0}
           />
         </TimelineStage>
       </StoryRow>
@@ -215,6 +216,7 @@ export function Overview() {
             showActions={true}
             mobileActionDisplay="inline"
             streaming={false}
+            timestamp={0}
           />
         </TimelineStage>
       </StoryRow>
@@ -279,6 +281,7 @@ export function ActionOverflow() {
               showActions={true}
               mobileActionDisplay="inline"
               streaming={false}
+              timestamp={0}
               onAddToChat={noop}
               onFork={noop}
               pluginActions={overflowStoryPluginActions}
@@ -301,6 +304,7 @@ export function ActionOverflow() {
             showActions={true}
             mobileActionDisplay="inline"
             streaming={false}
+            timestamp={0}
             onAddToChat={noop}
             onFork={noop}
             pluginActions={overflowStoryPluginActions}

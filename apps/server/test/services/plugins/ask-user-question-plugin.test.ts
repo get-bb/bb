@@ -83,7 +83,7 @@ describe("ask-user-question builtin plugin", () => {
     return command.dynamicTools;
   }
 
-  it("advertises the tool to codex with the Zod-derived schema", async () => {
+  it("advertises the tool to codex", async () => {
     const tools = await dynamicToolsFor({
       providerId: "codex",
       model: "gpt-5.6",
@@ -97,49 +97,6 @@ describe("ask-user-question builtin plugin", () => {
     expect(tool?.description).toContain(
       "Use this tool only when you are blocked on a decision that is genuinely the user's to make",
     );
-    const schema = tool?.inputSchema as {
-      required: string[];
-      properties: {
-        questions: {
-          minItems: number;
-          maxItems: number;
-          items: {
-            required: string[];
-            properties: {
-              multiSelect: { default: boolean };
-              options: {
-                minItems: number;
-                maxItems: number;
-                items: { properties: Record<string, unknown> };
-              };
-            };
-          };
-        };
-      };
-    };
-    expect(schema.required).toEqual(["questions"]);
-    expect(schema.properties.questions.minItems).toBe(1);
-    expect(schema.properties.questions.maxItems).toBe(4);
-    expect(schema.properties.questions.items.required).toEqual([
-      "question",
-      "header",
-      "options",
-    ]);
-    expect(
-      schema.properties.questions.items.properties.multiSelect.default,
-    ).toBe(false);
-    expect(schema.properties.questions.items.properties.options.minItems).toBe(
-      2,
-    );
-    expect(schema.properties.questions.items.properties.options.maxItems).toBe(
-      4,
-    );
-    expect(
-      Object.keys(
-        schema.properties.questions.items.properties.options.items.properties,
-      ).sort(),
-    ).toEqual(["description", "label", "preview"]);
-    expect(Object.keys(schema.properties)).toEqual(["questions"]);
   });
 
   it("withholds the tool from claude-code, which asks natively", async () => {

@@ -621,53 +621,6 @@ describe("public project command typeahead route", () => {
     });
   });
 
-  it("returns codex skills for a codex request", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-codex",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/codex-commands-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/codex-commands-env",
-      });
-      const stub = registerCommandRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        commands: [
-          skill("prd", "user", { description: "Product requirements" }),
-          skill("skill-installer", "project"),
-        ],
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}`,
-      );
-
-      expect(response.status).toBe(200);
-      const body = commandListResponseSchema.parse(await readJson(response));
-      expect(body.commands.map((command) => command.name)).toEqual([
-        "clear",
-        "compact",
-        "prd",
-        "skill-installer",
-      ]);
-      expect(stub.requests[0]?.command).toEqual({
-        type: "host.list_commands",
-        providerId: "codex",
-        cwd: "/tmp/codex-commands-env",
-        nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "codex",
-        ),
-      });
-    });
-  });
-
   it("keeps inherited bb skill roots out of provider-native discovery", async () => {
     await withTestHarness(
       {
@@ -716,46 +669,6 @@ describe("public project command typeahead route", () => {
     );
   });
 
-  it("returns the complete snapshot for local composer filtering", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-direct-skill",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/direct-skill-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/direct-skill-env",
-      });
-      registerCommandRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        commands: [
-          skill("alpha-review-notes", "user"),
-          skill("ottonomous:review", "user"),
-          skill("zeta-review", "user"),
-        ],
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}`,
-      );
-
-      expect(response.status).toBe(200);
-      const body = commandListResponseSchema.parse(await readJson(response));
-      expect(body.commands.map((command) => command.name)).toEqual([
-        "clear",
-        "compact",
-        "alpha-review-notes",
-        "ottonomous:review",
-        "zeta-review",
-      ]);
-    });
-  });
-
   it("returns an empty list without an RPC for a provider with no command surface", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -782,84 +695,6 @@ describe("public project command typeahead route", () => {
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body).toEqual({ commands: [] });
       expect(stub.requests).toEqual([]);
-    });
-  });
-
-  it("lists skills for pi via the shared command surface", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-pi",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/pi-commands-env",
-      });
-      const stub = registerCommandRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        commands: [skill("bb-cli", "user", { description: "Use the bb CLI" })],
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=pi&environmentId=${environment.id}`,
-      );
-
-      expect(response.status).toBe(200);
-      const body = commandListResponseSchema.parse(await readJson(response));
-      expect(body.commands.map((command) => command.name)).toEqual([
-        "clear",
-        "compact",
-        "bb-cli",
-      ]);
-      expect(stub.requests[0]?.command).toEqual({
-        type: "host.list_commands",
-        providerId: "pi",
-        cwd: "/tmp/pi-commands-env",
-        nativeRoots: declaredNativeRootSet(harness.deps.providerRegistry, "pi"),
-      });
-    });
-  });
-
-  it("falls back to the project source (cwd) with no environmentId and returns user-origin entries", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-no-env",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/no-env-project",
-      });
-      const stub = registerCommandRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        commands: [skill("user-only", "user", { description: "Home skill" })],
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=`,
-      );
-
-      expect(response.status).toBe(200);
-      const body = commandListResponseSchema.parse(await readJson(response));
-      expect(body.commands.map((command) => command.name)).toEqual([
-        "clear",
-        "compact",
-        "user-only",
-      ]);
-      expect(stub.requests[0]?.command).toEqual({
-        type: "host.list_commands",
-        providerId: "claude-code",
-        cwd: "/tmp/no-env-project",
-        nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "claude-code",
-        ),
-      });
     });
   });
 
@@ -1002,49 +837,6 @@ describe("public project command typeahead route", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "host_unavailable",
       });
-    });
-  });
-
-  it("returns the full command catalog in one snapshot", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-limit",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/limit-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/limit-env",
-      });
-      registerCommandRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        commands: [
-          skill("alpha", "project"),
-          skill("bravo", "project"),
-          skill("charlie", "project"),
-          skill("delta", "project"),
-        ],
-      });
-
-      const fullResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,
-      );
-      expect(fullResponse.status).toBe(200);
-      const full = commandListResponseSchema.parse(
-        await readJson(fullResponse),
-      );
-      expect(full.commands.map((command) => command.name)).toEqual([
-        "clear",
-        "compact",
-        "alpha",
-        "bravo",
-        "charlie",
-        "delta",
-      ]);
     });
   });
 });

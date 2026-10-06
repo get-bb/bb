@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { getSidebarThreadComparator } from "./ProjectList.js";
 import { getThreadSidebarExpansion } from "./useSidebarThreadReveal.js";
 import {
@@ -7,13 +6,19 @@ import {
   type ProjectThreadNode,
   type ProjectThreadItem,
   type ThreadComparator,
-} from "@bb/client-core";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+} from "../model/project-thread-groups.js";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
+import {
+  makeSidebarEnvironment,
+  makeSidebarThread,
+  type SidebarThreadOverrides,
+} from "../model/fixtures.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 
-function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
-  return makeThreadListEntry({
+const PERSONAL_PROJECT_ID = "proj_personal";
+
+function thread(overrides: SidebarThreadOverrides): SidebarThread {
+  return makeSidebarThread({
     id: "thr_1",
     projectId: "proj_1",
     title: "Thread",
@@ -26,11 +31,11 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   });
 }
 
-function resolved(entry: ThreadListEntry, displayTitle: string): SidebarThread {
+function resolved(entry: SidebarThread, displayTitle: string): SidebarThread {
   return { ...entry, href: `/threads/${entry.id}`, displayTitle };
 }
 
-function threadNode(entry: ThreadListEntry): ProjectThreadNode {
+function threadNode(entry: SidebarThread): ProjectThreadNode {
   return {
     thread: entry,
     children: [],
@@ -42,18 +47,18 @@ function threadNode(entry: ThreadListEntry): ProjectThreadNode {
   };
 }
 
-function threadItem(entry: ThreadListEntry): ProjectThreadItem {
+function threadItem(entry: SidebarThread): ProjectThreadItem {
   return { kind: "thread", node: threadNode(entry) };
 }
 
 function environmentItem(
-  representative: ThreadListEntry,
-  sibling: ThreadListEntry,
+  representative: SidebarThread,
+  sibling: SidebarThread,
 ): ProjectThreadItem {
   return {
     kind: "environment",
     group: {
-      environmentId: representative.environmentId ?? "env_test",
+      environmentId: representative.environment?.id ?? "env_test",
       environmentProviderId: "git-worktree",
       nodes: [threadNode(representative), threadNode(sibling)],
       stats: {
@@ -108,7 +113,7 @@ const cherry = thread({
   latestAttentionAt: 300,
 });
 
-function order(comparator: ThreadComparator, entries: ThreadListEntry[]) {
+function order(comparator: ThreadComparator, entries: SidebarThread[]) {
   return [...entries].sort(comparator).map((entry) => entry.id);
 }
 
@@ -188,12 +193,6 @@ describe("getSidebarThreadComparator", () => {
     ).toEqual(["thr_c", "thr_b", "thr_a"]);
   });
 
-  it("updated lists most recent first", () => {
-    expect(
-      order(getSidebarThreadComparator("updated"), [apple, banana, cherry]),
-    ).toEqual(["thr_c", "thr_b", "thr_a"]);
-  });
-
   it("alphabetical lists A→Z", () => {
     expect(
       order(getSidebarThreadComparator("alpha"), [cherry, apple, banana]),
@@ -245,7 +244,7 @@ describe("getSidebarThreadComparator", () => {
     const environmentRepresentative = resolved(
       thread({
         id: "thr_env_a",
-        environmentId: "env_a",
+        environment: makeSidebarEnvironment({ id: "env_a" }),
         title: "@thread:thr_target",
       }),
       zuluTarget.title ?? "",
@@ -258,7 +257,10 @@ describe("getSidebarThreadComparator", () => {
       [
         environmentItem(
           environmentRepresentative,
-          thread({ id: "thr_env_b", environmentId: "env_a" }),
+          thread({
+            id: "thr_env_b",
+            environment: makeSidebarEnvironment({ id: "env_a" }),
+          }),
         ),
         threadItem(plainThread),
       ]
@@ -305,16 +307,6 @@ describe("getSidebarThreadComparator", () => {
         ),
     ).toEqual(["thr_a", "thr_z"]);
   });
-
-  it("alphabetical leaf and item comparators agree", () => {
-    const comparator = getSidebarThreadComparator("alpha");
-    expect(comparator.compareItems).toBeDefined();
-    const leafSign = Math.sign(comparator(apple, banana));
-    const itemSign = Math.sign(
-      comparator.compareItems!(threadItem(apple), threadItem(banana)),
-    );
-    expect(itemSign).toBe(leafSign);
-  });
 });
 
 describe("getThreadSidebarExpansion", () => {
@@ -324,6 +316,7 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "project",
         isPinned: false,
         sidebarProjectId: PERSONAL_PROJECT_ID,
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({ projectId: PERSONAL_PROJECT_ID }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
@@ -335,6 +328,7 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "project",
         isPinned: false,
         sidebarProjectId: "proj_app",
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({ projectId: "proj_app" }),
       }),
     ).toEqual({ projectId: "proj_app" });
@@ -346,6 +340,7 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "project",
         isPinned: false,
         sidebarProjectId: "proj_app",
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({
           projectId: "proj_web",
           parentThreadId: "thr_parent",
@@ -360,6 +355,7 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "chronological",
         isPinned: false,
         sidebarProjectId: "proj_app",
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
@@ -371,6 +367,7 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "chronological",
         isPinned: false,
         sidebarProjectId: "proj_app",
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({
           sectionId: "sec_work",
           projectId: "proj_app",
@@ -387,9 +384,10 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "machine",
         isPinned: false,
         sidebarProjectId: "proj_app",
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({
           projectId: "proj_app",
-          environmentHostId: "host_a",
+          host: { id: "host_a", name: "host_a" },
         }),
       }),
     ).toEqual({ machineKey: "host_a" });
@@ -398,6 +396,7 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "machine",
         isPinned: false,
         sidebarProjectId: "proj_app",
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({ projectId: "proj_app" }),
       }),
     ).toEqual({ machineKey: "no-machine" });
@@ -409,6 +408,7 @@ describe("getThreadSidebarExpansion", () => {
         organizationMode: "chronological",
         isPinned: true,
         sidebarProjectId: "proj_app",
+        personalProjectId: PERSONAL_PROJECT_ID,
         thread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "pinned" });

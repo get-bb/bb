@@ -6,7 +6,7 @@ import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
 import {
   CatalogEntryIcon,
   CatalogEntryIconChip,
-  pluginCatalogCategoryPillStyle,
+  pluginCatalogCategoryIconName,
   pluginInstallCountPresentation,
 } from "./plugin-ui";
 
@@ -92,22 +92,31 @@ it("uses one glyph box for host and marketplace catalog icons", () => {
   }
 });
 
-it("uses theme accents for all built-in categories and neutral unknowns", () => {
-  for (const category of PLUGIN_CATALOG_CATEGORIES) {
-    const style = pluginCatalogCategoryPillStyle(category.id);
-    expect(String(style.background)).toContain("color-mix(in oklab");
-    expect(String(style.background)).toContain("var(--");
-    expect(String(style.background)).not.toContain("var(--ink) 8%");
-  }
-  const unknown = pluginCatalogCategoryPillStyle("future-category");
-  expect(unknown.background).toBe(
-    "color-mix(in oklch, var(--ink) 8%, var(--canvas))",
+it("gives every built-in category its own icon and unknowns none", () => {
+  const icons = PLUGIN_CATALOG_CATEGORIES.map((category) =>
+    pluginCatalogCategoryIconName(category.id),
   );
+  expect(icons).not.toContain(undefined);
+  expect(new Set(icons).size).toBe(icons.length);
+  expect(pluginCatalogCategoryIconName("future-category")).toBeUndefined();
 });
 
-it("labels install counts only when the catalog knows them", () => {
-  expect(pluginInstallCountPresentation(null)).toBeUndefined();
-  expect(pluginInstallCountPresentation(1)?.accessibleLabel).toBe("1 install");
-  expect(pluginInstallCountPresentation(2)?.accessibleLabel).toBe("2 installs");
-  expect(pluginInstallCountPresentation(0)?.accessibleLabel).toBe("0 installs");
+it("labels built-in, new, and counted plugins", () => {
+  const now = Date.parse("2026-10-02T00:00:00Z");
+  const label = (entry: Parameters<typeof pluginInstallCountPresentation>[0]) =>
+    pluginInstallCountPresentation(entry, now);
+  expect(label({ installedByDefault: true, installs: 2 })?.display).toBe(
+    "Built in",
+  );
+  expect(
+    label({
+      installedByDefault: false,
+      installs: 3,
+      publishedAt: "2026-09-20T00:00:00Z",
+    })?.display,
+  ).toBe("New");
+  expect(
+    label({ installedByDefault: false, installs: 1 })?.accessibleLabel,
+  ).toBe("1 install");
+  expect(label({ installedByDefault: false, installs: null })).toBeUndefined();
 });

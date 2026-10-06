@@ -237,7 +237,7 @@ function getMobilePanel(): HTMLElement | null {
   return panel instanceof HTMLElement ? panel : null;
 }
 
-const SHELF_OPEN_TRANSLATE = "320px";
+const SHELF_OPEN_TRANSLATE = "360px";
 const SHELF_CLOSED_TRANSLATE = "0px";
 
 function getShelfRevealTranslate(): string {
@@ -444,15 +444,15 @@ describe("mobile sidebar shelf stacking", () => {
     }
 
     expect(inset.className).not.toContain("data-[sidebar-shelf=open]:rounded");
-    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:rounded");
+    expect(inset.className).not.toContain("data-[panel-shelf=full]:rounded");
     expect(inset.className).not.toContain(
       "data-[sidebar-shelf=open]:overflow-hidden",
     );
     expect(inset.className).not.toContain(
-      "data-[panel-shelf=shelf]:overflow-hidden",
+      "data-[panel-shelf=full]:overflow-hidden",
     );
     expect(inset.className).not.toContain("data-[sidebar-shelf=open]:shadow");
-    expect(inset.className).not.toContain("data-[panel-shelf=shelf]:shadow");
+    expect(inset.className).not.toContain("data-[panel-shelf=full]:shadow");
   });
 
   it("leaves the page untouched by the shelf on desktop", () => {
@@ -854,6 +854,53 @@ describe("mobile sidebar interrupted swipe sessions", () => {
       expect(getMobilePanel()?.dataset.state).toBe("open");
     },
   );
+
+  it.each(["touch", "pointer"] as const)(
+    "opens from a short %s flick released without further movement",
+    (kind) => {
+      vi.useFakeTimers();
+      renderSelectableSwipeHarness();
+      const prose = screen.getByText("Selectable message prose");
+
+      if (kind === "touch") {
+        fireTouch(prose, "touchstart", createTouch(40, 160));
+        vi.advanceTimersByTime(16);
+        fireTouch(window, "touchmove", createTouch(60, 160));
+        vi.advanceTimersByTime(16);
+        fireTouch(window, "touchmove", createTouch(110, 160));
+        vi.advanceTimersByTime(8);
+        fireTouchEnd(window, createTouch(110, 160));
+      } else {
+        firePointer(prose, "pointerdown", 40, 160);
+        vi.advanceTimersByTime(16);
+        firePointer(window, "pointermove", 60, 160);
+        vi.advanceTimersByTime(16);
+        firePointer(window, "pointermove", 110, 160);
+        vi.advanceTimersByTime(8);
+        firePointer(window, "pointerup", 110, 160);
+      }
+
+      settleMobileToggle();
+      expect(getMobilePanel()?.dataset.state).toBe("open");
+    },
+  );
+
+  it("closes a short swipe that pauses before release", () => {
+    vi.useFakeTimers();
+    renderSelectableSwipeHarness();
+    const prose = screen.getByText("Selectable message prose");
+
+    fireTouch(prose, "touchstart", createTouch(40, 160));
+    vi.advanceTimersByTime(16);
+    fireTouch(window, "touchmove", createTouch(60, 160));
+    vi.advanceTimersByTime(16);
+    fireTouch(window, "touchmove", createTouch(110, 160));
+    vi.advanceTimersByTime(300);
+    fireTouchEnd(window, createTouch(110, 160));
+
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
+  });
 
   it("keeps tracking when another finger ends during the swipe", () => {
     vi.useFakeTimers();

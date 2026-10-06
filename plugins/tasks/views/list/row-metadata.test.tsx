@@ -3,7 +3,7 @@ import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Label, Task, TaskThread } from "../../shared/contract.js";
-import { makeTask } from "../../test-fixtures.js";
+import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 window.matchMedia ??= (query: string) => ({
   matches: false,
@@ -100,8 +100,9 @@ function renderList(fixture: ListFixture) {
         sidebarSummary: () => ({ projects: [] }),
         listLabels: () => ({ labels: fixture.labels ?? [] }),
         listTasks: () => ({ tasks: fixture.tasks }),
-        listTaskThreads: ({ taskId }: { taskId: string }) => ({
-          taskThreads: fixture.threadsByTask?.[taskId] ?? [],
+        listTaskThreads: (input: unknown) => ({
+          taskThreads:
+            fixture.threadsByTask?.[String(rpcInput(input).taskId)] ?? [],
         }),
         listComments: () => {
           calls.listComments += 1;

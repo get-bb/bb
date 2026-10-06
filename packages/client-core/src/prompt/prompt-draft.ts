@@ -3,17 +3,35 @@ import {
   type PromptInput,
   type PromptTextMention,
 } from "@bb/domain";
-import {
-  uploadedPromptAttachmentSchema,
-  type UploadedPromptAttachment,
-} from "@bb/server-contract";
+import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { z } from "zod";
-import {
-  isAutomationPromptCommandResource,
-  SUBMITTED_AUTOMATION_PROMPT_PREFIX,
-} from "./automation-prompt.js";
 
-export type PromptDraftAttachment = UploadedPromptAttachment;
+const draftAttachmentFields = uploadedPromptAttachmentSchema
+  .omit({ sourceProjectId: true })
+  .extend({ sizeBytes: z.number().nonnegative().optional() });
+
+const promptDraftAttachmentSchema = z.union([
+  draftAttachmentFields.extend({
+    hostId: z.string().min(1),
+    sourceProjectId: z.undefined().optional(),
+  }),
+  draftAttachmentFields.extend({
+    sourceProjectId: z.string().min(1).optional(),
+    hostId: z.undefined().optional(),
+  }),
+]);
+
+export type PromptDraftAttachment = z.infer<typeof promptDraftAttachmentSchema>;
+
+function attachmentOwner(attachment: {
+  sourceProjectId?: string;
+  hostId?: string;
+}) {
+  if (attachment.hostId !== undefined) return { hostId: attachment.hostId };
+  return attachment.sourceProjectId === undefined
+    ? {}
+    : { sourceProjectId: attachment.sourceProjectId };
+}
 
 export interface PromptDraftState {
   text: string;
@@ -37,8 +55,14 @@ const promptDraftStorageSchema = z.object({
     .default([])
     .transform((items) =>
       items.flatMap((item) => {
-        const result = uploadedPromptAttachmentSchema.safeParse(item);
-        return result.success ? [result.data] : [];
+        const result = promptDraftAttachmentSchema.safeParse(item);
+        if (!result.success) return [];
+        const { sizeBytes, ...attachment } = result.data;
+        return [
+          sizeBytes === undefined || sizeBytes === 0
+            ? attachment
+            : { ...attachment, sizeBytes },
+        ];
       }),
     ),
 });
@@ -72,10 +96,10 @@ function normalizeQuotedSelectionText(text: string): string {
   return normalizedLines.join("\n").trim();
 }
 
-export function appendQuoteToDraftText(
-  state: PromptDraftState,
+export function appendQuoteToDraftText<Draft extends { text: string }>(
+  state: Draft,
   quotedText: string,
-): PromptDraftState {
+): Draft {
   const trimmed = normalizeQuotedSelectionText(quotedText);
   if (trimmed === "") return state;
 
@@ -89,11 +113,13 @@ export function appendQuoteToDraftText(
   return { ...state, text };
 }
 
-export function appendQuoteAndAttachmentsToDraft(
-  state: PromptDraftState,
+export function appendQuoteAndAttachmentsToDraft<
+  Draft extends { text: string; attachments: readonly PromptDraftAttachment[] },
+>(
+  state: Draft,
   quotedText: string,
   attachments: readonly PromptDraftAttachment[],
-): PromptDraftState {
+): Draft {
   const quotedState = appendQuoteToDraftText(state, quotedText);
   if (attachments.length === 0) {
     return quotedState;
@@ -190,69 +216,6 @@ export function normalizePromptTextMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
-interface ExpandedPromptText {
-  text: string;
-  mentions: PromptTextMention[];
-}
-
-function expandAutomationPromptCommandMentions(
-  text: string,
-  mentions: readonly PromptTextMention[],
-): ExpandedPromptText {
-  const automationMentions = mentions
-    .filter((mention) => isAutomationPromptCommandResource(mention.resource))
-    .sort((left, right) => left.start - right.start || left.end - right.end);
-
-  if (automationMentions.length === 0) {
-    return { text, mentions: [...mentions] };
-  }
-
-  const replacements: Array<{ start: number; end: number }> = [];
-  let cursor = 0;
-  let nextText = "";
-  for (const mention of automationMentions) {
-    if (mention.start < cursor) {
-      continue;
-    }
-    replacements.push({ start: mention.start, end: mention.end });
-    nextText += text.slice(cursor, mention.start);
-    nextText += SUBMITTED_AUTOMATION_PROMPT_PREFIX;
-    cursor = mention.end;
-  }
-  nextText += text.slice(cursor);
-
-  const nextMentions = mentions.flatMap((mention) => {
-    if (isAutomationPromptCommandResource(mention.resource)) {
-      return [];
-    }
-
-    let offset = 0;
-    for (const replacement of replacements) {
-      if (mention.start < replacement.end && mention.end > replacement.start) {
-        return [];
-      }
-      if (replacement.end <= mention.start) {
-        offset +=
-          SUBMITTED_AUTOMATION_PROMPT_PREFIX.length -
-          (replacement.end - replacement.start);
-      }
-    }
-
-    return [
-      {
-        ...mention,
-        start: mention.start + offset,
-        end: mention.end + offset,
-      },
-    ];
-  });
-
-  return {
-    text: nextText,
-    mentions: normalizePromptTextMentions(nextMentions, nextText.length),
-  };
-}
-
 export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const input: PromptInput[] = [];
 
@@ -276,12 +239,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       }),
       text.length,
     );
-    const expandedText = expandAutomationPromptCommandMentions(text, mentions);
-    input.push({
-      type: "text",
-      text: expandedText.text,
-      mentions: expandedText.mentions,
-    });
+    input.push({ type: "text", text, mentions });
   }
 
   for (const attachment of draft.attachments) {
@@ -289,6 +247,7 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       input.push({
         type: "localImage",
         path: attachment.path,
+        ...attachmentOwner(attachment),
       });
       continue;
     }
@@ -296,8 +255,9 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
     input.push({
       type: "localFile",
       path: attachment.path,
+      ...attachmentOwner(attachment),
       name: attachment.name,
-      ...(attachment.sizeBytes > 0 ? { sizeBytes: attachment.sizeBytes } : {}),
+      ...(attachment.sizeBytes ? { sizeBytes: attachment.sizeBytes } : {}),
       ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
     });
   }
@@ -342,8 +302,8 @@ export function promptInputToDraft(
       attachments.push({
         type: "localImage",
         path: chunk.path,
+        ...attachmentOwner(chunk),
         name: getFileNameFromPath(chunk.path),
-        sizeBytes: 0,
       });
       continue;
     }
@@ -352,8 +312,11 @@ export function promptInputToDraft(
       attachments.push({
         type: "localFile",
         path: chunk.path,
+        ...attachmentOwner(chunk),
         name: chunk.name ?? getFileNameFromPath(chunk.path),
-        sizeBytes: chunk.sizeBytes ?? 0,
+        ...(chunk.sizeBytes === undefined
+          ? {}
+          : { sizeBytes: chunk.sizeBytes }),
         ...(chunk.mimeType ? { mimeType: chunk.mimeType } : {}),
       });
     }
@@ -372,6 +335,7 @@ export function getProjectStoredPromptAttachmentPaths(
   return [
     ...new Set(
       attachments.flatMap((attachment) => {
+        if (attachment.sourceProjectId !== undefined) return [];
         const path = attachment.path;
         const isRuntimeReadable =
           /^[\\/]/u.test(path) ||

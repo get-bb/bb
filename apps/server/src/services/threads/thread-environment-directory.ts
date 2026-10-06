@@ -9,7 +9,12 @@ import {
   getThread,
   updateThread,
 } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import {
+  canonicalizeHostPath,
+  isAbsoluteHostPath,
+  isHostPathRoot,
+  turnScope,
+} from "@bb/domain";
 import type { DynamicTool, Thread, ToolCallResponse } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { runLiveHostCommand } from "../hosts/live-command.js";
@@ -87,18 +92,14 @@ function toolCallSuccess(text: string): ToolCallResponse {
 }
 
 function normalizeDirectoryPath(path: string): string {
-  const trimmed = path.trim();
-  if (trimmed === "/") {
-    return trimmed;
-  }
-  return trimmed.replace(/\/+$/u, "");
+  return canonicalizeHostPath(path.trim());
 }
 
 function validateDirectoryPath(path: string): string | null {
-  if (!path.startsWith("/")) {
+  if (!isAbsoluteHostPath(path)) {
     return "Path must be an absolute path on the current host.";
   }
-  if (path === "/") {
+  if (isHostPathRoot(path)) {
     return "Path must name a project directory, not the filesystem root.";
   }
   if (path.includes("\0")) {

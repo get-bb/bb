@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { useProjects } from "./data.js";
 import {
@@ -17,8 +17,8 @@ import { NewTaskDialog } from "../views/manage/new-task-dialog.js";
 import { NewProjectDialog } from "../views/manage/new-project-dialog.js";
 import { ManagePanel } from "../views/manage/manage-panel.js";
 import { EmptyState } from "../components/empty-state.js";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { TasksRefreshProvider } from "./refresh.js";
 
 const BOARD_MIN_WIDTH = 448;
@@ -55,7 +55,7 @@ function RouteOutlet({
     case "manage":
       return <ManagePanel />;
     case "task":
-      return <DetailView taskKey={route.taskKey} />;
+      return <TaskRouteView taskKey={route.taskKey} />;
     case "project":
       return route.view === "board" && boardUsable ? (
         <BoardView projectId={route.projectId} />
@@ -63,6 +63,28 @@ function RouteOutlet({
         <ListView projectId={route.projectId} />
       );
   }
+}
+
+function TaskRouteView({ taskKey }: { taskKey: string }) {
+  const navigation = useTasksNavigation();
+  const onCanonicalKey = useCallback(
+    (canonicalKey: string) => {
+      if (canonicalKey.toUpperCase() !== taskKey.toUpperCase()) {
+        navigation.go(
+          { kind: "task", taskKey: canonicalKey },
+          { replace: true },
+        );
+      }
+    },
+    [navigation, taskKey],
+  );
+  return (
+    <DetailView
+      key={taskKey}
+      taskKey={taskKey}
+      onCanonicalKey={onCanonicalKey}
+    />
+  );
 }
 
 function resolveRoute(route: TasksRoute): ResolvedTasksRoute {
@@ -106,6 +128,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   const lastBrowseRouteRef = useRef<TasksRoute | null>(null);
   useEffect(() => {
     if (route.kind !== "task") lastBrowseRouteRef.current = route;
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [subPath]);
   const backFromTask = () =>
     navigation.go(lastBrowseRouteRef.current ?? { kind: "all" });

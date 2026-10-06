@@ -58,7 +58,10 @@ describe("bb bin wrapper", () => {
     return fakeBinDir;
   }
 
-  it("builds the source CLI before executing when dist is missing", async () => {
+  it("builds the source CLI before executing when dist is missing", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", "bin/bb is a POSIX sh wrapper");
     const fakeRepoRoot = await createFakeRepo();
     const pnpmArgsPath = join(tempRoot, "pnpm-args.txt");
     const fakePnpmDir = await writeFakePnpm(`#!/bin/sh
@@ -99,7 +102,8 @@ NODE
     );
   });
 
-  it("uses the built CLI directly when dist exists", async () => {
+  it("uses the built CLI directly when dist exists", async ({ skip }) => {
+    skip(process.platform === "win32", "bin/bb is a POSIX sh wrapper");
     const fakeRepoRoot = await createFakeRepo();
     const fakeDistDir = join(fakeRepoRoot, "apps", "cli", "dist");
     const pnpmCalledPath = join(tempRoot, "pnpm-called.txt");

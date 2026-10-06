@@ -8,6 +8,7 @@ import {
   makeThreadListEntry,
 } from "../../.ladle/story-fixtures";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
+import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 
 export default {
   title: "views/Mobile Recents",
@@ -31,7 +32,7 @@ function MobileStage({ children }: MobileStageProps) {
           }
         }
       `}</style>
-      {children}
+      <ThreadActionsProvider>{children}</ThreadActionsProvider>
     </div>
   );
 }
@@ -57,7 +58,6 @@ const recentThreads: ThreadListEntry[] = [
       latestAttentionAt: 300,
       runtime: {
         displayStatus: "starting",
-        hostReconnectGraceExpiresAt: null,
       },
     },
   }),
@@ -72,7 +72,6 @@ const recentThreads: ThreadListEntry[] = [
       latestAttentionAt: 250,
       runtime: {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
     },
   }),
@@ -99,22 +98,20 @@ const statusThreads: ThreadListEntry[] = [
       latestAttentionAt: 500,
       runtime: {
         displayStatus: "active",
-        hostReconnectGraceExpiresAt: null,
       },
     },
   }),
   makeRecentThread({
     overrides: {
-      id: "thr_mobile_reconnecting",
+      id: "thr_mobile_host_disconnected",
       projectId: PROJECT_IDS.pierre,
-      title: "Host reconnecting after sleep",
-      titleFallback: "Host reconnecting after sleep",
+      title: "Host disconnected after sleep",
+      titleFallback: "Host disconnected after sleep",
       status: "active",
       createdAt: 450,
       latestAttentionAt: 450,
       runtime: {
-        displayStatus: "host-reconnecting",
-        hostReconnectGraceExpiresAt: 600,
+        displayStatus: "waiting-for-host",
       },
     },
   }),
@@ -128,7 +125,6 @@ const statusThreads: ThreadListEntry[] = [
       latestAttentionAt: 400,
       runtime: {
         displayStatus: "error",
-        hostReconnectGraceExpiresAt: null,
       },
     },
   }),
@@ -182,7 +178,7 @@ const hierarchyThreads: ThreadListEntry[] = [
       status: "active",
       createdAt: 900,
       latestAttentionAt: 900,
-      runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "active" },
     },
   }),
   makeRecentThread({
@@ -195,7 +191,7 @@ const hierarchyThreads: ThreadListEntry[] = [
       status: "active",
       createdAt: 880,
       latestAttentionAt: 880,
-      runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      runtime: { displayStatus: "active" },
     },
   }),
   makeRecentThread({

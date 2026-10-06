@@ -45,7 +45,13 @@ bb.providers.register({
   // Labelled picker options; the coarse ladder above is labelled for you
   // when these are omitted. `model/list` is precise per model at runtime.
   reasoningLevels: [{ id: "medium", label: "Medium" }],
-  serviceTiers: undefined, // e.g. [{ id: "fast", label: "Fast" }]
+  // Service tiers are open ids: declare every tier the provider accepts,
+  // e.g. [{ id: "default", label: "Default" }, { id: "fast", label: "Fast" }].
+  // The bridge receives the chosen id as `serviceTier`; "default" means the
+  // provider's standard tier. A `model/list` entry may narrow the list with
+  // `supportedServiceTiers: [{ id, label?, description? }]` (an empty array
+  // hides the picker for that model; omit it to accept every declared tier).
+  serviceTiers: undefined,
   composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
   // Cold-cache fallback models: shown only until the first model/list probe
   // completes, or when a probe fails transiently. A non-empty list has

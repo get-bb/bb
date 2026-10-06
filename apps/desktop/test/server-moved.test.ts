@@ -107,6 +107,7 @@ async function createStores() {
 
 const CONNECT_MOVE: DesktopServerMove = {
   moveId: "move-1",
+  oldCopyKept: true,
   target: {
     kind: "connect",
     server: {
@@ -120,6 +121,7 @@ const CONNECT_MOVE: DesktopServerMove = {
 
 const DIRECT_MOVE: DesktopServerMove = {
   moveId: "move-2",
+  oldCopyKept: true,
   target: { kind: "custom", url: "https://studio.tailnet.ts.net:38886" },
   toHostName: "Studio desktop",
 };
@@ -143,6 +145,7 @@ describe("readServerMovedLock", () => {
       readServerMovedLock({ dataDir, logWarning: vi.fn() }),
     ).resolves.toEqual({
       moveId: "move-1",
+      oldCopyKept: true,
       target: {
         kind: "connect",
         server: {
@@ -172,9 +175,18 @@ describe("readServerMovedLock", () => {
     ).resolves.toEqual(DIRECT_MOVE);
   });
 
-  it("ignores a lock with invalid JSON and logs a warning", async () => {
+  it.each([
+    { name: "invalid JSON", contents: () => "{not json" },
+    {
+      name: "a contract mismatch",
+      contents: () => {
+        const { toHostName: _toHostName, ...incomplete } = movedFile();
+        return JSON.stringify(incomplete);
+      },
+    },
+  ])("ignores a lock with $name and logs a warning", async ({ contents }) => {
     const dataDir = await createTempDir();
-    await writeFile(join(dataDir, SERVER_MOVED_FILE_NAME), "{not json");
+    await writeFile(join(dataDir, SERVER_MOVED_FILE_NAME), contents());
     const logWarning = vi.fn();
 
     await expect(readServerMovedLock({ dataDir, logWarning })).resolves.toBe(
@@ -184,21 +196,6 @@ describe("readServerMovedLock", () => {
     expect(logWarning.mock.calls[0]?.[0]).toContain(
       join(dataDir, SERVER_MOVED_FILE_NAME),
     );
-  });
-
-  it("ignores a lock that does not match the contract", async () => {
-    const dataDir = await createTempDir();
-    const { toHostName: _toHostName, ...incomplete } = movedFile();
-    await writeFile(
-      join(dataDir, SERVER_MOVED_FILE_NAME),
-      JSON.stringify(incomplete),
-    );
-    const logWarning = vi.fn();
-
-    await expect(readServerMovedLock({ dataDir, logWarning })).resolves.toBe(
-      null,
-    );
-    expect(logWarning).toHaveBeenCalledOnce();
   });
 
   it("ignores a connect move without a handle", async () => {
@@ -248,15 +245,16 @@ describe("applyServerMove", () => {
     });
     expect(stores.notices).toEqual([
       {
-        detail:
-          "bb now opens the server on Studio desktop. This computer stays connected to it as a regular machine.",
+        detail: "bb now opens there. This computer stays connected.",
         message: "Your bb server moved to Studio desktop",
       },
     ]);
 
+    await stores.targetStore.setTarget("builtin");
     await expect(
       applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: false, switched: false });
+    ).resolves.toEqual({ noticeShown: false, switched: true });
+    expect(stores.targetStore.getTarget()).toMatchObject({ kind: "connect" });
     expect(stores.notices).toHaveLength(1);
   });
 
@@ -309,18 +307,6 @@ describe("applyServerMove", () => {
       kind: "custom",
       url: "https://work.example.com",
     });
-  });
-
-  it("leaves the locked builtin server again without a second notice", async () => {
-    const stores = await createStores();
-    await applyServerMove({ move: CONNECT_MOVE, ...stores });
-    await stores.targetStore.setTarget("builtin");
-
-    await expect(
-      applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: false, switched: true });
-    expect(stores.targetStore.getTarget().kind).toBe("connect");
-    expect(stores.notices).toHaveLength(1);
   });
 
   it("switches and notifies again for a later move", async () => {
@@ -443,13 +429,12 @@ describe("createServerMovedWatcher", () => {
   function createManualSchedule() {
     const pending = new Set<() => void>();
     return {
-      async flush() {
+      flush() {
         const callbacks = [...pending];
         pending.clear();
         for (const callback of callbacks) {
           callback();
         }
-        await settle();
       },
       pendingCount: () => pending.size,
       schedule(callback: () => void) {
@@ -462,12 +447,6 @@ describe("createServerMovedWatcher", () => {
         };
       },
     };
-  }
-
-  async function settle(): Promise<void> {
-    await new Promise<void>((resolvePromise) => {
-      setTimeout(resolvePromise, 20);
-    });
   }
 
   function createDeferred<T>() {
@@ -523,104 +502,138 @@ describe("createServerMovedWatcher", () => {
     await writeServerMovedFile(harness.dataDir, movedFile());
 
     harness.watcher.start();
-    await harness.timers.flush();
+    harness.timers.flush();
 
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-    harness.watcher.stop();
+    try {
+      await vi.waitFor(() => {
+        expect(harness.confirmMove).toHaveBeenCalledOnce();
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("debounces lock events into one committed move", async () => {
     const harness = await createHarness();
-    harness.watcher.start();
-    await harness.timers.flush();
+    try {
+      harness.watcher.start();
+      harness.timers.flush();
 
-    harness.fakeWatch.emit("bb.db-wal");
-    expect(harness.timers.pendingCount()).toBe(0);
-    await writeServerMovedFile(harness.dataDir, movedFile());
-    harness.fakeWatch.emit(`${SERVER_MOVED_FILE_NAME}.abc123.tmp`);
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    harness.fakeWatch.emit(null);
-    expect(harness.timers.pendingCount()).toBe(1);
-    await harness.timers.flush();
+      harness.fakeWatch.emit("bb.db-wal");
+      expect(harness.timers.pendingCount()).toBe(0);
+      await writeServerMovedFile(harness.dataDir, movedFile());
+      harness.fakeWatch.emit(`${SERVER_MOVED_FILE_NAME}.abc123.tmp`);
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      harness.fakeWatch.emit(null);
+      expect(harness.timers.pendingCount()).toBe(1);
+      harness.timers.flush();
 
-    expect(harness.confirmMove).toHaveBeenCalledExactlyOnceWith(
-      CONNECT_MOVE,
-      expect.any(Function),
-    );
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      await vi.waitFor(() => {
+        expect(harness.confirmMove).toHaveBeenCalledExactlyOnceWith(
+          CONNECT_MOVE,
+          expect.any(Function),
+        );
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
 
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
-    expect(harness.onMove).toHaveBeenCalledOnce();
-    harness.watcher.stop();
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      harness.timers.flush();
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.timers.pendingCount()).toBe(1);
+      });
+      expect(harness.confirmMove).toHaveBeenCalledOnce();
+      expect(harness.onMove).toHaveBeenCalledOnce();
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("does not act on a lock whose move is not committed", async () => {
     const harness = await createHarness({ confirmMove: async () => false });
     await writeServerMovedFile(harness.dataDir, movedFile());
     harness.watcher.start();
-    await harness.timers.flush();
+    try {
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.confirmMove).toHaveBeenCalledOnce();
+      });
+      expect(harness.onMove).not.toHaveBeenCalled();
 
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
-    expect(harness.onMove).not.toHaveBeenCalled();
-
-    harness.confirmMove.mockImplementation(async () => true);
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-    harness.watcher.stop();
+      harness.confirmMove.mockImplementation(async () => true);
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("checks again when the lock changes during a confirmation", async () => {
     const first = createDeferred<boolean>();
     const harness = await createHarness({ confirmMove: () => first.promise });
     await writeServerMovedFile(harness.dataDir, movedFile());
-    harness.watcher.start();
-    await harness.timers.flush();
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
+    try {
+      harness.watcher.start();
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.confirmMove).toHaveBeenCalledOnce();
+      });
 
-    await writeServerMovedFile(
-      harness.dataDir,
-      movedFile({ moveId: "move-3" }),
-    );
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.confirmMove).toHaveBeenCalledOnce();
+      await writeServerMovedFile(
+        harness.dataDir,
+        movedFile({ moveId: "move-3" }),
+      );
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      harness.timers.flush();
+      expect(harness.confirmMove).toHaveBeenCalledOnce();
 
-    harness.confirmMove.mockImplementation(async () => true);
-    first.resolve(false);
-    await settle();
-    expect(harness.onMove).not.toHaveBeenCalled();
-    expect(harness.timers.pendingCount()).toBe(1);
-    await harness.timers.flush();
+      harness.confirmMove.mockImplementation(async () => true);
+      first.resolve(false);
+      await vi.waitFor(() => {
+        expect(harness.timers.pendingCount()).toBe(1);
+      });
+      expect(harness.onMove).not.toHaveBeenCalled();
+      harness.timers.flush();
 
-    expect(harness.confirmMove).toHaveBeenCalledTimes(2);
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith({
-      ...CONNECT_MOVE,
-      moveId: "move-3",
-    });
-    harness.watcher.stop();
+      await vi.waitFor(() => {
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith({
+          ...CONNECT_MOVE,
+          moveId: "move-3",
+        });
+      });
+      expect(harness.confirmMove).toHaveBeenCalledTimes(2);
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("logs and skips an invalid lock, then delivers the corrected one", async () => {
     const harness = await createHarness();
-    harness.watcher.start();
-    await harness.timers.flush();
-
     await writeFile(join(harness.dataDir, SERVER_MOVED_FILE_NAME), "{partial");
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.confirmMove).not.toHaveBeenCalled();
-    expect(harness.onMove).not.toHaveBeenCalled();
-    expect(harness.logWarning).toHaveBeenCalledOnce();
+    harness.watcher.start();
 
-    await writeServerMovedFile(harness.dataDir, movedFile());
-    harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
-    await harness.timers.flush();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-    harness.watcher.stop();
+    try {
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.logWarning).toHaveBeenCalledOnce();
+      });
+      expect(harness.confirmMove).not.toHaveBeenCalled();
+      expect(harness.onMove).not.toHaveBeenCalled();
+
+      await writeServerMovedFile(harness.dataDir, movedFile());
+      harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("cancels pending checks when stopped", async () => {
@@ -630,7 +643,7 @@ describe("createServerMovedWatcher", () => {
 
     harness.fakeWatch.emit(SERVER_MOVED_FILE_NAME);
     harness.watcher.stop();
-    await harness.timers.flush();
+    harness.timers.flush();
 
     expect(harness.fakeWatch.close).toHaveBeenCalledOnce();
     expect(harness.confirmMove).not.toHaveBeenCalled();
@@ -648,15 +661,18 @@ describe("createServerMovedWatcher", () => {
     });
     await writeServerMovedFile(harness.dataDir, movedFile());
     harness.watcher.start();
-    await harness.timers.flush();
-    expect(cancellationChecks.map((isCancelled) => isCancelled())).toEqual([
-      false,
-    ]);
+    harness.timers.flush();
+    await vi.waitFor(() => {
+      expect(cancellationChecks.map((isCancelled) => isCancelled())).toEqual([
+        false,
+      ]);
+    });
 
     harness.watcher.stop();
     expect(cancellationChecks[0]?.()).toBe(true);
     confirmation.resolve(true);
-    await settle();
+    await confirmation.promise;
+    await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(harness.onMove).not.toHaveBeenCalled();
   });
@@ -670,33 +686,44 @@ describe("createServerMovedWatcher", () => {
       },
     });
 
-    expect(() => harness.watcher.start()).not.toThrow();
-    expect(harness.logWarning.mock.calls[0]?.[0]).toContain("ENOSPC");
-    await harness.timers.flush();
-    expect(harness.onMove).not.toHaveBeenCalled();
+    try {
+      expect(() => harness.watcher.start()).not.toThrow();
+      expect(harness.logWarning.mock.calls[0]?.[0]).toContain("ENOSPC");
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.timers.pendingCount()).toBe(2);
+      });
+      expect(harness.onMove).not.toHaveBeenCalled();
 
-    await writeServerMovedFile(harness.dataDir, movedFile());
-    await harness.timers.flush();
-    await harness.timers.flush();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-
-    harness.watcher.stop();
+      await writeServerMovedFile(harness.dataDir, movedFile());
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
     expect(harness.timers.pendingCount()).toBe(0);
   });
 
   it("closes the watcher and polls after a watch error", async () => {
     const harness = await createHarness();
-    harness.watcher.start();
-    await harness.timers.flush();
+    try {
+      harness.watcher.start();
+      harness.timers.flush();
 
-    harness.fakeWatch.emitError(new Error("EMFILE"));
+      harness.fakeWatch.emitError(new Error("EMFILE"));
 
-    expect(harness.fakeWatch.close).toHaveBeenCalledOnce();
-    expect(harness.logWarning.mock.calls[0]?.[0]).toContain("EMFILE");
-    await writeServerMovedFile(harness.dataDir, movedFile());
-    await harness.timers.flush();
-    expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
-    harness.watcher.stop();
+      expect(harness.fakeWatch.close).toHaveBeenCalledOnce();
+      expect(harness.logWarning.mock.calls[0]?.[0]).toContain("EMFILE");
+      await writeServerMovedFile(harness.dataDir, movedFile());
+      harness.timers.flush();
+      await vi.waitFor(() => {
+        expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
+      });
+    } finally {
+      harness.watcher.stop();
+    }
   });
 
   it("notices a lock written atomically into a real data dir", async () => {

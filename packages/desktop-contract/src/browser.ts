@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   desktopBrowserImportSelectionSchema,
-  desktopBrowserProfileSchema,
   type DesktopBrowserImportOutcome,
   type DesktopBrowserImportSource,
 } from "@bb/host-daemon-contract";
@@ -258,9 +257,6 @@ export const BB_DESKTOP_BROWSER_MAX_PAGE_EXPRESSION_LENGTH = 4_000_000;
 export const BB_DESKTOP_BROWSER_MAX_PAGE_CHANNEL_LENGTH = 256;
 
 export const bbDesktopBrowserPageWorldSchema = z.enum(["main", "isolated"]);
-export type BbDesktopBrowserPageWorld = z.infer<
-  typeof bbDesktopBrowserPageWorldSchema
->;
 
 export const bbDesktopBrowserEvaluateRequestSchema = z
   .object({
@@ -318,9 +314,7 @@ export type BbDesktopBrowserFindResultHandler = (
 export type BbDesktopBrowserUnsubscribe = () => void;
 
 export const bbDesktopBrowserImportCookiesRequestSchema =
-  desktopBrowserImportSelectionSchema
-    .extend({ profile: desktopBrowserProfileSchema })
-    .strict();
+  desktopBrowserImportSelectionSchema;
 export type BbDesktopBrowserImportCookiesRequest = z.infer<
   typeof bbDesktopBrowserImportCookiesRequestSchema
 >;

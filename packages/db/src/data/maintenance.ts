@@ -50,7 +50,6 @@ interface SqliteTableNameRow {
 }
 
 export interface DatabaseMaintenanceActivity {
-  activeCommandCount: number;
   activeEnvironmentProvisioningCount: number;
   activePendingInteractionCount: number;
   activeProjectDeletionCount: number;
@@ -204,7 +203,6 @@ function runWithMaintenanceBusyTimeout<TValue>(
 export function getDatabaseMaintenanceActivity(
   db: DbConnection,
 ): DatabaseMaintenanceActivity {
-  const activeCommandCount = 0;
   const activeThreadCount = countValue(
     db
       .select({ value: count() })
@@ -251,7 +249,6 @@ export function getDatabaseMaintenanceActivity(
   );
 
   return {
-    activeCommandCount,
     activeEnvironmentProvisioningCount,
     activePendingInteractionCount,
     activeProjectDeletionCount,
@@ -264,7 +261,6 @@ export function isDatabaseMaintenanceIdle(
   activity: DatabaseMaintenanceActivity,
 ): boolean {
   return (
-    activity.activeCommandCount === 0 &&
     activity.activeEnvironmentProvisioningCount === 0 &&
     activity.activePendingInteractionCount === 0 &&
     activity.activeProjectDeletionCount === 0 &&

@@ -27,21 +27,28 @@ describe("Theme Preview responsive layout", () => {
   });
 
   it("derives every composition threshold from the mock's natural panel widths", () => {
-    // A phone-width pane: thread only, tight chrome.
-    expect(frameCompositionForWidth(THREAD_MIN_WIDTH)).toEqual({ sidebar: false, infoPanel: false, splitColumns: false, narrow: true });
-    // The sidebar joins exactly when it and a readable thread both fit.
+    expect(frameCompositionForWidth(THREAD_MIN_WIDTH)).toEqual({
+      sidebar: false,
+      infoPanel: false,
+      splitColumns: false,
+      narrow: true,
+    });
     const sidebarJoin = SIDEBAR_WIDTH + THREAD_MIN_WIDTH;
     expect(frameCompositionForWidth(sidebarJoin - 1).sidebar).toBe(false);
     expect(frameCompositionForWidth(sidebarJoin).sidebar).toBe(true);
-    // Split panes go side by side only when each pane stays readable.
     const splitJoin = SIDEBAR_WIDTH + 2 * THREAD_MIN_WIDTH;
     expect(frameCompositionForWidth(splitJoin - 1).splitColumns).toBe(false);
     expect(frameCompositionForWidth(splitJoin).splitColumns).toBe(true);
-    // The info panel is the last to join: it waits for a comfortable thread.
-    const infoJoin = SIDEBAR_WIDTH + THREAD_COMFORTABLE_WIDTH + INFO_PANEL_WIDTH;
+    const infoJoin =
+      SIDEBAR_WIDTH + THREAD_COMFORTABLE_WIDTH + INFO_PANEL_WIDTH;
     expect(infoJoin).toBeGreaterThan(splitJoin);
     expect(frameCompositionForWidth(infoJoin - 1).infoPanel).toBe(false);
-    expect(frameCompositionForWidth(infoJoin)).toEqual({ sidebar: true, infoPanel: true, splitColumns: true, narrow: false });
+    expect(frameCompositionForWidth(infoJoin)).toEqual({
+      sidebar: true,
+      infoPanel: true,
+      splitColumns: true,
+      narrow: false,
+    });
   });
 
   it("keeps the mock window height continuous in width, clamped to plausible sizes", () => {

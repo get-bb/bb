@@ -54,6 +54,8 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
     url: "https://github.com/get-bb",
   },
   installed: false,
+  conflictingInstallSource: null,
+  installedByDefault: false,
   installs: 4_210,
   compatible: true,
   incompatibleReason: null,
@@ -90,7 +92,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function stubCatalog(data: PluginCatalogSearchData) {
+type CatalogFixture = Omit<PluginCatalogSearchData, "categories"> &
+  Partial<Pick<PluginCatalogSearchData, "categories">>;
+
+function stubCatalog(data: CatalogFixture) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -99,6 +104,7 @@ function stubCatalog(data: PluginCatalogSearchData) {
         return jsonResponse({
           results: data.entries,
           collections: data.collections,
+          categories: data.categories ?? [],
         });
       }
       return jsonResponse({ error: "not found" }, 404);
@@ -112,7 +118,7 @@ function LocationProbe() {
 }
 
 function renderBrowse(
-  data: PluginCatalogSearchData,
+  data: CatalogFixture,
   initialEntry = "/plugins",
   onInstall = vi.fn(),
   onOpenPlugin = vi.fn(),
@@ -223,31 +229,6 @@ describe("BrowsePluginsTab", () => {
     ]);
     expect(screen.getAllByText("Memory")).toHaveLength(2);
     expect(screen.queryByText("BB Official plugins")).toBeNull();
-  });
-
-  it("round trips the search parameter", async () => {
-    renderBrowse(
-      { entries: [MEMORY_ENTRY], collections: [] },
-      "/plugins?query=Mem",
-    );
-
-    const search = await screen.findByRole("textbox", {
-      name: "Search plugins",
-    });
-    expect((search as HTMLInputElement).value).toBe("Mem");
-    expect(visibleShelves()).toBeNull();
-    fireEvent.change(search, { target: { value: "Memory" } });
-    expect((search as HTMLInputElement).value).toBe("Memory");
-
-    await waitFor(() =>
-      expect(
-        new URLSearchParams(
-          screen.getByTestId("location-search").textContent ?? "",
-        ).get("query"),
-      ).toBe("Memory"),
-    );
-    fireEvent.change(search, { target: { value: "" } });
-    await waitFor(() => expect(visibleShelves()).not.toBeNull());
   });
 
   it("keeps the shelves mounted while a search is active", async () => {
@@ -502,7 +483,7 @@ describe("BrowsePluginsTab", () => {
     await screen.findByTestId("plugin-browse-shelves");
     expect(cardOrder()).toHaveLength(6);
     fireEvent.click(
-      screen.getAllByRole("link", { name: "See all Memory & Context" })[0]!,
+      screen.getAllByRole("link", { name: "View all Memory & Context" })[0]!,
     );
     expect(cardOrder()).toHaveLength(8);
     expect(screen.getByTestId("location-search").textContent).toBe(
@@ -583,7 +564,9 @@ describe("BrowsePluginsTab", () => {
   });
 
   it("uses the shared error state and retries catalog searches", async () => {
-    const warning = vi.spyOn(appToast, "warning").mockReturnValue("catalog-error");
+    const warning = vi
+      .spyOn(appToast, "warning")
+      .mockReturnValue("catalog-error");
     let searchAttempts = 0;
     vi.stubGlobal(
       "fetch",
@@ -619,7 +602,9 @@ describe("BrowsePluginsTab", () => {
   });
 
   it("notifies once while saved results remain available after failed refreshes", async () => {
-    const warning = vi.spyOn(appToast, "warning").mockReturnValue("catalog-error");
+    const warning = vi
+      .spyOn(appToast, "warning")
+      .mockReturnValue("catalog-error");
     let unavailable = false;
     let description = MEMORY_ENTRY.description;
     vi.stubGlobal(
@@ -628,7 +613,10 @@ describe("BrowsePluginsTab", () => {
         if (String(input).startsWith("/api/v1/plugin-catalog/search")) {
           return unavailable
             ? jsonResponse({ error: "unavailable" }, 503)
-            : jsonResponse({ results: [{ ...MEMORY_ENTRY, description }], collections: [] });
+            : jsonResponse({
+                results: [{ ...MEMORY_ENTRY, description }],
+                collections: [],
+              });
         }
         return jsonResponse({ error: "not found" }, 404);
       }),
@@ -683,7 +671,7 @@ describe("BrowsePluginsTab", () => {
     const installed = await screen.findByRole("button", {
       name: "Memory installed — 4,210 installs",
     });
-    expect(installed.querySelector('[data-icon="Download"]')).toBeTruthy();
+    expect(installed.querySelector('[data-icon="Check"]')).toBeTruthy();
     expect(installed.textContent).toContain("4.2K");
     expect(installed.getAttribute("aria-disabled")).toBe("true");
     expect(

@@ -95,9 +95,7 @@ async function setup() {
     suggestedBranchName: "bb/test",
     attempt: 1,
     pathKey: THREAD_ID,
-    rebuild: false,
     experimental_claimPath: async () => true,
-    previous: null,
     report,
     signal: new AbortController().signal,
   };
@@ -150,16 +148,5 @@ describe("personal workspace resource operations", () => {
       signal: new AbortController().signal,
     });
     expect(f.host.directories.size).toBe(0);
-  });
-  it("uses core's rebuild path key", async () => {
-    const f = await setup();
-    expect(
-      await f.provider.create({
-        ...f.context,
-        pathKey: "rebuilt",
-        rebuild: true,
-      }),
-    ).toMatchObject({ path: workspacePathFor("rebuilt") });
-    expect(f.steps).toEqual(["Restoring personal workspace…"]);
   });
 });

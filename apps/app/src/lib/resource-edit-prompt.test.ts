@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildAutomationEditThreadPrompt,
   buildPluginEditThreadPrompt,
   buildSkillEditThreadPrompt,
 } from "@bb/shared-ui/resource-edit-prompt";
@@ -23,15 +22,6 @@ describe("resource edit thread prompts", () => {
       }),
     ).toBe(
       'Edit the bb skill "Review PR" (ID skill_abc123) at /Users/me/.bb/skills/review-pr/SKILL.md. Inspect it with bb skill show skill_abc123 --json and pass that revision to bb skill update when saving. I want to ',
-    );
-    expect(
-      buildAutomationEditThreadPrompt({
-        name: "Daily triage",
-        projectId: "proj_123",
-        automationId: "auto_456",
-      }),
-    ).toBe(
-      'Edit the bb automation "Daily triage" (ID auto_456) in project proj_123. I want to ',
     );
   });
 });

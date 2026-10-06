@@ -112,6 +112,7 @@ Katherine Johnson,Active,9600,"Needs ""Executive Summary"" column added"
 `;
 
 const README_PATH = "docs/right-panel/README.md";
+const ARCHIVE_PATH = "keyboard-reset-qa/report-with-images.zip";
 const DIAGRAM_PATH = "docs/right-panel/preview-flow.md";
 const BUTTON_PATH = "apps/app/src/components/ui/button.tsx";
 const DELETED_BUTTON_PATH = "apps/app/src/components/ui/legacy-button.tsx";
@@ -397,12 +398,18 @@ export function Overview() {
       >
         <PreviewStage>
           <FilePreview
-            path={README_PATH}
-            copyPath={copyPathFor(README_PATH)}
+            path={ARCHIVE_PATH}
+            copyPath={copyPathFor(ARCHIVE_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{
               kind: "unsupported",
-              message: "Preview not available for application/zip.",
+              file: {
+                mimeType: "application/zip",
+                name: "report-with-images.zip",
+                reason: "binary",
+                sizeBytes: 2_457_600,
+                url: "/fixtures/report-with-images.zip",
+              },
             }}
           />
         </PreviewStage>

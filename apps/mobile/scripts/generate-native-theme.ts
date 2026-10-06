@@ -807,10 +807,25 @@ export function renderNativeThemeSource(model: NativeThemeModel): string {
 }
 
 export function generateNativeThemeSource(): string {
-  return renderNativeThemeSource(buildNativeThemeModel()).replace(
-    /\/\*[\s\S]*?\*\/\n?/g,
-    "",
-  );
+  const sources = readSources();
+  const android = buildNativeThemeModel({
+    ...sources,
+    mobileCss: readFileSync(
+      join(MOBILE_ROOT, "src/theme/android-overrides.css"),
+      "utf8",
+    ),
+  });
+  const androidSource = [
+    "export const androidThemes: Record<BuiltInThemeId, NativeThemeModes> = {",
+    ...[...android.themes.entries()].map(
+      ([id, modes]) =>
+        `${quoteKey(id)}: {${MODES.map((mode) => `${mode}: ${emitTokenObject(modes[mode], android.tokenKeys, "")}`).join(",")}},`,
+    ),
+    "};",
+  ].join("\n");
+  return (
+    renderNativeThemeSource(buildNativeThemeModel()) + androidSource
+  ).replace(/\/\*[\s\S]*?\*\/\n?/g, "");
 }
 
 function main(): void {

@@ -7,6 +7,9 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 
+import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationModel";
+import { PluginPanelHeaderCenter } from "./PluginPanelHeader";
+
 const { PluginIcon } = await import("./PluginIcon");
 
 afterEach(() => {
@@ -140,3 +143,37 @@ it("resolves every named branding.icon the shipped plugins declare", async () =>
   expect(declared.length).toBeGreaterThan(0);
   expect(declared.filter(([, icon]) => !isBuiltinIconName(icon))).toEqual([]);
 });
+
+it.each(["sidebar", "header"])(
+  "uses the nav panel icon before branding in its %s",
+  (surface) => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "demo",
+          {
+            displayName: "Demo",
+            icon: "Check",
+            compactIconUrl: "/demo.svg",
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
+    const view = render(
+      surface === "sidebar" ? (
+        <SidebarNavigationIcon
+          icon={{ kind: "plugin", pluginId: "demo", icon: "Zap" }}
+        />
+      ) : (
+        <PluginPanelHeaderCenter
+          chrome={{ pluginId: "demo", icon: "Zap", title: "Inspect" }}
+        />
+      ),
+    );
+    expect(view.container.querySelector('[data-icon="Zap"]')).not.toBeNull();
+    expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
+  },
+);

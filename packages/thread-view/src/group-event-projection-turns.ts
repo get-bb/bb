@@ -27,6 +27,7 @@ type TurnStartedEvent = Extract<ThreadEvent, { type: "turn/started" }>;
 interface ProjectionTurnDraft {
   completionSequence: number | null;
   messages: EventProjectionMessage[];
+  startedSequence: number;
   turn: EventProjectionTurn;
 }
 
@@ -100,6 +101,7 @@ function createProjectionTurn(
   return {
     completionSequence: null,
     messages: [],
+    startedSequence: meta.seq,
     turn: {
       turnId,
       threadId: event.threadId,
@@ -157,6 +159,41 @@ function addProjectionTurnMessage(
     sourceSeqEnd: message.sourceSeqEnd,
     createdAt: message.createdAt,
   });
+}
+
+function isInteractionLifecycleMessage(
+  message: EventProjectionMessage,
+): boolean {
+  switch (message.kind) {
+    case "permission-grant-lifecycle":
+    case "plugin-form-lifecycle":
+    case "user-question-lifecycle":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function findTurnRunningAtSequence(
+  turnsById: ReadonlyMap<string, ProjectionTurnDraft>,
+  sequence: number,
+): ProjectionTurnDraft | null {
+  let running: ProjectionTurnDraft | null = null;
+  for (const draft of turnsById.values()) {
+    if (draft.startedSequence >= sequence) {
+      continue;
+    }
+    if (
+      draft.completionSequence !== null &&
+      draft.completionSequence < sequence
+    ) {
+      continue;
+    }
+    if (running === null || draft.startedSequence > running.startedSequence) {
+      running = draft;
+    }
+  }
+  return running;
 }
 
 function applyExternalUserBoundaries(
@@ -304,6 +341,13 @@ export function groupEventProjectionTurns(
 
   for (const message of args.messages) {
     if (message.scope.kind === "thread") {
+      const runningTurn = isInteractionLifecycleMessage(message)
+        ? findTurnRunningAtSequence(turnsById, message.sourceSeqStart)
+        : null;
+      if (runningTurn !== null) {
+        addProjectionTurnMessage(runningTurn, message);
+        continue;
+      }
       entryDrafts.push({
         kind: "projected-message",
         message,

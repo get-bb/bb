@@ -40,7 +40,6 @@ export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
-export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 export const AUTOMATIONS_ROUTE_PATH = "/plugins/automations/automations";
 export const AUTOMATIONS_BROWSE_ROUTE_PATH =
   "/plugins/automations/automations/browse";
@@ -201,6 +200,48 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
   return isProjectlessProjectId(args.projectId)
     ? `/threads/${args.threadId}`
     : `/projects/${args.projectId}/threads/${args.threadId}`;
+}
+
+const MESSAGE_LINK_PARAM = "msg";
+
+export interface MessageLinkPathArgs extends ThreadRoutePathArgs {
+  seq: number;
+}
+
+export interface MessageLinkTarget {
+  threadId: string;
+  seq: number;
+}
+
+const THREAD_ROUTE_PATHNAME_PATTERN =
+  /^\/(?:projects\/[^/]+\/)?threads\/([^/]+)\/?$/;
+const MESSAGE_LINK_SEQ_PATTERN = /^(0|[1-9]\d*)$/;
+
+export function getMessageLinkPath(args: MessageLinkPathArgs): string {
+  return `${getThreadRoutePath(args)}#${MESSAGE_LINK_PARAM}=${args.seq}`;
+}
+
+export function parseMessageLink(href: string): MessageLinkTarget | null {
+  let url: URL;
+  try {
+    url = new URL(href, "http://message-link.invalid");
+  } catch {
+    return null;
+  }
+  const encodedThreadId = THREAD_ROUTE_PATHNAME_PATTERN.exec(url.pathname)?.[1];
+  const seq = new URLSearchParams(url.hash.slice(1)).get(MESSAGE_LINK_PARAM);
+  if (
+    encodedThreadId === undefined ||
+    seq === null ||
+    !MESSAGE_LINK_SEQ_PATTERN.test(seq)
+  ) {
+    return null;
+  }
+  try {
+    return { threadId: decodeURIComponent(encodedThreadId), seq: Number(seq) };
+  } catch {
+    return null;
+  }
 }
 
 export const ROUTE_PATTERNS: readonly string[] = [

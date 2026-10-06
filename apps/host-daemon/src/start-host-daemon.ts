@@ -21,6 +21,7 @@ import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
   createUserShellPathResolver,
   prepareRuntimeShellEnv,
+  resolvePowerShellExecutionPolicyDefault,
   resolveBbExecutablePathInDirectory,
   resolveLocalBbExecutablePath,
 } from "./runtime-shell-env.js";
@@ -33,11 +34,11 @@ import {
 interface StartHostDaemonOptions {
   enrollKey?: string;
   hostId?: string;
-  hostName?: string;
   bbExecutableDirectory?: string;
   bridgeBundleDir?: string;
   serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
+  supervised?: boolean;
 }
 
 export async function startHostDaemon(
@@ -75,7 +76,6 @@ export async function startHostDaemon(
     const identity = await loadHostIdentity({
       dataDir,
       providedHostId: options.hostId,
-      providedHostName: options.hostName,
     });
     const instanceId = randomUUID();
     const serverUrl = resolveServerUrl({
@@ -158,6 +158,8 @@ export async function startHostDaemon(
         bbExecutablePath,
         hostDaemonPort: localApiConfig.port,
         inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
+        powershellExecutionPolicy:
+          await resolvePowerShellExecutionPolicyDefault(),
         serverUrl: machineAuthProxy?.serverUrl ?? serverUrl,
       });
     const runtimeShellEnv = await resolveRuntimeShellEnv();
@@ -168,6 +170,7 @@ export async function startHostDaemon(
       hostKey,
       serverHeaders: options.serverHeaders,
       autoUpdate: options.autoUpdate,
+      supervised: options.supervised,
       bridgeBundleDir: options.bridgeBundleDir,
       hostId: identity.hostId,
       hostName: identity.hostName,

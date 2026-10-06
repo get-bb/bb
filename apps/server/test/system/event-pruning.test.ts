@@ -173,56 +173,6 @@ function seedResolvedAssistantMessage(
 }
 
 describe("thread event pruning", () => {
-  it("prunes idle-thread noise rows and resolved item deltas", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      seedNoiseRows(harness, {
-        threadId: thread.id,
-        endingSequence: 305,
-      });
-      seedResolvedAssistantMessage(harness, {
-        threadId: thread.id,
-        itemId: "msg-1",
-        deltaSequences: [306, 307, 308],
-        completedSequence: 309,
-      });
-
-      const result = drainLivePruning(harness.deps, {
-        mode: "idle",
-        threadId: thread.id,
-      });
-
-      expect(result).toMatchObject({
-        totalRemoved: 306,
-      });
-      drainLivePruning(harness.deps, { threadId: thread.id, mode: "idle" });
-      expect(
-        listEventSequencesForType(harness, {
-          threadId: thread.id,
-          type: "thread/tokenUsage/updated",
-        }).at(0),
-      ).toBe(305);
-      expect(
-        listEventSequencesForType(harness, {
-          threadId: thread.id,
-          type: "item/agentMessage/delta",
-        }),
-      ).toEqual([306]);
-    });
-  });
-
   it("preserves context window usage when idle pruning removes old context-usage rows", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps);
@@ -502,7 +452,7 @@ describe("thread event pruning", () => {
         totalRemoved: 32,
       });
       expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
-        "history-rewritten",
+        "history-compacted",
       ]);
       const second = pruneThreadEventHistoryBestEffort(harness.deps, {
         threadId: thread.id,

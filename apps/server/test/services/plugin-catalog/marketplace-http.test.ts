@@ -94,12 +94,18 @@ describe("marketplace HTTP policy", () => {
     );
     const port = (server.address() as AddressInfo).port;
     const socketErrors: Error[] = [];
+    const controller = new AbortController();
+    let finishRequest!: () => void;
+    const requestClosed = new Promise<void>((resolve) => {
+      finishRequest = resolve;
+    });
     const fetchMarketplace = createPublicMarketplaceFetch({
       request: (url, options, callback) => {
         const outgoing = httpRequest(
           { ...options, host: "127.0.0.1", port, path: url.pathname },
           callback,
         );
+        outgoing.once("close", finishRequest);
         outgoing.on("socket", (socket) => {
           socket.on("error", (error: Error) => socketErrors.push(error));
         });
@@ -112,12 +118,13 @@ describe("marketplace HTTP policy", () => {
         {
           method: "GET",
           headers: new Headers({ accept: "application/json" }),
-          signal: AbortSignal.timeout(50),
+          signal: controller.signal,
         },
       );
       expect(response.status).toBe(304);
       await response.body?.cancel();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await requestClosed;
+      controller.abort(new DOMException("Late timeout", "TimeoutError"));
       expect(socketErrors).toEqual([]);
     } finally {
       server.closeAllConnections();

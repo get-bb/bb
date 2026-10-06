@@ -302,19 +302,6 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     },
   },
   {
-    id: "opening-editor",
-    group: "Local files",
-    label: "opening editor",
-    source: "GitDiffCard story",
-    usage: ["Story-only GitDiffCard fixture", "Open in editor handler runs"],
-    current: {
-      tone: "message",
-      title: "Opening in editor",
-      description:
-        "apps/app/src/components/settings/UpdatesSettingsSection.tsx",
-    },
-  },
-  {
     id: "clipboard-success",
     group: "Clipboard",
     label: "copy success",

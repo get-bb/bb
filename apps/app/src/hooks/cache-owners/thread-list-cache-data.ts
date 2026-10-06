@@ -46,10 +46,10 @@ export function* iterateThreadListCacheEntries(
 
 function mapThreadListCacheData<T extends ThreadListCacheData>(
   data: T,
-  mapper: (list: ThreadListEntry[]) => ThreadListEntry[],
+  mapper: (list: ThreadListEntry[], pageIndex: number) => ThreadListEntry[],
 ): T {
   if (isThreadListEntryArray(data)) {
-    return mapper(data) as T;
+    return mapper(data, 0) as T;
   }
   return { ...data, pages: data.pages.map(mapper) } as T;
 }
@@ -92,10 +92,44 @@ export function getCachedThreadLists(
 export function restoreCachedThreadLists(
   queryClient: QueryClient,
   snapshot: CachedThreadListSnapshot,
+  threadIds?: ReadonlySet<string>,
 ): void {
   for (const { queryKey, data } of snapshot) {
-    patchCachedQueryData(queryClient, queryKey, data);
+    if (threadIds === undefined) {
+      patchCachedQueryData(queryClient, queryKey, data);
+      continue;
+    }
+    patchCachedQueryData<ThreadListCacheData>(
+      queryClient,
+      queryKey,
+      (current) => {
+        if (!current) return current;
+        const pages = isThreadListEntryArray(data) ? [data] : data.pages;
+        return mapThreadListCacheData(current, (list, pageIndex) =>
+          restoreRemovedThreadEntries(list, pages[pageIndex] ?? [], threadIds),
+        );
+      },
+    );
   }
+}
+
+export function restoreRemovedThreadEntries(
+  current: ThreadListEntry[],
+  previous: ThreadListEntry[],
+  threadIds: ReadonlySet<string>,
+): ThreadListEntry[] {
+  const restored = [...current];
+  let insertionIndex = restored.length;
+  for (let index = previous.length - 1; index >= 0; index--) {
+    const thread = previous[index]!;
+    const currentIndex = restored.findIndex((entry) => entry.id === thread.id);
+    if (currentIndex >= 0) {
+      insertionIndex = currentIndex;
+    } else if (threadIds.has(thread.id)) {
+      restored.splice(insertionIndex, 0, thread);
+    }
+  }
+  return restored;
 }
 
 export function applyToCachedThreadLists(

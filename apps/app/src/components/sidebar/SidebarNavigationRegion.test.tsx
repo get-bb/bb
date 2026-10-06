@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import {
   act,
   cleanup,
@@ -200,7 +206,9 @@ function renderHarness(
   );
 }
 
-function registerFixture() {
+function registerFixture(
+  component: ComponentType<ExperimentalSidebarNavigationProps> = Replacement,
+) {
   setPluginSlotRegistrations(
     "garden",
     registrationSet({
@@ -217,7 +225,7 @@ function registerFixture() {
         {
           id: "navbar",
           title: "Garden Navbar",
-          component: Replacement,
+          component,
         },
       ],
     }),
@@ -251,7 +259,7 @@ function listedItems(name: string): string[] {
 describe("SidebarNavigationRegion", () => {
   it("renders bb's bundled Navigation plugin by default", async () => {
     await registerNavigationPlugin();
-    renderHarness(vi.fn(), ["/"], "navigation/navigation");
+    renderHarness(vi.fn(), ["/"], "__automatic__");
 
     fireEvent.click(screen.getByRole("button", { name: "Skills" }));
     expect(screen.getByTestId("pathname").textContent).toBe("/skills");
@@ -265,8 +273,8 @@ describe("SidebarNavigationRegion", () => {
   });
 
   it("shows skeleton rows at the provider's remembered height while plugins load", () => {
-    rememberNavigationHeight("navigation/navigation", 96);
-    renderHarness(vi.fn(), ["/"], "navigation/navigation");
+    rememberNavigationHeight("__automatic__", 96);
+    renderHarness(vi.fn(), ["/"], "__automatic__");
 
     const placeholder = document.querySelector<HTMLElement>(
       '[data-sidebar-navigation-placeholder="loading"]',
@@ -299,6 +307,21 @@ describe("SidebarNavigationRegion", () => {
     expect(
       document.querySelector("[data-sidebar-navigation-placeholder]"),
     ).toBeNull();
+  });
+
+  it("prefers an installed navigation plugin over the bundled one by default", async () => {
+    await registerNavigationPlugin();
+    setPluginSlotRegistrations(
+      "zen",
+      registrationSet({
+        experimentalSidebarNavigations: [
+          { id: "navbar", title: "Zen Navbar", component: Replacement },
+        ],
+      }),
+    );
+    renderHarness(vi.fn(), ["/"], "__automatic__");
+
+    expect(screen.getByTestId("replacement-navigation")).toBeDefined();
   });
 
   it("says no navigation is enabled once plugins settle without one", () => {
@@ -406,6 +429,29 @@ describe("SidebarNavigationRegion", () => {
       "New thread",
       "Plugins",
     ]);
+  });
+
+  it("accepts visibility changes as soon as the navigation provider commits", () => {
+    function HideOnCommit() {
+      const { actions, items } = useSidebarNavigation();
+      useLayoutEffect(() => {
+        actions.setVisible("garden/docs", false);
+      }, [actions]);
+      const docs = items.find((item) => item.id === "garden/docs");
+      return (
+        <output>
+          {docs
+            ? docs.isVisible
+              ? "Docs visible"
+              : "Docs hidden"
+            : "Docs missing"}
+        </output>
+      );
+    }
+    registerFixture(HideOnCommit);
+    renderHarness();
+
+    expect(screen.getByText("Docs hidden")).toBeDefined();
   });
 
   it("opens in split only when the provider asks for it", () => {

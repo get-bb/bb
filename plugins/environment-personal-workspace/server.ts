@@ -15,8 +15,8 @@ export default async function personalWorkspacePlugin(
     description: "Create a personal directory without a project.",
     icon: "Folder",
     requires: { projectless: true },
-    async create({ host: machine, pathKey, rebuild, report, signal }) {
-      report.step(`${rebuild ? "Restoring" : "Preparing"} personal workspace…`);
+    async create({ host: machine, pathKey, report, signal }) {
+      report.step("Preparing personal workspace…");
       try {
         const created = await host.call(
           "createWorkspace",

@@ -5,10 +5,16 @@ import {
 } from "../../vitest.shared.js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { forkablePluginPaths } from "./vite-forkable-plugin-paths.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 
 export default defineWorkspaceTestConfig({
-  plugins: [sharedUiEnvSeam(), react(), tailwindcss()],
+  plugins: [
+    forkablePluginPaths(path.resolve(__dirname, "./src")),
+    sharedUiEnvSeam(),
+    react(),
+    tailwindcss(),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

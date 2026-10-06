@@ -92,7 +92,10 @@ export function AttachmentPreview({
   );
   const attachmentImageItems = imageAttachments.map((attachment) => ({
     alt: attachment.name,
-    src: resolveAttachmentPreviewSrc(attachment.path, attachmentProjectId),
+    src: resolveAttachmentPreviewSrc(
+      attachment.path,
+      attachment.sourceProjectId ?? attachmentProjectId,
+    ),
   }));
   const hasMultipleAttachmentImages = imageAttachments.length > 1;
   const currentAttachmentImage =
@@ -153,6 +156,7 @@ export function AttachmentPreview({
                   {onRemoveAttachment ? (
                     <button
                       type="button"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={(event) => {
                         event.currentTarget.blur();
                         releaseLocalAttachmentPreview(attachment.path);
@@ -184,6 +188,7 @@ export function AttachmentPreview({
                     <span className="relative size-4 shrink-0">
                       <button
                         type="button"
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={(event) => {
                           event.currentTarget.blur();
                           onRemoveAttachment(attachment.path);

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { BRIDGE_JSON_RPC_ERRORS } from "@get-bb/plugin-sdk/provider-bridge";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
 import {
@@ -58,6 +59,7 @@ it("refuses a pi older than the supported minimum before spawning it", async () 
     cwd: harness.workspaceDir,
   });
   expect(models.error).toMatchObject({
+    code: BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
     message: expect.stringContaining(
       "0.83.2 is older than the supported minimum 0.84.0",
     ),
@@ -78,6 +80,7 @@ it("reports not_installed when the launch command is missing", async () => {
     cwd: harness.workspaceDir,
   });
   expect(models.error).toMatchObject({
+    code: BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE,
     message: expect.stringContaining("Could not find the pi CLI"),
   });
 });
@@ -93,7 +96,10 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
       status: "unknown",
       installedVersion: null,
       statusMessage: expect.stringMatching(
-        /^Could not determine the pi version: `.*--version` exited with 1\. Install @earendil-works\/pi-coding-agent 0\.84\.0 or newer: npm install -g @earendil-works\/pi-coding-agent@latest$/u,
+        new RegExp(
+          `^Could not determine the pi version: \`.*--version\` exited with 1\\. Install @earendil-works/pi-coding-agent 0\\.84\\.0 or newer: ${process.platform === "win32" ? "npm\\.cmd" : "npm"} install -g @earendil-works/pi-coding-agent@latest$`,
+          "u",
+        ),
       ),
     },
   });

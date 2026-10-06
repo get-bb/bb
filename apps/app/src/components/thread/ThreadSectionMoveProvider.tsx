@@ -2,10 +2,13 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useAtomValue } from "jotai";
 import {
   buildSidebarEntitySectionId,
+  normalizeSidebarSectionOrder,
   type SidebarSectionDefinition,
 } from "@bb/client-core";
-import { sidebarOrganizationModeAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
-import { useSidebarModeSectionOrder } from "@/components/sidebar/useSidebarModeSectionOrder";
+import {
+  sidebarManualSectionOrderAtom,
+  sidebarOrganizationModeAtom,
+} from "@/components/sidebar/sidebarCollapsedAtoms";
 import type { Thread } from "@bb/domain";
 import { useMoveThreadToSection } from "@/hooks/mutations/thread-state-mutations";
 
@@ -68,11 +71,17 @@ export function AppThreadSectionMoveProvider({
       ),
     [sections],
   );
-  const { persistedOrder: order } = useSidebarModeSectionOrder({
-    mode: "chronological",
-    entitySectionIds,
-    showPinnedSection: false,
-  });
+  const storedOrder = useAtomValue(sidebarManualSectionOrderAtom);
+  const order = useMemo(
+    () =>
+      normalizeSidebarSectionOrder({
+        storedOrder,
+        entitySectionIds,
+        legacyEntityAnchor: "sections",
+        hasPinnedSection: true,
+      }),
+    [entitySectionIds, storedOrder],
+  );
   const destinations = useMemo<ThreadSectionMoveDestination[]>(() => {
     const byId = new Map(
       sections.map((section) => [

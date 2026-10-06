@@ -4,12 +4,13 @@ import {
 } from "./buffered-text-identity.js";
 import type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
 
-const MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION = 1000;
+export const MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION = 1000;
 
 export function compactThreadTimelineSummaryEvents(
   events: ThreadEventWithMeta[],
+  precedingAgentMessageDeltaCount = 0,
 ): ThreadEventWithMeta[] {
-  let agentMessageDeltaCount = 0;
+  let agentMessageDeltaCount = precedingAgentMessageDeltaCount;
   const completedAssistantKeys = new Set<string>();
   for (const eventWithMeta of events) {
     const { event } = eventWithMeta;

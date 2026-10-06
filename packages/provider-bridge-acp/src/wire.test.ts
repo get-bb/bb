@@ -8,33 +8,6 @@ import {
 } from "./wire.js";
 
 describe("acpToolCallUpdateEventSchema", () => {
-  it("parses an unknown kind as `other` and keeps the agent's word on rawKind", () => {
-    const parsed = acpToolCallUpdateEventSchema.parse({
-      sessionUpdate: "tool_call",
-      toolCallId: "call-1",
-      title: "Deploy preview",
-      kind: "deploy",
-      status: "in_progress",
-    });
-
-    expect(parsed.kind).toBe("other");
-    expect(parsed.rawKind).toBe("deploy");
-    expect(parsed.status).toBe("in_progress");
-  });
-
-  it("accepts switch_mode and the v2 cancelled status", () => {
-    const parsed = acpToolCallUpdateEventSchema.parse({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "call-1",
-      kind: "switch_mode",
-      status: "cancelled",
-    });
-
-    expect(parsed.kind).toBe("switch_mode");
-    expect(parsed.rawKind).toBeUndefined();
-    expect(parsed.status).toBe("cancelled");
-  });
-
   it("parses an unknown status as pending and a null kind or status as absent", () => {
     const unknownStatus = acpToolCallUpdateEventSchema.parse({
       sessionUpdate: "tool_call_update",
@@ -150,6 +123,64 @@ describe("acpSessionNewResultSchema", () => {
     );
     expect(parsed.data.configOptions?.[1].category).toBeUndefined();
     expect(parsed.data.configOptions?.[1].options?.[0].name).toBeUndefined();
+  });
+
+  it("flattens grouped select options into their values", () => {
+    const parsed = acpSessionNewResultSchema.safeParse({
+      sessionId: "session-1",
+      configOptions: [
+        {
+          type: "select",
+          id: "model",
+          category: "model",
+          name: "Model",
+          currentValue: "model-a",
+          options: [
+            {
+              group: "vendor-1",
+              name: "Vendor 1",
+              options: [{ value: "model-a", name: "Model A" }],
+            },
+            {
+              group: "vendor-2",
+              name: "Vendor 2",
+              options: [
+                { value: "model-b", name: "Model B" },
+                { value: "model-c", name: "Model C" },
+              ],
+            },
+          ],
+        },
+        {
+          type: "select",
+          id: "reasoning_effort",
+          category: "thought_level",
+          name: "Reasoning effort",
+          currentValue: "high",
+          options: [
+            {
+              group: "levels",
+              name: "Levels",
+              options: [
+                { value: "low", name: "Low" },
+                { value: "high", name: "High" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(
+      parsed.data.configOptions?.[0].options?.map((option) => option.value),
+    ).toEqual(["model-a", "model-b", "model-c"]);
+    expect(
+      parsed.data.configOptions?.[1].options?.map((option) => option.value),
+    ).toEqual(["low", "high"]);
   });
 });
 

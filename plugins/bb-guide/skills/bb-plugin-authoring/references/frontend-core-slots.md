@@ -78,8 +78,8 @@ Slot props contracts (versioned, additive-only):
   through `PluginSlotMount`, outside route-owned layout regions. The component
   can therefore call app-level SDK hooks, including the sidebar thread data and
   action hooks, and keep their React contexts through a portal. Hooks whose
-  contract requires a particular surface, including `useComposer` and
-  `useComposerView`, remain limited to that surface. BB supplies no chrome,
+  contract requires a particular surface, including `useComposer`, remain
+  limited to that surface. BB supplies no chrome,
   positioning, visibility, focus, or responsive behavior; render fixed UI
   directly or use the vendored responsive overlay primitives. A crash hides
   only that overlay. Use a content script instead for DOM enhancement that does
@@ -149,7 +149,8 @@ target? })`. Inside the fixed-tab component,
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
   or short status without lifting state into the host sidebar. The host does
-  not mount it on compact viewports; on wider viewports it clips the component
+  not mount it on compact viewports or in the icon-only rail of the
+  `navigationRail` experiment; on wider viewports it clips the component
   to one line, 4rem wide by 1.25rem high, and ellipsizes ordinary long text.
   It shares the trailing action column and fades out for the host options
   button on row hover or keyboard focus without unmounting. Do not render
@@ -207,7 +208,7 @@ target? })`. Inside the fixed-tab component,
 - Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
   controls to `app.composer.customize({ actions })` or `plusMenu`, larger
   content to `banners`, and legacy `{ projectId, threadId }` prop reads to
-  `useComposerView().scope`.
+  `useComposer().scope`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
   thread composer only while a matching plugin interaction is pending.
   Registration: `{ id, component }`; `id` must equal the backend request's

@@ -8,12 +8,12 @@ import {
   sidebarSectionOrderAtom,
 } from "../preferences/atoms.js";
 import type { OrganizationMode as SidebarOrganizationMode } from "../../shared/preferences.js";
+import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import {
   buildSidebarEntitySectionId,
   normalizeSidebarSectionOrder,
   type LegacySidebarEntityAnchor,
-  type SidebarSectionId,
-} from "@bb/client-core";
+} from "../model/sidebar-section-order.js";
 
 const MODE_SECTION_ORDER_CONFIG: Record<
   SidebarOrganizationMode,

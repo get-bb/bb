@@ -27,7 +27,9 @@ separate machine lifecycle command. Keep the machine guide and bb-cli command
 index aligned with this surface.
 
 Local installed-daemon start, stop, and uninstall operations are flags on
-`install-machine.sh`, not `bb machine` subcommands.
+`install-machine.sh`, not `bb machine` subcommands. `install-machine.sh --adopt` installs the
+service for an already-enrolled data directory and backs
+`bb server install-machine-service`.
 
 Modal connection and machine commands are documented in [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md). `bb modal image show [--json]` reads the Dockerfile shown in settings; `bb modal image set --file PATH [--json]` saves a validated plugin-wide override and `bb modal image reset [--json]` restores the bundled default for future machines; `bb modal account inspect --json` checks credentials; `bb machine create --provider modal-sandbox --json` automatically prepares the bundled image and installs the daemon. `bb machine remove MACHINE --yes` explicitly removes compute and private snapshots.
 

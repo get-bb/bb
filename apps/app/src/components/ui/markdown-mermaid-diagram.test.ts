@@ -18,15 +18,6 @@ describe("clampMermaidScale", () => {
 });
 
 describe("getMermaidWheelZoomFactor", () => {
-  it("zooms in for upward pixel wheel movement and out for downward movement", () => {
-    expect(
-      getMermaidWheelZoomFactor({ deltaMode: 0, deltaY: -100 }),
-    ).toBeGreaterThan(1);
-    expect(
-      getMermaidWheelZoomFactor({ deltaMode: 0, deltaY: 100 }),
-    ).toBeLessThan(1);
-  });
-
   it("normalizes line-mode wheel deltas before computing the factor", () => {
     expect(getMermaidWheelZoomFactor({ deltaMode: 1, deltaY: 1 })).toBeCloseTo(
       Math.exp(-16 * 0.01),

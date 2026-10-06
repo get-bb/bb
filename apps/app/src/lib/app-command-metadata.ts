@@ -82,6 +82,17 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       ),
       command("window.new", "New window", "Open another bb desktop window."),
       command(
+        "window.find",
+        "Find in window",
+        "Search the text shown in the current bb desktop window.",
+      ),
+      command("history.back", "Go back", "Go back in this window's history."),
+      command(
+        "history.forward",
+        "Go forward",
+        "Go forward in this window's history.",
+      ),
+      command(
         "app.back",
         "Back to app",
         "Return from Settings, Plugins, or Skills to the app.",
@@ -138,6 +149,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Show or hide the secondary panel.",
       ),
       command(
+        "panel.fullScreen.toggle",
+        "Toggle panel full screen",
+        "Expand the right panel over the conversation, or restore the conversation.",
+      ),
+      command(
         "pane.focus.left",
         "Focus chat pane left",
         "Focus the chat pane to the left of the current pane.",
@@ -190,9 +206,24 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open the desktop log viewer for the bb server and host daemon.",
       ),
       command(
+        "dataDirectory.open",
+        "Open data directory",
+        "Reveal the bb data directory in the system file manager.",
+      ),
+      command(
         "notifications.open",
         "Show all notifications",
         "Open the notification center to read and clear past notifications.",
+      ),
+      command(
+        "plugins.enterSafeMode",
+        "Turn on plugin safe mode",
+        "Stop every plugin you installed, keeping each plugin's enabled setting. Plugins included with bb keep running.",
+      ),
+      command(
+        "plugins.exitSafeMode",
+        "Turn off plugin safe mode",
+        "Restart the plugins that were enabled before safe mode.",
       ),
     ],
   },
@@ -297,19 +328,3 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
     ),
   },
 ];
-
-const APP_COMMAND_METADATA = new Map(
-  APP_COMMAND_GROUPS.flatMap((group) =>
-    group.commands.map((metadata) => [metadata.command, metadata]),
-  ),
-);
-
-export function getAppCommandMetadata(
-  commandId: AppCommandId,
-): AppCommandMetadata {
-  const metadata = APP_COMMAND_METADATA.get(commandId);
-  if (metadata === undefined) {
-    throw new Error(`Missing metadata for app command ${commandId}`);
-  }
-  return metadata;
-}

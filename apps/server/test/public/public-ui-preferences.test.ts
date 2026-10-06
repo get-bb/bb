@@ -31,12 +31,12 @@ async function resetPreference(
 
 describe("public ui preferences", () => {
   it.each(["__automatic__", "__builtin__", "inbox/inbox"])(
-    "normalizes legacy thread list selection %s while preserving explicit plugins",
+    "keeps thread list selection %s, reading legacy built-in as the bundled plugin",
     async (previous) => {
       await withTestHarness(async (harness) => {
         const key = "sidebar.threadListProvider";
         const expected =
-          previous === "inbox/inbox" ? previous : "thread-list/thread-list";
+          previous === "__builtin__" ? "thread-list/thread-list" : previous;
         overwriteStoredUiPreference(harness.deps.db, {
           key,
           valueJson: JSON.stringify(previous),
@@ -56,22 +56,22 @@ describe("public ui preferences", () => {
           await readJson(await resetPreference(harness, key)),
         ).toMatchObject({
           revision: 3,
-          value: "thread-list/thread-list",
+          value: "__automatic__",
         });
       });
     },
   );
 
   it.each(["__automatic__", "__builtin__", "garden/icons"])(
-    "normalizes legacy navigation selection %s while preserving explicit plugins",
+    "keeps navigation selection %s, reading legacy built-in as the bundled plugin",
     async (previous) => {
       await withTestHarness(async (harness) => {
         const key = "sidebar.navigationProvider";
         const expected =
-          previous === "garden/icons" ? previous : "navigation/navigation";
+          previous === "__builtin__" ? "navigation/navigation" : previous;
         expect(await readJson(await listPreferences(harness))).toMatchObject({
           preferences: {
-            [key]: { revision: 0, value: "navigation/navigation" },
+            [key]: { revision: 0, value: "__automatic__" },
           },
         });
         overwriteStoredUiPreference(harness.deps.db, {

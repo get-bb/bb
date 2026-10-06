@@ -1,5 +1,11 @@
 import { memo } from "react";
-import { OptionDisplay } from "@bb/shared-ui/option-display";
+import { Button } from "@bb/shared-ui/button";
+import {
+  OPTION_BASE_CLASS_NAME,
+  OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MUTED_CLASS_NAME,
+  OptionDisplay,
+} from "@bb/shared-ui/option-display";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -15,6 +21,35 @@ import type { MachineProviderPresentation } from "@/components/plugin/MachinePro
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
   "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor-pointer transition-colors hover:bg-state-hover hover:text-foreground`;
+
+export function ThreadDetailsButton({
+  icon,
+  label,
+  onOpenDetails,
+}: {
+  icon: IconName;
+  label: string;
+  onOpenDetails: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={`Thread details: ${label}`}
+      onClick={onOpenDetails}
+      className={cn(
+        OPTION_BASE_CLASS_NAME,
+        OPTION_INTERACTIVE_CLASS_NAME,
+        OPTION_MUTED_CLASS_NAME,
+        "h-6 max-md:h-11 max-md:px-2",
+      )}
+    >
+      <Icon name={icon} className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 truncate">{label}</span>
+    </Button>
+  );
+}
 
 interface ThreadEnvironmentSummaryProps {
   projectName?: string;

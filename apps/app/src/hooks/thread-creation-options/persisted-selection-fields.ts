@@ -3,10 +3,7 @@ import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { useCallback } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
-import {
-  createTabScopedStorage,
-  withLocalStorage,
-} from "@/lib/browser-storage";
+import { createTabScopedStorage } from "@/lib/browser-storage";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 
 const MODEL_STORAGE_KEY = "bb.promptbox.model";
@@ -70,14 +67,6 @@ function isPermissionMode(value: string): value is PermissionMode {
   return value === "accept-edits" || value === "auto" || value === "full";
 }
 
-function isServiceTier(value: string): value is ServiceTier {
-  return value === "fast" || value === "default";
-}
-
-function isStoredServiceTier(value: string): value is StoredServiceTier {
-  return value === "" || isServiceTier(value);
-}
-
 function isStoredReasoningLevel(value: string): value is StoredReasoningLevel {
   return value === "" || isReasoningLevel(value);
 }
@@ -110,51 +99,20 @@ function getProviderSelectionStorageKey(
   return `${storageKey}-${encodeURIComponent(providerId.trim())}-${PROVIDER_SELECTION_STORAGE_VERSION}`;
 }
 
-function getLegacyProviderSelection(
-  providerId: string,
-  storageKey: string,
-): string | null {
-  return withLocalStorage((storage) => {
-    if (storage.getItem(PROVIDER_STORAGE_KEY) !== providerId) return null;
-    return storage.getItem(storageKey);
-  }, null);
-}
-
-function createProviderModelStorage(providerId: string) {
-  return createTabScopedStorage<string>(
-    {
-      parse: (storedValue, initialValue) =>
-        storedValue ??
-        getLegacyProviderSelection(providerId, MODEL_STORAGE_KEY) ??
-        initialValue,
-      serialize: (value) => value,
-    },
-    { persistInitialValue: true },
-  );
-}
-
-function createProviderReasoningStorage(providerId: string) {
-  return createTabScopedStorage<StoredReasoningLevel>(
-    {
-      parse: (storedValue, initialValue) => {
-        const value =
-          storedValue ??
-          getLegacyProviderSelection(providerId, REASONING_STORAGE_KEY);
-        return value !== null && isStoredReasoningLevel(value)
-          ? value
-          : initialValue;
-      },
-      serialize: (value) => value,
-    },
-    { persistInitialValue: true },
-  );
-}
+const providerReasoningStorage = createTabScopedStorage<StoredReasoningLevel>(
+  {
+    parse: (value, initialValue) =>
+      value !== null && isStoredReasoningLevel(value) ? value : initialValue,
+    serialize: (value) => value,
+  },
+  { persistInitialValue: true },
+);
 
 const modelAtomFamily = atomFamily((providerId: string) =>
   atomWithStorage<string>(
     getProviderSelectionStorageKey(MODEL_STORAGE_KEY, providerId),
     "",
-    createProviderModelStorage(providerId),
+    stringSelectionStorage,
     { getOnInit: true },
   ),
 );
@@ -163,8 +121,7 @@ const serviceTierAtom = atomWithStorage<StoredServiceTier>(
   "",
   createTabScopedStorage<StoredServiceTier>(
     {
-      parse: (value, initialValue) =>
-        value !== null && isStoredServiceTier(value) ? value : initialValue,
+      parse: (value, initialValue) => value ?? initialValue,
       serialize: (value) => value,
     },
     { persistInitialValue: true },
@@ -175,7 +132,7 @@ const reasoningLevelAtomFamily = atomFamily((providerId: string) =>
   atomWithStorage<StoredReasoningLevel>(
     getProviderSelectionStorageKey(REASONING_STORAGE_KEY, providerId),
     "",
-    createProviderReasoningStorage(providerId),
+    providerReasoningStorage,
     { getOnInit: true },
   ),
 );
@@ -239,16 +196,8 @@ export function usePromptBoxMachinePreference(
 export function usePromptBoxProviderPreference(): PersistedStringSelectionField {
   const [value, setAtomValue] = useAtom(providerIdAtom);
   const setValue = useCallback(
-    (nextValue: string) => {
-      if (nextValue !== value) {
-        withLocalStorage((storage) => {
-          storage.removeItem(MODEL_STORAGE_KEY);
-          storage.removeItem(REASONING_STORAGE_KEY);
-        }, undefined);
-      }
-      setAtomValue(nextValue);
-    },
-    [setAtomValue, value],
+    (nextValue: string) => setAtomValue(nextValue),
+    [setAtomValue],
   );
   return { setValue, value };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolvePermissionModeSelection } from "./useThreadCreationOptions";
+import { resolvePermissionModeSelection } from "./thread-creation-options/selection-state";
 
 describe("resolvePermissionModeSelection", () => {
   it("chooses the raw permission mode when supported", () => {

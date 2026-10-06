@@ -4,12 +4,9 @@ import {
   parseCustomAcpAgents,
   type AcpAgentDefinition,
 } from "./agents.js";
-import { legacyAgentDeprecationMessage } from "./legacy-config.js";
 
 export interface ResolveConfiguredAcpAgentsArgs {
   settingValue: string | undefined;
-  legacyEntries: readonly unknown[];
-  legacyProblem?: string;
   reservedProviderIds: ReadonlySet<string>;
   shippedAgents: readonly AcpAgentDefinition[];
 }
@@ -54,30 +51,11 @@ export function resolveConfiguredAcpAgents(
     warnings.push(`ACP custom agent setting: ${problem}`);
   }
 
-  if (args.legacyProblem !== undefined) {
-    warnings.push(`Deprecated ACP agent config: ${args.legacyProblem}`);
-  }
-  const legacy = parseCustomAcpAgents({
-    entries: args.legacyEntries,
-    reservedProviderIds: args.reservedProviderIds,
-  });
-  for (const problem of legacy.problems) {
-    warnings.push(`Deprecated ACP agent config: ${problem}`);
-  }
-
-  const bySlug = new Map(configured.agents.map((agent) => [agent.id, agent]));
-  for (const agent of legacy.agents) {
-    if (bySlug.has(agent.id)) {
-      continue;
-    }
-    warnings.push(legacyAgentDeprecationMessage(agent));
-    bySlug.set(agent.id, agent);
-  }
   const shippedById = new Map(
     args.shippedAgents.map((agent) => [agent.id, agent]),
   );
   return {
-    agents: [...bySlug.values()].map((agent) =>
+    agents: configured.agents.map((agent) =>
       customAcpAgentDefinition(
         agent,
         shippedById.get(formatCustomAcpProviderId(agent.id)),

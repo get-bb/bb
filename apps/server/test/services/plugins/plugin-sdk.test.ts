@@ -9,7 +9,6 @@ import {
   createThread,
   getThread,
   insertThreadPluginMetadata,
-  markThreadDeleted,
   migrate,
   type DbConnection,
 } from "@bb/db";
@@ -349,22 +348,6 @@ describe("plugin bb.sdk bind gate", () => {
     expect(api.server.experimental_appUrl).toBeNull();
   });
 
-  it("marks a plugin error when its factory touches bb.sdk at load time", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-eager",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.sdk.threads.spawn({});
-        }
-      `,
-    });
-    const entry = await service.installPath(rootDir);
-    expect(entry.status).toBe("error");
-    expect(entry.statusDetail).toContain(
-      "bb.sdk is not available until the server is listening",
-    );
-  });
-
   it("delivers shared-port declarations through the server control plane", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-shares",
@@ -649,13 +632,6 @@ describe("plugin bb.sdk against a running server", () => {
         status: "idle",
         originPluginId: "meta-owner",
       });
-      const other = createThread(server.db, server.deps.hub, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-        status: "idle",
-        originPluginId: "meta-owner",
-      });
       await expect(
         api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
       ).resolves.toEqual({});
@@ -736,37 +712,6 @@ describe("plugin bb.sdk against a running server", () => {
         code: "invalid_request",
         message: expect.stringContaining("set and remove overlap"),
       });
-      await expect(
-        api.sdk.threads.updatePluginMetadata({
-          threadId: thread.id,
-          remove: ["x", "x"],
-        }),
-      ).rejects.toMatchObject({
-        name: "BbHttpError",
-        status: 400,
-        code: "invalid_request",
-        message: expect.stringContaining("remove contains duplicate keys"),
-      });
-      const nearLimit = "x".repeat(262_100);
-      await expect(
-        api.sdk.threads.updatePluginMetadata({
-          threadId: thread.id,
-          set: { stable: true, nearLimit },
-        }),
-      ).resolves.toEqual({ stable: true, nearLimit });
-      await expect(
-        api.sdk.threads.updatePluginMetadata({
-          threadId: thread.id,
-          set: { smallAdditionalValue: "valid" },
-        }),
-      ).rejects.toMatchObject({
-        name: "BbHttpError",
-        status: 413,
-        code: "invalid_request",
-      });
-      await expect(
-        api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
-      ).resolves.toEqual({ stable: true, nearLimit });
       for (const status of ["active", "stopping"] as const) {
         const candidate = createThread(server.db, server.deps.hub, {
           projectId: project.id,
@@ -796,20 +741,6 @@ describe("plugin bb.sdk against a running server", () => {
           set: { status: "archived" },
         }),
       ).resolves.toEqual({ status: "archived" });
-      await expect(
-        api.sdk.threads.getPluginMetadata({
-          threadId: other.id,
-          pluginId: "missing",
-        }),
-      ).resolves.toEqual({});
-      markThreadDeleted(server.db, server.deps.hub, { threadId: other.id });
-      await expect(
-        api.sdk.threads.getPluginMetadata({ threadId: other.id }),
-      ).rejects.toMatchObject({
-        name: "BbHttpError",
-        status: 404,
-        code: "thread_not_found",
-      });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });
@@ -1057,6 +988,96 @@ describe("plugin bb.sdk against a running server", () => {
     } finally {
       delete lateGlobal.__bbLateConfigureSeen;
       delete lateGlobal.__bbRegisterLateConfigure;
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
+  it("tells rpc handlers which plugin called them and treats every other caller as a client", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-rpc-caller-"));
+    try {
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      for (const name of ["callee", "caller"]) {
+        const rootDir = await writePlugin(workDir, {
+          name: `bb-plugin-${name}`,
+          serverSource: `export default function plugin() {}`,
+        });
+        expect((await server.pluginService.installPath(rootDir)).status).toBe(
+          "running",
+        );
+      }
+      const callerSchema = z.union([
+        z.object({ kind: z.literal("plugin"), pluginId: z.string() }),
+        z.object({ kind: z.literal("client") }),
+      ]);
+      const whoami = vi.fn(
+        (
+          _input: null,
+          context: { experimental_caller: z.infer<typeof callerSchema> },
+        ) => context.experimental_caller,
+      );
+      requireApi(server.pluginService, "callee").rpc.register(
+        defineRpcContract({
+          whoami: { input: z.null(), output: callerSchema },
+        }),
+        { whoami },
+      );
+      const callerSdk = requireApi(server.pluginService, "caller").sdk;
+      const callWhoami = () =>
+        callerSdk.plugins.callRpc({
+          pluginId: "callee",
+          method: "whoami",
+          input: null,
+          outputSchema: callerSchema,
+        });
+
+      await expect(callWhoami()).resolves.toEqual({
+        kind: "plugin",
+        pluginId: "caller",
+      });
+
+      const cli = await fetch(
+        `${server.baseUrl}/api/v1/plugins/callee/rpc/whoami`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "null",
+        },
+      );
+      expect(await cli.json()).toEqual({
+        ok: true,
+        result: { kind: "client" },
+      });
+
+      const callsBeforeSpoof = whoami.mock.calls.length;
+      const spoofed = await fetch(
+        `${server.baseUrl}/api/v1/plugins/callee/rpc/whoami`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-plugin-caller": "not-a-real-token",
+          },
+          body: "null",
+        },
+      );
+      expect(spoofed.status).toBe(403);
+      expect(whoami.mock.calls.length).toBe(callsBeforeSpoof);
+
+      await server.pluginService.reload("caller");
+      await expect(callWhoami()).rejects.toMatchObject({ status: 403 });
+      await expect(
+        requireApi(server.pluginService, "caller").sdk.plugins.callRpc({
+          pluginId: "callee",
+          method: "whoami",
+          input: null,
+          outputSchema: callerSchema,
+        }),
+      ).resolves.toEqual({ kind: "plugin", pluginId: "caller" });
+      expect(whoami.mock.calls.length).toBe(callsBeforeSpoof + 1);
+    } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });
       await server.close();

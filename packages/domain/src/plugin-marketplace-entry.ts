@@ -156,5 +156,3 @@ export const marketplaceEntryV2Schema = z.object({
   author: marketplaceAuthorSchema(),
   source: marketplaceSourceSchema(),
 });
-
-export type MarketplaceEntryV2 = z.infer<typeof marketplaceEntryV2Schema>;

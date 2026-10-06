@@ -36,16 +36,12 @@ import {
   type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
-} from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import {
-  QueuedMessagesList,
-  type QueuedMessageEditRequest,
-  type QueuedMessageInlineEditor,
-} from "@/components/promptbox/banner/QueuedMessagesList";
+import type {
+  QueuedMessageEditRequest,
+  QueuedMessageInlineEditor,
+} from "@/components/promptbox/banner/LazyQueuedMessagesList";
+import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import {
   formatWorkspaceCheckoutDisplay,
@@ -88,6 +84,7 @@ const baseExecution = makeExecutionControlsProps({
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
+  detail: "model list command_failed: codex exited before responding",
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
@@ -115,8 +112,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 interface EnvironmentSummaryArgs {
@@ -152,7 +147,6 @@ function makeEnvironmentSummary({
   const chrome = getEnvironmentSummaryChrome({
     display,
     providerLookup,
-    environmentName: environment.name,
     hasMultipleMachines,
     host:
       machineName === undefined
@@ -894,8 +888,18 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="fitted queue above the composer"
+        hint="toggle the full Queue header in either direction, or collapse below the messages; hover the bottom row to inspect the composer corners"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          queuedMessages={queuedMessages.slice(0, 2)}
+        />
+      </StoryRow>
+      <StoryRow
         label="stacked cards with Markdown + pills"
-        hint="collapse on mobile to verify the quoted prompt and pills truncate to one line"
+        hint="scroll the overflowing queue and toggle its header; edit a message to open the inline composer, or collapse the main composer on mobile"
       >
         <StackedCardsWithPillsRow />
       </StoryRow>

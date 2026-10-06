@@ -22,18 +22,6 @@ function makeProse() {
 }
 
 describe("isSelectionWithinNode", () => {
-  it("rejects a collapsed selection", () => {
-    const { node, inside } = makeProse();
-    expect(
-      isSelectionWithinNode(node as unknown as Node, {
-        isCollapsed: true,
-        anchorNode: inside as unknown as Node,
-        focusNode: inside as unknown as Node,
-        commonAncestorContainer: inside as unknown as Node,
-      }),
-    ).toBe(false);
-  });
-
   it("rejects a selection with an endpoint outside the node", () => {
     const { node, inside, outside } = makeProse();
     expect(

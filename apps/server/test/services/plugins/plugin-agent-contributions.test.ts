@@ -197,26 +197,6 @@ describe("plugin skills tier", () => {
     }).map((entry) => entry.runtimeSource);
     expect(sources.map((source) => source.name)).toEqual(["relocated-skill"]);
   });
-
-  it("a skill added after install is discovered on the next resolve after reload", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-growing",
-      skillNames: ["first-skill"],
-    });
-    await service.installPath(rootDir);
-
-    const resolve = () =>
-      resolveSkillCatalogEntries(testLogger, {
-        dataDir: join(workDir, "data"),
-        pluginSkillRoots: service.listSkillRootContributions(),
-        skillTreeRegistry: new SkillTreeRegistry(),
-      }).map((entry) => entry.runtimeSource.name);
-
-    expect(resolve()).toEqual(["first-skill"]);
-    await writeSkill(join(rootDir, "skills"), "second-skill");
-    await service.reload("growing");
-    expect(resolve()).toEqual(["first-skill", "second-skill"]);
-  });
 });
 
 describe("plugin agent contributions reach thread runtime config", () => {

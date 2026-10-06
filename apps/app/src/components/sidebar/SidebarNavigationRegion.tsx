@@ -224,7 +224,7 @@ export function SidebarNavigationRegion({
     const record = () => {
       if (nav.querySelector("[data-sidebar-navigation-placeholder]")) return;
       rememberNavigationHeight(
-        providerKey,
+        preference,
         Math.round(nav.getBoundingClientRect().height),
       );
     };
@@ -232,7 +232,7 @@ export function SidebarNavigationRegion({
     const observer = new ResizeObserver(record);
     observer.observe(nav);
     return () => observer.disconnect();
-  }, [isCustomizing, providerKey]);
+  }, [isCustomizing, preference, providerKey]);
 
   const handleReload = useCallback(() => {
     if (slot !== null) resetCrashedPluginSlots(slot.pluginId);
@@ -250,6 +250,7 @@ export function SidebarNavigationRegion({
     >
       {isCustomizing && isEditorShown ? (
         <SidebarNavigationCustomize
+          surface="sidebar"
           onClose={(restoreFocus) => {
             restoreFocusRef.current = restoreFocus;
             onCustomizingChange(false);

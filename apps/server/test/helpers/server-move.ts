@@ -10,6 +10,7 @@ import type {
   ServerMoveEnvironment,
   ServerMoveTimings,
 } from "../../src/services/server-move/coordinator.js";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { exportServerArchive } from "../../src/services/server-move/export.js";
 import type { TestAppHarness } from "./test-app.js";
 
@@ -57,7 +58,6 @@ export function inspectResult(
     timeZone: "UTC",
     bbAppVersion: "0.0.0-test",
     serverEntryAvailable: true,
-    serviceManager: "systemd-user",
     existingServerData: null,
     dataDirHasServerData: false,
     portAvailable: true,
@@ -145,6 +145,7 @@ export interface TestServerMoveEnvironment {
   environment: ServerMoveEnvironment;
   events: string[];
   plugins: TestServerMovePlugins;
+  retired: Promise<void>;
 }
 
 export function createTestServerMoveEnvironment(
@@ -152,6 +153,7 @@ export function createTestServerMoveEnvironment(
   overrides: Partial<ServerMoveEnvironment> = {},
 ): TestServerMoveEnvironment {
   const events: string[] = [];
+  const retired = createDeferredPromise<void>();
   const plugins: TestServerMovePlugins = {
     paused: false,
     resumes: 0,
@@ -213,7 +215,9 @@ export function createTestServerMoveEnvironment(
     },
     retireProcess() {
       events.push("retire");
+      retired.resolve();
     },
+    serverAppSurface: "web",
     serverTimeZone: "UTC",
     stopRunningWork: async () => {
       events.push("stop-work");
@@ -222,5 +226,5 @@ export function createTestServerMoveEnvironment(
     timings: TEST_SERVER_MOVE_TIMINGS,
     ...overrides,
   };
-  return { environment, events, plugins };
+  return { environment, events, plugins, retired: retired.promise };
 }

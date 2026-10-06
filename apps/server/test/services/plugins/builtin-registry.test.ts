@@ -2,8 +2,64 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveBuiltinPluginRootPathForModuleDir } from "../../../src/services/plugins/builtin-registry.js";
+import {
+  BUILTIN_PLUGIN_ID_PREFIX,
+  BUNDLED_PLUGINS,
+  resolveBuiltinPluginRootPathForModuleDir,
+} from "../../../src/services/plugins/builtin-registry.js";
 import { resolveBundledMarketplaceDirectory } from "../../../src/services/plugin-catalog/bundled-marketplace.js";
+
+const UNPREFIXED_BUNDLED_PLUGIN_IDS = [
+  "account-pool",
+  "agent-annotations",
+  "ask-user-question",
+  "automations",
+  "bb-account",
+  "bb-ai",
+  "bb-guide",
+  "browser-automation",
+  "concurrency-limit",
+  "connect",
+  "custom-instructions",
+  "drafts",
+  "environment-git-worktree",
+  "environment-modal-sandbox",
+  "environment-personal-workspace",
+  "environment-project-checkout",
+  "github",
+  "inline-vis",
+  "keep-awake",
+  "memory",
+  "monaco-editor",
+  "navigation",
+  "pdf-preview",
+  "plugin-api-docs",
+  "plugin-api-tester",
+  "provider-acp",
+  "provider-claude-code",
+  "provider-codex",
+  "provider-pi",
+  "provider-retry",
+  "push-notifications",
+  "scheduled-send",
+  "secrets",
+  "side-chat",
+  "simple-notes",
+  "tasks",
+  "theme-preview",
+  "thread-list",
+  "workflows",
+];
+
+describe("bundled plugin ids", () => {
+  it("prefixes every bundled plugin added after the reservation with bb--", () => {
+    const unprefixed = BUNDLED_PLUGINS.map((plugin) => plugin.pluginId)
+      .filter((pluginId) => !pluginId.startsWith(BUILTIN_PLUGIN_ID_PREFIX))
+      .sort();
+
+    expect(unprefixed).toEqual(UNPREFIXED_BUNDLED_PLUGIN_IDS);
+  });
+});
 
 describe("bundled plugin artifact resolution", () => {
   let root: string;
@@ -48,7 +104,10 @@ describe("bundled plugin artifact resolution", () => {
   it("retains source development plugin and generated catalog resolution", async () => {
     const moduleDir = join(root, "apps/server/src/services/plugins");
     const plugin = join(root, "plugins/connect");
-    const catalog = join(root, "apps/server/src/generated/bb-official-marketplace");
+    const catalog = join(
+      root,
+      "apps/server/src/generated/bb-official-marketplace",
+    );
     await mkdir(plugin, { recursive: true });
     await mkdir(catalog, { recursive: true });
     await writeFile(join(catalog, "marketplace.json"), "{}");

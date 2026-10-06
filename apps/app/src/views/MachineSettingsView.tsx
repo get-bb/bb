@@ -9,6 +9,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Pill } from "@bb/shared-ui/pill";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
+import { machineActions } from "@/components/machines/machine-actions";
 import { MachineLifecycleActions } from "@/components/machines/MachineLifecycleActions";
 import {
   MachineRemoveDialog,
@@ -16,6 +17,7 @@ import {
   machineRemovalConsequences,
 } from "@/components/machines/MachineRemoveDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { MachineReconnectDialog } from "@/components/machines/MachineReconnectDialog";
 import { MoveServerDialog } from "@/components/machines/MoveServerDialog";
 import {
   OldServerCopySection,
@@ -80,6 +82,7 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
   linux: "Linux",
   wsl: "WSL",
+  win32: "Windows",
   unknown: null,
 };
 
@@ -179,6 +182,7 @@ export function MachineSettingsHeader({
   onResume,
   onRetryCleanup,
   onRename,
+  onReconnect,
   canMoveServerHere,
   onMoveServerHere,
 }: {
@@ -197,6 +201,7 @@ export function MachineSettingsHeader({
   onResume: () => void;
   onRetryCleanup: () => void;
   onRename: () => void;
+  onReconnect: () => void;
   canMoveServerHere: boolean;
   onMoveServerHere: () => void;
 }) {
@@ -231,25 +236,22 @@ export function MachineSettingsHeader({
             host={host}
             machineProvider={machineProvider}
             pending={lifecycleActionPending}
-            presentation="buttons"
             onSuspend={onSuspend}
             onResume={onResume}
             onRetryCleanup={onRetryCleanup}
           />
           <ResourceOverflowMenu
             label={`${host.name} actions`}
-            items={[
-              { label: "Rename", icon: "Edit", onSelect: onRename },
-              ...(canMoveServerHere
-                ? [
-                    {
-                      label: "Move server here",
-                      icon: "MoveTo",
-                      onSelect: onMoveServerHere,
-                    },
-                  ]
-                : []),
-            ]}
+            items={machineActions({
+              host,
+              machineProvider,
+              isPrimary,
+              canMoveServerHere,
+              lifecycleActionPending,
+              onRename,
+              onReconnect,
+              onMoveServerHere,
+            })}
           />
         </div>
       </div>
@@ -276,6 +278,7 @@ export function MachineSettingsView() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [moveServerOpen, setMoveServerOpen] = useState(false);
+  const [reconnectOpen, setReconnectOpen] = useState(false);
 
   const hosts = hostsQuery.data;
   const host = hosts?.find((candidate) => candidate.id === hostId) ?? null;
@@ -413,6 +416,7 @@ export function MachineSettingsView() {
               serverMoveEnabled,
             })
           }
+          onReconnect={() => setReconnectOpen(true)}
           onMoveServerHere={() => setMoveServerOpen(true)}
         />
 
@@ -605,6 +609,11 @@ export function MachineSettingsView() {
         target={removeOpen ? host : null}
         onOpenChange={setRemoveOpen}
         onRemoved={() => navigate(getSettingsRoutePath("machines"))}
+      />
+
+      <MachineReconnectDialog
+        target={reconnectOpen ? host : null}
+        onOpenChange={setReconnectOpen}
       />
 
       <MoveServerDialog

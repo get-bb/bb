@@ -44,16 +44,7 @@ describe("resolveAcpDialect", () => {
     expect(
       resolveAcpDialect({ dialectId: "amp", command: "cursor-agent" }),
     ).toBe(GENERIC_ACP_DIALECT);
-  });
-
-  it("gives an unknown agent the generic dialect, which answers nothing", () => {
-    const dialect = resolveAcpDialect({ command: "amp" });
-    expect(dialect).toBe(GENERIC_ACP_DIALECT);
-    expect(dialect.toolIdentity).toBeUndefined();
-    expect(dialect.classifyToolCall).toBeUndefined();
-    expect(dialect.commandResult).toBeUndefined();
-    expect(dialect.normalizeCommandEvent).toBeUndefined();
-    expect(dialect.handleClientRequest).toBeUndefined();
+    expect(resolveAcpDialect({ command: "amp" })).toBe(GENERIC_ACP_DIALECT);
   });
 });
 
@@ -220,34 +211,6 @@ describe("OpenCode command results", () => {
 });
 
 describe("grok sub-agents", () => {
-  it("maps a spawn_subagent call to a delegation", () => {
-    expect(
-      GROK_ACP_DIALECT.classifyToolCall?.(
-        toolCall({
-          title: "spawn_subagent",
-          rawInput: {
-            description: "Audit the config loader",
-            subagent_type: "explore",
-          },
-          _meta: { "x.ai/tool": { name: "spawn_subagent", kind: "other" } },
-        }),
-      ),
-    ).toEqual({
-      item: {
-        type: "delegation",
-        childRef: "call-1",
-        label: "Audit the config loader",
-        background: false,
-      },
-      presentation: {
-        label: { pending: "Running subagent", completed: "Subagent finished" },
-        icon: { glyph: "UserRound" },
-        title: "Audit the config loader",
-        detail: "explore",
-      },
-    });
-  });
-
   it("leaves every other grok tool to the shared classifier", () => {
     expect(
       GROK_ACP_DIALECT.classifyToolCall?.(
@@ -261,21 +224,6 @@ describe("grok sub-agents", () => {
 });
 
 describe("cursor sub-agents", () => {
-  it("maps a task tool call to a delegation from its rawInput tool name", () => {
-    expect(
-      CURSOR_ACP_DIALECT.classifyToolCall?.(
-        toolCall({
-          title: "Task: Subagent task",
-          kind: "other",
-          rawInput: { _toolName: "task" },
-        }),
-      ),
-    ).toMatchObject({
-      item: { type: "delegation", childRef: "call-1", background: false },
-      presentation: { icon: { glyph: "UserRound" } },
-    });
-  });
-
   it("acknowledges cursor/task and reports the sub-agent it names", () => {
     expect(
       CURSOR_ACP_DIALECT.handleClientRequest?.("cursor/task", {

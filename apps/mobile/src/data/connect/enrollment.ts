@@ -33,7 +33,7 @@ export function describeEnrollmentError(error: unknown): EnrollmentFailure {
           code: "invalid_code",
           title: "Code not recognized",
           message:
-            "Check the pairing code and the bb connect address. Codes come from bb Settings → Remote access or `bb connect machine-code`.",
+            "Check the pairing code and the bb connect address. Codes come from bb Settings → Mobile or `bb connect machine-code`.",
         };
       case "expired":
         return {
@@ -103,11 +103,11 @@ export interface RedeemedEnrollment {
 }
 
 export async function redeemEnrollment(
-  args: { apexUrl: string; code: string; label?: string },
+  args: { apexUrl: string; code: string; deviceName: string; label?: string },
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<RedeemedEnrollment> {
   const credential = await redeemMachineCredential(
-    { apexUrl: args.apexUrl, code: args.code },
+    { apexUrl: args.apexUrl, code: args.code, deviceName: args.deviceName },
     fetchImpl,
   );
   const label = (args.label?.trim() || credential.handle).slice(

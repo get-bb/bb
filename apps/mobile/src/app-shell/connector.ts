@@ -2,7 +2,11 @@ import {
   createActiveProfileConnector,
   type ActiveProfileConnector,
 } from "@/lib/connection";
-import { nativeAppState, nativeCookieStore } from "@/lib/native";
+import {
+  nativeAppState,
+  nativeCookieStore,
+  nativeSessionCache,
+} from "@/lib/native";
 import { getAppProfileClientRegistry } from "./client-registry";
 import { createSessionScheduler } from "@/lib/session";
 
@@ -14,7 +18,10 @@ export function getActiveProfileConnector(): ActiveProfileConnector {
       registry: getAppProfileClientRegistry(),
       appState: nativeAppState,
       createSessionScheduler: () =>
-        createSessionScheduler({ cookieStore: nativeCookieStore }),
+        createSessionScheduler({
+          cookieStore: nativeCookieStore,
+          sessionCache: nativeSessionCache,
+        }),
     });
   }
   return instance;

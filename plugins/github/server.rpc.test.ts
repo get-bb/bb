@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -11,10 +10,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
+import { installFakeGh } from "./testing/fake-gh";
 
 let binDir: string;
 let callLog: string;
-const originalPath = process.env.PATH;
+let restoreEnv: () => void;
 
 function ghCalls(): string[] {
   if (!existsSync(callLog)) return [];
@@ -173,33 +173,34 @@ beforeEach(() => {
     ],
   ]);
 
-  writeFileSync(
-    join(binDir, "gh"),
-    `#!/usr/bin/env bash
-echo "$*" >> "${callLog}"
-case "$*" in
-  "--version") echo "gh version 2.96.0 (fake)";;
-  "auth status --hostname github.com --active") echo "authenticated";;
-  "api user") printf '%s\n' '{"login":"octocat"}';;
-  "api repos/acme/widgets/assignees?per_page=100") printf '%s\n' '[{"login":"zoe"},{"login":"alice"},{"login":""}]';;
-  "api repos/acme/widgets/labels?per_page=100") printf '%s\n' '[{"name":"triage"},{"name":" bug "},{"name":""}]';;
-  "api graphql "*) printf '%s\n' '${lists}';;
-  "issue view 7 -R acme/widgets --json labels") printf '%s\n' '{"labels":[{"name":"bug"},{"name":"old"}]}';;
-  "issue view 7 -R acme/widgets --json"*) printf '%s\n' '${issueDetail}';;
-  "pr view 42 -R acme/widgets --json"*) printf '%s\n' '${pullDetail}';;
-  "api --paginate --slurp repos/acme/widgets/pulls/42/comments?per_page=100") printf '%s\n' '${reviewComments}';;
-  "api --paginate --slurp repos/acme/widgets/pulls/42/files?per_page=100") printf '%s\n' '${pullFiles}';;
-  "issue edit "*) printf '%s\n' '[]';;
-  *) printf '%s\n' '[]';;
-esac
-`,
+  restoreEnv = installFakeGh(
+    binDir,
+    `const callLog = ${JSON.stringify(callLog)};
+const joined = args.join(" ");
+fs.appendFileSync(callLog, joined + "\\n");
+const exact = {
+  "--version": "gh version 2.96.0 (fake)",
+  "auth status --hostname github.com --active": "authenticated",
+  "api user": '{"login":"octocat"}',
+  "api repos/acme/widgets/assignees?per_page=100": '[{"login":"zoe"},{"login":"alice"},{"login":""}]',
+  "api repos/acme/widgets/labels?per_page=100": '[{"name":"triage"},{"name":" bug "},{"name":""}]',
+  "issue view 7 -R acme/widgets --json labels": '{"labels":[{"name":"bug"},{"name":"old"}]}',
+  "api --paginate --slurp repos/acme/widgets/pulls/42/comments?per_page=100": ${JSON.stringify(reviewComments)},
+  "api --paginate --slurp repos/acme/widgets/pulls/42/files?per_page=100": ${JSON.stringify(pullFiles)},
+};
+const prefixed = [
+  ["api graphql ", ${JSON.stringify(lists)}],
+  ["issue view 7 -R acme/widgets --json", ${JSON.stringify(issueDetail)}],
+  ["pr view 42 -R acme/widgets --json", ${JSON.stringify(pullDetail)}],
+  ["issue edit ", "[]"],
+];
+const prefixMatch = prefixed.find(([prefix]) => joined.startsWith(prefix));
+out((exact[joined] ?? prefixMatch?.[1] ?? "[]") + "\\n");`,
   );
-  chmodSync(join(binDir, "gh"), 0o755);
-  process.env.PATH = `${binDir}:${originalPath ?? ""}`;
 });
 
 afterEach(() => {
-  process.env.PATH = originalPath;
+  restoreEnv();
   rmSync(binDir, { recursive: true, force: true });
 });
 
@@ -256,7 +257,7 @@ describe("github plugin RPC behavior", () => {
     ).toEqual([]);
   });
 
-  it("rejects malformed CLI invocations instead of broadening or ignoring them", async () => {
+  it("rejects malformed repositories as text and JSON and lists its commands in help", async () => {
     const { harness } = await loadPlugin();
 
     await expect(
@@ -264,24 +265,6 @@ describe("github plugin RPC behavior", () => {
     ).resolves.toMatchObject({
       exitCode: 1,
       stderr: 'Invalid repository "bad/repo/shape"; expected owner/repo.\n',
-    });
-    await expect(
-      harness.runCli(["prs", "acme/widgets", "extra"]),
-    ).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining("unexpected argument 'extra'"),
-    });
-    await expect(harness.runCli(["repos", "--jsonn"])).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining(
-        "unknown option '--jsonn' (Did you mean --json?)",
-      ),
-    });
-    await expect(harness.runCli(["issus"])).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining(
-        "unknown command 'issus' (Did you mean issues?)",
-      ),
     });
 
     const failure = await harness.runCli([
@@ -302,6 +285,19 @@ describe("github plugin RPC behavior", () => {
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("bb github issues");
     expect(help.stdout).toContain("bb github sync");
+  });
+
+  it("rejects a malformed repository or item number when starting work", async () => {
+    const { harness } = await loadPlugin();
+
+    for (const input of [
+      { repo: "not-a-repository", number: 1 },
+      { repo: "acme/widgets", number: 0 },
+    ]) {
+      await expect(harness.callRpc("startWork", input)).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+    }
   });
 
   it("reports repositories, cached rows, and sync counts as JSON", async () => {

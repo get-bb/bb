@@ -9,6 +9,7 @@ import type { InsertEventInput } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import {
+  canHydrateRetainedEventOutputRowsWithinDataByteLimit,
   deleteExpiredRetainedEventOutputs,
   hydrateRetainedEventOutputRows,
   hydrateRetainedEventOutputRowsWithinDataByteLimit,
@@ -81,6 +82,27 @@ function hasUnpairedSurrogate(value: string): boolean {
     }
   }
   return false;
+}
+
+function insertTurnStartedEvents(
+  db: ReturnType<typeof setup>["db"],
+  args: { count: number; createdAt: number; threadId: string },
+): void {
+  insertEvents(
+    db,
+    noopNotifier,
+    Array.from({ length: args.count }, (_, index) => ({
+      createdAt: args.createdAt,
+      data: JSON.stringify({ text: `message ${index}` }),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      scope: turnScope("turn-small"),
+      sequence: index + 1,
+      threadId: args.threadId,
+      type: "turn/started" as const,
+    })),
+  );
 }
 
 afterEach(() => {
@@ -505,6 +527,121 @@ describe("retained completed-event outputs", () => {
         (row) => readOutput(row.data, "aggregatedOutput") === output,
       ),
     ).toHaveLength(1);
+    db.$client.close();
+  });
+
+  it("looks up retained outputs for a thousand rows in one query", () => {
+    const now = 1_800_000_000_000;
+    let queries = 0;
+    const { db, source } = setup({
+      slowQueryLogger: {
+        info() {
+          queries += 1;
+        },
+      },
+      slowQueryThresholdMs: 0,
+    });
+    const output = `head-${"x".repeat(COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS)}-tail`;
+    insertTurnStartedEvents(db, {
+      count: 1_000,
+      createdAt: now,
+      threadId: source.id,
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: now,
+        data: JSON.stringify({
+          item: {
+            aggregatedOutput: output,
+            id: "command-1",
+            type: "commandExecution",
+          },
+        }),
+        itemId: "command-1",
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        scope: turnScope("turn-1"),
+        sequence: 1_001,
+        threadId: source.id,
+        type: "item/completed",
+      },
+    ]);
+    const rows = listStoredEventRows(db, { threadId: source.id });
+    const stored = rows.find((row) => row.itemKind === "commandExecution");
+    if (!stored) throw new Error("Expected stored command event");
+    expect(readOutput(stored.data, "aggregatedOutput")).not.toBe(output);
+
+    queries = 0;
+    const hydrated = hydrateRetainedEventOutputRows(db, rows, now);
+    expect(queries).toBe(1);
+    expect(
+      readOutput(
+        hydrated[rows.indexOf(stored)]?.data ?? "",
+        "aggregatedOutput",
+      ),
+    ).toBe(output);
+
+    queries = 0;
+    expect(
+      hydrateRetainedEventOutputRowsWithinDataByteLimit(
+        db,
+        rows,
+        4 * 1024 * 1024,
+        now,
+      ),
+    ).toEqual(hydrated);
+    expect(queries).toBe(2);
+
+    expect(
+      hydrateRetainedEventOutputRows(
+        db,
+        rows,
+        now + COMPLETED_EVENT_OUTPUT_RETENTION_MS + 1,
+      ),
+    ).toEqual(rows);
+    db.$client.close();
+  });
+
+  it("refuses an over-budget read before looking up retained outputs", () => {
+    const now = 1_800_000_000_000;
+    let queries = 0;
+    const { db, source } = setup({
+      slowQueryLogger: {
+        info() {
+          queries += 1;
+        },
+      },
+      slowQueryThresholdMs: 0,
+    });
+    insertTurnStartedEvents(db, {
+      count: 3,
+      createdAt: now,
+      threadId: source.id,
+    });
+    const rows = listStoredEventRows(db, { threadId: source.id });
+    const storedBytes = rows.reduce(
+      (total, row) => total + Buffer.byteLength(row.data),
+      0,
+    );
+    expect(
+      canHydrateRetainedEventOutputRowsWithinDataByteLimit(
+        db,
+        rows,
+        storedBytes,
+        now,
+      ),
+    ).toBe(true);
+
+    queries = 0;
+    expect(
+      hydrateRetainedEventOutputRowsWithinDataByteLimit(
+        db,
+        rows,
+        storedBytes - 1,
+        now,
+      ),
+    ).toEqual(rows);
+    expect(queries).toBe(0);
     db.$client.close();
   });
 });

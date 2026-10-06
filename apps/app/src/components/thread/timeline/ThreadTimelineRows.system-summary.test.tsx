@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineRow } from "@bb/server-contract";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { systemRow } from "@/test/fixtures/thread-timeline-rows";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
 function renderRow(row: TimelineRow) {
@@ -55,6 +57,51 @@ function preview() {
 }
 
 describe("system summary overflow", () => {
+  it("links a thread title through the target thread's project", () => {
+    const targetThread = makeThreadListEntry({
+      id: "thr_target",
+      projectId: "proj_target",
+      title: "Target thread",
+      titleFallback: "Target thread",
+    });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadTitleMentionResourcesProvider
+            sectionNamesById={new Map()}
+            projectNamesById={new Map()}
+            threadById={new Map([[targetThread.id, targetThread]])}
+          >
+            <ThreadTimelineRows
+              projectId="proj_current"
+              timelineRows={[
+                systemRow({
+                  threadId: "thr_current",
+                  title: "Worker assigned to Target thread",
+                  detail: null,
+                  operationKind: "parent-change",
+                  parentChange: {
+                    action: "assign",
+                    previousParentThreadId: null,
+                    previousParentThreadTitle: null,
+                    nextParentThreadId: targetThread.id,
+                    nextParentThreadTitle: targetThread.title,
+                  },
+                }),
+              ]}
+              threadRuntimeDisplayStatus="idle"
+              workspaceRootPath={undefined}
+            />
+          </ThreadTitleMentionResourcesProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Target thread" }).getAttribute("href"),
+    ).toBe("/projects/proj_target/threads/thr_target");
+  });
+
   it.each([20, 40])(
     "shows a fitting %ipx summary without a toggle",
     (height) => {

@@ -73,7 +73,6 @@ export function MoveServerDialog({
       onOpenChange={(open) => {
         if (!open) close();
       }}
-      modal={false}
     >
       <DialogContent
         className="max-h-[calc(100dvh-2rem)] overflow-y-auto"

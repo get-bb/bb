@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { errorToResponse } from "../../src/errors.js";
+import { createServerErrorHandler } from "../../src/errors.js";
 import { serverMoveFreezeMiddleware } from "../../src/services/server-move/freeze.js";
 import { readJson } from "../helpers/json.js";
 import { testLogger } from "../helpers/test-app.js";
 
 function frozenApp(state: { frozen: boolean }): Hono {
   const app = new Hono();
-  app.onError((error) => errorToResponse(error, testLogger));
+  app.onError(createServerErrorHandler(testLogger));
   app.use(
     "/api/v1/*",
     serverMoveFreezeMiddleware({ isFrozen: () => state.frozen }),

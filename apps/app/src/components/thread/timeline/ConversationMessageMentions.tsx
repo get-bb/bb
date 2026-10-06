@@ -2,10 +2,7 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
-import {
-  getProjectComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
+import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_MENTION_PILL_CLASS,
@@ -14,13 +11,13 @@ import {
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { useThreadRoutePath } from "@/components/thread/ThreadTitleMentions";
 
 interface PromptMentionPillProps {
   interactive?: boolean;
   resource: PromptMentionResource;
   resolveMentionLink?: PromptMentionLinkResolver;
   serializedText: string;
-  linkHref?: string;
   onActivate?: () => void;
 }
 
@@ -92,14 +89,49 @@ function mentionPillClassName(interactive: boolean): string {
   );
 }
 
+interface MessageMentionPillProps {
+  messageSeq: number;
+  resource: PromptMentionResource;
+  threadId: string;
+}
+
+export function MessageMentionPill({
+  messageSeq,
+  resource,
+  threadId,
+}: MessageMentionPillProps) {
+  const threadRoutePath = useThreadRoutePath();
+  const projectId = resource.kind === "thread" ? resource.projectId : undefined;
+  const title = `${promptMentionTooltipLabel(resource)} · message`;
+  const labelNode = (
+    <>
+      <PromptMentionIcon
+        resource={resource}
+        className="size-3.5 shrink-0 self-center text-muted-foreground"
+      />
+      <span className="truncate">{resource.label}</span>
+      <span className="shrink-0 text-muted-foreground">· message</span>
+    </>
+  );
+  return (
+    <RouteAnchor
+      className={mentionPillClassName(true)}
+      href={threadRoutePath(threadId, projectId, messageSeq)}
+      title={title}
+    >
+      {labelNode}
+    </RouteAnchor>
+  );
+}
+
 export function PromptMentionPill({
   interactive = true,
   resource,
   resolveMentionLink,
   serializedText,
-  linkHref,
   onActivate,
 }: PromptMentionPillProps) {
+  const threadRoutePath = useThreadRoutePath();
   const title = promptMentionTooltipLabel(resource);
   const clipboardAttributes = promptMentionClipboardDataAttributes({
     resource,
@@ -150,32 +182,16 @@ export function PromptMentionPill({
     );
   }
 
-  if (resource.kind === "thread" && linkHref) {
+  if (resource.kind === "thread") {
     return (
       <RouteAnchor
         className={mentionPillClassName(true)}
         {...clipboardAttributes}
-        href={linkHref}
+        href={threadRoutePath(resource.threadId, resource.projectId, null)}
         title={title}
       >
         {labelNode}
       </RouteAnchor>
-    );
-  }
-
-  if (resource.kind === "thread" && resource.projectId) {
-    return (
-      <Link
-        className={mentionPillClassName(true)}
-        {...clipboardAttributes}
-        to={getThreadRoutePath({
-          projectId: resource.projectId,
-          threadId: resource.threadId,
-        })}
-        title={title}
-      >
-        {labelNode}
-      </Link>
     );
   }
 

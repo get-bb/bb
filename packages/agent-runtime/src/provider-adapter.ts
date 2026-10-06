@@ -44,6 +44,7 @@ export type AdapterCommand =
       type: "provider/installation/status";
       cwd?: string;
       requirement?: "thread_rewind";
+      checkUpdates: boolean;
     }
   | {
       type: "provider/installation/run";
@@ -56,7 +57,6 @@ export type AdapterCommand =
       cwd: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
-      disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
     }
   | {
@@ -66,7 +66,6 @@ export type AdapterCommand =
       providerThreadId: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
-      disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
     }
   | {
@@ -77,7 +76,6 @@ export type AdapterCommand =
       sourceProviderCheckpointId?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
-      disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
     }
   | {

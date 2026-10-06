@@ -82,6 +82,12 @@ describe("looksLikePath", () => {
     expect(looksLikePath("worktree")).toBe(false);
     expect(looksLikePath("docker")).toBe(false);
   });
+
+  it("recognizes Windows drive paths in either separator style", () => {
+    expect(looksLikePath("C:\\src\\repo")).toBe(true);
+    expect(looksLikePath("c:/src/repo")).toBe(true);
+    expect(looksLikePath("src\\repo")).toBe(true);
+  });
 });
 
 describe("requireHostId", () => {
@@ -115,32 +121,6 @@ describe("buildSpawnEnvironment", () => {
       hostId: null,
     });
     expect(result).toEqual({ type: "project-default" });
-  });
-
-  it("throws for unsupported managed environment kinds", () => {
-    expect(() =>
-      buildSpawnEnvironment({
-        defaultPersonalWorkspace: false,
-        newEnvironmentKind: "docker",
-        hostId: null,
-      }),
-    ).toThrow("Unknown environment kind 'docker'");
-  });
-
-  it("returns managed-worktree for --new-environment worktree with host", () => {
-    const result = buildSpawnEnvironment({
-      defaultPersonalWorkspace: false,
-      newEnvironmentKind: "worktree",
-      hostId: HOST_ID,
-    });
-    expect(result).toEqual({
-      type: "host",
-      hostId: HOST_ID,
-      workspace: {
-        type: "managed-worktree",
-        baseBranch: { kind: "default" },
-      },
-    });
   });
 
   it("returns personal for --new-environment personal with host", () => {
@@ -183,12 +163,12 @@ describe("buildSpawnEnvironment", () => {
     ).toThrow("Cannot reach local host daemon");
   });
 
-  it("throws for unknown --new-environment kind", () => {
+  it("throws for unknown --new-environment kind before requiring a host", () => {
     expect(() =>
       buildSpawnEnvironment({
         defaultPersonalWorkspace: false,
         newEnvironmentKind: "docker",
-        hostId: HOST_ID,
+        hostId: null,
       }),
     ).toThrow("Unknown environment kind 'docker'");
   });
@@ -309,8 +289,10 @@ describe("parseThreadWaitPollIntervalMs", () => {
 });
 
 describe("parseServiceTier", () => {
-  it("throws for invalid tier", () => {
-    expect(() => parseServiceTier("turbo")).toThrow("Invalid service tier");
+  it("passes any provider tier id through and rejects an empty one", () => {
+    expect(parseServiceTier("ultrafast")).toBe("ultrafast");
+    expect(parseServiceTier(undefined)).toBeUndefined();
+    expect(() => parseServiceTier("")).toThrow("Invalid service tier");
   });
 });
 

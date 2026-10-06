@@ -328,40 +328,6 @@ describe("recordQueuedMessageDrainFailure", () => {
       );
     });
   });
-
-  it("lets a later successful queue clear a failure the row was showing", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread, row } = seedQueuedRow(harness, {
-        hostConnected: false,
-        hostName: "M4",
-      });
-
-      setQueuedThreadMessageFailureReason(harness.db, harness.deps.hub, {
-        id: row.id,
-        threadId: row.threadId,
-        failureReason: "Thread is archived",
-        now: Date.now(),
-        retryDelaysMs: [],
-      });
-
-      recordQueuedMessageDrainFailure(harness.deps, {
-        error: new ApiError(502, "host_unavailable", "Host is not connected"),
-        now: Date.now(),
-        row,
-        thread,
-      });
-
-      // The host is away, so this attempt re-queues rather than failing — and a
-      // fresh statement of why the row is waiting supersedes the stale failure
-      // instead of showing the reader two contradictory explanations.
-      const queued = reread(harness, row.id);
-      expect(queued.waitingOn).toEqual({
-        kind: "host-offline",
-        hostName: "M4",
-      });
-      expect(queued.failureReason).toBeNull();
-    });
-  });
 });
 
 describe("a failed row's booked retry", () => {

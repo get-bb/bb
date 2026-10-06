@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
-import { resolveCreateThreadExecutionDefaults } from "../../../src/services/threads/thread-default-policy.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 async function writePlugin(
@@ -197,27 +196,6 @@ describe("bb.providers.register (server)", () => {
 
       await harness.pluginService.setEnabled(entry.id, false);
       expect(harness.deps.providerRegistry.get("failed-agent")).toBeNull();
-    });
-  });
-
-  it("makes the registered provider usable by thread policy end to end", async () => {
-    await withTestHarness(async (harness) => {
-      const rootDir = await writePlugin(workDir, {
-        name: "bb-plugin-policy-agent",
-        serverSource: REGISTER_PROVIDER_SOURCE("policy-agent"),
-      });
-      const entry = await harness.pluginService.installPath(rootDir);
-      expect(entry.status).toBe("running");
-      const registry = harness.deps.providerRegistry;
-
-      const resolved = resolveCreateThreadExecutionDefaults(registry, {
-        requestedProviderId: "policy-agent",
-        storedDefaults: null,
-      });
-      expect(resolved.providerId).toBe("policy-agent");
-      expect(
-        registry.getSupportedPermissionModes("policy-agent"),
-      ).not.toBeNull();
     });
   });
 

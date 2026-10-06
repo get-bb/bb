@@ -196,6 +196,7 @@ export function marketplaceAuthorPath(github: string): string {
 }
 
 export function marketplaceAssetUrl(declared: string): string {
+  if (declared.startsWith("/") && !declared.startsWith("//")) return declared;
   return new URL(declared, "https://getbb.app/marketplace/v2/marketplace.json")
     .href;
 }
@@ -205,6 +206,9 @@ export function marketplaceInstallCommand(entryId: string): string {
 }
 
 export function marketplaceRepositoryUrl(entry: MarketplaceV2Entry): string {
+  if ("bundled" in entry.source) {
+    return `https://github.com/get-bb/bb/tree/main/plugins/${entry.source.bundled.plugin}`;
+  }
   if ("npm" in entry.source) {
     if (entry.source.npm.registry === undefined) {
       return `https://www.npmjs.com/package/${entry.source.npm.package}`;
@@ -257,16 +261,4 @@ export function moreInMarketplaceCategory(
 
 export function formatInstalls(value: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
-}
-
-export function formatMarketplaceDate(
-  value: string | undefined,
-): string | null {
-  if (value === undefined) return null;
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(value));
 }

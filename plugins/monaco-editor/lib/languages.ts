@@ -95,9 +95,11 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   log: "plaintext",
 };
 
+const PREVIEW_RENDERED_EXTENSIONS = new Set(["md", "markdown"]);
+
 export const CLAIMED_EXTENSIONS: readonly string[] = Object.keys(
   LANGUAGE_BY_EXTENSION,
-);
+).filter((extension) => !PREVIEW_RENDERED_EXTENSIONS.has(extension));
 
 export function languageForPath(path: string): string {
   const name = path.split("/").at(-1) ?? path;

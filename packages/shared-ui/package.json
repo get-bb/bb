@@ -174,6 +174,11 @@
       "types": "./src/components/ui/resource-pagination.tsx",
       "default": "./src/components/ui/resource-pagination.tsx"
     },
+    "./prompt-stack-disclosure": {
+      "source": "./src/components/ui/prompt-stack-disclosure.tsx",
+      "types": "./src/components/ui/prompt-stack-disclosure.tsx",
+      "default": "./src/components/ui/prompt-stack-disclosure.tsx"
+    },
     "./radio-group": {
       "source": "./src/components/ui/radio-group.tsx",
       "types": "./src/components/ui/radio-group.tsx",
@@ -244,11 +249,6 @@
       "types": "./src/lib/utils.ts",
       "default": "./src/lib/utils.ts"
     },
-    "./lib/usage-format": {
-      "source": "./src/lib/usage-format.ts",
-      "types": "./src/lib/usage-format.ts",
-      "default": "./src/lib/usage-format.ts"
-    },
     "./lib/portal-scope": {
       "source": "./src/lib/portal-scope.ts",
       "types": "./src/lib/portal-scope.ts",
@@ -268,6 +268,11 @@
       "source": "./src/components/ui/question-form-host.tsx",
       "types": "./src/components/ui/question-form-host.tsx",
       "default": "./src/components/ui/question-form-host.tsx"
+    },
+    "./voice-input-textarea": {
+      "source": "./src/components/ui/voice-input-textarea.tsx",
+      "types": "./src/components/ui/voice-input-textarea.tsx",
+      "default": "./src/components/ui/voice-input-textarea.tsx"
     }
   },
   "scripts": {

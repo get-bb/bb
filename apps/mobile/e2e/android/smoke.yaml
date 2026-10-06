@@ -1,0 +1,52 @@
+appId: app.getbb.mobile
+env:
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- evalScript: ${output.androidMessage = "Android smoke " + Date.now()}
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "add-server-screen"
+    timeout: 30000
+- runFlow: ../subflows/pair-direct-server.yaml
+- takeScreenshot: android-paired
+- tapOn: ".*Idle thread.*"
+- extendedWaitUntil:
+    visible: ".*follow-up.*"
+    timeout: 30000
+- tapOn: ".*follow-up.*"
+- inputText: "${output.androidMessage}"
+- tapOn: ".*Submit.*"
+- extendedWaitUntil:
+    visible: ".*Response to: ${output.androidMessage}.*"
+    timeout: 90000
+- takeScreenshot: android-sent
+- back
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 15000
+- assertVisible: ".*Idle thread.*"
+- takeScreenshot: android-back
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 30000
+- assertNotVisible:
+    id: "add-server-screen"
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://settings/device"
+- extendedWaitUntil:
+    visible:
+      id: "device-settings-screen"
+    timeout: 15000
+- takeScreenshot: android-device-settings
+- back
+- extendedWaitUntil:
+    visible:
+      id: "shell-webview"
+    timeout: 15000
+- takeScreenshot: android-native-back

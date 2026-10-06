@@ -28,7 +28,6 @@ import {
 import {
   TimelineTitleView,
   type TimelineTitleActionResolver,
-  type TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
 
 interface ExpandableTimelineRowProps {
@@ -49,7 +48,6 @@ interface ExpandableTimelineRowProps {
   headerClassName?: string;
   summaryClassName?: string;
   onTitleAction?: TimelineTitleActionResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
 }
 
 type CollapsedPreviewClickEvent = MouseEvent<HTMLDivElement>;
@@ -92,7 +90,6 @@ function ExpandableTimelineRowComponent({
   onTitleAction,
   renderBody,
   reasoningExpansionKey,
-  resolveSegmentLinkHref,
   summaryClassName,
   terminalAutoExpanded = false,
   title,
@@ -214,11 +211,7 @@ function ExpandableTimelineRowComponent({
             style={leadingIconStyle}
           />
           {titleContent ?? (
-            <TimelineTitleView
-              title={title}
-              onTitleAction={onTitleAction}
-              resolveSegmentLinkHref={resolveSegmentLinkHref}
-            />
+            <TimelineTitleView title={title} onTitleAction={onTitleAction} />
           )}
         </span>
       }

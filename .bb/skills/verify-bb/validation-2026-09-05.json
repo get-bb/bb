@@ -252,7 +252,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"
@@ -282,7 +281,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"
@@ -311,7 +309,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"
@@ -341,7 +338,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"
@@ -370,7 +366,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"
@@ -398,7 +393,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"
@@ -431,7 +425,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"
@@ -457,7 +450,6 @@
       "scope": "Linux Chromium/Electron and local hosted services",
       "sourceReview": [
         "apps/cli/src/commands/status.ts:50",
-        "apps/cli/src/commands/manager.ts:34",
         "packages/client-core/src/routes/route-paths.ts:23",
         "packages/server-contract/src/public-api.ts:1",
         "apps/app/src/views/AuthCallbackView.tsx:15"

@@ -299,6 +299,7 @@ describe("bb-app start after the server moved", () => {
       const supervision = superviseBbAppStart({
         context: createTestStartContext(),
         delayMilliseconds: async () => undefined,
+        findMachineService: async () => null,
         isShutdownRequested: () => shutdownRequested,
         prepareFullStack: async (entry) => {
           fullStackEntries.push(entry);
@@ -378,6 +379,7 @@ describe("bb-app start after the server moved", () => {
         delayMilliseconds: async () => {
           throw new Error("Unexpected daemon restart");
         },
+        findMachineService: async () => null,
         isShutdownRequested: () => shutdownRequested,
         movedFile: lock,
         processes,
@@ -423,6 +425,56 @@ describe("bb-app start after the server moved", () => {
     expect(output.split("Answering at ")).toHaveLength(3);
   });
 
+  it("answers for the moved server without a daemon while a machine service runs this computer", async () => {
+    const lock = createMovedFile({});
+    const processes: ManagedFullStackProcesses = {
+      daemonRun: null,
+      serverRun: null,
+    };
+    const delay = new ControlledDelay();
+    const responders = createFakeResponders();
+    let daemonStarts = 0;
+    let shutdownRequested = false;
+    let movedModeResult: MovedModeResult | null = null;
+
+    const output = await captureOutput(process.stdout, async () => {
+      const movedMode = runMovedMode({
+        bindHost: "127.0.0.1",
+        context: createTestStartContext(),
+        delayMilliseconds: (args) => delay.delayMilliseconds(args),
+        findMachineService: async () =>
+          "/home/tester/Library/LaunchAgents/app.getbb.host-daemon.test.plist",
+        isShutdownRequested: () => shutdownRequested,
+        movedFile: lock,
+        processes,
+        readServerMoveMarkers: async () => ({
+          movedFile: lock,
+          pendingMoveImport: false,
+        }),
+        startDaemon: async () => {
+          daemonStarts += 1;
+          throw new Error("Unexpected daemon start");
+        },
+        startResponder: responders.start,
+        waitForMarkerPoll: () => new Promise<void>(() => undefined),
+      });
+
+      const idleDelay = await waitForDelayCall(delay, 0);
+      expect(idleDelay.ms).toBe(1_000);
+      shutdownRequested = true;
+      idleDelay.resolve();
+      movedModeResult = await movedMode;
+    });
+
+    expect(movedModeResult).toBe("shutdown");
+    expect(daemonStarts).toBe(0);
+    expect(responders.opens).toHaveLength(1);
+    expect(responders.closes).toBe(1);
+    expect(output).toContain(
+      "A background service runs this computer as a machine (/home/tester/Library/LaunchAgents/app.getbb.host-daemon.test.plist); not starting another host daemon",
+    );
+  });
+
   it("leaves moved mode after activation without restarting the daemon against the old address", async () => {
     const lock = createMovedFile({});
     const processes: ManagedFullStackProcesses = {
@@ -446,6 +498,7 @@ describe("bb-app start after the server moved", () => {
         delayMilliseconds: async (args) => {
           restartDelays.push(args.ms);
         },
+        findMachineService: async () => null,
         isShutdownRequested: () => false,
         movedFile: lock,
         processes,
@@ -501,6 +554,7 @@ describe("bb-app start after the server moved", () => {
       const supervision = superviseBbAppStart({
         context: createTestStartContext(),
         delayMilliseconds: async () => undefined,
+        findMachineService: async () => null,
         isShutdownRequested: () => shutdownRequested,
         prepareFullStack: async (entry) => {
           fullStackEntries.push(entry);
@@ -848,6 +902,7 @@ describe("bb-app start after the server moved", () => {
         bindHost: "127.0.0.1",
         context: createTestStartContext(),
         delayMilliseconds: (args) => delay.delayMilliseconds(args),
+        findMachineService: async () => null,
         isShutdownRequested: () => shutdownRequested,
         movedFile,
         processes,

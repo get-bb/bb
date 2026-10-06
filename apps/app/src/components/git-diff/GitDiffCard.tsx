@@ -1,17 +1,10 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { DiffPresentation } from "@/components/code/code-rendering";
-import {
-  GitDiffCardBody,
-  useGitDiffCardBody,
-  type GitDiffCardSvgDisplayMode,
-  type RequestDiffFileContents,
-} from "./GitDiffCardBody";
+import { GitDiffCardBody, useGitDiffCardBody } from "./GitDiffCardBody";
 import {
   GitDiffCardHeader,
-  GitDiffCardImageSizeStat,
-  GitDiffCardRawToggle,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
 } from "./GitDiffCardHeader";
@@ -29,13 +22,9 @@ interface GitDiffCardProps {
   presentation: DiffPresentation;
   patchText?: string;
   filePathRoot?: string | null;
-  onOpenFileInEditor?: (path: string) => void;
-  isCollapsed?: boolean;
-  onToggleCollapsed?: () => void;
   stickyHeader?: boolean;
   cardClassName?: string;
   showStuckHeaderEdge?: boolean;
-  onRequestFileContents?: RequestDiffFileContents;
 }
 
 function buildGitDiffCardHeaderModel(
@@ -57,13 +46,9 @@ export const GitDiffCard = memo(function GitDiffCard({
   presentation,
   patchText,
   filePathRoot,
-  onOpenFileInEditor,
-  isCollapsed,
-  onToggleCollapsed,
   stickyHeader = false,
   cardClassName,
   showStuckHeaderEdge = true,
-  onRequestFileContents,
 }: GitDiffCardProps) {
   const headerModel = useMemo(
     () => buildGitDiffCardHeaderModel(fileDiff),
@@ -73,23 +58,10 @@ export const GitDiffCard = memo(function GitDiffCard({
   const bodyState = useGitDiffCardBody({
     fileDiff,
     changeKind: headerModel.changeKind,
-    onRequestFileContents,
+    onRequestFileContents: undefined,
     patchText,
   });
-  const [svgDisplayMode, setSvgDisplayMode] =
-    useState<GitDiffCardSvgDisplayMode>("preview");
-  useEffect(() => {
-    setSvgDisplayMode("preview");
-  }, [fileDiff]);
-  const toggleSvgDisplayMode = () => {
-    setSvgDisplayMode((currentMode) =>
-      currentMode === "preview" ? "raw" : "preview",
-    );
-  };
-  const hasChanges = fileDiff.hunks.length > 0 || bodyState.isImageCard;
-  const supportsCollapse =
-    isCollapsed !== undefined && onToggleCollapsed !== undefined;
-  const isBodyHidden = !hasChanges || (supportsCollapse && isCollapsed);
+  const hasChanges = fileDiff.hunks.length > 0;
   const { ref: stickySentinelRef, isIntersecting } = useIntersectionObserver({
     initialIsIntersecting: true,
     threshold: 1,
@@ -107,7 +79,7 @@ export const GitDiffCard = memo(function GitDiffCard({
       <div
         className={gitDiffCardHeaderWrapperClass({
           stickyHeader,
-          isBodyHidden,
+          isBodyHidden: !hasChanges,
           isStuck: isHeaderStuck,
           showStuckHeaderEdge,
         })}
@@ -116,36 +88,15 @@ export const GitDiffCard = memo(function GitDiffCard({
           model={headerModel}
           previousPath={previousPath}
           filePathRoot={filePathRoot}
-          onOpenFileInEditor={onOpenFileInEditor}
-          isCollapsed={isCollapsed}
-          onToggleCollapsed={onToggleCollapsed}
           hasChanges={hasChanges}
-          statSlot={
-            bodyState.isImageCard ? (
-              bodyState.imageSizeStat !== null ? (
-                <GitDiffCardImageSizeStat stat={bodyState.imageSizeStat} />
-              ) : (
-                <span />
-              )
-            ) : undefined
-          }
-          actionSlot={
-            bodyState.isSvgPreviewCard && !isBodyHidden ? (
-              <GitDiffCardRawToggle
-                fileLabel={bodyState.fileDiffLabel}
-                isRaw={svgDisplayMode === "raw"}
-                onToggle={toggleSvgDisplayMode}
-              />
-            ) : undefined
-          }
         />
       </div>
-      {!isBodyHidden ? (
+      {hasChanges ? (
         <GitDiffCardBody
           state={bodyState}
           presentation={presentation}
-          svgDisplayMode={svgDisplayMode}
-          reservesCollapseGutter={supportsCollapse}
+          svgDisplayMode="preview"
+          reservesCollapseGutter={false}
         />
       ) : null}
     </div>

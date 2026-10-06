@@ -1,0 +1,11 @@
+diff --git a/out/targets/appimage/appImageUtil.js b/out/targets/appimage/appImageUtil.js
+--- a/out/targets/appimage/appImageUtil.js
++++ b/out/targets/appimage/appImageUtil.js
+@@ -19,6 +19,7 @@ async function buildStaticRuntimeAppImage(appimageToolVersion, opts) {
+         await writeAppLauncherAndRelatedFiles(opts);
+         const { runtimeLibraries: libraries, runtime, mksquashfs } = await (0, linux_1.getAppImageTools)(appimageToolVersion, arch);
+         await (0, builder_util_1.copyDir)(libraries, path.join(stageDir, "usr", "lib"));
++        await fs.rename(path.join(stageDir, "usr", "lib", "libnotify.so.4"), path.join(stageDir, "usr", "lib", "libnotify.so"));
+         // Copy app directory to stage
+         // mksquashfs doesn't support merging, so we copy the entire app dir
+         await (0, builder_util_1.copyDir)(appDir, stageDir);

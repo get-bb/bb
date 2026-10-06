@@ -4,7 +4,6 @@ import {
   durationToCompactString,
   getFirstStringField,
   getMessageStartedAt,
-  messageId,
   plural,
 } from "../src/format-helpers.js";
 
@@ -42,14 +41,6 @@ describe("plural", () => {
     expect(plural(1, "file")).toBe("1 file");
     expect(plural(2, "file")).toBe("2 files");
     expect(plural(2, "search", "searches")).toBe("2 searches");
-  });
-});
-
-describe("messageId", () => {
-  it("joins message id segments with colons", () => {
-    expect(messageId("thread-1", "tool", "call-1")).toBe(
-      "thread-1:tool:call-1",
-    );
   });
 });
 

@@ -1,4 +1,4 @@
-export const LINUX_DISABLE_SANDBOX_ARGUMENT = "--no-sandbox";
+const LINUX_DISABLE_SANDBOX_ARGUMENT = "--no-sandbox";
 
 export function createPackagedAppLaunchArguments({ platform, userDataDir }) {
   const sandboxArguments =

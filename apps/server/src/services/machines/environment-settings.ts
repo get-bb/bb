@@ -31,10 +31,7 @@ export async function resolveUserMachineEnvironment(
   );
 }
 
-export async function machineEnvironmentView(
-  db: DbConnection,
-  dataDir: string,
-) {
+export async function machineEnvironmentView(db: DbConnection) {
   const variables = readMachineEnvironment(db).map((row) => ({
     name: row.name,
     value: null,
@@ -71,10 +68,9 @@ export async function machineEnvironmentView(
 
 export async function projectMachineEnvironmentView(
   db: DbConnection,
-  dataDir: string,
   projectId: string,
 ) {
-  const global = await machineEnvironmentView(db, dataDir);
+  const global = await machineEnvironmentView(db);
   const variables = readMachineEnvironment(db, projectId).map((row) => ({
     name: row.name,
     value: null,

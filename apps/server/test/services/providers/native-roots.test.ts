@@ -439,18 +439,15 @@ describe("resolveProviderNativeRootSet", () => {
 });
 
 describe("createProviderListingBudget", () => {
-  it("hands each step what is left and times out under the floor", () => {
+  it("hands each step what is left of one command timeout and times out under the floor", () => {
     let clock = 5_000;
-    const budget = createProviderListingBudget({
-      totalMs: 30_000,
-      now: () => clock,
-    });
-    expect(budget.remainingMs()).toBe(30_000);
+    const budget = createProviderListingBudget({ now: () => clock });
+    expect(budget.remainingMs()).toBe(COMMAND_TIMEOUT_MS);
 
     clock += 25_000;
-    expect(budget.remainingMs()).toBe(5_000);
+    expect(budget.remainingMs()).toBe(COMMAND_TIMEOUT_MS - 25_000);
 
-    clock = 5_000 + 30_000 - PROVIDER_LISTING_BUDGET_FLOOR_MS;
+    clock = 5_000 + COMMAND_TIMEOUT_MS - PROVIDER_LISTING_BUDGET_FLOOR_MS;
     expect(budget.remainingMs()).toBe(PROVIDER_LISTING_BUDGET_FLOOR_MS);
     clock += 1;
     let thrown: unknown;
@@ -464,13 +461,5 @@ describe("createProviderListingBudget", () => {
       status: 504,
       body: { code: "command_timeout" },
     });
-  });
-
-  it("spends one command timeout by default", () => {
-    let clock = 0;
-    const budget = createProviderListingBudget({ now: () => clock });
-    expect(budget.remainingMs()).toBe(COMMAND_TIMEOUT_MS);
-    clock = COMMAND_TIMEOUT_MS;
-    expect(() => budget.remainingMs()).toThrow(ApiError);
   });
 });

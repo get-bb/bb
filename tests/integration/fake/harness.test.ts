@@ -2,22 +2,38 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { waitForHostConnected } from "../helpers/assertions.js";
-import { withHarness } from "../helpers/harness.js";
+import { createIntegrationHarness, withHarness } from "../helpers/harness.js";
 
 describe("integration harness", () => {
-  it("starts the server and daemon, then cleans up the temp repo", async () => {
-    let repoDir = "";
-    await withHarness(async (harness) => {
-      repoDir = harness.repoDir;
+  it("closes live WebSockets and cleans up the temp repo", async () => {
+    const harness = await createIntegrationHarness();
+    const socket = new WebSocket(
+      `${harness.serverUrl.replace("http:", "ws:")}/ws`,
+    );
+    let cleanup: Promise<void> | null = null;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.addEventListener("open", () => resolve(), { once: true });
+        socket.addEventListener(
+          "error",
+          () => reject(new Error("Harness WebSocket failed to open")),
+          { once: true },
+        );
+      });
       const host = await waitForHostConnected(harness.api);
       expect(host.id).toBe(harness.hostId);
-      expect(harness.server.config.transcriptionModel).toBe(
-        "test/mock-transcription",
-      );
-
       await fs.access(harness.repoDir);
-    });
-    await expect(fs.access(repoDir)).rejects.toThrow();
+
+      cleanup = harness.cleanup();
+      await expect
+        .poll(() => socket.readyState, { timeout: 5_000 })
+        .toBe(WebSocket.CLOSED);
+      await cleanup;
+      await expect(fs.access(harness.repoDir)).rejects.toThrow();
+    } finally {
+      socket.close();
+      await (cleanup ?? harness.cleanup());
+    }
   });
 
   it("keeps the same host identity across daemon restarts", async () => {
@@ -35,8 +51,8 @@ describe("integration harness", () => {
   it("reloads bb-app managed config through the integration server", async () => {
     await withHarness(async (harness) => {
       await fs.writeFile(
-        path.join(harness.server.config.dataDir, "env.json"),
-        `${JSON.stringify({ env: { OPENAI_API_KEY: "stored-openai-key" } })}\n`,
+        path.join(harness.server.config.dataDir, "config.json"),
+        `${JSON.stringify({ config: { BB_APP_URL: "https://stored.example.test" } })}\n`,
         "utf8",
       );
 
@@ -44,7 +60,7 @@ describe("integration harness", () => {
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ ok: true });
-      expect(harness.server.config.openAiApiKey).toBe("stored-openai-key");
+      expect(harness.server.config.appUrl).toBe("https://stored.example.test");
     });
   });
 });

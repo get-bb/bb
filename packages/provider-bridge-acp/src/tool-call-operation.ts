@@ -1,3 +1,4 @@
+import { isPathWithinDirectory } from "@bb/process-utils";
 import path from "node:path";
 import { toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
@@ -120,7 +121,7 @@ export function resolveAcpFileChangeWriteScope(
 ): string | null {
   const normalized = paths.filter(isNonBlank).map((entry) => {
     const value = path.normalize(entry);
-    return value.length > 1 && value.endsWith(path.sep)
+    return value !== path.parse(value).root && value.endsWith(path.sep)
       ? value.slice(0, -1)
       : value;
   });
@@ -134,11 +135,8 @@ export function resolveAcpFileChangeWriteScope(
       candidate = entry;
     }
   }
-  const prefix = candidate.endsWith(path.sep)
-    ? candidate
-    : candidate + path.sep;
   for (const entry of normalized) {
-    if (entry !== candidate && !entry.startsWith(prefix)) {
+    if (!isPathWithinDirectory(candidate, entry)) {
       return null;
     }
   }

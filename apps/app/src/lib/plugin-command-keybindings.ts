@@ -2,6 +2,7 @@ import {
   applyAppKeybindingOverrides,
   isAppKeybindingAvailableForClient,
   isMacKeyboardPlatform,
+  keyboardPlatform,
   matchesAppShortcut,
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
@@ -38,11 +39,19 @@ export function resolvePluginCommandDefaults(
   defaults: AppDefaultKeybindings;
   conflicts: ReadonlyMap<KeyboardCommandId, readonly KeyboardCommandId[]>;
 } {
-  const client = { isDesktop, isMac: isMacKeyboardPlatform(platform) };
+  const client = { isDesktop, platform };
   const effective = applyAppKeybindingOverrides(defaults, overrides).filter(
     (binding) => isAppKeybindingAvailableForClient(binding, client),
   );
-  const customized = new Set(overrides.map((override) => override.command));
+  const customized = new Set(
+    overrides
+      .filter(
+        (override) =>
+          override.platform === undefined ||
+          override.platform === keyboardPlatform(platform),
+      )
+      .map((override) => override.command),
+  );
   const conflicts = new Map<KeyboardCommandId, KeyboardCommandId[]>();
   const resolved = defaults.map((binding) => {
     if (

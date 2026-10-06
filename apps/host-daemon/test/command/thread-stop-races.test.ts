@@ -25,7 +25,6 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import {
-  noopEventSink,
   resolveRuntimeBridgeLaunch,
   type CommandDispatchOptions,
   type CommandOf,
@@ -37,6 +36,7 @@ import {
   createFakeWorkspace,
   makeDispatchOptions,
   makeTempDir,
+  noopEventSink,
   unexpectedProjectAttachmentFetch,
   unexpectedProviderMaintenance,
   fetchDispatchTestArtifact,
@@ -337,7 +337,7 @@ describe("thread.stop race semantics", () => {
       harness.dispatchOptions,
     );
     await expect(stopPromise).resolves.toEqual({ providerCheckpointId: null });
-    await expect(submitPromise).resolves.toEqual({ appliedAs: "new-turn" });
+    await expect(submitPromise).resolves.toEqual({});
 
     expect(recordedThreadStops(harness)).toEqual([
       expect.objectContaining({

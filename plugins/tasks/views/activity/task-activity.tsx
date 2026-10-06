@@ -5,14 +5,14 @@ import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import Notification02Icon from "@hugeicons/core-free-icons/Notification02Icon";
 import NotificationOff02Icon from "@hugeicons/core-free-icons/NotificationOff02Icon";
-import { Button } from "@bb/shared-ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import { cn } from "@bb/shared-ui/lib/utils";
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import {
@@ -50,26 +50,38 @@ interface FeedEntry {
   attachments: Attachment[];
 }
 
+export function activityFeedEntries(
+  comments: readonly DisplayComment[],
+  attachments: readonly Attachment[],
+): FeedEntry[] {
+  const attachmentsByCommentId = new Map<string, Attachment[]>();
+  for (const attachment of attachments) {
+    if (attachment.commentId === null) continue;
+    const entries = attachmentsByCommentId.get(attachment.commentId);
+    if (entries === undefined) {
+      attachmentsByCommentId.set(attachment.commentId, [attachment]);
+    } else {
+      entries.push(attachment);
+    }
+  }
+  return comments.map((comment) => ({
+    comment,
+    attachments: attachmentsByCommentId.get(comment.id) ?? [],
+  }));
+}
+
 function useActivityFeed(taskId: string) {
   return useTasksQuery<FeedEntry[]>(
     async (rpc) => {
-      const { comments } = await rpc.call("listComments", { taskId });
-      const attachments = await Promise.all(
-        comments.map((comment) =>
-          comment.kind === "system"
-            ? Promise.resolve<Attachment[]>([])
-            : rpc
-                .call("listAttachments", { commentId: comment.id })
-                .then((result) => result.attachments),
-        ),
-      );
-      return comments.map((comment, index) => ({
-        comment,
-        attachments: attachments[index] ?? [],
-      }));
+      const [{ comments }, { attachments }] = await Promise.all([
+        rpc.call("listComments", { taskId }),
+        rpc.call("listAttachments", { commentsOfTaskId: taskId }),
+      ]);
+      return activityFeedEntries(comments, attachments);
     },
     ["comments:changed", "tasks:changed"],
     [taskId],
+    { relevantTaskIds: [taskId] },
   );
 }
 
@@ -469,7 +481,7 @@ interface TaskActivityProps {
 export function TaskActivity({ taskId }: TaskActivityProps) {
   const feed = useActivityFeed(taskId);
   const nowMs = useNowTick();
-  const entries = feed.data ?? [];
+  const entries = useMemo(() => feed.data ?? [], [feed.data]);
   const notificationTarget = useMemo(
     () => agentNotificationTarget(entries.map((entry) => entry.comment)),
     [entries],

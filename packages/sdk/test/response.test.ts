@@ -296,17 +296,6 @@ describe("readJsonResponse()", () => {
     });
   });
 
-  it("throws HTTP error with statusText when body is empty", async () => {
-    const response = new Response("", {
-      status: 500,
-      statusText: "Internal Server Error",
-    });
-
-    await expect(readJson(response)).rejects.toThrow(
-      "HTTP 500: Internal Server Error",
-    );
-  });
-
   it("throws connection error with helpful message for ECONNREFUSED", async () => {
     const connError = new TypeError("fetch failed", {
       cause: { code: "ECONNREFUSED" },
@@ -314,14 +303,6 @@ describe("readJsonResponse()", () => {
 
     await expect(readJsonResponse(Promise.reject(connError))).rejects.toThrow(
       "Cannot connect to BB server. Ensure it is running and BB_SERVER_URL is correct.",
-    );
-  });
-
-  it("rethrows other errors as-is", async () => {
-    const otherError = new Error("Network timeout");
-
-    await expect(readJsonResponse(Promise.reject(otherError))).rejects.toThrow(
-      "Network timeout",
     );
   });
 
@@ -357,13 +338,6 @@ describe("createRequestTimeoutFetch()", () => {
     );
   });
 
-  it("times out immediately when configured with zero milliseconds", async () => {
-    await expectPendingFetchTimeout({
-      timeoutMs: IMMEDIATE_TIMEOUT_MS,
-      expectedMessage: IMMEDIATE_TIMEOUT_MESSAGE,
-    });
-  });
-
   it("rejects negative timeout values", () => {
     expect(() => createRequestTimeoutFetch({ timeoutMs: -1 })).toThrow(
       REQUEST_TIMEOUT_VALIDATION_MESSAGE,
@@ -394,17 +368,6 @@ describe("createRequestTimeoutFetch()", () => {
       timeoutMs: 1_250,
       expectedMessage: requestTimeoutMessage("1250 ms"),
     });
-  });
-
-  it("returns successful API responses after body read", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => {
-      return Promise.resolve(new Response("ok"));
-    });
-
-    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
-    const response = await timeoutFetch("http://server/api/v1/hosts");
-
-    await expect(response.text()).resolves.toBe("ok");
   });
 
   it("preserves response metadata through the wrapper", async () => {

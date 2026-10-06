@@ -1,9 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type {
-  HostPlatform,
-  ServerMoveServiceManager,
-} from "@bb/host-daemon-contract";
+import type { HostPlatform } from "@bb/host-daemon-contract";
 import {
   canonicalPath,
   isFileNotFoundError,
@@ -20,10 +17,10 @@ const SERVER_URL_FLAGS = ["--server-url", "--server"] as const;
 const LAUNCHER_SUBCOMMANDS = ["host-daemon", "start"] as const;
 const HOST_DAEMON_PORT_FLAG = "--host-daemon-port";
 
-export type ServiceDefinitionManager = Exclude<
-  ServerMoveServiceManager,
-  "none"
->;
+export type ServiceDefinitionManager =
+  | "launchd"
+  | "systemd-user"
+  | "systemd-system";
 
 type LauncherSubcommand = (typeof LAUNCHER_SUBCOMMANDS)[number];
 

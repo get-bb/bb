@@ -46,4 +46,5 @@ export const {
   useSdk,
   experimental_useProviders,
   experimental_useCodeTheme,
+  experimental_usePluginId,
 } = pluginSdkAppImplementation;

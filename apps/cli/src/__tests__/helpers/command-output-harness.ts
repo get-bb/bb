@@ -76,7 +76,11 @@ export const readlineMocks = readlineState;
 export const resolveLocalHostIdMock = vi.mocked(resolveLocalHostId);
 
 export function setupCommandOutputTestEnvironment(): void {
+  let stdinTty: PropertyDescriptor | undefined;
+  let stdoutTty: PropertyDescriptor | undefined;
   beforeEach(() => {
+    stdinTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    stdoutTty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(process, "exit").mockImplementation((code) => {
@@ -111,6 +115,11 @@ export function setupCommandOutputTestEnvironment(): void {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    if (stdinTty === undefined) Reflect.deleteProperty(process.stdin, "isTTY");
+    else Object.defineProperty(process.stdin, "isTTY", stdinTty);
+    if (stdoutTty === undefined)
+      Reflect.deleteProperty(process.stdout, "isTTY");
+    else Object.defineProperty(process.stdout, "isTTY", stdoutTty);
   });
 }
 

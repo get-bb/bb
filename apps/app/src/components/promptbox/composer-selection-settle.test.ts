@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  COMPOSER_SELECTION_SETTLE_TIMEOUT_MS,
   createCommittedStateObserver,
   readExecutionSelection,
-  resolveComposerSelectionDeadline,
-  setComposerSelectionSettleTimeoutForTest,
 } from "./composer-selection-settle";
 
 interface State {
@@ -15,7 +12,6 @@ interface State {
 describe("createCommittedStateObserver", () => {
   afterEach(() => {
     vi.useRealTimers();
-    setComposerSelectionSettleTimeoutForTest(null);
   });
 
   it("resolves waiters as soon as a published state satisfies them", async () => {
@@ -61,14 +57,6 @@ describe("createCommittedStateObserver", () => {
     const neverPublished = observer.waitUntil(() => true, Date.now() + 10);
     vi.advanceTimersByTime(10);
     await expect(neverPublished).rejects.toThrow(/not ready/);
-  });
-
-  it("uses the test override for the settle deadline", () => {
-    expect(resolveComposerSelectionDeadline(1_000)).toBe(
-      1_000 + COMPOSER_SELECTION_SETTLE_TIMEOUT_MS,
-    );
-    setComposerSelectionSettleTimeoutForTest(25);
-    expect(resolveComposerSelectionDeadline(1_000)).toBe(1_025);
   });
 });
 

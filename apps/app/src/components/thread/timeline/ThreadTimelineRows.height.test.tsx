@@ -27,7 +27,7 @@ it("snap-syncs the timeline height when older rows are prepended", () => {
     function (this: HTMLElement) {
       return (
         this.querySelectorAll(
-          '[data-timeline-row-list="top-level"] > [data-timeline-row-id]',
+          '[data-timeline-row-list="top-level"] > [data-timeline-items] > [data-timeline-row-id]',
         ).length * 100
       );
     },

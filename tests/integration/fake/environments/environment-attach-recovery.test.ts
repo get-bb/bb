@@ -23,44 +23,6 @@ async function createSetupPath(name: string, script: string): Promise<string> {
 }
 
 describe("environment attach recovery", () => {
-  it("cancels an in-flight setup script before attaching the workspace", async () => {
-    const path = await createSetupPath(
-      "bb-attach-cancel-",
-      "echo started > started\nsleep 120\necho unsafe > completed\n",
-    );
-    const harness = createHarness({ workspacePath: path });
-    const options = harness.dispatchOptions({ dataDir: path });
-    const provision = dispatchCommand(
-      {
-        type: "environment.attach",
-        contributedEnv: [],
-        environmentId: "env-setup-cancel",
-        initiator: null,
-        path,
-        setupScriptTimeoutMs: 30_000,
-      },
-      options,
-    );
-
-    await expect
-      .poll(() => readFile(join(path, "started"), "utf8").catch(() => ""))
-      .toBe("started\n");
-    await expect(
-      dispatchCommand(
-        {
-          type: "environment.attach.cancel",
-          environmentId: "env-setup-cancel",
-        },
-        options,
-      ),
-    ).resolves.toEqual({ aborted: true });
-    await expect(provision).rejects.toMatchObject({
-      code: "provision_cancelled",
-    });
-    expect(harness.provisions).toEqual([]);
-    await expect(readFile(join(path, "completed"))).rejects.toThrow();
-  });
-
   it("coalesces a repeated attach while setup is still running", async () => {
     const path = await createSetupPath(
       "bb-attach-coalesce-",

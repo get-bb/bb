@@ -13,7 +13,7 @@ import {
   storeTreeHeight,
 } from "../lib/file-tree-height.js";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu.js";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "@/lib/utils";
 
 export interface FileTreePanelProps {
   entries: readonly FlatEntry[];

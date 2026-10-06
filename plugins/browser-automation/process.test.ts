@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { supervise } from "./process.js";
 
-describe("process ownership", () => {
+const describeOnPosix = process.platform === "win32" ? describe.skip : describe;
+
+describeOnPosix("process ownership", () => {
   it.each([false, true])(
     "runs the supervisor in Node mode without leaking it to external children (Electron: %s)",
     async (electron) => {
@@ -63,14 +65,7 @@ try {
       try {
         await promisify(execFile)(
           process.execPath,
-          [
-            "--conditions=source",
-            "--import",
-            "tsx",
-            "--input-type=module",
-            "-e",
-            code,
-          ],
+          ["--import", "tsx", "--input-type=module", "-e", code],
           {
             env: {
               ...process.env,
@@ -102,7 +97,7 @@ try {
     const root = await mkdtemp(join(tmpdir(), "db-worker-death-"));
     const file = join(root, "pid");
     const childCode =
-      'require("node:fs").writeFileSync(process.argv[1], String(process.pid)); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);';
+      'process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);';
     const code = `import { supervise } from ${JSON.stringify(new URL("./process.ts", import.meta.url).href)}; supervise(process.execPath, ["-e", ${JSON.stringify(childCode)}, ${JSON.stringify(file)}], process.env); setInterval(() => {}, 1000);`;
     const worker = spawn(
       process.execPath,
@@ -114,6 +109,7 @@ try {
       await vi.waitFor(
         async () => {
           pid = Number(await readFile(file, "utf8"));
+          expect(pid).toBeGreaterThan(0);
         },
         { timeout: 5000 },
       );
@@ -132,7 +128,7 @@ try {
   it("kills a TERM-resistant child group without touching another session", async () => {
     const root = await mkdtemp(join(tmpdir(), "db-supervisor-"));
     const code =
-      'require("node:fs").writeFileSync(process.argv[1], String(process.pid)); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);';
+      'process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);';
     const a = supervise(
       process.execPath,
       ["-e", code, join(root, "a")],
@@ -150,14 +146,20 @@ try {
         async () => {
           pidA = Number(await readFile(join(root, "a"), "utf8"));
           pidB = Number(await readFile(join(root, "b"), "utf8"));
+          expect(pidA).toBeGreaterThan(0);
+          expect(pidB).toBeGreaterThan(0);
         },
         { timeout: 5000 },
       );
       await a.close();
-      expect(() => process.kill(pidA, 0)).toThrow();
+      await vi.waitFor(() => {
+        expect(() => process.kill(pidA, 0)).toThrow();
+      });
       expect(() => process.kill(pidB, 0)).not.toThrow();
       await b.close();
-      expect(() => process.kill(pidB, 0)).toThrow();
+      await vi.waitFor(() => {
+        expect(() => process.kill(pidB, 0)).toThrow();
+      });
     } finally {
       await Promise.all([a.close(), b.close()]);
       await rm(root, { recursive: true, force: true });

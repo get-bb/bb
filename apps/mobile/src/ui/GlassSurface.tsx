@@ -18,7 +18,4 @@ export function GlassSurface({
   );
 }
 
-export type {
-  GlassSurfaceLayout,
-  GlassSurfaceProps,
-} from "./glass-surface-types";
+export type { GlassSurfaceProps } from "./glass-surface-types";

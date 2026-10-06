@@ -9,7 +9,10 @@ import * as mentions from "../../src/services/plugins/plugin-mentions.js";
 import * as commands from "../../src/services/threads/thread-commands.js";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import { sendNextQueuedMessageIfPresent } from "../../src/services/threads/queued-messages.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  type HostRpcHandlerResult,
+  registerHostRpcResponder,
+} from "../helpers/host-rpc.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -52,7 +55,7 @@ function registerResponder(
   return registerHostRpcResponder(harness, {
     hostId: fixture.host.id,
     sessionId: fixture.session.id,
-    handle: async ({ command }) => {
+    handle: async ({ command }): Promise<HostRpcHandlerResult> => {
       switch (command.type) {
         case "thread.stop":
           await stop();
@@ -63,7 +66,7 @@ function registerResponder(
             result: { providerThreadId: "provider-after-clear" },
           };
         case "turn.submit":
-          return { ok: true, result: { appliedAs: "new-turn" } };
+          return { ok: true, result: {} };
         case "host.list_files":
           return { ok: true, result: { files: [], truncated: false } };
         case "host.read_file":

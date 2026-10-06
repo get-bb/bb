@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type {
   ExperimentalSidebarNavigationActions,
   ExperimentalSidebarNavigationSplit,
@@ -57,7 +57,7 @@ function guardActions(
 export function useSidebarNavigation(): ExperimentalSidebarNavigationState {
   const state = useSidebarNavigationModel()?.state ?? EMPTY_STATE;
   const mountedRef = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;

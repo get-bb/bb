@@ -23,11 +23,11 @@ import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02I
 import CircleIcon from "@hugeicons/core-free-icons/CircleIcon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
-import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
 import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
 import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
 import Edit02Icon from "@hugeicons/core-free-icons/Edit02Icon";
 import FilterHorizontalIcon from "@hugeicons/core-free-icons/FilterHorizontalIcon";
+import FilterIcon from "@hugeicons/core-free-icons/FilterIcon";
 import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
 import FolderExportIcon from "@hugeicons/core-free-icons/FolderExportIcon";
 import FolderGitTwoIcon from "@hugeicons/core-free-icons/FolderGit2Icon";
@@ -36,6 +36,7 @@ import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
 import FolderSyncIcon from "@hugeicons/core-free-icons/FolderSyncIcon";
 import FolderUnknownIcon from "@hugeicons/core-free-icons/FolderUnknownIcon";
 import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
+import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
 import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
@@ -174,6 +175,7 @@ const CORE_ICON_MAP = {
   Copy: Copy01Icon,
   Download: Download01Icon,
   Edit: Edit02Icon,
+  Filter: FilterIcon,
   FilterHorizontal: FilterHorizontalIcon,
   Folder: FolderIcon,
   FolderExport: FolderExportIcon,
@@ -182,6 +184,7 @@ const CORE_ICON_MAP = {
   FolderSync: FolderSyncIcon,
   FolderUnknown: FolderUnknownIcon,
   Folder02: Folder02Icon,
+  Home: Home01Icon,
   Info: InformationCircleIcon,
   ListTodo: CheckListIcon,
   Loading: Loading03Icon,
@@ -196,7 +199,7 @@ const CORE_ICON_MAP = {
   SectionMove: SectionMoveStrokeRoundedIcon,
   Settings: Settings01Icon,
   SlidersHorizontal: SlidersHorizontalIcon,
-  Spinner: DashedLineCircleIcon,
+  Spinner: Loading03Icon,
   Target: Target02Icon,
   Terminal: ComputerTerminal01Icon,
   Toolbox: ToolboxIcon,

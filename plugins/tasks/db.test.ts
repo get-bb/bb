@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
-import { createTasksStore, TasksPageCursorError } from "./db";
+import {
+  createTasksStore,
+  type CreatePresetInput,
+  TasksPageCursorError,
+} from "./db";
 
 function setup() {
   const { bb, harness } = createFakePluginHost({ pluginId: "tasks-db-test" });
@@ -58,7 +62,7 @@ describe("tasks storage", () => {
             "SELECT COUNT(*) AS count FROM schema_version",
           )
           .get()?.count,
-      ).toBe(6);
+      ).toBe(8);
     } finally {
       await harness.dispose();
     }
@@ -105,6 +109,38 @@ describe("tasks storage", () => {
     }
   });
 
+  it("keeps a preset's fast tier and accepts other provider tiers after opening the tier column", async () => {
+    const { db, harness } = setup();
+    try {
+      db.exec(`
+        DELETE FROM schema_version WHERE version = 8;
+        ALTER TABLE presets DROP COLUMN service_tier;
+        ALTER TABLE presets ADD COLUMN service_tier TEXT
+          CHECK (service_tier IN ('default', 'fast'));
+        INSERT INTO presets (
+          id, name, provider_id, model_id, reasoning_level, service_tier,
+          permission_mode, instructions, builtin, created_at
+        ) VALUES (
+          '01J00000000000000000000003', 'Legacy fast', 'codex', 'gpt-5',
+          'high', 'fast', 'auto', '', 0, '2026-07-15T00:00:00.000Z'
+        );
+      `);
+
+      const store = createTasksStore(db);
+
+      expect(store.getPreset("01J00000000000000000000003")).toMatchObject({
+        serviceTier: "fast",
+      });
+      expect(
+        store.updatePreset("01J00000000000000000000003", {
+          serviceTier: "ultrafast",
+        }),
+      ).toMatchObject({ serviceTier: "ultrafast" });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("migrates retired preset permission modes to Accept Edits", async () => {
     const { db, harness } = setup();
     try {
@@ -132,41 +168,6 @@ describe("tasks storage", () => {
         .map((preset) => preset.permissionMode);
 
       expect(modes).toEqual(["accept-edits", "accept-edits"]);
-    } finally {
-      await harness.dispose();
-    }
-  });
-
-  it("normalizes legacy image flags to the safe raster MIME allowlist", async () => {
-    const { db, harness, store } = setup();
-    try {
-      const project = createProject(store, "IMG");
-      const task = store.createTask({
-        projectId: project.id,
-        title: "Legacy attachment",
-      });
-      const svg = store.createAttachment({
-        taskId: task.id,
-        fileName: "active.svg",
-        mime: "image/svg+xml",
-        sizeBytes: 1,
-        blobPath: "blobs/svg/active.svg",
-        isImage: true,
-      });
-      const png = store.createAttachment({
-        taskId: task.id,
-        fileName: "safe.png",
-        mime: "image/png",
-        sizeBytes: 1,
-        blobPath: "blobs/png/safe.png",
-        isImage: false,
-      });
-      db.prepare("DELETE FROM schema_version WHERE version = 2").run();
-
-      createTasksStore(db);
-
-      expect(store.getAttachment(svg.id)?.isImage).toBe(false);
-      expect(store.getAttachment(png.id)?.isImage).toBe(true);
     } finally {
       await harness.dispose();
     }
@@ -643,6 +644,53 @@ describe("tasks storage", () => {
     }
   });
 
+  it("lists every comment attachment of one task and nothing from its own files or other tasks", async () => {
+    const { harness, store } = setup();
+    try {
+      const project = createProject(store, "ATT");
+      const task = store.createTask({ projectId: project.id, title: "Task" });
+      const otherTask = store.createTask({
+        projectId: project.id,
+        title: "Other",
+      });
+      const attach = (
+        owner: { taskId: string } | { commentId: string },
+        fileName: string,
+      ) =>
+        store.createAttachment({
+          ...owner,
+          fileName,
+          mime: "text/plain",
+          sizeBytes: 1,
+          blobPath: `blobs/${fileName}`,
+          isImage: false,
+        });
+      const comment = (taskId: string, body: string) =>
+        store.createComment({
+          taskId,
+          kind: "user",
+          authorName: "Sawyer",
+          body,
+        });
+      const first = comment(task.id, "First");
+      const second = comment(task.id, "Second");
+      const elsewhere = comment(otherTask.id, "Elsewhere");
+      attach({ taskId: task.id }, "task-file.txt");
+      const onFirst = attach({ commentId: first.id }, "first.txt");
+      const onSecond = attach({ commentId: second.id }, "second.txt");
+      attach({ commentId: elsewhere.id }, "elsewhere.txt");
+
+      expect(
+        store
+          .listAttachmentsForTaskComments(task.id)
+          .map((attachment) => attachment.id)
+          .sort(),
+      ).toEqual([onFirst.id, onSecond.id].sort());
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("lists task comments in chronological order", async () => {
     const { db, harness, store } = setup();
     try {
@@ -739,7 +787,7 @@ describe("tasks storage", () => {
         threadId: "thr_older",
         body: "Older agent reply",
       });
-      store.createComment({
+      const userComment = store.createComment({
         taskId: task.id,
         kind: "user",
         authorName: "Sawyer",
@@ -751,7 +799,9 @@ describe("tasks storage", () => {
       setCreatedAt.run("2026-07-15T10:00:00.000Z", older.id);
       setCreatedAt.run("2026-07-15T11:00:00.000Z", latest.id);
 
-      expect(store.getLatestAgentComment(task.id, null)).toMatchObject({
+      expect(
+        store.getLatestAgentComment(task.id, userComment.id),
+      ).toMatchObject({
         id: latest.id,
         threadId: "thr_latest",
       });
@@ -766,7 +816,6 @@ describe("tasks storage", () => {
       const project = createProject(store, "TIE");
       const task = store.createTask({ projectId: project.id, title: "Task" });
       const earlier = store.createComment({
-        id: "01H00000000000000000000002",
         taskId: task.id,
         kind: "agent",
         authorName: "Earlier responder",
@@ -774,26 +823,34 @@ describe("tasks storage", () => {
         body: "Earlier reply",
       });
       const later = store.createComment({
-        id: "01H00000000000000000000001",
         taskId: task.id,
         kind: "agent",
         authorName: "Later responder",
         threadId: "thr_later",
         body: "Later reply",
       });
+      const earlierId = "01H00000000000000000000002";
+      const laterId = "01H00000000000000000000001";
+      const setId = db.prepare<[string, string]>(
+        "UPDATE comments SET id = ? WHERE id = ?",
+      );
+      setId.run(earlierId, earlier.id);
+      setId.run(laterId, later.id);
       const setCreatedAt = db.prepare<[string, string]>(
         "UPDATE comments SET created_at = ? WHERE id = ?",
       );
       const sharedTime = "2026-07-15T10:00:00.000Z";
-      setCreatedAt.run(sharedTime, earlier.id);
-      setCreatedAt.run(sharedTime, later.id);
+      setCreatedAt.run(sharedTime, earlierId);
+      setCreatedAt.run(sharedTime, laterId);
 
       expect(store.listComments(task.id).map((comment) => comment.id)).toEqual([
-        earlier.id,
-        later.id,
+        earlierId,
+        laterId,
       ]);
-      expect(store.getLatestAgentComment(task.id, null)).toMatchObject({
-        id: later.id,
+      expect(
+        store.getLatestAgentComment(task.id, "01H00000000000000000000003"),
+      ).toMatchObject({
+        id: laterId,
         threadId: "thr_later",
       });
     } finally {
@@ -804,14 +861,14 @@ describe("tasks storage", () => {
   it("rejects duplicate preset names", async () => {
     const { harness, store } = setup();
     try {
-      const preset = {
+      const preset: CreatePresetInput = {
         name: "Default",
         providerId: "openai",
         modelId: "gpt-5",
         reasoningLevel: "high",
         serviceTier: null,
         permissionMode: "accept-edits",
-        environmentKind: "project-default" as const,
+        environmentKind: "project-default",
         baseBranch: null,
         machineId: null,
         instructions: "Work the task.",

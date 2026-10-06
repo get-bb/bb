@@ -236,9 +236,10 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.failed", ({ thread, error }) => {
     service.onThreadFailed(thread.id, error);
   });
-  bb.events.on("thread.archived", ({ thread }) =>
-    service.onOriginUnavailable(thread.id),
-  );
+  bb.events.on("thread.archived", ({ thread }) => {
+    service.onThreadArchived(thread.id);
+    return service.onOriginUnavailable(thread.id);
+  });
   bb.events.on("thread.deleted", async ({ thread }) => {
     service.onThreadDeleted(thread.id);
     await service.onOriginUnavailable(thread.id);

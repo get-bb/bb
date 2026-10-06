@@ -1,4 +1,4 @@
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "@/lib/utils";
 
 interface AppCommandShortcutPillProps {
   ariaHidden?: boolean;

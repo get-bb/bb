@@ -1,21 +1,9 @@
-import { atom } from "jotai";
-import type {
-  SidebarChronologicalSort,
-  SidebarOrganizationMode,
-} from "@bb/domain";
+import type { SidebarOrganizationMode } from "@bb/domain";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
-import { createThreadArchiveFilterAtom } from "@/lib/thread-lifecycle-filter";
 
-export type {
-  CollapsibleSidebarSectionId,
-  SidebarSectionId,
-} from "@bb/client-core";
+export type { CollapsibleSidebarSectionId } from "@bb/client-core";
 
-export type { SidebarChronologicalSort, SidebarOrganizationMode };
-
-export const sidebarThreadLifecyclesAtom = createThreadArchiveFilterAtom(
-  "bb.sidebar.threadArchiveFilter",
-);
+export type { SidebarOrganizationMode };
 
 export const collapsedProjectIdsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedProjects",
@@ -33,16 +21,8 @@ export const collapsedSidebarSectionIdsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedSections",
 );
 
-export const sidebarSectionOrderAtom = createSyncedPreferenceAtom(
-  "sidebar.sectionOrder",
-);
-
 export const sidebarManualSectionOrderAtom = createSyncedPreferenceAtom(
   "sidebar.manualSectionOrder",
-);
-
-export const sidebarMachineSectionOrderAtom = createSyncedPreferenceAtom(
-  "sidebar.machineSectionOrder",
 );
 
 export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom(
@@ -51,26 +31,6 @@ export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom(
 
 export const sidebarOrganizationModeAtom = createSyncedPreferenceAtom(
   "sidebar.organizationMode",
-);
-
-export const sidebarEnvironmentGroupingAtom = createSyncedPreferenceAtom(
-  "sidebar.threadGrouping.environment",
-);
-
-export const sidebarGroupThreadsByEnvironmentAtom = atom((get) => {
-  const grouping = get(sidebarEnvironmentGroupingAtom);
-  if (grouping !== "auto") {
-    return grouping;
-  }
-  return get(sidebarOrganizationModeAtom) !== "chronological";
-});
-
-export const sidebarChronologicalSortAtom = createSyncedPreferenceAtom(
-  "sidebar.chronologicalSort",
-);
-
-export const sidebarSortDirectionAtom = createSyncedPreferenceAtom(
-  "sidebar.sortDirection",
 );
 
 export const sidebarCollapsedThreadSectionsAtom = createSyncedPreferenceAtom(

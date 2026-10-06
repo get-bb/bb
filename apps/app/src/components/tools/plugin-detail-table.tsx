@@ -28,58 +28,6 @@ export function PluginDetailTable({ children }: { children: ReactNode }) {
 
 const CELL = "py-1.5 align-top text-sm leading-snug";
 
-export function PluginDetailFieldRow({
-  label,
-  children,
-  labelClassName,
-  stackOnNarrow = false,
-}: {
-  label: ReactNode;
-  children: ReactNode;
-  labelClassName?: string;
-  stackOnNarrow?: boolean;
-}) {
-  if (stackOnNarrow) {
-    return (
-      <tr className="grid w-full grid-cols-1 sm:grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]">
-        <th
-          scope="row"
-          className={cn(
-            CELL,
-            PLUGIN_DETAIL_HEADER_CELL_CLASS,
-            "block w-full border-b border-border px-4 text-left text-xs font-normal text-muted-foreground sm:w-auto sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
-            labelClassName,
-          )}
-        >
-          {label}
-        </th>
-        <td className="block min-w-0 w-full px-4 py-3 align-top text-left text-sm leading-snug text-foreground sm:w-auto sm:py-1.5 sm:pl-2 sm:pr-4">
-          {children}
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr className={DETAIL_ROW_GRID}>
-      <th
-        scope="row"
-        className={cn(
-          CELL,
-          PLUGIN_DETAIL_HEADER_CELL_CLASS,
-          "border-r border-border pl-4 pr-2 text-left text-xs font-normal text-muted-foreground",
-          labelClassName,
-        )}
-      >
-        {label}
-      </th>
-      <td className={cn(CELL, "pl-2 pr-4 text-left text-foreground")}>
-        {children}
-      </td>
-    </tr>
-  );
-}
-
 export function PluginDetailGlyph({
   icon,
   label,

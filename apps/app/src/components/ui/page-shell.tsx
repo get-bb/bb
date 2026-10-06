@@ -90,6 +90,7 @@ export function PageShell({
     <div className={cn(SHELL_BLEED_CLASS, shellClassName)}>
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
+          data-page-scroll-viewport=""
           className={cn(
             "@container/page min-h-0 flex-1 overflow-y-auto",
             scrollAreaClassName,

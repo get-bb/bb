@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.45.0
+
+Thread titles and voice transcription without a Codex login, faster conversations, and new platforms in alpha.
+
+### Highlights
+
+- **bb cloud AI:** automatic thread titles, commit messages, and voice transcription now work through your bb account, without needing to sign in to Codex.
+- **More provider control:** enable or disable individual providers and choose service tiers, including **Codex Ultrafast mode** on supported models and accounts.
+- **Faster conversations:** smoother streaming, quicker thread switching, and less background work.
+- **Customize navigation:** choose thread-row actions and footer icons, with independent sidebar layouts per tab.
+- **New platforms (Alpha):** Android app and Windows desktop.
+
+### Improvements
+
+- **Agents:** instant thread forks named after their source, native Codex questions when enabled, Claude’s 1M Opus context for pooled sessions, and configurable Claude sandboxing.
+- **Composer:** remembered scheduled-send choices, 5/10-minute presets, and one-tap Send during dictation.
+- **Mobile and desktop:** scroll to the top from the mobile header, clearer question forms, mobile downloads in Settings, and desktop browser file downloads.
+- **Tasks:** keep task drafts when navigating and load task lists faster.
+- **BB Connect:** more reliable remote access and reconnection.
+
+### Fixes
+
+- Fix Claude permission handling, Pi model discovery, OpenCode questions, mobile submit taps, timeline history, file links, and plugin popup focus.
+- **Custom DNS access:** DNS rebinding protection now requires a matching `BB_APP_URL` for MagicDNS and reverse-proxy hostnames. Direct IP access and bb Connect continue to work.
+
+### CLI and plugins
+
+- Browse saved prompts with `bb prompt-history list`, enable or disable providers, and clean up unused environments with `bb environment cleanup`. These features are also available through the SDK.
+- Plugin additions include composer popup slots, a unified composer API, and model-specific service tiers.
+
+### Thanks
+
+Thank you to [@Danielalnajjar](https://github.com/Danielalnajjar), [@MGrin](https://github.com/MGrin), [@MacHatter1](https://github.com/MacHatter1), [@alanagoyal](https://github.com/alanagoyal), [@amitav13](https://github.com/amitav13), [@andrewkchan](https://github.com/andrewkchan), [@ariofrio](https://github.com/ariofrio), [@dandaka](https://github.com/dandaka), [@hemaaanth](https://github.com/hemaaanth), [@jem-computer](https://github.com/jem-computer), [@luketraas](https://github.com/luketraas), [@maheen-ejaz](https://github.com/maheen-ejaz), [@matthiasvongrundherr](https://github.com/matthiasvongrundherr), [@mattwynne](https://github.com/mattwynne), [@ratulsarna](https://github.com/ratulsarna), [@salemsayed](https://github.com/salemsayed), [@stefanroex](https://github.com/stefanroex), [@vznh](https://github.com/vznh), and [@xmm](https://github.com/xmm) for contributions to this release.
+
+## 0.44.0
+
+Filter large diffs, recover archived threads more safely, and troubleshoot plugins with safe mode. These notes also cover 0.43.4, which shipped without notes.
+
+### Highlights
+
+- **Filter the diff panel** with globs like `*.md`, `docs/**`, or `!*.test.ts`.
+- **Safer archiving.** Undo within 30 seconds keeps a running turn and its terminals alive, and cleaned-up workspaces can be restored.
+- **Plugin safe mode** stops every plugin not included with bb in one step, then restores them when you turn it off.
+- **Claude Code fast mode** now works on supported Opus models.
+
+### Improvements
+
+- **Composer:** a send menu to queue, steer, save a draft, or send later; an Install button when a provider CLI is missing; 35 MB attachments; and automatic retries for failed queued messages.
+- **Sidebar:** show and unarchive archived threads, rename in place, and hide rows from their … menu. Installed thread-list and navigation plugins take over automatically.
+- **Navigation:** keyboard shortcuts for moving between splits and panel tabs, starting threads in existing Git worktrees, and faster long conversations.
+- **Desktop:** Cmd+F find, 50–300% zoom, clearer startup recovery, and cookie import from Dia.
+- **Machines:** remove a machine while keeping its threads as read-only history, and turn a moved server’s old computer into a regular machine with `bb server install-machine-service`.
+- **Plugins:** Docs improvements, a refreshed marketplace, 75% smaller bundled plugins, and forkable built-ins.
+- **AI services:** choose which service writes thread titles, commit messages, and voice transcripts in Settings → AI services.
+- **In-app updates (opt-in):** start bb with `npx bb-app start --in-app-updates` to update from Settings → Updates or `bb updates app`.
+
+### Fixes
+
+- Fixes for Pi, Claude Code, Codex, and ACP sessions, bb Connect tunnel resets, stuck workspaces and questions, voice input, and the mobile keyboard and sidebar.
+
+### New plugin APIs
+
+- Experimental `aiServices`, `sidebarHeader`, `useSidebarNavigation`, and `sendMenu`, plus `useSdk()`, `bb.onInstall`, and the `experimental_host.deleted` event.
+
+### Thanks
+
+Thank you to the contributors outside the core team: [@andrewkchan](https://github.com/andrewkchan), [@danielbachhuber](https://github.com/danielbachhuber), [@dillonzq](https://github.com/dillonzq), [@fgrehm](https://github.com/fgrehm), [@hemaaanth](https://github.com/hemaaanth), [@jshph](https://github.com/jshph), [@luketraas](https://github.com/luketraas), [@MacHatter1](https://github.com/MacHatter1), [@maheen-ejaz](https://github.com/maheen-ejaz), [@OXI-717](https://github.com/OXI-717), [@salemsayed](https://github.com/salemsayed), [@vyacheslav-startsev](https://github.com/vyacheslav-startsev), [@vznh](https://github.com/vznh), and [@Willhong](https://github.com/Willhong).
+
 ## 0.43.3
 
 Save messages as drafts, annotate pages for your agent, and watch browser automation live in chat. This release also redesigns handoffs and improves everyday navigation, configuration across machines, and conversation performance.

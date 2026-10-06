@@ -1,4 +1,4 @@
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "@/lib/utils";
 import type { PluginSidebarSplitPane } from "@get-bb/plugin-sdk/app";
 
 const GLYPH_SIZE = 14;

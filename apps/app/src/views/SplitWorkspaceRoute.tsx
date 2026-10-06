@@ -1,4 +1,6 @@
-import { lazy, useMemo } from "react";
+import { queueSplitDownload } from "@/lib/split-prefetch";
+import { pluginDetailKeyFromRoute } from "@/components/plugin/plugin-detail-key";
+import { useMemo } from "react";
 import { disableGlobalCursorStyles } from "react-resizable-panels";
 import { matchPath, Navigate, useLocation } from "react-router-dom";
 import { useAtomValue } from "jotai";
@@ -13,16 +15,15 @@ import {
 } from "@/lib/route-paths";
 import type { PaneContent } from "@/lib/split-layout";
 import { useRouteState } from "@/hooks/useRouteState";
-import { LegacyProjectComposeRedirect } from "./RootComposeView";
+import { LegacyProjectComposeRedirect } from "./LegacyProjectComposeRedirect";
 import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
+import { LazyPluginsView } from "./ToolsViewSplits";
 
 disableGlobalCursorStyles();
 
 const ROOT_COMPOSE_CONTENT = { kind: "new-thread" } as const;
 
-const PluginsView = lazy(() =>
-  import("./ToolsView").then((m) => ({ default: m.PluginsView })),
-);
+queueSplitDownload("markdown-html");
 
 export default function SplitWorkspaceRoute() {
   const location = useLocation();
@@ -84,7 +85,14 @@ export default function SplitWorkspaceRoute() {
     routeContent.kind === "plugin-detail" &&
     !holdsPluginDetailPane(layout, routeContent.pluginId)
   ) {
-    return <PluginsView pluginId={routeContent.pluginId} />;
+    return (
+      <LazyPluginsView
+        detailKey={pluginDetailKeyFromRoute(
+          routeContent.pluginId,
+          location.search,
+        )}
+      />
+    );
   }
   return <SplitThreadArea routeContent={routeContent} />;
 }

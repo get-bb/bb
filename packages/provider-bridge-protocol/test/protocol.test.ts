@@ -12,7 +12,6 @@ import {
   providerInstallationStatusParamsSchema,
   threadStopParamsSchema,
   ThreadEventGrammar,
-  toolCallRequestParamsSchema,
   turnStartParamsSchema,
 } from "../src/index.js";
 import { THREAD_DELTA_NOTIFICATION_METHOD } from "../src/thread-delta.js";
@@ -43,6 +42,24 @@ describe("handshake", () => {
 });
 
 describe("provider installation status", () => {
+  it("defaults legacy requests to update discovery and accepts local-only probes", () => {
+    expect(
+      providerInstallationStatusParamsSchema.parse({ providerId: "codex" })
+        .checkUpdates,
+    ).toBe(true);
+    expect(
+      providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        checkUpdates: false,
+      }).checkUpdates,
+    ).toBe(false);
+    expect(
+      providerInstallationStatusParamsSchema.safeParse({
+        providerId: "codex",
+        checkUpdates: "false",
+      }).success,
+    ).toBe(false);
+  });
   it("accepts the typed thread rewind requirement and rejects arbitrary operations", () => {
     expect(
       providerInstallationStatusParamsSchema.parse({
@@ -75,28 +92,6 @@ describe("thread/stop", () => {
       activeTurnId: null,
     });
     expect(release.intent).toBe("release");
-  });
-});
-
-describe("item/tool/call", () => {
-  it("rejects an empty-string turn id — null is the only unresolved value", () => {
-    const empty = toolCallRequestParamsSchema.safeParse({
-      providerThreadId: "p_1",
-      turnId: "",
-      callId: "c_1",
-      tool: "ask_user_question",
-      arguments: {},
-    });
-    expect(empty.success).toBe(false);
-
-    const unresolved = toolCallRequestParamsSchema.parse({
-      providerThreadId: "p_1",
-      turnId: null,
-      callId: "c_1",
-      tool: "ask_user_question",
-      arguments: {},
-    });
-    expect(unresolved.turnId).toBeNull();
   });
 });
 

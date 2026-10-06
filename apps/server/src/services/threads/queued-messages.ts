@@ -68,7 +68,7 @@ import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { hasMessageDispatchHooks } from "./dispatch-hooks.js";
-import { attemptDispatch } from "./dispatch-attempt.js";
+import { attemptDispatch, threadTargetHostId } from "./dispatch-attempt.js";
 import { deliverParentSystemMessage } from "./parent-system-messages.js";
 import {
   createQueuedMessageAutoSendPausedError,
@@ -94,8 +94,9 @@ import {
   threadEnvironmentUnavailableDetails,
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { resolvePromptAttachmentReferences } from "../projects/attachments.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
+import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import {
   ThreadContextClearInProgressError,
   withThreadSendGuard,
@@ -203,6 +204,7 @@ function admitQueuedMessage(
     return { hasProviderSession };
   }
   const environment = getEnvironment(db, thread.environmentId);
+  assertThreadHostAcceptsWork(db, thread);
   const goneDetails = environment
     ? goneThreadEnvironmentDetails(environment)
     : null;
@@ -218,11 +220,12 @@ export async function createQueuedMessageForThread(
 ): Promise<ThreadQueuedMessage> {
   const { payload, thread } = args;
   ensureThreadQueueIsWritable(thread);
-  await validatePromptAttachmentReferences({
+  const input = await resolvePromptAttachmentReferences({
     db: deps.db,
     dataDir: deps.config.dataDir,
     input: payload.input,
     projectId: thread.projectId,
+    hostId: threadTargetHostId(deps, thread),
   });
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
@@ -241,7 +244,7 @@ export async function createQueuedMessageForThread(
         const { hasProviderSession } = admitQueuedMessage(tx, currentThread);
         const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
           threadId: thread.id,
-          content: payload.input,
+          content: input,
           senderThreadId,
           model: execution.model,
           reasoningLevel: execution.reasoningLevel,

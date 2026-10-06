@@ -4,7 +4,7 @@ import {
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonOnlineRpcResult,
 } from "@bb/host-daemon-contract";
-import { hostDaemonSessions, updateHost } from "@bb/db";
+import { hostDaemonSessions, openSession, updateHost } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
@@ -14,6 +14,10 @@ import {
   callHostRetryableOnlineRpcForWork,
 } from "../../src/services/hosts/online-rpc.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
+import {
+  handleDaemonSessionSilent,
+  handleDaemonSocketClosed,
+} from "../../src/internal/session-owner-side-effects.js";
 import {
   feedRawDaemonWebSocketMessage,
   type TestDaemonWebSocket,
@@ -213,6 +217,84 @@ describe("host online RPC retry semantics", () => {
       expect(requests.map((request) => request.command.type)).toEqual([
         "provider.list_models",
       ]);
+    });
+  });
+
+  it("waits for a daemon reconnecting after its socket dropped before sending an RPC", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-reconnect-wait",
+      });
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+
+      setTimeout(() => {
+        const reconnected = openSession(harness.db, {
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          dataDir: session.dataDir,
+          protocolVersion: session.protocolVersion,
+          heartbeatIntervalMs: session.heartbeatIntervalMs,
+          leaseTimeoutMs: session.leaseTimeoutMs,
+        });
+        const socket: TestHostRpcSocket = {
+          close() {},
+          send(data) {
+            const request = parseHostRpcRequest(data);
+            requests.push(request);
+            harness.hub.recordHostOnlineRpcResponse({
+              sessionId: reconnected.id,
+              message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                type: "host-rpc.response",
+                requestId: request.requestId,
+                commandType: request.command.type,
+                ok: true,
+                result: { models: [], selectedOnlyModels: [] },
+              }),
+            });
+          },
+        };
+        harness.hub.registerDaemon(reconnected.id, host.id, socket);
+      }, 200);
+
+      await expect(
+        callHostOnlineRpc(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 1_000,
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
+        }),
+      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      expect(requests).toHaveLength(1);
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
+    });
+  });
+
+  it("fails fast for a host whose session the server expired for silence", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-silent-fail-fast",
+      });
+      handleDaemonSessionSilent(harness.deps, { sessionId: session.id });
+      const waitForDaemon = vi.spyOn(harness.hub, "waitForDaemonForHost");
+
+      await expect(
+        callHostOnlineRpc(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 1_000,
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
+        }),
+      ).rejects.toMatchObject({ body: { code: "host_unavailable" } });
+      expect(waitForDaemon).not.toHaveBeenCalled();
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
     });
   });
 
@@ -485,15 +567,11 @@ describe("host online RPC retry semantics", () => {
             rawMessage: {
               type: "host-rpc.response",
               requestId: request.requestId,
-              commandType: "host.file_metadata",
+              commandType: "host.read_file",
               ok: true,
               result: {
-                path: filePath,
-                content: "<!doctype html>",
-                contentEncoding: "utf8",
-                mimeType: "text/html",
-                sizeBytes: 15,
-                sha256: "0".repeat(64),
+                files: [],
+                truncated: false,
               },
             },
           });
@@ -507,7 +585,7 @@ describe("host online RPC retry semantics", () => {
           hostId: host.id,
           timeoutMs: 25,
           command: {
-            type: "host.file_metadata",
+            type: "host.read_file",
             path: filePath,
           },
         });
@@ -522,7 +600,7 @@ describe("host online RPC retry semantics", () => {
 
       expect(requests.map((request) => request.command)).toEqual([
         {
-          type: "host.file_metadata",
+          type: "host.read_file",
           path: filePath,
         },
       ]);
@@ -553,16 +631,11 @@ describe("host online RPC retry semantics", () => {
             rawMessage: {
               type: "host-rpc.response",
               requestId: request.requestId,
-              commandType: "host.read_file",
+              commandType: "host.list_files",
               ok: true,
               result: {
-                path: filePath,
-                content: "<!doctype html>",
-                contentEncoding: "utf8",
-                mimeType: "text/html",
-                modifiedAtMs: 1234,
-                sizeBytes: 15,
-                sha256: "0".repeat(64),
+                files: [],
+                truncated: false,
               },
             },
           });
@@ -576,7 +649,7 @@ describe("host online RPC retry semantics", () => {
           hostId: host.id,
           timeoutMs: 1_000,
           command: {
-            type: "host.file_metadata",
+            type: "host.read_file",
             path: filePath,
           },
         });
@@ -588,13 +661,13 @@ describe("host online RPC retry semantics", () => {
         expect(error.status).toBe(500);
         expect(error.body.code).toBe("command_result_type_mismatch");
         expect(error.body.message).toContain(
-          "completed with unexpected type host.read_file",
+          "completed with unexpected type host.list_files",
         );
       }
 
       expect(requests.map((request) => request.command)).toEqual([
         {
-          type: "host.file_metadata",
+          type: "host.read_file",
           path: filePath,
         },
       ]);

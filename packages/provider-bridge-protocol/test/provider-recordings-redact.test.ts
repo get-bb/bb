@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
@@ -38,7 +39,13 @@ it("redacts every documented GitHub token prefix", () => {
 
     const stdout = execFileSync(
       process.execPath,
-      [REDACT_SCRIPT.pathname, inputDir, outputDir, "--home", "/home/tester"],
+      [
+        fileURLToPath(REDACT_SCRIPT),
+        inputDir,
+        outputDir,
+        "--home",
+        "/home/tester",
+      ],
       { encoding: "utf8" },
     );
     const output = readFileSync(join(outputDir, "github.ndjson"), "utf8");

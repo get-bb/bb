@@ -112,8 +112,9 @@ Contract:
   transcript in the app.
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and
   the thread doesn't start.
-- POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
-  supported; bb reports that POSIX shell scripts are unsupported on Windows.
+- A bash script on every platform. On native Windows bb runs it with the bash
+  that Git for Windows installs and fails with a message naming Git for Windows
+  when there is none.
 
 ## Cleanup
 
@@ -164,8 +165,9 @@ Contract:
 - A non-zero exit, a signal, or a timeout reports a failure. It never stops bb
   from removing the worktree.
 - The script receives the same sanitized environment as the setup script.
-- POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
-  supported; bb reports that POSIX shell scripts are unsupported on Windows.
+- A bash script on every platform. On native Windows bb runs it with the bash
+  that Git for Windows installs and fails with a message naming Git for Windows
+  when there is none.
 
 Hook operation IDs and their started/finished state are saved per launch attempt.
 After a server restart, bb reconciles the original daemon operation instead of

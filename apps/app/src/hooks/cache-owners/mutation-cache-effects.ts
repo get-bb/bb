@@ -32,6 +32,7 @@ import {
   getThreadQueueContentInvalidationQueryKeys,
   getThreadTimelineInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
+import { forgetThreadOpenCache } from "./thread-open-cache-owner";
 
 interface ProjectSourceInvalidationArg extends QueryClientArg {
   projectId: string | undefined;
@@ -276,6 +277,7 @@ export function removeThreadScopedQueries({
   queryClient,
   threadId,
 }: ThreadArg): void {
+  forgetThreadOpenCache(queryClient, threadId);
   queryClient.removeQueries({ queryKey: threadQueryKey(threadId) });
   queryClient.removeQueries({
     queryKey: threadTimelineQueryKeyPrefix(threadId),

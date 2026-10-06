@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveDevInstanceConfig } from "@bb/config/runtime";
 import {
@@ -32,8 +32,9 @@ describe("desktop packaging task", () => {
   it("selects the platform packaging task and refuses unsupported platforms", () => {
     expect(resolveDesktopPackageTask("darwin")).toBe("package");
     expect(resolveDesktopPackageTask("linux")).toBe("package:linux");
-    expect(() => resolveDesktopPackageTask("win32")).toThrow(
-      /supported on macOS and Linux/u,
+    expect(resolveDesktopPackageTask("win32")).toBe("package:win");
+    expect(() => resolveDesktopPackageTask("freebsd")).toThrow(
+      /supported on macOS, Linux, and Windows/u,
     );
     expect(createDesktopPackageCommand("darwin").args).toEqual(
       expect.arrayContaining(["run", "package", "--filter=@bb/desktop"]),
@@ -42,10 +43,12 @@ describe("desktop packaging task", () => {
 
   it("runs the packaged app from the desktop package directory", () => {
     const command = createDesktopRunCommand();
-    expect(command.cwd.endsWith("/apps/desktop")).toBe(true);
-    expect(command.args[0]?.endsWith("/scripts/run-packaged-app.mjs")).toBe(
-      true,
-    );
+    expect(command.cwd.endsWith(`${sep}${join("apps", "desktop")}`)).toBe(true);
+    expect(
+      command.args[0]?.endsWith(
+        `${sep}${join("scripts", "run-packaged-app.mjs")}`,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -78,17 +81,6 @@ describe("desktop launch environment", () => {
     expect(env.BB_DEV_APP_PORT).toBeUndefined();
   });
 
-  it("keeps the worktree build off the installed Electron user data directory", () => {
-    const env = toDesktopLaunchProcessEnv({
-      baseEnv: {},
-      config,
-      mode: "worktree",
-    });
-
-    expect(env.BB_DESKTOP_USER_DATA_DIR?.startsWith(config.dataDir)).toBe(true);
-    expect(env.BB_DESKTOP_USER_DATA_DIR).not.toContain("Application Support");
-  });
-
   it("preserves an explicit Electron user data directory", () => {
     const userDataDir = "/tmp/bb-desktop-profile";
     const env = toDesktopLaunchProcessEnv({
@@ -97,7 +89,7 @@ describe("desktop launch environment", () => {
       mode: "worktree",
     });
 
-    expect(env.BB_DESKTOP_USER_DATA_DIR).toBe(userDataDir);
+    expect(env.BB_DESKTOP_USER_DATA_DIR).toBe(resolve(userDataDir));
     expect(
       resolveDesktopUserDataDir(
         { BB_DESKTOP_USER_DATA_DIR: "relative-profile" },

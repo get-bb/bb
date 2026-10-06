@@ -5,6 +5,7 @@ import {
   pluginPackageJsonSchema,
   type PluginPackageJson,
 } from "@bb/domain";
+import { isPathWithinDirectory } from "@bb/process-utils";
 import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
@@ -40,7 +41,7 @@ export function resolveManifestPath(
     throw new Error(`manifest ${label} must be relative, got "${entry}"`);
   }
   const resolved = resolve(rootDir, entry);
-  if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
+  if (!isPathWithinDirectory(resolve(rootDir), resolved)) {
     throw new Error(
       `manifest ${label} escapes the plugin directory: "${entry}"`,
     );
@@ -80,7 +81,7 @@ export async function resolveManifestAssetFile(
     realpath(rootDir),
     realpath(assetPath),
   ]);
-  if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+  if (!isPathWithinDirectory(realRoot, realAsset)) {
     throw new Error(
       `manifest ${label} escapes the plugin directory through a symlink`,
     );

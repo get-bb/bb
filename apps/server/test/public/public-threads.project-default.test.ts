@@ -1,12 +1,7 @@
 import { getEnvironment } from "@bb/db";
 import { getThread } from "@bb/db";
-import {
-  PERSONAL_PROJECT_ID,
-  threadSchema,
-  type GitSourceInspection,
-} from "@bb/domain";
+import { threadSchema, type GitSourceInspection } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
-import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
 import { getThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
 import type { ThreadProvisionEnvironmentIntent } from "../../src/services/threads/thread-startup-store.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
@@ -19,10 +14,7 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
-import {
-  installFakeGitWorktreeProvider,
-  installFakePersonalWorkspaceProvider,
-} from "../helpers/environment-provider.js";
+import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
 
 interface CreateThreadBodyOverrides {
   environment: unknown;
@@ -123,26 +115,6 @@ describe("project-default thread environment", () => {
         machine: { type: "existing", hostId: host.id },
         inputs: { branch: { kind: "default" } },
         selectionResolved: true,
-      });
-    });
-  });
-
-  it("resolves the personal project to the personal provider on the primary host", async () => {
-    await withTestHarness(async (harness) => {
-      installFakePersonalWorkspaceProvider();
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-personal-default",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      await expect(
-        resolveProjectDefaultThreadEnvironment(harness.deps, {
-          projectId: PERSONAL_PROJECT_ID,
-        }),
-      ).resolves.toEqual({
-        type: "provider",
-        environmentProviderId: "personal-workspace",
-        machine: { type: "existing", hostId: host.id },
-        inputs: null,
       });
     });
   });

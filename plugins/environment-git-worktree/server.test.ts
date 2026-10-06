@@ -1,6 +1,7 @@
 import type {
   PluginEnvironmentProviderCreateContext,
   PluginEnvironmentProviderProgress,
+  PluginEnvironmentProviderRestoreContext,
 } from "@get-bb/plugin-sdk/environment-provider";
 import {
   createFakePluginHost,
@@ -72,13 +73,55 @@ async function setup(
     suggestedBranchName: "bb/test",
     attempt: 1,
     pathKey: THREAD_ID,
-    rebuild: false,
     experimental_claimPath: async () => true,
-    previous: null,
     report,
     signal,
   };
-  return { context, harness, logs, provider, report, signal, steps };
+  const restore = provider.restore;
+  if (restore === null) throw new Error("Provider cannot restore");
+  return { context, harness, logs, provider, report, restore, signal, steps };
+}
+
+function restoreContext(
+  context: PluginEnvironmentProviderCreateContext,
+  branchName: string | null,
+): PluginEnvironmentProviderRestoreContext {
+  const { suggestedBranchName: _suggested, ...operation } = context;
+  return {
+    ...operation,
+    pathKey: "replacement",
+    attempt: 2,
+    previous: {
+      environment: {
+        id: "env-retired",
+        name: null,
+        projectId: PROJECT_ID,
+        hostId: HOST_ID,
+        path: WORKTREE_PATH,
+        isGitRepo: true,
+        isWorktree: true,
+        branchName,
+        baseBranch: "main",
+        defaultBranch: "main",
+        mergeBaseBranch: "main",
+        status: "destroyed",
+        environmentProviderId: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
+        lifecycle: {
+          phase: "destroyed",
+          retireAt: null,
+          teardown: { status: "removed", attempt: 1 },
+        },
+        hostLifecycle: "active",
+        environmentProviderSelection: null,
+        environmentProviderInstanceKey: THREAD_ID,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      resource: null,
+    },
+  };
 }
 
 describe("worktree resource operations", () => {
@@ -112,64 +155,29 @@ describe("worktree resource operations", () => {
     });
   });
 
-  it("passes a named base and reuses the branch during rebuild", async () => {
+  it("restores on the destroyed environment's branch, keeping its commits", async () => {
     const fixture = await setup();
-    await fixture.provider.create({
-      ...fixture.context,
+    await fixture.restore({
+      ...restoreContext(fixture.context, "bb/original-thread"),
       inputs: { branch: { kind: "named", name: "release" } },
-      rebuild: true,
-      pathKey: "replacement",
-      attempt: 2,
     });
     expect(fixture.harness.experimental_hostRpcCalls[0]?.input).toMatchObject({
+      branchName: "bb/original-thread",
       baseBranch: { kind: "named", name: "release" },
       branchMode: "reuse-existing",
       pathKey: "replacement",
     });
   });
 
-  it("rebuilds the previous environment branch after the thread is renamed", async () => {
+  it("refuses to restore a worktree that had no branch checked out", async () => {
     const fixture = await setup();
-    await fixture.provider.create({
-      ...fixture.context,
-      suggestedBranchName: "bb/renamed-thread",
-      rebuild: true,
-      previous: {
-        environment: {
-          id: "env-retired",
-          name: null,
-          projectId: PROJECT_ID,
-          hostId: HOST_ID,
-          path: WORKTREE_PATH,
-          isGitRepo: true,
-          isWorktree: true,
-          branchName: "bb/original-thread",
-          baseBranch: "main",
-          defaultBranch: "main",
-          mergeBaseBranch: "main",
-          status: "destroyed",
-          environmentProviderId: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
-          lifecycle: {
-            phase: "destroyed",
-            retireAt: null,
-            teardown: { status: "removed", attempt: 1 },
-          },
-          environmentProviderSelection: null,
-          environmentProviderInstanceKey: THREAD_ID,
-          managed: true,
-          workspaceProvisionType: "managed-worktree",
-          createdAt: 1,
-          updatedAt: 2,
-        },
-        resource: null,
-      },
-      pathKey: "replacement",
-      attempt: 2,
+    expect(
+      await fixture.restore(restoreContext(fixture.context, null)),
+    ).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("no branch"),
     });
-    expect(fixture.harness.experimental_hostRpcCalls[0]?.input).toMatchObject({
-      branchName: "bb/original-thread",
-      branchMode: "reuse-existing",
-    });
+    expect(fixture.harness.experimental_hostRpcCalls).toHaveLength(0);
   });
 
   it("forwards host progress while create is running", async () => {
@@ -289,6 +297,26 @@ describe("adopting an existing worktree", () => {
     });
     expect(fixture.claimed).toHaveBeenCalledWith(EXISTING_PATH);
     expect(fixture.harness.experimental_hostRpcCalls).toHaveLength(1);
+    expect(fixture.harness.experimental_hostRpcCalls[0]?.method).toBe(
+      "resolveExistingWorktree",
+    );
+  });
+
+  it("restores by adopting the same existing path again", async () => {
+    const fixture = await setupAdoption();
+
+    expect(
+      await fixture.restore({
+        ...restoreContext(fixture.context, "feature"),
+        inputs: fixture.context.inputs,
+        experimental_claimPath: fixture.claimed,
+      }),
+    ).toEqual({
+      status: "created",
+      path: EXISTING_PATH,
+      ownsPath: false,
+      resource: { adopted: true },
+    });
     expect(fixture.harness.experimental_hostRpcCalls[0]?.method).toBe(
       "resolveExistingWorktree",
     );

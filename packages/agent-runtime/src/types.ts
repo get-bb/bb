@@ -133,7 +133,6 @@ export interface StartThreadArgs {
   options: AgentRuntimeExecutionOptions;
   instructions?: string;
   dynamicTools?: DynamicTool[];
-  disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
   fork?: {
     sourceProviderThreadId: string;
@@ -159,7 +158,6 @@ interface PrepareThreadRewindArgs {
   options: AgentRuntimeExecutionOptions;
   instructions?: string;
   dynamicTools?: DynamicTool[];
-  disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
 }
 
@@ -183,7 +181,6 @@ export interface ResumeThreadArgs {
   options: AgentRuntimeExecutionOptions;
   instructions?: string;
   dynamicTools?: DynamicTool[];
-  disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
 }
 
@@ -295,6 +292,7 @@ interface ProviderMaintenanceArgs {
 
 interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
   requirement?: "thread_rewind";
+  checkUpdates?: boolean;
 }
 
 export interface AgentRuntime {

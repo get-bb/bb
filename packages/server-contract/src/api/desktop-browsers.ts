@@ -1,7 +1,6 @@
 import {
   desktopBrowserImportSelectionSchema,
   desktopBrowserNavigationUrlSchema,
-  desktopBrowserProfileSchema,
 } from "@bb/host-daemon-contract";
 import { z } from "zod";
 
@@ -37,7 +36,6 @@ export const desktopBrowserAcquireRequestSchema = desktopBrowserScopeSchema
       .refine((ids) => new Set(ids).size === ids.length),
     controllerLabel: z.string().trim().min(1).max(100),
     ttlMs: z.number().int().min(1000).max(1800000).default(300000),
-    allowPersonal: z.boolean().default(false),
   })
   .strict();
 export const desktopBrowserLeaseRequestSchema = desktopBrowserScopeSchema
@@ -49,10 +47,7 @@ export const desktopBrowserInstanceRequestSchema =
     .strict();
 export const desktopBrowserImportCookiesRequestSchema =
   desktopBrowserInstanceRequestSchema
-    .extend({
-      ...desktopBrowserImportSelectionSchema.shape,
-      profile: desktopBrowserProfileSchema.default({ kind: "personal" }),
-    })
+    .extend(desktopBrowserImportSelectionSchema.shape)
     .strict();
 
 export type ExperimentalDesktopBrowserHostRequest = z.infer<

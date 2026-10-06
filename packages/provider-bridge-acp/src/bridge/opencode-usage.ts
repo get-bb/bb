@@ -9,6 +9,7 @@ const apiCredentialSchema = z.object({
   type: z.literal("api"),
   key: z.string().trim().min(1),
 });
+const storedKeySchema = apiCredentialSchema.extend({ type: z.literal("key") });
 const credentialsSchema = z.record(z.string(), z.unknown());
 const accountSchema = z.object({
   id: z.string().min(1),
@@ -18,6 +19,27 @@ const accountSchema = z.object({
   token_expiry: z.number().nullable(),
   active_org_id: z.string().min(1).nullable(),
 });
+const storedOAuthSchema = z.object({
+  type: z.literal("oauth"),
+  methodID: z.literal("device"),
+  access: z.string().min(1),
+  expires: z.number().nonnegative(),
+  metadata: z.object({
+    server: z.url().default("https://opencode.ai/console"),
+    accountID: z.string().min(1),
+    email: z.email().nullable().catch(null),
+    orgID: z.string().min(1),
+  }),
+});
+
+function isOfficialConsole(url: string): boolean {
+  const issuer = new URL(url);
+  return (
+    issuer.origin === "https://opencode.ai" &&
+    ["/", "/console", "/console/"].includes(issuer.pathname)
+  );
+}
+
 const windowSchema = z.object({
   status: z.enum(["ok", "rate-limited"]),
   percent: z.number().nonnegative(),
@@ -41,7 +63,7 @@ function dataDirectory(env: NodeJS.ProcessEnv): string {
   );
 }
 
-async function readAccount(env: NodeJS.ProcessEnv) {
+async function openDatabase(env: NodeJS.ProcessEnv) {
   const databasePath = path.join(dataDirectory(env), "opencode.db");
   try {
     await fs.access(databasePath);
@@ -50,36 +72,68 @@ async function readAccount(env: NodeJS.ProcessEnv) {
       return null;
     throw error;
   }
-  const database = new DatabaseSync(databasePath, { readOnly: true });
-  try {
-    const tables = database
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('account', 'account_state')",
-      )
-      .all();
-    if (tables.length !== 2) return null;
-    const row = database
-      .prepare(
-        "SELECT a.id, a.email, a.url, a.access_token, a.token_expiry, s.active_org_id FROM account a JOIN account_state s ON s.active_account_id = a.id WHERE s.id = 1",
-      )
-      .get();
-    if (!row) return null;
-    const account = accountSchema.parse(row);
-    const issuer = new URL(account.url);
-    if (
-      issuer.origin !== "https://opencode.ai" ||
-      !["/", "/console", "/console/"].includes(issuer.pathname) ||
-      account.active_org_id === null
-    )
-      return null;
-    return account;
-  } finally {
-    database.close();
-  }
+  return new DatabaseSync(databasePath, { readOnly: true });
 }
 
-async function readApiKey(env: NodeJS.ProcessEnv): Promise<string | null> {
-  if (env.OPENCODE_API_KEY?.trim()) return env.OPENCODE_API_KEY.trim();
+function readAccount(database: DatabaseSync) {
+  const tables = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('account', 'account_state')",
+    )
+    .all();
+  if (tables.length !== 2) return null;
+  const row = database
+    .prepare(
+      "SELECT a.id, a.email, a.url, a.access_token, a.token_expiry, s.active_org_id FROM account a JOIN account_state s ON s.active_account_id = a.id WHERE s.id = 1",
+    )
+    .get();
+  if (!row) return null;
+  const account = accountSchema.parse(row);
+  if (!isOfficialConsole(account.url) || account.active_org_id === null)
+    return null;
+  return account;
+}
+
+function readStoredCredential(database: DatabaseSync) {
+  const table = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'credential'",
+    )
+    .get();
+  if (!table) return null;
+  const query = database.prepare(
+    "SELECT value FROM credential WHERE integration_id = ? AND active = 1 ORDER BY time_created DESC, id DESC LIMIT 1",
+  );
+  for (const provider of ["opencode-go", "opencode"]) {
+    const row = query.get(provider);
+    if (!row) continue;
+    const value = z.string().parse(row.value);
+    const parsed: unknown = JSON.parse(value);
+    const credential = storedKeySchema.safeParse(parsed);
+    if (credential.success)
+      return { apiKey: credential.data.key, account: null };
+    const oauth = storedOAuthSchema.safeParse(parsed);
+    if (!oauth.success || !isOfficialConsole(oauth.data.metadata.server))
+      continue;
+    const { access, expires, metadata } = oauth.data;
+    return {
+      apiKey: access,
+      account: {
+        id: metadata.accountID,
+        email: metadata.email,
+        url: metadata.server,
+        access_token: access,
+        token_expiry: expires,
+        active_org_id: metadata.orgID,
+      },
+    };
+  }
+  return null;
+}
+
+async function readLegacyApiKey(
+  env: NodeJS.ProcessEnv,
+): Promise<string | null> {
   let content = env.OPENCODE_AUTH_CONTENT;
   if (content) {
     try {
@@ -121,10 +175,27 @@ export async function readOpenCodeGoUsage(
     },
   });
   let apiKey: string | null;
-  let account: Awaited<ReturnType<typeof readAccount>>;
+  let account: ReturnType<typeof readAccount> = null;
   try {
-    account = env.OPENCODE_API_KEY?.trim() ? null : await readAccount(env);
-    apiKey = account?.access_token ?? (await readApiKey(env));
+    apiKey = env.OPENCODE_API_KEY?.trim() || null;
+    if (apiKey === null) {
+      const database = await openDatabase(env);
+      if (database) {
+        try {
+          account = readAccount(database);
+          if (account) {
+            apiKey = account.access_token;
+          } else {
+            const stored = readStoredCredential(database);
+            apiKey = stored?.apiKey ?? null;
+            account = stored?.account ?? null;
+          }
+        } finally {
+          database.close();
+        }
+      }
+      apiKey ??= await readLegacyApiKey(env);
+    }
   } catch {
     return failure("OpenCode credentials could not be read.");
   }

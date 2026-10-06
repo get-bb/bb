@@ -3,6 +3,7 @@ import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import { randomUUID } from "node:crypto";
 import {
   createTerminalSession,
+  getSessionById,
   getTerminalSession,
   listTerminalSessions,
   updateTerminalSession,
@@ -52,6 +53,7 @@ import {
   type PendingRpcKey,
   PendingRpcRegistry,
 } from "./pending-rpc-registry.js";
+import { TerminalOutputFlowControl } from "./terminal-output-flow-control.js";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
 const DEFAULT_TERMINAL_CLOSE_TIMEOUT_MS = 5_000;
@@ -159,6 +161,7 @@ interface ResolvedTerminalLaunchTarget {
 }
 
 interface AttachBrowserTerminalArgs {
+  outputAcks: boolean;
   socket: TerminalClientSocket;
   sinceSeq: number;
   terminalId: string;
@@ -317,7 +320,7 @@ interface CloseDestroyedEnvironmentTerminalsArgs {
   environmentId: string;
 }
 
-interface ExpireDisconnectedHostTerminalsArgs {
+interface ReconcileDisconnectedHostTerminalsArgs {
   daemonSessionId: string;
   hostId: string;
 }
@@ -382,6 +385,9 @@ function initialTitleForTerminal(
   }
   if (payload.start?.mode === "command") {
     return titleFromCommand(payload.start.command);
+  }
+  if (payload.start?.mode === "argv") {
+    return titleFromCommand(payload.start.argv.join(" "));
   }
   return `Terminal ${existingSessionCount + 1}`;
 }
@@ -543,8 +549,24 @@ export class TerminalSessionLifecycle {
     PendingRpcKey,
     TerminalSession
   >;
+  private readonly pendingCatchUps: PendingRpcRegistry<
+    PendingTerminalRpcKey,
+    TerminalReplayMessage
+  >;
+  private readonly catchingUpTerminalIds = new Set<string>();
+  private readonly forwardedNextSeqByTerminalId = new Map<string, number>();
+  private readonly outputAckSocketVisibility = new WeakMap<
+    TerminalClientSocket,
+    boolean
+  >();
+  private readonly outputFlow: TerminalOutputFlowControl;
 
   constructor(private readonly options: TerminalSessionLifecycleOptions) {
+    this.outputFlow = new TerminalOutputFlowControl({
+      sendDaemonMessage: (daemonSessionId, message) => {
+        this.options.hub.sendDaemonSessionMessage(daemonSessionId, message);
+      },
+    });
     const attachTimeoutMs =
       options.attachTimeoutMs ?? DEFAULT_TERMINAL_OPEN_TIMEOUT_MS;
     const closeTimeoutMs =
@@ -591,6 +613,18 @@ export class TerminalSessionLifecycle {
     });
     this.pendingRestarts = new PendingRpcRegistry({
       timeoutMs: null,
+    });
+    this.pendingCatchUps = new PendingRpcRegistry<
+      PendingTerminalRpcKey,
+      TerminalReplayMessage
+    >({
+      onFail: (key) => this.catchingUpTerminalIds.delete(key.terminalId),
+      onSettle: (key, message) => this.completeTerminalCatchUp(key, message),
+      timeoutMs: attachTimeoutMs,
+      timeoutError: terminalTimeoutError(
+        "terminal_catch_up_timeout",
+        "Timed out replaying terminal output after the host reconnected",
+      ),
     });
   }
 
@@ -1349,9 +1383,52 @@ export class TerminalSessionLifecycle {
     });
   }
 
-  expireDisconnectedHostTerminals(
-    args: ExpireDisconnectedHostTerminalsArgs,
+  reconcileDisconnectedHostTerminals(
+    args: ReconcileDisconnectedHostTerminalsArgs,
   ): void {
+    const openedInstanceId =
+      getSessionById(this.options.db, { sessionId: args.daemonSessionId })
+        ?.instanceId ?? null;
+    const disconnected = listTerminalSessions(this.options.db, {
+      scope: { hostId: args.hostId, kind: "host", statuses: ["disconnected"] },
+      visible: false,
+    });
+    for (const session of disconnected) {
+      const ownerInstanceId =
+        session.daemonSessionId === null
+          ? null
+          : (getSessionById(this.options.db, {
+              sessionId: session.daemonSessionId,
+            })?.instanceId ?? null);
+      if (openedInstanceId === null || ownerInstanceId !== openedInstanceId) {
+        continue;
+      }
+      const reconnected = updateTerminalSession(this.options.db, {
+        scope: {
+          kind: "terminal",
+          statuses: ["disconnected"],
+          terminalId: session.id,
+        },
+        update: { daemonSessionId: args.daemonSessionId, kind: "reconnect" },
+      });
+      if (!reconnected) {
+        continue;
+      }
+      this.options.logger.info(
+        { terminalId: reconnected.id, sessionId: args.daemonSessionId },
+        "Terminal session reattached to reconnected daemon",
+      );
+      this.notifyTerminalSessionChanged(reconnected);
+      this.options.hub.sendTerminalClientMessage(reconnected.id, {
+        type: "session-updated",
+        session: toTerminalSession(reconnected),
+      });
+      this.requestTerminalCatchUp({
+        daemonSessionId: args.daemonSessionId,
+        terminalId: reconnected.id,
+      });
+    }
+
     const exitedSessions = updateTerminalSessions(this.options.db, {
       scope: {
         hostId: args.hostId,
@@ -1375,6 +1452,9 @@ export class TerminalSessionLifecycle {
   }
 
   attachBrowserTerminal(args: AttachBrowserTerminalArgs): void {
+    if (args.outputAcks) {
+      this.outputAckSocketVisibility.set(args.socket, true);
+    }
     const current = this.getBrowserTerminalSession({
       ...args,
       reportMissing: false,
@@ -1388,6 +1468,14 @@ export class TerminalSessionLifecycle {
     }
 
     const session = toTerminalSession(current);
+    if (current.status === "disconnected") {
+      this.holdBrowserTerminalForReattach({
+        session,
+        sinceSeq: args.sinceSeq,
+        socket: args.socket,
+      });
+      return;
+    }
     if (current.status !== "running" || current.daemonSessionId === null) {
       this.options.hub.sendTerminalSocketMessage(args.socket, {
         type: "attached",
@@ -1433,13 +1521,11 @@ export class TerminalSessionLifecycle {
       },
     );
     if (!sent) {
-      if (this.pendingAttaches.cancel(pendingAttach.rpcKey)) {
-        this.options.hub.unregisterTerminalClient(current.id, args.socket);
-      }
-      this.sendTerminalSocketError({
+      this.pendingAttaches.cancel(pendingAttach.rpcKey);
+      this.holdBrowserTerminalForReattach({
+        session,
+        sinceSeq: args.sinceSeq,
         socket: args.socket,
-        code: "host_disconnected",
-        message: "Host is not connected",
       });
       this.disconnectDaemonSessionTerminals({
         daemonSessionId: current.daemonSessionId,
@@ -1447,8 +1533,31 @@ export class TerminalSessionLifecycle {
     }
   }
 
+  private holdBrowserTerminalForReattach(args: {
+    session: TerminalSession;
+    sinceSeq: number;
+    socket: TerminalClientSocket;
+  }): void {
+    this.options.hub.registerTerminalClient(args.session.id, args.socket);
+    this.addOutputFlowClient(args.session.id, args.socket, args.sinceSeq);
+    this.forwardedNextSeqByTerminalId.set(
+      args.session.id,
+      Math.max(
+        this.forwardedNextSeqByTerminalId.get(args.session.id) ?? 0,
+        args.sinceSeq,
+      ),
+    );
+    this.options.hub.sendTerminalSocketMessage(args.socket, {
+      type: "attached",
+      session: args.session,
+      replayStartSeq: args.sinceSeq,
+      nextSeq: args.sinceSeq,
+    });
+  }
+
   detachBrowserTerminal(args: DetachBrowserTerminalArgs): void {
     this.options.hub.unregisterTerminalClient(args.terminalId, args.socket);
+    this.outputFlow.removeClient(args.terminalId, args.socket);
     this.pendingAttaches.failAllMatching(
       (pending) =>
         pending.terminalId === args.terminalId &&
@@ -1470,20 +1579,25 @@ export class TerminalSessionLifecycle {
       case "resize":
         this.resizeBrowserTerminal(args);
         return;
-      case "close":
-        const current = this.getBrowserTerminalSession(args);
-        if (current) {
-          void this.closeTerminalSession({
-            current,
-            payload: { mode: "force", reason: args.message.reason },
-          }).catch((error) => {
-            this.sendTerminalSocketError({
-              socket: args.socket,
-              code: "terminal_close_failed",
-              message: error instanceof Error ? error.message : String(error),
-            });
-          });
+      case "ack":
+        this.outputFlow.acknowledge(
+          args.terminalId,
+          args.socket,
+          args.message.nextSeq,
+        );
+        return;
+      case "visibility":
+        if (this.outputAckSocketVisibility.has(args.socket)) {
+          this.outputAckSocketVisibility.set(
+            args.socket,
+            args.message.visible,
+          );
         }
+        this.outputFlow.setVisible(
+          args.terminalId,
+          args.socket,
+          args.message.visible,
+        );
         return;
     }
   }
@@ -1542,6 +1656,8 @@ export class TerminalSessionLifecycle {
           },
         });
         if (exited) {
+          this.forwardedNextSeqByTerminalId.delete(exited.id);
+          this.outputFlow.forgetTerminal(exited.id);
           this.pendingCloses.settle(
             terminalRpcKey(args.sessionId, exited.id, exited.id),
             exited,
@@ -1565,20 +1681,23 @@ export class TerminalSessionLifecycle {
         }
         return;
       case "terminal.output": {
+        this.outputFlow.recordOutput(
+          args.message.terminalId,
+          args.sessionId,
+          args.message.chunk.seq,
+        );
         const current = getTerminalById(
           this.options.db,
           args.message.terminalId,
         );
         if (
           current?.status !== "running" ||
-          current.daemonSessionId !== args.sessionId
+          current.daemonSessionId !== args.sessionId ||
+          this.catchingUpTerminalIds.has(current.id)
         ) {
           return;
         }
-        this.options.hub.sendTerminalClientMessage(args.message.terminalId, {
-          type: "output",
-          chunk: toTerminalOutputChunk(args.message.chunk),
-        });
+        this.forwardTerminalOutput(current.id, args.message.chunk);
         return;
       }
       case "terminal.replay":
@@ -1587,6 +1706,10 @@ export class TerminalSessionLifecycle {
           args.message,
         );
         this.pendingOutputReads.settle(
+          terminalResponseRpcKey(args.sessionId, args.message),
+          args.message,
+        );
+        this.pendingCatchUps.settle(
           terminalResponseRpcKey(args.sessionId, args.message),
           args.message,
         );
@@ -1685,6 +1808,8 @@ export class TerminalSessionLifecycle {
   private notifyExitedTerminalSession(
     args: NotifyExitedTerminalSessionArgs,
   ): void {
+    this.forwardedNextSeqByTerminalId.delete(args.session.id);
+    this.outputFlow.forgetTerminal(args.session.id);
     this.notifyTerminalSessionChanged(args.session);
     this.options.hub.sendTerminalClientMessage(args.session.id, {
       type: "exited",
@@ -1803,11 +1928,13 @@ export class TerminalSessionLifecycle {
       return null;
     }
     if (!isRunningBrowserTerminalSession(current)) {
-      this.sendTerminalSocketError({
-        socket: args.socket,
-        code: "terminal_not_running",
-        message: "Terminal session is not running",
-      });
+      if (current.status !== "disconnected") {
+        this.sendTerminalSocketError({
+          socket: args.socket,
+          code: "terminal_not_running",
+          message: "Terminal session is not running",
+        });
+      }
       return null;
     }
     return current;
@@ -1833,14 +1960,28 @@ export class TerminalSessionLifecycle {
   private disconnectDaemonSessionTerminals(
     args: DisconnectDaemonSessionTerminalsArgs,
   ): void {
-    const disconnected = updateTerminalSessions(this.options.db, {
-      scope: {
-        daemonSessionId: args.daemonSessionId,
-        kind: "daemon",
-        statuses: DAEMON_OWNED_TERMINAL_STATUSES,
-      },
-      update: { kind: "disconnect" },
-    });
+    const disconnected = [
+      ...updateTerminalSessions(this.options.db, {
+        scope: {
+          daemonSessionId: args.daemonSessionId,
+          kind: "daemon",
+          statuses: ["running"],
+        },
+        update: { kind: "disconnect", retainDaemonSession: true },
+      }),
+      ...updateTerminalSessions(this.options.db, {
+        scope: {
+          daemonSessionId: args.daemonSessionId,
+          kind: "daemon",
+          statuses: ["starting"],
+        },
+        update: { kind: "disconnect", retainDaemonSession: false },
+      }),
+    ];
+    this.pendingCatchUps.failAllMatching(
+      (pending) => pending.daemonSessionId === args.daemonSessionId,
+      new ApiError(502, "host_disconnected", "Host is not connected"),
+    );
     for (const session of disconnected) {
       this.rejectPendingClose(
         session.id,
@@ -1928,6 +2069,69 @@ export class TerminalSessionLifecycle {
     );
   }
 
+  private requestTerminalCatchUp(args: {
+    daemonSessionId: string;
+    terminalId: string;
+  }): void {
+    const sinceSeq = this.forwardedNextSeqByTerminalId.get(args.terminalId);
+    if (
+      sinceSeq === undefined ||
+      !this.options.hub.hasTerminalClients(args.terminalId)
+    ) {
+      return;
+    }
+    const requestId = randomUUID();
+    const pending: PendingTerminalRpcKey = {
+      daemonSessionId: args.daemonSessionId,
+      requestId,
+      rpcKey: terminalRpcKey(args.daemonSessionId, args.terminalId, requestId),
+      terminalId: args.terminalId,
+    };
+    this.catchingUpTerminalIds.add(args.terminalId);
+    void this.pendingCatchUps.claim(pending).promise.catch(() => undefined);
+    const sent = this.options.hub.sendDaemonSessionMessage(
+      args.daemonSessionId,
+      {
+        type: "terminal.attach",
+        requestId,
+        terminalId: args.terminalId,
+        sinceSeq,
+        tailBytes: BROWSER_TERMINAL_REPLAY_MAX_BYTES,
+      },
+    );
+    if (!sent) {
+      this.pendingCatchUps.fail(
+        pending.rpcKey,
+        new ApiError(502, "host_disconnected", "Host is not connected"),
+      );
+    }
+  }
+
+  private completeTerminalCatchUp(
+    pending: PendingTerminalRpcKey,
+    message: TerminalReplayMessage,
+  ): void {
+    this.catchingUpTerminalIds.delete(pending.terminalId);
+    for (const chunk of message.chunks) {
+      this.forwardTerminalOutput(pending.terminalId, chunk);
+    }
+  }
+
+  private forwardTerminalOutput(
+    terminalId: string,
+    chunk: TerminalOutputMessage["chunk"],
+  ): void {
+    const nextSeq = this.forwardedNextSeqByTerminalId.get(terminalId) ?? 0;
+    if (chunk.seq < nextSeq) {
+      return;
+    }
+    this.forwardedNextSeqByTerminalId.set(terminalId, chunk.seq + 1);
+    this.options.hub.sendTerminalClientMessage(terminalId, {
+      type: "output",
+      chunk: toTerminalOutputChunk(chunk),
+    });
+  }
+
   private completePendingAttach(
     pending: PendingTerminalAttachKey,
     message: TerminalReplayMessage,
@@ -1947,6 +2151,14 @@ export class TerminalSessionLifecycle {
     }
 
     this.options.hub.registerTerminalClient(current.id, pending.socket);
+    this.addOutputFlowClient(current.id, pending.socket, message.nextSeq);
+    this.forwardedNextSeqByTerminalId.set(
+      current.id,
+      Math.max(
+        this.forwardedNextSeqByTerminalId.get(current.id) ?? 0,
+        message.nextSeq,
+      ),
+    );
     this.options.hub.sendTerminalSocketMessage(pending.socket, {
       type: "attached",
       session: toTerminalSession(current),
@@ -1958,6 +2170,17 @@ export class TerminalSessionLifecycle {
         type: "output",
         chunk: toTerminalOutputChunk(chunk),
       });
+    }
+  }
+
+  private addOutputFlowClient(
+    terminalId: string,
+    socket: TerminalClientSocket,
+    nextSeq: number,
+  ): void {
+    const visible = this.outputAckSocketVisibility.get(socket);
+    if (visible !== undefined) {
+      this.outputFlow.addClient(terminalId, socket, nextSeq, visible);
     }
   }
 

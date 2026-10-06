@@ -9,7 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   createFakePluginHost,
   makeThreadResponse,
@@ -266,6 +266,52 @@ describe("bb tasks CLI", () => {
     expect(agentRow).toContain("agent");
     expect(agentRow).toContain("CLI provider worker");
     expect(agentRow).toContain("Codex");
+
+    await harness.dispose();
+  });
+
+  it("moves a task to another project and still resolves its old key", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    for (const [name, prefix] of [
+      ["Operations", "OPS"],
+      ["Home", "HOME"],
+    ]) {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          name!,
+          "--prefix",
+          prefix!,
+        ]),
+      );
+    }
+    stdout(
+      await harness.runCli(["create", "--project", "OPS", "--title", "Wander"]),
+    );
+
+    expect(
+      stdout(await harness.runCli(["move", "ops-1", "--project", "home"])),
+    ).toBe("Moved OPS-1 to HOME-1  Wander");
+    expect(
+      JSON.parse(stdout(await harness.runCli(["show", "OPS-1", "--json"]))),
+    ).toMatchObject({ task: { key: "HOME-1" } });
+    expect(
+      JSON.parse(
+        stdout(
+          await harness.runCli([
+            "move",
+            "OPS-1",
+            "--project",
+            "HOME",
+            "--json",
+          ]),
+        ),
+      ),
+    ).toMatchObject({ task: { key: "HOME-1" }, previousKey: "HOME-1" });
 
     await harness.dispose();
   });
@@ -993,7 +1039,7 @@ describe("bb tasks CLI", () => {
           "--reasoning",
           "high",
           "--service-tier",
-          "fast",
+          "none",
           "--permission",
           "accept-edits",
           "--environment",
@@ -1013,7 +1059,7 @@ describe("bb tasks CLI", () => {
       providerId: "codex",
       modelId: "gpt-5.6-sol",
       reasoningLevel: "high",
-      serviceTier: "fast",
+      serviceTier: "none",
       permissionMode: "accept-edits",
       environmentKind: "new-worktree",
       baseBranch: "main",
@@ -1026,7 +1072,7 @@ describe("bb tasks CLI", () => {
     expect(shown).toContain("Environment   worktree");
     expect(shown).toContain("Base branch   main");
     expect(shown).toContain("Machine       host_air");
-    expect(shown).toContain("Service tier  fast");
+    expect(shown).toContain("Service tier  none");
 
     const updated = JSON.parse(
       stdout(
@@ -1036,8 +1082,7 @@ describe("bb tasks CLI", () => {
           "CLI worker",
           "--reasoning",
           "ultra",
-          "--service-tier",
-          "none",
+          "--clear-service-tier",
           "--name",
           "CLI reviewer",
           "--environment",
@@ -1901,10 +1946,14 @@ describe("bb tasks CLI", () => {
   });
 
   it("routes file flags to the invoking thread's machine and honors --machine", async () => {
+    const remoteDir = resolve("/remote");
     const remoteFiles = new Map<string, Buffer>([
-      ["/remote/notes.md", Buffer.from("remote description\n", "utf8")],
       [
-        "/remote/shot.png",
+        join(remoteDir, "notes.md"),
+        Buffer.from("remote description\n", "utf8"),
+      ],
+      [
+        join(remoteDir, "shot.png"),
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       ],
     ]);
@@ -1949,7 +1998,7 @@ describe("bb tasks CLI", () => {
       },
     });
     await plugin(bb);
-    const threadCtx = { threadId: "thr_remote_worker", cwd: "/remote" };
+    const threadCtx = { threadId: "thr_remote_worker", cwd: remoteDir };
 
     stdout(
       await harness.runCli([
@@ -2007,14 +2056,14 @@ describe("bb tasks CLI", () => {
       [
         expect.objectContaining({
           hostId: "machine-remote",
-          path: "/remote/fetched/shot.png",
+          path: join(remoteDir, "fetched", "shot.png"),
           contentEncoding: "base64",
           createParents: true,
         }),
       ],
     ]);
-    expect(remoteFiles.get("/remote/fetched/shot.png")).toEqual(
-      remoteFiles.get("/remote/shot.png"),
+    expect(remoteFiles.get(join(remoteDir, "fetched", "shot.png"))).toEqual(
+      remoteFiles.get(join(remoteDir, "shot.png")),
     );
 
     stdout(
@@ -2023,7 +2072,7 @@ describe("bb tasks CLI", () => {
         "add",
         "REM-1",
         "--file",
-        "/remote/notes.md",
+        join(remoteDir, "notes.md"),
         "--machine",
         "Remote Laptop",
       ]),
@@ -2031,7 +2080,7 @@ describe("bb tasks CLI", () => {
     const lastRead = harness.sdk.callsTo("files.read").at(-1)!;
     expect(lastRead[0]).toMatchObject({
       hostId: "machine-remote",
-      path: "/remote/notes.md",
+      path: join(remoteDir, "notes.md"),
     });
 
     await harness.dispose();

@@ -9,6 +9,7 @@ import { scaleTimeoutMs } from "../../helpers/time.js";
 const DEFAULT_TIMEOUT_MS = scaleTimeoutMs(10_000);
 export const TURN_TIMEOUT_MS = scaleTimeoutMs(15_000);
 export const RECOVERY_TIMEOUT_MS = scaleTimeoutMs(30_000);
+export const HOST_OFFLINE_TIMEOUT_MS = scaleTimeoutMs(60_000);
 export const RECOVERY_TEST_TIMEOUT_MS = scaleTimeoutMs(180_000);
 export const ACTIVE_TIMEOUT_MS = scaleTimeoutMs(5_000);
 export const STOP_DELAY_TEXT = "delay:5000 recovery turn";

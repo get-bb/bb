@@ -18,10 +18,6 @@ import type { EnvironmentRow } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import {
-  threadEnvironmentUnavailableDetails,
-  throwThreadEnvironmentUnavailable,
-} from "../lib/lifecycle-api-errors.js";
-import {
   pruneThreadEventHistoryBestEffort,
   resetActiveThreadEventPruningState,
 } from "../system/event-pruning.js";
@@ -35,9 +31,7 @@ import {
   archiveUndoGraceKeepsTurnRunning,
 } from "./archive-undo-grace.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
-import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
-import { getThreadProvisionContext } from "./thread-startup-store.js";
-import { isPreStartThreadStatus } from "./thread-status.js";
+import { resolveThreadHostCommandEnvironment } from "./thread-command-environment.js";
 
 interface ArchiveThreadEnvironment {
   hostId: string;
@@ -49,38 +43,12 @@ interface ArchiveThreadWithLifecycleEffectsArgs {
   thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
-interface ResolveArchiveThreadEnvironmentArgs {
-  thread: ArchiveThreadWithLifecycleEffectsArgs["thread"];
-}
-
 interface ArchiveEnvironmentThreadsArgs {
   environment: EnvironmentRow;
 }
 
 interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
-}
-
-export function resolveArchiveThreadEnvironment(
-  deps: Pick<AppDeps, "db">,
-  args: ResolveArchiveThreadEnvironmentArgs,
-): ArchiveThreadEnvironment | null {
-  if (args.thread.environmentId !== null) {
-    return requireThreadHostCommandEnvironment({
-      db: deps.db,
-      thread: args.thread,
-    });
-  }
-  if (
-    isPreStartThreadStatus(args.thread.status) ||
-    args.thread.status === "stopping" ||
-    getThreadProvisionContext(deps.db, args.thread.id) !== null
-  ) {
-    throwThreadEnvironmentUnavailable(
-      threadEnvironmentUnavailableDetails("never_attached", null),
-    );
-  }
-  return null;
 }
 
 function archiveThreadWithLifecycleEffects(
@@ -150,7 +118,8 @@ export function archiveThreadAndChildren(
   deps: AppDeps,
   args: ArchiveThreadAndChildrenArgs,
 ): string[] {
-  const environment = resolveArchiveThreadEnvironment(deps, {
+  const environment = resolveThreadHostCommandEnvironment({
+    db: deps.db,
     thread: args.parentThread,
   });
   return archiveThreadTrees(deps, [args.parentThread], (thread) =>
@@ -169,44 +138,7 @@ function archiveThreadTrees(
     thread: ArchiveThreadWithLifecycleEffectsArgs["thread"],
   ) => ArchiveThreadEnvironment | null,
 ): string[] {
-  type ArchiveCandidate = Pick<
-    Thread,
-    "id" | "environmentId" | "status" | "archivedAt" | "deletedAt"
-  >;
-  const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [...roots]
-    .reverse()
-    .map((thread) => ({ thread, expanded: false }));
-  const visited = new Set<string>();
-  const threads: ArchiveCandidate[] = [];
-
-  while (pending.length > 0) {
-    const entry = pending.pop();
-    if (!entry) {
-      break;
-    }
-    const { thread, expanded } = entry;
-    if (expanded) {
-      threads.push(thread);
-      continue;
-    }
-    if (visited.has(thread.id)) {
-      continue;
-    }
-    visited.add(thread.id);
-    pending.push({ thread, expanded: true });
-    const descendants = [
-      ...listLifecycleThreadDependents(deps.db, thread.id),
-      ...listNonDeletedChildThreads(deps.db, {
-        parentThreadId: thread.id,
-      }),
-      ...listNonDeletedHiddenSourceThreads(deps.db, {
-        sourceThreadId: thread.id,
-      }),
-    ];
-    for (const descendant of descendants.reverse()) {
-      pending.push({ thread: descendant, expanded: false });
-    }
-  }
+  const threads = listArchiveCandidates(deps.db, roots);
   for (const root of roots) archiveThread(deps.db, deps.hub, root.id);
   const archivedThreadIds: string[] = [];
 
@@ -233,4 +165,64 @@ function archiveThreadTrees(
   }
 
   return archivedThreadIds;
+}
+
+export function countUnarchivedThreadDescendants(
+  db: AppDeps["db"],
+  thread: Thread,
+): number {
+  return listArchiveCandidates(db, [thread]).filter(
+    (candidate) =>
+      candidate.id !== thread.id &&
+      candidate.visibility === "visible" &&
+      candidate.deletedAt === null &&
+      candidate.archivedAt === null,
+  ).length;
+}
+
+function listArchiveCandidates(db: AppDeps["db"], roots: Thread[]) {
+  type ArchiveCandidate = Pick<
+    Thread,
+    | "id"
+    | "environmentId"
+    | "status"
+    | "archivedAt"
+    | "deletedAt"
+    | "visibility"
+  >;
+  const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [...roots]
+    .reverse()
+    .map((thread) => ({ thread, expanded: false }));
+  const visited = new Set<string>();
+  const threads: ArchiveCandidate[] = [];
+
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (!entry) {
+      break;
+    }
+    const { thread, expanded } = entry;
+    if (expanded) {
+      threads.push(thread);
+      continue;
+    }
+    if (visited.has(thread.id)) {
+      continue;
+    }
+    visited.add(thread.id);
+    pending.push({ thread, expanded: true });
+    const descendants = [
+      ...listLifecycleThreadDependents(db, thread.id),
+      ...listNonDeletedChildThreads(db, {
+        parentThreadId: thread.id,
+      }),
+      ...listNonDeletedHiddenSourceThreads(db, {
+        sourceThreadId: thread.id,
+      }),
+    ];
+    for (const descendant of descendants.reverse()) {
+      pending.push({ thread: descendant, expanded: false });
+    }
+  }
+  return threads;
 }

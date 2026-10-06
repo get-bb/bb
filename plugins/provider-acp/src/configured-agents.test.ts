@@ -30,48 +30,21 @@ function onlyAgent(resolved: ReturnType<typeof resolveConfiguredAcpAgents>) {
 }
 
 describe("resolveConfiguredAcpAgents", () => {
-  it("lets a setting entry win over the legacy entry with the same id", () => {
-    const resolved = resolveConfiguredAcpAgents({
-      settingValue: JSON.stringify([amp("Amp", "amp-next")]),
-      legacyEntries: [amp("Amp (old)", "amp-old")],
-      reservedProviderIds: reserved,
-      shippedAgents: KNOWN_ACP_AGENTS,
-    });
-
-    expect(resolved.agents).toHaveLength(1);
-    expect(resolved.agents[0]?.launch.command).toBe("amp-next");
-    expect(resolved.warnings).toEqual([]);
-  });
-
-  it("keeps a legacy-only agent and warns about it exactly once", () => {
-    const resolved = resolveConfiguredAcpAgents({
-      settingValue: "",
-      legacyEntries: [amp("Amp", "amp-old")],
-      reservedProviderIds: reserved,
-      shippedAgents: KNOWN_ACP_AGENTS,
-    });
-
-    expect(resolved.agents.map((agent) => agent.id)).toEqual(["acp-amp"]);
-    expect(resolved.warnings).toHaveLength(1);
-    expect(resolved.warnings[0]).toContain("deprecated customAcpAgents");
-  });
-
-  it("falls back to the legacy entries when the setting is not JSON", () => {
+  it("ignores a setting that is not JSON and says so", () => {
     const resolved = resolveConfiguredAcpAgents({
       settingValue: "[{ not json",
-      legacyEntries: [amp("Amp", "amp-old")],
       reservedProviderIds: reserved,
       shippedAgents: KNOWN_ACP_AGENTS,
     });
 
-    expect(resolved.agents.map((agent) => agent.id)).toEqual(["acp-amp"]);
+    expect(resolved.agents).toEqual([]);
+    expect(resolved.warnings).toHaveLength(1);
     expect(resolved.warnings[0]).toContain("not valid JSON");
   });
 
   it("reports a setting that is JSON but not an array", () => {
     const resolved = resolveConfiguredAcpAgents({
       settingValue: '{"id":"amp"}',
-      legacyEntries: [],
       reservedProviderIds: reserved,
       shippedAgents: KNOWN_ACP_AGENTS,
     });
@@ -80,20 +53,18 @@ describe("resolveConfiguredAcpAgents", () => {
     expect(resolved.warnings[0]).toContain("must be a JSON array");
   });
 
-  it("reports a reserved id from either source and drops that entry", () => {
+  it("reports a reserved id and drops that entry", () => {
     const resolved = resolveConfiguredAcpAgents({
       settingValue: JSON.stringify([
         { id: "cursor", displayName: "Mine", command: "mine" },
       ]),
-      legacyEntries: [{ id: "cursor", displayName: "Old", command: "old" }],
       reservedProviderIds: reserved,
       shippedAgents: KNOWN_ACP_AGENTS,
     });
 
     expect(resolved.agents).toEqual([]);
-    expect(resolved.warnings).toHaveLength(2);
+    expect(resolved.warnings).toHaveLength(1);
     expect(resolved.warnings[0]).toContain('built-in provider "acp-cursor"');
-    expect(resolved.warnings[1]).toContain('built-in provider "acp-cursor"');
   });
 
   it("accepts an entry that overrides an installed-only known agent", () => {
@@ -101,7 +72,6 @@ describe("resolveConfiguredAcpAgents", () => {
       settingValue: JSON.stringify([
         { id: "opencode", displayName: "opencode", command: "/opt/opencode" },
       ]),
-      legacyEntries: [],
       reservedProviderIds: reserved,
       shippedAgents: KNOWN_ACP_AGENTS,
     });
@@ -110,23 +80,22 @@ describe("resolveConfiguredAcpAgents", () => {
     expect(resolved.warnings).toEqual([]);
   });
 
-  it("keeps a legacy entry's native skill roots and declares them", () => {
+  it("keeps an entry's native skill roots and declares them", () => {
     const resolved = resolveConfiguredAcpAgents({
-      settingValue: "",
-      legacyEntries: [
+      settingValue: JSON.stringify([
         {
           id: "amp",
           displayName: "Amp",
           command: "amp",
           nativeSkillRoots: { user: [".amp/skills"], project: [".amp"] },
         },
-      ],
+      ]),
       reservedProviderIds: reserved,
       shippedAgents: KNOWN_ACP_AGENTS,
     });
 
-    const [agent] = resolved.agents;
-    if (agent === undefined) throw new Error("expected the agent to survive");
+    const agent = onlyAgent(resolved);
+    expect(resolved.warnings).toEqual([]);
     expect(agent.launch.nativeSkillRoots).toEqual({
       user: [".amp/skills"],
       project: [".amp"],
@@ -134,20 +103,6 @@ describe("resolveConfiguredAcpAgents", () => {
     expect(acpProviderDeclaration(agent).experimental_nativeSkillRoots).toEqual(
       { user: [".amp/skills"], project: [".amp"] },
     );
-  });
-
-  it("reports a problem reading the deprecated file", () => {
-    const resolved = resolveConfiguredAcpAgents({
-      settingValue: "",
-      legacyEntries: [],
-      legacyProblem: "/home/u/.bb/config.json is not valid JSON",
-      reservedProviderIds: reserved,
-      shippedAgents: KNOWN_ACP_AGENTS,
-    });
-
-    expect(resolved.warnings).toEqual([
-      "Deprecated ACP agent config: /home/u/.bb/config.json is not valid JSON",
-    ]);
   });
 });
 
@@ -165,7 +120,6 @@ describe("a configured entry that replaces a shipped agent", () => {
   function replacing(entry: unknown) {
     return resolveConfiguredAcpAgents({
       settingValue: JSON.stringify([entry]),
-      legacyEntries: [],
       reservedProviderIds: reserved,
       shippedAgents: KNOWN_ACP_AGENTS,
     });

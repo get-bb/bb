@@ -274,7 +274,10 @@ describe("ServerMoveService.prepare", () => {
     const stopped = await createFixture({
       processOps: {
         isRunning: () => false,
-        readCommand: async () => `node ${LAUNCHER_ENTRY_PATH} start`,
+        readIdentity: async () => ({
+          command: `node ${LAUNCHER_ENTRY_PATH} start`,
+          startedAt: null,
+        }),
       },
     });
     await writeFileWithDirs(
@@ -317,7 +320,10 @@ describe("ServerMoveService in launcher-managed moved mode", () => {
       name: "the launcher pid is not running",
       processOps: {
         isRunning: () => false,
-        readCommand: async () => `node ${LAUNCHER_ENTRY_PATH} start`,
+        readIdentity: async () => ({
+          command: `node ${LAUNCHER_ENTRY_PATH} start`,
+          startedAt: null,
+        }),
       },
       movedFile: true,
     },
@@ -325,7 +331,10 @@ describe("ServerMoveService in launcher-managed moved mode", () => {
       name: "the recorded pid is not bb-app",
       processOps: {
         isRunning: () => true,
-        readCommand: async () => "/usr/bin/python3 http.server 38886",
+        readIdentity: async () => ({
+          command: "/usr/bin/python3 http.server 38886",
+          startedAt: null,
+        }),
       },
       movedFile: true,
     },
@@ -821,7 +830,6 @@ describe("ServerMoveService.inspect and probe", () => {
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       bbAppVersion: "1.2.3",
       serverEntryAvailable: true,
-      serviceManager: "none",
       existingServerData: { path: join(fixture.homeDir, ".bb"), sizeBytes: 5 },
       dataDirHasServerData: false,
       portAvailable: true,

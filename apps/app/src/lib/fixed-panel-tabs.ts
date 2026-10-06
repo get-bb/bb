@@ -535,13 +535,13 @@ export function useRemoveFixedRightTerminalTab(
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
     (terminalId: string) => {
-      let didCloseLastTab = false;
+      let isPanelEmpty = false;
       updateState((current) => {
         const next = removeFixedRightTerminalTabInState(current, terminalId);
-        didCloseLastTab = next !== current && next.secondary.tabs.length === 0;
+        isPanelEmpty = next.secondary.tabs.length === 0;
         return next;
       });
-      if (didCloseLastTab) onCloseLastTab?.();
+      if (isPanelEmpty) onCloseLastTab?.();
     },
     [onCloseLastTab, updateState],
   );

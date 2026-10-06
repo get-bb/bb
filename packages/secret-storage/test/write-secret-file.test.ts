@@ -28,7 +28,9 @@ describe("writeSecretFile", () => {
     await writeSecretFile(secretPath, "xoxb-123");
 
     expect(await readFile(secretPath, "utf8")).toBe("xoxb-123");
-    expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("overwrites an existing secret and leaves no temp files behind", async () => {

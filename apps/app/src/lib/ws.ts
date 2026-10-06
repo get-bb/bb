@@ -34,6 +34,7 @@ export type WebSocketConnectedEvent =
     };
 type ConnectedCallback = (event: WebSocketConnectedEvent) => void;
 type ConnectionStateCallback = () => void;
+type ResumedCallback = () => void;
 export type WebSocketConnectionState =
   | "connecting"
   | "connected"
@@ -41,6 +42,10 @@ export type WebSocketConnectionState =
 
 export const REALTIME_PING_INTERVAL_MS = 25_000;
 export const REALTIME_PONG_TIMEOUT_MS = 5_000;
+export const REALTIME_RESUME_PONG_TIMEOUT_MS = 1_500;
+export const REALTIME_RESUME_HIDDEN_THRESHOLD_MS = 5_000;
+export const REALTIME_MIN_RECONNECTION_DELAY_MS = 250;
+export const REALTIME_RECONNECTION_DELAY_JITTER_MS = 250;
 
 export interface WebSocketManagerBrowserEvents {
   subscribeToVisibility: (listener: () => void) => () => void;
@@ -79,6 +84,7 @@ export class WebSocketManager {
   private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
+  private resumedCallbacks = new Set<ResumedCallback>();
   private hasConnected = false;
   private connectionState: WebSocketConnectionState = "connecting";
   private readonly browserEvents: WebSocketManagerBrowserEvents;
@@ -87,6 +93,11 @@ export class WebSocketManager {
   private disconnectedAt: number | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
+  private pongDeadline = 0;
+  private hiddenAt: number | null = null;
+  private readonly minReconnectionDelay =
+    REALTIME_MIN_RECONNECTION_DELAY_MS +
+    Math.random() * REALTIME_RECONNECTION_DELAY_JITTER_MS;
 
   constructor(browserEvents?: WebSocketManagerBrowserEvents) {
     this.browserEvents = browserEvents ?? createDefaultBrowserEvents();
@@ -98,9 +109,9 @@ export class WebSocketManager {
     const url = buildBrowserWebSocketUrl("/ws");
 
     const socket = new ReconnectingWebSocket(url, undefined, {
-      minReconnectionDelay: 1000,
+      minReconnectionDelay: this.minReconnectionDelay,
       maxReconnectionDelay: 30000,
-      reconnectionDelayGrowFactor: 1.5,
+      reconnectionDelayGrowFactor: 2,
       connectionTimeout: 10000,
       maxRetries: Infinity,
     });
@@ -172,13 +183,16 @@ export class WebSocketManager {
     if (this.unsubscribeBrowserEvents) {
       return;
     }
+    if (!this.browserEvents.isDocumentVisible()) {
+      this.hiddenAt ??= Date.now();
+    }
     const unsubscribeVisibility = this.browserEvents.subscribeToVisibility(
       () => {
         this.handleVisibilityChange();
       },
     );
     const unsubscribeOnline = this.browserEvents.subscribeToOnline(() => {
-      this.probeOrReconnect();
+      this.handleOnline();
     });
     this.unsubscribeBrowserEvents = () => {
       unsubscribeVisibility();
@@ -188,11 +202,37 @@ export class WebSocketManager {
 
   private handleVisibilityChange(): void {
     if (!this.browserEvents.isDocumentVisible()) {
+      this.hiddenAt ??= Date.now();
       this.stopPingLoop();
       return;
     }
+    const hiddenAt = this.hiddenAt;
+    this.hiddenAt = null;
+    if (
+      hiddenAt !== null &&
+      Date.now() - hiddenAt >= REALTIME_RESUME_HIDDEN_THRESHOLD_MS
+    ) {
+      this.notifyResumed();
+    }
     this.probeOrReconnect();
     this.startPingLoop();
+  }
+
+  private handleOnline(): void {
+    if (!this.browserEvents.isDocumentVisible()) {
+      return;
+    }
+    this.notifyResumed();
+    this.probeOrReconnect();
+  }
+
+  private notifyResumed(): void {
+    if (!this.socket) {
+      return;
+    }
+    for (const callback of this.resumedCallbacks) {
+      callback();
+    }
   }
 
   private probeOrReconnect(): void {
@@ -201,7 +241,10 @@ export class WebSocketManager {
     }
     switch (this.socket.readyState) {
       case WebSocket.OPEN:
-        this.sendPing({ ignoreRecentActivity: true });
+        this.sendPing({
+          ignoreRecentActivity: true,
+          timeoutMs: REALTIME_RESUME_PONG_TIMEOUT_MS,
+        });
         return;
       case WebSocket.CONNECTING:
         return;
@@ -218,7 +261,10 @@ export class WebSocketManager {
       return;
     }
     this.pingTimer = setInterval(() => {
-      this.sendPing();
+      this.sendPing({
+        ignoreRecentActivity: false,
+        timeoutMs: REALTIME_PONG_TIMEOUT_MS,
+      });
     }, REALTIME_PING_INTERVAL_MS);
   }
 
@@ -230,24 +276,36 @@ export class WebSocketManager {
     this.clearPongTimer();
   }
 
-  private sendPing(options?: { ignoreRecentActivity: boolean }): void {
+  private sendPing({
+    ignoreRecentActivity,
+    timeoutMs,
+  }: {
+    ignoreRecentActivity: boolean;
+    timeoutMs: number;
+  }): void {
     if (this.socket?.readyState !== WebSocket.OPEN) {
       return;
     }
+    const now = Date.now();
     if (
-      !options?.ignoreRecentActivity &&
-      Date.now() - this.lastServerActivityAt < REALTIME_PONG_TIMEOUT_MS
+      !ignoreRecentActivity &&
+      now - this.lastServerActivityAt < REALTIME_PONG_TIMEOUT_MS
     ) {
       return;
     }
     this.sendMessage({ type: "ping" });
+    const deadline = now + timeoutMs;
     if (this.pongTimer !== null) {
-      return;
+      if (this.pongDeadline <= deadline) {
+        return;
+      }
+      clearTimeout(this.pongTimer);
     }
+    this.pongDeadline = deadline;
     this.pongTimer = setTimeout(() => {
       this.pongTimer = null;
       this.reconnectNow();
-    }, REALTIME_PONG_TIMEOUT_MS);
+    }, timeoutMs);
   }
 
   private clearPongTimer(): void {
@@ -332,6 +390,7 @@ export class WebSocketManager {
       this.unsubscribeBrowserEvents();
       this.unsubscribeBrowserEvents = null;
     }
+    this.hiddenAt = null;
     if (this.socket) {
       this.socket.close();
       this.socket = null;
@@ -411,6 +470,13 @@ export class WebSocketManager {
     this.connectedCallbacks.add(callback);
     return () => {
       this.connectedCallbacks.delete(callback);
+    };
+  }
+
+  onResumed(callback: ResumedCallback): () => void {
+    this.resumedCallbacks.add(callback);
+    return () => {
+      this.resumedCallbacks.delete(callback);
     };
   }
 

@@ -1,11 +1,11 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useAtomValue } from "jotai";
 import { toast } from "sonner";
+import type { SidebarSectionDefinition } from "../model/project-thread-groups.js";
 import {
   buildSidebarEntitySectionId,
   normalizeSidebarSectionOrder,
-  type SidebarSectionDefinition,
-} from "@bb/client-core";
+} from "../model/sidebar-section-order.js";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import {
   sidebarManualSectionOrderAtom,
@@ -18,7 +18,7 @@ export interface ThreadSectionMoveDestination {
   sectionId: string | null;
 }
 
-interface ThreadSectionMoveContextValue {
+export interface ThreadSectionMoveContextValue {
   destinations: readonly ThreadSectionMoveDestination[];
   moveThread: (thread: SidebarThread, sectionId: string | null) => void;
 }
@@ -52,12 +52,12 @@ export function ThreadSectionMoveProvider({
             });
             return;
           }
-          void sdk.threads
-            .unpin({ threadId })
-            .then(() => sdk.threads.update({ threadId, sectionId }))
-            .catch(() => {
-              toast.error("Failed to unpin and move thread.");
-            });
+          void Promise.all([
+            sdk.threads.unpin({ threadId }),
+            sdk.threads.update({ threadId, sectionId }),
+          ]).catch(() => {
+            toast.error("Failed to unpin and move thread.");
+          });
           return;
         }
         if (thread.sectionId === sectionId) return;

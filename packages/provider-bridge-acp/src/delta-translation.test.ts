@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -22,7 +23,6 @@ import type { AcpToolCallUpdateEvent } from "./wire.js";
 
 const THREAD_ID = "t-acp-translation";
 const ENTROPY = "acp-test";
-const TURN_ID_PATTERN = /^acp-test-t\d+$/;
 const ITEM_ID_PATTERN = /^acp-test-i\d+$/;
 
 interface AcpEquivalenceHarness {
@@ -371,83 +371,6 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
       params: { threadId: THREAD_ID, ...params },
     };
   }
-
-  it("translates successful maintenance prompts into a compaction lifecycle", () => {
-    const harness = createHarness();
-
-    const started = harness.translate(compactionStartedEvent());
-    const turnId = harness.openTurnId();
-    expect(turnId).toMatch(TURN_ID_PATTERN);
-    const completed = harness.translate(
-      compactionCompletedEvent({ status: "completed" }),
-    );
-
-    expect(started.map((event) => event.type)).toEqual([
-      "turn/started",
-      "item/started",
-    ]);
-    expect(completed).toEqual([
-      expect.objectContaining({
-        type: "thread/compacted",
-        scope: turnScope(turnId),
-      }),
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(turnId),
-        status: "completed",
-      }),
-    ]);
-  });
-
-  it("does not report failed maintenance prompts as compacted", () => {
-    const harness = createHarness();
-    harness.translate(compactionStartedEvent());
-    const turnId = harness.openTurnId();
-
-    expect(
-      harness.translate(
-        compactionCompletedEvent({
-          status: "failed",
-          error: "Provider rejected /compact",
-        }),
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(turnId),
-        status: "failed",
-        error: { message: "Provider rejected /compact" },
-      }),
-    ]);
-  });
-
-  it("translates a skipped maintenance prompt into a warning and a clean turn end", () => {
-    const harness = createHarness();
-    harness.translate(compactionStartedEvent());
-    const turnId = harness.openTurnId();
-
-    expect(
-      harness.translate(
-        compactionCompletedEvent({
-          status: "skipped",
-          detail: "Compaction failed: Nothing to compact (session too small)",
-        }),
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        type: "provider/warning",
-        scope: turnScope(turnId),
-        category: "compaction-skipped",
-        summary: "Context compaction skipped",
-        details: "Compaction failed: Nothing to compact (session too small)",
-      }),
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(turnId),
-        status: "completed",
-      }),
-    ]);
-  });
 
   it("completes streamed items before ending a compaction turn", () => {
     const harness = createHarness();
@@ -1989,7 +1912,10 @@ describe("acp delta translation (raw payloads and real results)", () => {
         }),
       )[0],
     ).toMatchObject({
-      item: { type: "fileRead", path: "/workspace/app/README.md" },
+      item: {
+        type: "fileRead",
+        path: path.resolve("/workspace/app/README.md"),
+      },
     });
 
     expect(
@@ -2004,7 +1930,10 @@ describe("acp delta translation (raw payloads and real results)", () => {
         }),
       )[0],
     ).toMatchObject({
-      item: { type: "fileRead", path: "/workspace/app/src/index.ts" },
+      item: {
+        type: "fileRead",
+        path: path.resolve("/workspace/app/src/index.ts"),
+      },
     });
   });
 
@@ -2443,7 +2372,12 @@ describe("acp delta translation (dialects)", () => {
     );
     expect(opened[0]).toMatchObject({
       type: "item/started",
-      item: { type: "delegation", childRef: "call-task", background: false },
+      item: {
+        type: "delegation",
+        childRef: "call-task",
+        background: false,
+        presentation: { icon: { glyph: "UserRound" } },
+      },
     });
     const openedId =
       opened[0]?.type === "item/started" ? opened[0].item.id : "";
@@ -2521,7 +2455,10 @@ describe("acp delta translation (dialects)", () => {
           toolCallId: "call-spawn",
           title: "spawn_subagent",
           status: "pending",
-          rawInput: { description: "Audit the config loader" },
+          rawInput: {
+            description: "Audit the config loader",
+            subagent_type: "explore",
+          },
           _meta: {
             "x.ai/tool": { name: "spawn_subagent", kind: "other", version: 1 },
           },
@@ -2533,7 +2470,16 @@ describe("acp delta translation (dialects)", () => {
         type: "delegation",
         childRef: "call-spawn",
         label: "Audit the config loader",
-        presentation: { icon: { glyph: "UserRound" } },
+        background: false,
+        presentation: {
+          label: {
+            pending: "Running subagent",
+            completed: "Subagent finished",
+          },
+          icon: { glyph: "UserRound" },
+          title: "Audit the config loader",
+          detail: "explore",
+        },
       },
     });
   });

@@ -69,12 +69,4 @@ describe("scheduleDeferredRealization", () => {
     fireTimers();
     expect(calls).toBe(0);
   });
-
-  it("realizes synchronously with zero frames", () => {
-    const { scheduler, timers } = fakeScheduler();
-    let calls = 0;
-    scheduleDeferredRealization(() => calls++, scheduler, { frames: 0 });
-    expect(calls).toBe(1);
-    expect(timers.size).toBe(0);
-  });
 });

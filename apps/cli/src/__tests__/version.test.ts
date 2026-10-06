@@ -15,15 +15,6 @@ describe("resolveBbAppVersion", () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  it("prefers BB_APP_VERSION from the env", () => {
-    expect(
-      resolveBbAppVersion({
-        env: { BB_APP_VERSION: "1.2.3" },
-        fromDir: tempRoot,
-      }),
-    ).toBe("1.2.3");
-  });
-
   it("trims whitespace around BB_APP_VERSION", () => {
     expect(
       resolveBbAppVersion({

@@ -1,14 +1,10 @@
-import type { ExperimentalAiServiceErrorCode } from "@get-bb/plugin-sdk/ai-services";
+import type { CodexAiFailureCode } from "./host-contract.js";
 
 export class AiServiceFailure extends Error {
-  readonly code: ExperimentalAiServiceErrorCode;
+  readonly code: CodexAiFailureCode;
   readonly detailCode: string;
 
-  constructor(
-    code: ExperimentalAiServiceErrorCode,
-    detailCode: string,
-    message: string,
-  ) {
+  constructor(code: CodexAiFailureCode, detailCode: string, message: string) {
     super(message);
     this.name = "AiServiceFailure";
     this.code = code;
@@ -18,7 +14,7 @@ export class AiServiceFailure extends Error {
 
 export function toAiServiceFailure(error: unknown): {
   ok: false;
-  code: ExperimentalAiServiceErrorCode;
+  code: CodexAiFailureCode;
   message: string;
 } {
   if (error instanceof AiServiceFailure) {

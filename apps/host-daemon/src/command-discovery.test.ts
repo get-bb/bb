@@ -216,11 +216,6 @@ describe("discoverProviderCommands over declared roots", () => {
     });
   });
 
-  it("returns empty for missing dirs without throwing", async () => {
-    const fixture = await makeWorkspaceFixture();
-    expect(await discover(fixture, fixture.cwd)).toEqual([]);
-  });
-
   it("produces a name-only record for malformed frontmatter", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(

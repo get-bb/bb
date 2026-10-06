@@ -53,7 +53,7 @@ export const THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT = 20;
 export const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
 
 const THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD = 1;
-const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}_]+/gu;
+const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
 const THREAD_SEARCH_HIGHLIGHT_RANGE_LIMIT = 8;
 const THREAD_SEARCH_SNIPPET_MAX_CHARS = 160;
 const THREAD_SEARCH_SNIPPET_LEAD_CHARS = 40;
@@ -143,6 +143,7 @@ interface UpsertThreadSearchSegmentArgs extends UpsertThreadSearchSegmentInput {
 }
 
 interface ListThreadSearchMatchRowsArgs {
+  allTokensMatchQuery: string;
   anyTokenMatchQuery: string;
   limitPerGroup: number;
   tokenMatchQueries: readonly string[];
@@ -264,6 +265,7 @@ export interface CreateThreadInput {
   title?: string | null;
   titleFallback?: string | null;
   sectionId?: string | null;
+  pinned?: boolean;
   status?: ThreadStatus;
   parentThreadId?: string | null;
   lifecycleOwnerThreadId?: string | null;
@@ -271,6 +273,7 @@ export interface CreateThreadInput {
   originKind?: ThreadOriginKind | null;
   originPluginId?: string | null;
   pluginMetadata?: { pluginId: string; metadata: JsonObject } | null;
+  startupContext?: string;
   visibility?: ThreadVisibility;
 }
 
@@ -320,7 +323,15 @@ export function createThread(
           title: input.title ?? null,
           titleFallback: input.titleFallback ?? null,
           sectionId: input.sectionId ?? null,
+          pinnedAt: input.pinned ? now : null,
+          pinSortKey: input.pinned
+            ? createOrderKeyBetween({
+                previousKey: null,
+                nextKey: getFirstPinnedThread(tx)?.pinSortKey ?? null,
+              })
+            : null,
           status: input.status ?? "starting",
+          startupContext: input.startupContext ?? null,
           parentThreadId:
             originKind === null ? (input.parentThreadId ?? null) : null,
           sourceThreadId:
@@ -415,6 +426,7 @@ export function listThreadMentionRowsByIds(
 export interface ListThreadsOptions {
   projectId?: string;
   environmentId?: string;
+  hostId?: string;
   archived?: boolean;
   sectionId?: string;
   unsectioned?: boolean;
@@ -685,6 +697,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.environmentId
       ? eq(threads.environmentId, options.environmentId)
       : undefined,
+    options.hostId ? eq(environments.hostId, options.hostId) : undefined,
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
     nonDeletedThreads(),
@@ -982,36 +995,55 @@ function listThreadSearchMatchRows(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
 ): ThreadSearchMatchRow[] {
-  const tokenMatchSelects = args.tokenMatchQueries.map(
-    (matchQuery, tokenIndex) => sql`
-      SELECT
-        s.thread_id AS threadId,
-        ${tokenIndex} AS tokenIndex,
-        MIN(thread_search_segments_fts.rank) AS tokenRank
+  const tokenThreadSelects = args.tokenMatchQueries.map(
+    (matchQuery) => sql`
+      SELECT DISTINCT s.thread_id AS threadId
       FROM thread_search_segments_fts
       JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
       WHERE thread_search_segments_fts MATCH ${matchQuery}
-      GROUP BY s.thread_id
     `,
   );
   const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
+  const matchesAllTokensFirst =
+    args.tokenMatchQueries.length > 1
+      ? sql`thread_search_segments.rowid IN (
+          SELECT segmentRowid FROM all_token_segments
+        ) DESC,`
+      : sql``;
 
   return db.all<ThreadSearchMatchRow>(sql`
-    WITH token_matches AS (
-      ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
+    WITH all_token_segments AS MATERIALIZED (
+      SELECT rowid AS segmentRowid
+      FROM thread_search_segments_fts
+      WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
+    ),
+    matching_threads AS (
+      ${sql.join(tokenThreadSelects, sql` INTERSECT `)}
+    ),
+    title_matching_threads AS (
+      SELECT DISTINCT thread_search_segments.thread_id AS threadId
+      FROM all_token_segments
+      JOIN thread_search_segments
+        ON thread_search_segments.rowid = all_token_segments.segmentRowid
+      JOIN threads AS titled ON titled.id = thread_search_segments.thread_id
+      WHERE thread_search_segments.source_kind = 'title'
+        OR (
+          thread_search_segments.source_kind = 'title_fallback'
+          AND COALESCE(titled.title, '') = ''
+        )
     ),
     ranked_threads AS (
       SELECT
-        token_matches.threadId AS threadId,
-        MIN(token_matches.tokenRank) AS bestRank,
-        MAX(t.updated_at) AS threadUpdatedAt,
-        MAX(t.archived_at IS NOT NULL) AS archived
-      FROM token_matches
-      JOIN threads AS t ON t.id = token_matches.threadId
+        matching_threads.threadId AS threadId,
+        t.archived_at IS NOT NULL AS archived,
+        matching_threads.threadId IN (
+          SELECT threadId FROM title_matching_threads
+        ) AS titleMatch,
+        t.updated_at AS threadUpdatedAt
+      FROM matching_threads
+      JOIN threads AS t ON t.id = matching_threads.threadId
       WHERE t.deleted_at IS NULL
         AND t.visibility = 'visible'
-      GROUP BY threadId
-      HAVING COUNT(*) = ${args.tokenMatchQueries.length}
     ),
     ordered_threads AS (
       SELECT
@@ -1019,7 +1051,7 @@ function listThreadSearchMatchRows(
         archived,
         ROW_NUMBER() OVER (
           PARTITION BY archived
-          ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+          ORDER BY titleMatch DESC, threadUpdatedAt DESC, threadId DESC
         ) AS threadOrder,
         COUNT(*) OVER (PARTITION BY archived) AS total
       FROM ranked_threads
@@ -1037,7 +1069,7 @@ function listThreadSearchMatchRows(
         ROW_NUMBER() OVER (
           PARTITION BY thread_search_segments.thread_id, ${isTitleSegment}
           ORDER BY
-            thread_search_segments_fts.rank ASC,
+            ${matchesAllTokensFirst}
             COALESCE(thread_search_segments.source_seq, -1) ASC,
             thread_search_segments.id ASC
         ) AS segmentOrder,
@@ -1046,12 +1078,13 @@ function listThreadSearchMatchRows(
         thread_search_segments.source_seq AS sourceSeq,
         thread_search_segments.rowid AS segmentRowid,
         thread_search_segments.thread_id AS threadId
-      FROM thread_search_segments_fts
-      JOIN thread_search_segments
-        ON thread_search_segments.rowid = thread_search_segments_fts.rowid
+      FROM thread_search_segments
       JOIN limited_threads
         ON limited_threads.threadId = thread_search_segments.thread_id
-      WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
+      WHERE thread_search_segments.rowid IN (
+        SELECT rowid FROM thread_search_segments_fts
+        WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
+      )
     )
     SELECT
       archived,
@@ -1148,6 +1181,7 @@ export function searchThreadsWithPendingInteractionState(
   );
 
   const rows = listThreadSearchMatchRows(db, {
+    allTokensMatchQuery: tokenMatchQueries.join(" AND "),
     anyTokenMatchQuery,
     limitPerGroup,
     tokenMatchQueries,
@@ -1544,6 +1578,21 @@ export function listThreadEnvironmentAssignmentsOnHost(
       ),
     )
     .all();
+}
+
+export function listExistingThreadIds(
+  db: DbQueryConnection,
+  threadIds: string[],
+): string[] {
+  if (threadIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(inArray(threads.id, threadIds))
+    .all()
+    .map((row) => row.id);
 }
 
 export function listHostThreadIds(
@@ -2008,12 +2057,12 @@ export function markThreadDeleted(
 
 export function markThreadStorageDeleted(
   db: ThreadWriteConnection,
-  args: { threadId: string; deletedAt?: number },
+  args: { threadId: string },
 ) {
   return (
     db
       .update(threads)
-      .set({ storageDeletedAt: args.deletedAt ?? Date.now() })
+      .set({ storageDeletedAt: Date.now() })
       .where(eq(threads.id, args.threadId))
       .returning()
       .get() ?? null
@@ -2065,7 +2114,7 @@ export function unarchiveThread(
       return tx
         .update(threads)
         .set({ archivedAt: null, updatedAt: now })
-        .where(eq(threads.id, id))
+        .where(and(eq(threads.id, id), isNotNull(threads.archivedAt)))
         .returning()
         .get();
     },

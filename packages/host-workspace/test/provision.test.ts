@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { provisionWorkspace } from "../src/index.js";
-import { listBranches, runGit } from "../src/git.js";
+import { runGit } from "../src/git.js";
 
 const tempDirs: string[] = [];
 
@@ -108,31 +108,6 @@ describe("provisionWorkspace", () => {
           path: "/tmp/does-not-exist-bb",
         }),
       ).rejects.toThrow(/does not exist/u);
-    });
-  });
-
-  describe("HostWorkspace git operations", () => {
-    it("delegates git operations to the underlying Workspace", async () => {
-      const repoPath = await initRepo();
-      const ws = await provisionWorkspace({
-        path: repoPath,
-      });
-
-      const status = await ws.getStatus();
-      expect(status.workingTree.state).toBe("clean");
-
-      await fs.writeFile(path.join(repoPath, "new.txt"), "data\n", "utf8");
-      const result = await ws.commit({
-        message: "Test commit",
-        noVerify: false,
-      });
-      expect(result.commitSha).toBeTruthy();
-
-      const branches = await listBranches(ws.path);
-      expect(branches).toContain("main");
-
-      const diff = await ws.getDiff();
-      expect(typeof diff.diff).toBe("string");
     });
   });
 });

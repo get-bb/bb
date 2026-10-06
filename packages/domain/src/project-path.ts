@@ -1,25 +1,20 @@
-const WINDOWS_DRIVE_ROOT_PATTERN = /^[A-Za-z]:(?:[\\/]+)?$/u;
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:(?:[\\/]+)/u;
-const WINDOWS_UNC_PATH_PATTERN = /^\\\\[^\\/]+(?:[\\/]+)[^\\/]+/u;
+import {
+  getHostPathBasename,
+  getHostPathFlavor,
+  isHostPathRoot,
+  isWindowsUncHostPath,
+  normalizeHostPath,
+} from "./host-path.js";
 
 export const INVALID_PROJECT_PATH_MESSAGE =
   "Project path must be an absolute path.";
 export const PROJECT_PATH_ROOT_MESSAGE =
   "Project path must point to a project directory, not the filesystem root.";
-export const UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE =
-  "Native Windows paths are not supported. Use a POSIX path like /home/me/repo or /mnt/c/Users/me/repo.";
+export const UNSUPPORTED_WINDOWS_NETWORK_PROJECT_PATH_MESSAGE =
+  "Windows network paths are not supported. Map the share to a drive letter and use a path like C:\\Users\\me\\repo.";
 
-export function isNativeWindowsProjectPath(path: string): boolean {
-  const trimmedPath = path.trim();
-  if (!trimmedPath) {
-    return false;
-  }
-
-  return (
-    WINDOWS_DRIVE_ROOT_PATTERN.test(trimmedPath) ||
-    WINDOWS_ABSOLUTE_PATH_PATTERN.test(trimmedPath) ||
-    WINDOWS_UNC_PATH_PATTERN.test(trimmedPath)
-  );
+function isWindowsDriveProjectPath(path: string): boolean {
+  return getHostPathFlavor(path) === "windows" && !isWindowsUncHostPath(path);
 }
 
 export function isAbsoluteProjectPath(path: string): boolean {
@@ -28,13 +23,17 @@ export function isAbsoluteProjectPath(path: string): boolean {
     return false;
   }
 
-  return trimmedPath.startsWith("/");
+  return trimmedPath.startsWith("/") || isWindowsDriveProjectPath(trimmedPath);
 }
 
 export function normalizeProjectPathInput(path: string): string {
   const trimmedPath = path.trim();
   if (!trimmedPath) {
     return "";
+  }
+
+  if (isWindowsDriveProjectPath(trimmedPath)) {
+    return normalizeHostPath(trimmedPath) ?? trimmedPath;
   }
 
   if (trimmedPath === "/") {
@@ -49,13 +48,13 @@ export function getProjectPathValidationMessage(path: string): string | null {
   if (!normalizedPath) {
     return INVALID_PROJECT_PATH_MESSAGE;
   }
-  if (isNativeWindowsProjectPath(normalizedPath)) {
-    return UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE;
+  if (isWindowsUncHostPath(normalizedPath)) {
+    return UNSUPPORTED_WINDOWS_NETWORK_PROJECT_PATH_MESSAGE;
   }
   if (!isAbsoluteProjectPath(normalizedPath)) {
     return INVALID_PROJECT_PATH_MESSAGE;
   }
-  if (normalizedPath === "/") {
+  if (isHostPathRoot(normalizedPath)) {
     return PROJECT_PATH_ROOT_MESSAGE;
   }
   return null;
@@ -63,15 +62,9 @@ export function getProjectPathValidationMessage(path: string): string | null {
 
 export function deriveProjectNameFromPath(path: string): string {
   const normalizedPath = normalizeProjectPathInput(path);
-  if (
-    !normalizedPath ||
-    normalizedPath === "/" ||
-    isNativeWindowsProjectPath(normalizedPath) ||
-    !isAbsoluteProjectPath(normalizedPath)
-  ) {
+  if (getProjectPathValidationMessage(normalizedPath) !== null) {
     return "";
   }
 
-  const segments = normalizedPath.split("/").filter(Boolean);
-  return segments.at(-1) ?? "";
+  return getHostPathBasename(normalizedPath) ?? "";
 }

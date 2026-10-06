@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -68,6 +69,7 @@ function renderButton(
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   delete window.bbDesktop;
 });
 
@@ -110,7 +112,8 @@ describe("PaneMaximizeButton", () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it("shows only BB's supported split arrangement actions on hover", async () => {
+  it("shows only BB's supported split arrangement actions on hover", () => {
+    vi.useFakeTimers();
     const onMoveToSide = vi.fn();
     renderButton(false, noop, onMoveToSide);
     const button = screen.getByRole("button", {
@@ -118,7 +121,10 @@ describe("PaneMaximizeButton", () => {
     });
 
     fireEvent.pointerEnter(button);
-    const menu = await screen.findByRole("menu", { name: "Pane arrangement" });
+    act(() => vi.advanceTimersByTime(399));
+    expect(screen.queryByRole("menu", { name: "Pane arrangement" })).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    const menu = screen.getByRole("menu", { name: "Pane arrangement" });
     expect(menu.textContent).toContain("Maximize pane");
     expect(menu.textContent).toContain("Move");
     expect(
@@ -141,7 +147,8 @@ describe("PaneMaximizeButton", () => {
     expect(onMoveToSide).toHaveBeenCalledWith("left");
   });
 
-  it("keeps the arrangement menu open for keyboard focus and enters it with Arrow Down", async () => {
+  it("keeps the arrangement menu open for keyboard focus and enters it with Arrow Down", () => {
+    vi.useFakeTimers();
     const onMoveToSide = vi.fn();
     renderButton(false, noop, onMoveToSide);
     const button = screen.getByRole("button", {
@@ -149,15 +156,14 @@ describe("PaneMaximizeButton", () => {
     });
 
     fireEvent.focus(button);
-    const menu = await screen.findByRole("menu", { name: "Pane arrangement" });
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    const menu = screen.getByRole("menu", { name: "Pane arrangement" });
+    act(() => vi.advanceTimersByTime(150));
     expect(menu.isConnected).toBe(true);
 
     fireEvent.keyDown(button, { key: "ArrowDown" });
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole("menuitem", { name: /Maximize pane/ }),
-      ),
+    act(() => vi.advanceTimersByTime(0));
+    expect(document.activeElement).toBe(
+      screen.getByRole("menuitem", { name: /Maximize pane/ }),
     );
 
     const moveBottom = screen.getByRole("menuitem", { name: "Move bottom" });
@@ -166,7 +172,8 @@ describe("PaneMaximizeButton", () => {
     expect(onMoveToSide).toHaveBeenCalledWith("bottom");
   });
 
-  it("keeps the menu closed while the pointer only passes over the button", async () => {
+  it("keeps the menu closed while the pointer only passes over the button", () => {
+    vi.useFakeTimers();
     renderButton(false);
     const button = screen.getByRole("button", {
       name: "Maximize pane (⌘⇧E)",
@@ -175,7 +182,7 @@ describe("PaneMaximizeButton", () => {
     fireEvent.pointerEnter(button);
     fireEvent.pointerLeave(button);
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    act(() => vi.advanceTimersByTime(500));
     expect(screen.queryByRole("menu", { name: "Pane arrangement" })).toBeNull();
   });
 
@@ -203,7 +210,8 @@ describe("PaneMaximizeButton", () => {
     expect(menu.textContent).not.toContain("Maximize pane");
   });
 
-  it("hides the native desktop browser while the arrangement menu can cover it", async () => {
+  it("hides the native desktop browser while the arrangement menu can cover it", () => {
+    vi.useFakeTimers();
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
       latestVersion: null,
@@ -223,22 +231,24 @@ describe("PaneMaximizeButton", () => {
       name: "Full Screen (⌘⇧E)",
     });
     fireEvent.pointerEnter(trigger);
-    const menu = await screen.findByRole("menu", {
+    act(() => vi.advanceTimersByTime(400));
+    const menu = screen.getByRole("menu", {
       name: "Pane arrangement",
     });
     fireEvent.pointerLeave(trigger);
     fireEvent.pointerEnter(menu);
-    await waitFor(() =>
-      expect(screen.getByTestId("browser-overlay-state").textContent).toBe(
-        "hidden",
-      ),
+    expect(screen.getByTestId("browser-overlay-state").textContent).toBe(
+      "hidden",
     );
 
     fireEvent.pointerLeave(menu);
-    await waitFor(() =>
-      expect(screen.getByTestId("browser-overlay-state").textContent).toBe(
-        "visible",
-      ),
+    act(() => vi.advanceTimersByTime(99));
+    expect(screen.getByTestId("browser-overlay-state").textContent).toBe(
+      "hidden",
+    );
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByTestId("browser-overlay-state").textContent).toBe(
+      "visible",
     );
   });
 

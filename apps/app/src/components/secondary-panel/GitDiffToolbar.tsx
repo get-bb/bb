@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useResizeObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -14,6 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { Input } from "@bb/shared-ui/input";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import {
   formatChangeSummary,
@@ -132,6 +134,65 @@ function GitDiffSelector({
   );
 }
 
+interface GitDiffFileFilterInputProps {
+  value: string;
+  onChange: (value: string | null) => void;
+}
+
+function GitDiffFileFilterInput({
+  value,
+  onChange,
+}: GitDiffFileFilterInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isPointerCoarse = usePointerCoarse();
+
+  useEffect(() => {
+    if (!isPointerCoarse) {
+      inputRef.current?.focus();
+    }
+  }, [isPointerCoarse]);
+
+  return (
+    <div className="relative mt-2">
+      <span className="pointer-events-none absolute inset-y-0 left-2.25 flex w-8 items-center justify-center text-muted-foreground">
+        <Icon name="Filter" className="size-3.5" />
+      </span>
+      <Input
+        ref={inputRef}
+        aria-label="Filter changed files by path"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        className={cn(
+          "h-8 rounded-lg border-border pl-12 pr-8 text-xs focus-visible:ring-0 max-md:pointer-coarse:h-10 max-md:pointer-coarse:text-base",
+        )}
+        placeholder="Filter files, e.g. *.md, docs/**, !*.test.ts"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onChange(null);
+          }
+        }}
+      />
+      {value ? (
+        <button
+          type="button"
+          className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground hover:text-foreground"
+          aria-label="Clear file filter"
+          onClick={() => {
+            onChange("");
+            inputRef.current?.focus();
+          }}
+        >
+          <Icon name="X" className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 interface GitDiffToolbarProps {
   selectionValue: string;
   selectionOptions: readonly GitDiffSelectionOption[];
@@ -139,7 +200,11 @@ interface GitDiffToolbarProps {
   isSelectorDisabled: boolean;
 
   stats: GitDiffStats;
+  totalFilesCount: number;
   isTruncated: boolean;
+
+  fileFilter: string | null;
+  onFileFilterChange: (value: string | null) => void;
 
   areAllFilesCollapsed: boolean;
   isCollapseAllDisabled: boolean;
@@ -158,7 +223,10 @@ export function GitDiffToolbar({
   onSelectionChange,
   isSelectorDisabled,
   stats,
+  totalFilesCount,
   isTruncated,
+  fileFilter,
+  onFileFilterChange,
   areAllFilesCollapsed,
   isCollapseAllDisabled,
   onToggleAllCollapsed,
@@ -176,6 +244,8 @@ export function GitDiffToolbar({
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
   const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
+  const isFiltering = Boolean(fileFilter?.trim());
+  const filteredFilesLabel = `${stats.filesCount} of ${totalFilesCount}${isTruncated ? "+" : ""} files`;
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
@@ -196,7 +266,7 @@ export function GitDiffToolbar({
           />
         </div>
         <div
-          className="flex min-w-0 flex-1 basis-auto items-center"
+          className="flex min-w-0 flex-1 basis-auto items-center gap-3"
           data-testid="git-diff-toolbar-details"
         >
           <span
@@ -206,12 +276,27 @@ export function GitDiffToolbar({
             )}
             data-testid="git-diff-toolbar-summary"
             title={
-              isTruncated
-                ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
-                : completeSummary
+              isFiltering
+                ? `${stats.filesCount} of ${totalFilesCount}${isTruncated ? "+" : ""} changed files match the filter`
+                : isTruncated
+                  ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
+                  : completeSummary
             }
           >
-            {isTruncated ? (
+            {isFiltering ? (
+              <>
+                {filteredFilesLabel}
+                {hasShownLineChanges ? (
+                  <>
+                    {" · "}
+                    <DiffStatsTally
+                      insertions={stats.insertions}
+                      deletions={stats.deletions}
+                    />
+                  </>
+                ) : null}
+              </>
+            ) : isTruncated ? (
               <>
                 {truncatedFilesLabel}
                 {hasShownLineChanges ? (
@@ -232,6 +317,24 @@ export function GitDiffToolbar({
             className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1"
             data-testid="git-diff-toolbar-actions"
           >
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                "text-muted-foreground",
+              )}
+              onClick={() =>
+                onFileFilterChange(fileFilter === null ? "" : null)
+              }
+              aria-label={
+                fileFilter === null ? "Filter files" : "Close file filter"
+              }
+              aria-pressed={fileFilter !== null}
+            >
+              <Icon name="Filter" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -311,6 +414,12 @@ export function GitDiffToolbar({
           </div>
         </div>
       </div>
+      {fileFilter !== null ? (
+        <GitDiffFileFilterInput
+          value={fileFilter}
+          onChange={onFileFilterChange}
+        />
+      ) : null}
     </div>
   );
 }

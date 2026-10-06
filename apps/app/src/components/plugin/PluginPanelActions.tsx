@@ -17,7 +17,6 @@ import {
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
-import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 export interface OpenPluginPanelArgs {
@@ -47,7 +46,7 @@ interface PanelActionOpenPanelArgs {
   openPluginPanel: OpenPluginPanelHandler;
 }
 
-function createPanelActionOpenPanel({
+export function createPanelActionOpenPanel({
   action,
   slot,
   openPluginPanel,
@@ -367,7 +366,6 @@ function FileOpenerTabContent({
             source={file.source}
             experimental_lineRange={lineRange}
             Original={BoundOriginal}
-            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

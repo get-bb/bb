@@ -37,7 +37,7 @@ import {
   goneThreadEnvironmentDetails,
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { resolvePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   dispatchEnvironmentAndHost,
   dispatchExecutionSources,
@@ -58,6 +58,7 @@ import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcom
 import { buildExecutionOptions } from "./thread-commands.js";
 import { getActiveTurnId, isManualCompactionActive } from "./thread-events.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
+import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import {
   requestThreadProvision,
   scheduleThreadProvisioningAdvance,
@@ -176,6 +177,15 @@ export function intendedThreadHostId(
   return intent === null ? null : hostIdForEnvironmentIntent(deps, intent);
 }
 
+export function threadTargetHostId(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
+  thread: Pick<Thread, "id" | "environmentId">,
+): string | null {
+  return thread.environmentId !== null
+    ? (getEnvironment(deps.db, thread.environmentId)?.hostId ?? null)
+    : intendedThreadHostId(deps, thread.id);
+}
+
 /**
  * `listRunningThreads` with the intent-derived host filled in for rows whose
  * environment is not attached yet, so one starting cold thread and one active
@@ -292,21 +302,26 @@ async function runDispatchAttempt(
   args: DispatchAttemptArgs,
   reattempted: boolean,
 ): Promise<DispatchAttemptOutcome> {
-  const { payload, thread } = args;
+  const { thread } = args;
+  let { payload } = args;
   // A stopping thread is writable HERE and nowhere upstream: the checkpoint
   // below turns it into a core wait, which is a truthful "not yet" the row can
   // recover from, rather than the 409 that used to make a stop a dead end for
   // everything the user lined up behind it.
   ensureThreadIsWritable(thread, true);
+  assertThreadHostAcceptsWork(deps.db, thread);
   if (args.trigger === "user" && args.source.kind === "inline") {
     // Reject what can never deliver while the sender is still listening; a
     // drain has nobody to tell, and its rows were validated when they were queued.
-    await validatePromptAttachmentReferences({
+    const input = await resolvePromptAttachmentReferences({
       db: deps.db,
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,
+      hostId: threadTargetHostId(deps, thread),
     });
+    payload = { ...payload, input };
+    args = { ...args, payload };
   }
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     ...(payload.senderThreadId !== undefined
@@ -448,7 +463,8 @@ async function runDispatchAttempt(
     if (
       dispatchEnvironment !== null &&
       goneThreadEnvironmentDetails(dispatchEnvironment) === null &&
-      dispatchHost?.status === "disconnected"
+      dispatchHost !== null &&
+      !deps.hub.hasDaemonForHost(dispatchHost.id)
     ) {
       continued.outcome = waitOn(
         { kind: "host-offline", hostName: dispatchHost.name },

@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   CONNECT_CODE_TTL_MS,
@@ -6,15 +6,23 @@ import {
   SERVER_OFFLINE_AFTER_MS,
   checkLabelAvailability,
   connectCode,
+  isLive,
   labelClaim,
   machine,
   machineRoutingKey,
   profile,
+  resolveServerCredential,
+  rowsChanged,
   server,
   sha256Hex,
+  tunnelConnectedLookup,
   user,
 } from "@bb/connect-db";
-import type { ConnectDb, LabelAvailability } from "@bb/connect-db";
+import type {
+  ConnectDb,
+  LabelAvailability,
+  TunnelConnectedLookup,
+} from "@bb/connect-db";
 import type { Env } from "./env.js";
 import { generateConnectCode, generateToken } from "./tokens.js";
 
@@ -23,6 +31,7 @@ export interface Deps {
   appUrl: string;
   serverUrlTemplate: string;
   closeTunnel: (routingKey: string) => Promise<void>;
+  tunnelConnected: TunnelConnectedLookup | null;
 }
 
 export function resolveServerUrlTemplate(
@@ -51,8 +60,12 @@ export function resolveServerUrlTemplate(
   return `${url.protocol}//{label}.${baseDomain}${url.port ? `:${url.port}` : ""}`;
 }
 
-function serverUrlForLabel(label: string, template: string): string {
+export function serverUrlForLabel(label: string, template: string): string {
   return template.replace("{label}", label);
+}
+
+export function tunnelUrlForServerUrl(serverUrl: string): string {
+  return `${serverUrl.replace(/^http/u, "ws")}/__tunnel`;
 }
 
 export function depsFromEnv(env: Env): Deps {
@@ -70,12 +83,13 @@ export function depsFromEnv(env: Env): Deps {
         throw new Error(`tunnel close failed (${response.status})`);
       }
     },
+    tunnelConnected: tunnelConnectedLookup(env, env.TUNNEL_DO),
   };
 }
 
 type ProfileRow = typeof profile.$inferSelect;
 
-async function findProfile(
+export async function findProfile(
   db: ConnectDb,
   userId: string,
 ): Promise<ProfileRow | undefined> {
@@ -86,18 +100,10 @@ async function findServerByCredential(
   db: ConnectDb,
   credential: string,
 ): Promise<{ id: string; userId: string } | undefined> {
-  const presented = credential.trim();
-  if (!presented) return undefined;
-  return db
-    .select({ id: server.id, userId: server.userId })
-    .from(server)
-    .where(
-      and(
-        eq(server.credentialHash, await sha256Hex(presented)),
-        isNull(server.revokedAt),
-      ),
-    )
-    .get();
+  const resolved = await resolveServerCredential(db, credential);
+  return resolved
+    ? { id: resolved.server.id, userId: resolved.userId }
+    : undefined;
 }
 
 async function insertConnectCode(
@@ -138,15 +144,6 @@ async function hasMachineCapacity(
     .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
     .all();
   return active.length < MAX_PER_ACCOUNT;
-}
-
-function rowsChanged(result: unknown): number {
-  if (result && typeof result === "object") {
-    const r = result as { meta?: { changes?: number }; changes?: number };
-    if (typeof r.meta?.changes === "number") return r.meta.changes;
-    if (typeof r.changes === "number") return r.changes;
-  }
-  return 0;
 }
 
 async function consumeConnectCode(
@@ -207,11 +204,12 @@ export interface MachineSummary {
 
 type ServerRow = typeof server.$inferSelect;
 
-function toServerSummary(
+export function toServerSummary(
   srv: ServerRow,
   handle: string,
   serverUrlTemplate: string,
   now: number,
+  tunnelConnected: boolean | null,
 ): ServerSummary {
   const lastSeenMs = srv.lastSeenAt?.getTime() ?? null;
   const connected = srv.credentialHash != null && srv.revokedAt == null;
@@ -223,13 +221,46 @@ function toServerSummary(
     connected,
     online:
       connected &&
-      lastSeenMs != null &&
-      now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+      isLive({
+        lastSeenMs,
+        now,
+        offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+        tunnelConnected,
+      }),
     lastSeenAt: lastSeenMs,
     version: srv.version,
     createdAt: srv.createdAt.getTime(),
     serverUrl: serverUrlForLabel(srv.subdomain, serverUrlTemplate),
   };
+}
+
+export async function listServerSummaries(
+  deps: Pick<Deps, "serverUrlTemplate" | "tunnelConnected">,
+  rows: readonly ServerRow[],
+  handle: string,
+  now: number,
+): Promise<ServerSummary[]> {
+  const lookup = deps.tunnelConnected;
+  const summaries = await Promise.all(
+    rows.map(async (srv) =>
+      toServerSummary(
+        srv,
+        handle,
+        deps.serverUrlTemplate,
+        now,
+        lookup !== null && srv.credentialHash != null && srv.revokedAt == null
+          ? await lookup(srv.subdomain)
+          : null,
+      ),
+    ),
+  );
+  return summaries.sort((a, b) =>
+    a.isPrimary !== b.isPrimary
+      ? a.isPrimary
+        ? -1
+        : 1
+      : a.createdAt - b.createdAt,
+  );
 }
 
 async function resolveServer(
@@ -294,6 +325,7 @@ export async function getAccountState(
     .from(machine)
     .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
     .all();
+  const machineTunnels = await machineTunnelsConnected(deps, userId);
   const machines = machineRows
     .map((row) => {
       const lastSeenMs = row.lastSeenAt?.getTime() ?? null;
@@ -302,7 +334,13 @@ export async function getAccountState(
         name: row.name,
         subdomain: row.subdomain,
         online:
-          lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+          machineTunnels.get(row.id) === true ||
+          isLive({
+            lastSeenMs,
+            now,
+            offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+            tunnelConnected: null,
+          }),
         lastSeenAt: lastSeenMs,
         createdAt: row.createdAt.getTime(),
       };
@@ -319,17 +357,37 @@ export async function getAccountState(
     .where(eq(server.userId, userId))
     .all();
 
-  const servers = serverRows
-    .map((srv) => toServerSummary(srv, prof.handle, serverUrlTemplate, now))
-    .sort((a, b) =>
-      a.isPrimary !== b.isPrimary
-        ? a.isPrimary
-          ? -1
-          : 1
-        : a.createdAt - b.createdAt,
-    );
+  const servers = await listServerSummaries(deps, serverRows, prof.handle, now);
 
   return { handle: prof.handle, machines, servers, ...base };
+}
+
+async function machineTunnelsConnected(
+  deps: Pick<Deps, "db" | "tunnelConnected">,
+  userId: string,
+): Promise<Map<string, boolean | null>> {
+  const lookup = deps.tunnelConnected;
+  if (lookup === null) return new Map();
+  const claims = await deps.db
+    .select({
+      machineId: labelClaim.ownerId,
+      label: labelClaim.label,
+      generation: labelClaim.generation,
+    })
+    .from(labelClaim)
+    .where(and(eq(labelClaim.userId, userId), eq(labelClaim.kind, "machine")))
+    .all();
+  return new Map(
+    await Promise.all(
+      claims.map(
+        async (claim) =>
+          [
+            claim.machineId,
+            await lookup(machineRoutingKey(claim.label, claim.generation)),
+          ] as const,
+      ),
+    ),
+  );
 }
 
 export async function revokeMachine(
@@ -457,7 +515,11 @@ export async function claimHandle(
   return { ok: true, handle };
 }
 
-type CreateServerError = "no-handle" | "server-limit" | "taken" | ClaimError;
+export type CreateServerError =
+  | "no-handle"
+  | "server-limit"
+  | "taken"
+  | ClaimError;
 
 export async function createServer(
   deps: Deps,
@@ -511,6 +573,7 @@ export async function createServer(
       prof.handle,
       serverUrlTemplate,
       Date.now(),
+      null,
     ),
   };
 }
@@ -636,6 +699,28 @@ export async function revokeMachineForServerCredential(
     : result;
 }
 
+export async function denyOutstandingLinkApprovals(
+  db: ConnectDb,
+  serverId: string,
+  now: Date,
+  exceptCode: string | null,
+): Promise<void> {
+  await db
+    .update(connectCode)
+    .set({ deniedAt: now })
+    .where(
+      and(
+        eq(connectCode.purpose, "server-link"),
+        eq(connectCode.serverId, serverId),
+        isNotNull(connectCode.approvedAt),
+        isNull(connectCode.consumedAt),
+        isNull(connectCode.deniedAt),
+        ...(exceptCode === null ? [] : [ne(connectCode.code, exceptCode)]),
+      ),
+    )
+    .run();
+}
+
 export async function disconnectServer(
   deps: Deps,
   userId: string,
@@ -649,11 +734,13 @@ export async function disconnectServer(
     .get();
   if (!srv) return { error: "not-found" };
 
+  const now = new Date();
   await db
     .update(server)
-    .set({ credentialHash: null, revokedAt: new Date() })
+    .set({ credentialHash: null, revokedAt: now })
     .where(eq(server.id, srv.id))
     .run();
+  await denyOutstandingLinkApprovals(db, srv.id, now, null);
   try {
     await deps.closeTunnel(srv.subdomain);
   } catch {}
@@ -703,7 +790,7 @@ export async function redeemConnectCode(
     .from(connectCode)
     .where(eq(connectCode.code, normalized))
     .get();
-  if (!row || row.serverId == null)
+  if (!row || row.serverId == null || row.purpose === "server-link")
     return { error: "invalid-code", status: 404 };
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
   if (row.expiresAt.getTime() < Date.now())
@@ -712,30 +799,36 @@ export async function redeemConnectCode(
   if (!(await consumeConnectCode(db, normalized)))
     return { error: "already-used", status: 409 };
 
-  const credential = generateToken("bbcred_");
-  await db
-    .update(server)
-    .set({ credentialHash: await sha256Hex(credential), revokedAt: null })
-    .where(eq(server.id, row.serverId))
-    .run();
-
-  const srv = await db
-    .select()
-    .from(server)
-    .where(eq(server.id, row.serverId))
-    .get();
-  const handle = srv?.subdomain ?? null;
+  const minted = await mintServerCredential(db, row.serverId);
+  const handle = minted.server?.subdomain ?? null;
   const serverUrl = handle
     ? serverUrlForLabel(handle, serverUrlTemplate)
     : null;
   return {
-    credential,
+    credential: minted.credential,
     serverId: row.serverId,
     handle,
-    tunnelUrl: serverUrl
-      ? `${serverUrl.replace(/^http/u, "ws")}/__tunnel`
-      : null,
+    tunnelUrl: serverUrl ? tunnelUrlForServerUrl(serverUrl) : null,
   };
+}
+
+async function mintServerCredential(
+  db: ConnectDb,
+  serverId: string,
+): Promise<{ credential: string; server: ServerRow | undefined }> {
+  const credential = generateToken("bbcred_");
+  await db
+    .update(server)
+    .set({ credentialHash: await sha256Hex(credential), revokedAt: null })
+    .where(eq(server.id, serverId))
+    .run();
+  await denyOutstandingLinkApprovals(db, serverId, new Date(), null);
+  const minted = await db
+    .select()
+    .from(server)
+    .where(eq(server.id, serverId))
+    .get();
+  return { credential, server: minted };
 }
 
 async function machineIdForCode(userId: string, code: string): Promise<string> {
@@ -765,7 +858,8 @@ export async function lookupMachineCodeForServerCredential(
       ),
     )
     .get();
-  if (!row) return { error: "invalid-code", status: 404 };
+  if (!row || row.userId === null)
+    return { error: "invalid-code", status: 404 };
   const device = await deps.db
     .select({ id: machine.id })
     .from(machine)
@@ -782,6 +876,7 @@ export async function lookupMachineCodeForServerCredential(
 export async function redeemMachineCode(
   deps: Pick<Deps, "db" | "serverUrlTemplate">,
   code: string,
+  deviceName: string | null,
 ): Promise<
   | {
       credential: string;
@@ -800,13 +895,14 @@ export async function redeemMachineCode(
     .from(connectCode)
     .where(eq(connectCode.code, normalized))
     .get();
-  if (!row || row.purpose !== "machine-pair")
+  if (!row || row.purpose !== "machine-pair" || row.userId === null)
     return { error: "invalid-code", status: 404 };
+  const ownerId = row.userId;
   if (row.consumedAt != null) return { error: "already-used", status: 409 };
   if (row.expiresAt.getTime() < Date.now())
     return { error: "expired", status: 410 };
 
-  if (!(await hasMachineCapacity(db, row.userId))) {
+  if (!(await hasMachineCapacity(db, ownerId))) {
     return { error: "machine-limit", status: 409 };
   }
 
@@ -814,18 +910,19 @@ export async function redeemMachineCode(
     return { error: "already-used", status: 409 };
 
   const credential = generateToken("bbcm_");
-  const machineId = await machineIdForCode(row.userId, normalized);
+  const machineId = await machineIdForCode(ownerId, normalized);
   await db
     .insert(machine)
     .values({
       id: machineId,
-      userId: row.userId,
+      name: deviceName,
+      userId: ownerId,
       credentialHash: await sha256Hex(credential),
       createdAt: new Date(),
     })
     .run();
 
-  const prof = await findProfile(db, row.userId);
+  const prof = await findProfile(db, ownerId);
   const targetServer =
     row.serverId == null
       ? null

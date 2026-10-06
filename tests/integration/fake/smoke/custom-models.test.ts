@@ -45,31 +45,4 @@ describe.sequential("custom provider models integration", () => {
         "claude-example-preview[1m]",
       );
     }));
-
-  it("skips custom models with an unknown provider on reload", () =>
-    withHarness(async (harness) => {
-      await waitForHostConnected(harness.api, DEFAULT_TIMEOUT_MS);
-
-      await fs.writeFile(
-        formatBbAppConfigPath(harness.server.config.dataDir),
-        `${JSON.stringify({
-          customModels: [
-            { providerId: "not-a-provider", model: "typo-model" },
-            { providerId: "claude-code", model: "claude-example-preview" },
-          ],
-        })}\n`,
-        "utf8",
-      );
-
-      const reloadResponse = await harness.api.system.config.reload.$post({});
-      expect(reloadResponse.status).toBe(200);
-
-      const models = await getAvailableModels(harness.api, {
-        providerId: "claude-code",
-      });
-      expect(
-        models.some((model) => model.model === "claude-example-preview"),
-      ).toBe(true);
-      expect(models.some((model) => model.model === "typo-model")).toBe(false);
-    }));
 });

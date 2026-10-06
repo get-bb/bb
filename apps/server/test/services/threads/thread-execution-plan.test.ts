@@ -1,4 +1,9 @@
-import { updateHost, upsertProjectExecutionDefaults } from "@bb/db";
+import {
+  getAppSettings,
+  setAppSettings,
+  updateHost,
+  upsertProjectExecutionDefaults,
+} from "@bb/db";
 import type { PermissionMode } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -21,6 +26,164 @@ import {
 } from "../../helpers/test-app.js";
 
 describe("thread execution plan input sources", () => {
+  it("uses the default tier for explicit and inherited fast selections when fast is disabled", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-fast-tier-setting",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "fast",
+      });
+      const resolve = (
+        input: ReturnType<typeof buildExistingThreadExecutionInput>,
+      ) =>
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input,
+          threadId: thread.id,
+        });
+
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("fast");
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        allowFastServiceTier: false,
+      });
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("default");
+      expect(
+        (await resolve({ serviceTier: { source: "explicit", value: "fast" } }))
+          .resolvedExecution.serviceTier,
+      ).toBe("default");
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        allowFastServiceTier: true,
+      });
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("fast");
+    });
+  });
+
+  it("accepts the tiers a provider lists and rejects an explicit tier it does not", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-open-tier",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "turbo",
+      });
+      const resolve = (
+        input: ReturnType<typeof buildExistingThreadExecutionInput>,
+      ) =>
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input,
+          threadId: thread.id,
+        });
+
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("default");
+      expect(
+        (
+          await resolve({
+            serviceTier: { source: "explicit", value: "ultrafast" },
+          })
+        ).resolvedExecution.serviceTier,
+      ).toBe("ultrafast");
+      expect(
+        (
+          await resolve({
+            serviceTier: { source: "client-preference", value: "turbo" },
+          })
+        ).resolvedExecution.serviceTier,
+      ).toBe("default");
+      await expect(
+        resolve({ serviceTier: { source: "explicit", value: "turbo" } }),
+      ).rejects.toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message:
+            "Provider codex does not support the turbo service tier. Supported service tiers: default, fast, ultrafast.",
+        },
+      });
+    });
+  });
+
+  it("runs a provider without service tiers at the default tier unless a tier is explicitly requested", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-no-tier",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "pi",
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "pi",
+        model: "pi-model",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "fast",
+      });
+      const resolve = (
+        input: ReturnType<typeof buildExistingThreadExecutionInput>,
+      ) =>
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input,
+          threadId: thread.id,
+        });
+
+      expect((await resolve({})).resolvedExecution.serviceTier).toBe("default");
+      await expect(
+        resolve({ serviceTier: { source: "explicit", value: "fast" } }),
+      ).rejects.toMatchObject({
+        status: 400,
+        body: { message: "Provider pi does not support service tiers." },
+      });
+    });
+  });
+
   it("treats supplied execution fields as explicit when legacy callers omit sources", () => {
     expect(
       buildExistingThreadExecutionInput({

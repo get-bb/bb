@@ -109,8 +109,6 @@ export const ACP_UPDATE_METHOD = "acp/update";
 export const ACP_FS_WRITE_METHOD = "acp/fs/write";
 export const ACP_WARNING_METHOD = "acp/warning";
 
-export const ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE = -32001;
-
 export const acpTurnStartedNotificationParamsSchema = z
   .object({
     threadId: z.string().min(1),

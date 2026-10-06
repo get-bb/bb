@@ -43,11 +43,7 @@ const SERVER_DATABASE_PATHS = ["bb.db", "bb.db-wal", "bb.db-shm"] as const;
 const SQLITE_SIDECAR_SUFFIXES = ["-wal", "-shm", "-journal"] as const;
 const MAX_ARCHIVE_NAME_ATTEMPTS = 100;
 
-export type ImportedManagedConfig = Omit<
-  BbAppManagedConfig,
-  "customAcpAgents" | "customModels"
-> & {
-  customAcpAgents?: unknown[];
+export type ImportedManagedConfig = Omit<BbAppManagedConfig, "customModels"> & {
   customModels?: unknown[];
 };
 
@@ -88,12 +84,9 @@ export function mergeImportedManagedConfig(
   if (Object.keys(configValues).length > 0) {
     merged.config = configValues;
   }
-  const { customAcpAgents, customModels, sharedSkillRoots } = importedConfig;
+  const { customModels, sharedSkillRoots } = importedConfig;
   if (customModels !== undefined && customModels.length > 0) {
     merged.customModels = customModels;
-  }
-  if (customAcpAgents !== undefined && customAcpAgents.length > 0) {
-    merged.customAcpAgents = customAcpAgents;
   }
   if (sharedSkillRoots !== undefined) {
     merged.sharedSkillRoots = sharedSkillRoots;
@@ -118,13 +111,8 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 
 function parseImportedManagedConfig(value: unknown): ImportedManagedConfig {
   const config: ImportedManagedConfig = { ...parseBbAppManagedConfig(value) };
-  if (isJsonObject(value)) {
-    if (Array.isArray(value.customAcpAgents)) {
-      config.customAcpAgents = value.customAcpAgents;
-    }
-    if (Array.isArray(value.customModels)) {
-      config.customModels = value.customModels;
-    }
+  if (isJsonObject(value) && Array.isArray(value.customModels)) {
+    config.customModels = value.customModels;
   }
   return config;
 }

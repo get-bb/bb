@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "option-display",
+  "type": "registry:ui",
+  "title": "option-display",
+  "description": "BB ui \"option-display\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/tooltip",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/option-display.tsx",
+      "content": "import type { ReactNode } from \"react\";\nimport { cn } from \"../../lib/utils\";\nimport { Tooltip, TooltipContent, TooltipTrigger } from \"./tooltip\";\n\nexport const OPTION_BASE_CLASS_NAME =\n  \"h-8 w-fit max-w-full min-w-0 items-center justify-start gap-1 px-1 text-xs leading-tight\";\nexport const OPTION_INTERACTIVE_CLASS_NAME =\n  \"border-none bg-transparent shadow-none\";\nexport const OPTION_CONTENT_CLASS_NAME = \"flex min-w-0 items-center gap-1.5\";\nexport const OPTION_TRIGGER_CONTENT_CLASS_NAME = \"contents\";\nexport const OPTION_MENU_CONTENT_CLASS_NAME =\n  \"max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-0.5rem))] w-max min-w-0 max-w-96 overflow-auto overflow-x-hidden overscroll-contain\";\nexport const OPTION_MUTED_CLASS_NAME =\n  \"text-muted-foreground hover:text-muted-foreground\";\n\nexport interface OptionDisplayProps {\n  label: string;\n  value: ReactNode;\n  leading?: ReactNode;\n  compactValue?: ReactNode;\n  className?: string;\n  tooltip?: ReactNode;\n}\n\nexport function OptionDisplay({\n  label,\n  value,\n  leading,\n  compactValue,\n  className,\n  tooltip,\n}: OptionDisplayProps) {\n  const defaultTitle =\n    typeof value === \"string\" ? `${label}: ${value}` : undefined;\n\n  const display = (\n    <div\n      data-option-display=\"\"\n      title={tooltip ? undefined : defaultTitle}\n      tabIndex={tooltip ? 0 : undefined}\n      className={cn(\n        \"inline-flex\",\n        OPTION_BASE_CLASS_NAME,\n        tooltip &&\n          \"rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background\",\n        OPTION_MUTED_CLASS_NAME,\n        className,\n      )}\n    >\n      <span className={OPTION_CONTENT_CLASS_NAME}>\n        {leading}\n        <span className=\"sr-only\">{label}: </span>\n        <span className=\"min-w-0 truncate\" data-promptbox-full-label=\"\">\n          {value}\n        </span>\n        {compactValue ? (\n          <span className=\"min-w-0 truncate\" data-promptbox-compact-label=\"\">\n            {compactValue}\n          </span>\n        ) : null}\n      </span>\n    </div>\n  );\n\n  if (!tooltip) {\n    return display;\n  }\n\n  return (\n    <Tooltip>\n      <TooltipTrigger asChild>{display}</TooltipTrigger>\n      <TooltipContent>{tooltip}</TooltipContent>\n    </Tooltip>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/option-display.tsx"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { rm, rmdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import type { AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import { listNonDestroyedHostsByIds } from "@bb/db";
 import {
@@ -110,6 +111,7 @@ export interface ServerMoveEnvironment {
   ): Promise<ServerMoveGrant>;
   resumeDeferredWork(): void;
   retireProcess(): void;
+  serverAppSurface: AppSurface;
   serverTimeZone: string | null;
   stopRunningWork(args: ServerMoveStopWorkArgs): Promise<void>;
   targetServerPort(): number;
@@ -322,6 +324,7 @@ export function createServerMoveCoordinator(
     inspectTimeoutMs: timings.inspectTimeoutMs,
     readServerDiskFreeBytes: () => environment.readServerDiskFreeBytes(),
     resolveMode: () => environment.resolveMode(),
+    serverAppSurface: environment.serverAppSurface,
     serverTimeZone: environment.serverTimeZone,
     targetServerPort: () => environment.targetServerPort(),
   };
@@ -539,6 +542,18 @@ export function createServerMoveCoordinator(
   }
 
   async function runStopWork(move: MoveRun): Promise<void> {
+    setStep(move, "stop-work", "running", "Resolving server access");
+    move.grant =
+      move.status.mode === "connect"
+        ? await untilCancelled(
+            move,
+            environment.resolveServerHostGrant(
+              move.sourceServerHost.id,
+              move.abort.signal,
+            ),
+          )
+        : { serverUrl: move.status.serverUrl, headers: {} };
+    assertNotCancelled(move);
     move.frozen = true;
     setServerMoveFrozen(deps.db, true);
     environment.plugins.setSchedulesPaused(true);
@@ -551,16 +566,6 @@ export function createServerMoveCoordinator(
         timeoutMs: timings.stopWorkTimeoutMs,
       }),
     );
-    move.grant =
-      move.status.mode === "connect"
-        ? await untilCancelled(
-            move,
-            environment.resolveServerHostGrant(
-              move.sourceServerHost.id,
-              move.abort.signal,
-            ),
-          )
-        : { serverUrl: move.status.serverUrl, headers: {} };
     assertNotCancelled(move);
     setStep(move, "stop-work", "running", "Pausing plugins");
     await suspendPlugins(move);

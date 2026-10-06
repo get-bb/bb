@@ -1,5 +1,4 @@
 import {
-  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -37,27 +36,6 @@ describe("claude skill plugins", () => {
     return root;
   }
 
-  it("assembles a plugin whose skills directory links to the generic root", () => {
-    const pluginsRoot = createClaudeSkillPluginsRoot(baseDir);
-    const skillsPath = stageSkills("a");
-    const pluginPath = ensureClaudeSkillPlugin({
-      pluginsRoot,
-      root: { id: "global-skills:abc123", path: skillsPath },
-    });
-
-    expect(pluginPath.startsWith(pluginsRoot)).toBe(true);
-    const manifest = JSON.parse(
-      readFileSync(join(pluginPath, ".claude-plugin", "plugin.json"), "utf8"),
-    ) as { name: string; skills: string };
-    expect(manifest.skills).toBe("./skills");
-    expect(manifest.name).toBe(CLAUDE_SKILL_PLUGIN_NAME);
-    expect(lstatSync(join(pluginPath, "skills")).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(join(pluginPath, "skills"))).toBe(skillsPath);
-    expect(
-      readFileSync(join(pluginPath, "skills", "demo", "SKILL.md"), "utf8"),
-    ).toContain("name: demo");
-  });
-
   it("is idempotent for a root and re-points the link when the root moves", () => {
     const pluginsRoot = createClaudeSkillPluginsRoot(baseDir);
     const first = stageSkills("a");
@@ -66,6 +44,7 @@ describe("claude skill plugins", () => {
       pluginsRoot,
       root: { id: "r", path: first },
     });
+    expect(pluginPath.startsWith(pluginsRoot)).toBe(true);
     expect(
       ensureClaudeSkillPlugin({ pluginsRoot, root: { id: "r", path: first } }),
     ).toBe(pluginPath);

@@ -28,6 +28,12 @@ const actions = vi.hoisted(() => ({
   setRootComposeProjectId: vi.fn(),
 }));
 
+const mutations = vi.hoisted(() => ({
+  pinThreadAsync: vi.fn(),
+  unpinThreadAsync: vi.fn(),
+  updateThreadAsync: vi.fn(),
+}));
+
 type SidebarSection = {
   id: string;
   name: string;
@@ -76,7 +82,7 @@ vi.mock("@/hooks/queries/host-queries", () => {
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    archiveThreadAndChildren: vi.fn(),
+    requestArchive: vi.fn(),
     requestDelete: vi.fn(),
     togglePin: vi.fn(),
     toggleRead: vi.fn(),
@@ -84,7 +90,9 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useUpdateThread: () => ({ mutateAsync: vi.fn() }),
+  usePinThread: () => ({ mutateAsync: mutations.pinThreadAsync }),
+  useUnpinThread: () => ({ mutateAsync: mutations.unpinThreadAsync }),
+  useUpdateThread: () => ({ mutateAsync: mutations.updateThreadAsync }),
 }));
 
 vi.mock("@/components/ui/app-route-anchor", () => ({
@@ -309,6 +317,39 @@ describe("useSidebarThreads sections", () => {
 });
 
 describe("useSidebarThreadActions", () => {
+  it.each([
+    { pinned: true, pinnedAt: null, mutate: mutations.pinThreadAsync },
+    { pinned: false, pinnedAt: 42, mutate: mutations.unpinThreadAsync },
+  ])(
+    "waits for the optimistic host mutation when setPinned is $pinned",
+    async ({ pinned, pinnedAt, mutate }) => {
+      const thread = makeThreadListEntry({ id: "thr_1", pinnedAt });
+      state.data = payload([thread]);
+      let resolveMutation: (() => void) | undefined;
+      mutate.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveMutation = resolve;
+        }),
+      );
+      const { result } = renderHook(() => useSidebarThreadActions());
+
+      let settled = false;
+      const request = result.current.setPinned(thread.id, pinned).then(() => {
+        settled = true;
+      });
+      await act(async () => Promise.resolve());
+
+      expect(mutate).toHaveBeenCalledWith({ id: thread.id });
+      expect(settled).toBe(false);
+
+      await act(async () => {
+        resolveMutation?.();
+        await request;
+      });
+      expect(settled).toBe(true);
+    },
+  );
+
   it("opens a project composer without a legacy route transition", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());
@@ -322,24 +363,31 @@ describe("useSidebarThreadActions", () => {
 
     expect(actions.setRootComposeProjectId).toHaveBeenCalledWith("proj_target");
     expect(actions.navigate).toHaveBeenCalledWith("/", {
-      state: { focusPrompt: true },
+      state: {
+        focusPrompt: true,
+        placement: { sectionId: null, pinned: false },
+      },
     });
   });
 
-  it("files a new thread under a section the way bb's section menu does", () => {
+  it("opens a section without changing the selected project", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.openNewThread({
-        projectId: PERSONAL_PROJECT_ID,
         sectionId: "sec_later",
         focusPrompt: true,
       });
     });
 
+    expect(actions.setRootComposeProjectId).not.toHaveBeenCalled();
     expect(actions.navigate).toHaveBeenCalledWith("/", {
-      state: { focusPrompt: true, sectionId: "sec_later" },
+      state: {
+        focusPrompt: true,
+        sectionId: "sec_later",
+        placement: { sectionId: "sec_later", pinned: false },
+      },
     });
   });
 
@@ -355,17 +403,60 @@ describe("useSidebarThreadActions", () => {
     });
 
     expect(actions.navigate).toHaveBeenCalledWith("/", {
-      state: { reuseEnvironmentId: "env_1" },
+      state: {
+        reuseEnvironmentId: "env_1",
+        placement: { sectionId: null, pinned: false },
+      },
     });
   });
 
-  it("navigates with no router state when no option is set", () => {
+  it("passes a machine selection to the root composer", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+
+    act(() => {
+      result.current.openNewThread({
+        projectId: "proj_app",
+        hostId: "host_homelab",
+        focusPrompt: true,
+      });
+    });
+
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: {
+        focusPrompt: true,
+        newEnvironmentHostId: "host_homelab",
+        placement: { sectionId: null, pinned: false },
+      },
+    });
+  });
+
+  it("preserves explicit pinned placement over the legacy section", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+    act(() =>
+      result.current.openNewThread({
+        sectionId: "sec_old",
+        experimental_placement: { sectionId: "sec_managers", pinned: true },
+      }),
+    );
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: {
+        sectionId: "sec_old",
+        placement: { sectionId: "sec_managers", pinned: true },
+      },
+    });
+  });
+
+  it("clears placement when opening global new thread", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());
     act(() => {
       result.current.openNewThread();
     });
-    expect(actions.navigate).toHaveBeenCalledWith("/", undefined);
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: { placement: { sectionId: null, pinned: false } },
+    });
   });
 
   it("re-expands a collapsed conversation when opening its thread", () => {

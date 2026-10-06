@@ -1,8 +1,14 @@
 import {
+  getPanelTabHistoryKey,
+  forgetClosedPanelTab,
+  rememberClosedPanelTab,
+} from "@/components/secondary-panel/recentlyClosedPanelTabs";
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -19,7 +25,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginIcon, PluginItemIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
@@ -28,6 +34,7 @@ import {
   LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadSecondaryPanel,
+  preloadThreadSecondaryPanel,
   LazyThreadStorageFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
@@ -37,6 +44,7 @@ import type {
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
+import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import {
   useCloseFixedSecondaryPanel,
   useReconciledFixedPanelTabsState,
@@ -240,6 +248,11 @@ export function PluginPanelRightPanelHost({
     paneId: resolvedPaneId,
     pluginId,
   });
+  const historyContextKey = getPanelTabHistoryKey({
+    panelStateId,
+    environmentId: null,
+    fileOwnerThreadId: null,
+  });
   const fixedViewTabs = useMemo<readonly PluginPageFixedPanelTab[]>(
     () =>
       (panel?.fixedTabs ?? []).map((fixedTab) =>
@@ -261,6 +274,7 @@ export function PluginPanelRightPanelHost({
   const updatePanelState = useUpdateFixedPanelTabsState(panelStateId, null);
   const closePersistedPanel = useCloseFixedSecondaryPanel(panelStateId, null);
   const [openedPluginIds, setOpenedPluginIds] = useState<string[]>([]);
+  const openedPluginIdsRef = useRef(openedPluginIds);
   const [activePluginDetailId, setActivePluginDetailId] = useState<
     string | null
   >(null);
@@ -422,15 +436,23 @@ export function PluginPanelRightPanelHost({
   }, []);
   const openPluginDetail = useCallback(
     (nextPluginId: string) => {
-      setOpenedPluginIds((current) =>
-        current.includes(nextPluginId) ? current : [...current, nextPluginId],
-      );
+      if (historyContextKey !== null)
+        forgetClosedPanelTab(
+          historyContextKey,
+          `marketplace-plugin:${nextPluginId}`,
+        );
+      const current = openedPluginIdsRef.current;
+      const next = current.includes(nextPluginId)
+        ? current
+        : [...current, nextPluginId];
+      openedPluginIdsRef.current = next;
+      setOpenedPluginIds(next);
       setActivePluginDetailId(nextPluginId);
       setIsPluginDetailPanelOpen(true);
       revealPanel();
       return true;
     },
-    [revealPanel],
+    [historyContextKey, revealPanel],
   );
   const targetStore = useStore();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
@@ -585,7 +607,34 @@ export function PluginPanelRightPanelHost({
     return true;
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
-    if (!isFocused || panel === null || !reopenClosedTab()) return false;
+    if (
+      !isFocused ||
+      panel === null ||
+      !reopenClosedTab({
+        destinations: openedPluginIds.map((pluginId) => ({
+          pluginId,
+          title: pluginDetailTabMetadata[pluginId]?.label ?? pluginId,
+        })),
+        dismiss: selectPersistedPanelTab,
+        restore: ({ index, destination }) => {
+          openPluginDetail(destination.pluginId);
+          const next = openedPluginIdsRef.current.filter(
+            (id) => id !== destination.pluginId,
+          );
+          next.splice(Math.min(index, next.length), 0, destination.pluginId);
+          openedPluginIdsRef.current = next;
+          setOpenedPluginIds(next);
+          setPluginDetailTabMetadata((current) => ({
+            ...current,
+            [destination.pluginId]: {
+              icon: current[destination.pluginId]?.icon ?? null,
+              label: destination.title,
+            },
+          }));
+        },
+      })
+    )
+      return false;
     revealPanel();
     return true;
   });
@@ -596,11 +645,30 @@ export function PluginPanelRightPanelHost({
     setTogglePortalTarget(findPluginRightPanelTogglePortal(panelStateId));
   }, [panel, panelStateId]);
 
+  const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
+    useState<BrowserAddressFocusRequest | null>(null);
+  const handleBrowserAddressFocusRequestConsumed = useCallback(
+    (request: BrowserAddressFocusRequest) => {
+      setBrowserAddressFocusRequest((current) =>
+        current?.requestId === request.requestId &&
+        current.tabId === request.tabId
+          ? null
+          : current,
+      );
+    },
+    [],
+  );
   const openBrowser = useCallback(
     (url = "") => {
       if (!isDesktopBrowserAvailable()) return;
       selectPersistedPanelTab();
-      openTab({ kind: "browser", url });
+      const tab = openTab({ kind: "browser", url });
+      if (url.length === 0 && tab?.kind === "browser") {
+        setBrowserAddressFocusRequest((current) => ({
+          requestId: (current?.requestId ?? 0) + 1,
+          tabId: tab.id,
+        }));
+      }
       revealPanel();
     },
     [openTab, revealPanel, selectPersistedPanelTab],
@@ -706,14 +774,24 @@ export function PluginPanelRightPanelHost({
 
   const closePluginDetailTab = useCallback(
     (closingPluginId: string) => {
-      const closingIndex = openedPluginIds.indexOf(closingPluginId);
+      const closingIndex = openedPluginIdsRef.current.indexOf(closingPluginId);
       if (closingIndex === -1) return;
-      const nextPluginIds = openedPluginIds.filter(
+      const nextPluginIds = openedPluginIdsRef.current.filter(
         (candidate) => candidate !== closingPluginId,
       );
-      setOpenedPluginIds((current) =>
-        current.filter((candidate) => candidate !== closingPluginId),
-      );
+      openedPluginIdsRef.current = nextPluginIds;
+      setOpenedPluginIds(nextPluginIds);
+      if (historyContextKey !== null)
+        rememberClosedPanelTab(historyContextKey, {
+          kind: "plugin-detail",
+          index: closingIndex,
+          destination: {
+            pluginId: closingPluginId,
+            title:
+              pluginDetailTabMetadata[closingPluginId]?.label ??
+              closingPluginId,
+          },
+        });
       if (activePluginDetailId !== closingPluginId) return;
       const nextActivePluginId =
         nextPluginIds[Math.min(closingIndex, nextPluginIds.length - 1)] ?? null;
@@ -733,7 +811,8 @@ export function PluginPanelRightPanelHost({
       activePluginDetailId,
       fixedViewTabs.length,
       hidePanel,
-      openedPluginIds,
+      historyContextKey,
+      pluginDetailTabMetadata,
       panelState.secondary.tabs.length,
     ],
   );
@@ -795,7 +874,7 @@ export function PluginPanelRightPanelHost({
             contentFillsRegion: registration.layout === "flush",
             label: registration.title,
             leadingVisual: (
-              <PluginIcon
+              <PluginItemIcon
                 pluginId={pluginId}
                 icon={registration.icon}
                 className="size-3.5"
@@ -1084,6 +1163,10 @@ export function PluginPanelRightPanelHost({
           <LazyBrowserTabDeck
             browserTabs={browserTabs}
             activeBrowserTabId={activeBrowserTabId}
+            addressFocusRequest={browserAddressFocusRequest}
+            onAddressFocusRequestConsumed={
+              handleBrowserAddressFocusRequestConsumed
+            }
             environmentId={null}
             canShowNativeBrowserView={canShowNativeBrowserView}
             canHandleBrowserCommands={canHandleBrowserCommands}
@@ -1133,8 +1216,10 @@ export function PluginPanelRightPanelHost({
       activeBrowserTab,
       activePluginDetailId,
       activeTab,
+      browserAddressFocusRequest,
       browserTabs,
       fixedTabs,
+      handleBrowserAddressFocusRequestConsumed,
       hidePanel,
       isOpen,
       openNewTab,
@@ -1176,7 +1261,6 @@ export function PluginPanelRightPanelHost({
         }
         main={children}
         composerHost={null}
-        compactPresentation="full"
         renderPanel={renderPanel}
       />
     </div>
@@ -1198,6 +1282,9 @@ export function PluginPanelRightPanelHost({
                   className={RIGHT_PANEL_TOGGLE_CLASS}
                   aria-label={toggleLabel}
                   aria-pressed={isOpen}
+                  onPointerEnter={preloadThreadSecondaryPanel}
+                  onFocus={preloadThreadSecondaryPanel}
+                  onPointerDown={preloadThreadSecondaryPanel}
                   onClick={togglePanel}
                 >
                   <Icon name={toggleIconName} />

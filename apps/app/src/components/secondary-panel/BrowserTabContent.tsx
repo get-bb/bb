@@ -14,6 +14,7 @@ import type {
   BbDesktopBrowserControl,
   BbDesktopBrowserFindInPageRequest,
   BbDesktopBrowserState,
+  BbDesktopBrowserTarget,
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
@@ -46,6 +47,7 @@ import {
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
+  takeBrowserViewRecreation,
   type BrowserViewVisibilityCoordinator,
 } from "./browserViewVisibilityCoordinator";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
@@ -60,6 +62,7 @@ import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserTo
 
 interface BrowserTabContentProps {
   tabId: string;
+  desktopTarget?: BbDesktopBrowserTarget;
   existingOnly?: true;
   initialUrl: string;
   addressFocusRequest: BrowserAddressFocusRequest | null;
@@ -200,8 +203,6 @@ function BrowserChrome({
   const addressValue = isEditing ? addressDraft : currentUrl;
   return (
     <div
-      data-testid="browser-tab-nav-bar"
-      data-state="expanded"
       role="region"
       aria-label="Browser navigation"
       tabIndex={-1}
@@ -211,7 +212,6 @@ function BrowserChrome({
       )}
     >
       <div
-        data-testid="browser-tab-nav-controls"
         className={cn(
           "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 py-1.5 pl-2 pr-4 opacity-100 max-md:pointer-coarse:h-[52px]",
         )}
@@ -383,6 +383,7 @@ function BrowserPageLoadError({
 
 export function BrowserTabContent({
   tabId,
+  desktopTarget,
   existingOnly,
   initialUrl,
   addressFocusRequest,
@@ -446,6 +447,7 @@ export function BrowserTabContent({
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
+  const [isPageFocusPending, setIsPageFocusPending] = useState(false);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const isFindOpenRef = useRef(false);
   isFindOpenRef.current = isFindOpen;
@@ -462,6 +464,8 @@ export function BrowserTabContent({
   onUpdateRef.current = onUpdate;
   recordVisitRef.current = recordVisit;
   const initialUrlRef = useRef(initialUrl);
+  const existingOnlyRef = useRef(existingOnly);
+  const desktopTargetRef = useRef(desktopTarget);
   const [attachedBrowserViewIdentity, setAttachedBrowserViewIdentity] =
     useState<BrowserViewAttachIdentity | null>(null);
   const isBrowserViewAttached =
@@ -539,10 +543,14 @@ export function BrowserTabContent({
     const initialBounds = syncInitialBounds();
     const mountUrl = initialUrlRef.current;
     registerBrowserView({ environmentId, tabId, threadId });
+    const target = desktopTargetRef.current;
+    const attachExistingOnly =
+      existingOnlyRef.current === true &&
+      (target === undefined || !takeBrowserViewRecreation(tabId, target));
     desktopBrowser.attach({
       tabId,
       threadId,
-      ...(existingOnly === true ? { existingOnly } : {}),
+      ...(attachExistingOnly ? { existingOnly: true } : {}),
       url: mountUrl,
       bounds: initialBounds,
       visible: false,
@@ -610,7 +618,6 @@ export function BrowserTabContent({
     visibilityCoordinator,
     tabId,
     threadId,
-    existingOnly,
   ]);
 
   useEffect(() => {
@@ -669,6 +676,31 @@ export function BrowserTabContent({
     visibilityCoordinator.hide(tabId);
   }, [visibilityCoordinator, tabId, isViewVisible, syncBounds]);
 
+  useLayoutEffect(() => {
+    if (!isPageFocusPending) return;
+    if (
+      !canShowNativeBrowserView ||
+      !canHandleBrowserCommands ||
+      hasPageLoadError ||
+      isBrowserDimmingModalOpen
+    ) {
+      setIsPageFocusPending(false);
+      return;
+    }
+    if (!isViewVisible) return;
+    setIsPageFocusPending(false);
+    desktopBrowser?.focus?.(tabId);
+  }, [
+    isPageFocusPending,
+    canShowNativeBrowserView,
+    canHandleBrowserCommands,
+    hasPageLoadError,
+    isBrowserDimmingModalOpen,
+    isViewVisible,
+    desktopBrowser,
+    tabId,
+  ]);
+
   useEffect(() => {
     if (desktopBrowser?.onFocus === undefined || onNativeFocus === undefined) {
       return;
@@ -714,7 +746,9 @@ export function BrowserTabContent({
       }
       setCurrentUrl(url);
       setIsEditing(false);
+      addressInputRef.current?.blur();
       desktopBrowser?.navigate({ tabId, url });
+      setIsPageFocusPending(true);
     },
     [desktopBrowser, tabId],
   );

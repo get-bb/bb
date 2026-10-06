@@ -3,14 +3,16 @@ import type { SystemVoiceTranscriptionResponse } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import { appSurfaceRequestInit } from "./app-surface";
 import {
+  FILE_PREVIEW_SAMPLE_BYTES,
   buildFilePreview,
+  buildFilePreviewFromSample,
   normalizeFilePreviewMimeType,
   type FilePreview,
   type FilePreviewTarget,
 } from "@bb/client-core";
 import {
   buildThreadHostFileContentUrl,
-  buildThreadStorageContentUrl,
+  buildThreadStorageRawContentUrl,
 } from "./file-content-urls";
 
 const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/i;
@@ -123,28 +125,70 @@ export async function request<T>(
   return JSON.parse(text) as T;
 }
 
-async function loadFilePreview(
+const FILE_PREVIEW_SAMPLE_RANGE = `bytes=0-${FILE_PREVIEW_SAMPLE_BYTES - 1}`;
+const EMPTY_RANGE_STATUS = 416;
+const PARTIAL_CONTENT_STATUS = 206;
+
+function parseContentRangeSize(value: string | null): number {
+  const size = Number(value?.split("/")[1]);
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new Error("File response has no usable Content-Range size");
+  }
+  return size;
+}
+
+function responseMimeType(response: Response): string {
+  return normalizeFilePreviewMimeType(response.headers.get("content-type"));
+}
+
+export async function loadFilePreview(
   target: FilePreviewTarget,
   signal?: AbortSignal,
 ): Promise<FilePreview> {
-  const response = await requestResponse(
-    fetch(
-      target.url,
-      appSurfaceRequestInit({
-        method: "GET",
-        signal,
-      }),
-    ),
+  const sample = await fetch(
+    target.url,
+    appSurfaceRequestInit({
+      method: "GET",
+      cache: "no-store",
+      headers: { range: FILE_PREVIEW_SAMPLE_RANGE },
+      signal,
+    }),
   );
-  const contentBytes = new Uint8Array(await response.arrayBuffer());
+  if (sample.status === EMPTY_RANGE_STATUS) {
+    return buildFilePreview({
+      ...target,
+      contentBytes: new Uint8Array(),
+      mimeType: responseMimeType(sample),
+    });
+  }
+  if (!sample.ok) {
+    await throwHttpError(sample);
+  }
+  const sampleBytes = new Uint8Array(await sample.arrayBuffer());
+  const sizeBytes =
+    sample.status === PARTIAL_CONTENT_STATUS
+      ? parseContentRangeSize(sample.headers.get("content-range"))
+      : sampleBytes.byteLength;
+  const mimeType = responseMimeType(sample);
+  if (sampleBytes.byteLength >= sizeBytes) {
+    return buildFilePreview({ ...target, contentBytes: sampleBytes, mimeType });
+  }
+  const samplePreview = buildFilePreviewFromSample({
+    ...target,
+    mimeType,
+    sampleBytes,
+    sizeBytes,
+  });
+  if (samplePreview !== null) {
+    return samplePreview;
+  }
+  const response = await requestResponse(
+    fetch(target.url, appSurfaceRequestInit({ method: "GET", signal })),
+  );
   return buildFilePreview({
-    contentBytes,
-    mimeType: normalizeFilePreviewMimeType(
-      response.headers.get("content-type"),
-    ),
-    name: target.name,
-    path: target.path,
-    url: target.url,
+    ...target,
+    contentBytes: new Uint8Array(await response.arrayBuffer()),
+    mimeType: responseMimeType(response),
   });
 }
 
@@ -195,7 +239,7 @@ export async function getThreadStorageFilePreview(
   return loadFilePreview(
     {
       path,
-      url: buildThreadStorageContentUrl(id, path),
+      url: buildThreadStorageRawContentUrl(id, path),
     },
     signal,
   );

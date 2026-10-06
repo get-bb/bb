@@ -163,6 +163,11 @@ export function createAccountPoolPlugin(
         ),
       onAccountsChanged: () =>
         bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
+      onOAuthRefresh: (provider, accountId, outcome, detail) => {
+        const message = `Account Pooler ${provider} account ${accountId} OAuth refresh ${outcome}: ${detail}`;
+        if (outcome === "succeeded") bb.log.info(message);
+        else bb.log.warn(message);
+      },
     });
     if (transport !== null) {
       bb.onDispose(async () => {
@@ -299,6 +304,12 @@ export function createAccountPoolPlugin(
           value: "true",
           reason:
             "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
+        },
+        {
+          name: "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
+          value: "1",
+          reason:
+            "Claude Code limits Opus to a 200k context window behind a custom base URL; the hub forwards to Anthropic's API",
         },
       ]),
     );

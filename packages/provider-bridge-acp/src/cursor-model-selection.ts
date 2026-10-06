@@ -79,6 +79,24 @@ function cursorCatalogModel(model: AvailableModel): {
   };
 }
 
+function mergeSupportedServiceTiers(
+  current: AvailableModel,
+  candidate: AvailableModel,
+): AvailableModel["supportedServiceTiers"] {
+  if (
+    current.supportedServiceTiers === undefined ||
+    candidate.supportedServiceTiers === undefined
+  ) {
+    return undefined;
+  }
+  const tiers = new Map(
+    [...current.supportedServiceTiers, ...candidate.supportedServiceTiers].map(
+      (tier) => [tier.id, tier],
+    ),
+  );
+  return [...tiers.values()];
+}
+
 export function buildCursorParameterizedModelCatalog(
   models: readonly AvailableModel[],
 ): AvailableModel[] {
@@ -109,6 +127,10 @@ export function buildCursorParameterizedModelCatalog(
         efforts.set(effort.reasoningEffort, effort);
       }
     }
+    const serviceTiers = mergeSupportedServiceTiers(
+      current.model,
+      candidate.model,
+    );
     normalized.set(candidate.model.id, {
       model: {
         ...preferred.model,
@@ -117,6 +139,9 @@ export function buildCursorParameterizedModelCatalog(
             reasoningLevelValues.indexOf(a.reasoningEffort) -
             reasoningLevelValues.indexOf(b.reasoningEffort),
         ),
+        ...(serviceTiers === undefined
+          ? {}
+          : { supportedServiceTiers: serviceTiers }),
         isDefault: current.model.isDefault || candidate.model.isDefault,
       },
       directFamily: preferred.directFamily,

@@ -121,7 +121,6 @@ describe("database maintenance", () => {
   it("detects active work that should block compaction", () => {
     const { db, project } = setup();
     const idleActivity = getDatabaseMaintenanceActivity(db);
-    expect(idleActivity.activeCommandCount).toBe(0);
     expect(isDatabaseMaintenanceIdle(idleActivity)).toBe(true);
 
     const activeThread = createThread(db, noopNotifier, {
@@ -137,11 +136,6 @@ describe("database maintenance", () => {
     expect(isDatabaseMaintenanceIdle(getDatabaseMaintenanceActivity(db))).toBe(
       true,
     );
-  });
-
-  it("creates databases in incremental auto-vacuum mode", () => {
-    const { db } = setup();
-    expect(getDatabaseAutoVacuumMode(db)).toBe("incremental");
   });
 
   it("drops deferred legacy queue tables without touching current data", () => {

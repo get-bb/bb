@@ -28,6 +28,7 @@ import {
 } from "../providers/native-roots.js";
 import {
   toProviderModelCatalogFailureCode,
+  toProviderModelCatalogFailureDetail,
   type ProviderModelCatalogAccess,
 } from "../providers/provider-model-catalog-store.js";
 import type {
@@ -61,7 +62,7 @@ function unavailableProviderModelResult(providerId: string): ModelListResult {
   return {
     models: [],
     selectedOnlyModels: [],
-    modelLoadError: { providerId, code: "provider_unavailable" },
+    modelLoadError: { providerId, code: "provider_unavailable", detail: null },
   };
 }
 
@@ -118,10 +119,12 @@ function listConfiguredSystemProviderInfos(
   deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
   filter: ProviderFilter = {},
 ): ProviderInfo[] {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   return deps.providerRegistry
     .list()
     .filter(
       (entry) =>
+        !disabled.has(entry.info.id) &&
         entry.visibility === "always" &&
         providerMatchesFilter(entry.info, filter),
     )
@@ -140,7 +143,10 @@ function includeRequestedRegisteredProvider(
     return providers;
   }
   const registration = deps.providerRegistry.get(providerId);
-  return registration === null ? providers : [...providers, registration.info];
+  return registration === null ||
+    deps.providerRegistry.disabledProviderIds().has(providerId)
+    ? providers
+    : [...providers, registration.info];
 }
 
 function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
@@ -154,10 +160,12 @@ async function listInstalledPluginProviderInfos(
   hostId: string,
   filter: ProviderFilter,
 ): Promise<ProviderInfo[]> {
+  const disabled = deps.providerRegistry.disabledProviderIds();
   const registrations = deps.providerRegistry
     .list()
     .filter(
       (registration) =>
+        !disabled.has(registration.info.id) &&
         registration.visibility === "installed" &&
         providerMatchesFilter(registration.info, filter),
     );
@@ -576,7 +584,11 @@ async function loadSystemProviderModels(
       providerId: args.provider.id,
     }),
     selectedOnlyModels: [],
-    modelLoadError: { providerId: args.provider.id, code: result.code },
+    modelLoadError: {
+      providerId: args.provider.id,
+      code: result.code,
+      detail: result.detail,
+    },
   };
 }
 
@@ -609,5 +621,6 @@ function buildModelLoadError({
   return {
     providerId: provider.id,
     code: toProviderModelCatalogFailureCode(error),
+    detail: toProviderModelCatalogFailureDetail(error),
   };
 }

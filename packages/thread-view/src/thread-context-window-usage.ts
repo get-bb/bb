@@ -3,6 +3,7 @@ import type { ThreadContextWindowUsage } from "@bb/server-contract";
 import type { ThreadEventWithMeta } from "./build-event-projection.js";
 
 interface ThreadContextWindowSignal {
+  providerThreadId: string | null;
   snapshot: ContextSnapshot | undefined;
   estimated: boolean;
   modelContextWindow: number | null;
@@ -25,6 +26,7 @@ function decodeContextWindowSignal(
   }
   const { contextWindowUsage } = event;
   return {
+    providerThreadId: event.providerThreadId,
     snapshot: contextWindowUsage.snapshot,
     usedTokens:
       contextWindowUsage.usedTokens === null
@@ -57,11 +59,32 @@ export function extractThreadContextWindowUsage(
   let modelContextWindow: number | undefined;
   let usedTokens: number | undefined;
   let usageIsUnknown = false;
+  let retainedWindow: number | undefined;
+  let windowResolved = false;
+  let providerThreadId: string | null | undefined;
   const orderedEvents = getOrderedContextWindowEvents(events);
 
   for (let index = orderedEvents.length - 1; index >= 0; index -= 1) {
     const signal = decodeContextWindowSignal(orderedEvents[index]);
     if (!signal) continue;
+
+    if (providerThreadId === undefined) {
+      providerThreadId = signal.providerThreadId;
+    }
+    if (!windowResolved) {
+      if (
+        signal.providerThreadId !== providerThreadId ||
+        signal.usedTokens === null ||
+        !signal.estimated
+      ) {
+        windowResolved = true;
+      } else if (signal.snapshot) {
+        if (signal.snapshot.autoCompactAtTokens !== null) {
+          retainedWindow = signal.snapshot.contextWindowTokens;
+        }
+        windowResolved = true;
+      }
+    }
 
     if (usedTokens === undefined && !usageIsUnknown) {
       snapshot = signal.snapshot;
@@ -83,7 +106,8 @@ export function extractThreadContextWindowUsage(
 
     if (
       (usedTokens !== undefined || usageIsUnknown) &&
-      modelContextWindow !== undefined
+      modelContextWindow !== undefined &&
+      windowResolved
     ) {
       break;
     }
@@ -92,6 +116,8 @@ export function extractThreadContextWindowUsage(
   if (usedTokens === undefined || modelContextWindow === undefined) {
     return null;
   }
+
+  modelContextWindow = retainedWindow ?? modelContextWindow;
 
   return {
     ...(snapshot &&

@@ -94,9 +94,12 @@ describe("Composer slot resolvers", () => {
       actions: [{ id: "hidden", component: Component }],
     });
 
-    expect(resolveComposerActions([all, none], "side-chat")).toHaveLength(1);
+    expect(resolveComposerActions([all, none], "queued-message")).toHaveLength(
+      1,
+    );
     expect(
-      resolveComposerActions([{ ...all, generation: 2 }], "side-chat")[0]?.key,
+      resolveComposerActions([{ ...all, generation: 2 }], "queued-message")[0]
+        ?.key,
     ).toBe("composer-plugin/2/all/action");
   });
 });

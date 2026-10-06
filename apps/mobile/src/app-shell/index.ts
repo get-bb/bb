@@ -1,4 +1,10 @@
 export { e2eModeEnabled, resetLocalState } from "./e2e";
+export {
+  holdLaunchSplash,
+  LaunchSplash,
+  revealApp,
+  useAppRevealed,
+} from "./LaunchSplash";
 export { PaletteProvider, ServerPaletteSync } from "./PaletteProvider";
 export { ProfilesProvider, useProfiles } from "./ProfilesProvider";
 export { ThreadOpenSignalHandler } from "./ThreadOpenSignalHandler";

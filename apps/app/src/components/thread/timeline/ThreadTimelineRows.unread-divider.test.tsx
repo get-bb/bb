@@ -43,10 +43,11 @@ function renderTopLevelSequence(
   if (list === null) {
     throw new Error("Timeline did not render a top-level row list");
   }
-  return [...list.children].map((child) =>
-    child.querySelector('[data-testid="thread-unread-divider"]') === null
-      ? (child.textContent ?? "")
-      : DIVIDER,
+  return [...list.querySelectorAll(":scope > [data-timeline-items] > *")].map(
+    (child) =>
+      child.querySelector('[data-testid="thread-unread-divider"]') === null
+        ? (child.textContent ?? "")
+        : DIVIDER,
   );
 }
 
@@ -98,12 +99,7 @@ describe("unread divider placement", () => {
       { kind: "after-cutoff", cutoffAt: 350 },
     );
 
-    expect(sequence).toEqual([
-      "PROMPT",
-      "Ran 3 commands",
-      DIVIDER,
-      "ANSWER",
-    ]);
+    expect(sequence).toEqual(["PROMPT", "Ran 3 commands", DIVIDER, "ANSWER"]);
   });
 
   it("places the divider above a work group that started after the cutoff", () => {
@@ -145,12 +141,7 @@ describe("unread divider placement", () => {
       { kind: "after-cutoff", cutoffAt: 350 },
     );
 
-    expect(collapsed).toEqual([
-      "PROMPT",
-      "Worked for 4s",
-      DIVIDER,
-      "ANSWER",
-    ]);
+    expect(collapsed).toEqual(["PROMPT", "Worked for 4s", DIVIDER, "ANSWER"]);
   });
 
   it("never anchors the divider on the reader's own message", () => {
@@ -159,12 +150,7 @@ describe("unread divider placement", () => {
       { kind: "after-cutoff", cutoffAt: 300 },
     );
 
-    expect(sequence).toEqual([
-      "ANSWER",
-      "PROMPT",
-      DIVIDER,
-      "Ran echo 500 2s",
-    ]);
+    expect(sequence).toEqual(["ANSWER", "PROMPT", DIVIDER, "Ran echo 500 2s"]);
   });
 
   it("omits the divider when no row started after the cutoff", () => {

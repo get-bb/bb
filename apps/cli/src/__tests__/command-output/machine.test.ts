@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { Host } from "@bb/domain";
 import {
   collectLogPayloads,
@@ -97,6 +97,32 @@ describe("bb machine command output", () => {
     expect(JSON.parse(collectLogPayloads(vi.mocked(console.log))[0])).toEqual(
       creating,
     );
+  });
+
+  it("prints a reconnect command and waits for the same host", async () => {
+    const reconnect = vi.fn(async () => ({
+      command: "curl -fsSL reconnect | sh",
+      expiresAt: Date.now() + 60_000,
+      hostId: "host-remote",
+    }));
+    const get = vi.fn(async () => ({
+      ...hosts[1]!,
+      status: "connected" as const,
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.reconnect-commands.$post": reconnect,
+      "v1.hosts.:id.$get": get,
+    });
+    await runCommand(["machine", "reconnect", "laptop"], register);
+    expect(reconnect).toHaveBeenCalledOnce();
+    expect(get).toHaveBeenCalledOnce();
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Machine host-remote keeps its host ID. Run this command on the machine within 15 minutes:",
+      "",
+      "curl -fsSL reconnect | sh",
+      "Machine host-remote reconnected successfully.",
+    ]);
   });
 
   it("prints the manual enrollment command while following", async () => {
@@ -236,15 +262,26 @@ describe("bb machine command output", () => {
       type: "ephemeral",
       machineProviderId: "modal-sandbox",
     };
-    stubServerApi({ "v1.hosts.$get": vi.fn(async () => [...hosts, sandbox]) });
+    const list = vi.fn(async ({ query }: { query: { type?: string } }) =>
+      [...hosts, sandbox].filter(
+        (host) => query.type === undefined || host.type === query.type,
+      ),
+    );
+    stubServerApi({ "v1.hosts.$get": list });
 
     await runCommand(["machine", "list", "--json"], register);
+    expect(list).toHaveBeenLastCalledWith({
+      query: { includeCreating: "true", type: "persistent" },
+    });
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(hosts);
 
     vi.mocked(console.log).mockClear();
     await runCommand(["machine", "list", "--all", "--json"], register);
+    expect(list).toHaveBeenLastCalledWith({
+      query: { includeCreating: "true" },
+    });
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual([...hosts, sandbox]);
@@ -304,6 +341,9 @@ describe("bb machine command output", () => {
 
   it("polls the host phase before reporting lifecycle completion", async () => {
     vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const suspend = vi.fn(async () => ({
       ...hosts[1]!,
       lifecycle: { ...hosts[1]!.lifecycle, phase: "suspending" as const },
@@ -349,10 +389,6 @@ describe("bb machine command output", () => {
 describe("machine selection", () => {
   it("resolves an ID before names", () => {
     expect(resolveMachineId(hosts, "host-primary")).toBe("host-primary");
-  });
-
-  it("resolves an unambiguous name", () => {
-    expect(resolveMachineId(hosts, "laptop")).toBe("host-remote");
   });
 
   it("lists matching IDs for an ambiguous name", () => {

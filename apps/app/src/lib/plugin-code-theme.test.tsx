@@ -59,16 +59,16 @@ describe("useCodeTheme", () => {
     act(() => {
       applyResolvedCodeTheme({
         dark: "nord",
-        light: "solarized-light",
+        light: "github-light",
         files: {},
       });
     });
 
-    expect(probe.latest().name).toBe("solarized-light");
+    expect(probe.latest().name).toBe("github-light");
     expect(probe.latest().theme?.name).toBe("gruvbox-light-medium");
 
     await waitFor(() => {
-      expect(probe.latest().theme?.name).toBe("solarized-light");
+      expect(probe.latest().theme?.name).toBe("github-light");
     });
     probe.unmount();
   });

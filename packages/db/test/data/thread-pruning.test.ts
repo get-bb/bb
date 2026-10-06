@@ -16,14 +16,13 @@ import {
 import type { ThreadPruningPolicy } from "../../src/data/thread-pruning.js";
 import {
   appendDaemonEventsInTransaction,
-  pruneResolvedItemDeltas,
-  pruneBackgroundTaskProgressEvents,
   getHighWaterMarks,
   deleteThreadEventSuffixInTransaction,
   getLastStoredProviderThreadId,
   getLatestStoredRateLimitsEvent,
   listThreadTurnInterruptionEventStates,
 } from "../../src/data/events.js";
+import { advanceLiveEventPruning } from "../../src/data/resolved-item-pruning.js";
 import { getThreadEventRewriteGeneration } from "../../src/data/event-rewrite-generation.js";
 import { THREAD_CONTEXT_CLEAR_OPERATION, turnScope } from "@bb/domain";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
@@ -85,6 +84,45 @@ function sequences(f: Fixture) {
 }
 
 describe("thread pruning", () => {
+  it("requires output presence only when pruning command output deltas", () => {
+    const f = setup();
+    try {
+      let sequence = 0;
+      const retained: number[] = [];
+      for (const [itemKind, type] of [
+        ["agentMessage", "item/agentMessage/delta"],
+        ["reasoning", "item/reasoning/textDelta"],
+        ["commandExecution", "item/commandExecution/outputDelta"],
+      ] as const) {
+        for (const [data, hasOutput] of [
+          ["malformed", false],
+          ["{}", false],
+          ['{"item":{"aggregatedOutput":null}}', true],
+          ['{"item":{"aggregatedOutput":42}}', true],
+          ['{"item":{"aggregatedOutput":"done"}}', true],
+        ] as const) {
+          const itemId = `item-${sequence}`;
+          seed(f, ++sequence, { type, itemId });
+          retained.push(sequence);
+          seed(f, ++sequence, { type, itemId });
+          if (itemKind === "commandExecution" && !hasOutput)
+            retained.push(sequence);
+          seed(f, ++sequence, {
+            type: "item/completed",
+            itemKind,
+            itemId,
+            data,
+          });
+          retained.push(sequence);
+        }
+      }
+      cycle(f, "resolved-items");
+      expect(sequences(f)).toEqual(retained);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("rotates scoped live policies durably and drains active usage without global idle cleanup", () => {
     let f = setup();
     try {
@@ -211,26 +249,38 @@ describe("thread pruning", () => {
           for (let i = 1; i <= 600; i++)
             seed(fixture, i, { type: "item/agentMessage/delta" });
         });
-        pruneResolvedItemDeltas(f.db, { threadId: fixture.thread.id });
+        for (let i = 0; i < 4; i++)
+          advanceThreadPruning(f.db, { threadId: fixture.thread.id });
       }
       advanceThreadPruning(f.db, "rate-limits");
       const before = f.db.select().from(threadPruningCursors).all();
-      expect(before).toHaveLength(3);
       expect(
         before
           .filter((row) => row.policy === "deltas")
           .map((row) => row.scope)
           .sort(),
       ).toEqual([f.thread.id, other.thread.id].sort());
-      pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      const hasLiveDeltaCursor = () =>
+        f.db
+          .select()
+          .from(threadPruningCursors)
+          .all()
+          .some((row) => row.policy === "deltas" && row.scope === f.thread.id);
+      for (let i = 0; i < 1000 && hasLiveDeltaCursor(); i++)
+        advanceThreadPruning(f.db, { threadId: f.thread.id });
+      expect(hasLiveDeltaCursor()).toBe(false);
       const remaining = f.db.select().from(threadPruningCursors).all();
-      expect(remaining).toEqual(
+      expect(remaining.filter((row) => row.scope !== f.thread.id)).toEqual(
         before.filter((row) => row.scope !== f.thread.id),
       );
       f.db.delete(threads).where(eq(threads.id, other.thread.id)).run();
-      expect(f.db.select().from(threadPruningCursors).all()).toEqual(
-        before.filter((row) => row.scope === ""),
-      );
+      expect(
+        f.db
+          .select()
+          .from(threadPruningCursors)
+          .all()
+          .filter((row) => row.scope !== f.thread.id),
+      ).toEqual(before.filter((row) => row.scope === ""));
     } finally {
       f.db.$client.close();
     }
@@ -295,34 +345,31 @@ describe("thread pruning", () => {
         seed(f, 252, { type: "turn/completed" });
       });
       f.db.run(
-        sql`CREATE TRIGGER fail_live_insert BEFORE INSERT ON thread_pruning_cursors BEGIN SELECT RAISE(ABORT, 'live insert failed'); END`,
+        sql`CREATE TRIGGER fail_live_insert BEFORE INSERT ON thread_pruning_cursors WHEN NEW.policy = 'deltas' BEGIN SELECT RAISE(ABORT, 'live insert failed'); END`,
       );
-      expect(() =>
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id }),
-      ).toThrow("live insert failed");
+      expect(() => advanceThreadPruning(f.db, "resolved-items")).toThrow(
+        "live insert failed",
+      );
       expect(sequences(f)).toContain(126);
       expect(f.db.select().from(threadPruningCursors).all()).toEqual([]);
       f.db.run(sql`DROP TRIGGER fail_live_insert`);
-      let removed = 0;
-      for (let i = 0; i < 5; i++)
-        removed += pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
-      expect(removed).toBe(1);
+      expect(
+        cycle(f, "resolved-items").reduce((n, r) => n + r.removed, 0),
+      ).toBe(1);
       expect(sequences(f)).not.toContain(126);
       expect(sequences(f).filter((sequence) => sequence <= 125)).toHaveLength(
         125,
       );
       seed(f, 253, { type: "item/agentMessage/delta", itemId: "late" });
       seed(f, 254, { type: "item/agentMessage/delta", itemId: "late" });
-      for (let i = 0; i < 5; i++)
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).toContain(254);
       seed(f, 255, {
         type: "item/completed",
         itemKind: "agentMessage",
         itemId: "late",
       });
-      for (let i = 0; i < 5; i++)
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).toContain(253);
       expect(sequences(f)).not.toContain(254);
     } finally {
@@ -358,26 +405,33 @@ describe("thread pruning", () => {
           parentToolCallId: "target",
         });
       });
-      expect(pruneResolvedItemDeltas(f.db, { threadId: f.thread.id })).toBe(0);
+      expect(advanceThreadPruning(f.db, "resolved-items").removed).toBe(0);
       const before = f.db.select().from(threadPruningCursors).all();
-      expect(before[0]?.probeSequence).toBeGreaterThan(0);
+      expect(
+        before.find((row) => row.policy === "deltas")?.probeSequence,
+      ).toBeGreaterThan(0);
       f.db.run(
         sql`CREATE TRIGGER fail_live_cursor BEFORE UPDATE ON thread_pruning_cursors BEGIN SELECT RAISE(ABORT, 'live cursor failed'); END`,
       );
-      expect(() =>
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id }),
-      ).toThrow("live cursor failed");
+      expect(() => advanceThreadPruning(f.db, "resolved-items")).toThrow(
+        "live cursor failed",
+      );
       expect(f.db.select().from(threadPruningCursors).all()).toEqual(before);
       f.db.run(sql`DROP TRIGGER fail_live_cursor`);
       const saved = f.db.$client.serialize();
       f.db.$client.close();
       f = { ...f, db: createConnection(saved) };
-      for (let i = 0; i < 20; i++)
-        pruneResolvedItemDeltas(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).toContain(1);
       expect(sequences(f)).not.toContain(2);
       f.db.delete(threads).where(eq(threads.id, f.thread.id)).run();
-      expect(f.db.select().from(threadPruningCursors).all()).toEqual([]);
+      expect(
+        f.db
+          .select()
+          .from(threadPruningCursors)
+          .all()
+          .filter((row) => row.scope !== ""),
+      ).toEqual([]);
     } finally {
       f.db.$client.close();
     }
@@ -398,8 +452,7 @@ describe("thread pruning", () => {
         });
         seed(f, 512, { type: "turn/completed" });
       });
-      for (let i = 0; i < 8; i++)
-        pruneBackgroundTaskProgressEvents(f.db, { threadId: f.thread.id });
+      cycle(f, "resolved-items");
       expect(sequences(f)).not.toContain(1);
       expect(sequences(f)).toContain(511);
       seed(f, 513, { type: "item/agentMessage/delta", itemId: "message" });
@@ -415,7 +468,7 @@ describe("thread pruning", () => {
     } finally {
       f.db.$client.close();
     }
-  });
+  }, 15_000);
 
   it("prunes oversized snapshots without parsing their payloads", () => {
     const f = setup();
@@ -698,25 +751,27 @@ describe("thread pruning", () => {
           itemKind: "commandExecution",
           data: '{"item":{"aggregatedOutput":"x"}}',
         });
-        seed(f, 1202, {
-          type: "item/commandExecution/outputDelta",
-          itemId: "cmd",
-          turnId: "other",
-          data: '{"delta":"keep"}',
-        });
-        seed(f, 1203, {
-          type: "item/commandExecution/outputDelta",
-          itemId: "cmd",
-          parentToolCallId: "nested",
-          data: '{"delta":"keep"}',
-        });
+        for (let i = 1202; i <= 1203; i++)
+          seed(f, i, {
+            type: "item/commandExecution/outputDelta",
+            itemId: "cmd",
+            turnId: "other",
+            data: '{"delta":"keep"}',
+          });
         for (let i = 1204; i <= 1205; i++)
+          seed(f, i, {
+            type: "item/commandExecution/outputDelta",
+            itemId: "cmd",
+            parentToolCallId: "nested",
+            data: '{"delta":"keep"}',
+          });
+        for (let i = 1206; i <= 1207; i++)
           seed(f, i, {
             type: "item/commandExecution/outputDelta",
             itemId: "no-output",
             data: '{"delta":"keep"}',
           });
-        seed(f, 1206, {
+        seed(f, 1208, {
           type: "item/completed",
           itemId: "no-output",
           itemKind: "commandExecution",
@@ -724,7 +779,60 @@ describe("thread pruning", () => {
         });
       });
       cycle(f, "resolved-items");
-      expect(sequences(f)).toEqual([1, 1201, 1202, 1203, 1204, 1205, 1206]);
+      expect(sequences(f)).toEqual([
+        1, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208,
+      ]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("preserves the first delta of each type across batches with reversed storage order", () => {
+    const f = setup();
+    try {
+      const types = [
+        "item/agentMessage/delta",
+        "item/commandExecution/outputDelta",
+        "item/reasoning/summaryTextDelta",
+        "item/reasoning/textDelta",
+      ] as const;
+      for (const [index, itemKind] of (
+        ["agentMessage", "commandExecution", "reasoning"] as const
+      ).entries()) {
+        seed(f, 13 + index, {
+          type: "item/completed",
+          itemId: "item",
+          itemKind,
+          data: '{"item":{"aggregatedOutput":"complete"}}',
+        });
+      }
+      for (let sequence = 12; sequence > 0; sequence--) {
+        seed(f, sequence, {
+          type: types[(sequence - 1) % types.length],
+          itemId: "item",
+        });
+      }
+      seed(f, 16, { type: "turn/completed" });
+      let complete = false;
+      let removed = 0;
+      for (let i = 0; i < 30; i++) {
+        const batch = f.db.transaction((tx) =>
+          advanceLiveEventPruning(tx, {
+            threadId: f.thread.id,
+            kind: "deltas",
+            limit: 5,
+          }),
+        );
+        expect(batch.scanned).toBeLessThanOrEqual(5);
+        removed += batch.removed;
+        if (batch.complete) {
+          complete = true;
+          break;
+        }
+      }
+      expect(complete).toBe(true);
+      expect(removed).toBe(8);
+      expect(sequences(f)).toEqual([1, 2, 3, 4, 13, 14, 15, 16]);
     } finally {
       f.db.$client.close();
     }
@@ -814,6 +922,93 @@ describe("thread pruning", () => {
       }
     },
   );
+
+  it("retains the latest context snapshot boundary through pruning between estimates", () => {
+    const f = setup();
+    try {
+      const usage = (sequence: number, values: object) =>
+        seed(f, sequence, {
+          type: "thread/contextWindowUsage/updated",
+          data: JSON.stringify({
+            contextWindowUsage: { estimated: true, ...values },
+          }),
+        });
+      usage(1, {
+        usedTokens: 128000,
+        modelContextWindow: 256000,
+        snapshot: {
+          contextWindowTokens: 256000,
+          autoCompactAtTokens: 223000,
+        },
+      });
+      usage(2, { usedTokens: 140000, modelContextWindow: 1000000 });
+      usage(3, { usedTokens: 150000, modelContextWindow: 1000000 });
+      cycle(f, "usage");
+      expect(sequences(f)).toEqual([1, 3]);
+      usage(4, { usedTokens: null, modelContextWindow: null });
+      usage(5, { usedTokens: 160000, modelContextWindow: 1000000 });
+      cycle(f, "usage");
+      expect(sequences(f)).toEqual([4, 5]);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("reports exact removed UTF-8 bytes while retaining usage keepers", () => {
+    const f = setup();
+    try {
+      const context = (modelContextWindow: number | null) =>
+        JSON.stringify({
+          contextWindowUsage: { modelContextWindow },
+          text: "é🙂",
+        });
+      const payloads = [
+        context(200000),
+        context(null),
+        context(null),
+        "",
+        "é🙂\0x",
+        "{}",
+        "malformed",
+      ];
+      for (const [index, data] of payloads.entries())
+        seed(f, index + 1, {
+          type:
+            index < 3
+              ? "thread/contextWindowUsage/updated"
+              : "thread/tokenUsage/updated",
+          data,
+        });
+      seed(f, 8, {
+        type: "turn/started",
+        turnId: "nested",
+        parentToolCallId: "tool",
+      });
+      seed(f, 9, {
+        type: "thread/tokenUsage/updated",
+        turnId: "nested",
+        data: "{}",
+      });
+      seed(f, 10, { type: "turn/completed" });
+      const results = cycle(f, "usage");
+      expect(sequences(f)).toEqual([1, 3, 7, 8, 10]);
+      expect(results.reduce((total, result) => total + result.removed, 0)).toBe(
+        5,
+      );
+      expect(
+        results.reduce((total, result) => total + result.removedBytes, 0),
+      ).toBe(
+        Buffer.byteLength(context(null)) + Buffer.byteLength("é🙂\0x") + 4,
+      );
+      expect(
+        results
+          .filter((result) => result.removed === 0)
+          .every((result) => result.removedBytes === 0),
+      ).toBe(true);
+    } finally {
+      f.db.$client.close();
+    }
+  });
 
   it("restarts usage keeper discovery after a keeper disappears during a visit", () => {
     const f = setup();

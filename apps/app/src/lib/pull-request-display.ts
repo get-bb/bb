@@ -1,11 +1,4 @@
-import type {
-  PullRequestState,
-  ThreadPullRequest,
-  ThreadPullRequestAttentionState,
-  ThreadPullRequestChecksState,
-  ThreadPullRequestMergeabilityState,
-  ThreadPullRequestReviewState,
-} from "@bb/domain";
+import type { PullRequestState, ThreadPullRequest } from "@bb/domain";
 import type { IconName } from "@bb/shared-ui/icon";
 
 interface PullRequestDisplay {
@@ -50,138 +43,131 @@ export const PULL_REQUEST_STATE_DISPLAY: Record<
   },
 };
 
-const CHECKS_DISPLAY: Record<ThreadPullRequestChecksState, PullRequestDisplay> =
-  {
-    passing: {
-      label: "Checks passing",
-      icon: "CircleCheck",
-      className: "text-success",
-    },
-    failing: {
-      label: "Checks failing",
-      icon: "CircleX",
-      className: "text-destructive",
-    },
-    pending: {
-      label: "Checks pending",
-      icon: "Clock",
-      className: "text-warning-text",
-    },
-    no_checks: {
-      label: "No checks",
-      icon: "Circle",
-      className: "text-muted-foreground",
-    },
-    unknown: {
-      label: "Checks unknown",
-      icon: "AlertTriangle",
-      className: "text-warning-text",
-    },
-  };
+export type PullRequestNextStepTone = "action" | "ready" | "waiting";
 
-const REVIEW_DISPLAY: Record<ThreadPullRequestReviewState, PullRequestDisplay> =
-  {
-    approved: {
-      label: "Approved",
-      icon: "CircleCheck",
-      className: "text-success",
-    },
-    changes_requested: {
-      label: "Changes requested",
-      icon: "CircleX",
-      className: "text-destructive",
-    },
-    review_required: {
-      label: "Review required",
-      icon: "Clock",
-      className: "text-destructive",
-    },
-    review_requested: {
-      label: "Review requested",
-      icon: "Clock",
-      className: "text-destructive",
-    },
-    none: {
-      label: "No review",
-      icon: "Circle",
-      className: "text-muted-foreground",
-    },
-  };
+export interface PullRequestNextStep {
+  label: string;
+  tone: PullRequestNextStepTone;
+  icon: IconName | null;
+  running: boolean;
+}
 
-const MERGEABILITY_DISPLAY: Record<
-  ThreadPullRequestMergeabilityState,
-  PullRequestDisplay
+export const PULL_REQUEST_NEXT_STEP_TONE_CLASS: Record<
+  PullRequestNextStepTone,
+  string
 > = {
-  mergeable: {
-    label: "Mergeable",
-    icon: "CircleCheck",
-    className: "text-success",
-  },
-  conflicts: {
-    label: "Conflicts",
-    icon: "AlertTriangle",
-    className: "text-destructive",
-  },
-  blocked: {
-    label: "Blocked",
-    icon: "AlertTriangle",
-    className: "text-destructive",
-  },
-  draft: {
-    label: "Draft",
-    icon: "Clock",
-    className: "text-muted-foreground",
-  },
-  unknown: {
-    label: "Mergeability unknown",
-    icon: "AlertTriangle",
-    className: "text-warning-text",
-  },
+  action: "text-destructive",
+  ready: "text-success",
+  waiting: "text-muted-foreground",
 };
 
-const ATTENTION_DISPLAY: Record<
-  ThreadPullRequestAttentionState,
-  PullRequestDisplay
-> = {
-  checks_failed: {
-    ...CHECKS_DISPLAY.failing,
-    icon: "GitPullRequestArrow",
-  },
-  checks_pending: {
-    ...CHECKS_DISPLAY.pending,
-    icon: "GitPullRequestArrow",
-  },
-  changes_requested: {
-    ...REVIEW_DISPLAY.changes_requested,
-    icon: "GitPullRequestArrow",
-  },
-  review_requested: {
-    ...REVIEW_DISPLAY.review_requested,
-    icon: "GitPullRequestArrow",
-  },
-  conflicts: {
-    ...MERGEABILITY_DISPLAY.conflicts,
-    icon: "GitPullRequestArrow",
-  },
-  blocked: {
-    ...MERGEABILITY_DISPLAY.blocked,
-    icon: "GitPullRequestArrow",
-  },
-  draft: PULL_REQUEST_STATE_DISPLAY.draft,
-  ready_to_merge: {
-    label: "Ready to merge",
-    icon: "GitPullRequestArrow",
-    className: "text-success",
-  },
-  merged: PULL_REQUEST_STATE_DISPLAY.merged,
-  closed: PULL_REQUEST_STATE_DISPLAY.closed,
-  none: PULL_REQUEST_STATE_DISPLAY.open,
+function action(label: string): PullRequestNextStep {
+  return { label, tone: "action", icon: null, running: false };
+}
+
+function waiting(label: string): PullRequestNextStep {
+  return { label, tone: "waiting", icon: null, running: false };
+}
+
+const CHECKS_FAILING_STEP: PullRequestNextStep = {
+  label: "Checks failing",
+  tone: "action",
+  icon: "CircleX",
+  running: false,
 };
 
-export function getPullRequestChecksDisplay(
+const CHECKS_RUNNING_STEP: PullRequestNextStep = {
+  label: "Checks running",
+  tone: "waiting",
+  icon: "Clock",
+  running: true,
+};
+
+function checksResult(label: string, icon: IconName): PullRequestNextStep {
+  return { label, tone: "waiting", icon, running: false };
+}
+
+function blockedStep(pullRequest: ThreadPullRequest): PullRequestNextStep {
+  switch (pullRequest.mergeability.mergeStateStatus) {
+    case "BEHIND":
+      return action(`Behind ${pullRequest.baseRefName}`);
+    case "HAS_HOOKS":
+      return action("Blocked by hooks");
+    default:
+      return action("Blocked by rules");
+  }
+}
+
+function checksStep(pullRequest: ThreadPullRequest): PullRequestNextStep {
+  switch (pullRequest.checks.state) {
+    case "passing":
+      return checksResult("Checks passing", "CircleCheck");
+    case "failing":
+      return CHECKS_FAILING_STEP;
+    case "pending":
+      return CHECKS_RUNNING_STEP;
+    case "no_checks":
+      return checksResult("No checks", "Circle");
+    case "unknown":
+      return checksResult("Checks unknown", "CircleQuestion");
+  }
+}
+
+export function getPullRequestNextStep(
   pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return CHECKS_DISPLAY[pullRequest.checks.state];
+): PullRequestNextStep | null {
+  switch (pullRequest.attention) {
+    case "merged":
+    case "closed":
+      return null;
+    case "checks_failed":
+      return CHECKS_FAILING_STEP;
+    case "changes_requested":
+      return action("Changes requested");
+    case "conflicts":
+      return action(`Conflicts with ${pullRequest.baseRefName}`);
+    case "blocked":
+      return blockedStep(pullRequest);
+    case "checks_pending":
+      return CHECKS_RUNNING_STEP;
+    case "review_requested":
+      return waiting(
+        pullRequest.review.state === "review_required"
+          ? "Review required"
+          : "Review requested",
+      );
+    case "queued":
+      return waiting("Queued to merge");
+    case "ready_to_merge":
+      return {
+        label: "Ready to merge",
+        tone: "ready",
+        icon: null,
+        running: false,
+      };
+    case "draft":
+    case "none":
+      return checksStep(pullRequest);
+  }
+}
+
+export function describePullRequestStatus(
+  pullRequest: ThreadPullRequest,
+): string {
+  const nextStep = getPullRequestNextStep(pullRequest);
+  return [
+    PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label,
+    nextStep?.label,
+    isPullRequestAutoMergeOn(pullRequest) ? "auto-merge on" : null,
+  ]
+    .filter((part) => part)
+    .join(", ");
+}
+
+export function isPullRequestAutoMergeOn(
+  pullRequest: ThreadPullRequest,
+): boolean {
+  return pullRequest.state === "open" && pullRequest.autoMerge;
 }
 
 export function getPullRequestGithubCheckStatus(
@@ -203,20 +189,8 @@ export function getPullRequestGithubCheckStatus(
   }
 }
 
-export function getPullRequestReviewDisplay(
+export function getPullRequestStateDisplay(
   pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return REVIEW_DISPLAY[pullRequest.review.state];
-}
-
-export function getPullRequestMergeabilityDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return MERGEABILITY_DISPLAY[pullRequest.mergeability.state];
-}
-
-export function getPullRequestAttentionDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return ATTENTION_DISPLAY[pullRequest.attention];
+): PullRequestStateDisplay {
+  return PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
 }

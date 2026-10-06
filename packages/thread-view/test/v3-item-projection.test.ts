@@ -10,21 +10,12 @@ import {
 import { timelineRowActivityIntents } from "../src/timeline-activity-intents.js";
 import {
   createTimelineEventFactory,
+  flattenTimelineRows,
   renderTimelineFixture,
 } from "./timeline-test-harness.js";
 
-function flattenRows(rows: readonly TimelineRow[]): TimelineRow[] {
-  return rows.flatMap((row) =>
-    row.kind === "turn" && row.children
-      ? [row, ...flattenRows(row.children)]
-      : row.kind === "work" && row.workKind === "delegation"
-        ? [row, ...flattenRows(row.childRows)]
-        : [row],
-  );
-}
-
 function workRows(rows: readonly TimelineRow[]): TimelineWorkRow[] {
-  return flattenRows(rows).filter(
+  return flattenTimelineRows(rows).filter(
     (row): row is TimelineWorkRow => row.kind === "work",
   );
 }

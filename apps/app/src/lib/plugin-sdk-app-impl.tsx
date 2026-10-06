@@ -9,10 +9,11 @@ import {
   usePluginCheckoutState,
 } from "@/components/plugin/usePluginBranchPickerState";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+import { VoiceInputTextarea } from "@/components/promptbox/VoiceInputTextarea";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
-import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
+import { LazyPluginThreadChat } from "@/components/plugin/LazyPluginThreadChat";
 import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
@@ -22,12 +23,14 @@ import { buildMarkdownDocumentLinkRouting } from "@/components/ui/markdown-docum
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import { usePluginId } from "@/components/plugin/plugin-context";
+import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";
 import { definePluginApp } from "./plugin-app-definition";
-import { installDeprecatedAliases } from "./plugin-sdk-deprecated-aliases";
 import {
   useBbContext,
   useBbNavigate,
   useComposer,
+  useComposers,
   useComposerView,
   useEnvironmentProviders,
   useProviders,
@@ -61,54 +64,55 @@ import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationMod
 import { useAppNavigationHost } from "./app-navigation-host";
 import { useCodeTheme } from "./plugin-code-theme";
 
-export const pluginSdkAppImplementation = installDeprecatedAliases(
-  {
-    definePluginApp,
-    experimental_Icon: Icon,
-    experimental_ProviderIcon: ProviderIcon,
-    useBbContext,
-    useBbNavigate,
-    experimental_useAppPanel,
-    experimental_useFixedTabTarget,
-    useComposer,
-    useComposerView,
-    useRealtime,
-    useRealtimeConnectionState,
-    useRpc,
-    useSettings,
-    ThreadChat: PluginThreadChat,
-    Markdown: PluginMarkdown,
-    experimental_FileLink: ExperimentalFileLink,
-    UrlLink: PluginUrlLink,
-    experimental_NewThreadComposer: PluginNewThreadComposer,
-    experimental_ProviderModelPicker: PluginProviderModelPicker,
-    experimental_PermissionModePicker: PluginPermissionModePicker,
-    experimental_BranchPicker: PluginBranchPicker,
-    experimental_useBranches: usePluginBranches,
-    experimental_useCheckoutState: usePluginCheckoutState,
-    experimental_SourceCode: PluginSourceCode,
-    experimental_Diff: PluginDiff,
-    experimental_useSidebarThreads: useSidebarThreads,
-    experimental_useSidebarThreadActions: useSidebarThreadActions,
-    experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
-    experimental_useSidebarThreadSplit: useSidebarThreadSplit,
-    experimental_useSidebarNavigation: useSidebarNavigation,
-    experimental_useSidebarNavigationSplit: useSidebarNavigationSplit,
-    experimental_SidebarNavigationIcon: SidebarNavigationIcon,
-    useSidebarThreadDraft,
-    useSidebarThreadDraftIds,
-    useSidebarThreadRowStatus,
-    useSidebarThreadRowStatuses,
-    useSidebarSplitLayout,
-    useSidebarThreadShortcut,
-    ThreadTitle: PluginThreadTitle,
-    useEnvironmentProviders,
-    useSdk,
-    experimental_useProviders: useProviders,
-    experimental_useCodeTheme: useCodeTheme,
-  } satisfies PluginSdkApp,
-  { experimental_UrlLink: "UrlLink" },
-);
+export const pluginSdkAppImplementation = {
+  definePluginApp,
+  experimental_Icon: Icon,
+  experimental_ProviderIcon: ProviderIcon,
+  useBbContext,
+  experimental_usePluginId: usePluginId,
+  experimental_useQuestionFormHost: useQuestionFormHost,
+  useBbNavigate,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
+  useComposer,
+  useComposers,
+  useComposerView,
+  useRealtime,
+  useRealtimeConnectionState,
+  useRpc,
+  useSettings,
+  ThreadChat: LazyPluginThreadChat,
+  Markdown: PluginMarkdown,
+  experimental_FileLink: ExperimentalFileLink,
+  UrlLink: PluginUrlLink,
+  experimental_NewThreadComposer: PluginNewThreadComposer,
+  experimental_VoiceInputTextarea: VoiceInputTextarea,
+  experimental_ProviderModelPicker: PluginProviderModelPicker,
+  experimental_PermissionModePicker: PluginPermissionModePicker,
+  experimental_BranchPicker: PluginBranchPicker,
+  experimental_useBranches: usePluginBranches,
+  experimental_useCheckoutState: usePluginCheckoutState,
+  experimental_SourceCode: PluginSourceCode,
+  experimental_Diff: PluginDiff,
+  experimental_useSidebarThreads: useSidebarThreads,
+  experimental_useSidebarThreadActions: useSidebarThreadActions,
+  experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
+  experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+  experimental_useSidebarNavigation: useSidebarNavigation,
+  experimental_useSidebarNavigationSplit: useSidebarNavigationSplit,
+  experimental_SidebarNavigationIcon: SidebarNavigationIcon,
+  useSidebarThreadDraft,
+  useSidebarThreadDraftIds,
+  useSidebarThreadRowStatus,
+  useSidebarThreadRowStatuses,
+  useSidebarSplitLayout,
+  useSidebarThreadShortcut,
+  ThreadTitle: PluginThreadTitle,
+  useEnvironmentProviders,
+  useSdk,
+  experimental_useProviders: useProviders,
+  experimental_useCodeTheme: useCodeTheme,
+} satisfies PluginSdkApp;
 
 function PluginMarkdown({
   content,
@@ -149,6 +153,7 @@ function PluginMarkdown({
 
   return (
     <MarkdownPreview
+      allowHtml
       content={content}
       className={className}
       linkRouting={linkRouting}

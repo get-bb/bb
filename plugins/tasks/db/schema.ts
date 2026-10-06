@@ -119,19 +119,7 @@ const MIGRATIONS = [
     CREATE INDEX IF NOT EXISTS idx_task_threads_task_status ON task_threads(task_id, live_status);
     CREATE INDEX IF NOT EXISTS idx_task_threads_thread ON task_threads(thread_id);
   `,
-  `
-    UPDATE attachments
-    SET is_image = CASE
-      WHEN lower(mime) IN (
-        'image/png',
-        'image/jpeg',
-        'image/gif',
-        'image/webp',
-        'image/avif'
-      ) THEN 1
-      ELSE 0
-    END;
-  `,
+  "",
   `
     ALTER TABLE presets
       ADD COLUMN environment_kind TEXT NOT NULL DEFAULT 'project-default'
@@ -238,6 +226,21 @@ const MIGRATIONS = [
   `
     ALTER TABLE presets ADD COLUMN service_tier TEXT
       CHECK (service_tier IN ('default', 'fast'));
+  `,
+  `
+    CREATE TABLE task_key_aliases (
+      prefix TEXT NOT NULL COLLATE NOCASE,
+      number INTEGER NOT NULL CHECK (number >= 1),
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      PRIMARY KEY (prefix, number)
+    );
+    CREATE INDEX idx_task_key_aliases_task ON task_key_aliases(task_id);
+  `,
+  `
+    ALTER TABLE presets ADD COLUMN service_tier_open TEXT;
+    UPDATE presets SET service_tier_open = service_tier;
+    ALTER TABLE presets DROP COLUMN service_tier;
+    ALTER TABLE presets RENAME COLUMN service_tier_open TO service_tier;
   `,
 ] as const;
 

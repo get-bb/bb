@@ -30,6 +30,7 @@ import {
   type PluginUpdateResolution,
 } from "./update-resolver.js";
 import { PluginActivationRolledBackError } from "./plugin-activation.js";
+import type { SafeModeActivationRefusalArgs } from "./plugin-runtime.js";
 import type { createPluginActivation } from "./plugin-activation.js";
 import {
   createListedRegistryNpmResolverRun,
@@ -90,6 +91,9 @@ interface PluginUpdatesContext {
     "applyNpmCandidate" | "stageGitCandidate"
   >;
   runArtifactGc: ReturnType<typeof createPluginActivation>["runArtifactGc"];
+  safeModeActivationRefusal: (
+    args: SafeModeActivationRefusalArgs,
+  ) => string | null;
 }
 
 export function createPluginUpdates(
@@ -105,6 +109,7 @@ export function createPluginUpdates(
     npmIntentForRow,
     managedArtifacts: { applyNpmCandidate, stageGitCandidate },
     runArtifactGc,
+    safeModeActivationRefusal,
   } = context;
   const now = deps.now ?? Date.now;
   const gitCandidateProbeCache = new Map<string, GitCandidateProbeResult>();
@@ -559,6 +564,16 @@ export function createPluginUpdates(
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return { ok: false, error: `unknown plugin "${id}"` };
+        const safeModeRefusal = safeModeActivationRefusal({
+          pluginId: id,
+          provenance: row.provenance,
+          builtinName:
+            row.sourceKind === "builtin" ? row.sourceBuiltinName : null,
+          action: "update",
+        });
+        if (safeModeRefusal !== null) {
+          return { ok: false, error: safeModeRefusal };
+        }
         const from = installedUpdateVersion(row);
         const npmRun = npmRunForRow(row);
         const selectionNpmIntent =

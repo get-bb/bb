@@ -973,23 +973,6 @@ describe("public project skills route", () => {
     });
   });
 
-  it("rejects a registry source that could be parsed as a CLI option", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request(
-        "/api/v1/skills-registry/install",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            registrySkillId: "--help/find-skills",
-          }),
-        },
-      );
-
-      expect(response.status).toBe(400);
-    });
-  });
-
   it("rejects a parent-directory segment before any upstream request", async () => {
     await withTestHarness(async (harness) => {
       installServerRegistrySkillMock.mockClear();

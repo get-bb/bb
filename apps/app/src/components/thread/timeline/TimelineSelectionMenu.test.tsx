@@ -3,6 +3,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  setPluginLogoUrls,
+  resetPluginLogoStoreForTest,
+} from "@/lib/plugin-logos";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu";
@@ -10,6 +14,7 @@ import type { MessageProseSelection } from "./SelectableMessageProse";
 
 afterEach(() => {
   cleanup();
+  resetPluginLogoStoreForTest();
   vi.restoreAllMocks();
 });
 
@@ -187,4 +192,42 @@ describe("TimelineSelectionMenu", () => {
       screen.getByRole("textbox", { name: "Chat composer" }),
     );
   });
+});
+
+it("uses a plugin action's icon instead of branding in the selection menu", () => {
+  setPluginLogoUrls(
+    new Map([
+      [
+        "demo",
+        {
+          displayName: "Demo",
+          icon: "Check",
+          compactIconUrl: "/demo.svg",
+          logoUrl: null,
+          logoDarkUrl: null,
+          icons: new Map(),
+        },
+      ],
+    ]),
+  );
+  render(
+    <TimelineSelectionMenu
+      selection={makeSelection()}
+      onDismiss={() => {}}
+      pluginActions={[
+        {
+          key: "demo/inspect",
+          pluginId: "demo",
+          icon: "Zap",
+          label: "Inspect selection",
+          onSelect: () => {},
+        },
+      ]}
+    />,
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "Inspect selection" })
+      .querySelector('[data-icon="Zap"]'),
+  ).not.toBeNull();
 });

@@ -14,6 +14,7 @@ export interface PushNotificationsModule {
   getPermission(): Promise<PushPermissionState>;
   requestPermission(): Promise<PushPermissionState>;
   getExpoPushToken(projectId: string): Promise<string>;
+  unregisterDevicePushToken(): Promise<void>;
   addTokenListener(listener: (deviceToken: string) => void): () => void;
   setBadgeCount(count: number): Promise<void>;
 }
@@ -217,6 +218,13 @@ export async function enablePushForProfile(
   deps.store.markPrompted();
   deps.store.setEnabled(profileId, permission === "granted");
   return permission;
+}
+
+export function shouldOfferPushPrompt(input: {
+  permission: PushPermissionState;
+  enabled: boolean;
+}): boolean {
+  return input.permission !== "denied" && !input.enabled;
 }
 
 export function describePushStatus(input: {

@@ -13,16 +13,16 @@ import type { DesktopBrowserViewManager } from "../src/desktop-browser-view.js";
 import type { BrowserImportService } from "../src/browser-import/browser-import.js";
 
 function createFakeManager(
-  profileSession: DesktopBrowserViewManager["profileSession"],
+  session: DesktopBrowserViewManager["session"],
   listTabs: DesktopBrowserViewManager["listTabs"] = () => [],
 ) {
   const manager: Pick<
     DesktopBrowserViewManager,
-    "listTabs" | "subscribeAutomationTabs" | "profileSession" | "destroyAll"
+    "listTabs" | "subscribeAutomationTabs" | "session" | "destroyAll"
   > = {
     listTabs,
     subscribeAutomationTabs: () => () => undefined,
-    profileSession,
+    session,
     destroyAll: () => undefined,
   };
   return manager as DesktopBrowserViewManager;
@@ -49,12 +49,8 @@ function createFakeWindow() {
 }
 
 describe("desktop browser broker cookie import commands", () => {
-  it("lists sources and imports into the partition for the requested profile", async () => {
-    const personalSession = { cookies: {} } as unknown as Session;
-    const automationSession = { cookies: {} } as unknown as Session;
-    const profileSession = vi.fn((profile: { kind: string }) =>
-      profile.kind === "personal" ? personalSession : automationSession,
-    );
+  it("lists sources and imports into the browser session", async () => {
+    const browserSession = { cookies: {} } as unknown as Session;
     const browserImport: BrowserImportService = {
       listSources: vi.fn<BrowserImportService["listSources"]>(async () => [
         { id: "firefox", name: "Firefox", profiles: [] },
@@ -67,7 +63,7 @@ describe("desktop browser broker cookie import commands", () => {
       })),
     };
     const broker = createDesktopBrowserBroker({
-      manager: createFakeManager(profileSession),
+      manager: createFakeManager(() => browserSession),
       product: "Chrome/1",
       browserImport,
     });
@@ -90,7 +86,6 @@ describe("desktop browser broker cookie import commands", () => {
         generation: instance.generation,
         sourceId: "firefox",
         sourceProfileDirectory: "Profiles/p1",
-        profile: { kind: "automation", id: "agent" },
       }),
     ).resolves.toEqual({
       ok: true,
@@ -100,7 +95,7 @@ describe("desktop browser broker cookie import commands", () => {
     });
     expect(browserImport.importCookies).toHaveBeenCalledWith(
       { sourceId: "firefox", sourceProfileDirectory: "Profiles/p1" },
-      automationSession,
+      browserSession,
     );
     await expect(
       broker.execute({
@@ -109,7 +104,6 @@ describe("desktop browser broker cookie import commands", () => {
         generation: "stale",
         sourceId: "firefox",
         sourceProfileDirectory: "Profiles/p1",
-        profile: { kind: "personal" },
       }),
     ).rejects.toThrow(/unavailable or has reconnected/);
     broker.dispose();
@@ -147,7 +141,6 @@ describe("desktop browser reveal", () => {
             tabId: "tab-a",
             threadId: "thread-a",
             generation: "tab-generation",
-            profile: { kind: "automation", id: "profile-a" },
             presentation: "hidden",
             url: "about:blank",
             title: null,

@@ -1,13 +1,7 @@
 import { useCallback, useState } from "react";
 
-interface NameMaxLengthRule {
-  limit: number;
-  message: string;
-}
-
 interface UseNameValidationArgs {
   emptyMessage: string;
-  maxLength?: NameMaxLengthRule;
 }
 
 interface UseNameValidationResult {
@@ -18,7 +12,6 @@ interface UseNameValidationResult {
 
 export function useNameValidation({
   emptyMessage,
-  maxLength,
 }: UseNameValidationArgs): UseNameValidationResult {
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null,
@@ -31,13 +24,9 @@ export function useNameValidation({
         setValidationMessage(emptyMessage);
         return null;
       }
-      if (maxLength && trimmed.length > maxLength.limit) {
-        setValidationMessage(maxLength.message);
-        return null;
-      }
       return trimmed;
     },
-    [emptyMessage, maxLength],
+    [emptyMessage],
   );
 
   const clearMessage = useCallback(() => setValidationMessage(null), []);

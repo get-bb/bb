@@ -137,6 +137,7 @@ describe("plugin catalog queries", () => {
             author: { name: "Acme", url: "https://acme.dev" },
             overview: "# Todoist\n\nLong-form text.\n",
             installed: false,
+            conflictingInstallSource: null,
             compatible: false,
             incompatibleReason: "requires bb >= 0.15",
           },
@@ -177,6 +178,8 @@ describe("plugin catalog queries", () => {
             url: "https://acme.dev",
           },
           installed: false,
+          conflictingInstallSource: null,
+          installedByDefault: false,
           installs: null,
           compatible: false,
           incompatibleReason: "requires bb >= 0.15",
@@ -189,6 +192,7 @@ describe("plugin catalog queries", () => {
           pluginIds: ["todoist"],
         },
       ],
+      categories: [],
     });
   });
 

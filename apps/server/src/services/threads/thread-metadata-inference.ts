@@ -7,7 +7,6 @@ import {
   type ThreadMetadataGenerationOutcome,
 } from "./title-generation.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import { INFERENCE_POLICY } from "../ai/inference.js";
 
 interface ThreadMetadataInferenceArgs {
   input: PromptInput[];
@@ -71,8 +70,6 @@ export async function inferThreadMetadata(
   const outcome = await generateThreadMetadataWithOutcome(deps, {
     input: args.input,
     threadId: args.threadId,
-    timeoutMaxAttempts: INFERENCE_POLICY.threadMetadata.maxAttempts,
-    timeoutMs: INFERENCE_POLICY.threadMetadata.timeoutMs,
   });
 
   if (args.writeTranscript) {
@@ -81,9 +78,7 @@ export async function inferThreadMetadata(
       environmentId: null,
       provisioningId,
       status: "active",
-      entries: [
-        metadataCompletedEntry({ outcome, startedAt }),
-      ],
+      entries: [metadataCompletedEntry({ outcome, startedAt })],
     });
   }
 

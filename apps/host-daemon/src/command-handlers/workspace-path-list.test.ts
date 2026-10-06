@@ -7,6 +7,7 @@ import { listWorkspacePaths } from "./file-list.js";
 import { listHostPaths } from "./host-files.js";
 
 const roots: string[] = [];
+const largeTreeTimeoutMs = process.platform === "win32" ? 240_000 : 60_000;
 
 async function createRoot() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-workspace-paths-"));
@@ -46,10 +47,11 @@ afterEach(async () => {
       .splice(0)
       .map((root) => fs.rm(root, { recursive: true, force: true })),
   );
-});
+}, largeTreeTimeoutMs);
 
 describe("workspace path discovery", () => {
   it("includes tracked and non-ignored untracked files while pruning Git-ignored trees", async () => {
+    const fileNameBreak = process.platform === "win32" ? " " : "\n";
     const root = await createRoot();
     await initRepo(root);
     await write(root, ".github/workflows/ci.yml");
@@ -66,11 +68,14 @@ describe("workspace path discovery", () => {
     await write(root, "local-output/ignored.txt");
     await write(root, ".state/drop.txt");
     await write(root, ".state/keep.txt");
-    await write(root, "src/new\nfile.ts");
-    await write(root, "src/ignored\nfile.log");
+    await write(root, `src/new${fileNameBreak}file.ts`);
+    await write(root, `src/ignored${fileNameBreak}file.log`);
     await write(root, "src/.gitignore", "*.log\n");
     await fs.mkdir(path.join(root, "empty"));
-    await fs.symlink("src/new\nfile.ts", path.join(root, "link.ts"));
+    await fs.symlink(
+      `src/new${fileNameBreak}file.ts`,
+      path.join(root, "link.ts"),
+    );
 
     expect(await paths(root)).toEqual([
       ".generated",
@@ -84,7 +89,7 @@ describe("workspace path discovery", () => {
       "empty",
       "src",
       "src/.gitignore",
-      "src/new\nfile.ts",
+      `src/new${fileNameBreak}file.ts`,
     ]);
   });
 
@@ -205,4 +210,69 @@ describe("workspace path discovery", () => {
     expect(alpha.paths.map((entry) => entry.path)).toEqual(["alpha.md"]);
     expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);
   });
+
+  it("skips excluded names at any depth and never lists .git", async () => {
+    const root = await createRoot();
+    await write(root, ".git/HEAD");
+    await write(root, "node_modules/pkg/index.js");
+    await write(root, "apps/web/.turbo/log");
+    await write(root, "apps/web/.DS_Store");
+    await write(root, "apps/web/index.ts");
+    const listPaths = async (excludeNames: string[]) =>
+      (
+        await listWorkspacePaths({
+          ...listingArgs(root),
+          respectGitIgnore: false,
+          excludeNames,
+        })
+      )
+        .map((entry) => entry.path)
+        .sort();
+
+    expect(await listPaths(["node_modules", ".turbo", ".DS_Store"])).toEqual([
+      "apps",
+      "apps/web",
+      "apps/web/index.ts",
+    ]);
+    expect(await listPaths([])).toEqual([
+      "apps",
+      "apps/web",
+      "apps/web/.DS_Store",
+      "apps/web/.turbo",
+      "apps/web/.turbo/log",
+      "apps/web/index.ts",
+      "node_modules",
+      "node_modules/pkg",
+      "node_modules/pkg/index.js",
+    ]);
+  });
+
+  it(
+    "does not overflow the call stack merging a large subdirectory",
+    async () => {
+      const root = await createRoot();
+      const nested = path.join(root, "many");
+      await fs.mkdir(nested, { recursive: true });
+      const fileCount = 150_000;
+      const batchSize = 500;
+      for (let start = 0; start < fileCount; start += batchSize) {
+        const end = Math.min(start + batchSize, fileCount);
+        await Promise.all(
+          Array.from({ length: end - start }, (_, offset) =>
+            fs.writeFile(path.join(nested, `f${start + offset}.txt`), ""),
+          ),
+        );
+      }
+
+      const result = await listWorkspacePaths({
+        ...listingArgs(root),
+        includeDirectories: false,
+        includeHidden: false,
+        respectGitIgnore: false,
+      });
+
+      expect(result).toHaveLength(fileCount);
+    },
+    largeTreeTimeoutMs,
+  );
 });

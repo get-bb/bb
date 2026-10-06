@@ -9,6 +9,7 @@ import {
   allPluginListQueryKeyPrefix,
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
+  pluginSafeModeQueryKey,
   pluginSettingsViewQueryKey,
 } from "../queries/query-keys";
 
@@ -42,6 +43,13 @@ export function applyInstalledPlugin(args: {
       );
     },
   );
+}
+
+export function applyPluginSafeMode(args: {
+  queryClient: QueryClient;
+  enabled: boolean;
+}): void {
+  args.queryClient.setQueryData(pluginSafeModeQueryKey(), args.enabled);
 }
 
 export function invalidatePluginList(args: {

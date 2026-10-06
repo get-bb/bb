@@ -339,16 +339,6 @@ describe("conformance session/start-identity-announced", () => {
     ).toContain('(thread/identity named "prov-1-other")');
     expect(failedIds(report)).toEqual(["session/start-identity-announced"]);
   });
-
-  it("passes a bridge that announces the returned session", async () => {
-    const { report } = await runStub({ fork: "tip" });
-    const results = byId(report);
-    expect(results.get("session/start-identity-announced")?.status).toBe(
-      "pass",
-    );
-    expect(results.get("session/fork-identity-announced")?.status).toBe("pass");
-    expect(report.passed).toBe(true);
-  });
 });
 
 describe("conformance session/resume-identity", () => {
@@ -370,9 +360,13 @@ describe("conformance session/resume-identity", () => {
     expect(failedIds(report)).toEqual(["session/resume-identity"]);
     expect(report.passed).toBe(false);
   });
+});
 
-  it("adopts the identity the resume returned for every later request", async () => {
+describe("conformance session/fork-identity", () => {
+  it("sends no thread/fork to a bridge whose handshake declares fork: none, and keeps using the identity the resume returned", async () => {
     const { report, bridge } = await runStub({ fork: "none" });
+    expect(bridge.forks).toEqual([]);
+    expect(byId(report).has("session/fork-identity")).toBe(false);
     expect(failedIds(report)).toEqual([]);
     expect(report.passed).toBe(true);
     expect(bridge.stops.at(-1)).toMatchObject({
@@ -381,19 +375,15 @@ describe("conformance session/resume-identity", () => {
       intent: "release",
     });
   });
-});
 
-describe("conformance session/fork-identity", () => {
-  it("sends no thread/fork to a bridge whose handshake declares fork: none", async () => {
-    const { report, bridge } = await runStub({ fork: "none" });
-    expect(bridge.forks).toEqual([]);
-    expect(byId(report).has("session/fork-identity")).toBe(false);
-    expect(report.passed).toBe(true);
-  });
-
-  it("forks the lifecycle session at its tip and releases the fork when fork is declared", async () => {
+  it("forks the lifecycle session at its tip, passes the announced-identity checks and releases the fork when fork is declared", async () => {
     const { report, bridge } = await runStub({ fork: "tip" });
-    expect(byId(report).get("session/fork-identity")?.status).toBe("pass");
+    const results = byId(report);
+    expect(results.get("session/fork-identity")?.status).toBe("pass");
+    expect(results.get("session/start-identity-announced")?.status).toBe(
+      "pass",
+    );
+    expect(results.get("session/fork-identity-announced")?.status).toBe("pass");
     expect(report.passed).toBe(true);
     expect(bridge.forks).toEqual([
       expect.objectContaining({

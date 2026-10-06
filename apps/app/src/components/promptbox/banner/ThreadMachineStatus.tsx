@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Icon } from "@bb/shared-ui/icon";
-import { AnimatedBody } from "./AnimatedBody";
+import { AnimatedDisclosureBody } from "./AnimatedBody";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useResumeHost } from "@/hooks/mutations/host-mutations";
 import type { SystemMachineProvider } from "@bb/server-contract";
@@ -10,6 +9,11 @@ import {
 } from "@/components/machines/MachineLabel";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 import {
   BannerActionSlot,
   PromptBannerActionButton,
@@ -76,6 +80,9 @@ export function ThreadMachineStatusBanner({
   const status = `Machine is ${phaseWord}`;
   const detail = error && phase !== "resuming" ? error : null;
   const [isExpanded, setIsExpanded] = useState(false);
+  const focus = useDisclosureFocusHandoff(isExpanded, () =>
+    setIsExpanded((current) => !current),
+  );
   const expandable = detail !== null;
   return (
     <PromptStackCard
@@ -96,9 +103,11 @@ export function ThreadMachineStatusBanner({
             aria-expanded={isExpanded}
             aria-controls={MACHINE_STATUS_BODY_ID}
             aria-label={`${status}. ${detail}`}
-            onClick={() => setIsExpanded((current) => !current)}
+            ref={focus.triggerRef}
+            onClick={focus.onTriggerClick}
             className={cn(
-              "flex min-w-0 cursor-pointer items-center gap-1.5 text-xs transition-colors",
+              "flex min-w-0 flex-1 cursor-pointer items-center justify-start gap-1.5 text-left text-xs transition-colors",
+              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
               PROMPT_STACK_INLAY_SEGMENT_CLASS,
               "hover:bg-state-hover",
               isExpanded ? "text-foreground" : "text-muted-foreground",
@@ -106,14 +115,7 @@ export function ThreadMachineStatusBanner({
           >
             <MachineIcon host={host} machineProvider={provider} />
             <span className="min-w-0 truncate">{status}</span>
-            <Icon
-              name="ChevronDown"
-              className={cn(
-                "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
-                isExpanded && "rotate-180",
-              )}
-              aria-hidden="true"
-            />
+            <PromptStackHoverChevron isExpanded={isExpanded} />
           </button>
         ) : (
           <div
@@ -136,11 +138,14 @@ export function ThreadMachineStatusBanner({
         ) : null}
       </div>
       {expandable ? (
-        <AnimatedBody
+        <AnimatedDisclosureBody
           collapsedBorder="reserve"
           id={MACHINE_STATUS_BODY_ID}
           labelledBy={MACHINE_STATUS_TOGGLE_ID}
           isExpanded={isExpanded}
+          collapseLabel="Collapse machine status"
+          collapseRef={focus.collapseRef}
+          onCollapse={focus.onCollapseClick}
         >
           <p
             role="alert"
@@ -148,7 +153,7 @@ export function ThreadMachineStatusBanner({
           >
             {detail}
           </p>
-        </AnimatedBody>
+        </AnimatedDisclosureBody>
       ) : null}
     </PromptStackCard>
   );

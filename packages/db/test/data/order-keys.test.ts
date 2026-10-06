@@ -28,22 +28,6 @@ function sortKeys(keys: readonly string[]): string[] {
 }
 
 describe("order keys", () => {
-  it("creates an initial key and appends after existing keys", () => {
-    const firstKey = createOrderKeyBetween({
-      previousKey: null,
-      nextKey: null,
-    });
-    const secondKey = createOrderKeyAfter({ previousKey: firstKey });
-    const thirdKey = createOrderKeyAfter({ previousKey: secondKey });
-
-    expect(firstKey.length).toBeGreaterThan(0);
-    expect(sortKeys([firstKey, secondKey, thirdKey])).toEqual([
-      firstKey,
-      secondKey,
-      thirdKey,
-    ]);
-  });
-
   it("creates keys before, between, and after existing generated keys", () => {
     const firstKey = createOrderKeyBetween({
       previousKey: null,

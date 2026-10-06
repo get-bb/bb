@@ -5,11 +5,11 @@ import { usePaneContext } from "./PaneContext";
 
 export function ThreadArchiveCommandHandler({ thread }: { thread: Thread }) {
   const { isFocused } = usePaneContext();
-  const { archiveThreadAndChildren } = useThreadActions();
+  const { requestArchive } = useThreadActions();
 
   useAppCommandHandler("thread.archive", () => {
     if (!isFocused || thread.archivedAt !== null) return false;
-    archiveThreadAndChildren(thread);
+    requestArchive(thread);
     return true;
   });
 

@@ -6,7 +6,10 @@ import { defaultAppTheme } from "@bb/domain";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppearanceSettingsSection } from "./SettingsView";
 
-afterEach(cleanup);
+afterEach(async () => {
+  cleanup();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+});
 
 function CompactViewport({ children }: { children: ReactNode }) {
   return (
@@ -34,6 +37,7 @@ function renderSection({ compact = false } = {}) {
         },
       ]}
       faviconColor="default"
+      navigationRail={false}
       onAppearanceThemeChange={onAppearanceThemeChange}
       onAppearanceThemePrefetch={onAppearanceThemePrefetch}
       onAppearanceThemePreview={onAppearanceThemePreview}

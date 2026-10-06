@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import { appToast } from "@/components/ui/app-toast";
+import { getNativeShell } from "@/lib/native-shell/native-shell";
+import { buildMessageClipboardHtml } from "./message-clipboard";
 
 interface CopyToClipboardOptions {
   successMessage?: string | null;
@@ -127,6 +130,33 @@ async function copyTextAndImageToClipboard(
   text: string,
   imageUrl: string,
 ): Promise<boolean> {
+  const shell = getNativeShell();
+  const image = new URL(imageUrl, window.location.href);
+  const absoluteImageUrl = image.href;
+  const html = text ? buildMessageClipboardHtml(text, absoluteImageUrl) : "";
+  if (html && shell?.copyRichText) {
+    if (
+      image.origin !== window.location.origin ||
+      !["http:", "https:"].includes(image.protocol) ||
+      image.username ||
+      image.password
+    )
+      return false;
+    try {
+      const result = await shell.copyRichText(text, html);
+      return z.object({ copied: z.literal(true) }).safeParse(result).success;
+    } catch {
+      return false;
+    }
+  }
+  if (shell?.copyTextAndImage) {
+    try {
+      const result = await shell.copyTextAndImage(text, absoluteImageUrl);
+      return z.object({ copied: z.literal(true) }).safeParse(result).success;
+    } catch {
+      return false;
+    }
+  }
   if (
     typeof navigator === "undefined" ||
     typeof navigator.clipboard?.write !== "function" ||
@@ -143,6 +173,7 @@ async function copyTextAndImageToClipboard(
     };
     if (text.length > 0) {
       clipboardData["text/plain"] = new Blob([text], { type: "text/plain" });
+      clipboardData["text/html"] = new Blob([html], { type: "text/html" });
     }
     await navigator.clipboard.write([new ClipboardItem(clipboardData)]);
     return true;
@@ -164,6 +195,10 @@ export async function copyToClipboardWithToast(
     : await copyTextToClipboard(text);
   if (copied) {
     if (successMessage) appToast.success(successMessage);
+    return true;
+  }
+  if (imageUrl && text && (await copyTextToClipboard(text))) {
+    appToast.success("Copied text; image could not be copied");
     return true;
   }
   if (errorMessage) appToast.error(errorMessage);

@@ -6,12 +6,14 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "thread show":
     "{thread: {id, status, title, projectId, environmentId, parentThreadId, ...}, environment: {id, hostId, path, branchName, ...} | null, pendingTodos}    (thread fields are under .thread)",
   "thread log":
-    "[{id, seq, type, createdAt, threadId, scope, data}]    (bare array of raw events, oldest first; page with --after-seq <seq>)",
+    "[{id, seq, type, createdAt, threadId, scope, data}]    (bare array of raw events, oldest first; page with --after-seq <seq>); with --message: {message, before, after} of conversation rows",
   "thread output": "{output}",
   "thread spawn":
     "the created thread: {id, status, title, projectId, environmentId, ...}",
   "thread wait": "{threadId, matched: true, target}",
   "thread search": "{active: {total, results}, archived: {total, results}}",
+  "prompt-history list":
+    "{entries: [{id, createdAt, input, projectId, threadId}], nextCursor: string | null}",
   "project list":
     "[{id, kind, name, gitRemoteUrl, sources: [{id, hostId, path, isDefault}]}]    (bare array)",
   "machine list":
@@ -19,7 +21,7 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "provider list":
     "[{id, displayName, available, capabilities, reasoningLevels, serviceTiers}]    (bare array)",
   "provider models":
-    "[{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, isDefault}]    (bare array)",
+    "[{id, model, displayName, supportedReasoningEfforts, defaultReasoningEffort, supportedServiceTiers?, isDefault}]    (bare array)",
   "environment list":
     "[{id, name, projectId, hostId, path, branchName, status, lifecycle}]    (bare array)",
   "environment show":

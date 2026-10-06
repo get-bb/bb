@@ -1,13 +1,3 @@
-export const RUN_STATE_PRESENTATION = {
-  "in-progress": { icon: "Loading", label: "In progress", inFlight: true },
-  succeeded: { icon: "CircleCheck", label: "Succeeded", inFlight: false },
-  failed: { icon: "CircleX", label: "Failed", inFlight: false },
-  skipped: { icon: "ArrowTurnForward", label: "Skipped", inFlight: false },
-} as const satisfies Record<
-  string,
-  { icon: string; label: string; inFlight: boolean }
->;
-
 const UPDATE_STATES = [
   "up-to-date",
   "in-progress",
@@ -40,12 +30,12 @@ export const UPDATE_STATE_PRESENTATION: Record<
   UpdateStatePresentation
 > = {
   "up-to-date": {
-    icon: RUN_STATE_PRESENTATION.succeeded.icon,
+    icon: "CircleCheck",
     label: "Up to date",
     tone: "muted",
   },
   "in-progress": {
-    icon: RUN_STATE_PRESENTATION["in-progress"].icon,
+    icon: "Loading",
     label: "In progress",
     tone: "muted",
     inFlight: true,
@@ -72,7 +62,7 @@ export const UPDATE_STATE_PRESENTATION: Record<
     tone: "muted",
   },
   failed: {
-    icon: RUN_STATE_PRESENTATION.failed.icon,
+    icon: "CircleX",
     label: "Failed",
     tone: "error",
   },

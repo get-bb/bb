@@ -95,6 +95,8 @@ const GITHUB_CATALOG_ENTRY = {
   official: true,
   author: null,
   installed: false,
+  conflictingInstallSource: null,
+  installedByDefault: false,
   compatible: true,
   incompatibleReason: null,
 };
@@ -355,7 +357,7 @@ describe("PluginsOverview", () => {
 
     const goBack = screen.getByRole("button", { name: "Go back" });
     await waitFor(() =>
-      expect((goBack as HTMLButtonElement).disabled).toBe(false),
+      expect(goBack.getAttribute("aria-disabled")).toBeNull(),
     );
     fireEvent.click(goBack);
     await waitFor(() =>
@@ -459,29 +461,6 @@ describe("PluginsOverview", () => {
     expect(await screen.findByText("Automations")).toBeTruthy();
   });
 
-  it("shows the same category control on Installed", async () => {
-    installFetch([AUTOMATIONS_PLUGIN]);
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    render(
-      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
-        <QueryClientWrapper>
-          <PluginsOverview />
-          <SwitchViewButton view="browse" />
-          <SwitchViewButton view="installed" />
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
-    expect(
-      screen.getByRole("button", {
-        name: "Filter plugins by category: All categories",
-      }),
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
-  });
-
   it("keeps Browse filters in the toolbar rather than a separate pill band", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -554,7 +533,9 @@ describe("PluginsOverview", () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/plugins?view=browse&query=GitHub&sort=name"]}>
+      <MemoryRouter
+        initialEntries={["/plugins?view=browse&query=GitHub&sort=name"]}
+      >
         <QueryClientWrapper>
           <LocationPath />
           <Routes>
@@ -574,13 +555,14 @@ describe("PluginsOverview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("heading", { name: "Install GitHub?" })).toBeNull();
+      expect(
+        screen.queryByRole("heading", { name: "Install GitHub?" }),
+      ).toBeNull();
     });
     expect(screen.getByTestId("location-path").textContent).toBe("/plugins");
-    expect(screen.getByRole("textbox", { name: "Search plugins" })).toHaveProperty(
-      "value",
-      "GitHub",
-    );
+    expect(
+      screen.getByRole("textbox", { name: "Search plugins" }),
+    ).toHaveProperty("value", "GitHub");
   });
 
   it("loads more installed plugins as the scroll sentinel is reached", async () => {
@@ -710,7 +692,7 @@ describe("PluginsOverview", () => {
     ).toBeNull();
   });
 
-  it("sorts enabled plugins before inactive plugins and published plugins first within enabled", async () => {
+  it("keeps disabled plugins in place, sorting published plugins first", async () => {
     installFetch([
       {
         ...AUTOMATIONS_PLUGIN,
@@ -766,9 +748,9 @@ describe("PluginsOverview", () => {
     expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
       "plugin-row-enabled-official-alpha",
       "plugin-row-enabled-official-zulu",
+      "plugin-row-inactive-official",
       "plugin-row-enabled-local-alpha",
       "plugin-row-inactive-local",
-      "plugin-row-inactive-official",
     ]);
     const officialPills = screen.getAllByText("BB Official");
     expect(officialPills).toHaveLength(2);
@@ -808,9 +790,9 @@ describe("PluginsOverview", () => {
     expect(rowIds()).toEqual([
       "plugin-row-enabled-official-alpha",
       "plugin-row-enabled-official-zulu",
+      "plugin-row-inactive-official",
       "plugin-row-enabled-local-alpha",
       "plugin-row-inactive-local",
-      "plugin-row-inactive-official",
     ]);
     expect(
       screen
@@ -927,11 +909,6 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(
-      document.querySelectorAll(
-        '[data-testid^="plugin-row-"], [data-plugin-row]',
-      ).length,
-    ).toBeGreaterThanOrEqual(0);
     expect(screen.getByText("Inactive Builtin")).toBeTruthy();
     expect(
       screen.getByRole("switch", { name: "Enable inactive-builtin" }),
