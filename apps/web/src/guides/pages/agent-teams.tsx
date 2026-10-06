@@ -113,10 +113,10 @@ export const TEAM_TROUBLESHOOTING: GuideFaq[] = [
     question: "Why didn't the lead hear back?",
     answer: (
       <p>
-        The lead hears when a subthread finishes, fails, stops, or waits on a
-        question, as long as the subthread is nested under it. If the lead runs{" "}
-        <code>bb thread wait</code>, it gives up after 20 minutes. For longer
-        work, add <code>--timeout 1h</code>.
+        The lead hears when a subthread finishes, fails, is interrupted, or
+        waits on a question, as long as the subthread is nested under it. If the
+        lead runs <code>bb thread wait</code>, it gives up after 20 minutes. For
+        longer work, add <code>--timeout 1h</code>.
       </p>
     ),
   },
@@ -164,9 +164,9 @@ export const TEAM_TROUBLESHOOTING: GuideFaq[] = [
     answer: (
       <p>
         Its machine went to sleep, lost its connection, or restarted bb, and the
-        lead is told which. Once the machine is back, message the subthread to
-        pick up where it left off. To keep a computer from sleeping, turn on the
-        Keep Awake plugin.
+        lead is told which. Once the machine is back, run{" "}
+        <code>bb thread retry &lt;thread-id&gt;</code>. To keep a Mac or Windows
+        PC awake, run <code>bb keep-awake enable</code>.
       </p>
     ),
   },
@@ -175,8 +175,8 @@ export const TEAM_TROUBLESHOOTING: GuideFaq[] = [
     answer: (
       <p>
         Run <code>bb thread stop &lt;thread-id&gt;</code>, or stop it in its
-        thread. The lead is told, and the subthread keeps its history and
-        worktree.
+        thread. It keeps its history and worktree. bb doesn't tell the lead, so
+        let it know.
       </p>
     ),
   },
