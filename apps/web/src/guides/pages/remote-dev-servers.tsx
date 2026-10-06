@@ -274,18 +274,10 @@ export const REMOTE_DEV_SERVERS: Guide = {
           </p>
           <CommandBlock command="npx bb-app@latest" />
           <h3 className="gd-h3">Give your team access</h3>
-          <ul className="gd-list">
-            <li>
-              <strong>bb connect.</strong> Pair the server with{" "}
-              <code>bb account login</code>. Its getbb.app address opens only
-              for the account it's paired with, so your team signs in with that
-              account.
-            </li>
-            <li>
-              <strong>Tailscale.</strong> Keep bb on your tailnet, and let your
-              Tailscale ACLs decide who gets in.
-            </li>
-          </ul>
+          <p>
+            Keep bb on your tailnet, and let your Tailscale ACLs decide who gets
+            in.
+          </p>
           <CommandBlock
             label="Tailscale"
             command={
