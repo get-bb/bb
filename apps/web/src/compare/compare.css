@@ -2192,7 +2192,7 @@
 }
 
 .cmp-hero:has(.cmp-hero-visual) h1 {
-  max-width: 900px;
+  max-width: 15em;
   font-size: clamp(30px, 4.4vw, 52px);
 }
 
