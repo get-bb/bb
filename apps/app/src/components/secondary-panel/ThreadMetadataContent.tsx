@@ -640,7 +640,10 @@ export function describeGitStatusRow(
         icon: "DiffModified",
         iconClassName: "text-destructive",
         text: "Uncommitted",
-        detail: display.summary === "" ? null : display.summary,
+        detail:
+          display.summary === ""
+            ? null
+            : shortenBranchComparison(display.summary),
       };
     case "Up to date":
     case "Clean":
