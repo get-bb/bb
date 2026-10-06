@@ -23,16 +23,6 @@ backoff.
 The `remoteAccess` setting (`bb connect off` and `bb connect on`) closes and
 reopens the tunnel and machine shares without signing out.
 
-## Response deadlines
-
-The hosted gate waits 30 seconds for response headers on ordinary requests.
-Plugin source installs, catalog installs, and updates have a five-minute limit,
-including through exposed ports: preparation and the update stability check can
-exceed 30 seconds. Voice transcription on the main bb target retains its
-90-second limit. Once headers arrive, these deadlines do not limit streaming
-response bodies. Changing these limits requires deploying the hosted Connect
-worker; updating the local connect plugin alone does not change them.
-
 ## Copy of the pairing for older builds
 
 bb builds from before bb account keep `{serverUrl, handle, credential}` under
