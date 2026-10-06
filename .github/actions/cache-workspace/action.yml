@@ -20,9 +20,12 @@ runs:
       id: store
       shell: bash
       run: |
-        echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+        if [[ "$RUNNER_OS" != "Windows" ]]; then
+          echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+        fi
         echo "arch=$(node -p process.arch)" >> "$GITHUB_OUTPUT"
     - name: Cache pnpm store
+      if: runner.os != 'Windows'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"

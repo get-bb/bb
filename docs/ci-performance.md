@@ -45,8 +45,8 @@ the CI workflow's outer step budgets.
 pnpm can restore the most recent store for the same OS and architecture when a
 lockfile changes. The frozen install still resolves the exact lockfile contents
 and verifies store integrity. Turbo caches are pruned after restoration and
-before successful CI jobs save them. Windows restores the pnpm store for every
-job, and Turbo outputs for the smokes and the Windows test shards, capped at
+before successful CI jobs save them. Windows skips the pnpm store archive and
+restores Turbo outputs for the smokes and the Windows test shards, capped at
 256 MB per job to bound transfer and storage costs. The Windows test shards
 also drop every entry their own Turbo run summary does not name before saving
 (`prune-turbo-cache.mjs --keep-run-summaries`). Windows installs retain
@@ -58,6 +58,23 @@ so different main commits can run concurrently and each successful job saves its
 cache. The old shared main group delayed job creation by up to three minutes in
 the October 1 sample. Runner provisioning and fleet capacity remain external
 limits; removing workflow serialization does not guarantee immediate starts.
+
+### October 6 Windows cache timeouts
+
+In [run 37536497937](https://github.com/get-bb/bb/actions/runs/37536497937), all
+sixteen Windows jobs exhausted the 60-second cache restore budget. The app
+smoke downloaded an 831 MB pnpm archive in about 15 seconds, then timed out
+extracting it. Turbo restoration never started. The install fallback redirected
+both caches into temporary directories, so the job rebuilt all 56 tasks and
+the cache action could not save those new Turbo outputs. The pnpm post step
+also spent 16 seconds attempting to archive the abandoned store.
+
+Windows now skips pnpm archive restoration and saving. This leaves the cache
+budget available for the bounded Turbo archive and avoids the forced cold
+build on every run. Frozen dependency installation and every test and smoke
+check remain enabled. Linux and macOS retain pnpm caching. The baseline run
+took 8m58s overall; measure subsequent CI runs before claiming an end-to-end
+speedup.
 
 ## Test balancing and measurement
 
