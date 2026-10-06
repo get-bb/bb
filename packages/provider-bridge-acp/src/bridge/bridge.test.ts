@@ -72,7 +72,7 @@ async function waitFor<T>(
     if (Date.now() > deadline) {
       throw new Error(`Timed out waiting for ${description}`);
     }
-    await new Promise((resolveTick) => setTimeout(resolveTick, 20));
+    await new Promise((resolveTick) => realSetTimeout(resolveTick, 20));
   }
 }
 
@@ -3686,32 +3686,43 @@ describe("acp bridge", () => {
         () => loggedPrompts(promptLog).includes("hang") || undefined,
         "pending prompt before exit",
       );
+      await waitForFileWithRealTimer(descendantPidFile);
       const descendantPid = Number(readFileSync(descendantPidFile, "utf8"));
-      process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
-      expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
-      expect(process.kill(descendantPid, 0)).toBe(true);
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+      });
+      try {
+        process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+        expect(await waitForTurnCompleted()).toMatchObject({
+          status: "failed",
+        });
+        expect(process.kill(descendantPid, 0)).toBe(true);
 
-      const steer = await waitForResponse(
-        sendTurnRequest("turn/steer", providerThreadId, {
-          expectedTurnId: "turn-1",
-          input: [{ type: "text", text: "late steer", mentions: [] }],
-        }),
-      );
-      expect(steer.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN);
-      const response = await waitForResponse(
-        sendTurnRequest("turn/start", providerThreadId, {
+        const steer = await waitForResponse(
+          sendTurnRequest("turn/steer", providerThreadId, {
+            expectedTurnId: "turn-1",
+            input: [{ type: "text", text: "late steer", mentions: [] }],
+          }),
+        );
+        expect(steer.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN);
+        const nextTurnId = sendTurnRequest("turn/start", providerThreadId, {
           input: [{ type: "text", text: "after", mentions: [] }],
-        }),
-      );
-      expect(response.error).toBeUndefined();
-      await waitFor(
-        () => threadEventsOfType("turn/completed")[1],
-        "recovered turn completion",
-      );
-      expect(
-        threadEventsOfType("turn/completed").map((event) => event.status),
-      ).toEqual(["failed", "completed"]);
-      expect(loggedPrompts(promptLog)).toEqual(["hang", "after"]);
+        });
+        await vi.advanceTimersByTimeAsync(2_000);
+        const response = await waitForResponse(nextTurnId);
+        expect(response.error).toBeUndefined();
+        await waitFor(
+          () => threadEventsOfType("turn/completed")[1],
+          "recovered turn completion",
+        );
+        expect(
+          threadEventsOfType("turn/completed").map((event) => event.status),
+        ).toEqual(["failed", "completed"]);
+        expect(loggedPrompts(promptLog)).toEqual(["hang", "after"]);
+      } finally {
+        await vi.advanceTimersByTimeAsync(2_000);
+        vi.useRealTimers();
+      }
     },
   );
 

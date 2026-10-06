@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import * as fs from "node:fs/promises";
 import {
   mkdtemp,
   readFile,
@@ -13,6 +14,11 @@ import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginHostManager } from "./plugin-host-manager.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, rm: vi.fn(actual.rm) };
+});
 
 type PluginCall = Extract<
   HostDaemonOnlineRpcCommand,
@@ -807,6 +813,65 @@ describe("PluginHostManager", () => {
       }),
     ).resolves.toEqual({ disposed: true });
     expect(onWorkerExit).not.toHaveBeenCalled();
+  });
+
+  it("waits for temporary directory cleanup without racing another removal", async () => {
+    const manager = await createManager();
+    const command = callCommand({ method: "pathsAndSignal" });
+    const result = await manager.call(command);
+    const tempDir = Reflect.get(Object(result.output), "tempDir");
+    const { rm: remove } =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    let removalStarted = false;
+    let releaseRemoval!: () => void;
+    const removalGate = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    let notifyRemoval!: () => void;
+    const started = new Promise<void>((resolve) => {
+      notifyRemoval = resolve;
+    });
+    const rmSpy = vi
+      .spyOn(fs, "rm")
+      .mockImplementation(async (path, options) => {
+        if (path === tempDir) {
+          if (removalStarted) {
+            throw Object.assign(
+              new Error("EPERM: concurrent directory removal"),
+              {
+                code: "EPERM",
+                syscall: "scandir",
+              },
+            );
+          }
+          removalStarted = true;
+          notifyRemoval();
+          await removalGate;
+        }
+        await remove(path, options);
+      });
+    const disposed = Promise.allSettled([
+      manager.dispose({
+        type: "plugin.host.dispose",
+        pluginId: command.pluginId,
+        generation: command.generation,
+      }),
+    ]);
+    try {
+      await started;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      releaseRemoval();
+      expect(await disposed).toEqual([
+        { status: "fulfilled", value: { disposed: true } },
+      ]);
+      await expect(stat(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      releaseRemoval();
+      await disposed;
+      rmSpy.mockRestore();
+    }
   });
 
   it("logs when graceful disposal requires a forced kill", async () => {

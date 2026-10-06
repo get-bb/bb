@@ -47,29 +47,21 @@ function providerThreadIdFor(threadId: string): string {
   return resultProviderThreadId(identity?.params);
 }
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function expectEveryChildGone(expectedSpawns: number): Promise<void> {
   const deadline = Date.now() + 30_000;
   for (;;) {
     const log = harness.readProcessLog();
     const allExited =
       log.spawned.length >= expectedSpawns &&
-      log.spawned.every((pid) => log.exited.includes(pid) && !isAlive(pid));
+      log.spawned.every((pid) => log.exited.includes(pid)) &&
+      harness.runningChildPids().length === 0;
     if (allExited) {
       expect(log.spawned.length).toBe(expectedSpawns);
       return;
     }
     if (Date.now() > deadline) {
       throw new Error(
-        `pi children still running: spawned ${JSON.stringify(log.spawned)}, exited ${JSON.stringify(log.exited)}, alive ${JSON.stringify(log.spawned.filter(isAlive))}`,
+        `pi children still running: spawned ${JSON.stringify(log.spawned)}, exited ${JSON.stringify(log.exited)}, alive ${JSON.stringify(harness.runningChildPids())}`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -519,7 +511,7 @@ it("closing the catalog waits for its child to exit", async () => {
   const log = harness.readProcessLog();
   expect(log.spawned).toHaveLength(1);
   expect(log.exited).toContain(log.spawned[0]);
-  expect(log.spawned.some(isAlive)).toBe(false);
+  expect(harness.runningChildPids()).toEqual([]);
 }, 90_000);
 
 it("a child that ignores EOF and SIGTERM is SIGKILLed", async () => {
@@ -534,10 +526,10 @@ it("a child that ignores EOF and SIGTERM is SIGKILLed", async () => {
     activeTurnId: null,
   });
   expect(stop.result).toMatchObject({ ok: true });
-  expect(isAlive(pid)).toBe(true);
+  expect(harness.runningChildPids()).toContain(pid);
   const deadline = Date.now() + 15_000;
-  while (isAlive(pid) && Date.now() < deadline) {
+  while (harness.runningChildPids().includes(pid) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  expect(isAlive(pid)).toBe(false);
+  expect(harness.runningChildPids()).not.toContain(pid);
 }, 90_000);
