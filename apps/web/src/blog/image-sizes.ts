@@ -40,7 +40,7 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
   },
   "/guides/remote-dev-servers/start-terminal.png": {
     width: 1120,
-    height: 660,
+    height: 686,
   },
 };
 
