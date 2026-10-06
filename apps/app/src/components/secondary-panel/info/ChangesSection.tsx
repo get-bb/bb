@@ -83,7 +83,7 @@ export function UncommittedChangesSection({
   if (section === undefined) return null;
   return (
     <InfoSection
-      label="Uncommitted changes"
+      label="Uncommitted files"
       count={section.files.length}
       collapse={collapse}
       trailing={<ChangedFilesTally section={section} />}
