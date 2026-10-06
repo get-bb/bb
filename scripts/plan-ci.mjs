@@ -17,8 +17,10 @@ const full = {
   packaging: true,
   providers: true,
   forks: true,
-  checks: "",
-  checksNeeded: true,
+  buildFilters: "",
+  staticFilters: "",
+  buildNeeded: true,
+  staticNeeded: true,
   appBuild: true,
   sdkBuild: true,
   reason: "Full cross-platform coverage",
@@ -78,13 +80,21 @@ function select() {
   const tests = new Set(
     tasks.filter((task) => task.name === "test").map((task) => task.package),
   );
-  const checks = [
-    ...new Set(
-      tasks
-        .filter((task) => ["build", "typecheck", "lint"].includes(task.name))
-        .map((task) => task.package),
-    ),
-  ].filter((name) => name !== "//");
+  const packagesFor = (names) =>
+    [
+      ...new Set(
+        tasks
+          .filter((task) => names.includes(task.name))
+          .map((task) => task.package),
+      ),
+    ].filter((name) => name !== "//");
+  const buildPackages = packagesFor(["build"]);
+  const staticPackages = packagesFor(["lint", "typecheck"]);
+  const filtersFor = (packages) =>
+    packages
+      .sort()
+      .map((name) => `--filter=${name}`)
+      .join(" ");
   const uiOnly = paths.every((path) =>
     /^(?:apps\/(?:app|web)\/(?:src|public)\/|packages\/(?:core-ui|shared-ui|thread-view|client-core|mobile-bridge)\/(?:src|test|tests)\/)/u.test(
       path,
@@ -132,17 +142,16 @@ function select() {
     ),
     forks:
       !appOnly && tasks.some((task) => task.package.startsWith("bb-plugin-")),
-    checksNeeded: checks.length > 0,
+    buildNeeded: buildPackages.length > 0,
+    staticNeeded: staticPackages.length > 0,
     appBuild: tasks.some(
       (task) => task.package === "@bb/app" && task.name === "build",
     ),
     sdkBuild: tasks.some(
       (task) => task.package === "@get-bb/plugin-sdk" && task.name === "build",
     ),
-    checks: checks
-      .sort()
-      .map((name) => `--filter=${name}`)
-      .join(" "),
+    buildFilters: filtersFor(buildPackages),
+    staticFilters: filtersFor(staticPackages),
     reason: `Affected checks for ${paths.length} changed paths`,
   };
 }

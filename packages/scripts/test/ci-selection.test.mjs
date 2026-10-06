@@ -129,13 +129,16 @@ it("selects app checks without provisioning unrelated Windows or package smoke j
     "app-1",
     "app-2",
     "app-3",
+    "app-4",
+    "app-5",
+    "app-6",
   ]);
   expect(plan["windows-tests"].include).toEqual([]);
   expect(plan.packaging).toBe(false);
   expect(plan.foundation).toBe(false);
   expect(plan.forks).toBe(false);
-  expect(plan.checks).toContain("--filter=@bb/app");
-  expect(plan.checks).not.toContain("@bb/text-utils");
+  expect(plan.staticFilters).toContain("--filter=@bb/app");
+  expect(plan.staticFilters).not.toContain("@bb/text-utils");
 });
 
 it("keeps dependent app tests and Windows foundation checks for shared configuration changes", () => {
@@ -151,9 +154,9 @@ it("keeps dependent app tests and Windows foundation checks for shared configura
     ),
   ).toBe(true);
   expect(plan.foundation).toBe(true);
-  expect(plan.checks).toContain("--filter=@bb/config");
-  expect(plan.checks).toContain("--filter=@bb/app");
-  expect(plan.checks).not.toContain("@bb/text-utils");
+  expect(plan.staticFilters).toContain("--filter=@bb/config");
+  expect(plan.staticFilters).toContain("--filter=@bb/app");
+  expect(plan.staticFilters).not.toContain("@bb/text-utils");
 });
 
 it("retains Windows and package smokes for frontend build configuration", () => {

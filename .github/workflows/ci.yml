@@ -311,7 +311,7 @@ jobs:
   static-checks:
     name: Lint and typecheck (ubuntu-latest, Node 22.x)
     needs: plan
-    if: ${{ fromJSON(needs.plan.outputs.selection).checksNeeded }}
+    if: ${{ fromJSON(needs.plan.outputs.selection).staticNeeded }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
@@ -352,14 +352,14 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Lint and typecheck
-        run: pnpm exec turbo run lint typecheck ${{ fromJSON(needs.plan.outputs.selection).checks }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+        run: pnpm exec turbo run lint typecheck ${{ fromJSON(needs.plan.outputs.selection).staticFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024 --keep-run-summaries .turbo/runs
 
   checks:
     needs: plan
-    if: ${{ fromJSON(needs.plan.outputs.selection).checksNeeded }}
+    if: ${{ fromJSON(needs.plan.outputs.selection).buildNeeded }}
     name: Checks (ubuntu-latest, Node 22.x)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
@@ -410,7 +410,7 @@ jobs:
       # Measured pinned to 4 CPUs, two rounds each: 96 s / 110 s at the
       # default vs 90 s / 58 s at four.
       - name: Build
-        run: pnpm exec turbo run build ${{ fromJSON(needs.plan.outputs.selection).checks }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+        run: pnpm exec turbo run build ${{ fromJSON(needs.plan.outputs.selection).buildFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       # Runs after build and typecheck, so the guard's own turbo build is a
       # cache hit and the package it packs is the one this commit really ships.
@@ -497,7 +497,13 @@ jobs:
         env:
           TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh
+          APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+        run: |
+          filters=()
+          if [[ "$APP_SHARD" == "true" ]]; then
+            filters=(--ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...')
+          fi
+          bash .github/actions/setup-workspace/install-dependencies.sh "${filters[@]}"
 
       - name: Setup Bun
         if: ${{ startsWith(matrix.shard, 'packages-') || matrix.shard == 'plugins' }}
