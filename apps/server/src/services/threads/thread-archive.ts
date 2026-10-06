@@ -18,10 +18,6 @@ import type { EnvironmentRow } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import {
-  threadEnvironmentUnavailableDetails,
-  throwThreadEnvironmentUnavailable,
-} from "../lib/lifecycle-api-errors.js";
-import {
   pruneThreadEventHistoryBestEffort,
   resetActiveThreadEventPruningState,
 } from "../system/event-pruning.js";
@@ -35,9 +31,7 @@ import {
   archiveUndoGraceKeepsTurnRunning,
 } from "./archive-undo-grace.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
-import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
-import { getThreadProvisionContext } from "./thread-startup-store.js";
-import { isPreStartThreadStatus } from "./thread-status.js";
+import { resolveThreadHostCommandEnvironment } from "./thread-command-environment.js";
 
 interface ArchiveThreadEnvironment {
   hostId: string;
@@ -49,38 +43,12 @@ interface ArchiveThreadWithLifecycleEffectsArgs {
   thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
-interface ResolveArchiveThreadEnvironmentArgs {
-  thread: ArchiveThreadWithLifecycleEffectsArgs["thread"];
-}
-
 interface ArchiveEnvironmentThreadsArgs {
   environment: EnvironmentRow;
 }
 
 interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
-}
-
-export function resolveArchiveThreadEnvironment(
-  deps: Pick<AppDeps, "db">,
-  args: ResolveArchiveThreadEnvironmentArgs,
-): ArchiveThreadEnvironment | null {
-  if (args.thread.environmentId !== null) {
-    return requireThreadHostCommandEnvironment({
-      db: deps.db,
-      thread: args.thread,
-    });
-  }
-  if (
-    isPreStartThreadStatus(args.thread.status) ||
-    args.thread.status === "stopping" ||
-    getThreadProvisionContext(deps.db, args.thread.id) !== null
-  ) {
-    throwThreadEnvironmentUnavailable(
-      threadEnvironmentUnavailableDetails("never_attached", null),
-    );
-  }
-  return null;
 }
 
 function archiveThreadWithLifecycleEffects(
@@ -150,7 +118,8 @@ export function archiveThreadAndChildren(
   deps: AppDeps,
   args: ArchiveThreadAndChildrenArgs,
 ): string[] {
-  const environment = resolveArchiveThreadEnvironment(deps, {
+  const environment = resolveThreadHostCommandEnvironment({
+    db: deps.db,
     thread: args.parentThread,
   });
   return archiveThreadTrees(deps, [args.parentThread], (thread) =>
