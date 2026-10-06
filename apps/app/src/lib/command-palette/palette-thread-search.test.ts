@@ -391,7 +391,7 @@ describe("buildPaletteThreadSearchRows", () => {
       ).toEqual([]);
     });
 
-    it("inserts server-only rows after three loaded rows and merges threads found both ways", () => {
+    it("lists every title match before message-only matches and merges threads found both ways", () => {
       const local = Array.from({ length: 6 }, (_, index) =>
         titled(`local-${index}`, `Fix ${index}`, NOW - index),
       );
@@ -434,12 +434,12 @@ describe("buildPaletteThreadSearchRows", () => {
         "local-0",
         "local-1",
         "local-2",
-        "message-only",
         "local-3",
         "local-4",
         "local-5",
+        "message-only",
       ]);
-      expect(result.rows[5]).toMatchObject({
+      expect(result.rows[4]).toMatchObject({
         id: "active:local-4",
         primaryText: "Fix 4",
         highlightRanges: [{ start: 0, end: 3 }],
@@ -449,7 +449,7 @@ describe("buildPaletteThreadSearchRows", () => {
         },
         messageSeq: 12,
       });
-      expect(result.rows[3]).toMatchObject({
+      expect(result.rows[6]).toMatchObject({
         primaryText: "Weekly sync",
         excerpt: { text: "we should fix it" },
       });
@@ -495,6 +495,55 @@ describe("buildPaletteThreadSearchRows", () => {
         highlightRanges: [{ start: 0, end: 3 }],
         messageSeq: 9,
       });
+    });
+
+    it("lists archived title matches before archived message-only matches", () => {
+      const messageOnly = makeThread("message-only", {
+        title: "Weekly sync",
+        archivedAt: NOW - 1,
+      });
+      const titleHit = makeThread("title-hit", {
+        title: "Fix the importer",
+        archivedAt: NOW - 2,
+      });
+      const result = build({
+        query: "fix",
+        lifecycles: ["archived"],
+        searchResponse: {
+          active: { total: 0, results: [] },
+          archived: {
+            total: 2,
+            results: [
+              {
+                thread: messageOnly,
+                matches: [
+                  {
+                    sourceKind: "assistant_message",
+                    text: "we should fix it",
+                    highlightRanges: [{ start: 10, end: 13 }],
+                    sourceSeq: 7,
+                  },
+                ],
+              },
+              {
+                thread: titleHit,
+                matches: [
+                  {
+                    sourceKind: "title",
+                    text: "Fix the importer",
+                    highlightRanges: [{ start: 0, end: 3 }],
+                    sourceSeq: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+      expect(result.rows.map((row) => row.threadId)).toEqual([
+        "title-hit",
+        "message-only",
+      ]);
     });
 
     it("keeps loaded matches while server results are stale", () => {

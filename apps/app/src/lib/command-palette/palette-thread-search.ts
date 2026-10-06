@@ -51,7 +51,6 @@ export interface PaletteThreadSearchRowsResult {
 type HighlightRange = PaletteThreadSearchRow["highlightRanges"][number];
 
 const RECENT_THREAD_LIMIT = 20;
-const LOCAL_ROWS_BEFORE_SERVER_ROWS = 3;
 
 function isTitleMatch(match: ThreadSearchMatch): boolean {
   return match.sourceKind === "title" || match.sourceKind === "title_fallback";
@@ -172,9 +171,29 @@ function localMatchRows(
   return [...titleRows, ...projectRows];
 }
 
+function titleContainsQuery(title: string, query: string): boolean {
+  const haystack = title.toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/u)
+    .filter(Boolean)
+    .every((term) => haystack.includes(term));
+}
+
+function titleMatchesFirst(
+  rows: readonly PaletteThreadSearchRow[],
+  query: string,
+): PaletteThreadSearchRow[] {
+  return [
+    ...rows.filter((row) => titleContainsQuery(row.primaryText, query)),
+    ...rows.filter((row) => !titleContainsQuery(row.primaryText, query)),
+  ];
+}
+
 function mergeActiveRows(
   localRows: readonly PaletteThreadSearchRow[],
   serverRows: readonly PaletteThreadSearchRow[],
+  query: string,
 ): PaletteThreadSearchRow[] {
   const serverRowsById = new Map(serverRows.map((row) => [row.id, row]));
   const localIds = new Set(localRows.map((row) => row.id));
@@ -191,11 +210,10 @@ function mergeActiveRows(
       messageSeq: server.messageSeq,
     };
   });
-  return [
-    ...merged.slice(0, LOCAL_ROWS_BEFORE_SERVER_ROWS),
-    ...serverRows.filter((row) => !localIds.has(row.id)),
-    ...merged.slice(LOCAL_ROWS_BEFORE_SERVER_ROWS),
-  ];
+  return titleMatchesFirst(
+    [...merged, ...serverRows.filter((row) => !localIds.has(row.id))],
+    query,
+  );
 }
 
 export function buildPaletteThreadSearchRows({
@@ -241,7 +259,9 @@ export function buildPaletteThreadSearchRows({
           serverRow(thread, [], lifecycle, projectNamesById, now),
         );
     }
-    if (lifecycle === "archived") return serverRowsFor(lifecycle);
+    if (lifecycle === "archived") {
+      return titleMatchesFirst(serverRowsFor(lifecycle), trimmedQuery);
+    }
     return mergeActiveRows(
       localMatchRows(
         threadsFor(lifecycle),
@@ -250,6 +270,7 @@ export function buildPaletteThreadSearchRows({
         now,
       ),
       serverRowsFor(lifecycle),
+      trimmedQuery,
     );
   };
   return {
