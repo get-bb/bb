@@ -460,6 +460,11 @@ describe("CommandPalette", () => {
       expect(
         screen.getAllByRole("button", { name: "Open in split" }),
       ).toHaveLength(1);
+      expect(
+        document.querySelectorAll(
+          'button[aria-label="Open in split"][aria-hidden="true"]',
+        ),
+      ).toHaveLength(1);
       expect(document.querySelector("[data-palette-footer]")).toBeNull();
       if (activation === "click") fireEvent.click(button);
       else

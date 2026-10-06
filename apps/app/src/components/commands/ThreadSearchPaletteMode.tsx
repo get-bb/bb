@@ -449,11 +449,16 @@ export function ThreadSearchPaletteMode({
                         <ThreadSearchPaletteRow row={option.row} />
                       )}
                     </div>
-                    {index === activeIndex && canSplit ? (
+                    {option.row !== null && canSplit ? (
                       <button
                         type="button"
                         aria-label="Open in split"
-                        className="ml-4 mr-1 inline-flex h-7 shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-subtle-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                        aria-hidden={index !== activeIndex || undefined}
+                        tabIndex={index === activeIndex ? undefined : -1}
+                        className={cn(
+                          "ml-4 mr-1 inline-flex h-7 shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-subtle-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
+                          index !== activeIndex && "invisible",
+                        )}
                         onClick={() => selectOption(option, index, true)}
                       >
                         <span className="mr-1">Open in split</span>
