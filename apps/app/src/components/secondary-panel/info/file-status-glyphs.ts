@@ -21,7 +21,7 @@ export const FILE_STATUS_GLYPHS: Record<
   A: {
     icon: "DiffAdded",
     label: "Added",
-    description: "Added: new file staged in git",
+    description: "Added: new file",
     className: "text-diff-added",
   },
   "??": {

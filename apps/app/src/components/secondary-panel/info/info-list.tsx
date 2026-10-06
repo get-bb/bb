@@ -148,6 +148,7 @@ export function InfoListRow({
         <Tooltip>
           <TooltipTrigger asChild>
             <span
+              role="img"
               aria-label={leadingLabel}
               className={cn(INFO_LIST_LEADING_CLASS, "relative z-10")}
             >
