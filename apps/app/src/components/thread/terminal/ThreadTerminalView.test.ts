@@ -310,6 +310,7 @@ describe("terminal output encoding", () => {
     writeTerminalOutput({
       data: "\u001b[6n",
       isReplay: true,
+      onParsed: () => undefined,
       replayWriteState,
       terminal,
     });
@@ -320,6 +321,7 @@ describe("terminal output encoding", () => {
     writeTerminalOutput({
       data: "\u001b[6n",
       isReplay: false,
+      onParsed: () => undefined,
       replayWriteState,
       terminal,
     });

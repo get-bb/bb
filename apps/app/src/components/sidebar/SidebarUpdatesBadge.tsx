@@ -86,7 +86,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   )} ${staleProviders.length === 1 ? "update" : "updates"} available`;
 
   return (
-    <SidebarMenuItem className="flex min-w-0 max-w-[50%] items-center gap-1">
+    <SidebarMenuItem className="flex min-w-0 items-center gap-1">
       {machineAttention.label !== null ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -136,7 +136,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               <Icon
                 name={providerUpdateRunning ? "Loading" : "Download"}
                 className={cn(
-                  "size-3 text-muted-foreground",
+                  "size-3 shrink-0 text-muted-foreground",
                   providerUpdateRunning && "animate-spin",
                 )}
               />

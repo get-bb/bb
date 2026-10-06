@@ -194,23 +194,30 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
       const visibleFile = path.join(realRoot, "apps", "child-0", "visible.txt");
       const events: WorkspaceStatusChangeEvent[] = [];
       const ready = createDeferredPromise<void>();
-      const readyChanged = createDeferredPromise<void>();
-      const visibleChanged = createDeferredPromise<void>();
       const failed = createDeferredPromise<never>();
+      let stopped = false;
       const stop = watchWorkspaceStatus(root, {
         onChange: (event) => {
           events.push(event);
-          if (event.changedPaths.includes(readyFile)) readyChanged.resolve();
-          if (event.changedPaths.includes(visibleFile))
-            visibleChanged.resolve();
         },
         onReady: () => ready.resolve(),
         onWatchError: (error) => failed.reject(error),
       });
       try {
         await Promise.race([ready.promise, failed.promise]);
-        await fs.writeFile(readyFile, "ready\n");
-        await Promise.race([readyChanged.promise, failed.promise]);
+        await Promise.race([
+          vi.waitFor(
+            async () => {
+              if (stopped) return;
+              await fs.writeFile(readyFile, `${Date.now()}\n`);
+              expect(events.flatMap((event) => event.changedPaths)).toContain(
+                readyFile,
+              );
+            },
+            { timeout: 10_000, interval: 100 },
+          ),
+          failed.promise,
+        ]);
 
         await fs.writeFile(
           nestedPackageFile,
@@ -218,7 +225,17 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         );
         await fs.writeFile(nestedGitFile, "marker\n");
         await fs.writeFile(visibleFile, "visible\n");
-        await Promise.race([visibleChanged.promise, failed.promise]);
+        await Promise.race([
+          vi.waitFor(
+            () => {
+              expect(events.flatMap((event) => event.changedPaths)).toContain(
+                visibleFile,
+              );
+            },
+            { timeout: 10_000, interval: 100 },
+          ),
+          failed.promise,
+        ]);
         await Promise.race([
           new Promise((resolve) => setTimeout(resolve, 300)),
           failed.promise,
@@ -237,6 +254,7 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
           ),
         ).toEqual([]);
       } finally {
+        stopped = true;
         await stop();
       }
     },

@@ -33,6 +33,12 @@ const STARTING_SESSION: TerminalSession = {
   updatedAt: 2,
 };
 
+const DISCONNECTED_SESSION: TerminalSession = {
+  ...BASE_TERMINAL_SESSION,
+  status: "disconnected",
+  updatedAt: 2,
+};
+
 const EXITED_SESSION: TerminalSession = {
   ...BASE_TERMINAL_SESSION,
   status: "exited",
@@ -94,6 +100,8 @@ function terminalController(
 
 const startingController = terminalController(STARTING_SESSION);
 const exitedController = terminalController(EXITED_SESSION);
+const disconnectedController = terminalController(DISCONNECTED_SESSION);
+const reconnectingController = terminalController(RUNNING_SESSION);
 
 const emptyController = makeController({
   activeSession: null,
@@ -156,6 +164,18 @@ export function Overview() {
         hint="Terminal has ended and cannot accept input."
       >
         <TerminalContentStage controller={exitedController} />
+      </StoryRow>
+      <StoryRow
+        label="disconnected"
+        hint="Host dropped; the session is held for reattach."
+      >
+        <TerminalContentStage controller={disconnectedController} />
+      </StoryRow>
+      <StoryRow
+        label="reconnecting"
+        hint="Socket is unreachable for over a second."
+      >
+        <TerminalContentStage controller={reconnectingController} />
       </StoryRow>
       <StoryRow label="empty" hint="Right panel tab with no visible sessions.">
         <TerminalContentStage controller={emptyController} />

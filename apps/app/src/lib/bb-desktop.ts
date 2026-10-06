@@ -6,6 +6,8 @@ import type {
 
 export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[84px]";
 export const MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS = "pl-[104px]";
+export const MACOS_NAV_RAIL_TRAFFIC_LIGHT_ROW_HEIGHT_CLASS = "h-[36px]";
+export const MACOS_NAV_RAIL_SIDEBAR_TRIGGER_TOP_CLASS = "top-[36px]";
 
 export const BROWSER_SIDEBAR_TRIGGER_INSET_CLASS = "pl-[12px]";
 export const BROWSER_COLLAPSED_HEADER_RESERVE_CLASS =
@@ -49,6 +51,25 @@ export function shouldReserveMacosTrafficLights({
   windowState: BbDesktopWindowState;
 }): boolean {
   return shouldUseMacosDesktopChrome(desktopInfo) && !windowState.isFullScreen;
+}
+
+export function shouldDockMacosSidebarTriggerBelowTrafficLights({
+  reserveMacosTrafficLights,
+  navigationRail,
+  isCompactViewport,
+  isSidebarOpen,
+}: {
+  reserveMacosTrafficLights: boolean;
+  navigationRail: boolean;
+  isCompactViewport: boolean;
+  isSidebarOpen: boolean;
+}): boolean {
+  return (
+    reserveMacosTrafficLights &&
+    navigationRail &&
+    !isCompactViewport &&
+    isSidebarOpen
+  );
 }
 
 export const DEFAULT_WINDOW_FIND_TOP_OFFSET = 48;

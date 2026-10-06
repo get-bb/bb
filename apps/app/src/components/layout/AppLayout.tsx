@@ -76,8 +76,10 @@ import {
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_NAV_RAIL_SIDEBAR_TRIGGER_TOP_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
+  shouldDockMacosSidebarTriggerBelowTrafficLights,
   shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
@@ -211,17 +213,31 @@ function resetSidebarResizeDocumentState(): void {
   document.body.classList.remove("sidebar-resizing");
 }
 
+const MACOS_SIDEBAR_TRIGGER_DOCK_TRANSITION_CLASS =
+  "[transition:top_120ms_linear,left_120ms_linear_80ms,padding-left_120ms_linear_80ms]";
+const MACOS_SIDEBAR_TRIGGER_UNDOCK_TRANSITION_CLASS =
+  "[transition:left_120ms_linear,padding-left_120ms_linear,top_120ms_linear_80ms]";
+
 interface SidebarTriggerOverlayProps {
+  navigationRail: boolean;
   reserveMacosTrafficLights: boolean;
   usesDesktopChrome: boolean;
 }
 
 function SidebarTriggerOverlay({
+  navigationRail,
   reserveMacosTrafficLights,
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
   const isCompactViewport = useIsCompactViewport();
-  const { openMobile } = useSidebar();
+  const { open, openMobile } = useSidebar();
+  const dockBelowTrafficLights =
+    shouldDockMacosSidebarTriggerBelowTrafficLights({
+      reserveMacosTrafficLights,
+      navigationRail,
+      isCompactViewport,
+      isSidebarOpen: open,
+    });
   const panelShelfState = usePanelShelfState({
     isCompactViewport,
     isSidebarDrawerOpen: openMobile,
@@ -238,15 +254,23 @@ function SidebarTriggerOverlay({
       <div
         data-testid="app-desktop-sidebar-trigger"
         data-panel-shelf={panelShelfState}
+        data-placement={
+          dockBelowTrafficLights ? "below-traffic-lights" : "top-row"
+        }
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed top-0",
+          "fixed motion-reduce:transition-none!",
           COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
           CHROME_ROW_CLASS,
-          reserveMacosTrafficLights
+          dockBelowTrafficLights
+            ? [
+                MACOS_NAV_RAIL_SIDEBAR_TRIGGER_TOP_CLASS,
+                MACOS_SIDEBAR_TRIGGER_DOCK_TRANSITION_CLASS,
+              ]
+            : ["top-0", MACOS_SIDEBAR_TRIGGER_UNDOCK_TRANSITION_CLASS],
+          reserveMacosTrafficLights && !dockBelowTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
-            : "left-0",
-          !reserveMacosTrafficLights && BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
+            : ["left-0", BROWSER_SIDEBAR_TRIGGER_INSET_CLASS],
           MACOS_WINDOW_DRAG_CLASS,
         )}
       >
@@ -824,6 +848,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </div>
                 </SidebarInset>
                 <SidebarTriggerOverlay
+                  navigationRail={navigationRail}
                   reserveMacosTrafficLights={reserveMacosTrafficLights}
                   usesDesktopChrome={usesDesktopChrome}
                 />

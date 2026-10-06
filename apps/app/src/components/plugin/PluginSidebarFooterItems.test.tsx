@@ -12,6 +12,7 @@ import {
   sidebarFooterCapacityAtom,
   sidebarFooterOrderAtom,
   sidebarFooterHiddenAtom,
+  sidebarFooterSettingsInRailAtom,
 } from "@/components/sidebar/sidebarFooterPreferences";
 import { SidebarFooterCustomize } from "@/components/sidebar/SidebarFooterCustomize";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
@@ -215,6 +216,25 @@ describe("PluginSidebarFooterItems", () => {
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
     ]);
+  });
+
+  it("does not spend a footer slot on Settings while the navigation rail hosts it", () => {
+    const store = createStore();
+    store.set(sidebarFooterCapacityAtom, 1);
+    store.set(sidebarFooterSettingsInRailAtom, true);
+    renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
+    const footerIcons = () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>("[data-footer-icon]"),
+        (element) => element.dataset.footerIcon,
+      );
+    expect(footerIcons()).toEqual(["builtin:mobile"]);
+    expect(
+      screen.queryByRole("button", { name: "Add Settings to footer" }),
+    ).toBeNull();
+
+    act(() => store.set(sidebarFooterSettingsInRailAtom, false));
+    expect(footerIcons()).toEqual(["builtin:settings"]);
   });
 
   it("hides the whole footer from More and shows it again", async () => {
