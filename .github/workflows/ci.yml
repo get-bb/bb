@@ -362,7 +362,7 @@ jobs:
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection).buildNeeded }}
     name: Checks (ubuntu-latest, Node 22.x)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 30
 
     # `actions: read` is what lets the cache-usage check call the Actions API;
@@ -459,7 +459,7 @@ jobs:
     name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection)['tests'].include[0] != null }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ startsWith(matrix.shard, 'app-') && 'blacksmith-8vcpu-ubuntu-2404' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 30
 
     strategy:
@@ -524,7 +524,7 @@ jobs:
           ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
 
       - name: Test
-        run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --maxWorkers=2 ${{ matrix.args }}
+        run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --maxWorkers=${{ startsWith(matrix.shard, 'app-') && 4 || 2 }} ${{ matrix.args }}
 
       - name: Upload test timings
         if: ${{ !cancelled() }}
