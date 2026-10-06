@@ -1,6 +1,8 @@
 name: CI Install Benchmark
 on:
   workflow_dispatch:
+  push:
+    branches: [bb/ci-two-minutes-thr_3wndicfwc9]
 permissions:
   contents: read
 jobs:
