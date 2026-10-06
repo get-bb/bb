@@ -690,6 +690,14 @@
   color: var(--subtle);
 }
 
+.cmp-half {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: linear-gradient(to right, currentColor 50%, transparent 50%);
+}
+
 .cmp-cell-note {
   display: block;
   margin-top: 5px;

@@ -1,6 +1,5 @@
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
-import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cloneElement, Fragment, isValidElement, type ReactNode } from "react";
@@ -106,11 +105,11 @@ export function compareHead(comparison: Comparison) {
 
 const MARKS: Record<
   Mark,
-  { icon: typeof Tick02Icon; label: string; className: string }
+  { icon: typeof Tick02Icon | null; label: string; className: string }
 > = {
   yes: { icon: Tick02Icon, label: "Yes", className: "cmp-mark cmp-mark-yes" },
   partial: {
-    icon: MinusSignIcon,
+    icon: null,
     label: "Partly",
     className: "cmp-mark cmp-mark-partial",
   },
@@ -124,7 +123,11 @@ function Cell({ cell, us }: { cell: CompareCell; us: boolean }) {
       <span className="cmp-cell-main">
         {mark ? (
           <span className={mark.className}>
-            <HugeiconsIcon icon={mark.icon} aria-hidden="true" />
+            {mark.icon ? (
+              <HugeiconsIcon icon={mark.icon} aria-hidden="true" />
+            ) : (
+              <span className="cmp-half" aria-hidden="true" />
+            )}
             <span className="cmp-sr">{mark.label}</span>
           </span>
         ) : null}
