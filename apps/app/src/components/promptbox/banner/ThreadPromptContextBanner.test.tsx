@@ -194,6 +194,98 @@ describe("ThreadPromptContextBanner", () => {
     },
   );
 
+  it.each([
+    {
+      label: "alone",
+      gitSection: null,
+      pullRequestSection: null,
+    },
+    {
+      label: "with git changes",
+      gitSection: makeGitSection("uncommitted"),
+      pullRequestSection: null,
+    },
+    {
+      label: "with a pull request",
+      gitSection: null,
+      pullRequestSection: { pullRequest: pullRequestFixture },
+    },
+  ])(
+    "gives the parent link its own card $label",
+    ({ gitSection, pullRequestSection }) => {
+      render(
+        <MemoryRouter>
+          <ThreadPromptContextBanner
+            gitSection={gitSection}
+            gitSectionPending={false}
+            archivedSection={null}
+            environmentGoneSection={null}
+            parentThreadSection={{
+              parentThreadTitle: "Owner thread",
+              href: "/threads/thr_parent",
+              relationship: "parent",
+            }}
+            childThreadsSection={null}
+            pullRequestSection={pullRequestSection}
+            expandedSection={null}
+            onToggleSection={noop}
+          />
+        </MemoryRouter>,
+      );
+
+      const parentCard = screen.getByRole("region", { name: "Parent thread" });
+      expect(parentCard.textContent).toBe("Parent Owner thread");
+      expect(
+        screen.getByRole("link", { name: "Owner thread" }).getAttribute("href"),
+      ).toBe("/threads/thr_parent");
+      expect(screen.queryByRole("button", { name: /Parent thread/ })).toBe(
+        null,
+      );
+      const contextCard = screen.queryByRole("region", {
+        name: "Thread context before sending",
+      });
+      if (gitSection || pullRequestSection) {
+        expect(contextCard?.contains(parentCard)).toBe(false);
+        expect(parentCard.nextElementSibling).toBe(contextCard);
+      } else {
+        expect(contextCard).toBe(null);
+      }
+    },
+  );
+
+  it("keeps the archived action beside a separate parent card", () => {
+    render(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={{
+            archivedAt: 1_731_456_000_000,
+            onUnarchive: noop,
+          }}
+          environmentGoneSection={null}
+          parentThreadSection={{
+            parentThreadTitle: "Source thread",
+            href: "/threads/thr_source",
+            relationship: "fork",
+          }}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Forked from" }).textContent,
+    ).toBe("Forked from Source thread");
+    const historyCard = screen.getByRole("region", { name: "Thread history" });
+    expect(historyCard.textContent).toContain("Thread is archived");
+    expect(historyCard.textContent).not.toContain("Source thread");
+    expect(screen.getByRole("button", { name: "Unarchive" })).toBeTruthy();
+  });
+
   it("offers unarchiving first when an archived thread also lost its environment", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
