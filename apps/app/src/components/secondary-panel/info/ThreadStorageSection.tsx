@@ -60,7 +60,12 @@ export function ThreadStorageSection({
   return (
     <InfoSection label="Thread storage" count={loadedFiles.length}>
       {infoListCollapses(loadedFiles.length) ? (
-        <div className="relative mb-1">
+        <div
+          className={cn(
+            "relative mb-1 max-w-full transition-[width] duration-150 ease-out focus-within:w-full",
+            searchQuery === "" ? "w-40" : "w-full",
+          )}
+        >
           <Icon
             name="Search"
             className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 text-subtle-foreground"
