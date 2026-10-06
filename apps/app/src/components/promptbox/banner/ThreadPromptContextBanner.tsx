@@ -347,7 +347,9 @@ function ParentThreadCard({
             aria-hidden="true"
           />
           <span className="min-w-0 truncate">
-            {PARENT_SECTION_COPY[section.relationship].verb}{" "}
+            <span className="text-subtle-foreground">
+              {PARENT_SECTION_COPY[section.relationship].verb}
+            </span>{" "}
             <NavLink to={section.href}>
               <ThreadTitle
                 title={section.parentThreadTitle}
