@@ -37,7 +37,7 @@ const SPAWN = `bb thread spawn --project "$BB_PROJECT_ID" \\
 
 export const CLAUDE_CODE_AND_CODEX: Guide = {
   slug: "claude-code-and-codex-together",
-  title: "Get Claude Code and Codex working together",
+  title: "Pair Claude Code with Codex",
   description:
     "Have Claude Code lead and Codex review. They start each other, message each other, and report back, in threads you can watch side by side.",
   concept: <AgentSplit />,
