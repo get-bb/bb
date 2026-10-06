@@ -149,7 +149,7 @@ export function GuidePage({ guide }: { guide: Guide }) {
   return (
     <CopyToast>
       <div className="wrap cmp-page gd-page">
-        <SiteNav />
+        <SiteNav current="guides" path={`/guides/${guide.slug}`} />
 
         <GuideHero guide={guide} firstId={firstId} />
 

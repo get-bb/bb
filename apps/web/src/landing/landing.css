@@ -3180,6 +3180,24 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     gap: 12px;
     font-size: 13px;
   }
+
+  .nav-links .nav-wide {
+    display: none;
+  }
+
+  .nav-menu {
+    position: static;
+  }
+
+  .nav-menu-panel {
+    right: 0;
+    left: auto;
+    max-width: 100%;
+  }
+
+  .nav-links .nav-menu-panel a {
+    white-space: normal;
+  }
 }
 
 @media (max-width: 359px) {
