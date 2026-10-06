@@ -20,7 +20,10 @@ export interface PaletteThreadSearchRow {
   lifecycle: ThreadArchiveFilter;
   primaryText: string;
   highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
-  secondaryTitle: string | null;
+  excerpt: {
+    text: string;
+    highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
+  } | null;
   projectName: string | null;
   projectHighlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   relativeTime: string;
@@ -75,14 +78,18 @@ function serverRow(
     (match) => isTitleMatch(match) && match.text === title,
   );
   const snippetMatch = matches.find((match) => !isTitleMatch(match));
-  const primaryMatch = titleMatch ?? snippetMatch;
   return {
     id: `${lifecycle}:${thread.id}`,
     lifecycle,
-    primaryText: primaryMatch?.text ?? title,
-    highlightRanges: primaryMatch?.highlightRanges ?? [],
-    secondaryTitle:
-      titleMatch === undefined && snippetMatch !== undefined ? title : null,
+    primaryText: title,
+    highlightRanges: titleMatch?.highlightRanges ?? [],
+    excerpt:
+      snippetMatch === undefined
+        ? null
+        : {
+            text: snippetMatch.text,
+            highlightRanges: snippetMatch.highlightRanges,
+          },
     projectName: projectMetadata(thread.projectId, projectNamesById),
     projectHighlightRanges: [],
     relativeTime: formatRelativeTime({ timestamp: thread.updatedAt, now }),
@@ -174,15 +181,15 @@ function mergeActiveRows(
   const merged = localRows.map((row) => {
     const server = serverRowsById.get(row.id);
     if (server === undefined) return row;
-    return row.highlightRanges.length > 0 || server.secondaryTitle === null
-      ? { ...row, messageSeq: server.messageSeq }
-      : {
-          ...row,
-          primaryText: server.primaryText,
-          highlightRanges: server.highlightRanges,
-          secondaryTitle: server.secondaryTitle,
-          messageSeq: server.messageSeq,
-        };
+    return {
+      ...row,
+      highlightRanges:
+        row.highlightRanges.length > 0
+          ? row.highlightRanges
+          : server.highlightRanges,
+      excerpt: server.excerpt,
+      messageSeq: server.messageSeq,
+    };
   });
   return [
     ...merged.slice(0, LOCAL_ROWS_BEFORE_SERVER_ROWS),

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentPropsWithoutRef,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useAtom, useAtomValue, useStore } from "jotai";
@@ -19,7 +20,6 @@ import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
   highlightedText,
   ThreadTitle,
-  useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import {
   ThreadStatusGlyph,
@@ -487,62 +487,33 @@ export function ThreadSearchPaletteMode({
 }
 
 function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
-  const primaryRef = useRef<HTMLSpanElement | null>(null);
-  const matchKey = `${row.primaryText}\u0000${row.highlightRanges
-    .map((range) => `${range.start}:${range.end}`)
-    .join(",")}`;
-  const [windowedMatchKey, setWindowedMatchKey] = useState<string | null>(null);
-  const shouldWindowMatch = windowedMatchKey === matchKey;
-  const primary = shouldWindowMatch
-    ? windowPaletteThreadSearchText({
-        text: row.primaryText,
-        highlightRanges: row.highlightRanges,
-      })
-    : { text: row.primaryText, highlightRanges: row.highlightRanges };
-
-  useLayoutEffect(() => {
-    if (shouldWindowMatch || row.highlightRanges.length === 0) return;
-    const container = primaryRef.current;
-    if (container === null) return;
-    const firstMatch = container.querySelector("mark");
-    if (firstMatch === null) return;
-    const containerRect = container.getBoundingClientRect();
-    const matchRect = firstMatch.getBoundingClientRect();
-    if (
-      matchRect.left < containerRect.left ||
-      matchRect.right > containerRect.right
-    ) {
-      setWindowedMatchKey(matchKey);
-    }
-  }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
-
-  const secondaryTitle = useThreadTitleDisplayText(row.secondaryTitle ?? "");
-  const metadata = [
-    row.secondaryTitle === null ? null : secondaryTitle,
-    row.projectName,
-    row.relativeTime,
-  ]
+  const metadata = [row.projectName, row.relativeTime]
     .filter(Boolean)
     .join(" · ");
   return (
     <span className="min-w-0 flex-1">
-      <ThreadTitle
-        ref={primaryRef}
-        title={primary.text}
-        highlightRanges={primary.highlightRanges}
-        className="text-foreground [&_span]:whitespace-nowrap"
+      <PaletteMatchText
+        text={row.primaryText}
+        highlightRanges={row.highlightRanges}
+        className="text-foreground"
       />
       <span
         className="flex min-h-4 items-center gap-1.5"
         data-palette-thread-details
       >
-        {metadata.length === 0 ? null : (
+        {row.excerpt !== null ? (
+          <PaletteMatchText
+            text={row.excerpt.text}
+            highlightRanges={row.excerpt.highlightRanges}
+            className="text-xs leading-4 text-subtle-foreground"
+            data-palette-thread-excerpt
+          />
+        ) : metadata.length === 0 ? null : (
           <span
             className="min-w-0 truncate text-xs leading-4 text-subtle-foreground"
             data-palette-thread-metadata
             title={metadata}
           >
-            {row.secondaryTitle === null ? null : `${secondaryTitle} · `}
             {row.projectName === null ? null : (
               <>
                 <Icon
@@ -560,6 +531,53 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
         <ThreadSearchPaletteStatus row={row} />
       </span>
     </span>
+  );
+}
+
+function PaletteMatchText({
+  text,
+  highlightRanges,
+  className,
+  ...spanProps
+}: {
+  text: string;
+  highlightRanges: PaletteThreadSearchRow["highlightRanges"];
+  className: string;
+} & Omit<ComponentPropsWithoutRef<"span">, "children" | "title">) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const matchKey = `${text}\u0000${highlightRanges
+    .map((range) => `${range.start}:${range.end}`)
+    .join(",")}`;
+  const [windowedMatchKey, setWindowedMatchKey] = useState<string | null>(null);
+  const shouldWindowMatch = windowedMatchKey === matchKey;
+  const shown = shouldWindowMatch
+    ? windowPaletteThreadSearchText({ text, highlightRanges })
+    : { text, highlightRanges };
+
+  useLayoutEffect(() => {
+    if (shouldWindowMatch || highlightRanges.length === 0) return;
+    const container = ref.current;
+    if (container === null) return;
+    const firstMatch = container.querySelector("mark");
+    if (firstMatch === null) return;
+    const containerRect = container.getBoundingClientRect();
+    const matchRect = firstMatch.getBoundingClientRect();
+    if (
+      matchRect.left < containerRect.left ||
+      matchRect.right > containerRect.right
+    ) {
+      setWindowedMatchKey(matchKey);
+    }
+  }, [highlightRanges.length, matchKey, shouldWindowMatch]);
+
+  return (
+    <ThreadTitle
+      {...spanProps}
+      ref={ref}
+      title={shown.text}
+      highlightRanges={shown.highlightRanges}
+      className={cn("[&_span]:whitespace-nowrap", className)}
+    />
   );
 }
 

@@ -1766,17 +1766,14 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("option").querySelector("mark")?.textContent).toBe(
       "matching",
     );
-    const metadata = screen
-      .getByRole("option")
-      .querySelector("[data-palette-thread-metadata]");
-    const projectIcon = metadata?.querySelector('[data-icon="Folder"]');
-    expect(projectIcon?.previousSibling?.textContent).toBe(
-      "Title archived-message · ",
+    const option = screen.getByRole("option");
+    expect(option.querySelector(".bb-thread-title")?.textContent).toBe(
+      "Title archived-message",
     );
-    expect(projectIcon?.nextSibling?.textContent).toBe("Palette project");
-    expect(metadata?.textContent).toContain(
-      "Title archived-message · Palette project · ",
-    );
+    const excerpt = option.querySelector("[data-palette-thread-excerpt]");
+    expect(excerpt?.textContent).toBe("matching archived message");
+    expect(excerpt?.querySelector("mark")?.textContent).toBe("matching");
+    expect(option.querySelector("[data-palette-thread-metadata]")).toBeNull();
     fireEvent.keyDown(input, { key: "Enter" });
 
     const state = {

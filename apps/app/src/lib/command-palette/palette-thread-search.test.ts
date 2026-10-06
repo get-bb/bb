@@ -113,7 +113,7 @@ describe("buildPaletteThreadSearchRows", () => {
       },
     });
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active", primaryText: "matching saved message", messageSeq: null });
+    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active", excerpt: { text: "matching saved message" }, messageSeq: null });
   });
 
   it("preserves active and archived server matches in their ranked order", () => {
@@ -150,7 +150,7 @@ describe("buildPaletteThreadSearchRows", () => {
     ]);
   });
 
-  it("uses the matched message as primary while retaining title, project, and time metadata", () => {
+  it("keeps the title on top and carries the matched message as the excerpt", () => {
     const thread = makeThread("message", { title: "Original title" });
     const result = build({
       searchResponse: {
@@ -175,12 +175,15 @@ describe("buildPaletteThreadSearchRows", () => {
     });
 
     expect(result.rows[0]).toMatchObject({
-      primaryText: "the matching message",
-      secondaryTitle: "Original title",
+      primaryText: "Original title",
+      highlightRanges: [],
+      excerpt: {
+        text: "the matching message",
+        highlightRanges: [{ start: 4, end: 12 }],
+      },
       projectName: "Palette project",
       relativeTime: "just now",
       messageSeq: 42,
-      highlightRanges: [{ start: 4, end: 12 }],
     });
   });
 
@@ -439,9 +442,16 @@ describe("buildPaletteThreadSearchRows", () => {
       expect(result.rows[5]).toMatchObject({
         id: "active:local-4",
         primaryText: "Fix 4",
-        secondaryTitle: null,
-        messageSeq: 12,
         highlightRanges: [{ start: 0, end: 3 }],
+        excerpt: {
+          text: "please fix 4",
+          highlightRanges: [{ start: 7, end: 10 }],
+        },
+        messageSeq: 12,
+      });
+      expect(result.rows[3]).toMatchObject({
+        primaryText: "Weekly sync",
+        excerpt: { text: "we should fix it" },
       });
     });
 
@@ -481,7 +491,7 @@ describe("buildPaletteThreadSearchRows", () => {
       });
       expect(result.rows[0]).toMatchObject({
         primaryText: "Fix the importer",
-        secondaryTitle: null,
+        excerpt: { text: "the fix landed" },
         highlightRanges: [{ start: 0, end: 3 }],
         messageSeq: 9,
       });
