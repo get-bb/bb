@@ -133,7 +133,7 @@ export function ParentThreadPicker({
                     No matching threads.
                   </div>
                 ) : (
-                  <CommandGroup heading="Assign parent thread">
+                  <CommandGroup>
                     {filteredOptions.map((option) => (
                       <CommandItem
                         key={option.value}

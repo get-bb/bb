@@ -1388,7 +1388,7 @@ function systemOperationLeadingIcon(
     case "reasoning":
       return "AiBrain01";
     case "parent-change":
-      return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
+      return parentChangeAction === "release" ? "UserRound" : "Subthread";
     case "thread-provisioning":
       return "Terminal";
     case "thread-interrupted":

@@ -118,6 +118,7 @@ export const EXTENDED_ICON_NAMES = [
   "Square",
   "SquareUnlock02",
   "Star",
+  "Subthread",
   "TextWrap",
   "TimeSchedule",
   "UserRound",

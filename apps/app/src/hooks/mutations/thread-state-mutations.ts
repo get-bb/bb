@@ -266,7 +266,7 @@ export function useArchiveThreadAndChildren() {
 
   return useMutation({
     meta: {
-      errorMessage: "Failed to archive thread and children.",
+      errorMessage: "Failed to archive thread and its subthreads.",
       lifecycleOperation: "archive_thread",
       showErrorToast: false,
     },

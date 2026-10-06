@@ -12,7 +12,6 @@ import { Button } from "@bb/shared-ui/button";
 import { useAtomValue } from "jotai";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
-import { Pill } from "@bb/shared-ui/pill";
 import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
@@ -52,7 +51,6 @@ const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 
 interface ThreadDetailHeaderProps {
   actionsMenu: ((includeResponsiveActions: boolean) => ReactNode) | null;
-  childPillLabel: "child" | null;
   isSecondaryPanelOpen: boolean;
   onClosePane?: () => void;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
@@ -66,7 +64,6 @@ interface ThreadDetailHeaderProps {
 
 export function ThreadDetailHeader({
   actionsMenu,
-  childPillLabel,
   isSecondaryPanelOpen,
   onClosePane,
   onOpenThreadGitAction,
@@ -182,11 +179,6 @@ export function ThreadDetailHeader({
           {isEditing ? editor : <ThreadTitle title={threadTitle} />}
         </p>
       </div>
-      {childPillLabel ? (
-        <Pill variant="outline" size="sm">
-          {childPillLabel}
-        </Pill>
-      ) : null}
       {actionsMenu == null ? null : (
         <span
           className={cn(
