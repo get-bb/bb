@@ -178,6 +178,11 @@ export function useSidebarRename(args: SidebarRenameArgs) {
   const startEditing = useCallback(() => {
     void start({ ...args, ownerKey, presentation: "inline" });
   }, [args, start, ownerKey]);
+  const startEditingFromDoubleClick = useCallback(() => {
+    if (compact) return false;
+    startEditing();
+    return true;
+  }, [compact, startEditing]);
 
   return {
     editor: isEditing ? (
@@ -189,6 +194,7 @@ export function useSidebarRename(args: SidebarRenameArgs) {
     ) : null,
     isEditing,
     startEditing,
+    startEditingFromDoubleClick,
     startEditingFromMenu: () => {
       if (compact) {
         void start({ ...args, ownerKey, presentation: "dialog" });

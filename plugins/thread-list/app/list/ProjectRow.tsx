@@ -894,7 +894,7 @@ function EnvironmentThreadGroupHeader({
             onDoubleClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              rename.startEditing();
+              rename.startEditingFromDoubleClick();
             }}
           >
             {displayName}
@@ -1485,7 +1485,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       <TopLevelSidebarSection
         label={sectionName}
         labelEditor={rename.editor}
-        onRename={rename.startEditing}
+        onRename={rename.startEditingFromDoubleClick}
         sectionId={section.id}
         actions={topLevelActions}
         actionsOpen={isTopLevelActionsOpen}
@@ -1525,7 +1525,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         label={sectionName}
         sectionId={buildSidebarEntitySectionId("section", section.id)}
         labelEditor={rename.editor}
-        onRename={rename.startEditing}
+        onRename={rename.startEditingFromDoubleClick}
         onRenameFromMenu={rename.startEditingFromMenu}
         depth={headerDepth}
         onCloseAutoFocus={rename.onCloseAutoFocus}
@@ -2344,7 +2344,7 @@ function ProjectRowComponent({
             label={project.name}
             dropParentKey={buildSidebarEntitySectionId("project", project.id)}
             labelEditor={rename.editor}
-            onRename={rename.startEditing}
+            onRename={rename.startEditingFromDoubleClick}
             actions={projectActions}
             actionsMobileAlways
             actionsOpen={isActionsOpen}
