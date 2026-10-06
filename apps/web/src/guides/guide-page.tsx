@@ -156,7 +156,7 @@ export function GuidePage({ guide }: { guide: Guide }) {
         <section className="gd-plan">
           <div className="gd-plan-grid">
             <div>
-              <h2 className="gd-h2">The short version</h2>
+              <h2 className="gd-h2">Steps</h2>
               <StepOverview steps={guide.steps} />
             </div>
             <AgentHandoff guide={guide} />
