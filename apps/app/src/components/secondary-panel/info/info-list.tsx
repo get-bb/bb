@@ -74,6 +74,7 @@ function InfoSectionHeading({
 }: InfoSectionHeadingProps & { bodyId: string }) {
   const countPill =
     count === undefined ? null : <InfoCountPill count={count} />;
+  const collapsed = collapse?.collapsed ?? false;
   return (
     <div className="mb-1 flex min-h-5 min-w-0 items-center justify-between gap-3">
       <div className="flex min-w-0 items-center">
@@ -84,20 +85,10 @@ function InfoSectionHeading({
               aria-expanded={!collapse.collapsed}
               aria-controls={bodyId}
               onClick={() => collapse.setCollapsed(!collapse.collapsed)}
-              className="-mx-1 flex min-w-0 items-center rounded px-1 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:min-h-8"
+              className="-mx-1.5 -my-0.5 flex min-w-0 items-center rounded-md px-1.5 py-0.5 transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:min-h-8"
             >
               <span className="truncate">{label}</span>
               {countPill}
-              {collapse.collapsed ? (
-                <Icon
-                  name="ChevronRight"
-                  className={cn(
-                    INFO_LIST_CARET_CLASS,
-                    "ml-1 text-subtle-foreground",
-                  )}
-                  aria-hidden
-                />
-              ) : null}
             </button>
           </h3>
         ) : (
@@ -106,9 +97,9 @@ function InfoSectionHeading({
             {countPill}
           </>
         )}
-        {accessory}
+        {collapsed ? null : accessory}
       </div>
-      {trailing}
+      {collapsed ? null : trailing}
     </div>
   );
 }

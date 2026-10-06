@@ -54,7 +54,7 @@ function CollapsibleSection() {
 }
 
 describe("InfoSection", () => {
-  it("collapses its body from the heading without hiding heading controls", () => {
+  it("collapses its body and heading controls from the heading", () => {
     render(<CollapsibleSection />);
     const toggle = screen.getByRole("button", { name: /Commits/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -62,9 +62,10 @@ describe("InfoSection", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("section body")).toBeNull();
-    expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
 
     fireEvent.click(toggle);
     expect(screen.getByText("section body")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
   });
 });

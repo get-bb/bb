@@ -99,7 +99,7 @@ export function Rows() {
       </StoryRow>
       <StoryRow
         label="collapsible heading"
-        hint="click the heading to collapse; the chevron stays visible while collapsed"
+        hint="click the heading to collapse; the heading highlights on hover"
       >
         <Stage>
           <CollapsibleSection />
