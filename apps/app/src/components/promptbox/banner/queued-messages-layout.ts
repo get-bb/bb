@@ -1,8 +1,8 @@
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { queuedMessageHasWaitLine } from "@/lib/queued-message-wait";
 
-const DRAWER_HEIGHT = 174;
-const DRAWER_CHROME_HEIGHT = 1 + 32 + 12 + 2;
+const DRAWER_HEIGHT = 198;
+const DRAWER_CHROME_HEIGHT = 1 + 32 + 24 + 12 + 2;
 const DRAWER_LIST_PADDING = 8;
 const DRAWER_ROW_HEIGHT = 33;
 const DRAWER_SECOND_LINE_HEIGHT = 16;

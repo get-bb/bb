@@ -2,12 +2,11 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -69,9 +68,15 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
-  PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
+  PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PromptStackCard,
 } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackChevron,
+  PromptStackCollapseRow,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@/components/promptbox/banner/prompt-banner-actions";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@/components/ui/overflow-fade";
@@ -136,13 +141,11 @@ interface QueuedMessageRowProps {
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
 const COLLAPSED_HEIGHT = 44;
-const DRAWER_MAX_VISIBLE_MESSAGES = 3;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
 const TYPEAHEAD_MENU_GAP = 8;
-const SURFACE_DRAG_THRESHOLD = 72;
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
 
 function getWorkspaceHeight({
@@ -1155,8 +1158,7 @@ export function QueuedMessagesList({
   const [expandedMobileActionsId, setExpandedMobileActionsId] = useState<
     string | null
   >(null);
-  const [surfaceDragging, setSurfaceDragging] = useState(false);
-  const [surfaceDragOffset, setSurfaceDragOffset] = useState(0);
+  const listId = useId();
   const [inlineEditorMaxHeight, setInlineEditorMaxHeight] = useState<
     number | null
   >(null);
@@ -1167,9 +1169,6 @@ export function QueuedMessagesList({
   const getScrollElement = useBottomAnchoredScroll()?.getScrollElement;
   const surfaceRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const surfaceDragStartYRef = useRef(0);
-  const surfaceDragOffsetRef = useRef(0);
-  const surfaceDraggingRef = useRef(false);
   const wasInlineEditingRef = useRef(false);
   const inlineEditorDismissModeRef = useRef<QueueSurfaceMode | null>(null);
   const previousMessageCountRef = useRef(queuedMessages.length);
@@ -1453,29 +1452,21 @@ export function QueuedMessagesList({
 
   const openWorkspace = useCallback(() => {
     setMode("workspace");
-    setSurfaceDragOffset(0);
-    surfaceDragOffsetRef.current = 0;
   }, []);
-  const dockWorkspace = useCallback(() => {
-    setMode("drawer");
-    inlineEditorDismissModeRef.current = "drawer";
-    inlineEditor?.onDismiss();
-    setSurfaceDragOffset(0);
-    surfaceDragOffsetRef.current = 0;
-  }, [inlineEditor]);
   const collapseDrawer = useCallback(() => {
     setExpandedMobileActionsId(null);
     setMode("collapsed");
     inlineEditorDismissModeRef.current = "collapsed";
     inlineEditor?.onDismiss();
-    setSurfaceDragOffset(0);
-    surfaceDragOffsetRef.current = 0;
   }, [inlineEditor]);
   const showDrawer = useCallback(() => {
     setMode("drawer");
-    setSurfaceDragOffset(0);
-    surfaceDragOffsetRef.current = 0;
   }, []);
+  const isExpanded = mode !== "collapsed";
+  const focus = useDisclosureFocusHandoff(
+    isExpanded,
+    isExpanded ? collapseDrawer : showDrawer,
+  );
   const handleEdit = useCallback(
     (request: QueuedMessageEditRequest) => {
       setExpandedMobileActionsId(null);
@@ -1484,90 +1475,24 @@ export function QueuedMessagesList({
     },
     [onEdit, openWorkspace],
   );
-  const handleSurfacePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      surfaceDragStartYRef.current = event.clientY;
-      surfaceDragOffsetRef.current = 0;
-      setSurfaceDragOffset(0);
-      surfaceDraggingRef.current = true;
-      setSurfaceDragging(true);
-    },
-    [],
-  );
-  const handleSurfacePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!surfaceDraggingRef.current) return;
-      const offset = surfaceDragStartYRef.current - event.clientY;
-      surfaceDragOffsetRef.current = offset;
-      setSurfaceDragOffset(offset);
-    },
-    [],
-  );
-  const finishSurfaceDrag = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!surfaceDraggingRef.current) return;
-      const offset =
-        event.type === "pointerup"
-          ? surfaceDragStartYRef.current - event.clientY
-          : surfaceDragOffsetRef.current;
-      surfaceDraggingRef.current = false;
-      setSurfaceDragging(false);
-      setSurfaceDragOffset(0);
-      surfaceDragOffsetRef.current = 0;
-
-      if (mode !== "workspace" && offset >= SURFACE_DRAG_THRESHOLD) {
-        openWorkspace();
-      } else if (mode === "workspace" && offset <= -SURFACE_DRAG_THRESHOLD) {
-        dockWorkspace();
-      } else if (mode === "drawer" && offset <= -SURFACE_DRAG_THRESHOLD) {
-        collapseDrawer();
-      }
-    },
-    [collapseDrawer, dockWorkspace, mode, openWorkspace],
-  );
-  const handleSurfaceKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLButtonElement>) => {
-      if (
-        event.key === "ArrowUp" ||
-        event.key === "Enter" ||
-        event.key === " "
-      ) {
-        event.preventDefault();
-        if (mode === "collapsed") showDrawer();
-        else openWorkspace();
-      } else if (event.key === "ArrowDown" || event.key === "Escape") {
-        event.preventDefault();
-        if (mode === "workspace") dockWorkspace();
-        else collapseDrawer();
-      }
-    },
-    [collapseDrawer, dockWorkspace, mode, openWorkspace, showDrawer],
-  );
-
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
           messageCount: queuedMessages.length,
         })
       : mode === "drawer"
-        ? getQueuedMessagesDrawerHeight({ queuedMessages, processingMessageId })
+        ? getQueuedMessagesDrawerHeight({
+            queuedMessages,
+            processingMessageId,
+          })
         : COLLAPSED_HEIGHT;
-  const unconstrainedSurfaceHeight = surfaceDragging
-    ? clamp(
-        baseSurfaceHeight + surfaceDragOffset,
-        COLLAPSED_HEIGHT,
-        WORKSPACE_MAX_HEIGHT + 22,
-      )
-    : baseSurfaceHeight;
   const surfaceHeight =
     inlineEditor && inlineEditorMaxHeight !== null
       ? Math.min(
-          inlineEditorDesiredHeight ?? unconstrainedSurfaceHeight,
+          inlineEditorDesiredHeight ?? baseSurfaceHeight,
           inlineEditorMaxHeight,
         )
-      : unconstrainedSurfaceHeight;
+      : baseSurfaceHeight;
 
   useLayoutEffect(() => {
     if (!inlineEditor) return;
@@ -1645,24 +1570,6 @@ export function QueuedMessagesList({
 
   if (queuedMessages.length === 0 && !inlineEditor) return null;
 
-  const queueFitsDrawer = queuedMessages.length <= DRAWER_MAX_VISIBLE_MESSAGES;
-  const caretWillCollapse =
-    mode === "workspace" || (mode === "drawer" && queueFitsDrawer);
-  const caretLabel = caretWillCollapse
-    ? "Collapse queued messages"
-    : mode === "collapsed" && queueFitsDrawer
-      ? "Show queued messages"
-      : "Expand queued messages";
-  const handleCaretClick = () => {
-    if (caretWillCollapse) {
-      collapseDrawer();
-    } else if (mode === "drawer" || !queueFitsDrawer) {
-      openWorkspace();
-    } else {
-      showDrawer();
-    }
-  };
-
   return (
     <PromptStackCard
       rootRef={surfaceRef}
@@ -1673,74 +1580,41 @@ export function QueuedMessagesList({
         inlineEditor || !attachedToComposer
           ? "mb-0 rounded-xl pb-4"
           : "-mb-5 rounded-xl rounded-b-none border-b-0 pb-3",
-        !surfaceDragging &&
-          "transition-[height,margin,border-radius,padding] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+        "transition-[height,margin,border-radius,padding] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
       )}
     >
-      <header
-        className={cn(
-          "group/queue-header flex h-8 shrink-0 items-center gap-2 px-2",
-          mode !== "collapsed" && "border-b border-border/35",
+      <header data-queued-messages-mode={mode} className="shrink-0">
+        {isExpanded ? (
+          <div className="flex h-8 items-center gap-1.5 border-b border-border/35 px-3">
+            <span className="text-xs font-medium text-foreground">Queue</span>
+            <span className="text-2xs tabular-nums text-subtle-foreground">
+              {queuedMessages.length}
+            </span>
+          </div>
+        ) : (
+          <button
+            ref={focus.triggerRef}
+            type="button"
+            aria-label="Show queued messages"
+            aria-expanded={false}
+            aria-controls={listId}
+            onClick={focus.onTriggerClick}
+            className={cn(
+              PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+            )}
+          >
+            <span className="font-medium">Queue</span>
+            <span className="text-2xs tabular-nums text-subtle-foreground">
+              {queuedMessages.length}
+            </span>
+            <PromptStackChevron isExpanded={false} />
+          </button>
         )}
-        data-queued-messages-mode={mode}
-      >
-        <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-medium text-foreground">Queue</span>
-          <span className="text-2xs tabular-nums text-subtle-foreground">
-            {queuedMessages.length}
-          </span>
-        </div>
-        <button
-          type="button"
-          className={cn(
-            "group/handle flex h-full min-w-16 flex-1 touch-none select-none items-center justify-center focus-visible:rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            surfaceDragging ? "cursor-grabbing" : "cursor-grab",
-          )}
-          aria-label={
-            mode === "workspace"
-              ? "Drag down to dock the queue"
-              : "Drag up to open the queue workspace"
-          }
-          onPointerDown={handleSurfacePointerDown}
-          onPointerMove={handleSurfacePointerMove}
-          onPointerUp={finishSurfaceDrag}
-          onPointerCancel={finishSurfaceDrag}
-          onKeyDown={handleSurfaceKeyDown}
-        >
-          <span className="h-px w-7 rounded-full bg-muted-foreground opacity-30 transition-opacity group-hover/handle:opacity-50 group-focus-visible/handle:opacity-50" />
-        </button>
-        <div className="flex min-w-16 items-center justify-end">
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className={cn(
-                    "h-6 text-muted-foreground hover:bg-surface-recessed",
-                    PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
-                  )}
-                  onClick={handleCaretClick}
-                  aria-label={caretLabel}
-                  aria-expanded={mode !== "collapsed"}
-                >
-                  <Icon
-                    name={caretWillCollapse ? "ChevronDown" : "ChevronUp"}
-                    className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover/queue-header:opacity-65 group-focus-within/queue-header:opacity-65 [@media(hover:none)]:opacity-45"
-                    aria-hidden
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="max-md:hidden">
-                {caretLabel}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
       </header>
       <div
         className="relative min-h-0 flex-1"
+        id={listId}
         data-queued-messages-scroll-frame=""
         aria-hidden={mode === "collapsed"}
         inert={mode === "collapsed" ? true : undefined}
@@ -1783,6 +1657,16 @@ export function QueuedMessagesList({
           />
         ) : null}
       </div>
+      {isExpanded ? (
+        <div className="shrink-0 px-1">
+          <PromptStackCollapseRow
+            buttonRef={focus.collapseRef}
+            controlsId={listId}
+            label="Collapse queued messages"
+            onCollapse={focus.onCollapseClick}
+          />
+        </div>
+      ) : null}
     </PromptStackCard>
   );
 }
