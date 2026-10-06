@@ -1,6 +1,6 @@
 # CI performance
 
-The main CI workflow keeps build, lint/typecheck, two server test shards, three app test
+The main CI workflow keeps build, lint/typecheck, two server test shards, six app test
 shards, integration tests, three package test groups, plugin tests, three fork
 check shards, and package
 smokes independent. Node 24/26 compatibility smokes run on main and manual runs.
@@ -320,7 +320,7 @@ job has a five-minute budget and is independent of PR checks.
 
 ## October 6 scoped Windows installs
 
-The four Windows app shards install the root tools, `@bb/app` and its transitive
+The Windows and Linux app shards install the root tools, `@bb/app` and its transitive
 dependencies, plus `@bb/db` and its dependencies for `ensure-native-modules`.
 They retain the same test commands, sharding, and frozen lockfile. Other test
 shards still install the full workspace.
@@ -343,3 +343,19 @@ locations; only 4 of 207 build/typecheck/lint tasks were reused and execution
 took 161 seconds. Linux now omits that archive, while macOS dependency restores
 are independent from Turbo. Build and lint/typecheck use separate runners to
 avoid competing for the same four CPUs during cold runs.
+
+## App test prerequisites and shard sizing
+
+The app's development dependencies declare the bundled plugins imported by its
+tests and stories. This makes scoped installs link each plugin's dependencies
+and makes plugin changes invalidate the app's dependent tasks. Before this
+fix, fresh Windows app shards failed to resolve React and Plugin SDK imports
+from Navigation, BB Guide, and Pi; cached test results had masked the missing
+links.
+
+The app suite now contains roughly 585 files. In app-only experiment
+[37542453877](https://github.com/get-bb/bb/actions/runs/37542453877), a 195-file
+Linux shard took 132 seconds and the workflow passed in 3m24s. Linux now uses
+six shards with the existing two-worker limit. Build and static-check package
+filters are separate, so build-only prerequisites no longer cause unrelated
+lint/typecheck tasks to run.
