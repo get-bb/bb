@@ -755,18 +755,6 @@ export function TaskLedger() {
         <span className="cmp-tasks-key">APP-12</span>
       </div>
       <h3 className="cmp-ledger-title">Add rate limiting to uploads</h3>
-      <div className="cmp-ledger-meta">
-        <PriorityBars level={3} />
-        <span className="cmp-tasks-label">
-          <span className="cmp-tasks-label-dot accent" />
-          api
-        </span>
-        <span className="cmp-tasks-sub">
-          <HugeiconsIcon icon={GitBranchIcon} className="cmp-tasks-sub-ic" />
-          3/3
-        </span>
-      </div>
-      <span className="cmp-ledger-label">Threads</span>
       <ul className="cmp-ledger-threads">
         <LedgerThread
           icon={<ClaudeIcon className="cmp-ledger-ic" />}
@@ -781,12 +769,10 @@ export function TaskLedger() {
           state="Done"
         />
       </ul>
-      <span className="cmp-ledger-label">Activity</span>
       <div className="cmp-ledger-comment">
         <span className="cmp-ledger-comment-head">
           <ClaudeIcon className="cmp-ledger-ic" />
           Claude Code
-          <span className="cmp-ledger-time">2m ago</span>
         </span>
         <p>
           Added per-user limits with tests. Codex reviewed the branch and its

@@ -18,13 +18,9 @@ const LEDGER_HIGHLIGHT: CompareHighlight = {
   body: (
     <>
       <p>
-        Each card keeps its agent threads, branches, comments, and subtasks in
-        one place. Agents post progress on the card and move it to In Review
-        when they’re done.
-      </p>
-      <p>
-        Come back after a break and see what’s running, what’s waiting on you,
-        and which agent did what, without hunting through terminals.
+        Each card keeps its agents’ threads, branches, and progress in one
+        place. Come back after a break and see what’s running and what’s ready
+        for you.
       </p>
     </>
   ),
@@ -38,10 +34,6 @@ const BUILD_COPY: SectionCopy = {
         bb is open source and made to be changed. Install a plugin from the{" "}
         <a href="/marketplace">marketplace</a>, or ask an agent to build the
         panel or command you miss.
-      </p>
-      <p>
-        It shows up right away, and it’s yours to keep: no hosted service to
-        switch off.
       </p>
     </>
   ),
