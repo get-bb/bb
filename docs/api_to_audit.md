@@ -53,7 +53,7 @@ composer contributions, and whether commands need an availability callback.
 
 ## `app.slots.experimental_messageMetadata` (`@get-bb/plugin-sdk/app`)
 
-Requires SDK 0.6.23.
+Requires SDK 0.6.26.
 
 `app.slots.experimental_messageMetadata({ id, placement?, component })` mounts
 React metadata above or below realized user and assistant conversation messages,
