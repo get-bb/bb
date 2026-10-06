@@ -181,7 +181,9 @@ export interface ThreadDetailSentMessageEdit {
 const THREAD_DETAIL_COMPOSER_TEXTAREA_ID = "thread-detail-follow-up-composer";
 const EMPTY_QUEUED_MESSAGES: readonly ThreadQueuedMessage[] = [];
 const NO_INLINE_EDITOR_SELECTION: ExperimentalComposerSelection = {};
-const dismissedGitShelfThreadIdsAtom = atom<ReadonlySet<string>>(new Set());
+const dismissedGitShelfThreadIdsAtom = atom<ReadonlySet<string>>(
+  new Set<string>(),
+);
 
 interface ThreadDetailPromptAreaProps {
   activeBackgroundAgentCount: number;
