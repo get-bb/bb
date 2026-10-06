@@ -338,7 +338,7 @@ export const REMOTE_DEV_SERVERS: Guide = {
     {
       question: "Can webhooks or other services call the link?",
       answer: (
-        <p>No. It opens only for people signed in to your getbb.app account.</p>
+        <p>No. It opens only for you, signed in to your getbb.app account.</p>
       ),
     },
     {
