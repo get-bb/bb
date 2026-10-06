@@ -2948,7 +2948,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .footer {
   display: grid;
-  grid-template-columns: 0.65fr 0.95fr 1.3fr 0.7fr;
+  grid-template-columns: 0.65fr 0.95fr 1.75fr 1.3fr 0.7fr;
   gap: 32px;
   padding: 56px 0 64px;
   border-top: 1px solid var(--border-soft);
@@ -3174,11 +3174,31 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (max-width: 500px) {
+  .nav-links .nav-wide {
+    display: none;
+  }
+}
+
 /* Give the remaining utility links a little more room on narrow phones. */
 @media (max-width: 430px) {
   .nav-links {
     gap: 12px;
     font-size: 13px;
+  }
+
+  .nav-menu {
+    position: static;
+  }
+
+  .nav-menu-panel {
+    right: 0;
+    left: auto;
+    max-width: 100%;
+  }
+
+  .nav-links .nav-menu-panel a {
+    white-space: normal;
   }
 }
 

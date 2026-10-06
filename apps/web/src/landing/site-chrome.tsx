@@ -5,7 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
-import { COMPARE_LINKS, type ContentLink } from "./content-links";
+import { COMPARE_LINKS, GUIDE_LINKS, type ContentLink } from "./content-links";
 import {
   DesktopDownloadButton,
   DiscordLink,
@@ -15,9 +15,17 @@ import {
 } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 
-type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide";
+type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide" | "guides";
 
-function PluginsMenu({ current }: { current?: SiteNavPage }) {
+function NavMenu({
+  label,
+  inSection,
+  children,
+}: {
+  label: string;
+  inSection: boolean;
+  children: ReactNode;
+}) {
   const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const dismiss = (event: PointerEvent) => {
@@ -41,7 +49,6 @@ function PluginsMenu({ current }: { current?: SiteNavPage }) {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, []);
-  const inSection = current === "plugins" || current === "plugin-guide";
   return (
     <details
       className="nav-menu"
@@ -56,28 +63,65 @@ function PluginsMenu({ current }: { current?: SiteNavPage }) {
       }}
     >
       <summary className={inSection ? "nav-current" : undefined}>
-        Plugins
+        {label}
         <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
       </summary>
-      <div className="nav-menu-panel">
-        <a
-          href="/marketplace"
-          aria-current={current === "plugins" ? "page" : undefined}
-        >
-          Marketplace
-        </a>
-        <a
-          href="/plugin-guide"
-          aria-current={current === "plugin-guide" ? "page" : undefined}
-        >
-          Building plugins
-        </a>
-      </div>
+      <div className="nav-menu-panel">{children}</div>
     </details>
   );
 }
 
-export function SiteNav({ current }: { current?: SiteNavPage }) {
+function PluginsMenu({ current }: { current?: SiteNavPage }) {
+  return (
+    <NavMenu
+      label="Plugins"
+      inSection={current === "plugins" || current === "plugin-guide"}
+    >
+      <a
+        href="/marketplace"
+        aria-current={current === "plugins" ? "page" : undefined}
+      >
+        Marketplace
+      </a>
+      <a
+        href="/plugin-guide"
+        aria-current={current === "plugin-guide" ? "page" : undefined}
+      >
+        Building plugins
+      </a>
+    </NavMenu>
+  );
+}
+
+function GuidesMenu({
+  current,
+  path,
+}: {
+  current?: SiteNavPage;
+  path?: string;
+}) {
+  return (
+    <NavMenu label="Guides" inSection={current === "guides"}>
+      {GUIDE_LINKS.map((link) => (
+        <a
+          key={link.href}
+          href={link.href}
+          aria-current={path === link.href ? "page" : undefined}
+        >
+          {link.label}
+        </a>
+      ))}
+    </NavMenu>
+  );
+}
+
+export function SiteNav({
+  current,
+  path,
+}: {
+  current?: SiteNavPage;
+  path?: string;
+}) {
   const platform = useDesktopPlatform();
   return (
     <nav className="nav">
@@ -87,6 +131,7 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
       </a>
       <div className="nav-links">
         <PluginsMenu current={current} />
+        <GuidesMenu current={current} path={path} />
         <a
           className={current === "blog" ? "nav-current" : undefined}
           href="/blog"
@@ -94,7 +139,9 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
           Blog
         </a>
         <a
-          className={current === "changelog" ? "nav-current" : undefined}
+          className={
+            current === "changelog" ? "nav-current nav-wide" : "nav-wide"
+          }
           href="/changelog"
         >
           Changelog
@@ -184,6 +231,9 @@ export function SiteFooter({ current }: { current?: string }) {
         <li>
           <a href={DASHBOARD_PATH}>Sign in</a>
         </li>
+      </FooterColumn>
+      <FooterColumn title="Guides">
+        <FooterLinks links={GUIDE_LINKS} current={current} />
       </FooterColumn>
       <FooterColumn title="Compare">
         <FooterLinks links={COMPARE_LINKS} current={current} />
