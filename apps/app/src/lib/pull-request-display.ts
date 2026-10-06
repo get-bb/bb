@@ -57,7 +57,7 @@ export const PULL_REQUEST_NEXT_STEP_TONE_CLASS: Record<
   string
 > = {
   action: "text-destructive",
-  ready: "text-foreground",
+  ready: "text-success",
   waiting: "text-muted-foreground",
 };
 
