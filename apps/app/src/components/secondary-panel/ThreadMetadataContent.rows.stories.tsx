@@ -595,7 +595,6 @@ export function GitStatus() {
             environment={makeEnvironment()}
             workspaceStatus={makeWorkspaceStatus()}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -611,7 +610,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -635,7 +633,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -659,7 +656,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -683,7 +679,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -722,7 +717,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -733,7 +727,6 @@ export function GitStatus() {
             environment={makeEnvironment({ status: "destroyed" })}
             workspaceStatus={undefined}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -744,7 +737,6 @@ export function GitStatus() {
             environment={makeEnvironment()}
             workspaceStatus={undefined}
             workspaceStatusError={new Error("git status failed: ENOENT")}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>

@@ -33,12 +33,11 @@ import {
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
-  makeWorkspaceWorkingTree,
 } from "@bb/test-helpers";
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
-  formatBranchComparison,
+  formatMergeBaseComparison,
   GitStatusRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
@@ -393,45 +392,33 @@ describe("GitStatusRow", () => {
         })}
         workspaceStatus={undefined}
         workspaceStatusError={new Error("should not have queried")}
-        selectedMergeBaseBranch={undefined}
       />,
     );
 
     expect(markup).toBe("");
   });
 
-  it("shows only the branch comparison for a dirty tree", () => {
+  it("leaves the branch comparison to the merge base row once status loads", () => {
     const markup = renderToStaticMarkup(
-      <TooltipProvider>
-        <GitStatusRow
-          thread={makeThread()}
-          environment={null}
-          workspaceStatus={makeWorkspaceStatus({
-            workingTree: makeWorkspaceWorkingTree({
-              state: "dirty_and_committed_unmerged",
-              hasUncommittedChanges: true,
-            }),
-            mergeBase: makeWorkspaceMergeBase({
-              mergeBaseBranch: "fix/dirty-check",
-              aheadCount: 2,
-            }),
-          })}
-          workspaceStatusError={null}
-          selectedMergeBaseBranch={undefined}
-        />
-      </TooltipProvider>,
+      <GitStatusRow
+        thread={makeThread()}
+        environment={null}
+        workspaceStatus={makeWorkspaceStatus({
+          mergeBase: makeWorkspaceMergeBase({ aheadCount: 2 }),
+        })}
+        workspaceStatusError={null}
+      />,
     );
 
-    expect(markup).not.toContain("Uncommitted");
-    expect(markup).toContain("2 ahead of fix/dirty-check");
+    expect(markup).toBe("");
   });
 
-  it("phrases the branch comparison against its merge base", () => {
+  it("phrases the merge base comparison without repeating the branch", () => {
     const compare = (aheadCount: number, behindCount: number) =>
-      formatBranchComparison({ aheadCount, behindCount, baseBranch: "main" });
-    expect(compare(0, 0)).toBe("Even with main");
-    expect(compare(6, 0)).toBe("6 ahead of main");
-    expect(compare(0, 3)).toBe("3 behind main");
-    expect(compare(4, 2)).toBe("4 ahead, 2 behind main");
+      formatMergeBaseComparison({ aheadCount, behindCount });
+    expect(compare(0, 0)).toBe("even");
+    expect(compare(6, 0)).toBe("6 ahead");
+    expect(compare(0, 3)).toBe("3 behind");
+    expect(compare(4, 2)).toBe("4 ahead, 2 behind");
   });
 });

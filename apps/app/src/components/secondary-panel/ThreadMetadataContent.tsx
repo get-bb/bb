@@ -388,7 +388,9 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
         successMessage="Directory copied"
         errorMessage="Failed to copy directory"
       >
-        {formatHomePathForDisplay(environment.path)}
+        <span className="text-muted-foreground">
+          {formatHomePathForDisplay(environment.path)}
+        </span>
       </CopyableInlineLabel>
     </DetailRow>
   );
@@ -530,6 +532,21 @@ interface MergeBaseRowProps {
   defaultOpen?: boolean;
 }
 
+export function formatMergeBaseComparison({
+  aheadCount,
+  behindCount,
+}: {
+  aheadCount: number;
+  behindCount: number;
+}): string {
+  if (aheadCount > 0 && behindCount > 0) {
+    return `${aheadCount} ahead, ${behindCount} behind`;
+  }
+  if (aheadCount > 0) return `${aheadCount} ahead`;
+  if (behindCount > 0) return `${behindCount} behind`;
+  return "even";
+}
+
 export function MergeBaseRow({
   workspaceStatus,
   selectedMergeBaseBranch,
@@ -587,44 +604,34 @@ export function MergeBaseRow({
       }
       valueClassName="min-w-0"
     >
-      {canSelectMergeBase && mergeBaseBranch ? (
-        <BranchPicker
-          value={mergeBaseBranch}
-          options={mergeBaseCandidates}
-          remoteOptions={remoteMergeBaseCandidates}
-          variant="minimal"
-          emphasizeTriggerValue={false}
-          loading={
-            isLoadingMergeBaseBranchOptions || canRequestMergeBaseOptions
-          }
-          onChange={onMergeBaseBranchChange}
-          onOpenChange={onMergeBasePickerOpenChange}
-          onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
-          className="max-w-full"
-          defaultOpen={defaultOpen}
-        />
-      ) : (
-        mergeBaseBranch
-      )}
+      <span className="flex min-w-0 items-center gap-1.5">
+        {canSelectMergeBase && mergeBaseBranch ? (
+          <BranchPicker
+            value={mergeBaseBranch}
+            options={mergeBaseCandidates}
+            remoteOptions={remoteMergeBaseCandidates}
+            variant="minimal"
+            emphasizeTriggerValue={false}
+            loading={
+              isLoadingMergeBaseBranchOptions || canRequestMergeBaseOptions
+            }
+            onChange={onMergeBaseBranchChange}
+            onOpenChange={onMergeBasePickerOpenChange}
+            onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
+            className="max-w-full"
+            defaultOpen={defaultOpen}
+          />
+        ) : (
+          <span className="min-w-0 truncate">{mergeBaseBranch}</span>
+        )}
+        {workspaceStatus?.mergeBase ? (
+          <span className="shrink-0 text-muted-foreground">
+            · {formatMergeBaseComparison(workspaceStatus.mergeBase)}
+          </span>
+        ) : null}
+      </span>
     </DetailRow>
   );
-}
-
-export function formatBranchComparison({
-  aheadCount,
-  behindCount,
-  baseBranch,
-}: {
-  aheadCount: number;
-  behindCount: number;
-  baseBranch: string;
-}): string {
-  if (aheadCount > 0 && behindCount > 0) {
-    return `${aheadCount} ahead, ${behindCount} behind ${baseBranch}`;
-  }
-  if (aheadCount > 0) return `${aheadCount} ahead of ${baseBranch}`;
-  if (behindCount > 0) return `${behindCount} behind ${baseBranch}`;
-  return `Even with ${baseBranch}`;
 }
 
 interface GitStatusRowProps {
@@ -633,7 +640,6 @@ interface GitStatusRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
-  selectedMergeBaseBranch: string | undefined;
 }
 
 export function GitStatusRow({
@@ -642,7 +648,6 @@ export function GitStatusRow({
   workspaceStatus,
   workspaceStatusError,
   workspaceUnavailable,
-  selectedMergeBaseBranch,
 }: GitStatusRowProps) {
   if (
     !shouldShowWorkspaceStatus({
@@ -655,31 +660,13 @@ export function GitStatusRow({
   ) {
     return null;
   }
+  if (workspaceStatus) return null;
 
-  const isWorkspaceDeleted = environment?.status === "destroyed";
-  const effectiveMergeBaseBranch = resolveDisplayedMergeBaseBranch(
-    selectedMergeBaseBranch,
-    workspaceStatus,
-  );
-  const showBranchComparisonUi = Boolean(
-    effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
-  );
-  const display = getGitStatusDisplay(workspaceStatus, {
-    mergeBaseBranch: effectiveMergeBaseBranch,
-    showBranchComparison: showBranchComparisonUi,
+  const display = getGitStatusDisplay(undefined, {
     error: workspaceStatusError,
     workspaceUnavailable,
-    workspaceDeleted: isWorkspaceDeleted,
+    workspaceDeleted: environment?.status === "destroyed",
   });
-  const branchComparison =
-    workspaceStatus && effectiveMergeBaseBranch
-      ? formatBranchComparison({
-          aheadCount: workspaceStatus.mergeBase?.aheadCount ?? 0,
-          behindCount: workspaceStatus.mergeBase?.behindCount ?? 0,
-          baseBranch: effectiveMergeBaseBranch,
-        })
-      : null;
-
   return (
     <DetailRow
       label={
@@ -688,22 +675,19 @@ export function GitStatusRow({
       align="start"
       valueClassName="min-w-0"
     >
-      {branchComparison || workspaceStatus ? (
-        <span className="block min-w-0 truncate text-foreground">
-          {branchComparison ?? display.summary.replace(/\.$/, "")}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Icon
+          name="AlertTriangle"
+          className="size-3 shrink-0 text-warning"
+          aria-hidden
+        />
+        <span
+          className="min-w-0 truncate text-foreground"
+          title={display.summary}
+        >
+          {display.summary.replace(/\.$/, "")}
         </span>
-      ) : (
-        <span className="flex min-w-0 items-center gap-1.5">
-          <Icon
-            name="AlertTriangle"
-            className="size-3 shrink-0 text-warning"
-            aria-hidden
-          />
-          <span className="min-w-0 truncate text-foreground">
-            {display.summary.replace(/\.$/, "")}
-          </span>
-        </span>
-      )}
+      </span>
     </DetailRow>
   );
 }
@@ -855,6 +839,9 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   );
 }
 
+const THREAD_PROPERTY_GROUP_CLASS =
+  "flex min-w-0 flex-col gap-1.5 empty:hidden";
+
 export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   const {
     thread,
@@ -897,7 +884,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   return (
     <ThreadMetadataCard>
       <div className="flex min-w-0 flex-col divide-y divide-border [&>*]:py-3 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-        <div className="flex min-w-0 flex-col gap-1.5">
+        <div className={THREAD_PROPERTY_GROUP_CLASS}>
           <ParentSelectorRow
             thread={thread}
             projectId={projectId}
@@ -923,6 +910,9 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
             failed={environmentProvisioningFailure}
           />
           <WorkspacePathRow environment={environment} />
+          <ArchivedRow thread={thread} />
+        </div>
+        <div className={THREAD_PROPERTY_GROUP_CLASS}>
           {isHostActive ? (
             <>
               <BranchRow workspaceStatus={workspaceStatus} />
@@ -947,12 +937,10 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
                 workspaceStatus={workspaceStatus}
                 workspaceStatusError={workspaceStatusError}
                 workspaceUnavailable={workspaceUnavailable}
-                selectedMergeBaseBranch={selectedMergeBaseBranch}
               />
             </>
           ) : null}
           <PullRequestRow pullRequest={pullRequest} />
-          <ArchivedRow thread={thread} />
         </div>
         <ForksSection thread={thread} />
         {isHostActive ? (

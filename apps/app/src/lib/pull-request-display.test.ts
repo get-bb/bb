@@ -46,7 +46,7 @@ describe("pull request signals", () => {
     ["conflicts", "success", "text-destructive"],
     ["changes_requested", "success", "text-destructive"],
     ["checks_failed", "success", "text-destructive"],
-    ["ready_to_merge", "success", "text-success"],
+    ["ready_to_merge", "success", "text-success-foreground"],
     ["none", "success", "text-muted-foreground"],
   ] as const)(
     "keeps passing checks separate from %s attention",
@@ -94,7 +94,7 @@ describe("pull request signals", () => {
     });
     expect(getPullRequestStateDisplay(pr)).toMatchObject({
       icon: "GitPullRequestArrow",
-      className: "text-success",
+      className: "text-success-foreground",
     });
     const ready = { ...pr, attention: "ready_to_merge" as const };
     expect(getPullRequestAttentionDisplay(ready).label).toBe("Auto-merge on");
