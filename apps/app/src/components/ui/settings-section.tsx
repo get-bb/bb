@@ -143,8 +143,12 @@ export function SettingsWithControl({
           ? "flex flex-row justify-between gap-5"
           : "flex flex-col gap-2.5",
         trailing && (description ? "items-start" : "items-center"),
-        inline && "sm:flex-row sm:justify-between sm:gap-5",
-        inline && (description ? "sm:items-start" : "sm:items-center"),
+        inline &&
+          "has-[[role=switch]]:flex-row has-[[role=switch]]:justify-between has-[[role=switch]]:gap-5 sm:flex-row sm:justify-between sm:gap-5",
+        inline &&
+          (description
+            ? "has-[[role=switch]]:items-start sm:items-start"
+            : "has-[[role=switch]]:items-center sm:items-center"),
       )}
     >
       <div className="min-w-0 flex-1">
