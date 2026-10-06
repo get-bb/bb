@@ -12,6 +12,9 @@ import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import FilterHorizontalIcon from "@hugeicons/core-free-icons/FilterHorizontalIcon";
+import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -435,6 +438,277 @@ function PhoneApp() {
 }
 
 const MAX_SEATS = 10;
+
+type TaskStatus = "backlog" | "todo" | "progress" | "review";
+
+const STATUS_NAMES: Record<TaskStatus, string> = {
+  backlog: "Backlog",
+  todo: "Todo",
+  progress: "In Progress",
+  review: "In Review",
+};
+
+function StatusGlyph({ status }: { status: TaskStatus }) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      className={`cmp-tasks-status cmp-tasks-status-${status}`}
+      aria-hidden="true"
+    >
+      <circle
+        cx="7"
+        cy="7"
+        r="5.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeDasharray={status === "backlog" ? "1.8 2" : undefined}
+      />
+      {status === "progress" ? (
+        <path d="M7 3.4 A3.6 3.6 0 0 1 7 10.6 Z" fill="currentColor" />
+      ) : null}
+      {status === "review" ? (
+        <path d="M7 3.4 A3.6 3.6 0 1 1 3.4 7 L7 7 Z" fill="currentColor" />
+      ) : null}
+    </svg>
+  );
+}
+
+function PriorityBars({ level }: { level: 1 | 2 | 3 }) {
+  return (
+    <svg viewBox="0 0 12 12" className="cmp-tasks-priority" aria-hidden="true">
+      {[0, 1, 2].map((bar) => (
+        <rect
+          key={bar}
+          x={1 + bar * 3.6}
+          y={8 - bar * 2.6}
+          width="2.4"
+          height={3 + bar * 2.6}
+          rx="0.6"
+          className={bar < level ? "on" : undefined}
+        />
+      ))}
+    </svg>
+  );
+}
+
+type TaskLabel = { name: string; tone: "accent" | "ok" | "spark" | "del" };
+
+function TaskCard({
+  id,
+  title,
+  agent,
+  priority,
+  labels,
+  subtasks,
+  className,
+}: {
+  id: string;
+  title: string;
+  agent: string | null;
+  priority: 1 | 2 | 3;
+  labels: TaskLabel[];
+  subtasks: string | null;
+  className?: string;
+}) {
+  return (
+    <div
+      className={className ? `cmp-tasks-card ${className}` : "cmp-tasks-card"}
+    >
+      <span className="cmp-tasks-card-top">
+        <span className="cmp-tasks-key">{id}</span>
+        {agent ? (
+          <span className="cmp-tasks-agent">
+            <span className="cmp-tasks-agent-dot" />
+            {agent}
+          </span>
+        ) : null}
+      </span>
+      <span className="cmp-tasks-title">{title}</span>
+      <span className="cmp-tasks-meta">
+        <PriorityBars level={priority} />
+        {labels.map((label) => (
+          <span key={label.name} className="cmp-tasks-label">
+            <span className={`cmp-tasks-label-dot ${label.tone}`} />
+            {label.name}
+          </span>
+        ))}
+        {subtasks ? (
+          <span className="cmp-tasks-sub">
+            <HugeiconsIcon icon={GitBranchIcon} className="cmp-tasks-sub-ic" />
+            {subtasks}
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function TaskColumn({
+  status,
+  count,
+  nextCount,
+  children,
+}: {
+  status: TaskStatus;
+  count: number;
+  nextCount: number;
+  children: ReactNode;
+}) {
+  return (
+    <div className="cmp-tasks-col">
+      <span className="cmp-tasks-col-head">
+        <StatusGlyph status={status} />
+        {STATUS_NAMES[status]}
+        <span className="cmp-tasks-count">
+          {count === nextCount ? (
+            count
+          ) : (
+            <>
+              <span className="cmp-tasks-count-before">{count}</span>
+              <span className="cmp-tasks-count-after">{nextCount}</span>
+            </>
+          )}
+        </span>
+        <HugeiconsIcon icon={PlusSignIcon} className="cmp-tasks-col-add" />
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function DelegateMenu() {
+  return (
+    <span className="cmp-tasks-menu" aria-hidden="true">
+      <span className="cmp-tasks-menu-label">Delegate to</span>
+      <span className="cmp-tasks-menu-item">
+        <ClaudeIcon className="cmp-tasks-menu-ic" />
+        Claude Code
+      </span>
+      <span className="cmp-tasks-menu-item cmp-tasks-menu-pick">
+        <OpenAiIcon className="cmp-tasks-menu-ic" />
+        Codex
+      </span>
+      <span className="cmp-tasks-menu-item">
+        <CursorIcon className="cmp-tasks-menu-ic" />
+        Cursor
+      </span>
+    </span>
+  );
+}
+
+const API: TaskLabel = { name: "api", tone: "accent" };
+const BUG: TaskLabel = { name: "bug", tone: "del" };
+const UI: TaskLabel = { name: "ui", tone: "spark" };
+const INFRA: TaskLabel = { name: "infra", tone: "ok" };
+
+export function TasksBoard() {
+  const { cycle, leaving } = useCycle(9000, 500);
+  return (
+    <div
+      className="cmp-tasks"
+      role="img"
+      aria-label="The bb Tasks board: a task in Todo is delegated to Codex and moves to In Progress, next to a task Claude Code is working on and one waiting in review"
+    >
+      <div className="cmp-tasks-bar">
+        <span className="cmp-tasks-project">
+          <HugeiconsIcon icon={KanbanIcon} className="cmp-tasks-project-ic" />
+          Website
+          <span className="cmp-tasks-prefix">APP</span>
+        </span>
+        <span className="cmp-tasks-views" aria-hidden="true">
+          <span>List</span>
+          <span className="on">Board</span>
+        </span>
+        <span className="cmp-tasks-tools" aria-hidden="true">
+          <span className="cmp-tasks-tool">
+            <HugeiconsIcon
+              icon={FilterHorizontalIcon}
+              className="cmp-tasks-tool-ic"
+            />
+            Filter
+          </span>
+          <span className="cmp-tasks-new">
+            <HugeiconsIcon icon={PlusSignIcon} className="cmp-tasks-tool-ic" />
+            New task
+          </span>
+        </span>
+      </div>
+      <div
+        className={leaving ? "cmp-tasks-board leaving" : "cmp-tasks-board"}
+        key={cycle}
+      >
+        <TaskColumn status="backlog" count={2} nextCount={2}>
+          <TaskCard
+            id="APP-18"
+            title="Move settings to the new store"
+            agent={null}
+            priority={1}
+            labels={[INFRA]}
+            subtasks={null}
+          />
+          <TaskCard
+            id="APP-19"
+            title="Keyboard shortcuts for the board"
+            agent={null}
+            priority={1}
+            labels={[UI]}
+            subtasks={null}
+          />
+        </TaskColumn>
+        <TaskColumn status="todo" count={2} nextCount={1}>
+          <TaskCard
+            id="APP-14"
+            title="Add CSV export to reports"
+            agent={null}
+            priority={3}
+            labels={[API]}
+            subtasks="0/2"
+            className="cmp-tasks-leave"
+          />
+          <TaskCard
+            id="APP-15"
+            title="Fix the flaky upload test"
+            agent={null}
+            priority={2}
+            labels={[BUG]}
+            subtasks={null}
+          />
+          <DelegateMenu />
+        </TaskColumn>
+        <TaskColumn status="progress" count={1} nextCount={2}>
+          <TaskCard
+            id="APP-12"
+            title="Add rate limiting to uploads"
+            agent="Claude Code"
+            priority={3}
+            labels={[API]}
+            subtasks="2/3"
+          />
+          <TaskCard
+            id="APP-14"
+            title="Add CSV export to reports"
+            agent="Codex"
+            priority={3}
+            labels={[API]}
+            subtasks="0/2"
+            className="cmp-tasks-arrive"
+          />
+        </TaskColumn>
+        <TaskColumn status="review" count={1} nextCount={1}>
+          <TaskCard
+            id="APP-9"
+            title="Add a dark mode toggle"
+            agent={null}
+            priority={2}
+            labels={[UI]}
+            subtasks="3/3"
+          />
+        </TaskColumn>
+      </div>
+    </div>
+  );
+}
 
 export function TeamCost({
   plan,

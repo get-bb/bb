@@ -2,7 +2,15 @@ import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { cloneElement, Fragment, isValidElement, type ReactNode } from "react";
+import {
+  cloneElement,
+  Fragment,
+  isValidElement,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { useInitAnalytics } from "../landing/analytics";
 import {
@@ -36,7 +44,7 @@ function plainText(node: ReactNode): string {
   }
   if (isValidElement<{ children?: ReactNode }>(node)) {
     const text = plainText(node.props.children);
-    return node.type === "p" ? `${text} ` : text;
+    return node.type === "p" || node.type === "li" ? `${text} ` : text;
   }
   return "";
 }
@@ -168,49 +176,72 @@ function BrandHeader({
   );
 }
 
+function useHeaderStuck() {
+  const sentinel = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const update = () => {
+      const node = sentinel.current;
+      if (node) setStuck(node.getBoundingClientRect().top < 0);
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
+  return { sentinel, stuck };
+}
+
 function CompareTable({ comparison }: { comparison: Comparison }) {
   const [firstGroup] = comparison.table;
+  const { sentinel, stuck } = useHeaderStuck();
   return (
-    <table role="table" className="cmp-table" aria-labelledby="cmp-table-title">
-      <thead role="rowgroup">
-        <tr role="row">
-          <th role="columnheader" scope="col" className="cmp-corner">
-            {firstGroup?.title}
-          </th>
-          <BrandHeader name="bb" logo={{ kind: "bb" }} us />
-          <BrandHeader
-            name={comparison.competitor.name}
-            logo={comparison.competitor.logo}
-            us={false}
-          />
-        </tr>
-      </thead>
-      {comparison.table.map((group) => (
-        <tbody role="rowgroup" key={group.title}>
-          <tr
-            role="row"
-            className={
-              group === firstGroup ? "cmp-group cmp-group-first" : "cmp-group"
-            }
-          >
-            <th role="rowheader" scope="rowgroup">
-              {group.title}
+    <>
+      <div ref={sentinel} className="cmp-table-sentinel" aria-hidden="true" />
+      <table
+        role="table"
+        className={stuck ? "cmp-table cmp-table-stuck" : "cmp-table"}
+        aria-labelledby="cmp-table-title"
+      >
+        <thead role="rowgroup">
+          <tr role="row">
+            <th role="columnheader" scope="col" className="cmp-corner">
+              {firstGroup?.title}
             </th>
-            <td className="cmp-group-fill cmp-us" aria-hidden="true" />
-            <td className="cmp-group-fill" aria-hidden="true" />
+            <BrandHeader name="bb" logo={{ kind: "bb" }} us />
+            <BrandHeader
+              name={comparison.competitor.name}
+              logo={comparison.competitor.logo}
+              us={false}
+            />
           </tr>
-          {group.rows.map((row) => (
-            <tr role="row" key={row.feature}>
-              <th role="rowheader" scope="row" className="cmp-feature">
-                {row.feature}
+        </thead>
+        {comparison.table.map((group) => (
+          <tbody role="rowgroup" key={group.title}>
+            <tr
+              role="row"
+              className={
+                group === firstGroup ? "cmp-group cmp-group-first" : "cmp-group"
+              }
+            >
+              <th role="rowheader" scope="rowgroup">
+                {group.title}
               </th>
-              <Cell cell={row.bb} us />
-              <Cell cell={row.competitor} us={false} />
+              <td className="cmp-group-fill cmp-us" aria-hidden="true" />
+              <td className="cmp-group-fill" aria-hidden="true" />
             </tr>
-          ))}
-        </tbody>
-      ))}
-    </table>
+            {group.rows.map((row) => (
+              <tr role="row" key={row.feature}>
+                <th role="rowheader" scope="row" className="cmp-feature">
+                  {row.feature}
+                </th>
+                <Cell cell={row.bb} us />
+                <Cell cell={row.competitor} us={false} />
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
+    </>
   );
 }
 
@@ -276,9 +307,11 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
           {competitor.name}
         </h2>
         <p className="cmp-table-sub">Feature by feature</p>
-        <p className="cmp-table-note">
-          <span className="cmp-pro">$ Pro</span> {comparison.tableNote}
-        </p>
+        {comparison.tableNote ? (
+          <p className="cmp-table-note">
+            <span className="cmp-pro">$ Pro</span> {comparison.tableNote}
+          </p>
+        ) : null}
         <CompareTable comparison={comparison} />
       </section>
 
