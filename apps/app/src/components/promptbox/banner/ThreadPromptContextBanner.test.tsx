@@ -308,8 +308,8 @@ describe("ThreadPromptContextBanner", () => {
     ["checks_pending", false, null],
     ["checks_failed", false, null],
     ["checks_failed", true, null],
-    ["checks_pending", true, "Checks running"],
-    ["ready_to_merge", true, "Ready to merge"],
+    ["checks_pending", true, null],
+    ["ready_to_merge", true, null],
     ["queued", true, "Queued to merge"],
   ] as const)(
     "shows the next step and an auto-merge icon for %s with auto-merge %s",

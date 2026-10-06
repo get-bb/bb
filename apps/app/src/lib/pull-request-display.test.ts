@@ -2,6 +2,7 @@ import type { ThreadPullRequest } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   getPullRequestGithubCheckStatus,
+  describePullRequestStatus,
   getPullRequestNextStep,
   getPullRequestStateDisplay,
   isPullRequestAutoMergeOn,
@@ -89,6 +90,19 @@ describe("pull request signals", () => {
       );
     },
   );
+
+  it("describes lifecycle, next step, and auto-merge for assistive text", () => {
+    const pr = pullRequest({
+      state: "draft",
+      attention: "draft",
+      autoMerge: true,
+    });
+    expect(describePullRequestStatus(pr)).toBe("Draft, Checks passing");
+    const open = pullRequest({ autoMerge: true, attention: "queued" });
+    expect(describePullRequestStatus(open)).toBe(
+      "Open, Queued to merge, auto-merge on",
+    );
+  });
 
   it("keeps auto-merge out of the next step", () => {
     const pr = pullRequest({ autoMerge: true, attention: "checks_pending" });

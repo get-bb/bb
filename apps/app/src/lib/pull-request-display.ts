@@ -126,6 +126,19 @@ export function getPullRequestNextStep(
   }
 }
 
+export function describePullRequestStatus(
+  pullRequest: ThreadPullRequest,
+): string {
+  const nextStep = getPullRequestNextStep(pullRequest);
+  return [
+    PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label,
+    nextStep?.label,
+    isPullRequestAutoMergeOn(pullRequest) ? "auto-merge on" : null,
+  ]
+    .filter((part) => part)
+    .join(", ");
+}
+
 export function isPullRequestAutoMergeOn(
   pullRequest: ThreadPullRequest,
 ): boolean {

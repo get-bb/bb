@@ -66,6 +66,7 @@ import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSe
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
+  describePullRequestStatus,
   getPullRequestNextStep,
   getPullRequestStateDisplay,
   isPullRequestAutoMergeOn,
@@ -460,7 +461,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={handlePullRequestClick}
-          aria-label={`Pull request ${pullRequest.number}: ${nextStep?.label ?? stateDisplay.label}`}
+          aria-label={`Pull request ${pullRequest.number}: ${describePullRequestStatus(pullRequest)}`}
           className="flex min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <GithubFaviconIcon />
