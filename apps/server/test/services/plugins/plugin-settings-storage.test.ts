@@ -295,7 +295,7 @@ describe("plugin settings + storage", () => {
         app,
         { config: { serverPort: 3334 }, db },
         service,
-        createPluginInstallJobs(),
+        createPluginInstallJobs({ notifyChanged: () => {} }),
       );
       const got = await app.request("/plugins/self-configuring/settings");
       const body = (await got.json()) as {
@@ -359,7 +359,7 @@ describe("plugin settings + storage", () => {
         app,
         { config: { serverPort: 3334 }, db },
         service,
-        createPluginInstallJobs(),
+        createPluginInstallJobs({ notifyChanged: () => {} }),
       );
 
       const got = await app.request("/plugins/configurable/settings");

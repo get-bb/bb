@@ -18,7 +18,9 @@ import {
   pluginMarketplaceRemoveResponseSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
-  pluginInstallJobSchema,
+  pluginInstallJobListResponseSchema,
+  pluginInstallJobResponseSchema,
+  pluginInstallJobStartResponseSchema,
   pluginInstallRequestSchema,
   pluginRemoveResponseSchema,
   pluginSafeModeRequestSchema,
@@ -39,6 +41,7 @@ import {
   type PluginMarketplace as PluginMarketplaceContract,
   type PluginMarketplaceRefreshResult as PluginMarketplaceRefreshContract,
   type PluginCatalogStatus as PluginCatalogStatusContract,
+  type PluginInstallJob as PluginInstallJobContract,
   type PluginApplyUpdateResult as PluginApplyUpdateContract,
   type PluginListResponse,
   type PluginReloadResponse,
@@ -70,18 +73,15 @@ const installedPluginResponseSchema = installedPluginSchema.extend({
 const pluginListResponseSchema = z.object({
   plugins: z.array(installedPluginResponseSchema),
 });
-const updatedPluginResponseSchema = z.object({
+const pluginInstallResponseSchema = z.object({
   ok: z.literal(true),
   plugin: installedPluginResponseSchema,
 });
-const pluginInstallJobResponseSchema = z.object({
-  ok: z.literal(true),
-  job: pluginInstallJobSchema,
-});
-const pluginInstallResponseSchema = z.union([
-  updatedPluginResponseSchema,
-  pluginInstallJobResponseSchema,
+const pluginInstallStartResponseSchema = z.union([
+  pluginInstallJobStartResponseSchema,
+  pluginInstallResponseSchema,
 ]);
+const INSTALL_JOB_POLL_INTERVAL_MS = 500;
 const pluginReloadResponseSchema = z.object({
   ok: z.literal(true),
   plugins: z.array(installedPluginResponseSchema),
@@ -117,6 +117,14 @@ export interface PluginCatalogInstallArgs {
   entryId: string;
   marketplace?: string;
   confirmedSource?: PluginCatalogResolvedSource;
+}
+
+export interface PluginInstallJobArgs {
+  jobId: string;
+}
+
+export interface PluginInstallJobListArgs {
+  signal?: AbortSignal;
 }
 
 export interface PluginCatalogInstallPlanArgs {
@@ -203,6 +211,7 @@ export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
 export type PluginGetSettingsResult = PluginSettingsResponse;
 export type PluginInstallResult = InstalledPlugin;
+export type PluginInstallJob = PluginInstallJobContract;
 export type PluginListResult = PluginListResponse;
 export type PluginReloadResult = PluginReloadResponse;
 export type PluginRemoveResult = PluginRemoveResponse;
@@ -228,6 +237,7 @@ export interface PluginMarketplaceRemoveResult {
 
 export interface PluginCatalogArea {
   install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
+  startInstall(args: PluginCatalogInstallArgs): Promise<PluginInstallJob>;
   installPlan(
     args: PluginCatalogInstallPlanArgs,
   ): Promise<PluginCatalogInstallPlanResult>;
@@ -244,6 +254,12 @@ export interface PluginMarketplacesArea {
   remove(
     args: PluginMarketplaceRemoveArgs,
   ): Promise<PluginMarketplaceRemoveResult>;
+}
+
+export interface PluginInstallJobsArea {
+  cancel(args: PluginInstallJobArgs): Promise<PluginInstallJob>;
+  get(args: PluginInstallJobArgs): Promise<PluginInstallJob>;
+  list(args?: PluginInstallJobListArgs): Promise<PluginInstallJob[]>;
 }
 
 export interface PluginsArea {
@@ -268,6 +284,8 @@ export interface PluginsArea {
   getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
   getSource(args: PluginGetSourceArgs): Promise<PluginGetSourceResult>;
   install(args: PluginInstallArgs): Promise<PluginInstallResult>;
+  startInstall(args: PluginInstallArgs): Promise<PluginInstallJob>;
+  installJobs: PluginInstallJobsArea;
   list(args?: PluginListArgs): Promise<PluginListResult>;
   listUpdateResults(
     args?: PluginListUpdateResultsArgs,
@@ -295,13 +313,6 @@ function pluginPath(pluginId: string, suffix = ""): string {
   return `/api/v1/plugins/${encodeURIComponent(id)}${suffix}`;
 }
 
-const PLUGIN_INSTALL_JOB_POLL_INTERVAL_MS = 500;
-const RESPOND_ASYNC_HEADERS = { prefer: "respond-async" };
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   const { transport } = args;
 
@@ -318,44 +329,114 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     return schema.parse(json);
   }
 
-  function jsonInit(
-    method: "POST" | "PUT",
-    body: unknown,
-    headers: Record<string, string> = {},
-  ): RequestInit {
+  function jsonInit(method: "POST" | "PUT", body: unknown): RequestInit {
     return {
       method,
-      headers: { "content-type": "application/json", ...headers },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     };
   }
 
-  async function completeInstall(
-    response: z.infer<typeof pluginInstallResponseSchema>,
-  ): Promise<InstalledPlugin> {
-    if ("plugin" in response) return response.plugin;
-    let job = response.job;
-    while (job.state === "running") {
-      await sleep(PLUGIN_INSTALL_JOB_POLL_INTERVAL_MS);
-      const polled = await requestParsed(
-        `/api/v1/plugins/install-jobs/${encodeURIComponent(job.id)}`,
+  function installJobPath(jobId: string, suffix = ""): string {
+    const id = z.string().min(1).parse(jobId);
+    return `/api/v1/plugins/install-jobs/${encodeURIComponent(id)}${suffix}`;
+  }
+
+  const installJobs: PluginInstallJobsArea = {
+    async cancel(input) {
+      const response = await requestParsed(
+        installJobPath(input.jobId, "/cancel"),
+        pluginInstallJobResponseSchema,
+        jsonInit("POST", {}),
+      );
+      return response.job;
+    },
+    async get(input) {
+      const response = await requestParsed(
+        installJobPath(input.jobId),
         pluginInstallJobResponseSchema,
       );
-      job = polled.job;
+      return response.job;
+    },
+    async list(input = {}) {
+      const response = await requestParsed(
+        "/api/v1/plugins/install-jobs",
+        pluginInstallJobListResponseSchema,
+        { signal: input.signal },
+      );
+      return response.jobs;
+    },
+  };
+
+  function requestInstall(path: string, body: unknown) {
+    return requestParsed(path, pluginInstallStartResponseSchema, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        prefer: "respond-async",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function startInstall(
+    path: string,
+    body: unknown,
+  ): Promise<PluginInstallJob> {
+    const response = await requestInstall(path, body);
+    if ("job" in response) return response.job;
+    throw new Error(
+      `installed "${response.plugin.id}" without an install job; this BB server predates background installs`,
+    );
+  }
+
+  async function installAndWait(
+    path: string,
+    body: unknown,
+  ): Promise<InstalledPlugin> {
+    const response = await requestInstall(path, body);
+    if ("plugin" in response) return response.plugin;
+    let job = response.job;
+    while (
+      job.state === "queued" ||
+      job.state === "running" ||
+      job.state === "cancelling"
+    ) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, INSTALL_JOB_POLL_INTERVAL_MS),
+      );
+      job = await installJobs.get({ jobId: job.id });
     }
-    if (job.state === "failed") throw new Error(job.error);
-    return job.plugin;
+    if (job.state === "succeeded") return job.plugin;
+    throw new Error(job.state === "failed" ? job.error : "install cancelled");
+  }
+
+  function sourceInstallBody(input: PluginInstallArgs) {
+    if (input.subdirectory !== undefined && input.plugin !== undefined) {
+      throw new Error(
+        "plugin install accepts subdirectory or plugin, not both",
+      );
+    }
+    const selection = pluginSourceSelection(input);
+    const body =
+      selection === undefined
+        ? { source: input.source }
+        : { source: input.source, selection };
+    pluginInstallRequestSchema.parse(body);
+    return body;
   }
 
   const catalog: PluginCatalogArea = {
     async install(input) {
-      const body = pluginCatalogInstallRequestSchema.parse(input);
-      return completeInstall(
-        await requestParsed(
-          "/api/v1/plugin-catalog/install",
-          pluginInstallResponseSchema,
-          jsonInit("POST", body, RESPOND_ASYNC_HEADERS),
-        ),
+      return installAndWait(
+        "/api/v1/plugin-catalog/install",
+        pluginCatalogInstallRequestSchema.parse(input),
+      );
+    },
+    async startInstall(input) {
+      return startInstall(
+        "/api/v1/plugin-catalog/install",
+        pluginCatalogInstallRequestSchema.parse(input),
       );
     },
     async installPlan(input) {
@@ -494,7 +575,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     async disable(input) {
       const response = await requestParsed(
         pluginPath(input.pluginId, "/disable"),
-        updatedPluginResponseSchema,
+        pluginInstallResponseSchema,
         jsonInit("POST", {}),
       );
       return response.plugin;
@@ -502,7 +583,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     async enable(input) {
       const response = await requestParsed(
         pluginPath(input.pluginId, "/enable"),
-        updatedPluginResponseSchema,
+        pluginInstallResponseSchema,
         jsonInit("POST", {}),
       );
       return response.plugin;
@@ -522,25 +603,15 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
     },
     async install(input) {
-      if (input.subdirectory !== undefined && input.plugin !== undefined) {
-        throw new Error(
-          "plugin install accepts subdirectory or plugin, not both",
-        );
-      }
-      const selection = pluginSourceSelection(input);
-      const body =
-        selection === undefined
-          ? { source: input.source }
-          : { source: input.source, selection };
-      pluginInstallRequestSchema.parse(body);
-      return completeInstall(
-        await requestParsed(
-          "/api/v1/plugins/install",
-          pluginInstallResponseSchema,
-          jsonInit("POST", body, RESPOND_ASYNC_HEADERS),
-        ),
+      return installAndWait(
+        "/api/v1/plugins/install",
+        sourceInstallBody(input),
       );
     },
+    startInstall(input) {
+      return startInstall("/api/v1/plugins/install", sourceInstallBody(input));
+    },
+    installJobs,
     async list(input = {}) {
       return requestParsed("/api/v1/plugins", pluginListResponseSchema, {
         signal: input.signal,

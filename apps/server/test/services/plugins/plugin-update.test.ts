@@ -366,7 +366,7 @@ describe("plugin update service and routes", () => {
       app,
       { config: { serverPort: 3334 }, db },
       service,
-      createPluginInstallJobs(),
+      createPluginInstallJobs({ notifyChanged: () => {} }),
     );
   });
 

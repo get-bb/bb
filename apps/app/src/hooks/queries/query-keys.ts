@@ -82,6 +82,7 @@ const PLUGIN_SOURCE_QUERY_KEY = "plugin-source";
 const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "plugin-catalog-search";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "plugin-catalog-install-plan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
+const PLUGIN_INSTALL_JOBS_QUERY_KEY = "plugin-install-jobs";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hostId?: string;
@@ -1285,6 +1286,10 @@ export function pluginCatalogInstallPlanQueryKey(args: {
 
 export function pluginMarketplacesQueryKey() {
   return [PLUGIN_MARKETPLACES_QUERY_KEY] as const;
+}
+
+export function pluginInstallJobsQueryKey() {
+  return [PLUGIN_INSTALL_JOBS_QUERY_KEY] as const;
 }
 
 export function systemProviderCatalogQueryKey() {

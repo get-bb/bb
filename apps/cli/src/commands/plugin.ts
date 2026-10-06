@@ -1035,6 +1035,10 @@ export function registerPluginCommands(
       "Resolve a git: semver range over <prefix>vX.Y.Z tags (monorepo tagging)",
     )
     .option("--yes", "Skip the confirmation prompt")
+    .option(
+      "--no-wait",
+      "Start the install in the background and print its job; follow it with `bb plugin install-jobs`",
+    )
     .option("--json", "Output JSON")
     .action(
       action(
@@ -1045,6 +1049,7 @@ export function registerPluginCommands(
             subdirectory?: string;
             plugin?: string;
             tagPrefix?: string;
+            wait: boolean;
           },
         ) => {
           if (opts.subdirectory !== undefined && opts.plugin !== undefined) {
@@ -1115,26 +1120,55 @@ export function registerPluginCommands(
             "Refusing to install without confirmation — re-run with --yes.",
             opts.yes === true,
           );
-          const plugin =
+          const plugins = createCliBbSdk(getUrl()).plugins;
+          const request =
             intent.kind === "source"
-              ? await createCliBbSdk(getUrl()).plugins.install({
-                  source: intent.source,
-                  ...(opts.subdirectory === undefined
-                    ? {}
-                    : { subdirectory: opts.subdirectory }),
-                  ...(opts.plugin === undefined ? {} : { plugin: opts.plugin }),
-                })
-              : await createCliBbSdk(getUrl()).plugins.catalog.install(
-                  intent.plan.kind === "marketplace"
-                    ? {
-                        entryId: intent.plan.entryId,
-                        marketplace: intent.plan.marketplace,
-                        ...(intent.plan.official
-                          ? {}
-                          : { confirmedSource: intent.plan.resolvedSource }),
-                      }
-                    : { entryId: intent.plan.entryId },
-                );
+              ? {
+                  kind: "source" as const,
+                  args: {
+                    source: intent.source,
+                    ...(opts.subdirectory === undefined
+                      ? {}
+                      : { subdirectory: opts.subdirectory }),
+                    ...(opts.plugin === undefined
+                      ? {}
+                      : { plugin: opts.plugin }),
+                  },
+                }
+              : {
+                  kind: "catalog" as const,
+                  args:
+                    intent.plan.kind === "marketplace"
+                      ? {
+                          entryId: intent.plan.entryId,
+                          marketplace: intent.plan.marketplace,
+                          ...(intent.plan.official
+                            ? {}
+                            : { confirmedSource: intent.plan.resolvedSource }),
+                        }
+                      : { entryId: intent.plan.entryId },
+                };
+          if (!opts.wait) {
+            const job =
+              request.kind === "source"
+                ? await plugins.startInstall(request.args)
+                : await plugins.catalog.startInstall(request.args);
+            if (opts.json) {
+              outputJson(opts, { ok: true as const, job });
+              return;
+            }
+            console.log(
+              `Installing ${job.displayName} in the background (job ${job.id}).`,
+            );
+            console.log(
+              `Follow it with \`bb plugin install-jobs\`; cancel it with \`bb plugin cancel-install ${job.id}\`.`,
+            );
+            return;
+          }
+          const plugin =
+            request.kind === "source"
+              ? await plugins.install(request.args)
+              : await plugins.catalog.install(request.args);
           const result = { ok: true as const, plugin };
           if (opts.json) {
             outputJson(opts, result);
@@ -1144,6 +1178,68 @@ export function registerPluginCommands(
           printPlugin(plugin);
         },
       ),
+    );
+
+  plugin
+    .command("install-jobs")
+    .description(
+      "List plugin installs that are queued or running, and those that finished in the last ten minutes. Installs run one at a time on the server and continue when the CLI or app disconnects",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const jobs = await createCliBbSdk(getUrl()).plugins.installJobs.list();
+        if (opts.json) {
+          outputJson(opts, { jobs });
+          return;
+        }
+        if (jobs.length === 0) {
+          console.log("No recent plugin installs.");
+          return;
+        }
+        console.log(
+          renderBorderlessTable(
+            {
+              head: ["Job", "Plugin", "State", "Detail"],
+              colWidths: [38, 28, 12, 60],
+              trimTrailingWhitespace: true,
+            },
+            jobs.map((job) => [
+              job.id,
+              job.displayName,
+              job.state,
+              job.state === "failed"
+                ? job.error
+                : job.state === "succeeded"
+                  ? job.plugin.id
+                  : "",
+            ]),
+          ),
+        );
+      }),
+    );
+
+  plugin
+    .command("cancel-install <job-id>")
+    .description(
+      "Cancel a plugin install. A queued install is dropped; a running install stops its current download or build and leaves nothing installed, unless it has already started registering the plugin, in which case it finishes",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (jobId: string, opts: JsonOutputOptions) => {
+        const job = await createCliBbSdk(getUrl()).plugins.installJobs.cancel({
+          jobId,
+        });
+        if (opts.json) {
+          outputJson(opts, { job });
+          return;
+        }
+        console.log(
+          job.state === "cancelling"
+            ? `Cancelling the ${job.displayName} install.`
+            : `The ${job.displayName} install is ${job.state}.`,
+        );
+      }),
     );
 
   plugin

@@ -167,23 +167,22 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
         });
       }
       if (url.pathname === "/api/v1/plugin-catalog/install") {
-        return responseJson({
-          ok: true,
-          plugin: {
-            ...AUTOMATIONS_PLUGIN,
-            id: "github",
-            source: GITHUB_CATALOG_ENTRY.source,
-            rootDir: "/settings/plugins/github",
-            name: GITHUB_CATALOG_ENTRY.displayName,
-            description: GITHUB_CATALOG_ENTRY.description,
-            icon: GITHUB_CATALOG_ENTRY.icon,
-            provenance: "catalog",
-            publisherKey: "bb-official",
-            publisherLabel: "BB Official",
-            catalogEntryId: GITHUB_CATALOG_ENTRY.entryId,
-            sourceDisplay: "BB Official · GitHub",
+        return responseJson(
+          {
+            ok: true,
+            job: {
+              id: "job-github",
+              target: {
+                kind: "catalog",
+                entryId: GITHUB_CATALOG_ENTRY.entryId,
+                marketplace: GITHUB_CATALOG_ENTRY.marketplace,
+              },
+              displayName: GITHUB_CATALOG_ENTRY.displayName,
+              state: "queued",
+            },
           },
-        });
+          202,
+        );
       }
       return responseJson({ error: "not found" }, 404);
     }),

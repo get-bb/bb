@@ -157,6 +157,10 @@ function HistoryBackButton() {
   return <button onClick={() => navigate(-1)}>Browser back</button>;
 }
 
+function renderWithQueryClient(ui: ReactNode) {
+  return render(ui, { wrapper: createQueryClientTestHarness().wrapper });
+}
+
 afterEach(() => {
   cleanup();
   window.localStorage.removeItem("bb.plugins.workspace.tabs");
@@ -168,7 +172,7 @@ afterEach(() => {
 describe("PluginDetail official catalog lifecycle", () => {
   it("offers Install from an unowned BB Official plugin detail page", () => {
     const onInstall = vi.fn();
-    const { container } = render(
+    const { container } = renderWithQueryClient(
       <CatalogPluginDetail
         entry={GITHUB_CATALOG_ENTRY}
         onInstall={onInstall}
@@ -191,7 +195,7 @@ describe("PluginDetail official catalog lifecycle", () => {
   });
 
   it("links the catalog entry's repository from the metadata line", () => {
-    render(
+    renderWithQueryClient(
       <CatalogPluginDetail
         entry={{
           ...GITHUB_CATALOG_ENTRY,
@@ -211,7 +215,7 @@ describe("PluginDetail official catalog lifecycle", () => {
   });
 
   it("loads remote screenshots only in detail and shows the listed date", () => {
-    const { container } = render(
+    const { container } = renderWithQueryClient(
       <CatalogPluginDetail
         entry={{
           ...GITHUB_CATALOG_ENTRY,
@@ -237,7 +241,7 @@ describe("PluginDetail official catalog lifecycle", () => {
   });
 
   it("links the category from the byline and drops the duplicate official marketplace", () => {
-    render(
+    renderWithQueryClient(
       <MemoryRouter>
         <CatalogPluginDetail
           entry={{
@@ -268,7 +272,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       compatible: false,
       incompatibleReason: "Requires bb 0.20 or newer.",
     };
-    render(
+    renderWithQueryClient(
       <>
         <CatalogPluginDetailBanner
           entry={incompatibleEntry}
@@ -680,7 +684,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       marketplaceDisplayName: "BB Community",
       official: false,
     } satisfies PluginCatalogSearchEntry;
-    render(
+    renderWithQueryClient(
       <CatalogPluginDetail
         entry={entry}
         onInstall={() => {}}
@@ -995,9 +999,9 @@ describe("BB Official plugin detail routing", () => {
       expect(routeUrl()).toBe("/plugins/canvas?q=canvas&listing=bb-community");
     });
     await waitFor(() => {
-      expect(
-        document.querySelector("[data-plugin-summary]")?.textContent,
-      ).toBe("Draw diagrams on a shared tldraw canvas.");
+      expect(document.querySelector("[data-plugin-summary]")?.textContent).toBe(
+        "Draw diagrams on a shared tldraw canvas.",
+      );
     });
     expect(screen.getByText("Another plugin uses this ID")).toBeTruthy();
     const installButtons = screen.getAllByRole("button", { name: /Install/u });
@@ -1013,9 +1017,9 @@ describe("BB Official plugin detail routing", () => {
       expect(routeUrl()).toBe("/plugins/canvas?q=canvas");
     });
     await waitFor(() => {
-      expect(
-        document.querySelector("[data-plugin-summary]")?.textContent,
-      ).toBe("Edit .mdx files beside the chat.");
+      expect(document.querySelector("[data-plugin-summary]")?.textContent).toBe(
+        "Edit .mdx files beside the chat.",
+      );
     });
     expect(screen.getByText("Also published in BB Community")).toBeTruthy();
 

@@ -76,6 +76,7 @@ import { DesktopZoomIndicator } from "./components/layout/DesktopZoomIndicator";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
 import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
+import { PluginInstallJobsHost } from "./components/plugin/PluginInstallJobsHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 import {
   startSplitPreloading,
@@ -482,6 +483,7 @@ export function App() {
               <ProviderCliInstallLogDialogHost />
               <ServerMoveOverlay />
               <AppUpdateHost />
+              <PluginInstallJobsHost />
             </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>

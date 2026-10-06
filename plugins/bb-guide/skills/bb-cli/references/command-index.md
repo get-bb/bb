@@ -272,6 +272,8 @@ move and downloads the new server's bb-app package for its service.
 - `bb plugin list`
 - `bb plugin source`
 - `bb plugin install`
+- `bb plugin install-jobs`
+- `bb plugin cancel-install`
 - `bb plugin outdated`
 - `bb plugin update`
 - `bb plugin new`

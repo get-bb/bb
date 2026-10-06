@@ -329,6 +329,16 @@ added/updated/unchanged counts.
                                  Installing a local path for an id that is
                                  already installed from another local path
                                  moves it there and keeps its settings
+                                 Installs run one at a time as server jobs
+                                 that continue if the CLI or app disconnects;
+                                 a repeat request joins the active job.
+                                 --no-wait starts the job and prints its id
+  bb plugin install-jobs         List queued, running, and recently finished
+                                 installs (--json for the jobs)
+  bb plugin cancel-install <job> Cancel an install: a queued job is dropped;
+                                 a running job stops its download or build
+                                 and installs nothing, unless it already
+                                 started registering, which then finishes
   bb plugin outdated             Check installed plugins for compatible
                                  updates (table; --json for raw results).
                                  Columns: installed, latest compatible,

@@ -1,11 +1,9 @@
 import type { PluginMarketplaceCategory } from "@bb/domain";
 import type {
-  InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
   PluginCatalogAuthor,
   PluginCatalogCollection,
   PluginCatalogCollectionMembership,
-  PluginCatalogResolvedSource,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
   PluginMarketplace,
   PluginMarketplaceRefreshResult,
@@ -79,24 +77,6 @@ export function usePluginSource(
     enabled: options.enabled,
     staleTime: 30_000,
   });
-}
-
-export async function installPlugin(
-  fetchImpl: FetchLike,
-  source: string,
-): Promise<InstalledPlugin> {
-  return createPluginsClient(fetchImpl).install({ source });
-}
-
-export async function installCatalogPlugin(
-  fetchImpl: FetchLike,
-  args: {
-    entryId: string;
-    marketplace?: string;
-    confirmedSource?: PluginCatalogResolvedSource;
-  },
-): Promise<InstalledPlugin> {
-  return createPluginsClient(fetchImpl).catalog.install(args);
 }
 
 export function useCatalogInstallPlan(

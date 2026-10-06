@@ -61,6 +61,7 @@ export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 export const SYSTEM_CHANGE_KINDS = [
   "config-changed",
   "plugins-changed",
+  "plugin-install-jobs-changed",
   "provider-registrations-changed",
   "ui-preferences-changed",
   "environment-availability-changed",

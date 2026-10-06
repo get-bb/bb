@@ -2,10 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
-import { pluginInstallJobSchema } from "@bb/server-contract";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
 import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
@@ -62,9 +60,12 @@ describe("plugin catalog routes", () => {
       ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     });
     const app = new Hono();
-    const installJobs = createPluginInstallJobs();
-    registerPluginCatalogRoutes(app, catalog, installJobs);
-    return { app, catalog, installJobs };
+    registerPluginCatalogRoutes(
+      app,
+      catalog,
+      createPluginInstallJobs({ notifyChanged: () => {} }),
+    );
+    return { app, catalog };
   }
 
   it("serves status/search and validates install requests", async () => {
@@ -111,28 +112,34 @@ describe("plugin catalog routes", () => {
     expect(versionOverride.status).toBe(422);
   });
 
-  it("answers a respond-async install with a job that reports the outcome", async () => {
-    const { app, installJobs } = catalogApp();
-
-    const install = await app.request("/plugin-catalog/install", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        prefer: "respond-async",
-      },
-      body: JSON.stringify({ entryId: "memory" }),
+  it("identifies background installs with the same entry ID as catalog search", async () => {
+    const { app } = catalogApp();
+    const search = await app.request("/plugin-catalog/search?q=docs");
+    await expect(search.json()).resolves.toMatchObject({
+      results: expect.arrayContaining([
+        expect.objectContaining({ entryId: "docs" }),
+      ]),
     });
-
-    expect(install.status).toBe(202);
-    const { job } = z
-      .object({ ok: z.literal(true), job: pluginInstallJobSchema })
-      .parse(await install.json());
-    await vi.waitFor(() => {
-      expect(installJobs.get(job.id)).toMatchObject({
-        state: "failed",
-        error: expect.stringContaining("unexpected install"),
+    for (const entryId of ["docs", "simple-notes"]) {
+      const install = await app.request("/plugin-catalog/install", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          prefer: "respond-async",
+        },
+        body: JSON.stringify({ entryId, marketplace: "bb-official" }),
       });
-    });
+      expect(install.status).toBe(202);
+      await expect(install.json()).resolves.toMatchObject({
+        job: {
+          target: {
+            kind: "catalog",
+            entryId: "docs",
+            marketplace: "bb-official",
+          },
+        },
+      });
+    }
   });
 
   it("serves a cached icon with hash-gated caching and refuses unknown ones", async () => {
