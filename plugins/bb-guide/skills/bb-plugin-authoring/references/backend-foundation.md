@@ -9,7 +9,7 @@ export default async function plugin(bb: BbPluginApi) {
   // Register surfaces here. Load-safe: settings, storage, http, rpc,
   // realtime, background, cli, agents, ui, events, status, onDispose.
   // bb.sdk works here in the real server, but prefer it in handlers/services
-  // (bind-gated — see below).
+  // (bind-gated — see backend-sdk.md).
 }
 ```
 
@@ -18,11 +18,17 @@ factory puts the plugin in `error` status with the message as the detail; a
 throwing reload candidate leaves the prior registration set running and
 reports the reload failure in its detail. `bb.pluginId` is the plugin's own id.
 
-The complete top-level factory API is `pluginId`, `log`, `settings`, `storage`,
-`http`, `rpc`, `realtime`, `background`, `cli`, `agents`, `providers`, `ui`,
-`events`, `experimental_hooks`, `experimental_environments`,
-`experimental_machines`, `experimental_serverAccess`, `status`, `server`, `hosts`,
-`experimental_aiServices`, `sdk`, `onDispose`, and `onInstall`.
+The complete top-level factory API, by reference:
+
+- this file: `pluginId`, `log`, `settings`, `storage`, `server`, `hosts`
+- backend-sdk.md: `sdk`
+- backend-events.md: `events`, `experimental_hooks`,
+  `experimental_environments`, `http`, `rpc`, `realtime`, `background`
+- backend-machines.md: `experimental_machines`, `experimental_serverAccess`
+- backend-cli-agents.md: `cli`, `agents`, `experimental_aiServices`, and
+  `ui.requestInput`
+- providers.md: `providers`
+- backend-ui-lifecycle.md: `ui`, `status`, `onDispose`, `onInstall`
 
 Keyed registrations must be unique within one factory execution: duplicate
 settings, routes, rpc methods, services, schedules, CLI registrations, tools,
@@ -107,6 +113,11 @@ to the browser. `experimental_set` accepts only the fields defined by that
 handle, accepts `null` to unset one, fires `onChange`, and returns the handle's
 effective values.
 
+Saving settings does not reload a healthy or degraded plugin; its `onChange`
+listeners receive the new values. A save retries the load of a plugin in
+`needs-configuration`. Use `bb plugin reload <id>` only when the change or
+plugin requires it.
+
 ### bb.storage
 
 - `bb.storage.kv` — namespaced JSON key-value rows in bb.db:
@@ -132,17 +143,13 @@ bb.storage.migrate(db, [
 Read-only facts about the running server. `bb.server.loopbackBaseUrl` is the
 server's own loopback base URL (e.g. `http://127.0.0.1:38886`), which serves
 the SPA + `/api` + `/ws` — for plugins that proxy or relay traffic back to
-the server itself (the builtin connect plugin's tunnel is the canonical
-user). **Bind-gated** like `bb.sdk`: reading it before the server is
+the server itself. **Bind-gated** like `bb.sdk`: reading it before the server is
 listening throws, so prefer reading it from handlers, services, and timers.
 `bb.server.experimental_appUrl` gives the operator-configured public app URL,
 or `null` when `BB_APP_URL` is empty. It is not bind-gated.
 `bb.server.experimental_dataDir` gives the exact server data directory for a
 migration from BB-managed files. Do not write plugin state there. Use
 `bb.storage` for plugin-owned state.
-`bb.sdk.system.config().primaryHostId` identifies the server's local enrolled
-host, or is `null` when its identity is not initialized or its host record is
-missing or destroyed. It never falls back to a remote machine.
 
 ### bb.hosts
 
@@ -249,22 +256,19 @@ Lease disposal is idempotent.
 Host signals are schema-validated, private to the plugin that owns the host
 entry, and ephemeral. Use them as invalidations or progress notifications, not
 as durable state; the server callback receives the authenticated `hostId`.
-V1 calls still target only an explicit enrolled host. If a method operates on
+Calls target only an explicit enrolled host. If a method operates on
 an environment or directory, resolve it with `bb.sdk` and put the needed id or
 absolute path in that method's typed input. Core does not infer an environment,
 cwd, or lock for host RPC.
 
-The worker is lazy and reusable; there is no short-/long-lived manifest flag.
-After five minutes with no active call, native watch, or retained lease, the
-daemon gracefully stops it. A later call starts it again. This idle stop does
-not emit `experimental_onWorkerExit`. A crash fails in-flight calls, emits
+The worker is lazy and reusable. After five minutes with no active call,
+native watch, or retained lease, the daemon gracefully stops it; a later call
+starts it again. A crash fails in-flight calls, emits
 `experimental_onWorkerExit` to the active server generation, and a later call
-starts a fresh worker. Graceful reload, disable, uninstall, and daemon shutdown
-do not emit it. The event is ephemeral, so long-lived plugins must also
-reconcile when their target host reconnects. On reconnect, the daemon keeps
-workers whose generation is still active and disposes generations disabled or
-replaced while it was offline. There is no global worker-count limit. Host code
-receives the normalized user `PATH` without daemon-owned `BB_*` variables.
+starts a fresh worker. Idle stops, graceful reload, disable, uninstall, and
+daemon shutdown do not emit it. The event is ephemeral, so long-lived plugins
+must also reconcile when their target host reconnects. Host code receives the
+normalized user `PATH` without daemon-owned `BB_*` variables.
 
 Host limits protect the daemon:
 
@@ -279,10 +283,9 @@ Host limits protect the daemon:
 - The host artifact can contain at most 256 MiB.
 - The host dispose hook has five seconds to finish.
 
-These single-worker, idle-eviction, retention, and call-timeout rules describe
-the host RPC consumer only. Another daemon subsystem may attach the same
-`bb.host` artifact through a different bootstrap and own a separate process
-lifecycle.
+These worker, idle-eviction, retention, and call-timeout rules cover host RPC
+only. A provider bridge exported from the same artifact runs in its own
+process with its own lifecycle (see providers.md).
 
 Host production code may import public `@get-bb/plugin-sdk` entrypoints, Node
 APIs, and ordinary third-party dependencies. It must not import private
@@ -302,19 +305,17 @@ artifact, including for managed Git installs, which run
 `@get-bb/plugin-sdk/provider-bridge` or a
 published `@get-bb/plugin-sdk/host` contract such as
 `experimental_nativeRootsHostContract` is bundled from the plugin's own SDK
-install, so that plugin lists the SDK under `dependencies` (see
-"bb.providers.register — agent providers" below; every provider plugin in
-bb does this). Either way the daemon never resolves the SDK or private BB
+install, so that plugin lists the SDK under `dependencies`. Every provider
+plugin does this. Either way the daemon never resolves the SDK or private BB
 packages from the plugin at runtime.
 
-Pure JavaScript dependencies are bundled. For external tools, use
-`child_process` to probe or invoke tools on `PATH`. bb V1 provides no
-privileged package installer; a plugin that invokes a system installer owns
-user consent, elevation, platform-specific behavior, and recovery.
+Pure JavaScript dependencies are bundled, and host code may use Node APIs
+such as `child_process`, `fs`, and `fetch`. For external tools, probe or
+invoke them on `PATH`. bb provides no privileged package installer; a plugin
+that invokes a system installer owns user consent, elevation,
+platform-specific behavior, and recovery.
 
-The rest of `bb.hosts` controls shared loopback port exposure.
-
-Control-plane declarations for host-local daemon behavior. Use
+The rest of `bb.hosts` controls shared loopback port exposure. Use
 `bb.hosts.declareSharedPorts(hostId, ports)` to replace this plugin's
 desired loopback port set for one host. `ports` contains integers from 1–65535;
 the server deduplicates and sorts them, owns the generation, and delivers the
@@ -331,8 +332,7 @@ send tunnel identity toward a credential-bearing daemon connection.
 
 Declarations are load-scoped: reload, disable, or shutdown clears them after
 the plugin's own dispose hooks run. Plugins do not receive daemon streaming or
-socket primitives. Add streaming only for a use case that cannot use bounded
-calls, pagination, and lossy invalidation signals.
+socket primitives; use bounded calls, pagination, and host signals.
 
 ```ts
 const tunnel = await bb.hosts.ensureSharedPortTunnel(hostId);

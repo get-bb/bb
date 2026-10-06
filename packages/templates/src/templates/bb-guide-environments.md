@@ -18,7 +18,6 @@ Making your repo work with bb:
   before inserting a thread. Enable the plugin or explicitly choose another
   environment; BB does not silently replace an isolated worktree with a checkout.
   Host-dependent preflight checks require the selected machine to be connected.
-  Directory switching creates a core-owned attachment with no provider identity.
 
   Commit a .bb-env-setup.sh script at the repo root when new bb worktrees need
   repo-specific setup. After bb creates a new managed worktree environment, it
@@ -37,13 +36,12 @@ Making your repo work with bb:
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
-  Core admits and claims the path before hooks, and runs hooks only
-  after create confirms ownsPath: true. Attached project
-  checkouts and personal workspaces never run hooks. Hook IDs derive from the launch attempt. A server restart can join the same
-  operation while the daemon remains alive. Hook state is held only in daemon
-  memory; a daemon restart leaves an interrupted hook outcome unknown.
+  Hooks run only in paths bb created and owns, such as new worktrees and
+  checkouts bb cloned; attached project checkouts and personal workspaces never
+  run hooks. A server restart does not interrupt a running hook, but a daemon
+  restart leaves its outcome unknown.
 
-  A non-zero exit, timeout, signal, or cancellation fails provisioning and bb
+  A non-zero exit, timeout (15 minutes), signal, or cancellation fails provisioning and bb
   removes the new worktree after confirming the script has stopped. An unknown
   hook outcome blocks automatic cleanup and requires inspection before recovery.
   Keep optional setup steps non-fatal inside the
@@ -58,13 +56,10 @@ Making your repo work with bb:
   hook, and stdin is closed.
 
   Teardown has a separate 15-minute timeout. A non-zero exit, timeout, or
-  signal reports failure in the destroy transcript, but bb removes the
-  worktree after script termination. If transport fails, bb cancels the hook
-  and confirms its process group has stopped before releasing the workspace.
-  An unreachable daemon leaves cleanup pending for retry. If the daemon no
-  longer knows the hook, cleanup remains blocked with an explicit unknown-outcome
-  error. There is no cross-restart script recovery or persisted process tracking.
-  Teardown only runs for paths whose ownership was confirmed by create.
+  signal reports failure in the destroy transcript, but bb still removes the
+  worktree once the script has stopped. An unreachable daemon leaves cleanup
+  pending for retry; a hook whose outcome is unknown blocks cleanup with an
+  explicit error.
 
   New worktrees do not contain untracked files such as .env.local. To copy
   them from the source checkout, commit a .worktreeinclude file at the repo
@@ -93,10 +88,19 @@ Making your repo work with bb:
                                           Project checkout, Worktree, then other installed providers
                                           by display name; includes id, name, the `requires` facts (host,
                                           projectCheckout, gitCheckout, gitRemote, projectless), and whether
-                                          it takes --environment-inputs (--json prints the JSON Schema)
+                                          it takes --environment-inputs (--json prints the JSON Schema,
+                                          description, icon, and availability)
     --project <id>                        Filter by structural eligibility for this project
     --machine <id-or-name>               Scope structural eligibility to this machine
     --host <id-or-name>                  Alias for --machine
+
+  With --project, providers whose requirements are unmet on every persistent
+  machine are omitted, and `--json` reports each provider's
+  `machineAvailability` per machine. Add --machine to print that machine's
+  availability: `available`, `setup-required`, `unavailable` with the plugin's
+  reason, or `unknown` while the background check has not answered. Listing
+  never waits on a machine; results can be up to ten minutes old, and thread
+  creation checks the selected provider and machine afresh.
   bb environment list                     List environments that are not destroyed
     --project <id>                        Only environments in this project
     --provider <id>                       Only environments this environment provider produced
@@ -112,6 +116,7 @@ Making your repo work with bb:
                                           live or stopping. The command returns with cleanup
                                           requested; lifecycle becomes destroyed only after
                                           provider removal completes
+  bb environment cleanup <id>             Remove an unused provider-managed environment now
   bb environment show <id>                Show environment details (path, branch, status, lifecycle, retirement deadline and teardown attempts)
 
   bb environment status <id>              Show workspace status
@@ -156,16 +161,24 @@ Making your repo work with bb:
 
   bb environment archive-threads <id>     Archive all threads in an environment
 
-  When the last thread of a worktree environment is archived, the worktree
-  plugin waits five minutes and then tears it down: it runs
-  .bb-env-teardown.sh, stops every process whose working directory is inside
-  the worktree (the agent process, background jobs it left behind, and also
-  shells, editors, or servers you started there yourself; SIGTERM, then
-  SIGKILL after a short grace period), removes the worktree, and records the
-  environment as destroyed. The branch is kept. Deleting the last thread starts
-  teardown without the retirement grace; cleanup still completes asynchronously. Unarchiving a thread inside the grace window cancels the
-  teardown. Move your own shells out of the worktree first if you want to
-  keep them.
+  After the last live thread is archived, the environment provider's policy
+  sets a retirement deadline; checkout environments never retire. A worktree
+  waits five minutes and then tears down: it runs .bb-env-teardown.sh, stops
+  every process whose working directory is inside the worktree (the agent
+  process, background jobs it left behind, and also shells, editors, or
+  servers you started there yourself), removes the worktree, and records the
+  environment as destroyed. The branch is kept. Unarchiving a thread inside
+  the grace window cancels the teardown. Move your own shells out of the
+  worktree first if you want to keep them. Deleting the last thread, or an
+  explicit environment or project deletion, skips the grace (including a
+  never-retire policy). Failed teardown retries automatically;
+  `bb environment show <id>` reports the lifecycle phase, deadline, teardown
+  attempt, and failure message.
+
+  `bb environment cleanup <id> [--json]` overrides retention and retry backoff
+  to remove an unused provider-managed environment early. It is not a routine
+  end-of-task step. It rejects live threads and unmanaged environments,
+  succeeds if already removed, and completes asynchronously.
 
   bb environment pull-request show <id>   Inspect a pull request
   bb environment pull-request ready <id>  Mark a pull request ready
@@ -177,113 +190,3 @@ Every inspection command accepts an arbitrary environment ID and supports
 `--json`. Non-git status/diff responses are reported explicitly. `diff-file`
 prints UTF-8 content directly and labels base64 binary content; diff and patch
 truncation markers are preserved.
-
-bb account (getbb.app sign-in):
-
-  The builtin "bb account" plugin signs this bb server in to your getbb.app
-  account and holds its server credential. Remote access and hosted services
-  use it; they never see the credential.
-
-  bb account status                       Show the signed-in account
-  bb account login                        Print a getbb.app link and code to approve
-    --wait                                Wait for that sign-in to finish
-    --code <code>                         Pair with a one-time dashboard code
-    --base-url <url>                      https://getbb.app or https://vibecodethis.site
-  bb account logout                       Revoke the credential and sign out
-
-  `bb account login` returns after printing the link; approve it in any
-  browser and bb finishes signing in on its own. Every command accepts
-  `--json`. `bb account status` reports a paired bb whose account hasn't
-  loaded yet as pending; it keeps retrying. `bb account logout` says so when
-  getbb.app didn't confirm revoking the server. In a source checkout,
-  `pnpm dev` points sign-in at that worktree's local Cloud origin through
-  `BB_DEV_CONNECT_BASE_URL`; an explicit `--base-url` still wins, and a
-  development build also accepts `http://bb.localhost:<port>` there.
-
-Remote access (bb connect):
-
-  Expose this bb server at <handle>.getbb.app so you can reach it from any
-  browser. Remote access starts once this bb is signed in to its bb account
-  (`bb account login`). A pairing command from the getbb.app dashboard still
-  works like `bb account login --code`, and also turns remote access back on:
-
-  bb connect --code <code> [--server https://<handle>.getbb.app]
-    --code <code>          One-time pairing code from the dashboard
-    --server <url>         Dashboard server URL; only its getbb.app or
-                           vibecodethis.site apex is used
-
-  The bb SERVER holds the tunnel itself — so it stays up as long as bb is
-  running and reconnects on restart (no foreground process). It connects with
-  the server credential bb account holds.
-  Without an installed bb, pair via npm:
-  `npx -p bb-app@latest bb connect --code <code>`.
-
-  bb connect status                       Show the server's connect status
-  bb connect off                          Turn remote access off, stay signed in
-  bb connect on                           Turn remote access back on
-  bb connect expose <port> [--host <name-or-id>]    Share a host's HTTP port
-  bb connect unexpose <port> [--host <name-or-id>]  Stop sharing on that host
-  bb connect unexpose-all [--host <id>] [--json]   Stop sharing all ports on one machine
-  bb connect shares [--host <name-or-id>]           List that host's shares
-  bb connect servers                      List every bb on this account (handle, url, live)
-  bb connect machine-code                 Mint a one-time code that pairs the bb mobile app
-
-  Port sharing works from threads on any enrolled host. In a thread,
-  `bb connect expose <port>` resolves the thread environment's host; outside a
-  thread it defaults to the server host. `--host <name-or-id>` overrides that
-  choice for expose, unexpose, and shares. Server-host URLs use
-  `https://<server-label>--<port>.getbb.app`; machine-host URLs use
-  `https://<machine-label>--<port>.getbb.app` and proxy directly through that
-  machine's daemon. Access is owner-session-gated — only viewers signed into
-  the owner's getbb.app account can open the URL; it is not a public internet
-  link. Agents should run expose from the thread that started the server, share
-  the returned URL, and unexpose from the same thread when it stops.
-  `bb connect status` shows all shares with host + URL. `shares --json` returns
-  the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
-
-  The bb mobile app pairs with a paired bb through bb connect.
-  Settings → Mobile → Add mobile device shows a QR code plus the code as text.
-  `bb connect machine-code` prints the same code, server URL, apex, and expiry
-  (`--json` for `{code, serverUrl, apex, expiresAt}`). The phone scans or
-  types the code and enrolls as a connect machine on the account with its own
-  revocable credential (it appears in the getbb.app dashboard machine list).
-  Codes last 10 minutes and work once; an account-machine-limit failure says
-  so and points at the dashboard to revoke an unused device.
-
-  Remote access is owned by the builtin "connect" plugin (Plugins → connect
-  shows the URL, QR code, mobile pairing, and shared ports). `bb connect off`
-  sets its `remoteAccess` setting and keeps the account signed in;
-  `bb account logout` forgets the pairing. Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; re-enable with
-  `bb plugin enable connect`.
-
-Core owns environment retirement and teardown. After the last live thread is archived or deleted, the provider policy sets the retirement deadline. `bb environment show <id>` reports lifecycle phase and teardown status, attempt and failure message. Failed teardown retries automatically; checkout environments do not retire.
-
-`bb environment cleanup <id> [--json]` is an explicit override for removing an
-unused provider-managed environment before its policy would do so. Normal
-retirement and cleanup retries are automatic; this command is not a routine
-end-of-task step. It overrides retention/keep policy and backoff, rejects live
-threads and unmanaged environments, and succeeds if already removed. The request
-is asynchronous; `bb environment show <id>` reports completion.
-
-Explicit environment or project deletion bypasses the retirement grace, including the never-retire policy. Provider cleanup retains the host, path and resource until removal completes; inspect progress with `bb environment show <id>`.
-
-`bb environment providers --json` includes each choice’s `description` and `icon`, as well as its label, inputs, and availability.
-
-`bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine, and reports each provider's `machineAvailability` per machine in `--json`. Add `--machine <id>` to scope structural eligibility to that machine and print its availability: `available`, `setup-required`, `unavailable` with the plugin's reason, or `unknown` while the background probe has not answered. Listing never waits on a machine; probes run in the background, are cached for ten minutes per project and machine, and are checked afresh for the selected provider and machine during thread creation.
-
-BB source checkout startup
-
-  In the BB repository, `pnpm start:worktree` prepares and serves production
-  artifacts using stable checkout-specific dev data and ports (no Vite).
-  Add `--dryrun` to `pnpm start` or `pnpm start:worktree` to prepare through
-  Turbo, print resolved paths/ports, and exit. It does not launch services,
-  migrate instance data or require ports to be free. It still writes artifacts
-  and may repair native modules. Install dependencies beforehand when needed.
-  Both normal and dry-run startup preserve their runtime policy and use the same
-  dotenv settings. Preparation writes the
-  checkout's build files; warm a separate staging checkout's cache if the live
-  instance still serves those paths. Keep the serving checkout path stable to
-  preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
-  sequence and source programmatic helpers. These are repository maintenance
-  commands, not environment lifecycle hooks or installed `bb` commands.

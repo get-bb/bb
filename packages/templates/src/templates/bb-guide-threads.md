@@ -7,7 +7,9 @@ editingNotes: Keep flags accurate against the CLI implementation. Run the json-f
 ---
 Thread commands
 
-Every command supports --json for machine-readable output.
+Every command supports --json for machine-readable output. Read-only commands
+take a thread ID or --self where supported; mutating lifecycle and messaging
+commands require an explicit ID or --self.
 
 Spawning:
 
@@ -29,7 +31,9 @@ Spawning:
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new managed worktree
-                                   (--new-environment worktree only)
+                                   (--new-environment worktree only; an
+                                   --environment-provider takes its branch
+                                   through --environment-inputs)
     --environment-provider <id>    Run on an environment provider by id (list them with
                                    `bb environment providers`). The provider
                                    provisions where the thread runs; its steps show in the
@@ -42,15 +46,17 @@ Spawning:
     --environment-inputs <json>    JSON value for an --environment-provider that declares
                                    inputs; `bb environment providers --json` prints each
                                    provider's inputs as JSON Schema (null when it takes
-                                   none). Required when the provider declares inputs,
-                                   refused when it does not
+                                   none). Omitted, it defaults to {} when the schema
+                                   accepts an empty object and is otherwise required;
+                                   refused when the provider declares no inputs
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier id the provider lists for the model, such as
                                    default or fast (see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
-    --pinned                       Create the thread in Pinned
+    --pinned                       Create the thread in Pinned (combines with --section;
+                                   unpinning reveals it in that section)
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
@@ -62,7 +68,7 @@ Spawning:
   Execution defaults resolve from explicit flags, live parent execution, and
   remembered project defaults. With no remembered model, bb uses the explicitly
   requested provider or Codex and resolves its provider-reported default model
-  on the target machine. The product reasoning and permission defaults are
+  on the target machine (or the first catalog model when none is marked). The product reasoning and permission defaults are
   medium and auto.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
@@ -90,14 +96,10 @@ Spawning:
   Worktree, and Personal workspace.
 
 Handoff:
-  In the follow-up model picker, Handoff to new thread starts a new-thread
-  draft with a reference to the source thread. Choose any model, including
-  one from the current provider. Exit handoff restores the original execution
-  settings and keeps draft edits, removing the automatic source reference.
-  Closing the picker keeps handoff active; the composer also has Exit handoff.
-  CLI callers can use bb thread spawn with --provider, --model, --environment
-  and --prompt 'Continue from @thread:THREAD_ID ...'. SDK callers use
-  threads.spawn with the corresponding execution, environment and input fields.
+  The app's Handoff to new thread (in the follow-up model picker) starts a new
+  thread that references the source. From the CLI, run bb thread spawn with
+  --provider, --model, --environment and --prompt 'Continue from
+  @thread:THREAD_ID ...'; SDK callers pass the same fields to threads.spawn.
 
 Forking:
 
@@ -136,13 +138,15 @@ Forking:
 Editing a sent message:
 
   bb thread edit-message <id> --message "Replacement text"
+    --message-file <path>               Read the replacement from a file; `-` reads stdin
     --self                              Target the current thread (BB_THREAD_ID)
     --expected-request-sequence <seq>   Select the message and reject a stale target
 
   Without --expected-request-sequence, the latest eligible message is edited.
-  Codex, Claude Code, and Pi threads are supported. The original conversation
-  remains unchanged until the provider prepares the replacement history.
-  Failed and incomplete turns are eligible. If the thread is running,
+  Codex, Claude Code, and Pi threads are supported, including failed and
+  incomplete turns; grouped multi-message requests are not editable. The
+  original conversation remains unchanged until the provider prepares the
+  replacement history. If the thread is running,
   submission stops the current turn and waits for it to settle. It then
   replaces the selected turn and every later turn while retaining workspace
   changes. Unsent queued messages remain in the queue and dispatch after the
@@ -184,7 +188,8 @@ Listing:
     --by <dimension>                       Group the count by host, provider, or project
 
   Counting happens in the database, so use it instead of listing threads and
-  counting rows: `bb thread list` pages a bounded window and would miscount.
+  counting rows: `bb thread list` pages a bounded window and would miscount
+  (SDK: `threads.count({ status, hostId, providerId, projectId, parentThreadId, groupBy })`).
   Archived, deleted, and hidden threads are excluded. Without --by the command
   prints one number; with --by it prints a count per group (threads with no
   host/provider/project group under "-") followed by the total.
@@ -208,6 +213,11 @@ Inspecting:
     --diff-merge-base <branch>             Override merge-base branch for diff
 
   Shows pull request status for the attached environment branch when available.
+
+  `thread context` reads the latest stored context measurement without starting
+  a provider request; `--json` prints `{ usage: ... }` (`null` when unavailable).
+  Claude Code includes an estimated breakdown when available; other providers
+  report totals.
 
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
@@ -237,11 +247,8 @@ Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
   BB renders the correct project-aware link; do not construct thread URLs manually.
-  Pasting a bare thread URL from the current bb origin into a composer turns it
-  into the same thread pill when the target resolves. Undo restores the URL;
-  paste without formatting (Cmd/Ctrl+Shift+V) keeps it literal. Links with query
-  strings or fragments, quoted/code text, and links to other origins stay literal.
-  CLI prompts can use @thread:<id> directly; URL conversion only runs on a user paste.
+  (Pasting a bb thread URL into the app composer converts it to the same mention;
+  CLI prompts are not converted, so use @thread:<id>.)
   Reference one message as @thread:thr_abc123#msg=42, taking the number from
   sourceSeq in `bb thread search --json`. Read it, or a copied message link
   (…/threads/thr_abc123#msg=42), with `bb thread log thr_abc123 --message 42`.
@@ -249,7 +256,7 @@ Opening threads and files in the app:
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
     --line <number>                        Line number to focus
-    --split <placement>                    right, down, left, top, or replace
+    --split <placement>                    right, down, left, top, or replace (default)
   bb thread pane <action> [thread-id]      Maximize, restore, toggle, spotlight, or clear spotlight
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
@@ -258,8 +265,12 @@ Opening threads and files in the app:
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
   Pane actions broadcast to connected BB app windows and affect the matching
-  already-open pane without changing its split tree. Spotlight focuses that
+  already-open pane without changing its split tree, and report how many
+  clients received the action (SDK: `threads.paneAction({ threadId, action })`).
+  Spotlight focuses that
   pane and dims the others; clear-spotlight focuses it and removes split dimming.
+  The app command `pane.maximize.toggle` (default `Mod+Shift+E`) maximizes or
+  restores the focused split pane and can be rebound with `bb settings keyboard set`.
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
   thread-storage files for the current thread. Use this for Markdown or HTML
@@ -309,12 +320,16 @@ Messaging:
   bb thread clear-goal [id]                Clear the provider's active Goal
     --self                                 Target current thread
 
+  cancel-plan and clear-goal wait for the provider to confirm.
   `thread compact` enqueues the same structured /compact turn used by the
   composer. Follow the thread timeline for the eventual compaction result.
   `thread clear` keeps the BB thread, workspace, durable event history, and
   sticky execution settings. Its active timeline starts at one visible
   `Context cleared` boundary, and its next prompt starts a fresh provider
-  conversation in the same thread.
+  conversation in the same thread. It is also the recovery for a send refused
+  with `provider_session_unavailable` (`details.reason` foreign, ambiguous, or
+  invalid: the recorded provider session belongs to another thread or has no
+  usable identity).
 
 Ownership:
 
@@ -368,6 +383,7 @@ Queued messages:
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
   bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
   bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
+                                           create and update also take --message-file <path>
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
@@ -375,11 +391,15 @@ Queued messages:
 
   The `Sender` column identifies agent threads and system notices; user messages
   leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
+  SDK: `threads.queue.list` (all threads) and
+  `threads.queuedMessages.list|send|update|delete` (one thread).
 
-  A queued message is one that could not dispatch yet. Every one carries a
-  typed reason in its `Waiting on` column: waiting for the current turn to
-  finish, for the workspace, for a pending interaction, for a clock (`Send at`),
-  or for a plugin that has queued it. `queue list` with no thread id lists every
+  A queued message is one that could not dispatch yet. It is not in the
+  timeline or `thread log` until it dispatches; thread list rows carry
+  `queuedWork: none|waiting|failed`. Every one carries a typed reason in its
+  `Waiting on` column (`waitingOn.kind` in JSON: `thread-busy`,
+  `turn-starting`, `provisioning`, `host-offline`, `interaction`, `time` for
+  `Send at`, or `plugin` with `pluginId` and a reason). `queue list` with no thread id lists every
   queued row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
   the rows one plugin is holding.
 
@@ -399,7 +419,10 @@ Queued messages:
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
   passed is rejected, as is a bare date, which has no time of day. Several
-  queued rows on one thread are normal: two scheduled sends coexist.
+  queued rows on one thread are normal: two scheduled sends coexist. A
+  scheduled spawn creates a `pending` thread and does no environment work (no
+  worktree, no setup script) until it is due. The SDK takes `sendAt` in epoch
+  milliseconds on `threads.spawn` and `threads.send`.
 
 Persisted panel tabs:
 
@@ -422,14 +445,21 @@ Lifecycle:
   With no --turn it retries the most recent turn, the
   one whose failure put the thread in error; --turn asserts which turn you mean
   and fails when the thread has moved on, as does retrying a thread that has not
-  failed or a turn that already has a retry queued. Without --send-at the retry
+  failed (`no_failed_turn`) or a turn that already has a retry queued
+  (`retry_already_queued`). Without --send-at the retry
   is attempted now, and may still queue behind a busy thread or a plugin.
+  SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
 
+  Archive is not a hard stop: for 30 seconds a running turn and the thread's
+  terminals keep going, and unarchiving within that window leaves everything in
+  place. Use `thread stop` to end a run now.
+
   `thread stop` preserves the thread history, metadata, environment, and future
-  resume behavior. It stops active work and releases an idle agent runtime.
+  resume behavior. It stops active work and releases an idle agent runtime (bb
+  also releases a runtime on its own after 30 idle minutes).
   The command succeeds when no runtime is loaded. Archive a finished hidden
   worker first, then stop it to release memory promptly. A stop that only
   releases an idle runtime adds no interruption: it leaves the timeline and any
@@ -464,29 +494,15 @@ Lifecycle:
 
   Deleting a thread removes its record immediately, but provider-owned
   environment cleanup is asynchronous. Use `bb environment show <id>` to
-  inspect teardown until the lifecycle reaches destroyed.
-
-Read-only commands require a thread ID or --self where supported.
-Mutating thread lifecycle and messaging commands require an explicit ID or --self.
-
-`bb thread context [id]` reads the latest stored context measurement without
-starting a provider request. Use `--self` for the current thread and `--json` for
-`{ usage: ... }` (`null` when unavailable). Claude Code refreshes the estimated
-breakdown after turns and compaction when its SDK supports context inspection.
-A later aggregate-only measurement replaces any older breakdown. Other providers
-continue to expose their available totals.
+  inspect teardown until the lifecycle reaches destroyed. Deleting thread
+  storage first stops processes whose working directory is inside it,
+  including dev servers in nested checkouts (macOS and Linux only).
 
 Lifecycle ownership:
-  spawn and fork accept --lifecycle-owner-thread <id>. SDK arguments use
-  lifecycleOwnerThreadId, also returned in thread responses (null if independent).
-  The owner must be live; projects, hosts and environments may differ.
-  Ownership is immutable. Archive recursively archives/stops dependents; delete
-  recursively deletes them after runtime/storage cleanup. Failed cleanup retries
-  durably. Unarchive the owner before explicitly restoring a dependent. Stop does
-  not cascade. Sidebar parents and ordinary forks retain their existing policies.
-
-Thread storage deletion and orphan cleanup stop processes whose working
-directories are inside that storage before removing files, including dev
-servers in nested checkouts. On macOS and Linux this uses the same SIGTERM
-grace period and SIGKILL fallback as worktree removal. Windows does not
-enumerate process working directories.
+  spawn and fork accept --lifecycle-owner-thread <id> (SDK
+  lifecycleOwnerThreadId, also returned in thread responses, null if
+  independent). The owner must be live; projects, hosts and environments may
+  differ. Ownership is immutable. Archiving the owner archives and stops its
+  dependents; deleting it deletes them. Unarchive the owner before explicitly
+  restoring a dependent. Stop does not cascade. Sidebar parents and ordinary
+  forks keep their own policies.

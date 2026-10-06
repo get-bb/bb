@@ -261,7 +261,7 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
       "{ childRef: string, label: string, status: ItemStatus,",
       "presentation: {",
       "TimelineRow { kind: string, payload, presentation }",
-      "app.slots.experimental_timelineRenderer({ kind, component })",
+      "app.slots.experimental_timelineRenderer({ kind, component });",
     ]);
   });
 

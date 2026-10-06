@@ -9,10 +9,8 @@
 - Windows via Ubuntu on WSL2
 - Windows 11 x64 native host (alpha)
 
-Minimum runtime: Node.js 22.19. Pi no longer sets the floor: its bridge is a
-plugin and the `pi` CLI is user-installed like `codex` and `claude`, so the
-22.19 line is bb's own tested floor (`install-machine.sh` and the root
-`engines` gate on it). A lower floor needs its own test pass before it moves.
+Minimum runtime: Node.js 22.19, enforced by `install-machine.sh` and the root
+`engines` field. Lowering the floor needs its own test pass.
 
 Tested npm package runtimes:
 
@@ -46,47 +44,23 @@ The native Windows host is alpha. It runs from the Windows desktop installer or
 
 ## Mobile app
 
-[`apps/mobile`](../apps/mobile) is a native phone client for a bb server
-(Expo / React Native). It runs no agents, host daemon, or plugins itself; it
-talks to a server over the same HTTP + WebSocket contract as the web app.
+[`apps/mobile`](../apps/mobile) is the iOS and Android client for a bb server.
+It runs no agents, host daemon, or plugins itself: it loads the server's web
+app and adds native screens for pairing, saved servers, device settings, and
+push registration. Install it from Settings → Mobile (iOS TestFlight or the
+Android APK; see [configuration.md](configuration.md)).
 
-- Platforms: iOS first (iPhone; iPad runs the phone layout). Android is
-  planned next; the code is platform-neutral but no Android build has been
-  produced or tested yet.
-- Connecting: **Direct** mode takes any `http(s)://` URL the phone can reach
-  (the iOS Simulator's `http://127.0.0.1:<port>`, a LAN address with
-  `--server-bind-host 0.0.0.0`, a Tailscale Serve HTTPS URL). It is
-  unauthenticated, the same trust model as the browser PWA on a LAN; iOS
-  allows plain `http://` only for LAN IPs and `.local` names, so Tailscale
-  hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
-  machine (QR / code from Settings → Mobile or
-  `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
-  seven-day rolling sessions that end when the device is revoked; see
-  [multiple-devices.md](multiple-devices.md).
-- Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
-  runtime) today; TestFlight / Play builds go through EAS once the Expo
-  account exists (see `apps/mobile/README.md`). No store release yet.
-- The built-in Push notifications plugin works on iOS when the bb server can
-  reach `exp.host`. The server needs no Apple or Google keys. Android push
-  support remains untested.
-
-Not available on the phone (use the web app or desktop for these):
-
-- Plugin **frontends**: nav panels (Automations, Tasks, Docs, GitHub), DOM
-  `settingsSection` pages (connect Remote access, memory, custom
-  instructions, keep-awake), composer customization, message-action callbacks,
-  content scripts, side-chat panels. Plugin backends (tools, CLI, mentions,
-  declarative settings, pending-interaction forms for `ask-user-question` and
-  `secrets`) work.
-- Provider sign-in (`codex login`, `claude /login`): still needs a terminal on
-  the host; the phone assumes a signed-in host.
-- Local editor integration, "Open in …", native folder picker, local daemon
-  features: phones have no host daemon. The remote path browser works.
-- Custom CSS themes and plugin themes: only the built-in palettes map to the
-  native tokens.
-- Splits, drag reorder, the keyboard shortcut editor, desktop browser
-  automation. Text-selection quoting is per paragraph. KaTeX / Mermaid render
-  as source; video files open outside the app.
+- **Direct** mode takes any `http(s)://` URL the phone can reach. It is
+  unauthenticated, the same trust model as a browser on a LAN; iOS allows
+  plain `http://` only for LAN IPs and `.local` names, so Tailscale hosts need
+  Serve HTTPS.
+- **bb connect** mode pairs the phone as a connect machine; see
+  [multiple-devices.md](multiple-devices.md#use-the-bb-mobile-app).
+- Push notifications need the server to reach `exp.host` and a bb connect or
+  HTTPS profile; a plain-HTTP direct profile cannot register.
+- Phones have no host daemon, so local editor integration, "Open in …", and
+  the native folder picker are unavailable; the remote path browser works.
+  Provider sign-in still needs a terminal on the host.
 
 ## Support Boundaries
 

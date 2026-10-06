@@ -1,52 +1,33 @@
 # The bb Provider Bridge Protocol
 
 The one JSON-RPC contract between the agent runtime and every provider
-bridge process. Message schemas live in `@bb/provider-bridge-protocol` and
-are the source of truth for both sides; this document adds what schemas
-cannot express — the division of labor and the grammar: **the bridge knows
-the dialect, the runtime knows the timeline.** A bridge parses its
-provider's traffic into a narrow grammar of semantic deltas
-(`thread/delta`); the runtime's delta assembler owns every timeline
-invariant — id minting, turn/item lifecycle, ordering — and constructs the
-canonical `ThreadEvent`s. The conformance kit enforces the testable rules
-against every bridge in CI.
+bridge process. Message schemas live in `@bb/provider-bridge-protocol`
+(published to plugins as `@get-bb/plugin-sdk/provider-bridge`) and are the
+source of truth for both sides; this document adds what schemas cannot
+express — the division of labor and the grammar: **the bridge knows the
+dialect, the runtime knows the timeline.** A bridge parses its provider's
+traffic into a narrow grammar of semantic deltas (`thread/delta`); the
+runtime's delta assembler owns every timeline invariant — id minting,
+turn/item lifecycle, ordering — and constructs the canonical `ThreadEvent`s.
+The conformance kit enforces the testable rules against every bridge in CI.
+
+The provider declaration, handshake summary, vocabulary, and presentation
+contract are in [provider-plugin-api.md](provider-plugin-api.md); building,
+packaging, and testing a bridge is in the bb-plugin-authoring skill
+(`plugins/bb-guide/skills/bb-plugin-authoring/references/providers.md`).
 
 ## Where a bridge lives
 
-A bridge ships inside its plugin's **`bb.host` artifact** — the same artifact
-a host RPC entry ships in, and one plugin may carry both. It is an _export_,
-not a program:
-
-```ts
-export const experimental_providerBridge = experimental_defineProviderBridge({
-  handleLine,
-  start({ pluginId, dataDir, tempDir }) {},
-  onClose() {},
-});
-```
-
-`bb plugin build` bundles the artifact to `dist/host.js`; the server records
-it content-addressed and hands hosts `{pluginId, digest}`; the daemon
-downloads, verifies, caches and runs it — through a bootstrap that owns
-everything outside the protocol: argv, the plugin-scoped `dataDir`/`tempDir`
-above, the bounded stdin framing, and the signals. A bridge that started
-itself could not be imported by a test, and could not share an artifact with a
-host RPC entry. First-party bridges use exactly this path —
+A bridge is the `experimental_providerBridge` export of its plugin's
+**`bb.host` artifact** ([provider-plugin-api.md](provider-plugin-api.md) §2),
+not a program. The daemon runs it through a bootstrap that owns everything
+outside the protocol: argv, the plugin-scoped `dataDir`/`tempDir`, the
+bounded stdin framing, and the signals. The bundle is self-contained (only
+node builtins stay external) and compiles only against the published
+`@get-bb/plugin-sdk/provider-bridge` (plus `/testing` for its tests).
+First-party bridges use exactly this path —
 `plugins/provider-codex/src/bridge/bridge.ts` is the largest worked example,
 and `examples/plugins/echo-provider` the smallest.
-
-The bundle is self-contained (only node builtins stay external) and may not
-import bb's private `@bb/*` workspace packages at all — an installed plugin
-cannot resolve them. Everything a bridge compiles against is published at
-**`@get-bb/plugin-sdk/provider-bridge`**: the protocol schemas (including
-the `thread/delta` grammar), the bridge kit (JSON-RPC plumbing, tool-call
-and interaction codecs, visibility, dialect-parsing helpers), and the domain
-vocabulary the params reference, and the testing kit a bridge proves itself
-with — the conformance scenarios, the real delta assembler, the JSON-RPC
-harness and the calibration normalizer — is published beside it as
-**`@get-bb/plugin-sdk/provider-bridge/testing`**. In-repo, those are
-implemented by `@bb/provider-bridge-protocol` (the grammar, the
-`assembler`, `conformance` and `testing` subpaths) and `@bb/domain`.
 
 ## Transport
 
@@ -55,7 +36,7 @@ directions. Requests and responses are discriminated on the presence of
 `method`, never on result shape. The two directions use independent id
 spaces.
 
-Hygiene rules (each traces to incident #853):
+Hygiene rules:
 
 - An undecodable or schema-invalid request is answered with
   `INVALID_PARAMS (-32602)` carrying the validation issues. Never silently
@@ -67,88 +48,74 @@ Hygiene rules (each traces to incident #853):
 ## Versioning and capabilities
 
 `initialize` exchanges `{protocolVersion, capabilities}` in both directions.
-The current version is **2** (the narrow-grammar cutover: `thread/delta`
-replaced `thread/event`); the runtime rejects a bridge answering another
-version with a legible startup error, since a version-1 bridge would
-otherwise connect and produce a silently empty timeline. The version bumps
-only for breaking changes; everything additive rides capability tolerance:
-unknown methods answer `-32601`, unknown notifications are ignored, unknown
-capability fields pass through. Bridges version with their plugin, not with
-the daemon — that decoupling is the protocol's reason to exist.
+The current version is **2**; the runtime rejects a bridge answering another
+version with a legible startup error. The version bumps only for breaking
+changes; everything additive rides capability tolerance: unknown methods
+answer `-32601`, unknown notifications are ignored, unknown capability fields
+pass through. Bridges version with their plugin, not with the daemon.
 
 Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 `threadArchive`, `threadRename`, `threadGoalClear`, `fork`,
-`approvalEnforcedBy`, `grammarVersions`, `steerMode`). They are reported by
-the code that implements them, so they cannot drift from behavior.
+`approvalEnforcedBy`, `grammarVersions`, `steerMode`, `skills`). They are
+reported by the code that implements them, so they cannot drift from
+behavior. The runtime never sends a capability-gated method to a bridge that
+did not advertise it. A handshake fact may only _narrow_ what the provider's
+declaration advertises (a declared fork affordance can turn out unavailable
+for this agent), never widen it.
+
 `grammarVersions` is the inclusive `[min, max]` range of the `thread/delta`
-grammar the bridge speaks (default `[2, 2]`: a bridge that says nothing
-speaks the grammar that shipped with the protocol version it negotiated),
-which is how the vocabulary can change without a protocol bump. The runtime
-states its assembler's range in the `initialize` params and both sides use
-the highest common version; today the assembler speaks **v3 only**
-(`[3, 3]`), so every bridge reports `[3, 3]` and a bridge whose range
-misses 3 — including one that predates the field — is refused at spawn with
-a legible error. `steerMode` says whether `turn/steer` is
-injected into the live model loop (`inject`) or held for the next prompt
-boundary (`queue`, the default and the conservative reading). The runtime never sends a
-capability-gated method to a bridge that did not advertise it. A handshake
-fact may only _narrow_ what the provider's declaration advertises (a
-declared fork affordance can turn out unavailable for this agent), never
-widen it.
+grammar the bridge speaks, which is how the vocabulary can change without a
+protocol bump. The runtime states its assembler's range in the `initialize`
+params and both sides use the highest common version. The assembler speaks
+**v3 only** (`[3, 3]`), so a bridge reports `[3, 3]`; a range that misses 3 —
+including the `[2, 2]` default of a bridge that omits the field — is refused
+at spawn with a legible error.
+
+`steerMode` declares how the bridge delivers `turn/steer` while a turn is live
+(`inject` feeds it into the running model loop; `queue`, the default, holds it
+for the next prompt boundary). It is recorded, but nothing in the runtime,
+server, or clients acts on it yet: the runtime sends `turn/steer` either way,
+and a steer whose turn is gone is dropped on the bridge's `staleTurn` recovery
+hint whatever the mode.
 
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are
 different: their support is declared by each provider through
-`bb.providers.register`, so the server can skip an
+`bb.providers.register` (`maintenance`), so the server can skip an
 unsupported host probe and clients can omit providers that never expose usage
 or installation management before a bridge has started. A shared bridge may
 declare health or usage for every provider it owns and still return
 `{ supported: false }` for one provider id; a successful usage result may
 likewise contain an empty `windows` array.
 
-Installation has a deliberately split execution boundary. The bridge owns
-provider-specific discovery, version/source comparison, and the install/update
-decision. `provider/installation/status` returns that state plus a display-only
-command. A status request may include a typed operation requirement such as
-`thread_rewind`; the bridge owns the minimum provider version needed for that
-operation and reports it through the ordinary installation status. When the
-status request includes `checkUpdates: false`, Codex, Claude Code, and Pi only probe
-the local executable and version, without npm registry, global-package, or
-doctor discovery. `latestVersion` and `npmGlobalPackageVersion` are unknown
-(`null`); `versionUnsupported` still identifies a known unsupported local version.
-Omitting `checkUpdates` defaults to full discovery for Settings and install/update
-actions. The daemon sends `false` for startup compatibility gates. This optional
-bridge-only field preserves older bridges' passthrough request parsing; older
-providers can still perform a full probe. Server/daemon wire fields are unchanged.
-When the host daemon gates a thread start or rewind on that status, it remembers the
-answer per provider, bridge launch, and requirement for a few minutes rather
-than probing before every thread, and forgets it after an install or update
-it ran itself or a shell-environment change. An answer with
-`versionUnsupported: true` is never remembered, and neither is one with
-`installed: false` from a bridge that reports a `minimumSupportedVersion`,
-because an install that arrives without a shell-environment change could be
-too old; a not-installed answer from a bridge that reports
-`minimumSupportedVersion: null` is remembered like a supported one, since
-that bridge can never reject the start. When the
-user acts, `provider/installation/run` rechecks the state and
+Installation has a split execution boundary. The bridge owns
+provider-specific discovery, version/source comparison, and the
+install/update decision. `provider/installation/status` returns that state
+plus a display-only command. A status request may include a typed operation
+requirement such as `thread_rewind`; the bridge owns the minimum provider
+version that operation needs and reports it through the ordinary status.
+With `checkUpdates: false` (the daemon sends it for startup compatibility
+gates) the bridge probes only the local executable and version, without
+registry, global-package, or doctor discovery: `latestVersion` and
+`npmGlobalPackageVersion` are `null`, and `versionUnsupported` still
+identifies a known unsupported local version. Omitting `checkUpdates` means
+full discovery, as Settings and install/update actions use. When the daemon
+gates a thread start or rewind on that status, it remembers a passing answer
+for a few minutes (until it runs an install or update itself, or the shell
+environment changes). It never remembers `versionUnsupported: true`, nor
+`installed: false` from a bridge that reports a `minimumSupportedVersion`.
+When the user acts, `provider/installation/run` rechecks the state and
 returns either `available: false` or a typed executable/argument plan with a
-post-run verification rule. The host daemon—not the bridge, server, or browser—
-chooses the environment and working directory, serializes installations,
-supervises the process, streams output, and asks the bridge for fresh status to
-verify success. Raw executable arguments never cross from the host daemon to a
-product client.
+post-run verification rule. The host daemon—not the bridge, server, or
+browser—chooses the environment and working directory, serializes
+installations, supervises the process, streams output, and asks the bridge
+for fresh status to verify success.
 
-Every capability listed there gates a request method, which is why the set
-holds no compaction fact. Compaction is triggered by a standalone builtin
-`/compact` prompt travelling the normal turn pipeline, which each bridge maps
-to its provider's compaction command; there is no compact request method, so
-there is nothing to withhold and nothing for a handshake fact to gate. The
-`/compact` affordance is gated solely by the provider declaration's
-`supportsManualCompaction`, which the ACP bridge needs per agent because the
-agents it serves differ on it — a process-level handshake, which runs before
-any session exists, cannot answer that question at all. A structured
-compaction request is future work — reintroduce it only with a sender, and
-only then does it earn a handshake capability.
+Every handshake capability gates a request method, which is why the set holds
+no compaction fact: there is no compact request method. Compaction is a
+standalone builtin `/compact` prompt travelling the normal turn pipeline,
+which each bridge maps to its provider's compaction command, and the
+affordance is gated solely by the declaration's `supportsManualCompaction`.
 
 ## The timeline lane: `thread/delta`
 
@@ -162,11 +129,10 @@ finished `ThreadEvent`. The schemas in
 `@bb/provider-bridge-protocol/src/thread-delta.ts` are the source of truth
 for the grammar.
 
-The runtime's **delta assembler** (`@bb/agent-runtime`, one per bridge
-adapter) consumes the deltas and owns every timeline invariant:
+The runtime's **delta assembler** (one per bridge adapter) consumes the
+deltas and owns every timeline invariant:
 
-- **Id minting.** Turn and item ids are assembler-minted
-  (entropy + serial, the #1224 discipline held centrally, reset per
+- **Id minting.** Turn and item ids are assembler-minted (reset per
   `session.reset`). Deltas carry provider-native join keys (tool-call ids,
   stream keys, parent refs, optional provider turn ids) and the assembler
   holds the bidirectional provider↔bb maps — both for scoping incoming
@@ -175,7 +141,7 @@ adapter) consumes the deltas and owns every timeline invariant:
   provider-native interaction requests (`providerNativeIds: true`). An
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
-  the payload kind (docs/provider-plugin-api.md §4).
+  the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).
 - **Turn lifecycle.** Only `turn.open`, a claiming `turn.boundary`
   (`claimIfIdle`), and accepted-input lifecycle settlement ever open a
   turn; item/stream deltas never do. Accepted input queues until a turn
@@ -206,111 +172,89 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   cumulative totals (codex) sends both as reported, and a provider that
   reports per turn (claude, pi) sums `last` into `total` itself
   (`addTokenUsage` in the bridge kit), resetting where it sends
-  `session.reset`. The context meter is always the separate `contextWindow`
+  `session.reset`. The breakdown keeps each provider's own semantics:
+  `inputTokens` excludes cache reads/writes for Claude and Pi and includes
+  them for Codex; `cachedInputTokens` is read + write for Claude/Pi and the
+  reported cached count for Codex; reasoning tokens are not an extra amount
+  to add to output. `cacheReadInputTokens` and `cacheWriteInputTokens`
+  carry finite nonnegative reported counts: omission means unreported,
+  explicit zero means reported zero, and `addTokenUsage` sums each field
+  independently, leaving it absent until first reported. Do not infer missing
+  counts as zero or treat cached totals as billable cache reads; these counts
+  change neither the context meter nor provider-reported usage windows.
+- **Context meter.** The context meter is always the separate `contextWindow`
   delta, which may name a vouched `providerTurnId` (codex sends one beside
-  each `usage`).
-  The breakdown preserves legacy provider semantics: `inputTokens` excludes
-  cache reads/writes for Claude and Pi and is inclusive for Codex;
-  `cachedInputTokens` is read + write for Claude/Pi and the reported cached
-  count for Codex. `outputTokens`, `reasoningOutputTokens`, and `totalTokens`
-  retain provider behavior; reasoning is not an extra amount to add to output.
-  Claude totals input + output + legacy cached tokens. Pi keeps a positive
-  provider total, otherwise uses that same sum. Codex forwards totals verbatim.
-
-  `cacheReadInputTokens` and `cacheWriteInputTokens` independently preserve
-  finite nonnegative reported counts. Omission means unreported, including
-  historical events; explicit zero means reported zero. Pi treats invalid
-  cache counts as unavailable at the provider boundary, preserving valid
-  usage, reply text, errors, and turn completion. Claude maps
-  `cache_read_input_tokens` / `cache_creation_input_tokens`, Pi maps
-  `cacheRead` / `cacheWrite`, and Codex maps `cachedInputTokens` /
-  `cacheWriteInputTokens`. Older Codex versions may omit writes.
-  `addTokenUsage` sums each reported field independently, leaving it absent
-  until first reported. With mixed reporting, these are reported subtotals,
-  not a guarantee of complete coverage. Do not infer missing counts as zero
-  or use legacy cached totals as universally billable cache reads.
-
-  Cache counts are translated at the provider boundary and retained through
-  shared event validation, daemon forwarding, stored JSON, and SDK/CLI event
-  reads. They do not change the separate context meter or provider-reported
-  account usage/cost windows. Pricing requires provider/model rates, cache
-  duration and reporting coverage that this breakdown does not establish.
-  The additive fields require host-daemon protocol 209 because older daemon
-  schemas strip them; old stored events remain readable without a migration.
-
+  each `usage`). It may carry an optional `snapshot` (`ContextSnapshot`,
+  validated by `contextSnapshotSchema`): capture time, provider session/turn
+  identity, model, token totals, compaction threshold, estimate status, and
+  categories. Each `ContextCategory` has a provider-defined id and label,
+  token counts, entries, and an accounting kind (`used`, `free`, `reserved`,
+  or `deferred`); each `ContextEntry` has an id, label, and token count
+  already included in its parent category, and entries may describe only
+  part of the category total.
 - **Streamed-text batching.** Coalescing is assembler policy, not bridge
-  policy: within a per-stream flush window (`textDeltaFlushMs`, 100ms
-  default, 0 disables) consecutive streamed-text events — assistant/
-  reasoning/plan deltas and command/fileChange output deltas, including the
-  ones the assembler's own snapshot diffing produces — concatenate into a
-  single event of the same type, so chatty providers stop producing one
-  timeline event per token. The first delta of a fresh stream emits
-  immediately (time-to-first-token unchanged); buffers flush trailing-edge
-  with no timers (the thread's next traffic once the window elapses, stream
-  close, session boundaries); and every non-batchable event is an ordering
-  barrier — coalescing never reorders text relative to item opens/closes,
-  turn events, errors, or other streams' flushes. An output `reset` is never
-  absorbed into a concatenation; `session.reset` flushes buffered text
-  (assembled against the old session's still-valid ids) before dropping the
-  thread's state.
+  policy: within a per-stream flush window consecutive streamed-text events
+  concatenate into one event, the first delta of a fresh stream emits
+  immediately, and every non-batchable event is an ordering barrier, so
+  coalescing never reorders text relative to item opens/closes, turn events,
+  errors, or other streams. Bridges forward text as it arrives.
 - **Settlement.** `session.ended` and settling errors close open turns and
   items with the right statuses.
 
 ### Grammar v3
 
-The target provider-plugin surface ([provider-plugin-api.md](provider-plugin-api.md))
-grew the delta vocabulary into grammar v3: new union members and optional
-fields beside the v2 grammar, plus one streaming dialect and one usage
-dialect replacing v2's two of each (`message.delta`/`message.close` and
-`usage.turn`/`usage.exact` are deleted). The protocol version stays at 2 —
-the envelope and the method vocabulary did not change — and the grammar
-range is what gates a bridge: every bridge in this repo reports
-`grammarVersions: [3, 3]`.
+The current grammar (`grammarVersions: [3, 3]`) includes:
 
 - **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
-  `imageGeneration` (`prompt`, `path`, optional retained `result`, `error`, and
-  `transparentBackground`),
-  `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for
-  codex `spawnAgent`/`wait`, the Claude `Agent` tool, and backgrounded
-  agents, which replaced `thread/openWork`), and `planSteps` (a structured plan
-  snapshot as an item, which replaced the turn-level `turn.plan` delta once
-  the ACP bridge — its last speaker — migrated).
+  `imageGeneration` (`prompt`, `path`, optional retained `result`, `error`,
+  and `transparentBackground`), `delegation` (`childRef`, `label`,
+  `background`, `summary?`; one shape for codex `spawnAgent`/`wait`, the
+  Claude `Agent` tool, and backgrounded agents), and `planSteps` (a
+  structured plan snapshot as an item).
 - **`presentation`** on `item.open` and `item.close`, the one place it
-  travels: `label {pending, completed}`, `icon {glyph}` (a host glyph such
-  as `"FileText"`, or one of the emitting plugin's declared icons as
-  `"<pluginId>/<name>"` from `bb.branding.experimental_icons`; the server
-  replaces a namespaced glyph the plugin did not declare with
-  `provider/unhandled` at ingest — never a path or bytes), `title?`,
-  `detail?` (≤ 280 chars), `suppress?`, `tint?`. The assembler persists it
-  on the canonical item (the close's value wins, the open's survives when
-  the close carries none), so the row renders after the plugin is gone and
-  mobile renders every kind without plugin code. Optional for core shapes
-  until the v2 paths are deleted; required when the shape is `extension`.
-  Conformance rule `presentation/icon-namespaced-declared` checks the
-  namespaced form for bridges that opt in with an `icons: { pluginId, names }`
-  fixture field (no result when the field is omitted); a `server: "bb"` tool
-  row is exempt, its glyph being checked against the tool's own plugin.
+  travels (shape and glyph rules in
+  [provider-plugin-api.md](provider-plugin-api.md) §3; `detail` ≤ 280
+  chars). The assembler persists it on the canonical item (the close's value
+  wins, the open's survives when the close carries none), so the row renders
+  after the plugin is gone. Optional for core shapes, required when the shape
+  is `extension`. Conformance rule `presentation/icon-namespaced-declared`
+  checks the namespaced glyph form for bridges that opt in with an
+  `icons: { pluginId, names }` fixture field; a `server: "bb"` tool row is
+  exempt, its glyph being checked against the tool's own plugin.
 - **bb-injected tools carry their presentation.** Every `dynamicTools[]`
-  definition on `thread/start`, `thread/resume` and `thread/fork` carries the
-  `presentation` the server resolved for it (from the owning plugin's
-  `presentation`, or a generic label and the plugin's glyph). A bridge stamps that presentation, beside `server: "bb"`,
-  on the `item.open`/`item.close` of every call to the tool, so no tool-name
-  table labels bb tools anywhere downstream. Optional on the wire: a definition recorded before the field existed
-  presents generically, and the committed recordings predate it, so it stays
-  optional until those are re-minted.
+  definition on `thread/start`, `thread/resume` and `thread/fork` may carry
+  the `presentation` the server resolved for it (from the owning plugin's
+  `presentation`, or a generic label and the plugin's glyph). A bridge stamps
+  that presentation, beside `server: "bb"`, on the `item.open`/`item.close`
+  of every call to the tool; a definition without one presents generically.
 - **Extension kinds** `"<pluginId>/<name>"`: the `extension` item shape
   (opaque JSON `payload`; its lifecycle delta must carry a `presentation`)
-  and the thread-scoped
-  `extension.state` delta (latest snapshot wins per kind). Only the namespace
-  is validated on the wire; the server validates payloads against the
-  plugin's declared schemas at ingest, and refuses a kind whose plugin is not
-  the one that registered the thread's provider — a bridge emits only its own
-  plugin's kinds.
+  and the thread-scoped `extension.state` delta (latest snapshot wins per
+  kind). Only the namespace is validated on the wire; the server validates
+  payloads at ingest against the plugin's declared `extensionKinds` (64 KiB
+  cap) and holds the kind to the emitter rule
+  ([provider-plugin-api.md](provider-plugin-api.md) §3). A kind another
+  plugin owns, an undeclared kind, or a schema miss is persisted as a
+  `provider/unhandled` in the same batch slot, never dropped and never
+  stored unvalidated.
 - **`provider/recovery`** is a bridge → runtime _notification_ beside
   `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
 authRequired | restartRecommended | staleTurn | rateLimited, message,
 retryable }`. The runtime acts on the kind and never matches error text.
   See "Recovery hints" below for the actions and the carrier.
+
+The assembler builds every core kind: `fileRead`, `search`,
+`imageGeneration` and `planSteps` open pending and settle from the terminal
+shape like `command`; an image generation's terminal `result` is preserved
+for retained-output storage while its prompt and path remain timeline
+metadata; a foreground `delegation` settles through the turn-scoped
+`item/completed`, and a `background: true` delegation is thread-attached like
+a background task — its `item.progress` snapshots and its `item.close` ride
+the thread-scoped `item/delegation/progress` and `item/delegation/completed`
+events, need no open turn, and survive turn settlement and `session.ended`.
+An `extension` shape becomes the canonical `extension` item (opaque payload,
+the delta's presentation); `extension.state` becomes the thread-scoped
+`thread/extensionState/updated` event.
 
 ### Injected skills
 
@@ -359,47 +303,23 @@ in (`kind: "authRequired"`). **No request to reject? Send
 `provider/recovery`.** The notification is for unsolicited hints
 only — a terminal 401 or 429 the provider raised mid-turn, an SDK auth
 failure — and carries `threadId` for a session-scoped condition. That
-`threadId` must name a thread the sending process hosts: a process speaks only
-for its own threads, so a hint naming any other thread is dropped (with a
-stderr line) before it can act on another process's bridge. Never send
-both for one event. `data` is optional and additive; a response without it,
-or with a malformed one, is a plain failure, and a request that times out or
-whose bridge exits has no response and therefore no hint.
+`threadId` must name a thread the sending process hosts: a hint naming any
+other thread is dropped (with a stderr line). Never send both for one event.
+`data` is optional and additive; a response without it, or with a malformed
+one, is a plain failure, and a request that times out or whose bridge exits
+has no response and therefore no hint.
 
 A launch that fails because the provider's own CLI is not installed is a
 classification, not a recovery hint: the bridge rejects the request by passing
 `MISSING_EXECUTABLE` (-32004) to `sendError` instead of the generic
 `BRIDGE_ERROR`. The host daemon reports that rejection as `missing_executable`
 without reading the message, so the picker can say the CLI is missing whatever
-prose the bridge chose. A bridge that keeps using `BRIDGE_ERROR` is classified
-generically, as before.
+prose the bridge chose. A `BRIDGE_ERROR` is classified generically.
 
-A bridge that can heal itself does not ask the runtime to: the codex bridge
-rebuilds a thread's `codex app-server` child before the next turn after a
-terminal account error, and the claude bridge replaces its CLI child the same
-way; both still emit `authRequired`/`rateLimited` so the failure is typed.
-
-The assembler builds every v3 core kind: `fileRead`, `search`,
-`imageGeneration` and `planSteps` open pending and settle from the terminal
-shape like `command`; an image generation's terminal `result` is preserved
-for retained-output storage while its prompt and path remain timeline metadata;
-a foreground `delegation` settles through the turn-scoped `item/completed`,
-and a `background: true` delegation is thread-attached like a background
-task — its `item.progress` snapshots and its `item.close` ride the
-thread-scoped `item/delegation/progress` and `item/delegation/completed`
-events, need no open turn, and survive turn settlement and `session.ended`.
-The assembler reports `grammarVersions: [3, 3]` (`ASSEMBLER_GRAMMAR_VERSIONS`),
-v3 only, as the handshake section above says. An `extension` shape
-becomes the canonical `extension` item (opaque payload, the delta's
-presentation); `extension.state` becomes the thread-scoped
-`thread/extensionState/updated` event. The server validates both payloads
-against the owning plugin's declared `extensionKinds` schema at
-ingest (64 KiB cap), and holds the kind to the same emitter rule as a
-namespaced presentation glyph: the plugin the kind names must be the plugin
-that registered the thread's provider. A kind another plugin owns, an
-undeclared kind, or a schema miss is persisted as a
-`provider/unhandled` in the same batch slot, never dropped and never stored
-unvalidated.
+A bridge that can heal itself does not ask the runtime to (the codex and
+claude bridges rebuild a thread's provider child before the next turn after a
+terminal account error), but it still emits `authRequired`/`rateLimited` so
+the failure is typed.
 
 ## Identifiers
 
@@ -417,12 +337,11 @@ provider session among all of that provider's sessions on the host, so never
 mint it from a per-process counter. bb refuses to resume a handle that another
 thread announced first, or announced in the same millisecond.
 
-The central-minting rule is the #1320 lesson made structural: a provider can
-inject arbitrary identifiers on its own wire, but the ids that reach bb's
-persistence are always minted by bb-owned assembler code. Bridges forward
-provider-native ids as vouched join keys on deltas; the assembler translates
-in both directions, so a bridge does zero id translation — including for a
-provider that mints its own turn ids (codex).
+A provider can inject arbitrary identifiers on its own wire, but the ids that
+reach bb's persistence are always minted by bb-owned assembler code. Bridges
+forward provider-native ids as vouched join keys on deltas; the assembler
+translates in both directions, so a bridge does zero id translation —
+including for a provider that mints its own turn ids (codex).
 
 ## Turn lifecycle
 
@@ -441,20 +360,18 @@ it:
    so correlation is explicit and the runtime never guesses which user
    message opened a turn; the assembler queues it until a turn opens (or
    emits into the already-open turn for steers) and constructs
-   `turn/input/accepted` itself. Claude emits `turn.open` together with
-   acceptance once the SDK consumes the prompt, before waiting for model
-   output. Follow-up input can then steer into that turn during provider
-   preparation. SDK consumption failure must not open a turn; stopping after
-   consumption must settle it even if no output arrived. A recovered task
-   notification cannot settle this accepted user turn before its response
-   begins. Settlement rides `turn.boundary
+   `turn/input/accepted` itself. A bridge may emit `turn.open` together with
+   acceptance as soon as the provider takes the prompt, before model output,
+   so follow-up input can steer into that turn; a prompt the provider never
+   took must not open a turn, and stopping after it was taken must settle the
+   turn even if no output arrived. Settlement rides `turn.boundary
 { status }`; a boundary with `claimIfIdle: true` owns a turn only when
    accepted input is pending, so a provider-terminal fallback signal on an
    idle thread settles nothing. A prompt the provider handles without doing
    work (claude `/clear`) still produces a `turn.open` + `turn.boundary`
-   pair — zero-delta acceptance is the #1431 hung-thread class. Conformance
-   rule `turn/settles-without-activity` checks this for bridges that opt in
-   with a `zeroWorkPromptInput` fixture prompt.
+   pair, or the thread hangs. Conformance rule
+   `turn/settles-without-activity` checks this for bridges that opt in with a
+   `zeroWorkPromptInput` fixture prompt.
 2. Item and stream deltas never open a turn. A turn-requiring delta that
    arrives with no turn open surfaces its `noTurnFallback` payload as a
    thread-scoped `provider/unhandled`, or is dropped when the bridge
@@ -472,9 +389,8 @@ it:
    active turn as interrupted (the bridge emits the settling deltas —
    `turn.boundary { interrupted }` plus explicit closes for provider-owned
    open items); `release` detaches an idle session and must not fabricate an
-   interruption (#1584). The bb turn ids these commands carry are
-   reverse-mapped to the bridge's provider-native turn ids by the adapter,
-   so the bridge compares its own ids.
+   interruption. The bb turn ids these commands carry are reverse-mapped to
+   the bridge's provider-native turn ids, so the bridge compares its own ids.
 6. **After `thread/stop` the bridge holds nothing for the thread.** The
    runtime detaches the thread the moment the stop is answered, whichever
    the intent, so everything the bridge still owes for that thread — the
@@ -484,10 +400,10 @@ it:
    provider that settles an interrupt asynchronously waits for it, bounded,
    and settles the turn itself on timeout; the session on disk stays
    resumable either way. Conformance rule
-   `stop/interrupt-settles-before-result`; the runtime backstops a session
-   construction that timed out on its side with a best-effort
-   `thread/stop { release }` before it forgets the thread, and sweeps a
-   bridge's process group when the bridge dies unexpectedly.
+   `stop/interrupt-settles-before-result`. The runtime may send a
+   best-effort `thread/stop { release }` for a session construction that
+   timed out on its side, and sweeps a bridge's process group when the bridge
+   dies unexpectedly.
 
 ## Item lifecycle
 
@@ -495,10 +411,9 @@ Assembler-owned invariants over the assembled timeline:
 
 1. **Every item's first event is `item/started`.** The assembler synthesizes
    the opening event for delta-first text streams (`item.textDelta`), so a
-   bridge streams without bookkeeping. Output
-   deltas (`item.outputDelta`) never synthesize — a command item without
-   its command would be worse than the anomaly — but still register the key
-   so a later open correlates.
+   bridge streams without bookkeeping. Output deltas (`item.outputDelta`)
+   never synthesize — a command item without its command would be worse than
+   the anomaly — but still register the key so a later open correlates.
 2. `item.close` always carries the full terminal item shape. The assembler
    settles uniformly: a same-shaped open item settles under its minted id
    with the carried shape winning; a different-shaped open item is settled
@@ -511,20 +426,18 @@ Assembler-owned invariants over the assembled timeline:
 4. Completion follows content from the bridge's perspective: if the provider
    emits completion before the content it refers to (codex `item.close`
    before the stdout record), the bridge holds the close delta and flushes
-   in order. Output may be delayed, never lost (#1400).
+   in order. Output may be delayed, never lost.
 
 ## Host-side enforcement
 
-The conformance kit only covers bridges someone ran it against, and a bridge
-now ships as a plugin artifact that may be third-party. So the host also
-applies the grammar live, at its event intake (`ThreadEventGrammar`, over
-the assembler's output): a
-streaming event for an item no `item/started` opened, a second settlement of
-an item, a duplicate `turn/started` or `turn/completed`, and a
-`turn/completed` for a turn that never started are dropped before any runtime
-state changes, each with a warning naming the rule. An item that settles
-without opening is the one non-conformance kept rather than dropped — it
-carries the whole item, so refusing it would lose real content.
+The conformance kit only covers bridges someone ran it against, so the host
+also applies the grammar live at its event intake: a streaming event for an
+item no `item/started` opened, a second settlement of an item, a duplicate
+`turn/started` or `turn/completed`, and a `turn/completed` for a turn that
+never started are dropped before any runtime state changes, each with a
+warning naming the rule. An item that settles without opening is kept rather
+than dropped — it carries the whole item, so refusing it would lose real
+content.
 
 ## Sessions
 
@@ -538,7 +451,7 @@ carries the whole item, so refusing it would lose real content.
    place, a resume fallback, internal recovery — it first emits any
    settlement deltas for in-flight work, then `session/replaced` with a
    human-readable reason and `contextLost` when provider-side context did
-   not survive. Invisible replacement is the #1268 incident.
+   not survive.
 3. Execution options ride every command. The bridge reconciles them
    internally; the runtime never diffs. Instructions are frozen for the life
    of a session and apply at the next construction.
@@ -552,8 +465,7 @@ carries the whole item, so refusing it would lose real content.
    sub-agent as a `delegation` (codex does), re-open it when the agent works
    again, and settle it — as failed — when your provider child dies, or the
    runtime keeps refusing to reap a thread that no longer exists on your
-   side. There is no side channel for this (the former `thread/openWork`
-   notification is gone; a runtime ignores it).
+   side. There is no side channel for this.
 
 ## Ordering guarantees
 
@@ -588,84 +500,64 @@ stays strict.
 Bridges may spawn provider processes underneath themselves (the codex bridge
 supervises per-thread app-server children); process topology is
 bridge-internal and invisible to the runtime. Bridges that spawn children
-own the exit-race lessons the runtime learned (#1402): finalize on `close`
-not `exit` with a bounded grace, verify currency in stream callbacks, and
-never let a descendant holding an inherited pipe inject into a fresh
-session. The bridge's own environment is constructed by the runtime from an
-allowlist; bridges construct their children's environments the same way and
-must not leak their own inherited env downward (#1366, #1545).
+finalize on `close`, not `exit`, with a bounded grace, verify currency in
+stream callbacks, and never let a descendant holding an inherited pipe inject
+into a fresh session. The bridge's own environment is constructed by the
+runtime from an allowlist; bridges construct their children's environments
+the same way and must not leak their own inherited env downward.
 
 ## Record mode
 
-Set `BB_PROVIDER_BRIDGE_RECORD_DIR` to a directory and every bridge process
-tees the lines that cross its two boundaries into NDJSON files. The bootstrap
-(`bridge-worker-entry.ts`) records the runtime wire for every bridge, first-
-or third-party. A bridge that spawns its provider child records the provider
-wire by calling `experimental_recordProviderChildIo(child, { threadId })`
-right after `spawn()`; the call is a no-op when record mode is off. A bridge
-whose provider pipe belongs to an SDK checks
+Set `BB_PROVIDER_BRIDGE_RECORD_DIR` to a directory in the host daemon's
+environment and every bridge process tees the lines that cross its two
+boundaries into NDJSON files. The bootstrap records the runtime wire for
+every bridge, first- or third-party. A bridge that spawns its provider child
+records the provider wire by calling
+`experimental_recordProviderChildIo(child, { threadId })` right after
+`spawn()`; the call is a no-op when record mode is off. A bridge whose
+provider pipe belongs to an SDK checks
 `experimental_isProviderBridgeRecording()` and takes the spawn over (the
 Claude bridge does this through the Agent SDK's `spawnClaudeCodeProcess`
-seam). The pi bridge also records the bb extension's channel (fd 3 / fd 4)
-on the same two provider lanes, each message wrapped as
-`{ "bbChannel": <message> }`, so a replay can route it back onto the fds.
+seam). Extra provider channels may be recorded on the same two provider
+lanes, each message wrapped as `{ "bbChannel": <message> }`, so a replay can
+route it back (the pi bridge does this for its extension fds).
 
-Layout: `<dir>/<threadId>/<direction>.ndjson`, with `_process` for lines that
-belong to no thread (`initialize`, `model/list`, provider health, and the
-children those spawn). The four directions are `runtime→bridge`,
-`bridge→runtime`, `provider→bridge`, and `bridge→provider`. One entry per
-line: `{ "ts", "run", "seq", "dir", "line" }`. `seq` is one counter across
-every lane of the process and `run` identifies the process, so the files of a
-thread merge back into their exact order even across a bridge restart.
-Responses, which carry only an id, land in the scope of the request they
-answer. Nothing buffers: each line is appended as it crosses.
+Layout: `<dir>/<providerId>/<threadId>/<direction>.ndjson`, with `_process`
+in place of `<threadId>` for lines that belong to no thread (`initialize`,
+`model/list`, provider health, and the children those spawn). The four
+directions are `runtime→bridge`, `bridge→runtime`, `provider→bridge`, and
+`bridge→provider`. One entry per line: `{ "ts", "run", "seq", "dir", "line" }`.
+`seq` is one counter across every lane of the process and `run` identifies
+the process, so the files of a thread merge back into their exact order even
+across a bridge restart. Responses, which carry only an id, land in the scope
+of the request they answer. Nothing buffers: each line is appended as it
+crosses. Provider children never inherit the variable, so a recorded provider
+never records itself.
 
-The daemon forwards the variable to the bridges it spawns and the runtime
-appends the provider id, so a daemon started with it writes
-`<dir>/<providerId>/<threadId>/…`. `withoutBridgeRuntimeEnv` and the
-`BB_*` allowlist both strip the variable from provider children, so a
-recorded provider never records itself.
-
-Recordings are the input of the parity harness
-(`packages/provider-bridge-protocol/src/testing/parity.ts`): the provider
-lanes replay into a fake child (`replay-provider-child.mjs`, for which the
-recording is the script), the runtime lanes replay into a bridge, and two
-checkouts are diffed on the assembled events and projected rows with
-`pnpm parity --old <checkout> --new .` (`@bb/provider-parity`). Each leg
-assembles and projects with its own checkout's code. Differences a migration
-PR intends go in `recordings/parity-allowlist.json` with the PR and reason;
-an entry that masks nothing is reported stale and fails the run.
-
-Redacted recordings live under `packages/provider-bridge-protocol/recordings`,
-one `<provider>/<cell>` directory per live-QA matrix cell with a
-`manifest.json` (provider, cell, CLI version, date, what the session did);
-`scripts/provider-recordings/redact.mjs` and `package-cells.mjs` produce
-them. `recordings/row-counts.json` pins each cell's event, row,
-`provider/unhandled`, and grammar-drop counts; `parity.self.test.ts` checks
-the pins and replays every cell through the current bridge on each commit,
-and `UPDATE_PARITY_ROW_COUNTS=1` rewrites the pins deliberately. Raw
-recordings stay out of git.
-
-A recording is never rewritten. When a bridge change alters what the bridge
-emits for a recording, `pnpm --filter @bb/provider-parity rerecord
-[--plan-with <recording-time checkout>]` writes the bridge's current output
-to `bridge→runtime.current.ndjson` beside the recorded lane; the self-suite
-pins and compares against that file when it exists, while `pnpm parity`
-still paces a pre-migration leg from the recorded lane (and the current leg
-from the current one). `pnpm parity --dump-dir <dir>` writes both legs'
-normalized event and row lists per cell, for allowlist entries that must
-name a list index. Re-recorded lanes pass through `redact.mjs` before they
-are written. The committed current lanes are the v3 bridges' output for the
-v2 recordings: the stack's assembler reads only v3, so every replayable cell
-carries one, and they assemble to the same pinned counts as the recordings.
+Recordings are the input of the replay and parity kit published in
+`@get-bb/plugin-sdk/provider-bridge/testing` (how a plugin uses it: the
+authoring skill's providers.md, "Testing a bridge"). In this repository,
+redacted first-party recordings live under
+`packages/provider-bridge-protocol/recordings`, one `<provider>/<cell>`
+directory per live-QA matrix cell with a `manifest.json`;
+`scripts/provider-recordings/redact.mjs` and `package-cells.mjs` produce them
+and raw recordings stay out of git. `recordings/row-counts.json` pins each
+cell's event, row, `provider/unhandled`, and grammar-drop counts;
+`parity.self.test.ts` checks the pins and replays every cell through the
+current bridge on each commit, and `UPDATE_PARITY_ROW_COUNTS=1` rewrites the
+pins deliberately. `pnpm parity` compares two checkouts
+([debugging-and-qa.md](debugging-and-qa.md)); differences a migration PR
+intends go in `recordings/parity-allowlist.json` with the PR and reason, and
+an entry that masks nothing fails the run. A recording is never rewritten:
+when a bridge change alters its output,
+`pnpm --filter @bb/provider-parity rerecord [--plan-with <checkout>]` writes
+`bridge→runtime.current.ndjson` beside the recorded lane, and the self-suite
+compares against that file when it exists. `pnpm parity --dump-dir <dir>`
+writes both legs' normalized event and row lists per cell.
 
 The conformance kit runs the same recordings as its recorded-traffic
-scenario set: `checkRecordedCellReplay` replays a bridge's cells and
-`checkRecordedCellReplay` reports `recorded/<cell>/{replays,
-events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. The ACP
-bridge's `bridge.recorded-conformance.test.ts` sits beside its scripted suite.
-The pi, Claude Code, and Codex plugins' tests use only public dependencies,
-so they cannot read the committed recordings; `packages/provider-parity`
-replays their cells instead (`pi-recorded-conformance.test.ts` and
-`recorded-conformance.test.ts`). Conformance reflects the real dialect as
-well as the protocol.
+scenario set: `checkRecordedCellReplay` replays a bridge's cells and reports
+`recorded/<cell>/{replays, events-schema-valid, grammar, turn-lifecycle,
+not-empty}` per cell. The pi, Claude Code, and Codex plugins' tests use only
+public dependencies, so `packages/provider-parity` replays their committed
+cells instead.

@@ -24,10 +24,7 @@ branch. Under the hood it's `git worktree add` plus some bookkeeping:
 - It lives at
   `<BB_DATA_DIR>/plugins/environment-git-worktree/host-data/worktrees/<thread-id>/<repo-name>`
   — for example, `~/.bb/plugins/environment-git-worktree/host-data/worktrees/thr_abc.../myrepo`.
-- Once every thread using the environment is deleted, bb cleans the worktree up
-  (`git worktree remove --force`). Archiving the last thread starts a
-  five-minute grace period instead, so unarchiving within it keeps the
-  worktree; after it elapses the worktree is removed the same way.
+- bb removes it once no thread uses it; see [Cleanup](#cleanup).
 
 Worktrees are created by bb's built-in **Worktree** plugin, which is enabled by
 default. Disabling it in Settings → Installed plugins leaves existing worktrees alone
@@ -125,10 +122,8 @@ worktree it made and removes the ones nothing is using:
 - Archiving the last thread starts a five-minute grace period. Unarchive a
   thread within it and the worktree is kept; let it elapse and the worktree
   goes.
-- Archiving is not an instant stop. For 30 seconds an archived thread keeps its
-  terminals, and one that is mid-turn keeps running, so Undo on the archive
-  toast — or an unarchive within those 30 seconds — picks up exactly where it
-  was. After that bb stops the thread and closes its terminals.
+- An archived thread keeps running for 30 seconds so Undo can restore it;
+  see `bb guide threads`.
 
 Removal runs `.bb-env-teardown.sh` inside the worktree first, then stops
 every process whose working directory is inside the worktree — the agent's
@@ -169,12 +164,8 @@ Contract:
   that Git for Windows installs and fails with a message naming Git for Windows
   when there is none.
 
-Hook operation IDs and their started/finished state are saved per launch attempt.
-After a server restart, bb reconciles the original daemon operation instead of
-starting setup again. If an RPC disconnects, cleanup cancels the operation and
-waits for its process group to terminate before releasing the path. An
-unreachable daemon leaves cleanup pending for retry. Durable daemon cancellation
-records resolve never-started operations and prevent delayed execution.
+A server restart does not rerun a hook that already started. An unreachable
+daemon leaves cleanup pending for retry.
 
 ## If something isn't working
 
@@ -203,11 +194,7 @@ checkout. `.bb-env-setup.sh` must succeed before the environment is ready.
 is reported but does not prevent removal. A user-maintained checkout attached to
 BB remains unowned and runs neither hook.
 
-Fresh machine clones do not apply `.worktreeinclude`: no local source checkout
-exists on the new host. Supply local files and secrets through core Machine
-environment settings. Keep the repo hook's cache/no-op logic in the repository;
-Modal's stored Dockerfile recipe contains image-build instructions only.
-
-Restoring a machine filesystem does not rerun `.bb-env-setup.sh`. Setup runs when core first creates an owned environment. Fresh machine clones do not apply `.worktreeinclude`; supply local files and secrets through Machine environment settings.
-
-Thread startup does not validate workspace fingerprints, probe agent authentication, or automatically install agent CLIs.
+Fresh machine clones do not apply `.worktreeinclude`, because the new host has
+no local source checkout; supply local files and secrets through Machine
+environment settings. Restoring a machine filesystem does not rerun
+`.bb-env-setup.sh`.

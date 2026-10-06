@@ -32,11 +32,15 @@ built-ins held to this rule. Two checks read it:
   change how many run at once. Use `--shard=<index>/<count>` (one-based) to
   partition the selected plugins across runners; `--list` prints that shard.
 
-On PRs, CI selects only changed plugins when every changed file belongs to a
-listed forkable plugin. Shared changes or unavailable history run the full
-list; main and manual runs always run the full list. Use
-`--changed-from=<sha> --list` to inspect selection locally. See
-[CI performance](ci-performance.md) for selection rules and timing artifacts.
+On pull requests, `--changed-from=<base sha>` compares the merge commit with
+the base. When every changed path (renames count both paths) belongs to a
+listed plugin, only those plugins run; any shared, unknown, or unlisted-plugin
+change, or missing history, runs the full list. Main and manual runs always
+check the full list with fresh resolution of published dependencies. Add
+`--list` to print the selection, including the `--shard` partition, without
+installing or building. Explicit plugin directories and `--changed-from` are
+mutually exclusive. CI runs three shards with at most four concurrent checks
+each; a shard with nothing selected skips setup.
 
 ## What a listed plugin looks like
 

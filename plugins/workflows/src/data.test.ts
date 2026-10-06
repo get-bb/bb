@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 import {
   attachCallThread,
   isWorkerRetired,
@@ -59,8 +60,7 @@ describe("workflow durable data", () => {
       source: "return null",
       sourceHash: "hash",
       argsJson: "null",
-      settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
+      settingsJson: JSON.stringify(DEFAULT_WORKFLOW_SETTINGS),
       resumedFromRunId: null,
     });
   }
@@ -703,8 +703,10 @@ describe("workflow durable data", () => {
       source: "return null",
       sourceHash: "child-hash",
       argsJson: "null",
-      settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":1,"maxNotificationBytes":16384}',
+      settingsJson: JSON.stringify({
+        ...DEFAULT_WORKFLOW_SETTINGS,
+        retentionDays: 1,
+      }),
       resumedFromRunId: parent.id,
     });
     const expired = newRun();
@@ -736,8 +738,10 @@ describe("workflow durable data", () => {
       source: "return null",
       sourceHash: "expired-child-hash",
       argsJson: "null",
-      settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":1,"maxNotificationBytes":16384}',
+      settingsJson: JSON.stringify({
+        ...DEFAULT_WORKFLOW_SETTINGS,
+        retentionDays: 1,
+      }),
       resumedFromRunId: parent.id,
     });
     db.prepare(

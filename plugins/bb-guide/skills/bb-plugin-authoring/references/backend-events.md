@@ -21,24 +21,23 @@ bb.events.on("message.cancelled", ({ entry }) => { ... });                 // ro
 ```
 
 **Events are announcements core makes.** Something already happened, your
-handler is told, and whatever it returns is IGNORED. The surface that ASKS is
-`bb.experimental_hooks`, below, where core acts on your answer — the same split
-git draws between post-commit and pre-commit hooks.
+handler is told, and whatever it returns is ignored. Handlers run
+fire-and-forget after the change and can never block or veto it; errors are
+caught, logged, and counted in the plugin's handler stats (`bb plugin list`;
+stats survive reloads and reset on remove). The surface that asks is
+`bb.experimental_hooks`, below, where core acts on your answer.
 
-Fourteen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
+Fifteen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
 fires after core commits a pending interaction row. The three `message.*`
-ones fire when a dispatch is queued behind a wait, when a queued row's waits
-all clear and it dispatches, or when the queued row is cancelled. Every listener sees every queued row, so a plugin
-that only wants its own filters on
+ones fire when a dispatch is queued behind a wait (again when a row's wait is
+rewritten), when a queued row's waits all clear and it dispatches, or when the
+user removes a queued row before it dispatched. Every listener sees every
+queued row, so a plugin that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
-`message.queued` fires again when a row's wait is rewritten, because a row that
-moved from one wait to another is news to whoever was waiting on the old one.
-
-`message.cancelled` fires when the user removes a queued row before it ever
-dispatched — the only signal for that removal. A plugin holding external
-resources for a waiting message (a sandbox mid-provision via an environment
-provider, a reserved slot) releases them here; archive/delete of the whole
-thread fires the thread event instead.
+`message.cancelled` is the only signal for that removal: release external
+resources held for a waiting message (a sandbox mid-provision, a reserved
+slot) there. Archiving or deleting the whole thread fires the thread event
+instead.
 
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
@@ -73,28 +72,23 @@ bb.events.on("turn.failed", async (event) => {
 the timeline, and what the provider is sent follows `inputAccepted` — an input
 the provider never took is re-sent verbatim, while an accepted turn (already in
 the provider's conversation) is continued with a nudge rather than asked twice.
-The new attempt carries a retry marker so the next failure's `attemptNumber` is
-right. A future `sendAt`
-queues it on the clock; without one it is attempted now. Either way it is an
-ordinary dispatch attempt, so it still passes the `message.dispatch` hook. Core
-allows one live retry per original turn and enforces no ceiling beyond that —
-the cap is yours.
+The next failure's `attemptNumber` counts the retry. A future `sendAt` queues
+it on the clock; without one it is attempted now. Either way it is an ordinary
+dispatch attempt, so it still passes the `message.dispatch` hook. Core allows
+one live retry per original turn and enforces no ceiling beyond that — the cap
+is yours.
 
-The seven `thread.*` events. `thread.active` fires when an applied lifecycle
+The seven `thread.*` events carry `thread`, the same DTO
+`GET /api/v1/threads/:id` serves, and reach every loaded plugin regardless of
+sidebar visibility. `thread.active` fires when an applied lifecycle
 transition enters the running `active` state. `thread.archived` fires after a
 thread is archived, including cascade archives (archiving a parent archives
 its children too, each with its own event). `thread.unarchived` fires after a
 thread comes back; nothing is provisioned at that moment — an environment
 provider that tore its workspace down is asked for one again when the thread
-next needs to run, so this is where to start warming one up. Observe-only handlers run
-fire-and-forget after the transition and can never block or veto it. `thread`
-is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
-and counted in the plugin's handler stats (`bb plugin list`).
+next needs to run, so this is where to start warming one up.
 
-Lifecycle events are broadcast to all loaded plugins regardless of sidebar
-visibility.
-Use `thread.*` events to react to lifecycle changes while your plugin is
-loaded. Events that occur while it is unloaded are not replayed. Register
+Events that occur while your plugin is unloaded are not replayed. Register
 handlers first, then reconcile tracked threads once at startup to catch changes
 from a restart, reload, or disabled period. Make handlers idempotent if a live
 event overlaps reconciliation. Avoid polling thread state to detect lifecycle
@@ -103,16 +97,16 @@ changes.
 `thread.created` fires on row creation, so the first user message is not
 always in the timeline yet. To react to a thread's content, listen on
 `thread.active` or `thread.idle`, then read the messages with
-`bb.sdk.threads.timeline`. Because handlers are fire-and-forget, work you do
-in a handler — including `bb.sdk.threads.update({ threadId, title })` —
-cannot delay or interrupt the thread's turn.
+`bb.sdk.threads.timeline`. Work you do in a handler — including
+`bb.sdk.threads.update({ threadId, title })` — cannot delay or interrupt the
+thread's turn.
 
-`experimental_thread.events` notifies that the thread event sequence advanced. Core
-coalesces appends per thread into one notification per second, with the latest sequence
-and current thread DTO. Continuous output produces periodic updates and a final pending
-update. Reading history does not notify. The payload contains no event contents; use the
-existing thread-events SDK if your policy needs them. Modal v1 simply checks whether
-the delivered thread is active before extending its idle deadline.
+`experimental_thread.events` notifies that the thread event sequence advanced,
+coalesced per thread into at most one notification per second with the latest
+sequence and current thread DTO. Continuous output produces periodic updates
+and a final pending update. Reading history does not notify. The payload
+contains no event contents; read them with `bb.sdk.threads.events.list` if
+your policy needs them.
 
 `experimental_terminal.input` fires after nonempty real user input is forwarded to a
 terminal. Its public terminal DTO includes hostId; keystrokes are not included. Output,
@@ -121,13 +115,12 @@ keepalives and opening a terminal do not count.
 `experimental_host.deleted` fires once after a machine is removed, whether a user
 removed it or its machine provider finished tearing it down. `host` is the public
 host DTO as it was at removal; `bb.sdk.hosts.get` answers 404 for it afterwards, so
-drop any per-host state here. Connect prunes shared ports for the removed machine.
+drop any per-host state here.
 
 ### bb.experimental_hooks — the dispatch checkpoint
 
 **Hooks are questions core asks.** Core stops, hands your handler a context, and
-ACTS ON what you return — the opposite of `bb.events`, whose handlers are told
-what already happened. There is ONE hook today, `"message.dispatch"`
+acts on what you return. There is one hook, `"message.dispatch"`
 (`PluginHookName`), the admission checkpoint every message passes through
 exactly once per attempt: a thread's first message, a follow-up, a steer, a
 drained queue row, a retry of a failed turn. Two members: `on` answers the
@@ -160,23 +153,11 @@ messages share that category, and `mixed` when categories differ. Two different
 agents still yield `agent`. `ctx.senderThreadId` is the sender ID shared by all
 messages, null when none of them has a sender, and `"mixed"` when they
 disagree — so null still means a human typed it rather than bb being unsure.
-Individual rows never report `mixed`, and recorded turns keep their existing
-initiator types.
-A queued thread-start preserves its requester's author; a retry is `system`
-with no sender.
+Individual rows never report `mixed`. A queued thread-start preserves its
+requester's author; a retry is `system` with no sender.
 
 `ctx.origin` and `ctx.originPluginId` are stored with the queued row and remain
 stable across re-attempts. For grouped dispatches they describe the first row.
-
-`ctx.queuedMessage` has been replaced in the context type by `queuedMessages`.
-Core still emits the first row (or null) under the old name for handlers built
-against an older SDK; new handlers inspect the full array.
-
-`ctx.startedOnBehalfOf` is no longer part of the context type. It answered a
-different question — why the THREAD was started — so it could not identify the
-sender of the message at hand. Core still sets it on the object for handlers
-built against an older SDK; new handlers read `ctx.initiator` and
-`ctx.senderThreadId`.
 
 The context is `MessageDispatchHookContext` (`ctx.attempt` is
 `PluginDispatchAttemptKind`, `ctx.input` is `PluginDispatchInput`,
@@ -201,7 +182,7 @@ A `wait` QUEUES the message as a row whose `waitingOn` names your plugin and
 carries your reason verbatim. The row sits in the thread's queue with a card, a
 Send-now and a Cancel — the same row a user's own queued message uses.
 
-**Where a wait is visible.** In exactly two places, and neither is the timeline:
+**Where a wait is visible.** In two places, and neither is the timeline:
 the queued card above the composer, which shows your reason, and the thread's
 sidebar row, which shows a clock while the thread holds queued work and is not
 itself running. Queueing appends no thread event, so a `wait` never writes
@@ -220,19 +201,21 @@ await bb.experimental_hooks.recheck("message.dispatch");
 ```
 
 Core owns the re-draining and the clock — `sendAt` due, the thread's own turn
-ending, the workspace becoming ready, an interaction settling — and YOU own every
-other condition your waits depend on. The walk re-attempts every plugin-queued
-row in queue order, running the full hook pass over each, so an unwarranted call
-is safe. Bursts coalesce into one walk and per-thread pacing keeps a plugin that
-stays blocked from being re-asked in a loop.
+ending, the workspace becoming ready, an interaction settling — and you own every
+other condition your waits depend on. A recheck re-attempts every plugin-queued
+row in queue order, so an unwarranted call is safe; bursts coalesce and
+per-thread pacing keeps a blocked plugin from being re-asked in a loop.
 
 ### Environment providers: core-owned lifecycle
 
 Register resource operations with `bb.experimental_environments.register`.
-`icon` accepts host glyphs, plugin-relative assets, and this plugin's declared
-namespaced icons, just like agent providers. The provider listing includes a
-hashed `logoUrl` for assets. `app.slots.experimental_providerIcon` can override
-an environment provider's icon with `providerKind: "environment"` and its `providerId`.
+Core owns launch attempts, cancellation, retry timing, attachment, retirement,
+and removal; providers must not keep duplicate launch records or call
+`sdk.environments.delete` to drive retirement. `icon` accepts host glyphs,
+plugin-relative assets, and this plugin's declared namespaced icons, and
+`app.slots.experimental_providerIcon` with `providerKind: "environment"` can
+override it. The `@get-bb/plugin-sdk/environment-provider` entry exports the
+operation types.
 
 ```ts
 bb.experimental_environments.register({
@@ -258,77 +241,92 @@ bb.experimental_environments.register({
 ```
 
 `requires` declares four project facts. Every provider runs on the selected
-machine; `projectCheckout` requires that machine's project directory; `gitCheckout`
-implies `projectCheckout` and requires a committed git checkout; `gitRemote`
-supplies the project's remote; `projectless` offers the provider only outside
-projects. Projectless cannot combine with project requirements. Core validates
-eligibility before creating the thread.
-Create waits for startup registrations to settle, then rejects an unknown
-provider id; existing threads wait if their registered provider disappears.
-`inputs` is an optional Standard Schema validator (including zod);
-core parses the request and stores the parsed JSON, with schema defaults filled.
+machine; `projectCheckout` requires that machine's project directory;
+`gitCheckout` implies `projectCheckout` and requires a committed git checkout;
+`gitRemote` supplies the project's remote; `projectless` offers the provider
+only outside projects and cannot combine with project requirements. Core
+validates eligibility before creating the thread, and the operation contexts
+are typed from `requires` and `inputs`. Discovery scoped to a machine omits
+providers whose requirements are unmet; unscoped discovery includes providers
+structurally eligible on any persistent machine.
+
+`inputs` is an optional Standard Schema validator (including zod); core
+parses the request and stores the parsed JSON, with schema defaults filled.
 No schema means `inputs: null`. Parsed inputs are persisted on the environment
 and are readable by every plugin through the SDK, including after the
 environment is destroyed. They are configuration, not a credential store;
-keep credentials in secret settings. `availability` may return
-available, setup-required with a message, or unavailable with a message for a
-project and machine. Core calls it inside the decision timeout only for the
-selected provider and machine during thread creation, checking it afresh for
-every creation request. `validate` may accept or refuse the same request before
-a thread exists, using the resolved project, host, checkout, remote and inputs.
-Required facts and schema outputs are inferred by registration.
+keep credentials in secret settings. A schema that does not accept `{}` needs
+a frontend control: the `experimental_environmentProviderInputs` slot
+(frontend-core-slots.md).
 
-Core owns launch attempts, cancellation, retry timing, attachment, retirement,
-and removal in SQLite. Providers must not keep duplicate launch records or
-call `sdk.environments.delete` to drive retirement. The former
-`experimental_defineEnvironmentProvider` runtime and `provision` decision
-contract are removed. The environment-provider entry exports operation types.
+`availability` may return available, setup-required with a message, or
+unavailable with a message for a project and machine; pickers probe it in the
+background, and core checks it again for the selected provider and machine on
+every thread creation. `validate` may accept or refuse
+(`{ action: "refuse", message }`) the same request before a thread exists,
+using the resolved project, host, checkout, remote and inputs. The optional
+`experimental_existingPath(inputs)` selects a path from parsed inputs: core
+reuses a recorded environment at that path on the selected host instead of
+calling `create`, and null requests normal creation. Create waits for startup
+registrations to settle, then rejects an unknown provider id; existing threads
+wait if their registered provider disappears. `bb.experimental_environments.recheck()`
+asks core to re-ask this plugin's waiting provisioning now instead of at its
+scheduled time.
 
-`create` receives the resolved facts, thread, suggestedBranchName, monotonic
-attempt, pathKey, report, and an abort signal, and always builds a fresh
-environment. A thread whose environment was destroyed gets it back only when
-the user asks for a restore and the provider declares the optional
-`restore`: it receives the same facts, with the inputs the
-environment was created with, plus `previous: { environment, resource }`
-describing the removed environment, and decides what restoring means, such as
-checking the recorded branch out again. Without it, core never rebuilds a
-destroyed environment and its threads report it unavailable. `create` is one long call and must be idempotent for
-pathKey: after a process or plugin restart, core calls it again with the same
-attempt and pathKey. Return `created` with `path`, explicit `ownsPath`
-and optional `mergeBaseBranch`, or `failed` with a message; a failed create is terminal.
-`report.step` and
-`report.log` stream durable progress while the call runs.
+`create` receives the resolved facts, thread, `suggestedBranchName`,
+monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds
+a fresh environment. It is one long call with no overall timeout and must be
+idempotent for `pathKey`: after a process or plugin restart, core calls it
+again with the same attempt and pathKey. Return `created` with `path`,
+explicit `ownsPath` and optional `mergeBaseBranch`, or `failed` with a
+message; a failed create is terminal, and a retry is an explicit new attempt
+on the same environment row after cleanup. `report.step` and `report.log`
+stream durable progress while the call runs.
 
-A created result may carry a private JSON resource capped at
-16 KiB. Core transfers it directly to the environment row and never includes
-it in responses or events. Restore and removal receive it; completed removal
-clears it. On cancellation core aborts create, waits for it to stop, then calls
-`remove` with nullable `environment`, `hostId` and `path`, plus `pathKey`,
-`resource`, `attempt`, `report`, and a new signal. Remove must clean everything
-for the pathKey even when create never returned a path, and returns removed or
-failed(message).
+`await context.experimental_claimPath(path)` on the create and restore
+contexts atomically reserves a directory on the selected host for this launch before
+workspace mutations. It returns false if another unattached launch holds the
+host/path, this attempt is no longer creating, or this attempt already
+reserved another path; repeating the same claim succeeds. Core keeps the claim
+through attachment or completed cancellation cleanup, including after failed
+creation, and normalizes trailing slashes. Check existing attached threads
+after claiming and before mutating a shared checkout.
+`bb.sdk.environments.list({ hostId, path })` compares stored paths without
+contacting hosts.
 
-Policy exposes retireGraceMs (five minutes by default; null means never) and
-pathKeys (per-thread by default, or per-attempt). Core retries failed removal
-after 60 seconds. Creation retries are explicit and start a new attempt on the same environment row after cleanup.
-Core imposes no overall provider-create timeout. These are internal core
-behaviors, not provider settings. Rebuilds use
-fresh path keys. Retirement starts after the last live thread archives or is deleted.
-A per-environment lock serializes removal; failures persist and retry.
-Environment responses expose only the read-only lifecycle projection:
-phase, retireAt, and teardown status/attempt/message.
+A thread whose environment was destroyed gets it back only when the user asks
+for a restore and the provider declares the optional `restore`: it receives
+the same facts, with the inputs the environment was created with, plus
+`previous: { environment, resource }` describing the removed environment, and
+decides what restoring means, such as checking the recorded branch out again.
+Without it, core never rebuilds a destroyed environment and its threads report
+it unavailable.
+
+A created result may carry a private JSON `resource` capped at 16 KiB. Core
+stores it on the environment row and never includes it in responses or
+events; restore and removal receive it, and completed removal clears it. On
+cancellation core aborts create, waits for it to stop, then calls `remove`
+with nullable `environment`, `hostId` and `path`, plus `pathKey`, `resource`,
+`attempt`, `report`, and a new signal. Remove must clean everything for the
+pathKey even when create never returned a path, and returns removed or
+failed(message). Failed removal persists and retries after 60 seconds.
+
+The optional `policy` sets `retireGraceMs` (five minutes by default; null
+keeps the environment indefinitely) and `pathKeys` (`"per-thread"` by default,
+or `"per-attempt"`). Retirement starts after the last live thread archives or
+is deleted; rebuilds use fresh path keys. Environment responses expose only
+the read-only lifecycle projection: phase, retireAt, and teardown
+status/attempt/message.
+
 Core runs `.bb-env-setup.sh` on the environment's host after `create` returns
-`ownsPath: true`, and `.bb-env-teardown.sh` before `remove`. Each has a separate
-15-minute timeout. Setup failure fails the launch; cleanup requires confirmed
-script termination. Teardown failure is reported and removal continues only
-after confirmed termination. Hook IDs reuse launch/environment identity and
-daemon memory deduplicates execution while that daemon is alive. If a daemon
-restart loses hook state, core reports an unknown outcome and blocks automatic
-cleanup instead of rerunning the script. No hook ledger or process records are
-persisted. Hook output uses the launch report.
-Providers must not call these hooks themselves. Attached paths (`ownsPath: false`)
-never run them. Provider-specific preparation runs inside `create` first (for
-example, Worktree copies `.worktreeinclude` files).
+`ownsPath: true`, and `.bb-env-teardown.sh` before `remove`; providers never
+call these hooks, and attached paths (`ownsPath: false`) never run them. Each
+has a 15-minute timeout, and its output goes to the launch report. Setup
+failure fails the launch. Teardown failure is reported, and removal continues
+only after the script is confirmed terminated; if a daemon restart loses that
+confirmation, core reports an unknown outcome and blocks automatic cleanup
+instead of rerunning the script. Provider-specific preparation runs inside
+`create` first (for example, Worktree copies `.worktreeinclude` files).
 
 ### bb.http — HTTP routes
 
@@ -464,9 +462,8 @@ bb.background.schedule("sync", "*/5 * * * *", async () => {
   `signal` aborts (reload/disable/shutdown). A crash restarts it with
   capped exponential backoff.
 - A **schedule** is a 5-field cron (server-local time) backed by a durable
-  row keyed (pluginId, name) — it survives server restarts, and the sweep
-  claims due rows with a compare-and-swap, but it only fires while the
-  plugin is loaded.
+  row keyed (pluginId, name) — it survives server restarts and fires once per
+  due time, but only while the plugin is loaded.
 - Semantics differ on throw: a service throwing `NeedsConfigurationError`
   transitions the whole plugin to `needs-configuration` and stops
   restarting until the next load; a schedule throw (any error) only lands
@@ -481,20 +478,6 @@ bb.background.schedule("sync", "*/5 * * * *", async () => {
 const initial = await settings.get();
 if (!initial.apiKey)
   bb.status.needsConfiguration(
-    "Set apiKey with `bb plugin config <id>`, then reload.",
+    "Set apiKey with `bb plugin config <id> set apiKey <value>`.",
   );
 ```
-
-`await create.experimental_claimPath(path)` atomically reserves a directory on the selected
-host for this launch before workspace mutations. It returns false if another
-unattached launch holds the host/path, this attempt is no longer creating, or
-this attempt already reserved another path. Repeating the same claim succeeds.
-Core retains the durable claim through attachment or completed cancellation
-cleanup, including after failed creation. Check existing attached threads after
-claiming and before mutating a shared checkout. Core normalizes trailing slashes
-on claims. Reuse, directory switching and restored dispatch enforce claims;
-only the owning launch is exempt. `bb.sdk.environments.list({ hostId, path })`
-compares stored paths in the database and does not contact hosts.
-Scoped discovery omits providers whose declared requirements are unmet without
-running Git inspection or plugin availability. Without a machine scope,
-discovery includes providers structurally eligible on any persistent machine.

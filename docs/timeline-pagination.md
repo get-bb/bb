@@ -6,12 +6,8 @@ groups. Copy both `timelinePage.olderCursor.anchorId` and `anchorSeq` to
 row IDs or sequence cuts. Keep display options unchanged throughout the walk.
 
 Conversation segments are a page-sizing preference, not a requirement on the
-window edges. The selector reads a bounded list of request sequences from the
-thread/type/sequence index. These are hints: it does not inspect request input,
-resolve acceptance, or require the hinted event to produce a visible row. It
-prefers hints within the event budget, or the nearest older hint for an
-oversized conversation. Without a request hint it can cut at an ordinary event
-sequence. The latest completed context clear is the history floor.
+window edges: a page can start at an ordinary event sequence. The latest
+completed context clear is the history floor.
 
 A page owns an event window `[start, end)`. It returns projected rows whose
 `sourceSeqStart` falls inside that window, in display order. Context loaded
@@ -92,7 +88,7 @@ continues on a best-effort basis when existing events are updated, deleted or
 replaced. Previously loaded pages can then disagree with later pages, leaving
 stale content, missing content or different grouping until history is reloaded.
 If the event at the cursor anchor sequence was deleted, the server returns
-HTTP 400 `invalid_request`; reload latest to restart, as on main. No history-edit
+HTTP 400 `invalid_request`; reload latest to restart. No history-edit
 revision is stored or checked. Other edits do not automatically reject a cursor.
 
 `timelinePage.contentPage`, when present, gives the group anchor and the
@@ -104,42 +100,13 @@ delegation children recursively by ID while preserving order. Do not flatten
 responses by concatenation or replace an entire summary solely because its ID
 was already seen. `bb thread log --all --format verbose` uses this merge.
 
-Client merges retain summary objects when merging children leaves their row
-references unchanged. Rows already shared with the loaded state, including
-unchanged rows from a delta, bypass serialization for identity comparison.
-Distinct objects still require content comparison: a loaded summary can contain
-older children absent from the latest page. Child merging still deduplicates
-rows even when both pages contain the same summary object.
-
 The 4 MiB response target and event setting determine content-page boundaries
 after grouping. At least one indivisible row is returned, even if it exceeds
 the target. Complete-group queries and grouping work can exceed those budgets.
-Profiles include context and ordering queries; endpoint timing also includes
-serialization, response parsing, and client merging in the corpus benchmark.
 
-Latest plan/todo and goal snapshots are auxiliary head state. They are loaded
-separately from conversation context when they fall outside the selected rows.
-Their age does not widen the grouping range, and an auxiliary plan snapshot does
-not create a partial historical turn in the projection. State extraction still
-combines these snapshots with the selected events in sequence order. The client
-merge guard describes omitted conversation rows, not auxiliary head-state rows.
-
-The projector builds one structural row plan for both collapsed and expanded
-rendering. A summary's identity, source bounds, timestamps, count, and message
-membership are decided before its child rows are rendered. The detail endpoint
-selects that planned summary first and materializes only its children; unrelated
-summaries are not expanded to find a match. Collapsed rendering no longer needs
-a separate message-pruning policy that anticipates the grouping rules.
-
-Tool output and nested delegation projections are reconstructed while processing
-the loaded events, including for collapsed summaries. The shared row plan avoids
-rendering unrelated summaries' child rows when selecting an expansion, but it
-does not defer event processing or output reconstruction.
-
-Selection still reads and decodes event payloads for the required context. Cold
-request cost remains dependent on that context; a large collapsed turn is not a
-constant-time lookup. Route-cache hits and unchanged deltas are separate cases
-and must be benchmarked separately from cold opens and appended updates.
+Latest plan/todo and goal snapshots are head state, returned even when they
+fall outside the selected rows; they do not widen the page. The client merge
+guard describes omitted conversation rows, not head-state rows.
 
 `GET /api/v1/threads/:id/timeline/turn-summary-details` and
 `sdk.threads.timelineTurnSummaryDetails` retain the existing `turnId`,
@@ -149,50 +116,21 @@ These pages have their own `historySnapshot` and use the same recursive merge.
 The app loads the detail walk when expanding a summary. Tool output remains
 subject to the existing preview and retention rules.
 
-Content pagination does not freeze completed turns, persist projections,
-perform a backfill, add database tables or triggers, or run work on event
-ingestion. Appended events are interpreted when a new snapshot is requested.
-
 ## Conversation outline caching
 
-The conversation outline returns the full list of message previews. Exact
-revisions use an in-memory response cache and idle/error threads also persist
-their outline. When an active thread advances, a bounded per-database cache
-retains completed outline items and reprojects the tail from a safe turn
-boundary. It keeps the latest turn in the tail even after that turn completes.
-
-Ordinary outlines select only root events before decoding and projection. A
-child turn is identified by its stored start, including child completion events
-without a parent ID. Unfinished children do not prevent retaining completed root
-history. Checkpoints never cross an unresolved steer, an open root turn, or the
-first external-user ordering boundary.
-
-Accepted root turns with inherited parent metadata, background/delegation state,
-and external-user ordering use the full projection conservatively. These
-classification changes are checked in newly appended events and retained with
-the bounded checkpoint. Late references to retained root turns, requests, or
-parent items, history rewrites, context clears, metadata/display changes, and
-writes from another database connection force a rebuild.
-
-The message-delta compaction threshold still counts nested deltas through an
-indexed, bounded lookup. Crossing it rebuilds the prefix so empty completed
-messages keep the same fallback previews even when child payloads are omitted.
-The checkpoint cache retains at most 16 threads and 8 million characters of
-serialized previews and identity data; eviction only affects performance.
+The conversation outline returns the full list of message previews. Active
+threads reuse completed outline items from a bounded in-memory cache (16 threads,
+8 million characters) and reproject only the tail; history rewrites, context
+clears, metadata or display changes, and writes from another database connection
+force a rebuild. Eviction only affects performance.
 
 ## Catch-up feedback
 
-Event-append notifications include `metadata.timelineSequence`, the thread's
-stored event sequence after the write. Both server-side notification coalescing
-and client-side debouncing preserve the highest sequence. The client compares
-this with the cached timeline response's `maxSeq`; only a known newer sequence
-shows catch-up feedback. A refresh caused by cache age, or a delayed notification
-already covered by the cached response, does not show it. Notifications without
-a sequence still invalidate the cache but do not claim that messages are missing.
-
-A successful response acknowledges only sequences through its `maxSeq`, so a
-response that predates another known event cannot clear that event. The catch-up
-indicator appears only after the timeline has remained behind for one second,
-disappears immediately when the cache catches up, and floats over the
-timeline without adding or removing scroll height. Initial loads without cached
-rows continue to use the loading skeleton.
+Event-append notifications carry `metadata.timelineSequence`, the thread's
+stored event sequence after the write; coalescing and debouncing keep the
+highest. The client shows catch-up feedback only when that sequence is newer
+than the cached response's `maxSeq`, so cache-age refreshes and notifications
+the cache already covers do not show it. A response clears only sequences
+through its own `maxSeq`. The indicator appears after the timeline has stayed
+behind for one second, disappears as soon as the cache catches up, and floats
+over the timeline without changing scroll height.
