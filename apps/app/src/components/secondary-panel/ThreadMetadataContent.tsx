@@ -532,19 +532,21 @@ interface MergeBaseRowProps {
   defaultOpen?: boolean;
 }
 
-export function formatMergeBaseComparison({
+export function formatBranchComparison({
   aheadCount,
   behindCount,
+  baseBranch,
 }: {
   aheadCount: number;
   behindCount: number;
+  baseBranch: string;
 }): string {
   if (aheadCount > 0 && behindCount > 0) {
-    return `${aheadCount} ahead, ${behindCount} behind`;
+    return `${aheadCount} ahead, ${behindCount} behind ${baseBranch}`;
   }
-  if (aheadCount > 0) return `${aheadCount} ahead`;
-  if (behindCount > 0) return `${behindCount} behind`;
-  return "even";
+  if (aheadCount > 0) return `${aheadCount} ahead of ${baseBranch}`;
+  if (behindCount > 0) return `${behindCount} behind ${baseBranch}`;
+  return `Even with ${baseBranch}`;
 }
 
 export function MergeBaseRow({
@@ -604,32 +606,25 @@ export function MergeBaseRow({
       }
       valueClassName="min-w-0"
     >
-      <span className="flex min-w-0 items-center gap-1.5">
-        {canSelectMergeBase && mergeBaseBranch ? (
-          <BranchPicker
-            value={mergeBaseBranch}
-            options={mergeBaseCandidates}
-            remoteOptions={remoteMergeBaseCandidates}
-            variant="minimal"
-            emphasizeTriggerValue={false}
-            loading={
-              isLoadingMergeBaseBranchOptions || canRequestMergeBaseOptions
-            }
-            onChange={onMergeBaseBranchChange}
-            onOpenChange={onMergeBasePickerOpenChange}
-            onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
-            className="max-w-full"
-            defaultOpen={defaultOpen}
-          />
-        ) : (
-          <span className="min-w-0 truncate">{mergeBaseBranch}</span>
-        )}
-        {workspaceStatus?.mergeBase ? (
-          <span className="shrink-0 text-muted-foreground">
-            · {formatMergeBaseComparison(workspaceStatus.mergeBase)}
-          </span>
-        ) : null}
-      </span>
+      {canSelectMergeBase && mergeBaseBranch ? (
+        <BranchPicker
+          value={mergeBaseBranch}
+          options={mergeBaseCandidates}
+          remoteOptions={remoteMergeBaseCandidates}
+          variant="minimal"
+          emphasizeTriggerValue={false}
+          loading={
+            isLoadingMergeBaseBranchOptions || canRequestMergeBaseOptions
+          }
+          onChange={onMergeBaseBranchChange}
+          onOpenChange={onMergeBasePickerOpenChange}
+          onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
+          className="max-w-full"
+          defaultOpen={defaultOpen}
+        />
+      ) : (
+        <span className="min-w-0 truncate">{mergeBaseBranch}</span>
+      )}
     </DetailRow>
   );
 }
@@ -660,7 +655,26 @@ export function GitStatusRow({
   ) {
     return null;
   }
-  if (workspaceStatus) return null;
+  if (workspaceStatus) {
+    const mergeBase = workspaceStatus.mergeBase;
+    if (!mergeBase?.mergeBaseBranch) return null;
+    return (
+      <DetailRow
+        label={
+          <DetailRowIconLabel icon="FileDiff">Git status</DetailRowIconLabel>
+        }
+        valueClassName="min-w-0"
+      >
+        <span className="block min-w-0 truncate text-foreground">
+          {formatBranchComparison({
+            aheadCount: mergeBase.aheadCount,
+            behindCount: mergeBase.behindCount,
+            baseBranch: mergeBase.mergeBaseBranch,
+          })}
+        </span>
+      </DetailRow>
+    );
+  }
 
   const display = getGitStatusDisplay(undefined, {
     error: workspaceStatusError,
