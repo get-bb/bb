@@ -193,10 +193,7 @@ export function ThreadTimelineSurface({
     threadId,
   });
   const showLoadOlderRows =
-    hasOlderTimelineRows &&
-    onLoadOlderRows !== undefined &&
-    !isThreadTimelinePending &&
-    !timelineError;
+    onLoadOlderRows !== undefined && !isThreadTimelinePending && !timelineError;
 
   return (
     <TimelineReasoningExpansionProvider key={threadId}>
@@ -293,6 +290,8 @@ function LoadOlderMessages({
       isLoadingOlderTimelineRows,
       onLoadOlderRows,
     });
+
+  if (!hasOlderTimelineRows) return null;
 
   return (
     <div ref={sentinelRef} className="flex justify-center pt-2 mb-3">

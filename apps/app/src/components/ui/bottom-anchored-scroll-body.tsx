@@ -30,7 +30,7 @@ export interface BottomAnchorContextValue {
   scrollElementIntoViewClampedToMaxScroll: (
     args: ScrollElementIntoViewClampedToMaxScrollArgs,
   ) => void;
-  captureScrollAnchor: () => void;
+  captureScrollAnchor: () => (restore: boolean) => void;
   holdContentPosition: (args: HoldContentPositionArgs) => void;
 }
 
@@ -420,13 +420,22 @@ export function BottomAnchoredScrollBody({
 
   const captureScrollAnchor = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
-    if (!scrollArea) return;
+    if (!scrollArea) return () => {};
     userScrollInputPendingRef.current = false;
-    pendingPrependAnchorRef.current = {
+    const anchor = {
       scrollHeight: scrollArea.scrollHeight,
       scrollTop: scrollArea.scrollTop,
     };
-  }, []);
+    pendingPrependAnchorRef.current = anchor;
+    return (restore: boolean) => {
+      if (pendingPrependAnchorRef.current !== anchor) return;
+      pendingPrependAnchorRef.current = null;
+      if (!restore || !scrollArea.isConnected) return;
+      const delta = scrollArea.scrollHeight - anchor.scrollHeight;
+      if (delta > 0) scrollArea.scrollTop = anchor.scrollTop + delta;
+      refreshMaxScrollOffset(scrollArea);
+    };
+  }, [refreshMaxScrollOffset]);
 
   const holdContentPosition = useCallback(
     ({ edge, element, update }: HoldContentPositionArgs) => {
@@ -468,17 +477,6 @@ export function BottomAnchoredScrollBody({
     },
     [cancelPendingScrollRestore, cancelQueuedRestore, store],
   );
-
-  useLayoutEffect(() => {
-    const scrollArea = scrollAreaRef.current;
-    const anchor = pendingPrependAnchorRef.current;
-    if (!scrollArea || !anchor) return;
-    const delta = scrollArea.scrollHeight - anchor.scrollHeight;
-    if (delta <= 0) return;
-    scrollArea.scrollTop = anchor.scrollTop + delta;
-    pendingPrependAnchorRef.current = null;
-    refreshMaxScrollOffset(scrollArea);
-  });
 
   const hasRecentUserScrollIntent = useCallback(() => {
     return (
