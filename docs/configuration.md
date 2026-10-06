@@ -1685,6 +1685,14 @@ directory and reused by subsequent runs. Its generated command accepts
 
 ## Source Development
 
+`pnpm mobile:apk:dev` builds the standalone Android development app, **bb dev**,
+with orange icons and package `app.getbb.mobile.dev`. Output is
+`apps/mobile/build-output/bb-dev.apk`; append `-- x86_64` for an Intel emulator.
+The build command sets `BB_MOBILE_VARIANT=dev` for Expo configuration. Direct
+Expo commands accept `BB_MOBILE_VARIANT=production` (the default) or `dev`;
+other values fail validation. The dev variant omits production Firebase and
+HTTPS app-link registration. See [mobile build instructions](../apps/mobile/README.md#android-local-apk-and-verification).
+
 For source development only, `pnpm dev`, `pnpm start:worktree`,
 `pnpm start:worktree-remote`, `pnpm start:worktree --dryrun`,
 and `pnpm start` load the repo-root dotenv

@@ -355,6 +355,11 @@
       "outputs": ["build-output/**"],
       "passThroughEnv": ["*"]
     },
+    "@bb/mobile#build:android:dev": {
+      "cache": false,
+      "outputs": ["build-output/**"],
+      "passThroughEnv": ["*"]
+    },
     "@bb/mobile#e2e:android": {
       "cache": false,
       "passThroughEnv": ["*"]

@@ -124,6 +124,47 @@ debugging enabled.
 
 ### Android local APK and verification
 
+For development threads, build the standalone **bb dev** app from the repo root:
+
+```bash
+pnpm mobile:apk:dev
+adb install -r apps/mobile/build-output/bb-dev.apk
+```
+
+The APK is `apps/mobile/build-output/bb-dev.apk`. It has an orange bb launcher
+icon, favicon, and splash logo, the name **bb dev**, and package `app.getbb.mobile.dev`, so it
+installs alongside the regular app with separate saved servers and data. It
+embeds the Release JS bundle and runs without Metro, EAS, Firebase, or production
+signing credentials. Pair it with the development server through Add server or
+a pairing code. It does not claim production HTTPS app links or use the
+production Firebase configuration; Android themed icons use the system tint.
+Dev launcher assets tint the existing shaded mobile artwork using the orange
+palette and tinting method from `apps/app/scripts/generate-pwa-icons.mjs`,
+preserving the original dimensions, alpha, and launcher padding. The transparent
+splash asset stores the original light logo's shading in orange RGB and uses
+the dark logo's silhouette alpha. This keeps transparency at the edges rather
+than throughout the shaded mark, avoiding darkening during native image
+generation. Both light and dark splash screens use the orange logo.
+
+Use `pnpm mobile:apk:dev -- x86_64` for an Intel emulator. The default is
+`arm64-v8a` for a physical phone. Install Android SDK/build tools and JDK 17
+first; the script detects the standard macOS SDK and Homebrew JDK 17 paths when
+`ANDROID_HOME` and `JAVA_HOME` are unset. Both local commands regenerate the
+gitignored Android project, so do not run them concurrently in the same checkout
+or keep manual edits in `apps/mobile/android`.
+Concurrent builds are rejected. If a force-killed build leaves a stale lock,
+remove `apps/mobile/build-output/.android-build-lock` after confirming no build
+is running, then retry.
+
+When a thread is asked to build a dev APK, use this command, wait for successful
+completion, and provide a clickable link to the resulting APK. Record the
+source commit and any uncommitted changes. For a durable per-thread copy, copy
+the APK into `$BB_THREAD_STORAGE` and link that absolute path. Do not publish it
+to the public `android-testing` release. Builds use the generated debug signing
+key; Android updates require the same key as the installed dev app.
+
+The existing local build retains the regular app identity for smoke tests:
+
 ```bash
 pnpm exec turbo run build:android:local --filter=@bb/mobile
 adb install -r apps/mobile/build-output/bb-android-local.apk

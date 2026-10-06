@@ -301,6 +301,14 @@ bindings in the same update; plugin defaults yield to explicit bindings.
 
 Push notifications
 
+For a standalone development APK from a source checkout, run
+`pnpm mobile:apk:dev`. It writes `apps/mobile/build-output/bb-dev.apk`, named
+**bb dev** with orange icons and separate package `app.getbb.mobile.dev`.
+Append `-- x86_64` for an Intel emulator. The command sets
+`BB_MOBILE_VARIANT=dev`; direct Expo commands default to `production`.
+The dev variant skips production Firebase and HTTPS app-link registration.
+See `apps/mobile/README.md` for prerequisites and per-thread artifact delivery.
+
 Android source builds accept `GOOGLE_SERVICES_JSON` (path to Firebase Android
 configuration), with `apps/mobile/google-services.json` as a local fallback.
 It is optional for building the app, required for Android push delivery.

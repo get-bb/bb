@@ -54,7 +54,9 @@ with a pixel-identical React Native copy so the app keeps drawing underneath
 Native screens fade the copy out on mount; `/` and `/webview` keep it until the
 web app reports ready or the shell shows an error (`revealApp()`), capped at
 eight seconds. Keep its logo sizes and colors in sync with the
-`expo-splash-screen` config in `app.json`.
+`expo-splash-screen` config in `app.json` and its overrides in `app.config.js`.
+The `bbMobileVariant` Expo extra value selects the orange dev logo for the
+React overlay, matching the native dev splash in both light and dark mode.
 
 `SheetProvider` is the `BottomSheetModalProvider` host; `Toaster` must sit
 inside it.

@@ -178,6 +178,13 @@ plugins; do not add plugin command manuals here.
 ## Native mobile builds
 
 For Android mobile builds and distribution, see `apps/mobile/README.md`.
+When a thread is asked for a development APK, run `pnpm mobile:apk:dev` from the
+source checkout root, wait for success, and link `apps/mobile/build-output/bb-dev.apk`.
+Copy it into `$BB_THREAD_STORAGE` for a durable per-thread artifact. The app is
+named **bb dev**, has orange icons, and installs separately as `app.getbb.mobile.dev`.
+Append `-- x86_64` for an Intel emulator; the default is ARM64. It runs without
+Metro or production credentials. The command sets `BB_MOBILE_VARIANT=dev`;
+direct Expo commands default to `production` and reject other variant values.
 `GOOGLE_SERVICES_JSON` points to the optional Firebase Android config file;
 local builds fall back to `apps/mobile/google-services.json`. EAS uses a file
 environment variable. See `bb guide customization` for push controls.

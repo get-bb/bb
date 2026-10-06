@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import * as SplashScreen from "expo-splash-screen";
 import { usePathname } from "expo-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -10,6 +11,7 @@ import {
 } from "react-native";
 import splashLogo from "../../assets/splash-logo.png";
 import splashLogoDark from "../../assets/splash-logo-dark.png";
+import splashLogoDev from "../../assets/splash-logo-dev.png";
 
 const LAUNCH_SPLASH_MAX_MS = 8000;
 const LAUNCH_SPLASH_FADE_MS = 250;
@@ -17,14 +19,15 @@ const SPLASH_HOLDING_PATHS = new Set(["/", "/webview"]);
 
 const LOGO_WIDTH = 88;
 const LOGO_HEIGHT = (LOGO_WIDTH * 487) / 581;
+const isDevApp = Constants.expoConfig?.extra?.bbMobileVariant === "dev";
 
 const launchArt =
   Appearance.getColorScheme() === "dark"
     ? {
         background: Platform.OS === "android" ? "#151515" : "#000000",
-        logo: splashLogoDark,
+        logo: isDevApp ? splashLogoDev : splashLogoDark,
       }
-    : { background: "#ffffff", logo: splashLogo };
+    : { background: "#ffffff", logo: isDevApp ? splashLogoDev : splashLogo };
 
 let revealed = false;
 const listeners = new Set<() => void>();
