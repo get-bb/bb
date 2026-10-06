@@ -350,10 +350,10 @@ const BB_VS_SUPERSET: Comparison = {
           question: "How do I switch from Superset to bb?",
           answer: (
             <p>
-              There’s nothing to migrate. Install bb and add the same repo
-              folder. Your branches and Superset’s worktrees are plain Git, so
-              bb picks up unfinished work where it is, and Superset keeps
-              working while you try bb.
+              Ask bb to do it. Your repo and Superset’s worktrees are plain Git
+              on your machine, so a bb agent can add the repo and open each
+              unfinished worktree as a thread. Superset keeps working while you
+              try bb.
             </p>
           ),
         },
