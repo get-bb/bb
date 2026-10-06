@@ -72,8 +72,6 @@ import {
   PromptStackCard,
 } from "@/components/promptbox/banner/PromptStackCard";
 import {
-  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-  PromptStackChevron,
   PromptStackCollapseRow,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
@@ -1587,7 +1585,7 @@ export function QueuedMessagesList({
         {isExpanded ? (
           <div className="flex h-8 items-center gap-1.5 border-b border-border/35 px-3">
             <span className="text-xs font-medium text-foreground">Queue</span>
-            <span className="text-2xs tabular-nums text-subtle-foreground">
+            <span className="-mr-1 ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground">
               {queuedMessages.length}
             </span>
           </div>
@@ -1601,14 +1599,13 @@ export function QueuedMessagesList({
             onClick={focus.onTriggerClick}
             className={cn(
               PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+              "hover:bg-state-hover focus-visible:bg-state-hover active:bg-state-hover",
             )}
           >
             <span className="font-medium">Queue</span>
-            <span className="text-2xs tabular-nums text-subtle-foreground">
+            <span className="-mr-1 ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground">
               {queuedMessages.length}
             </span>
-            <PromptStackChevron isExpanded={false} />
           </button>
         )}
       </header>

@@ -323,11 +323,6 @@ describe("QueuedMessagesList", () => {
 
     fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("collapsed");
-    expect(
-      getByRole("button", { name: "Show queued messages" }).querySelector(
-        '[data-icon="ChevronDown"]',
-      ),
-    ).not.toBeNull();
     expect(surface?.style.height).toBe("44px");
     expect(document.activeElement).toBe(
       getByRole("button", { name: "Show queued messages" }),
