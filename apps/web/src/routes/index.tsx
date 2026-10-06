@@ -1244,10 +1244,10 @@ function LandingPage() {
 
       <Band title="Fully customizable." flip visual={<CustomizeBuild />}>
         <p>
-          Almost anything in bb can be changed in a single prompt. Ask for a
-          task tracker and one appears: a panel in your sidebar, a{" "}
-          <code>bb tasks</code> command, and a skill that teaches every agent to
-          use it.
+          Almost anything in bb can be changed in a single prompt. Ask for your
+          Linear issues and they appear: a panel in your sidebar, a{" "}
+          <code>bb linear</code> command, and a skill that teaches every agent
+          to use it.
         </p>
         <p>
           Many of bb&rsquo;s own features are built with the same tools you

@@ -379,62 +379,65 @@ type CustomizeScenario = {
 };
 
 const CUSTOMIZE_SCENARIO: CustomizeScenario = {
-  title: "Build a tasks plugin",
-  prompt: "Add a task management system",
+  title: "Build a Linear plugin",
+  prompt: "Bring my Linear issues to bb",
   promptWidth: "210px",
-  branch: "bb/tasks-plugin",
+  branch: "bb/linear-plugin",
   messages: [
-    { role: "user", text: "Add a task management system" },
+    { role: "user", text: "Bring my Linear issues to bb" },
     {
       role: "agent",
       text: "I'll build it as a bb plugin and mount it in your sidebar.",
     },
-    { role: "tool", text: "wrote plugin: tasks" },
-    { role: "tool", text: "registered panel + bb tasks CLI" },
-    { role: "agent", text: "Done. Tasks is live, and your agents can use it." },
+    { role: "tool", text: "wrote plugin: linear" },
+    { role: "tool", text: "registered panel + bb linear CLI" },
+    {
+      role: "agent",
+      text: "Done. Linear is live, and your agents can use it.",
+    },
   ],
   panel: {
-    name: "Tasks",
+    name: "Linear",
     tasks: [
       {
         key: "APP-1",
-        title: "Ship task delegation",
+        title: "Fix the login redirect loop",
         status: "in_progress",
         priority: "high",
       },
       {
         key: "APP-2",
-        title: "Wire up the tasks CLI",
+        title: "Rate-limit file uploads",
         status: "todo",
         priority: "medium",
       },
       {
         key: "APP-3",
-        title: "Add label filters",
+        title: "Add filters to search",
         status: "todo",
         priority: "low",
       },
       {
         key: "APP-4",
-        title: "Nightly changelog draft",
+        title: "Draft the release notes",
         status: "in_progress",
         priority: "medium",
       },
       {
         key: "APP-5",
-        title: "Triage flaky integration tests",
+        title: "Triage flaky checkout tests",
         status: "backlog",
         priority: "high",
       },
       {
         key: "APP-6",
-        title: "Port the settings panel",
+        title: "Port the billing page",
         status: "backlog",
         priority: "low",
       },
       {
         key: "APP-7",
-        title: "Document the plugin API",
+        title: "Document the public API",
         status: "backlog",
         priority: "medium",
       },
@@ -452,7 +455,7 @@ export function CustomizeBuild() {
     <div className="mockup-wrap mockup-wrap-customize">
       <div
         className="mock mock-customize-mobile"
-        aria-label="Mobile bb preview: a prompt asks for a task management system, and the agent builds it as a plugin"
+        aria-label="Mobile bb preview: a prompt asks for Linear issues, and the agent builds a Linear plugin"
       >
         <div className="mock-bar">
           <div className="bar-left">
