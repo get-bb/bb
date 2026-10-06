@@ -111,6 +111,7 @@ export function InfoSubheading({
     <div className="mt-3 mb-1 flex h-5 min-w-0 items-center justify-between gap-3">
       <span className="flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground">
         <span className="truncate">{label}</span>
+        <span aria-hidden="true">·</span>
         <span className="tabular-nums">{count}</span>
       </span>
       {trailing}
