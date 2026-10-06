@@ -48,6 +48,8 @@ export type PullRequestNextStepTone = "action" | "ready" | "waiting";
 export interface PullRequestNextStep {
   label: string;
   tone: PullRequestNextStepTone;
+  icon: IconName | null;
+  running: boolean;
 }
 
 export const PULL_REQUEST_NEXT_STEP_TONE_CLASS: Record<
@@ -60,11 +62,29 @@ export const PULL_REQUEST_NEXT_STEP_TONE_CLASS: Record<
 };
 
 function action(label: string): PullRequestNextStep {
-  return { label, tone: "action" };
+  return { label, tone: "action", icon: null, running: false };
 }
 
 function waiting(label: string): PullRequestNextStep {
-  return { label, tone: "waiting" };
+  return { label, tone: "waiting", icon: null, running: false };
+}
+
+const CHECKS_FAILING_STEP: PullRequestNextStep = {
+  label: "Checks failing",
+  tone: "action",
+  icon: "CircleX",
+  running: false,
+};
+
+const CHECKS_RUNNING_STEP: PullRequestNextStep = {
+  label: "Checks running",
+  tone: "waiting",
+  icon: "Clock",
+  running: true,
+};
+
+function checksResult(label: string, icon: IconName): PullRequestNextStep {
+  return { label, tone: "waiting", icon, running: false };
 }
 
 function blockedStep(pullRequest: ThreadPullRequest): PullRequestNextStep {
@@ -81,15 +101,15 @@ function blockedStep(pullRequest: ThreadPullRequest): PullRequestNextStep {
 function checksStep(pullRequest: ThreadPullRequest): PullRequestNextStep {
   switch (pullRequest.checks.state) {
     case "passing":
-      return waiting("Checks passing");
+      return checksResult("Checks passing", "CircleCheck");
     case "failing":
-      return action("Checks failing");
+      return CHECKS_FAILING_STEP;
     case "pending":
-      return waiting("Checks running");
+      return CHECKS_RUNNING_STEP;
     case "no_checks":
-      return waiting("No checks");
+      return checksResult("No checks", "Circle");
     case "unknown":
-      return waiting("Checks unknown");
+      return checksResult("Checks unknown", "CircleQuestion");
   }
 }
 
@@ -101,7 +121,7 @@ export function getPullRequestNextStep(
     case "closed":
       return null;
     case "checks_failed":
-      return action("Checks failing");
+      return CHECKS_FAILING_STEP;
     case "changes_requested":
       return action("Changes requested");
     case "conflicts":
@@ -109,7 +129,7 @@ export function getPullRequestNextStep(
     case "blocked":
       return blockedStep(pullRequest);
     case "checks_pending":
-      return waiting("Checks running");
+      return CHECKS_RUNNING_STEP;
     case "review_requested":
       return waiting(
         pullRequest.review.state === "review_required"
@@ -119,7 +139,12 @@ export function getPullRequestNextStep(
     case "queued":
       return waiting("Queued to merge");
     case "ready_to_merge":
-      return { label: "Ready to merge", tone: "ready" };
+      return {
+        label: "Ready to merge",
+        tone: "ready",
+        icon: null,
+        running: false,
+      };
     case "draft":
     case "none":
       return checksStep(pullRequest);

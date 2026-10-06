@@ -48,9 +48,9 @@ import {
   getPullRequestNextStep,
   isPullRequestAutoMergeOn,
   getPullRequestGithubCheckStatus,
-  PULL_REQUEST_NEXT_STEP_TONE_CLASS,
   PULL_REQUEST_STATE_DISPLAY,
 } from "@/lib/pull-request-display";
+import { PullRequestNextStepLabel } from "@/components/pull-request/PullRequestNextStepLabel";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
 import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
@@ -646,14 +646,10 @@ function PullRequestBannerLink({
         </span>
       ) : null}
       {showAttentionLabel && nextStep ? (
-        <span
-          className={cn(
-            "min-w-0 truncate",
-            PULL_REQUEST_NEXT_STEP_TONE_CLASS[nextStep.tone],
-          )}
-        >
-          · {nextStep.label}
-        </span>
+        <>
+          <span aria-hidden>·</span>
+          <PullRequestNextStepLabel nextStep={nextStep} />
+        </>
       ) : null}
       {showLabel && isPullRequestAutoMergeOn(pullRequest) ? (
         <Icon

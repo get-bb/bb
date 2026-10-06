@@ -56,7 +56,7 @@ describe("pull request signals", () => {
     (attention, checksState, label, tone) => {
       const pr = pullRequest({ attention });
       pr.checks.state = checksState;
-      expect(getPullRequestNextStep(pr)).toEqual({ label, tone });
+      expect(getPullRequestNextStep(pr)).toMatchObject({ label, tone });
     },
   );
 
@@ -67,7 +67,21 @@ describe("pull request signals", () => {
   ] as const)("explains a %s block", (mergeStateStatus, label) => {
     const pr = pullRequest();
     pr.mergeability.mergeStateStatus = mergeStateStatus;
-    expect(getPullRequestNextStep(pr)).toEqual({ label, tone: "action" });
+    expect(getPullRequestNextStep(pr)).toMatchObject({ label, tone: "action" });
+  });
+
+  it("marks only running checks as animated", () => {
+    const pending = pullRequest({ attention: "checks_pending" });
+    expect(getPullRequestNextStep(pending)).toMatchObject({
+      icon: "Clock",
+      running: true,
+    });
+    const passing = pullRequest({ attention: "none" });
+    expect(getPullRequestNextStep(passing)).toMatchObject({
+      icon: "CircleCheck",
+      running: false,
+    });
+    expect(getPullRequestNextStep(pullRequest())?.icon).toBeNull();
   });
 
   it("separates review required from a requested review", () => {

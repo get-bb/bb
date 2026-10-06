@@ -70,8 +70,8 @@ import {
   getPullRequestNextStep,
   getPullRequestStateDisplay,
   isPullRequestAutoMergeOn,
-  PULL_REQUEST_NEXT_STEP_TONE_CLASS,
 } from "@/lib/pull-request-display";
+import { PullRequestNextStepLabel } from "@/components/pull-request/PullRequestNextStepLabel";
 import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
@@ -475,16 +475,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
             />
             <span>{stateDisplay.label}</span>
           </span>
-          {nextStep ? (
-            <span
-              className={cn(
-                "min-w-0 truncate",
-                PULL_REQUEST_NEXT_STEP_TONE_CLASS[nextStep.tone],
-              )}
-            >
-              {nextStep.label}
-            </span>
-          ) : null}
+          {nextStep ? <PullRequestNextStepLabel nextStep={nextStep} /> : null}
         </a>
         {isPullRequestAutoMergeOn(pullRequest) ? (
           <Tooltip>
