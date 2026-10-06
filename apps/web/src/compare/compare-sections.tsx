@@ -40,9 +40,8 @@ export const AGENTS_COPY: SectionCopy = {
   title: "Agents that work together like a team",
   body: (
     <p>
-      Claude Code builds a feature, Codex reviews it, and Cursor writes the
-      release notes. They pass work back and forth so you don’t have to copy
-      between tools.
+      Claude Code builds, Codex reviews, and Cursor writes the release notes. No
+      copying between tools.
     </p>
   ),
 };
