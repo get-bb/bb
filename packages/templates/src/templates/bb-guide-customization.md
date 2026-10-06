@@ -361,7 +361,8 @@ Sidebar layout lives on the server in a keyed, revisioned registry so every
 window, device, and the CLI share it: organization mode, chronological sort,
 section orders, collapsed rows and sections, navigation entry order and
 visibility, hidden thread-list groups, and the navigation and thread-list
-provider pickers. The sidebar waits for them alongside the project list, and
+provider pickers. The same registry stores which thread Info panel sections
+are collapsed (`infoPanel.collapsedSections`). The sidebar waits for them alongside the project list, and
 an upgrade uploads the old browser-stored layout once.
 
   bb settings ui list [--json]
