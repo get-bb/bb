@@ -62,7 +62,12 @@ export function Rows() {
                   context={row.id === "row-1" ? "folder" : null}
                   target={{ kind: "button", onSelect: noop }}
                   action={
-                    <InfoRowAction icon="Copy" label="Copy" onClick={noop} />
+                    <InfoRowAction
+                      icon="Copy"
+                      label="Copy"
+                      onClick={noop}
+                      tooltip
+                    />
                   }
                   trailing={<InfoRowTime timestamp={row.at} now={NOW} />}
                   selected={row.id === "row-2"}

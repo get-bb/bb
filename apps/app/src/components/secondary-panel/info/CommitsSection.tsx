@@ -39,16 +39,26 @@ export function CommitsSection({
                 : null
             }
             action={
-              <InfoRowAction
-                icon="Copy"
-                label={`Copy commit ${commit.shortSha} SHA`}
-                onClick={() => {
-                  void copyToClipboardWithToast(commit.sha, {
-                    successMessage: "Commit SHA copied",
-                    errorMessage: "Failed to copy commit SHA",
-                  });
-                }}
-              />
+              <>
+                {onCommitClick ? (
+                  <InfoRowAction
+                    icon="ExternalLink"
+                    label="Open in Diff tab"
+                    onClick={() => onCommitClick(commit.sha)}
+                  />
+                ) : null}
+                <InfoRowAction
+                  icon="Copy"
+                  label={`Copy commit ${commit.shortSha} SHA`}
+                  tooltip
+                  onClick={() => {
+                    void copyToClipboardWithToast(commit.sha, {
+                      successMessage: "Commit SHA copied",
+                      errorMessage: "Failed to copy commit SHA",
+                    });
+                  }}
+                />
+              </>
             }
             trailing={
               <InfoRowTime

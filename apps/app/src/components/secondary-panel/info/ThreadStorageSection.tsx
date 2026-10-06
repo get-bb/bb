@@ -138,7 +138,7 @@ export function ThreadStorageSection({
               target={{ kind: "button", onSelect: () => selectPath(file.path) }}
               action={
                 <InfoRowAction
-                  icon="ArrowUpRight"
+                  icon="ExternalLink"
                   label={`Open ${getFileNameFromPath({ path: file.path })} in a tab`}
                   onClick={() => selectPath(file.path)}
                 />

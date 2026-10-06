@@ -134,7 +134,7 @@ function ChangedFileRow({
       action={
         onOpenChangedFile && file.status !== "D" ? (
           <InfoRowAction
-            icon="ArrowUpRight"
+            icon="ExternalLink"
             label={`Open ${fileName} in a tab`}
             onClick={() => onOpenChangedFile(file.path)}
           />

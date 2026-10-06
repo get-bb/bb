@@ -16,7 +16,7 @@ const INFO_LIST_ROW_CLASS =
   "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors hover:bg-state-hover";
 
 const INFO_LIST_PRIMARY_CLASS =
-  "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline underline-offset-2 hover:underline focus-visible:underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
+  "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
 
 const INFO_LIST_QUIET_CONTROL_CLASS =
   "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -178,23 +178,27 @@ export function InfoRowAction({
   icon,
   label,
   onClick,
+  tooltip = false,
 }: {
   icon: IconName;
   label: string;
   onClick: () => void;
+  tooltip?: boolean;
 }) {
+  const button = (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="relative z-10 flex size-4 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100"
+    >
+      <Icon name={icon} className="size-3" aria-hidden />
+    </button>
+  );
+  if (!tooltip) return button;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={label}
-          onClick={onClick}
-          className="relative z-10 flex size-4 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100"
-        >
-          <Icon name={icon} className="size-3" aria-hidden />
-        </button>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
