@@ -16,6 +16,7 @@ import FilterHorizontalIcon from "@hugeicons/core-free-icons/FilterHorizontalIco
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
 import AppleIcon from "@hugeicons/core-free-icons/AppleIcon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import WindowsNewIcon from "@hugeicons/core-free-icons/WindowsNewIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
@@ -390,9 +391,19 @@ const FLEET: {
     os: "Linux",
     icon: <LinuxIcon className="cmp-fleet-os-ic" />,
     threads: [
-      { title: "Bump dependencies", agent: OpenAiIcon, status: "running" },
+      { title: "Bump packages", agent: OpenAiIcon, status: "running" },
       { title: "Triage new issues", agent: ClaudeIcon, status: "done" },
       { title: "Nightly test sweep", agent: ClaudeIcon, status: "running" },
+    ],
+  },
+  {
+    name: "iPhone",
+    os: "bb mobile app",
+    icon: <HugeiconsIcon icon={SmartPhone01Icon} className="cmp-fleet-os-ic" />,
+    threads: [
+      { title: "Nightly test sweep", agent: ClaudeIcon, status: "running" },
+      { title: "Rate-limit uploads", agent: ClaudeIcon, status: "running" },
+      { title: "Fix the flaky test", agent: CursorIcon, status: "running" },
     ],
   },
 ];
@@ -402,7 +413,7 @@ export function FleetVisual() {
     <div
       className="cmp-fleet"
       role="img"
-      aria-label="One bb running Claude Code, Codex, and Cursor threads on a MacBook, a Windows PC at home, and an always-on Linux server"
+      aria-label="One bb running Claude Code, Codex, and Cursor threads on a MacBook, a Windows PC at home, and an always-on Linux server, with every thread on your phone"
     >
       <div className="cmp-fleet-machines">
         {FLEET.map((machine, index) => (

@@ -2301,8 +2301,8 @@
 
 .cmp-fleet-machines {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .cmp-fleet-card {
@@ -2399,6 +2399,10 @@
   .cmp-fleet-machines {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
+  }
+
+  .cmp-fleet-card:last-child {
+    order: -1;
   }
 
   .cmp-fleet-card {

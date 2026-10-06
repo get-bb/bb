@@ -32,19 +32,15 @@ import { FleetVisual, type BrandLogo } from "./compare-visuals";
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
 const AWAY_SECTION = anywhereSection({
-  title: "Agents that keep going after you close your Mac",
+  title: "Keep working after you close your Mac",
   body: (
     <>
       <p>
-        Your agents keep working on your other computers while your laptop
-        sleeps. Every thread follows you to your phone and any browser, so you
-        can check in, answer a question, or start the next task from wherever
-        you are.
+        You can use bb on an always-on desktop or server, so your agents keep
+        running while you’re out. Check in on them from the bb mobile app or any
+        browser.
       </p>
-      <p>
-        In Conductor, closing your Mac ends local sessions, and phone access
-        comes with its $50-a-month Pro plan. In bb, it’s all free.
-      </p>
+      <p>The mobile app, remote machines, and browser access are all free.</p>
     </>
   ),
 });
@@ -243,10 +239,9 @@ export const BB_VS_CONDUCTOR: Comparison = {
           question: "How do I move a repo and my unfinished work to bb?",
           answer: (
             <p>
-              Install bb and add the repo folder you use with Conductor. To pick
-              up an unfinished workspace, start a thread and choose Existing
-              worktree: Conductor’s workspaces are Git worktrees, so bb opens
-              the branch and its changes right where they are. Your CLAUDE.md,
+              Ask bb to do it. Your repo and Conductor’s workspaces are plain
+              Git worktrees on your machine, so a bb agent can add the repo and
+              open each unfinished workspace as a thread. Your CLAUDE.md,
               skills, MCP servers, slash commands, and agent sign-ins come
               along, and Conductor keeps working while you try bb.
             </p>
