@@ -1,7 +1,7 @@
 import type { GatewayConfig } from "./config.js";
 
 export const MAX_OUTPUT_TOKENS = 128;
-export const UPSTREAM_TIMEOUT_MS = 2_000;
+export const UPSTREAM_TIMEOUT_MS = 3_000;
 export const TRANSCRIBE_TIMEOUT_MS = 30_000;
 const TEMPERATURE = 0.2;
 
