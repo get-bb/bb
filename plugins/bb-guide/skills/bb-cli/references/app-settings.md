@@ -235,6 +235,10 @@ so they carry over between navigation plugins.
 
 - Long timelines keep stable row wrappers while mounting only rows near the
   active main or nested detail scrollport.
+- iPhone and iPad browsers, including the iOS app, keep every loaded row
+  mounted instead. Safari there cannot correct the scroll position during a
+  touch scroll's momentum, so rows measured above the viewport would move
+  the text being read.
 
 ## Server move
 
