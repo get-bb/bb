@@ -5,6 +5,14 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import { AgentSplit } from "../../compare/compare-visuals";
 import { CommandBlock, ProductShot, Substeps } from "../guide-blocks";
 import type { Guide } from "../guide-types";
+import {
+  SUBTHREAD_SHOT,
+  TEAM_COST,
+  TEAM_TROUBLESHOOTING,
+  WHEN_IT_PAYS,
+  spawnCommand,
+  talkStep,
+} from "./agent-teams";
 
 const AGENT_PROMPT = `Build the task I describe, have a Codex subthread review it, talk it through with the reviewer, and stop after two review rounds.
 Guide: https://getbb.app/guides/claude-code-and-codex-together
@@ -30,10 +38,6 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 5. Stop after the second review, even if issues remain. If the first review found nothing serious, stop after it.
 
 Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`;
-
-const SPAWN = `bb thread spawn --project "$BB_PROJECT_ID" \\
-    --environment "$BB_ENVIRONMENT_ID" --parent-self \\
-    --provider codex --prompt "Review this branch read-only..."`;
 
 export const CLAUDE_CODE_AND_CODEX: Guide = {
   slug: "claude-code-and-codex-together",
@@ -91,11 +95,11 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       lead: "The lead starts Codex as a subthread, with its own prompt, in the same worktree.",
       body: (
         <>
-          <CommandBlock label="What the agent runs" command={SPAWN} />
-          <ProductShot
-            src="/guides/claude-code-and-codex-together/subthread-sidebar.png"
-            alt="The sidebar with a Claude Code thread, Rate limit upload, and its Codex subthread, Review upload rate limiter, nested under it"
+          <CommandBlock
+            label="What the agent runs"
+            command={spawnCommand("codex")}
           />
+          {SUBTHREAD_SHOT}
         </>
       ),
       doneWhen: "the Codex thread shows up under the Claude Code thread.",
@@ -118,56 +122,13 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       ),
       doneWhen: "both threads are open side by side.",
     },
-    {
-      id: "step-4",
-      title: "Let them talk",
-      lead: "Agents message each other the way you message them: mid-turn, or queued for later.",
-      body: (
-        <>
-          <CommandBlock
-            label="What the agent runs"
-            command={
-              'bb thread tell <codex-thread-id> \\\n    "Can the cleanup timer drop a window that is still active?"'
-            }
-          />
-          <ProductShot
-            src="/guides/claude-code-and-codex-together/agent-message.png"
-            alt="The Codex thread showing a Message from Rate limit upload, followed by Codex's answer"
-          />
-          <p>
-            Type in either thread to step in yourself. Your message reaches it
-            the same way.
-          </p>
-        </>
-      ),
-      doneWhen: (
-        <>
-          the Codex thread shows a <strong>Message from</strong> the lead, and
-          its answer.
-        </>
-      ),
-    },
-    {
-      id: "step-5",
-      title: "Get the results back",
-      lead: "When the subthread finishes, its result lands in the lead's thread.",
-      body: (
-        <>
-          <ProductShot
-            src="/guides/claude-code-and-codex-together/results-back.png"
-            alt="The Claude Code thread showing that Review upload rate limiter finished, followed by Claude's summary of what Codex found"
-          />
-          <p>
-            The lead fixes what's serious, asks for one more pass, and stops
-            after two rounds.
-          </p>
-        </>
-      ),
-      doneWhen:
-        "Claude Code replies with what it built, what each review found, and what's left for you.",
-    },
+    talkStep(
+      "step-4",
+      "Claude Code replies with what it built, what each review found, and what's left for you.",
+    ),
   ],
   sections: [
+    WHEN_IT_PAYS,
     {
       id: "more-agents",
       title: "Bring in more agents",
@@ -181,27 +142,9 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       ),
     },
   ],
-  faqTitle: "FAQ",
+  faqTitle: "Troubleshooting FAQ",
   faq: [
-    {
-      question: "How do agents know how to reach each other?",
-      answer: (
-        <p>
-          Every thread has the bb CLI and a short guide to it. An agent starts,
-          waits for, and messages other threads with the same commands you'd
-          use.
-        </p>
-      ),
-    },
-    {
-      question: "Will agents start other threads on their own?",
-      answer: (
-        <p>
-          They're told not to unless you ask. Say "work together", or name the
-          agents you want.
-        </p>
-      ),
-    },
+    ...TEAM_TROUBLESHOOTING,
     {
       question: "Can Codex lead and Claude Code review?",
       answer: (
@@ -211,33 +154,7 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
         </p>
       ),
     },
-    {
-      question: "Do subthreads share the lead's files?",
-      answer: (
-        <p>
-          When they start in the lead's environment, yes. Pass{" "}
-          <code>--new-environment worktree</code> to give a subthread its own
-          branch instead.
-        </p>
-      ),
-    },
-    {
-      question: "Can both agents edit at the same time?",
-      answer: (
-        <p>
-          Not safely in one worktree. Have them take turns, or give each its own
-          worktree.
-        </p>
-      ),
-    },
-    {
-      question: "Does this cost extra?",
-      answer: (
-        <p>
-          bb is free. Each agent uses its own plan or API key, as it does now.
-        </p>
-      ),
-    },
+    TEAM_COST,
   ],
   closer: {
     title: "Get your agents working together",
