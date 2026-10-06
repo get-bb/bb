@@ -60,7 +60,7 @@ function PluginGuideRoute() {
         <LazyPluginGuide initialSlideId={slide} onSlideChange={onSlideChange} />
       </main>
       <div className="wrap">
-        <SiteFooter />
+        <SiteFooter current="/plugin-guide" />
       </div>
     </>
   );

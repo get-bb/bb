@@ -116,6 +116,7 @@ interface HarnessProps {
 function renderSectionThreadDnd(
   initialRootItems = ROOT_ITEMS,
   pinnedThreads: readonly SidebarThread[] = [],
+  grouping: { groups?: boolean; containerProjectId?: string } = {},
 ) {
   const result: { current: SectionThreadDndState | null } = { current: null };
   const pinnedState = buildPinnedSidebarState({
@@ -126,6 +127,7 @@ function renderSectionThreadDnd(
     result.current = useSectionThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
       enabled: true,
+      ...grouping,
       rootItems,
       topLevelSectionOrder: ["pinned", "section:a", "section:b", "threads"],
       onTopLevelSectionOrderChange: vi.fn(),
@@ -346,6 +348,73 @@ function notePointerMove() {
 afterEach(() => {
   cleanup();
   updateThreadDeferred = null;
+});
+
+describe("useSectionThreadDnd project drop targets", () => {
+  const rootItems = buildSectionThreadList(
+    [
+      createThread({ id: "own", sectionId: "project" }),
+      createThread({ id: "foreign", projectId: "other", sectionId: "other" }),
+      createThread({ id: "personal-thread", projectId: "personal" }),
+    ],
+    undefined,
+    [
+      { id: "project", name: "Own project" },
+      { id: "other", name: "Other project" },
+      { id: "empty", name: "Empty project" },
+    ],
+  ).map((item): ProjectThreadItem =>
+    item.kind === "section"
+      ? { ...item, group: { ...item.group, key: `project:${item.group.id}` } }
+      : item,
+  );
+
+  it.each(["project:other", "foreign", "project:empty", "threads"])(
+    "does not offer or commit a project move onto %s",
+    async (targetId) => {
+      const pinned = createThread({ id: "dragged", pinnedAt: 42 });
+      const { result, inspection } = renderSectionThreadDnd(
+        rootItems,
+        [pinned],
+        { groups: true, containerProjectId: "personal" },
+      );
+      const props = () => result.current!.dndContextProps;
+      const rect = {
+        top: 0,
+        left: 0,
+        width: 200,
+        height: 28,
+        right: 200,
+        bottom: 28,
+      };
+      const collide = (id: string) =>
+        props().collisionDetection!({
+          active: { id: "dragged" },
+          collisionRect: rect,
+          droppableRects: new Map([[id, rect]]),
+          droppableContainers: [{ id }],
+          pointerCoordinates: { x: 20, y: 14 },
+        } as unknown as Parameters<CollisionDetection>[0]);
+
+      act(() => props().onDragStart?.(dragStart("dragged")));
+      expect(collide("project:project").map(({ id }) => id)).toEqual([
+        "project:project",
+      ]);
+      act(() => props().onDragOver?.(dragOver("dragged", "project:project")));
+      expect(result.current?.dragOverParentKey).toBe("project:project");
+
+      expect(collide(targetId)).toEqual([]);
+      act(() => props().onDragOver?.(dragOver("dragged", targetId)));
+      expect(result.current?.dragOverParentKey).toBeNull();
+      expect(result.current?.unchangedParentKey).toBeNull();
+      expect(result.current?.nestTarget).toBeNull();
+      act(() => props().onDragEnd?.(dragEnd("dragged", targetId)));
+      await flushTasks();
+      expect(result.current?.activeThread).toBeNull();
+      expect(inspection.sidebarActionCalls).toEqual([]);
+      expect(inspection.sdkCalls).toEqual([]);
+    },
+  );
 });
 
 describe("useSectionThreadDnd projection feedback loop (#1830)", () => {

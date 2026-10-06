@@ -200,9 +200,9 @@ body {
   color: var(--ink);
 }
 
-.nav-links .nav-current {
+.nav-links .nav-current,
+.nav-links a.nav-current {
   color: var(--ink);
-  font-weight: 500;
 }
 
 .nav-menu {
@@ -385,6 +385,17 @@ body {
   padding: 12px 22px;
   font-size: 15px;
   line-height: 1.5;
+}
+
+.nav-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.nav-download .btn-ic {
+  width: 14px;
+  height: 14px;
 }
 
 .btn-ic {
@@ -808,8 +819,8 @@ body {
   display: flex;
   align-items: center;
   width: max-content;
-  animation: company-proof-scroll
-    calc(var(--company-proof-logos, 11) * 8s) linear infinite;
+  animation: company-proof-scroll calc(var(--company-proof-logos, 11) * 8s)
+    linear infinite;
   will-change: transform;
 }
 
@@ -2936,35 +2947,84 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .footer {
-  padding: 32px 0 52px;
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: 0.65fr 0.95fr 1.3fr 0.7fr;
+  gap: 32px;
+  padding: 56px 0 64px;
+  border-top: 1px solid var(--border-soft);
   color: var(--subtle);
   font-size: 14px;
+}
+
+.footer a {
+  color: var(--subtle);
 }
 
 .footer a:hover {
   color: var(--ink);
 }
 
-.footer-links {
+.footer a[aria-current="page"] {
+  color: var(--heading-sub);
+  font-weight: 500;
+}
+
+.footer-mark {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.footer-brand p {
+  max-width: 170px;
+  margin-top: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.footer-x {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.footer-brand .footer-legal {
+  margin-top: 10px;
+}
+
+.footer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
+.footer-column ul {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  text-align: right;
+  gap: 9px;
+  margin-top: 12px;
+  list-style: none;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────── */
 
-@media (max-width: 820px) {
-  .footer-links {
-    align-items: flex-start;
-    text-align: left;
+@media (max-width: 860px) {
+  .footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px 24px;
   }
 
+  .footer-brand {
+    grid-column: 1 / -1;
+  }
+
+  .footer-brand p {
+    max-width: none;
+  }
+}
+
+@media (max-width: 820px) {
   .band-grid {
     grid-template-columns: 1fr;
     gap: 36px;

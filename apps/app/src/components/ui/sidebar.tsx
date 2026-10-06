@@ -18,8 +18,9 @@ import {
 import { useHorizontalDismissDrag } from "./use-horizontal-dismiss-drag.js";
 
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.76;
-const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, 320px)`;
+const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.86;
+const SIDEBAR_MOBILE_MAX_WIDTH_PX = 360;
+const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, ${SIDEBAR_MOBILE_MAX_WIDTH_PX}px)`;
 const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
 const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
 const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
@@ -65,10 +66,13 @@ const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
 
 function getSidebarMobilePanelWidth(): number {
   if (typeof window === "undefined") {
-    return 320;
+    return SIDEBAR_MOBILE_MAX_WIDTH_PX;
   }
 
-  return Math.min(window.innerWidth * SIDEBAR_MOBILE_VIEWPORT_FRACTION, 320);
+  return Math.min(
+    window.innerWidth * SIDEBAR_MOBILE_VIEWPORT_FRACTION,
+    SIDEBAR_MOBILE_MAX_WIDTH_PX,
+  );
 }
 
 function clampSidebarMobileSwipeProgress(value: number): number {

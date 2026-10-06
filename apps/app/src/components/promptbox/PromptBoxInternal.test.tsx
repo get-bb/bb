@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { buildMessageClipboardHtml } from "../../lib/message-clipboard";
 
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { focusPaneComposer } from "@/lib/pane-composer-focus";
@@ -4929,6 +4930,75 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(latestValue(changes)).toBe("Before A photo"));
     expect(onAttachFiles).toHaveBeenCalledWith([image]);
   });
+
+  it.each(["available", "unavailable", "removed editor"])(
+    "preserves marked HTML text while the image is %s",
+    async (state) => {
+      const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+      let resolveImage: (response: Response) => void = () => {};
+      const fetchImage = vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveImage = resolve;
+          }),
+      );
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = fetchImage;
+      try {
+        const { changes, promptBoxRef, view } = renderPromptBox("Before ", {
+          onAttachFiles,
+        });
+        await focusPromptEnd(promptBoxRef);
+        const imageUrl = new URL("/attachments/photo.png", window.location.href)
+          .href;
+        pasteClipboard({
+          plainText: 'A <photo> & "caption"\nNext',
+          html: buildMessageClipboardHtml(
+            'A <photo> & "caption"\nNext',
+            imageUrl,
+          ),
+        });
+        await waitFor(() =>
+          expect(latestValue(changes)).toBe(
+            'Before A <photo> & "caption"\nNext',
+          ),
+        );
+        expect(fetchImage).toHaveBeenCalledOnce();
+        if (state === "removed editor") view.unmount();
+        await act(async () => {
+          resolveImage(
+            new Response(
+              state === "unavailable"
+                ? "Not found"
+                : new Uint8Array([137, 80, 78, 71]),
+              {
+                status: state === "unavailable" ? 404 : 200,
+                headers: {
+                  "content-type":
+                    state === "unavailable" ? "text/plain" : "image/png",
+                },
+              },
+            ),
+          );
+        });
+        if (state === "available") {
+          await waitFor(() =>
+            expect(onAttachFiles).toHaveBeenCalledWith([
+              expect.objectContaining({
+                name: "photo.png",
+                type: "image/png",
+                size: 4,
+              }),
+            ]),
+          );
+        } else {
+          expect(onAttachFiles).not.toHaveBeenCalled();
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    },
+  );
 
   it.each([
     {

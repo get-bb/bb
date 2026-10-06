@@ -237,7 +237,7 @@ function getMobilePanel(): HTMLElement | null {
   return panel instanceof HTMLElement ? panel : null;
 }
 
-const SHELF_OPEN_TRANSLATE = "320px";
+const SHELF_OPEN_TRANSLATE = "360px";
 const SHELF_CLOSED_TRANSLATE = "0px";
 
 function getShelfRevealTranslate(): string {

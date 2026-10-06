@@ -811,24 +811,32 @@ For a device smoke test:
 Bridge regression tests run with
 `pnpm exec turbo run test typecheck --filter=@bb/mobile-bridge`.
 
-## Android message image copy
+## Android message copy
 
-Android WebView can report a successful combined text/image clipboard write
-while retaining only the text. The message copy button therefore uses the
-Android shell's `copyTextAndImage` bridge method when available. It streams an
-image from the current server into the app cache, using the WebView session
-cookie, and publishes a URI through the existing WebView FileProvider. The
-provider offers message text as an alternate `text/plain` stream. Gboard sees
-an image, while Android text fields can retrieve the message text from the
-same clipboard item. Image-only messages omit the text stream.
+For messages containing text and an image, Android Copy uses the shell's
+`copyRichText` method to publish `text/plain` plus `text/html`. The HTML carries
+hidden, versioned BB metadata with the exact message text and an image URL.
+BB's regular Paste handler validates that metadata, inserts the text and
+fetches the image from the same server with the current session. Downloads
+reject redirects and non-image responses, enforce the 35 MB attachment limit,
+and time out after 30 seconds. A failed download preserves the pasted text and
+reports that the image could not be attached. Results from removed editors or
+pages that navigated away are discarded.
 
-Downloads are limited to 35 MB, reject redirects, and expire after 25 seconds
-with 10-second network timeouts. Old clipboard cache files are removed on the
-next copy after 24 hours. Image copy failures fall back to text and explicitly
-report partial success. Both the APK and the served BB web app need this
-change; older peers retain their existing behavior.
+Android WebView's long-press Paste delivers the HTML. Gboard's text suggestion
+and clipboard-history text entries insert plain text without a rich paste
+event, so those paths paste text only. BB does not compare inserted text with
+previous messages or retain a copied-message cache. HTML-aware destinations
+can also render the text and image reference; plain text destinations receive
+only the text. The image reference requires access to the original server and
+image. Copying image bytes for external image targets uses the image-only path.
 
-Verify by copying a user message containing text and an image, pasting through
-Gboard into a composer, and pasting into a native text field. Also check an
-image-only message, ordinary text copy, and an unavailable image. Remove test
-drafts without sending them.
+Image-only messages use `copyTextAndImage` to download the image into the app
+cache and expose its URI through the WebView FileProvider. Downloads are
+limited to 35 MB, reject redirects, and expire after 25 seconds with 10-second
+network timeouts. Old cache files are removed on the next copy after 24 hours.
+
+Both the APK and served BB web app need this change. Older APKs retain the
+previous combined image/text item behavior. Verify mixed-message Copy followed
+by long-press Paste, Gboard text insertion, image-only Copy/Paste, ordinary text,
+and a missing image. Remove test drafts without sending them.

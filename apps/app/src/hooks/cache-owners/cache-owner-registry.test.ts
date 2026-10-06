@@ -172,6 +172,14 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadsQueryKey",
     "uiPreferencesQueryKey",
   ],
+  "hooks/cache-owners/sidebar-group-cache-owner.ts": [
+    "allThreadQueryKeyPrefix",
+    "hostQueryKey",
+    "hostsQueryKey",
+    "projectsQueryKey",
+    "sidebarNavigationQueryKey",
+    "threadsQueryKey",
+  ],
   "hooks/cache-owners/skills-cache-effects.ts": ["projectSkillsQueryKey"],
   "hooks/cache-owners/system-cache-effects.ts": [
     "allEnvironmentDiffFilesQueryKeyPrefix",
@@ -257,7 +265,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadsQueryKey",
   ],
   "hooks/cache-owners/thread-state-cache-owner.ts": [
-    "projectsQueryKey",
     "sidebarNavigationQueryKey",
     "threadQueryKey",
     "threadSearchQueryKeyPrefix",

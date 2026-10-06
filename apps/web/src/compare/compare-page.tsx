@@ -362,7 +362,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         </div>
       </section>
 
-      <SiteFooter />
+      <SiteFooter current={`/compare/${comparison.slug}`} />
     </div>
   );
 }

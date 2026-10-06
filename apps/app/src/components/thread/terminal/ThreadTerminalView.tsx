@@ -22,6 +22,8 @@ import {
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
+import { appToast } from "@/components/ui/app-toast";
 import type {
   TerminalServerMessage,
   TerminalSession,
@@ -44,6 +46,11 @@ import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSele
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
 import { TerminalWebSocketTransport } from "@bb/client-core";
 import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
+import { TerminalMobileControls } from "./TerminalMobileControls";
+import {
+  applyTerminalControl,
+  encodeTerminalArrow,
+} from "./terminal-mobile-input";
 import {
   createTerminalOsc8LinkHandler,
   requestTerminalLinkOpen,
@@ -643,6 +650,14 @@ export function ThreadTerminalView({
   onTitleChange,
   session,
 }: ThreadTerminalViewProps) {
+  const isTouchDevice = useMediaQuery("(pointer: coarse)");
+  const [controlActive, setControlActive] = useState(false);
+  const controlActiveRef = useRef(false);
+  const changeControlActive = (active: boolean) => {
+    controlActiveRef.current = active;
+    setControlActive(active);
+  };
+  const [terminalReady, setTerminalReady] = useState(false);
   const [activeSelection, setActiveSelection] =
     useState<MessageProseSelection | null>(null);
   const [hoveredTerminalLink, setHoveredTerminalLink] =
@@ -1073,6 +1088,11 @@ export function ThreadTerminalView({
       const sendTerminalInput = (dataBase64: string) =>
         activeTransport.sendInput(dataBase64);
       activeTerminal.onData((data) => {
+        if (controlActiveRef.current) {
+          data = applyTerminalControl(data);
+          controlActiveRef.current = false;
+          setControlActive(false);
+        }
         forwardTerminalData({
           data,
           onInput: sendTerminalInput,
@@ -1080,6 +1100,7 @@ export function ThreadTerminalView({
           sessionStatus: sessionStatusRef.current,
         });
       });
+      setTerminalReady(true);
       activeTerminal.onTitleChange((title) => {
         if (replayWriteState.suppressedWriteCount > 0) {
           return;
@@ -1120,6 +1141,9 @@ export function ThreadTerminalView({
 
     return () => {
       disposed = true;
+      controlActiveRef.current = false;
+      setControlActive(false);
+      setTerminalReady(false);
       stopObservingFonts?.();
       if (resizeAnimationFrame !== null) {
         window.cancelAnimationFrame(resizeAnimationFrame);
@@ -1183,82 +1207,137 @@ export function ThreadTerminalView({
     hoveredTerminalLink !== null || activeSelection !== null;
 
   return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        if (!open) {
-          setContextMenuState({ link: null, selectionText: "" });
-        }
-      }}
-    >
-      <ContextMenuTrigger asChild disabled={!hasTerminalContextMenuTarget}>
-        <div
-          className="h-full min-h-0 w-full overflow-hidden bg-sidebar p-2"
-          onContextMenuCapture={captureTerminalContextMenu}
-          onPointerDown={handleTerminalPointerDown}
-          onPointerUp={handleTerminalPointerRelease}
-          onPointerCancel={handleTerminalPointerCancel}
-          onTouchStart={handleTerminalTouchStart}
-          onTouchMove={handleTerminalTouchMove}
-          onTouchEnd={handleTerminalTouchEnd}
-          onTouchCancel={handleTerminalTouchCancel}
-        >
-          <div
-            ref={containerRef}
-            className="h-full min-h-0 w-full overflow-hidden"
-          />
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="min-w-36">
-        {contextMenuLink !== null ? (
-          <>
-            <ContextMenuItem
-              onSelect={() => requestOpenTerminalLink(contextMenuLink)}
-            >
-              Open Link
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() =>
-                copyTerminalContextValue(contextMenuLink.uri, "Link copied")
-              }
-            >
-              Copy Link
-            </ContextMenuItem>
-          </>
-        ) : null}
-        {contextMenuLink !== null && contextMenuSelectionText.length > 0 ? (
-          <ContextMenuSeparator />
-        ) : null}
-        {contextMenuSelectionText.length > 0 ? (
-          <ContextMenuItem
-            onSelect={() =>
-              copyTerminalContextValue(
-                contextMenuSelectionText,
-                "Selection copied",
-              )
-            }
-          >
-            Copy
-          </ContextMenuItem>
-        ) : null}
-      </ContextMenuContent>
-      <TimelineSelectionMenu
-        selection={activeSelection}
-        onAddToChat={
-          onSelectionAddToChat === undefined
-            ? undefined
-            : handleSelectionAddToChat
-        }
-        onDismiss={clearTerminalSelection}
-      />
-      <TerminalLinkOpenDialog
-        target={pendingTerminalLink}
-        onConfirm={confirmTerminalLinkOpen}
+    <div className="flex h-full min-h-0 flex-col">
+      <ContextMenu
         onOpenChange={(open) => {
           if (!open) {
-            setPendingTerminalLink(null);
+            setContextMenuState({ link: null, selectionText: "" });
           }
         }}
-      />
-    </ContextMenu>
+      >
+        <ContextMenuTrigger asChild disabled={!hasTerminalContextMenuTarget}>
+          <div
+            className="min-h-0 w-full flex-1 overflow-hidden bg-sidebar p-2"
+            onContextMenuCapture={captureTerminalContextMenu}
+            onPointerDown={handleTerminalPointerDown}
+            onPointerUp={handleTerminalPointerRelease}
+            onPointerCancel={handleTerminalPointerCancel}
+            onTouchStart={handleTerminalTouchStart}
+            onTouchMove={handleTerminalTouchMove}
+            onTouchEnd={handleTerminalTouchEnd}
+            onTouchCancel={handleTerminalTouchCancel}
+          >
+            <div
+              ref={containerRef}
+              className="h-full min-h-0 w-full overflow-hidden"
+            />
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="min-w-36">
+          {contextMenuLink !== null ? (
+            <>
+              <ContextMenuItem
+                onSelect={() => requestOpenTerminalLink(contextMenuLink)}
+              >
+                Open Link
+              </ContextMenuItem>
+              <ContextMenuItem
+                onSelect={() =>
+                  copyTerminalContextValue(contextMenuLink.uri, "Link copied")
+                }
+              >
+                Copy Link
+              </ContextMenuItem>
+            </>
+          ) : null}
+          {contextMenuLink !== null && contextMenuSelectionText.length > 0 ? (
+            <ContextMenuSeparator />
+          ) : null}
+          {contextMenuSelectionText.length > 0 ? (
+            <ContextMenuItem
+              onSelect={() =>
+                copyTerminalContextValue(
+                  contextMenuSelectionText,
+                  "Selection copied",
+                )
+              }
+            >
+              Copy
+            </ContextMenuItem>
+          ) : null}
+        </ContextMenuContent>
+        <TimelineSelectionMenu
+          selection={activeSelection}
+          onAddToChat={
+            onSelectionAddToChat === undefined
+              ? undefined
+              : handleSelectionAddToChat
+          }
+          onDismiss={clearTerminalSelection}
+        />
+        <TerminalLinkOpenDialog
+          target={pendingTerminalLink}
+          onConfirm={confirmTerminalLinkOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingTerminalLink(null);
+            }
+          }}
+        />
+      </ContextMenu>
+      {isTouchDevice ? (
+        <TerminalMobileControls
+          controlActive={controlActive}
+          disabled={!terminalReady || session.status !== "running"}
+          onControlChange={(active) => {
+            changeControlActive(active);
+            if (active) terminalRef.current?.focus();
+          }}
+          onArrow={(key) => {
+            const terminal = terminalRef.current;
+            if (!terminal) return;
+            changeControlActive(false);
+            terminal.input(
+              encodeTerminalArrow(
+                key,
+                terminal.modes.applicationCursorKeysMode,
+              ),
+            );
+          }}
+          onInput={(data) => {
+            changeControlActive(false);
+            terminalRef.current?.input(data);
+          }}
+          onKeyboardToggle={() => {
+            const terminal = terminalRef.current;
+            if (!terminal) return;
+            if (document.activeElement === terminal.textarea) terminal.blur();
+            else terminal.focus();
+          }}
+          onPaste={() => {
+            const terminal = terminalRef.current;
+            if (!terminal) return;
+            if (!navigator.clipboard?.readText) {
+              appToast.error(
+                "Clipboard unavailable. Use your keyboard’s Paste action.",
+              );
+              return;
+            }
+            void navigator.clipboard
+              .readText()
+              .then((text) => {
+                if (terminalRef.current !== terminal) return;
+                changeControlActive(false);
+                terminal.paste(text);
+              })
+              .catch(() => {
+                appToast.error(
+                  "Clipboard unavailable. Use your keyboard’s Paste action.",
+                );
+              });
+          }}
+        />
+      ) : null}
+    </div>
   );
 }

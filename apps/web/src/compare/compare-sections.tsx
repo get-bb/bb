@@ -5,6 +5,7 @@ import type { CompareHighlight } from "./comparisons";
 import {
   AgentSplit,
   AnywhereVisual,
+  SpawnTimeline,
   TeamCost,
   type BrandLogo,
 } from "./compare-visuals";
@@ -43,6 +44,17 @@ export const AGENTS_COPY: SectionCopy = {
     <p>
       Claude Code builds, Codex reviews, and Cursor writes the release notes. No
       copying between tools.
+    </p>
+  ),
+};
+
+export const SPAWN_COPY: SectionCopy = {
+  title: "Hand off the whole job",
+  body: (
+    <p>
+      Give one agent a big task. It splits the work across Claude Code, Codex,
+      Cursor, and others running side by side, and they message each other as
+      they go. You come back to finished work, not notes to pass between tools.
     </p>
   ),
 };
@@ -100,23 +112,36 @@ export function pricingSection(
   };
 }
 
+function agentsBody(copy: SectionCopy) {
+  return (
+    <>
+      {copy.body}
+      <div className="providers cmp-providers">
+        <span className="label">Works with any agent</span>
+        <ProviderChips />
+      </div>
+      <p className="cmp-providers-note">
+        Need another? Add it with a <a href="/marketplace">plugin</a>.
+      </p>
+    </>
+  );
+}
+
 export function agentsSection(copy: SectionCopy): CompareHighlight {
   return {
     title: copy.title,
     wide: true,
     visual: <AgentSplit />,
-    body: (
-      <>
-        {copy.body}
-        <div className="providers cmp-providers">
-          <span className="label">Works with any agent</span>
-          <ProviderChips />
-        </div>
-        <p className="cmp-providers-note">
-          Need another? Add it with a <a href="/marketplace">plugin</a>.
-        </p>
-      </>
-    ),
+    body: agentsBody(copy),
+  };
+}
+
+export function spawnSection(copy: SectionCopy): CompareHighlight {
+  return {
+    title: copy.title,
+    wide: true,
+    visual: <SpawnTimeline />,
+    body: agentsBody(copy),
   };
 }
 

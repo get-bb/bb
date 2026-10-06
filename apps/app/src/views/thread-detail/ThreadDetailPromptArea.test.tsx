@@ -842,7 +842,6 @@ interface RenderPromptAreaOptions {
   environmentGoneStatus?: ComponentProps<
     typeof ThreadDetailPromptArea
   >["environmentGoneStatus"];
-  pendingInteractionsInitialLoading?: boolean;
   queuedMessageCount?: number;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   thread?: ThreadWithRuntime;
@@ -858,7 +857,6 @@ function buildPromptAreaElement({
   pendingInteractions = [],
   childPendingInteractions = [],
   environmentGoneStatus = null,
-  pendingInteractionsInitialLoading = false,
   queuedMessageCount = 0,
   sentMessageEdit,
   thread = makeThread(),
@@ -884,7 +882,6 @@ function buildPromptAreaElement({
         onChangedFileClick={vi.fn()}
         parentThreadSection={null}
         pendingInteractions={pendingInteractions}
-        pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
         queuedMessageCount={queuedMessageCount}
         pendingTodos={null}
         projectId="proj_1"
@@ -1814,25 +1811,6 @@ describe("ThreadDetailPromptArea", () => {
       expect(
         screen.queryByRole("button", { name: "Cancel queued edit" }),
       ).toBeNull(),
-    );
-  });
-
-  it("blocks submit while pending interactions are initially unknown", () => {
-    mocks.defaultExecutionOptions = {
-      model: "gpt-5",
-      permissionMode: "auto",
-      reasoningLevel: "medium",
-      serviceTier: "default",
-      source: "client/turn/requested",
-    };
-
-    renderPromptArea({
-      pendingInteractionsInitialLoading: true,
-      thread: makeThread({ environmentId: "env_1" }),
-    });
-
-    expect(screen.getByTestId("submit-mode").textContent).toBe(
-      "blocked:loading-pending-interactions",
     );
   });
 

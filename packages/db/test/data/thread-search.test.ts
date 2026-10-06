@@ -504,6 +504,56 @@ describe("thread search data", () => {
     }
   });
 
+  it("splits an underscored query into words like other punctuation", () => {
+    const { db, project } = setup();
+    try {
+      const titled = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Search the thread list",
+      });
+      const newerMessage = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: newerMessage.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "rename thread_search before shipping",
+          },
+        ],
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, titled.id);
+      setUpdatedAt.run(2, newerMessage.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "thread_search",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        titled.id,
+        newerMessage.id,
+      ]);
+      expect(
+        results.active.results[1]?.matches[0]?.highlightRanges,
+      ).toEqual([
+        { start: 7, end: 13 },
+        { start: 14, end: 20 },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("shows the message that has every word over an earlier partial match", () => {
     const { db, project } = setup();
     try {

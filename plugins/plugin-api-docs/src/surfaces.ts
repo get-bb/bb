@@ -130,7 +130,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Group, sort, and draw every row your own way",
           "Read live threads, sections, projects, run status, and pull-request checks",
-          "Use bb's own actions to open, pin, rename, archive, and split threads",
+          "Use optimistic SDK writes and bb's actions to move, pin, rename, restore, archive, and split threads",
           "Keep bb's New thread button, search, and footer around it",
         ],
         apiSymbols: [
@@ -144,6 +144,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSidebarSection",
           "experimental_useSidebarThreadActions",
           "PluginSidebarThreadActions",
+          "PluginSidebarThreadActions.experimental_archiveEnvironmentThreads",
           "PluginSidebarThreadActions.openNewThread",
           "PluginSidebarThreadActions.openNewThread.experimental_placement",
           "experimental_useSidebarThreadPullRequest",

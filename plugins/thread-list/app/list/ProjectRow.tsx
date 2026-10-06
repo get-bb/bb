@@ -56,10 +56,6 @@ import {
 } from "../ui/environment-workspace-display.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import {
-  resolveSectionName,
-  sectionNameOverridesAtom,
-} from "../model/section-name-overrides.js";
-import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "../ui/ConfirmDeleteDialog.js";
@@ -407,36 +403,11 @@ interface EnvironmentThreadGroupHeaderActionsProps {
 
 interface UseArchiveEnvironmentThreadGroupActionArgs {
   environmentId: string;
-  projectId: string;
-  selectedThreadId?: string;
-  threads: readonly SidebarThread[];
 }
 
 interface UseArchiveEnvironmentThreadGroupActionResult {
   archiveThreadsPending: boolean;
   onArchiveThreads: () => void;
-}
-
-interface FormatArchivedEnvironmentThreadsToastTitleArgs {
-  archivedThreadIds: readonly string[];
-  threads: readonly SidebarThread[];
-}
-
-export function formatArchivedEnvironmentThreadsToastTitle({
-  archivedThreadIds,
-  threads,
-}: FormatArchivedEnvironmentThreadsToastTitleArgs): string {
-  if (archivedThreadIds.length !== 1) {
-    return `Archived ${archivedThreadIds.length} threads`;
-  }
-
-  const archivedThread = threads.find(
-    (thread) => thread.id === archivedThreadIds[0],
-  );
-  if (!archivedThread) {
-    return "Archived 1 thread";
-  }
-  return `Archived ${archivedThread.displayTitle}`;
 }
 
 function getThreadRowDepth({
@@ -672,46 +643,18 @@ const DroppableSectionItemRow = memo(function DroppableSectionItemRow({
 
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
-  projectId,
-  selectedThreadId,
-  threads,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
-  const navigate = useBbNavigate();
-  const sdk = useSdk();
+  const actions = experimental_useSidebarThreadActions();
   const [archiveThreadsPending, setArchiveThreadsPending] = useState(false);
   const onArchiveThreads = useCallback(() => {
     setArchiveThreadsPending(true);
-    void sdk.environments
-      .archiveThreads({ environmentId })
-      .then((response) => {
-        toast.success(
-          formatArchivedEnvironmentThreadsToastTitle({
-            archivedThreadIds: response.archivedThreadIds,
-            threads,
-          }),
-        );
-        if (
-          selectedThreadId &&
-          response.archivedThreadIds.includes(selectedThreadId)
-        ) {
-          navigate.toProject(projectId);
-        }
-      })
-      .catch((error: unknown) => {
-        toast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: "Failed to archive environment threads.",
-          }),
-        );
-      })
+    void actions
+      .experimental_archiveEnvironmentThreads(environmentId)
+      .catch(() => {})
       .finally(() => setArchiveThreadsPending(false));
-  }, [environmentId, navigate, projectId, sdk, selectedThreadId, threads]);
+  }, [actions, environmentId]);
 
-  return {
-    archiveThreadsPending,
-    onArchiveThreads,
-  };
+  return { archiveThreadsPending, onArchiveThreads };
 }
 
 function EnvironmentThreadGroupHeaderActions({
@@ -894,7 +837,7 @@ function EnvironmentThreadGroupHeader({
             onDoubleClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              rename.startEditing();
+              rename.startEditingFromDoubleClick();
             }}
           >
             {displayName}
@@ -1026,14 +969,8 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     ? representativeThread.sectionId
     : null;
   const { sectionId, pinned } = useThreadCreationPlacement(sectionWhenUnpinned);
-  const threads = useMemo(() => nodes.map((node) => node.thread), [nodes]);
   const { archiveThreadsPending, onArchiveThreads } =
-    useArchiveEnvironmentThreadGroupAction({
-      environmentId,
-      projectId,
-      selectedThreadId,
-      threads,
-    });
+    useArchiveEnvironmentThreadGroupAction({ environmentId });
   const handleCreateNewThread = useCallback(() => {
     onProjectSelect?.();
     sidebarActions.openNewThread({
@@ -1340,49 +1277,14 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   sortableStyle,
 }: SectionTreeItemRowProps) {
   const sdk = useSdk();
-  const sectionNameOverrides = useAtomValue(sectionNameOverridesAtom);
-  const setSectionNameOverrides = useSetAtom(sectionNameOverridesAtom);
-  const sectionName = resolveSectionName(
-    section.id,
-    section.name,
-    sectionNameOverrides,
-  );
+  const sectionName = section.name;
   const rename = useSidebarRename({
     kind: "section",
     id: section.id,
     ownerKey: `section:${section.id}:section:${depthOffset}`,
     name: sectionName,
     label: "Section name",
-    onSave: async (name) => {
-      const previousName =
-        sectionNameOverrides.get(section.id)?.previousName ?? section.name;
-      setSectionNameOverrides((current) =>
-        new Map(current).set(section.id, {
-          previousName,
-          name,
-        }),
-      );
-      try {
-        const result = await sdk.threadSections.update({
-          id: section.id,
-          name,
-        });
-        setSectionNameOverrides((current) =>
-          new Map(current).set(section.id, {
-            previousName,
-            name: result.name ?? name,
-          }),
-        );
-        return result;
-      } catch (error) {
-        setSectionNameOverrides((current) => {
-          const next = new Map(current);
-          next.delete(section.id);
-          return next;
-        });
-        throw error;
-      }
-    },
+    onSave: (name) => sdk.threadSections.update({ id: section.id, name }),
   });
   const [isTopLevelActionsOpen, setIsTopLevelActionsOpen] = useState(false);
   const collapsedSections = useAtomValue(sidebarCollapsedThreadSectionsAtom);
@@ -1485,7 +1387,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       <TopLevelSidebarSection
         label={sectionName}
         labelEditor={rename.editor}
-        onRename={rename.startEditing}
+        onRename={rename.startEditingFromDoubleClick}
         sectionId={section.id}
         actions={topLevelActions}
         actionsOpen={isTopLevelActionsOpen}
@@ -1525,7 +1427,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         label={sectionName}
         sectionId={buildSidebarEntitySectionId("section", section.id)}
         labelEditor={rename.editor}
-        onRename={rename.startEditing}
+        onRename={rename.startEditingFromDoubleClick}
         onRenameFromMenu={rename.startEditingFromMenu}
         depth={headerDepth}
         onCloseAutoFocus={rename.onCloseAutoFocus}
@@ -2344,7 +2246,7 @@ function ProjectRowComponent({
             label={project.name}
             dropParentKey={buildSidebarEntitySectionId("project", project.id)}
             labelEditor={rename.editor}
-            onRename={rename.startEditing}
+            onRename={rename.startEditingFromDoubleClick}
             actions={projectActions}
             actionsMobileAlways
             actionsOpen={isActionsOpen}

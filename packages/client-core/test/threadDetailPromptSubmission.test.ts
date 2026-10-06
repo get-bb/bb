@@ -339,7 +339,6 @@ describe("threadDetailPromptSubmission", () => {
         buildFollowUpSubmitMode({
           hasPendingInteraction: false,
           isDefaultExecutionOptionsLoading: true,
-          isPendingInteractionsInitialLoading: false,
           isStopRequested: false,
           onStop,
           runtimeDisplayStatus,
@@ -354,7 +353,6 @@ describe("threadDetailPromptSubmission", () => {
       buildFollowUpSubmitMode({
         hasPendingInteraction: false,
         isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: false,
         isStopRequested: true,
         onStop,
         runtimeDisplayStatus: "starting",
@@ -364,37 +362,11 @@ describe("threadDetailPromptSubmission", () => {
       buildFollowUpSubmitMode({
         hasPendingInteraction: true,
         isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "starting",
       }),
     ).toEqual({ kind: "blocked", reason: "pending-interaction" });
-  });
-
-  it("blocks follow-up submit until pending interactions initially load", () => {
-    const onStop = () => undefined;
-
-    expect(
-      buildFollowUpSubmitMode({
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: true,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "idle",
-      }),
-    ).toEqual({ kind: "blocked", reason: "loading-pending-interactions" });
-    expect(
-      buildFollowUpSubmitMode({
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: true,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "active",
-      }),
-    ).toEqual({ kind: "blocked", reason: "loading-pending-interactions" });
   });
 
   it("blocks a draft side chat until inherited execution options load", () => {
@@ -405,7 +377,6 @@ describe("threadDetailPromptSubmission", () => {
         childThreadId: null,
         hasPendingInteraction: false,
         isDefaultExecutionOptionsLoading: true,
-        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "provisioning",
@@ -417,7 +388,6 @@ describe("threadDetailPromptSubmission", () => {
         childThreadId: null,
         hasPendingInteraction: false,
         isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "idle",
@@ -433,26 +403,11 @@ describe("threadDetailPromptSubmission", () => {
         childThreadId: "thr_side",
         hasPendingInteraction: false,
         isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "active",
       }),
     ).toEqual({ kind: "queue", onStop });
-  });
-
-  it("blocks child side chats until pending interactions initially load", () => {
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: "thr_side",
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: true,
-        isStopRequested: false,
-        onStop: () => undefined,
-        runtimeDisplayStatus: "active",
-      }),
-    ).toEqual({ kind: "blocked", reason: "loading-pending-interactions" });
   });
 
   it("blocks child side chats with a pending interaction", () => {
@@ -461,7 +416,6 @@ describe("threadDetailPromptSubmission", () => {
         childThreadId: "thr_side",
         hasPendingInteraction: true,
         isDefaultExecutionOptionsLoading: false,
-        isPendingInteractionsInitialLoading: false,
         isStopRequested: false,
         onStop: () => undefined,
         runtimeDisplayStatus: "active",

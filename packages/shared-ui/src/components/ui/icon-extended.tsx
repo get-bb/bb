@@ -1,4 +1,5 @@
 import type { IconSvgElement } from "@hugeicons/react";
+import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
 import AiBrain01Icon from "@hugeicons/core-free-icons/AiBrain01Icon";
 import AiBrowserIcon from "@hugeicons/core-free-icons/AiBrowserIcon";
 import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
@@ -294,6 +295,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   GitPullRequestDraft: GitPullRequestDraftIcon,
   Globe: InternetIcon,
   GridView: GridViewIcon,
+  Keyboard: KeyboardIcon,
   Laptop: LaptopIcon,
   Layers: Layers01Icon,
   Limitation: LimitationIcon,

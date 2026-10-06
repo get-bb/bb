@@ -1,13 +1,19 @@
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+import NewTwitterIcon from "@hugeicons/core-free-icons/NewTwitterIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Fragment, useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
-import { CONTENT_LINK_GROUPS } from "./content-links";
-import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
+import { COMPARE_LINKS, type ContentLink } from "./content-links";
+import {
+  DesktopDownloadButton,
+  DiscordLink,
+  DownloadLink,
+  GitHubLink,
+  XLink,
+} from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
-import { DESKTOP_DOWNLOADS } from "./site";
 
 type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide";
 
@@ -64,7 +70,7 @@ function PluginsMenu({ current }: { current?: SiteNavPage }) {
           href="/plugin-guide"
           aria-current={current === "plugin-guide" ? "page" : undefined}
         >
-          Plugin Guide
+          Building plugins
         </a>
       </div>
     </details>
@@ -101,55 +107,107 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
         >
           <HugeiconsIcon icon={GithubIcon} />
         </GitHubLink>
-        <DownloadLink
+        <DesktopDownloadButton
           placement="nav"
           platform={platform}
-          className="btn btn-primary btn-sm"
-        >
-          {DESKTOP_DOWNLOADS[platform].buttonLabel}
-        </DownloadLink>
+          className="btn btn-primary btn-sm nav-download"
+        />
       </div>
     </nav>
   );
 }
 
-export function SiteFooter() {
+function FooterColumn({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="footer-column">
+      <h2 className="footer-title">{title}</h2>
+      <ul>{children}</ul>
+    </div>
+  );
+}
+
+function FooterLinks({
+  links,
+  current,
+}: {
+  links: ContentLink[];
+  current: string | undefined;
+}) {
+  return links.map((link) => (
+    <li key={link.href}>
+      <a
+        href={link.href}
+        aria-current={link.href === current ? "page" : undefined}
+      >
+        {link.label}
+      </a>
+    </li>
+  ));
+}
+
+export function SiteFooter({ current }: { current?: string }) {
   const platform = useDesktopPlatform();
   return (
     <footer className="footer">
-      <span>bb is free and open source (MIT)</span>
-      <div className="footer-links">
-        <span>
-          <a href="/blog">Blog</a>
-          {" · "}
-          <a href="/changelog">Changelog</a>
-          {" · "}
-          <a href="/plugin-guide">Plugin Guide</a>
-          {" · "}
+      <div className="footer-brand">
+        <span className="bb-mark footer-mark" aria-hidden="true" />
+        <p className="footer-legal">
           <a href="/privacy">Privacy</a>
-          {" · "}
-          <GitHubLink placement="footer">GitHub</GitHubLink>
-          {" · "}
-          <XLink placement="footer">X</XLink>
-          {" · "}
-          <DiscordLink placement="footer">Discord</DiscordLink>
-          {" · "}
+        </p>
+      </div>
+      <FooterColumn title="Product">
+        <li>
           <DownloadLink placement="footer" platform={platform}>
             Download
           </DownloadLink>
-        </span>
-        {CONTENT_LINK_GROUPS.map((group) => (
-          <span key={group.title}>
-            {group.title}:{" "}
-            {group.links.map((link, index) => (
-              <Fragment key={link.href}>
-                {index > 0 ? " · " : null}
-                <a href={link.href}>{link.label}</a>
-              </Fragment>
-            ))}
-          </span>
-        ))}
-      </div>
+        </li>
+        <li>
+          <a href="/marketplace">Plugins</a>
+        </li>
+        <li>
+          <a
+            href="/plugin-guide"
+            aria-current={current === "/plugin-guide" ? "page" : undefined}
+          >
+            Building plugins
+          </a>
+        </li>
+        <li>
+          <a href="/changelog">Changelog</a>
+        </li>
+        <li>
+          <a href={DASHBOARD_PATH}>Sign in</a>
+        </li>
+      </FooterColumn>
+      <FooterColumn title="Compare">
+        <FooterLinks links={COMPARE_LINKS} current={current} />
+      </FooterColumn>
+      <FooterColumn title="Community">
+        <li>
+          <a href="/blog">Blog</a>
+        </li>
+        <li>
+          <GitHubLink placement="footer">GitHub</GitHubLink>
+        </li>
+        <li>
+          <DiscordLink placement="footer">Discord</DiscordLink>
+        </li>
+        <li>
+          <XLink placement="footer" aria-label="X">
+            <HugeiconsIcon
+              icon={NewTwitterIcon}
+              className="footer-x"
+              aria-hidden="true"
+            />
+          </XLink>
+        </li>
+      </FooterColumn>
     </footer>
   );
 }
