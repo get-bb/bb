@@ -90,7 +90,7 @@ const BB_VS_SUPERSET: Comparison = {
   tailored: pricingSection(PRICING_COPY, {
     plan: "Superset Pro",
     logo: SUPERSET_LOGO,
-    yearlyPerSeatMonthly: 15,
+    yearlyPerSeatMonthly: 20,
   }),
   sections: [
     agentsSection(AGENTS_COPY),

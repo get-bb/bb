@@ -501,8 +501,8 @@ export function TeamCost({
         </span>
       </div>
       <p className="cmp-cost-foot">
-        {plan} at ${yearlyPerSeatMonthly}/user/mo billed yearly. Your agent
-        plans are separate either way.
+        {plan} at ${yearlyPerSeatMonthly} per user a month. Your agent plans are
+        separate either way.
       </p>
     </div>
   );
