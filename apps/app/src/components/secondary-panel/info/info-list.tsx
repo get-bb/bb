@@ -173,7 +173,7 @@ export function InfoListRow({
       ) : (
         <span className={INFO_LIST_LEADING_CLASS}>{leading}</span>
       )}
-      <span className="flex min-w-0 flex-1 items-center gap-1 pr-6">
+      <span className="flex min-w-0 flex-1 items-center gap-1 pr-2">
         {primary}
         {context ? (
           <span className="shrink-0 text-2xs text-subtle-foreground">
