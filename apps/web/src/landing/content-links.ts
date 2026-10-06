@@ -9,7 +9,7 @@ export const GUIDE_LINKS: ContentLink[] = [
     href: "/guides/remote-dev-servers",
   },
   {
-    label: "Pair Claude Code with Codex",
+    label: "Use Claude Code and Codex together",
     href: "/guides/claude-code-and-codex-together",
   },
 ];
