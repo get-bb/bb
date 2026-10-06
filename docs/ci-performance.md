@@ -1,6 +1,6 @@
 # CI performance
 
-The main CI workflow keeps build, lint/typecheck, two server test shards, six app test
+The main CI workflow keeps build, lint/typecheck, two server test shards, eight app test
 shards, integration tests, three package test groups, plugin tests, three fork
 check shards, and package
 smokes independent. Node 24/26 compatibility smokes run on main and manual runs.
@@ -356,6 +356,9 @@ links.
 The app suite now contains roughly 585 files. In app-only experiment
 [37542453877](https://github.com/get-bb/bb/actions/runs/37542453877), a 195-file
 Linux shard took 132 seconds and the workflow passed in 3m24s. Linux now uses
-six shards with the existing two-worker limit. Build and static-check package
+eight shards with the existing two-worker limit. Build and static-check package
 filters are separate, so build-only prerequisites no longer cause unrelated
 lint/typecheck tasks to run.
+
+Demo-server-only test jobs use a scoped install and omit Electron runtime setup.
+Electron libraries and Xvfb run only when the selected tests include desktop.

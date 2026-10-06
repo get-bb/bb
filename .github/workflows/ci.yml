@@ -499,10 +499,13 @@ jobs:
           TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+          DEMO_ONLY: ${{ matrix.filter == '--filter=@bb/demo-server' }}
         run: |
           filters=()
           if [[ "$APP_SHARD" == "true" ]]; then
             filters=(--ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...')
+          elif [[ "$DEMO_ONLY" == "true" ]]; then
+            filters=(--ignore-scripts --filter bb --filter '@bb/demo-server...' --filter '@bb/db...')
           fi
           bash .github/actions/setup-workspace/install-dependencies.sh "${filters[@]}"
 
@@ -514,14 +517,14 @@ jobs:
           no-cache: true
 
       - name: Install Electron runtime libraries
-        if: ${{ matrix.shard == 'packages-build' }}
+        if: ${{ contains(matrix.filter, '--filter=@bb/desktop') }}
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64
           ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
 
       - name: Test
-        run: ${{ matrix.shard == 'packages-build' && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --maxWorkers=2 ${{ matrix.args }}
+        run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --maxWorkers=2 ${{ matrix.args }}
 
       - name: Upload test timings
         if: ${{ !cancelled() }}

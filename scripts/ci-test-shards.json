@@ -13,32 +13,42 @@
     {
       "shard": "app-1",
       "filter": "--filter=@bb/app",
-      "args": "--shard=1/6"
+      "args": "--shard=1/8"
     },
     {
       "shard": "app-2",
       "filter": "--filter=@bb/app",
-      "args": "--shard=2/6"
+      "args": "--shard=2/8"
     },
     {
       "shard": "app-3",
       "filter": "--filter=@bb/app",
-      "args": "--shard=3/6"
+      "args": "--shard=3/8"
     },
     {
       "shard": "app-4",
       "filter": "--filter=@bb/app",
-      "args": "--shard=4/6"
+      "args": "--shard=4/8"
     },
     {
       "shard": "app-5",
       "filter": "--filter=@bb/app",
-      "args": "--shard=5/6"
+      "args": "--shard=5/8"
     },
     {
       "shard": "app-6",
       "filter": "--filter=@bb/app",
-      "args": "--shard=6/6"
+      "args": "--shard=6/8"
+    },
+    {
+      "shard": "app-7",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=7/8"
+    },
+    {
+      "shard": "app-8",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=8/8"
     },
     {
       "shard": "integration",
