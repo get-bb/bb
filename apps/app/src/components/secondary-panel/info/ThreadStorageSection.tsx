@@ -15,7 +15,7 @@ import {
   resolveRightPanelFileIconName,
 } from "../rightPanelFileVisuals";
 import type { ThreadStorageBrowserController } from "../useThreadStorageBrowser";
-import { InfoList, InfoListRow, InfoSection } from "./info-list";
+import { InfoList, InfoListRow, InfoRowAction, InfoSection } from "./info-list";
 
 export interface ThreadStorageSectionProps {
   controller: ThreadStorageBrowserController;
@@ -133,9 +133,16 @@ export function ThreadStorageSection({
               }
               name={getFileNameFromPath({ path: file.path })}
               context={getParentFolderNameFromPath({ path: file.path })}
-              title={file.path}
+              title={`Open ${file.path}`}
               selected={selectedPath === file.path}
               target={{ kind: "button", onSelect: () => selectPath(file.path) }}
+              action={
+                <InfoRowAction
+                  icon="ArrowUpRight"
+                  label={`Open ${getFileNameFromPath({ path: file.path })} in a tab`}
+                  onClick={() => selectPath(file.path)}
+                />
+              }
             />
           )}
         />

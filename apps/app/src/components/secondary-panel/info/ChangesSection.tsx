@@ -116,9 +116,10 @@ function ChangedFileRow({
         <Icon
           name={glyph.icon}
           className={cn("size-3", glyph.className)}
-          aria-label={glyph.label}
+          aria-hidden
         />
       }
+      leadingLabel={glyph.description}
       name={fileName}
       context={getParentFolderNameFromPath({ path: file.path })}
       title={`${glyph.label} · ${file.path}`}
@@ -134,7 +135,7 @@ function ChangedFileRow({
         onOpenChangedFile && file.status !== "D" ? (
           <InfoRowAction
             icon="ArrowUpRight"
-            label={`Open ${fileName}`}
+            label={`Open ${fileName} in a tab`}
             onClick={() => onOpenChangedFile(file.path)}
           />
         ) : null

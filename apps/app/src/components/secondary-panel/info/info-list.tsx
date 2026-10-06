@@ -16,7 +16,7 @@ const INFO_LIST_ROW_CLASS =
   "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors hover:bg-state-hover";
 
 const INFO_LIST_PRIMARY_CLASS =
-  "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
+  "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline underline-offset-2 hover:underline focus-visible:underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
 
 const INFO_LIST_QUIET_CONTROL_CLASS =
   "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -96,6 +96,7 @@ export type InfoListRowTarget =
 
 export interface InfoListRowProps {
   leading: ReactNode;
+  leadingLabel?: string;
   name: ReactNode;
   target: InfoListRowTarget | null;
   title?: string;
@@ -107,6 +108,7 @@ export interface InfoListRowProps {
 
 export function InfoListRow({
   leading,
+  leadingLabel,
   name,
   target,
   title,
@@ -142,7 +144,21 @@ export function InfoListRow({
       className={cn(INFO_LIST_ROW_CLASS, selected && "bg-state-active")}
       aria-current={selected ? "true" : undefined}
     >
-      <span className={INFO_LIST_LEADING_CLASS}>{leading}</span>
+      {leadingLabel ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              aria-label={leadingLabel}
+              className={cn(INFO_LIST_LEADING_CLASS, "relative z-10")}
+            >
+              {leading}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{leadingLabel}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span className={INFO_LIST_LEADING_CLASS}>{leading}</span>
+      )}
       <span className="flex min-w-0 flex-1 items-center gap-1 pr-6">
         {primary}
         {context ? (

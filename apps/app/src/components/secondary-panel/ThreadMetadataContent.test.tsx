@@ -264,7 +264,7 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain("Unavailable — machine removed");
     expect(markup).toContain("Old laptop");
     expect(markup).not.toContain("(offline)");
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("explains the create-thread action in a tooltip", async () => {
@@ -284,12 +284,12 @@ describe("EnvironmentRow", () => {
 
     focusWithKeyboard(
       screen.getByRole("button", {
-        name: "New thread in this environment",
+        name: "New thread in environment",
       }),
     );
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "New thread in this environment",
+      "New thread in environment",
     );
   });
 
@@ -301,7 +301,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("hides the create-thread action before an environment has a path", () => {
@@ -311,7 +311,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("offers the create-thread action on a project's own checkout", () => {
@@ -319,7 +319,7 @@ describe("EnvironmentRow", () => {
       makeEnvironment({ environmentProviderId: null }),
     );
 
-    expect(markup).toContain('aria-label="New thread in this environment"');
+    expect(markup).toContain('aria-label="New thread in environment"');
   });
 
   it("shows a custom provider label with its machine", () => {

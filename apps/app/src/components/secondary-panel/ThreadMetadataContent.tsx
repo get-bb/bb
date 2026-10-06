@@ -28,7 +28,7 @@ import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn, formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import {
   findEnvironmentDisplayProvider,
   getEnvironmentWorkspaceInfoDisplay,
@@ -42,6 +42,7 @@ import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
+import { TruncateStart } from "@/components/ui/truncate-start.js";
 import {
   DetailCard,
   DetailRow,
@@ -271,14 +272,17 @@ export function EnvironmentRow({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  aria-label="New thread in this environment"
+                  aria-label="New thread in environment"
                   onClick={createThreadInEnvironment}
-                  className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                  className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground"
                 >
-                  <Icon name="MessageSquarePlus" className="size-4" />
+                  <Icon
+                    name="MessageSquarePlus"
+                    className="size-3 shrink-0 max-md:pointer-coarse:size-4"
+                  />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>New thread in this environment</TooltipContent>
+              <TooltipContent>New thread in environment</TooltipContent>
             </Tooltip>
           ) : null}
         </span>
@@ -384,7 +388,11 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
         title={environment.path}
         successMessage="Directory copied"
         errorMessage="Failed to copy directory"
-      />
+      >
+        <TruncateStart>
+          {formatHomePathForDisplay(environment.path)}
+        </TruncateStart>
+      </CopyableInlineLabel>
     </DetailRow>
   );
 }
@@ -651,8 +659,6 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
-  const labelClass =
-    display.label === "Dirty" ? "text-destructive" : "text-foreground";
   const summaryRepeatsLabel =
     (display.label === "Ahead" || display.label === "Behind") &&
     BRANCH_COMPARISON_SUMMARY_PATTERN.test(display.summary);
@@ -666,13 +672,11 @@ export function GitStatusRow({
       valueClassName="min-w-0"
     >
       <div
-        className="flex min-w-0 items-end gap-2 whitespace-nowrap"
+        className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
         title={`${display.label} ${display.summary}`}
       >
         {summaryRepeatsLabel ? null : (
-          <span className={cn("shrink-0 font-medium", labelClass)}>
-            {display.label}
-          </span>
+          <span className="shrink-0 text-foreground">{display.label}</span>
         )}
         <span className="min-w-0 truncate text-muted-foreground">
           {display.summary}
