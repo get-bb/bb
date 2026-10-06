@@ -30,7 +30,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
     "Vibe Kanban shut down. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
   competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
   headline: "Vibe Kanban shut down. Bring your board to bb.",
-  sub: "Get your board back with bb's Tasks plugin. Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
+  sub: "Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
   heroVisual: <TasksBoard />,
   tailored: LEDGER_HIGHLIGHT,
   sections: [agentsSection(AGENTS_COPY), pluginsSection(PLUGINS_COPY)],
