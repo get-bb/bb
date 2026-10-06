@@ -10,18 +10,43 @@ export default function plugin(bb: BbPluginApi) {
     (await service.state()).policy.deleteDevDataOnCheckoutRemoval;
   const storage = createStorage(bb, devCleanupEnabled);
   bb.events.on("experimental_environment.removed", () =>
-    storage.reconcileEnvironmentRemovals(),
-  );
-  bb.background.schedule("environment-removal-feed", "* * * * *", () =>
-    storage.reconcileEnvironmentRemovals(),
+    storage.reconcileDevelopmentStorage(),
   );
   bb.background.schedule(
     "development-storage-cleanup",
     "0 * * * *",
-    async () => {
-      if (await devCleanupEnabled()) await storage.scanAll();
-    },
+    storage.reconcileDevelopmentStorage,
   );
+  bb.background.service("development-storage-recovery", {
+    async start(signal) {
+      if (signal.aborted) return;
+      const unsubscribe = bb.sdk.subscribe({
+        event: "host:changed",
+        callback: (event) => {
+          if (event.changes.includes("host-connected"))
+            void storage.reconcileDevelopmentStorage();
+        },
+      });
+      const unsubscribeConnection = bb.sdk.subscribe({
+        event: "realtime:connection",
+        callback: (event) => {
+          if (event.state === "connected" && event.reconnected)
+            void storage.reconcileDevelopmentStorage();
+        },
+      });
+      try {
+        await storage.reconcileDevelopmentStorage();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else
+            signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      } finally {
+        unsubscribe();
+        unsubscribeConnection();
+      }
+    },
+  });
   const cleanupEnabled = async () =>
     (await service.state()).policy.deleteStorageOnArchive;
   bb.events.on("thread.archived", async ({ thread }) => {

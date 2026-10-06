@@ -1,18 +1,14 @@
 # APIs To Audit
 
-## Environment removal feed
+## Environment removal notification
 
-`EnvironmentsArea.experimental_listRemovals` and the
-`experimental_environment.removed` plugin event expose successful provider removal
-records independently of environment rows. The event payload is `{ removal }`;
-records retain environment ID, old host/path, provider ownership, removal time
-and monotonic ID. Pages have `status`, `removals`, `nextCursor`, and `hasMore`.
-History is retained for 30 days; an expired or future cursor returns
-`cursorExpired` with a reset cursor. Omitted cursors begin at retained history.
-Consumers persist pending work before advancing and reconcile filesystem state
-after expiration. A provider success does not guarantee filesystem deletion.
-Stabilization requires review of retention, cursor reset semantics, restore and
-repeat-removal identity, deletion survival, and plugin crash recovery.
+`experimental_environment.removed` announces successful provider removal after
+its lifecycle transition is committed. The payload is `{ removal }`, containing
+the environment ID, previous host/path, provider ownership, and removal time.
+Delivery is ephemeral; plugins must reconcile external state after reload or
+missed events. Provider success does not guarantee filesystem deletion.
+Stabilization requires review of payload fields, repeat-removal semantics,
+notification timing, and recovery without guaranteed event delivery.
 
 ## Composer popups
 

@@ -501,11 +501,8 @@ running Git inspection or plugin availability. Without a machine scope,
 discovery includes providers structurally eligible on any persistent machine.
 
 `experimental_environment.removed` carries `{ removal }` after successful
-provider removal is committed. Removal IDs and the pre-removal host/path are
-retained independently of environment rows. Use
-`bb.sdk.environments.experimental_listRemovals({cursor, limit})` after startup
-and on this notification; durably queue work before saving `nextCursor`.
-Pages return `status`, `removals`, `nextCursor`, and `hasMore`. History lasts
-30 days; `cursorExpired` supplies a reset cursor, requiring external-state
-reconciliation. Omit cursor to read retained history. Provider success does not
+provider removal is committed. The payload contains `environmentId`, `removedAt`,
+`hostId`, `path`, and `providerOwnedPath`, preserving the pre-removal machine and
+path. Notifications are ephemeral: reconcile external state on startup and
+reconnect, and periodically, to recover missed events. Provider success does not
 guarantee the checkout path was deleted.

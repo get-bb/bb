@@ -39,8 +39,8 @@ can clear concurrently, while duplicate clears for one thread are rejected.
 The UI starts a clear immediately, shows row progress and error toasts,
 and keeps other thread actions available. Settings save immediately without
 success toasts; failed saves restore the previous value. Concurrent core cleanup tolerates
-missing entries. Disk measurement and deletion remain in the plugin host worker. Core adds
-an environment-removal feed, not storage scan routes or daemon commands.
+missing entries. Disk measurement and deletion remain in the plugin host worker. Core emits an environment-removal notification; storage scans and cleanup stay
+in the plugin.
 
 The first version pages all nondeleted threads before acting. It intentionally
 accepts changes between reading eligibility and applying an action. CLI previews count current candidates, not guaranteed future outcomes.
@@ -52,13 +52,12 @@ threads are skipped. `deleteDevDataOnCheckoutRemoval` scans and removes developm
 folders whose checkout is missing, including existing folders, while keeping
 existing and unidentified sources. Both are available through `bb storage retention`.
 
-Core records successful provider removal in a 30-day feed with monotonic IDs,
-independent of environment rows. The plugin consumes
-`bb.sdk.environments.experimental_listRemovals` and uses
-`experimental_environment.removed` as a wakeup. It persists pending host scans
-before advancing its cursor, retries every minute, and reconciles all online
-machines if its cursor expires. Provider removal success does not prove the path
-was deleted; the host always checks actual filesystem state.
+Development cleanup reconciles filesystem state on plugin startup, machine
+reconnect, and hourly. `experimental_environment.removed` triggers a scan while
+the plugin is running; missed events need no replay or removal-history tables.
+Offline/busy machines and failed cleanup retry on subsequent scans. Provider
+removal success does not prove the path was deleted; the host always checks
+actual filesystem state.
 
 Orphan, development, worktree, and archived-file bulk cleanup can also run as
 background jobs. `startCleanup` and `startClearArchivedFiles` start them; `host`

@@ -514,4 +514,3 @@ export {
 export * from "./project-attachments.js";
 
 export * from "./project-attachment-backfill.js";
-export { recordEnvironmentRemoval, listEnvironmentRemovals } from "./environment-removals.js";

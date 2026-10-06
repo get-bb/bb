@@ -404,28 +404,6 @@ export function registerEnvironmentCommands(
     );
 
   environment
-    .command("removals")
-    .description(
-      "Read the experimental environment removal feed (30-day retention)",
-    )
-    .option("--cursor <cursor>", "Continue after this removal cursor")
-    .option("--limit <n>", "Page size, 1–500 (default 100)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: { cursor?: string; limit?: string }) => {
-        outputJson(
-          { json: true },
-          await createCliBbSdk(getUrl()).environments.experimental_listRemovals(
-            {
-              cursor: opts.cursor,
-              limit: opts.limit === undefined ? 100 : Number(opts.limit),
-            },
-          ),
-        );
-      }),
-    );
-
-  environment
     .command("list")
     .description("List environments, including destroyed ones when requested")
     .option("--project <id>", "Only environments in this project")

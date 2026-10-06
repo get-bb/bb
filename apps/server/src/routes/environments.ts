@@ -1,4 +1,3 @@
-import { listEnvironmentRemovals } from "@bb/db";
 import { joinHostPathSegments } from "../services/lib/host-path.js";
 import { cleanupEnvironment } from "../services/environments/environment-engine.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
@@ -306,17 +305,6 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       );
     return context.json({ ok: true } as const);
   });
-
-  get(routes.listRemovals, (context, query) =>
-    context.json(
-      listEnvironmentRemovals(
-        deps.db,
-        query?.cursor === undefined ? null : Number(query.cursor),
-        query?.limit ?? 100,
-        Date.now(),
-      ),
-    ),
-  );
 
   get(routes.list, async (context, query) => {
     const { limit, offset } = parsePaginationQuery({

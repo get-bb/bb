@@ -1,4 +1,3 @@
-import { recordEnvironmentRemoval } from "@bb/db";
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
@@ -747,7 +746,7 @@ async function runRemove(
         });
         return;
       }
-      const removal = deps.db.transaction(() => {
+      deps.db.transaction(() => {
         writeEnvironment(deps, environmentId, {
           teardownStatus: "removed",
           teardownMessage: null,
@@ -759,15 +758,14 @@ async function runRemove(
           environmentId,
           event: { type: "destroy.recorded" },
         });
-        return recordEnvironmentRemoval(deps.db, {
-          environmentId,
-          removedAt: Date.now(),
-          hostId: row.hostId,
-          path: row.path,
-          providerOwnedPath: row.providerOwnsPath,
-        });
       });
-      emitPluginEnvironmentRemoved(removal);
+      emitPluginEnvironmentRemoved({
+        environmentId,
+        removedAt: Date.now(),
+        hostId: row.hostId,
+        path: row.path,
+        providerOwnedPath: row.providerOwnsPath,
+      });
     } catch (error) {
       writeEnvironment(deps, environmentId, {
         teardownStatus: "failed",

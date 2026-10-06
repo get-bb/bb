@@ -460,15 +460,14 @@ this setting; use the explicit archived-file cleanup action for those.
 
 **Delete development data when its checkout is removed** is a separate,
 off-by-default setting: `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
-(use `false` to disable). It starts hourly scans of online persistent machines and
+(use `false` to disable). It scans online persistent machines on plugin startup, machine reconnect, and hourly, and
 cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
 scans, including existing data. The machine rechecks absence before deletion,
 stops servers working inside removed checkouts, and keeps existing or unresolved
 sources. Offline/busy machines and failed cleanup retry on later scans. Thread
-retention preview counts do not include development folders. Removal events also
-trigger scans through a durable, cursor-based feed;
-pending scans retry every minute. This requires a server with the
-environment-removal feed API.
+retention preview counts do not include development folders. Removal events also trigger scans while the plugin is running. Startup and
+periodic scans recover missed events by checking the filesystem; no removal
+history is stored in the core database.
 
 The hourly plugin schedule processes up to 50 trees per action across all projects.
 Archive eligibility uses each affected member's updatedAt; deletion requires every

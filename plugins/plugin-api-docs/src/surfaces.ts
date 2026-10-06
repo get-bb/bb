@@ -1245,7 +1245,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Do what the [bb CLI](cli) and the app can do",
           "Have the threads it creates attributed to the plugin",
           "Start plugin updates in the background and follow their progress or rollback",
-          "Recover missed environment-removal notifications from 30 days of cursor-based history",
         ],
         apiSymbols: [
           "BbPluginApi",
@@ -1261,7 +1260,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.plugins.experimental_updateJobs",
           "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
           "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
-          "PluginBbSdk.environments.experimental_listRemovals",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

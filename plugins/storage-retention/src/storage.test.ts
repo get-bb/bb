@@ -1,3 +1,4 @@
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -1590,6 +1591,9 @@ it("automatically removes missing-checkout data only when enabled and online, re
       );
   }
   const worker = experimental_createHostEntryHarness(hostEntry);
+  const subscriptions = new Set<
+    Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+  >();
   let online = false;
   let hostCalls = 0;
   let failRemoval = true;
@@ -1621,28 +1625,12 @@ it("automatically removes missing-checkout data only when enabled and online, re
       throw new Error("Unexpected host method");
     },
     sdk: {
-      projects: { list: async () => [] },
-      environments: {
-        list: async () => [],
-        experimental_listRemovals: async ({ cursor } = {}) => ({
-          status: "ok",
-          nextCursor: "1",
-          hasMore: false,
-          removals:
-            cursor === "1"
-              ? []
-              : [
-                  {
-                    id: "1",
-                    environmentId: "env_gone",
-                    hostId: "host_test",
-                    path: path.join(fakeHome, "missing"),
-                    providerOwnedPath: true,
-                    removedAt: Date.now(),
-                  },
-                ],
-        }),
+      subscribe: (subscription) => {
+        subscriptions.add(subscription);
+        return () => subscriptions.delete(subscription);
       },
+      projects: { list: async () => [] },
+      environments: { list: async () => [] },
       threads: { list: async () => [] },
       hosts: {
         list: async () => [
@@ -1673,27 +1661,22 @@ it("automatically removes missing-checkout data only when enabled and online, re
       "--yes",
     ]);
     expect(saved.exitCode).toBe(0);
-    await host.harness.behavior.emitThreadEvent(
-      "experimental_environment.removed",
-      {
-        removal: {
-          id: "1",
-          environmentId: "env_gone",
-          hostId: "host_test",
-          path: path.join(fakeHome, "missing"),
-          providerOwnedPath: true,
-          removedAt: Date.now(),
-        },
-      },
-    );
     host = await host.harness.lifecycle.reload(plugin);
-    await host.harness.behavior.runSchedule("environment-removal-feed");
+    host.harness.behavior.runService("development-storage-recovery");
+    await host.harness.behavior.runSchedule("development-storage-cleanup");
     expect(await fs.readdir(root)).toEqual(
       expect.arrayContaining(["gone", "kept", "unknown"]),
     );
     expect(hostCalls).toBe(0);
     online = true;
-    await host.harness.behavior.runSchedule("environment-removal-feed");
+    for (const subscription of subscriptions)
+      if (subscription.event === "host:changed")
+        subscription.callback({
+          type: "changed",
+          entity: "host",
+          id: "host_test",
+          changes: ["host-connected"],
+        });
     await expect
       .poll(() =>
         host.harness.inspection.logEntries.some((entry) =>
@@ -1705,7 +1688,7 @@ it("automatically removes missing-checkout data only when enabled and online, re
       "development data",
     );
     failRemoval = false;
-    await host.harness.behavior.runSchedule("environment-removal-feed");
+    await host.harness.behavior.runSchedule("development-storage-cleanup");
     await expect
       .poll(async () =>
         (await fs.readdir(root))
@@ -1713,6 +1696,45 @@ it("automatically removes missing-checkout data only when enabled and online, re
           .sort(),
       )
       .toEqual(["kept", "unknown"]);
+    const recreateMissing = async () => {
+      await fs.mkdir(path.join(root, "gone"), { recursive: true });
+      await fs.writeFile(
+        path.join(root, "gone", "bb-dev-instance.json"),
+        JSON.stringify({ repoRoot: path.join(fakeHome, "missing") }),
+      );
+    };
+    const expectCleaned = async () => {
+      await expect
+        .poll(async () => (await fs.readdir(root)).includes("gone"))
+        .toBe(false);
+    };
+    await recreateMissing();
+    host = await host.harness.lifecycle.reload(plugin);
+    host.harness.behavior.runService("development-storage-recovery");
+    await expectCleaned();
+    await recreateMissing();
+    await host.harness.behavior.emitThreadEvent(
+      "experimental_environment.removed",
+      {
+        removal: {
+          environmentId: "env_gone",
+          hostId: "host_test",
+          path: path.join(fakeHome, "missing"),
+          providerOwnedPath: true,
+          removedAt: Date.now(),
+        },
+      },
+    );
+    await expectCleaned();
+    await recreateMissing();
+    for (const subscription of subscriptions)
+      if (subscription.event === "realtime:connection")
+        subscription.callback({
+          state: "connected",
+          reconnected: true,
+          reconnectDelayMs: null,
+        });
+    await expectCleaned();
     for (const name of ["kept", "unknown"])
       expect(await fs.readFile(path.join(root, name, "bb.db"), "utf8")).toBe(
         "development data",

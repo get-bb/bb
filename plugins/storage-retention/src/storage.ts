@@ -65,8 +65,6 @@ export function createStorage(
   bb.storage.migrate(db, [
     "CREATE TABLE scans (host_id TEXT PRIMARY KEY, result_json TEXT NOT NULL)",
     "CREATE TABLE archive_cleanup (thread_id TEXT PRIMARY KEY, archived_at INTEGER NOT NULL)",
-    "CREATE TABLE removal_cursor (id INTEGER PRIMARY KEY, cursor TEXT NOT NULL)",
-    "CREATE TABLE pending_environment_removals (sequence INTEGER PRIMARY KEY, host_id TEXT NOT NULL)",
   ]);
   const worker = bb.hosts.experimental_client({
     contract: hostStorageContract,
@@ -405,12 +403,6 @@ export function createStorage(
     await requireHost(hostId, true);
     if (scans.get(hostId)?.state === "scanning") return host({ hostId });
     const release = acquire(hostId);
-    const pendingRemoval =
-      db
-        .prepare<[string], { sequence: number | null }>(
-          "SELECT max(sequence) AS sequence FROM pending_environment_removals WHERE host_id = ?",
-        )
-        .get(hostId)?.sequence ?? null;
     scans.set(hostId, { state: "scanning", startedAt: Date.now() });
     changed();
     const job = (async () => {
@@ -580,10 +572,6 @@ export function createStorage(
               (entry) => entry.sourcePathState === "missing",
             );
             if (missing) await removeDevInstances({ hostId, names: null });
-            if (pendingRemoval !== null)
-              db.prepare(
-                "DELETE FROM pending_environment_removals WHERE host_id = ? AND sequence <= ?",
-              ).run(hostId, pendingRemoval);
           }
         } catch (error) {
           if (!lifecycle.signal.aborted)
@@ -977,85 +965,26 @@ export function createStorage(
     }
     return { clearedFiles, clearedBytes };
   }
-  let readingRemovals = false;
-  function reconcileEnvironmentRemovals() {
-    if (readingRemovals || lifecycle.signal.aborted) return Promise.resolve();
-    readingRemovals = true;
-    const job = consumeEnvironmentRemovals().finally(() => {
-      readingRemovals = false;
-    });
-    jobs.add(job);
-    void job.then(
-      () => jobs.delete(job),
-      () => jobs.delete(job),
-    );
-    return job;
-  }
-  async function consumeEnvironmentRemovals() {
-    if (!(await devCleanupEnabled())) return;
-    let cursor = db
-      .prepare<[], { cursor: string }>(
-        "SELECT cursor FROM removal_cursor WHERE id = 1",
-      )
-      .get()?.cursor;
-    let reset = false;
-    for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
-      lifecycle.signal.throwIfAborted();
-      const page = await bb.sdk.environments.experimental_listRemovals({
-        cursor,
-        limit: 100,
-        signal: lifecycle.signal,
-      });
-      db.transaction(() => {
-        for (const removal of page.removals) {
-          if (
-            removal.hostId !== null &&
-            removal.path !== null &&
-            removal.providerOwnedPath
-          )
-            db.prepare(
-              "INSERT OR IGNORE INTO pending_environment_removals (sequence, host_id) VALUES (?, ?)",
-            ).run(Number(removal.id), removal.hostId);
-        }
-        db.prepare(
-          "INSERT INTO removal_cursor (id, cursor) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET cursor = excluded.cursor",
-        ).run(page.nextCursor);
-      })();
-      cursor = page.nextCursor;
-      if (page.status === "cursorExpired") {
-        reset = true;
-        continue;
-      }
-      if (!page.hasMore) break;
-    }
-    if (!(await devCleanupEnabled())) return;
-    if (reset) {
-      await scanAll();
-      return;
-    }
-    const pending = db
-      .prepare<[], { host_id: string }>(
-        "SELECT DISTINCT host_id FROM pending_environment_removals",
-      )
-      .all();
-    const machines = await bb.sdk.hosts.list({ type: "persistent" });
-    for (const { host_id: hostId } of pending) {
-      if (lifecycle.signal.aborted) return;
-      if (
-        !machines.some(
-          (machine) => machine.id === hostId && machine.status === "connected",
-        ) ||
-        busy.has(hostId)
-      )
-        continue;
+  let reconcilingDevelopment = false;
+  function reconcileDevelopmentStorage() {
+    if (reconcilingDevelopment || lifecycle.signal.aborted)
+      return Promise.resolve();
+    reconcilingDevelopment = true;
+    const job = (async () => {
       try {
-        await scanHost({ hostId });
+        if (await devCleanupEnabled()) await scanAll();
       } catch (error) {
-        bb.log.warn(
-          `Could not scan removed checkout on ${hostId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        if (!lifecycle.signal.aborted)
+          bb.log.warn(
+            `Could not reconcile development storage: ${error instanceof Error ? error.message : String(error)}`,
+          );
+      } finally {
+        reconcilingDevelopment = false;
       }
-    }
+    })();
+    jobs.add(job);
+    void job.finally(() => jobs.delete(job));
+    return job;
   }
   async function scanAll() {
     lifecycle.signal.throwIfAborted();
@@ -1271,7 +1200,7 @@ export function createStorage(
     hosts,
     scanHost,
     scanAll,
-    reconcileEnvironmentRemovals,
+    reconcileDevelopmentStorage,
     removeOrphans,
     clearLargeFiles,
     startClearLargeFiles,

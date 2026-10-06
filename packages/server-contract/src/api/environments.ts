@@ -1,4 +1,3 @@
-import { environmentRemovalCursorSchema } from "@bb/domain";
 import { z } from "zod";
 import {
   environmentStatusSchema,
@@ -435,12 +434,4 @@ export type EnvironmentDiffPatchRequest = z.infer<
 
 export type EnvironmentStatusResponse = z.infer<
   typeof environmentStatusResponseSchema
->;
-
-export const listEnvironmentRemovalsQuerySchema = z.object({
-  cursor: environmentRemovalCursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
-});
-export type ListEnvironmentRemovalsQuery = z.infer<
-  typeof listEnvironmentRemovalsQuerySchema
 >;
