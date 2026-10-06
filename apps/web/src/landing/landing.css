@@ -55,6 +55,7 @@
   --add: oklch(0.4 0.13 163); /* --diff-added */
   --del: oklch(0.4 0.17 28); /* --diff-removed */
   --spark: oklch(0.55 0.14 50); /* --warning-text */
+  --attention: oklch(0.74 0.15 80);
   --radius: 0.5rem;
   --font-sans:
     "Inter Variable", "Inter Fallback", Inter, -apple-system,
@@ -90,6 +91,7 @@
   --add: oklch(0.77 0.17 163); /* --diff-added (dark) */
   --del: oklch(0.72 0.19 22); /* --diff-removed (dark) */
   --spark: oklch(0.75 0.16 50); /* --warning-text (dark) */
+  --attention: oklch(0.8 0.15 80);
 }
 
 @layer landing-reset {

@@ -681,8 +681,8 @@
 }
 
 .cmp-mark-partial {
-  background: color-mix(in oklab, var(--spark) 16%, var(--bg));
-  color: var(--spark);
+  background: color-mix(in oklab, var(--attention) 20%, var(--bg));
+  color: var(--attention);
 }
 
 .cmp-mark-no {
