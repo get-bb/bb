@@ -468,7 +468,7 @@ const descriptionCases: DescriptionCase[] = [
     },
     expected: {
       title: "Parent thread unavailable",
-      body: "Choose a thread that is not a subthread of this thread.",
+      body: "Choose a thread that is not a child of this thread.",
       severity: "error",
     },
   },

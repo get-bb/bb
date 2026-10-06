@@ -63,8 +63,8 @@ export function Parent() {
         </DialogStage>
       </StoryRow>
       <StoryRow
-        label="subthreads"
-        hint="N subthreads require delete confirmation"
+        label="child threads"
+        hint="N child threads require delete confirmation"
       >
         <DialogStage>
           <ThreadDeleteDialogContent

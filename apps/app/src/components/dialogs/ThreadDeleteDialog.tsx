@@ -3,7 +3,7 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "./ConfirmDeleteDialog";
-import { formatSubthreadCount } from "@/lib/subthread-copy";
+import { formatChildThreadCount } from "@/lib/child-thread-copy";
 
 export interface ThreadDeleteDialogTarget {
   thread: Thread;
@@ -61,7 +61,7 @@ export function ThreadDeleteDialogContent({
             <>
               Its{" "}
               <span className="font-semibold">
-                {formatSubthreadCount(target.childThreadCount)}
+                {formatChildThreadCount(target.childThreadCount)}
               </span>{" "}
               will be deleted too.{" "}
             </>

@@ -26,6 +26,6 @@ describe("ArchivedThreadToastDescription", () => {
 
     expect(onOpenThread).toHaveBeenCalledOnce();
     expect(screen.getByText("+2").getAttribute("aria-hidden")).not.toBeNull();
-    expect(screen.getByText("and 2 subthreads")).toBeDefined();
+    expect(screen.getByText("and 2 child threads")).toBeDefined();
   });
 });

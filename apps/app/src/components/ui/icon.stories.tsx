@@ -97,8 +97,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   Square: "Stop button while running, in-progress and pending todo glyphs",
   TextWrap: "Line-wrap toggle for diff cards and source file previews",
   Trash2: "Delete queued message, remove project source",
-  Subthread:
-    "Subthread badges, running subthreads, and thread assignment events",
+  Child thread:
+    "Child thread badges, running child threads, and thread assignment events",
   UserRound: "Thread mentions, thread links, and the Parent card and row",
   UserRoundPlus: "Subagent timeline rows",
   Workflow: "Workflow card indicator in the prompt stack",

@@ -82,7 +82,7 @@ describe("@bb/templates", () => {
       [
         "[bb system]",
         "",
-        "@thread:thr_child is now a subthread of this thread.",
+        "@thread:thr_child is now a child of this thread.",
       ].join("\n"),
     );
     expect(
@@ -93,7 +93,7 @@ describe("@bb/templates", () => {
       [
         "[bb system]",
         "",
-        "@thread:thr_child is no longer a subthread of this thread.",
+        "@thread:thr_child is no longer a child of this thread.",
       ].join("\n"),
     );
   });

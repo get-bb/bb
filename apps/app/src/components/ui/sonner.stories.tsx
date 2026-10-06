@@ -226,7 +226,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     label: "archive with children",
     source: "ThreadActionsProvider",
     usage: [
-      "Archive includes subthreads",
+      "Archive includes child threads",
       "Long titles truncate to one line",
     ],
     current: {
@@ -261,7 +261,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     usage: ["Thread archive fails", "Title varies by thread type/error"],
     current: {
       tone: "error",
-      title: "Failed to archive thread and its subthreads",
+      title: "Failed to archive thread and its child threads",
     },
   },
   {
