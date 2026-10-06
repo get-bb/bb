@@ -86,7 +86,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
     pluginsSection(PLUGINS_COPY),
   ],
   tableNote:
-    "marks features that need a paid Conductor plan, from $50 a month.",
+    "marks features that need a paid Conductor plan: Pro at $50 a month, or Teams at $60 per person.",
   table: [
     {
       title: "Price and license",
@@ -183,13 +183,23 @@ export const BB_VS_CONDUCTOR: Comparison = {
       rows: [
         {
           feature: "Git worktrees",
-          bb: cell("yes", "Setup runs for you"),
+          bb: cell("yes", "Setup and teardown scripts"),
           competitor: cell("yes", "Setup and archive scripts"),
         },
         {
+          feature: "Run your dev server",
+          bb: cell("yes", "A terminal per thread, shared at a link"),
+          competitor: cell("yes", "Run script"),
+        },
+        {
           feature: "Diff review and merge",
-          bb: cell("yes"),
+          bb: cell("yes", "Line comments to the agent, checks, merge"),
           competitor: cell("yes", "Diff comments, checks, merge"),
+        },
+        {
+          feature: "Go back to an earlier point",
+          bb: cell("yes", "Edit a message or fork from it"),
+          competitor: cell("yes", "Checkpoints"),
         },
         {
           feature: "Multiplayer workspaces",
@@ -199,7 +209,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         {
           feature: "Team plans and SSO",
           bb: cell("no"),
-          competitor: cell("partial", "SSO on Enterprise", true),
+          competitor: cell("partial", "SSO on Enterprise"),
         },
       ],
     },
