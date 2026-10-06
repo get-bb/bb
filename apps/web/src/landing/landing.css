@@ -807,7 +807,7 @@ body {
   align-items: center;
   width: max-content;
   animation: company-proof-scroll
-    calc(var(--company-proof-logos, 11) * 6s) linear infinite;
+    calc(var(--company-proof-logos, 11) * 8s) linear infinite;
   will-change: transform;
 }
 
