@@ -366,6 +366,55 @@ describe("thread search data", () => {
     }
   });
 
+  it("ranks title matches first, then the rest by most recent activity", () => {
+    const { db, project } = setup();
+    try {
+      const titled = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Moss plugins",
+      });
+      const older = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+      });
+      const newer = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Release notes",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [older, newer].map((thread) => ({
+          threadId: thread.id,
+          sourceKind: "assistant_message",
+          sourceKey: "event:1",
+          sourceSeq: 1,
+          text: "moss plugins moss plugins moss plugins",
+        })),
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, titled.id);
+      setUpdatedAt.run(2, older.id);
+      setUpdatedAt.run(3, newer.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "moss plugins",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        titled.id,
+        newer.id,
+        older.id,
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("returns title matches alongside the single best message match", () => {
     const { db, project } = setup();
     try {

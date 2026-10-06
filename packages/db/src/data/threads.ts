@@ -143,6 +143,7 @@ interface UpsertThreadSearchSegmentArgs extends UpsertThreadSearchSegmentInput {
 }
 
 interface ListThreadSearchMatchRowsArgs {
+  allTokensMatchQuery: string;
   anyTokenMatchQuery: string;
   limitPerGroup: number;
   tokenMatchQueries: readonly string[];
@@ -994,36 +995,47 @@ function listThreadSearchMatchRows(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
 ): ThreadSearchMatchRow[] {
-  const tokenMatchSelects = args.tokenMatchQueries.map(
-    (matchQuery, tokenIndex) => sql`
-      SELECT
-        s.thread_id AS threadId,
-        ${tokenIndex} AS tokenIndex,
-        MIN(thread_search_segments_fts.rank) AS tokenRank
+  const tokenThreadSelects = args.tokenMatchQueries.map(
+    (matchQuery) => sql`
+      SELECT DISTINCT s.thread_id AS threadId
       FROM thread_search_segments_fts
       JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
       WHERE thread_search_segments_fts MATCH ${matchQuery}
-      GROUP BY s.thread_id
     `,
   );
   const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
+  const matchesAllTokensFirst =
+    args.tokenMatchQueries.length > 1
+      ? sql`thread_search_segments.rowid IN (
+          SELECT rowid FROM thread_search_segments_fts
+          WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
+        ) DESC,`
+      : sql``;
 
   return db.all<ThreadSearchMatchRow>(sql`
-    WITH token_matches AS (
-      ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
+    WITH matching_threads AS (
+      ${sql.join(tokenThreadSelects, sql` INTERSECT `)}
+    ),
+    title_matching_threads AS (
+      SELECT DISTINCT thread_search_segments.thread_id AS threadId
+      FROM thread_search_segments_fts
+      JOIN thread_search_segments
+        ON thread_search_segments.rowid = thread_search_segments_fts.rowid
+      WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
+        AND ${isTitleSegment}
     ),
     ranked_threads AS (
       SELECT
-        token_matches.threadId AS threadId,
-        MIN(token_matches.tokenRank) AS bestRank,
-        MAX(t.updated_at) AS threadUpdatedAt,
-        MAX(t.archived_at IS NOT NULL) AS archived
-      FROM token_matches
-      JOIN threads AS t ON t.id = token_matches.threadId
+        matching_threads.threadId AS threadId,
+        t.archived_at IS NOT NULL AS archived,
+        matching_threads.threadId IN (
+          SELECT threadId FROM title_matching_threads
+        ) AS titleMatch,
+        t.updated_at AS threadUpdatedAt
+      FROM matching_threads
+      JOIN threads AS t ON t.id = matching_threads.threadId
       WHERE t.deleted_at IS NULL
         AND t.visibility = 'visible'
-      GROUP BY threadId
-      HAVING COUNT(*) = ${args.tokenMatchQueries.length}
     ),
     ordered_threads AS (
       SELECT
@@ -1031,7 +1043,7 @@ function listThreadSearchMatchRows(
         archived,
         ROW_NUMBER() OVER (
           PARTITION BY archived
-          ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+          ORDER BY titleMatch DESC, threadUpdatedAt DESC, threadId DESC
         ) AS threadOrder,
         COUNT(*) OVER (PARTITION BY archived) AS total
       FROM ranked_threads
@@ -1049,7 +1061,7 @@ function listThreadSearchMatchRows(
         ROW_NUMBER() OVER (
           PARTITION BY thread_search_segments.thread_id, ${isTitleSegment}
           ORDER BY
-            thread_search_segments_fts.rank ASC,
+            ${matchesAllTokensFirst}
             COALESCE(thread_search_segments.source_seq, -1) ASC,
             thread_search_segments.id ASC
         ) AS segmentOrder,
@@ -1058,12 +1070,13 @@ function listThreadSearchMatchRows(
         thread_search_segments.source_seq AS sourceSeq,
         thread_search_segments.rowid AS segmentRowid,
         thread_search_segments.thread_id AS threadId
-      FROM thread_search_segments_fts
-      JOIN thread_search_segments
-        ON thread_search_segments.rowid = thread_search_segments_fts.rowid
+      FROM thread_search_segments
       JOIN limited_threads
         ON limited_threads.threadId = thread_search_segments.thread_id
-      WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
+      WHERE thread_search_segments.rowid IN (
+        SELECT rowid FROM thread_search_segments_fts
+        WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
+      )
     )
     SELECT
       archived,
@@ -1160,6 +1173,7 @@ export function searchThreadsWithPendingInteractionState(
   );
 
   const rows = listThreadSearchMatchRows(db, {
+    allTokensMatchQuery: tokenMatchQueries.join(" AND "),
     anyTokenMatchQuery,
     limitPerGroup,
     tokenMatchQueries,
