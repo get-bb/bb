@@ -3,7 +3,12 @@ export interface ContentLink {
   href: string;
 }
 
-export const GUIDE_LINKS: ContentLink[] = [];
+export const GUIDE_LINKS: ContentLink[] = [
+  {
+    label: "Run a dev server for every branch",
+    href: "/guides/remote-dev-servers",
+  },
+];
 
 export const COMPARE_LINKS: ContentLink[] = [
   { label: "bb vs Conductor", href: "/compare/conductor-alternatives" },

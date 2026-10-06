@@ -33,6 +33,15 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 1200,
     height: 900,
   },
+  "/guides/remote-dev-servers/add-a-machine.png": { width: 1024, height: 650 },
+  "/guides/remote-dev-servers/new-project-machine.png": {
+    width: 1024,
+    height: 1014,
+  },
+  "/guides/remote-dev-servers/start-terminal.png": {
+    width: 1120,
+    height: 660,
+  },
 };
 
 export function getImageSize(src: string): ImageSize | undefined {
