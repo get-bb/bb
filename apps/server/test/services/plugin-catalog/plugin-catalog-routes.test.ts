@@ -112,6 +112,36 @@ describe("plugin catalog routes", () => {
     expect(versionOverride.status).toBe(422);
   });
 
+  it("identifies background installs with the same entry ID as catalog search", async () => {
+    const { app } = catalogApp();
+    const search = await app.request("/plugin-catalog/search?q=docs");
+    await expect(search.json()).resolves.toMatchObject({
+      results: expect.arrayContaining([
+        expect.objectContaining({ entryId: "docs" }),
+      ]),
+    });
+    for (const entryId of ["docs", "simple-notes"]) {
+      const install = await app.request("/plugin-catalog/install", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          prefer: "respond-async",
+        },
+        body: JSON.stringify({ entryId, marketplace: "bb-official" }),
+      });
+      expect(install.status).toBe(202);
+      await expect(install.json()).resolves.toMatchObject({
+        job: {
+          target: {
+            kind: "catalog",
+            entryId: "docs",
+            marketplace: "bb-official",
+          },
+        },
+      });
+    }
+  });
+
   it("serves a cached icon with hash-gated caching and refuses unknown ones", async () => {
     const { app, catalog } = catalogApp(async (url) =>
       url === MANIFEST_URL

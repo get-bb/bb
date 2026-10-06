@@ -1236,7 +1236,7 @@ export function createPluginCatalogService(deps: {
     describeEntry(selector) {
       const { row, entry } = resolveEntry(selector);
       return {
-        entryId: entry.id,
+        entryId: bundledRegistration(entry)?.name ?? entry.id,
         marketplace: row.name,
         displayName: entry.displayName,
       };
