@@ -1368,6 +1368,129 @@ describe("acp bridge", () => {
     ).toBe(true);
   });
 
+  it.each<{ label: string; env: Record<string, string> }>([
+    { label: "model config option", env: { FAKE_ACP_MODEL_CONFIG: "1" } },
+    { label: "session models state", env: { FAKE_ACP_MODELS_FIELD: "1" } },
+  ])(
+    "switches ACP-native models A to B to A when setters return no state ($label)",
+    async ({ env }) => {
+      const launch: AgentLaunchArgs = {
+        envVars: { ...env, FAKE_ACP_EMPTY_MODEL_RESULT: "1" },
+      };
+      const { providerThreadId } = await startThread({
+        ...launch,
+        model: "fake/strong",
+      });
+
+      for (const model of ["fake/default", "fake/strong"]) {
+        expect(
+          await completeTurnWith(
+            providerThreadId,
+            "echo-selected-model",
+            executionOptions({
+              model,
+              providerOptions: launchProviderOptions(launch),
+            }),
+          ),
+        ).toBe(`selected-model:${model}`);
+      }
+    },
+  );
+
+  it("applies a queued steer's changed ACP-native model before its prompt", async () => {
+    const launch: AgentLaunchArgs = {
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/default",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const steer = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      options: executionOptions({
+        model: "fake/strong",
+        providerOptions: launchProviderOptions(launch),
+      }),
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+    });
+    expect((await waitForResponse(steer)).error).toBeUndefined();
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-model:fake/strong");
+    expect(notifications("session/replaced")).toHaveLength(0);
+  });
+
+  it("restores the requested ACP-native model after the agent switches itself", async () => {
+    const launch: AgentLaunchArgs = {
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/default",
+    });
+    const turnOptions = executionOptions({
+      model: "fake/default",
+      providerOptions: launchProviderOptions(launch),
+    });
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "self-switch-model",
+        turnOptions,
+      ),
+    ).toBe("selected-model:fake/strong");
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-selected-model",
+        turnOptions,
+      ),
+    ).toBe("selected-model:fake/default");
+  });
+
+  it("tracks an acknowledged ACP-native model when a later tier update fails", async () => {
+    const launch: AgentLaunchArgs = {
+      dialectId: "cursor",
+      parameterizedModelPicker: true,
+      envVars: {
+        FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+        FAKE_ACP_SET_CONFIG_FAST_ERROR: "1",
+      },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "composer-2.5",
+    });
+    const rejected = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({
+        model: "grok-4.6",
+        serviceTier: "fast",
+        providerOptions: launchProviderOptions(launch),
+      }),
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+    });
+    expect((await waitForResponse(rejected)).error?.message).toContain(
+      "fast config update failed",
+    );
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-selected-model",
+        executionOptions({
+          model: "composer-2.5",
+          providerOptions: launchProviderOptions(launch),
+        }),
+      ),
+    ).toBe("selected-model:composer-2.5");
+  });
+
   it("selects ACP-native models with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
