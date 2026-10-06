@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginFileOpenerProps } from "@get-bb/plugin-sdk/app";
@@ -15,7 +15,8 @@ const editor = vi.hoisted(() => ({
     dispose: vi.fn(),
   })),
   onDidFocusEditorWidget: vi.fn(),
-  onDidChangeModelContent: vi.fn(),
+  onDidChangeModelContent: vi.fn<(listener: () => void) => void>(),
+  getValue: vi.fn(() => "Edited on a phone"),
   addCommand: vi.fn(),
   updateOptions: vi.fn(),
   dispose: vi.fn(),
@@ -74,6 +75,41 @@ const range = (startLineNumber: number, endLineNumber = startLineNumber) => ({
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
+
+it("saves edits with the toolbar button and prevents duplicate pending saves", async () => {
+  let finishSave = (_value: { outcome: "written"; sha256: string }) => {};
+  const write = vi.fn(
+    () =>
+      new Promise<{ outcome: "written"; sha256: string }>((resolve) => {
+        finishSave = resolve;
+      }),
+  );
+  renderSlot(registration, base, {
+    rpc: {
+      assets: () => ({ baseUrl: "/assets", expiresAtMs: 99999 }),
+      read: () => file,
+      write,
+    },
+  });
+  await waitFor(() => expect(create).toHaveBeenCalledOnce());
+  act(() => editor.onDidChangeModelContent.mock.calls[0]![0]());
+  expect(write).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(write).toHaveBeenCalledOnce());
+  expect(write).toHaveBeenCalledWith({
+    path: base.path,
+    source: base.source,
+    content: "Edited on a phone",
+    expectedSha256: file.sha256,
+  });
+  const pendingButton = screen.getByRole("button", { name: "Saving…" });
+  expect(pendingButton.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(pendingButton);
+  expect(write).toHaveBeenCalledOnce();
+  await act(async () => finishSave({ outcome: "written", sha256: "saved" }));
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(false);
+});
 
 it.each([range(80), range(120, 124)])(
   "selects and reveals the initial target %j after loading",
