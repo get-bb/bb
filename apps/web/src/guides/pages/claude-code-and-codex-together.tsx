@@ -181,6 +181,7 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       ),
     },
   ],
+  faqTitle: "FAQ",
   faq: [
     {
       question: "How do agents know how to reach each other?",
