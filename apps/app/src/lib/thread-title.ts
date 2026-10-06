@@ -9,3 +9,4 @@ export function getThreadDisplayTitle(
   }
   return `Thread ${thread.id.slice(0, 8)}`;
 }
+
