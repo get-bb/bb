@@ -17,8 +17,6 @@ export const BRAND_ICON_URL_BY_NAME: ReadonlyMap<string, string> = new Map(
   }),
 );
 
-const PLUGIN_SOURCE_ROOT = "https://github.com/get-bb/bb/tree/main/plugins/";
-
 const PLUGIN_DIR_BY_NAME: ReadonlyMap<string, string> = new Map(
   Object.entries(PLUGIN_MANIFESTS).flatMap(([manifestPath, { bb }]) => {
     const dir = /\/plugins\/([^/]+)\/package\.json$/.exec(manifestPath)?.[1];
@@ -26,9 +24,9 @@ const PLUGIN_DIR_BY_NAME: ReadonlyMap<string, string> = new Map(
   }),
 );
 
-export function pluginSourceHref(displayName: string): string | null {
+export function pluginPageHref(displayName: string): string | null {
   const dir = PLUGIN_DIR_BY_NAME.get(displayName);
   return dir === undefined
     ? null
-    : `${PLUGIN_SOURCE_ROOT}${encodeURIComponent(dir)}`;
+    : `/marketplace/builtin/${encodeURIComponent(dir)}`;
 }

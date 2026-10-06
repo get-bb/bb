@@ -4,6 +4,7 @@ import {
   type NativeShellHandshake,
 } from "@bb/mobile-bridge";
 import Constants from "expo-constants";
+import { nativeApplicationVersion, nativeBuildVersion } from "expo-application";
 import CookieManager from "@react-native-cookies/cookies";
 import {
   Redirect,
@@ -43,7 +44,9 @@ import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
 
-const APP_VERSION = String(Constants.expoConfig?.version ?? "0.0.0");
+const APP_VERSION =
+  nativeApplicationVersion ?? String(Constants.expoConfig?.version ?? "0.0.0");
+const ANDROID_VERSION_CODE = Number(nativeBuildVersion);
 
 const IDLE_SESSION = { status: "idle" } as const;
 
@@ -199,6 +202,11 @@ export function ProfileWebViewScreen() {
     return {
       bridgeVersion: MOBILE_BRIDGE_VERSION,
       appVersion: APP_VERSION,
+      ...(Platform.OS === "android" &&
+      Number.isSafeInteger(ANDROID_VERSION_CODE) &&
+      ANDROID_VERSION_CODE > 0
+        ? { androidVersionCode: ANDROID_VERSION_CODE }
+        : {}),
       platform: Platform.OS === "android" ? "android" : "ios",
       profileMode: profile.mode,
       secureContext: sourceUrl.startsWith("https://"),

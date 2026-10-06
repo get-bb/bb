@@ -72,5 +72,5 @@ export const SidebarVisibilityCustomize = defineSplit({
     ),
   loading: SidebarVisibilityCustomizePlaceholder,
   error: SidebarVisibilityCustomizePlaceholder,
-  preload: "render",
+  tier: "intent",
 });

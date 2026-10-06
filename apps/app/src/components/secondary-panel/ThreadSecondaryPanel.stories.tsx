@@ -228,7 +228,6 @@ function RepresentativeInfoContent() {
     storage: {
       controller: storageController,
       filesError: null,
-      isFilesLoading: false,
     },
     onCommitClick: noop,
   };

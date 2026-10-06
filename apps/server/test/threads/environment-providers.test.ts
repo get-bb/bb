@@ -567,17 +567,34 @@ describe("machine and environment provider composition", () => {
         phase: "creating",
         statusMessage: "Booting cloud machine",
       });
-      expect(getPreparingEnvironment(harness.db, thread.id)?.hostId).toBe(
-        machineHost?.id,
-      );
-
-      release.resolve();
-      await expect
-        .poll(() => getPreparingEnvironment(harness.db, thread.id))
-        .toMatchObject({
+      const environment = getPreparingEnvironment(harness.db, thread.id);
+      expect(environment?.hostId).toBe(machineHost?.id);
+      if (environment === null)
+        throw new Error("Missing preparing environment");
+      const destroyed = createDeferredPromise<void>();
+      const socket = {
+        close() {},
+        send() {
+          if (
+            getEnvironment(harness.db, environment.id)?.status === "destroyed"
+          )
+            destroyed.resolve();
+        },
+      };
+      harness.hub.subscribe(socket, {
+        kind: "environment-detail",
+        environmentId: environment.id,
+      });
+      try {
+        release.resolve();
+        await destroyed.promise;
+        expect(getPreparingEnvironment(harness.db, thread.id)).toMatchObject({
           status: "destroyed",
           statusMessage: "Cloud quota exceeded",
         });
+      } finally {
+        harness.hub.unregisterClient(socket);
+      }
     });
   });
 });

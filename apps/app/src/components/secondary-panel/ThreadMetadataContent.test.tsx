@@ -31,6 +31,11 @@ import {
   makeThread as makeThreadFixture,
 } from "@bb/test-helpers/domain-fixtures";
 import {
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+  makeWorkspaceWorkingTree,
+} from "@bb/test-helpers";
+import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
   GitStatusRow,
@@ -259,7 +264,7 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain("Unavailable — machine removed");
     expect(markup).toContain("Old laptop");
     expect(markup).not.toContain("(offline)");
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("explains the create-thread action in a tooltip", async () => {
@@ -279,12 +284,12 @@ describe("EnvironmentRow", () => {
 
     focusWithKeyboard(
       screen.getByRole("button", {
-        name: "New thread in this environment",
+        name: "New thread in environment",
       }),
     );
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "New thread in this environment",
+      "New thread in environment",
     );
   });
 
@@ -296,7 +301,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("hides the create-thread action before an environment has a path", () => {
@@ -306,7 +311,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain('aria-label="New thread in this environment"');
+    expect(markup).not.toContain('aria-label="New thread in environment"');
   });
 
   it("offers the create-thread action on a project's own checkout", () => {
@@ -314,7 +319,7 @@ describe("EnvironmentRow", () => {
       makeEnvironment({ environmentProviderId: null }),
     );
 
-    expect(markup).toContain('aria-label="New thread in this environment"');
+    expect(markup).toContain('aria-label="New thread in environment"');
   });
 
   it("shows a custom provider label with its machine", () => {
@@ -392,5 +397,49 @@ describe("GitStatusRow", () => {
     );
 
     expect(markup).toBe("");
+  });
+
+  it("marks a dirty tree with an icon when the merge base branch name contains dirty", () => {
+    const markup = renderToStaticMarkup(
+      <TooltipProvider>
+        <GitStatusRow
+          thread={makeThread()}
+          environment={null}
+          workspaceStatus={makeWorkspaceStatus({
+            workingTree: makeWorkspaceWorkingTree({
+              state: "dirty_and_committed_unmerged",
+              hasUncommittedChanges: true,
+            }),
+            mergeBase: makeWorkspaceMergeBase({
+              mergeBaseBranch: "fix/dirty-check",
+              aheadCount: 2,
+            }),
+          })}
+          workspaceStatusError={null}
+          selectedMergeBaseBranch={undefined}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(markup).toContain('aria-label="Uncommitted changes"');
+    expect(markup).toContain("2 ahead of fix/dirty-check");
+  });
+
+  it("drops the Ahead label when the summary already says how far ahead", () => {
+    const markup = renderToStaticMarkup(
+      <GitStatusRow
+        thread={makeThread()}
+        environment={null}
+        workspaceStatus={makeWorkspaceStatus({
+          branch: { currentBranch: "feature", defaultBranch: "main" },
+          mergeBase: makeWorkspaceMergeBase({ aheadCount: 6 }),
+        })}
+        workspaceStatusError={null}
+        selectedMergeBaseBranch={undefined}
+      />,
+    );
+
+    expect(markup).not.toContain(">Ahead</span>");
+    expect(markup).toContain("6 ahead of main");
   });
 });

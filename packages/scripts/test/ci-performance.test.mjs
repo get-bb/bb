@@ -253,3 +253,54 @@ it("reads every cache inventory page and refuses malformed inventories before pl
     })),
   ).rejects.toThrow("Invalid Actions cache entry");
 });
+
+it("drops Turbo cache entries the job's run summaries do not name, and keeps everything when there is no summary", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-turbo-prune-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  const cache = join(root, "cache");
+  const runs = join(root, "runs");
+  mkdirSync(cache);
+  mkdirSync(runs);
+  const writeEntry = (hash) => {
+    writeFileSync(join(cache, `${hash}.tar.zst`), "archive");
+    writeFileSync(join(cache, `${hash}-meta.json`), "{}");
+  };
+  const entryFiles = (hash) =>
+    [`${hash}.tar.zst`, `${hash}-meta.json`].map((name) =>
+      existsSync(join(cache, name)),
+    );
+  const prune = (...args) =>
+    execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(
+          new URL("../../../scripts/prune-turbo-cache.mjs", import.meta.url),
+        ),
+        "--dir",
+        cache,
+        ...args,
+      ],
+      { encoding: "utf8" },
+    );
+  for (const hash of ["aaaa1111", "bbbb2222", "cccc3333"]) writeEntry(hash);
+
+  prune("--keep-run-summaries", runs);
+  expect(["aaaa1111", "bbbb2222", "cccc3333"].flatMap(entryFiles)).toEqual(
+    Array.from({ length: 6 }, () => true),
+  );
+
+  writeFileSync(
+    join(runs, "first.json"),
+    JSON.stringify({ tasks: [{ hash: "aaaa1111" }] }),
+  );
+  writeFileSync(
+    join(runs, "second.json"),
+    JSON.stringify({ tasks: [{ hash: "cccc3333" }, { hash: "dddd4444" }] }),
+  );
+  expect(prune("--keep-run-summaries", runs)).toContain(
+    "removed 1 entries this job did not use",
+  );
+  expect(entryFiles("aaaa1111")).toEqual([true, true]);
+  expect(entryFiles("bbbb2222")).toEqual([false, false]);
+  expect(entryFiles("cccc3333")).toEqual([true, true]);
+});

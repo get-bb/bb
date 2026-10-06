@@ -74,5 +74,5 @@ export const LazySidebarFooterCustomize = defineSplit<{ onDone: () => void }>({
     ),
   loading: FooterCustomizePlaceholder,
   error: FooterCustomizePlaceholder,
-  preload: "render",
+  tier: "intent",
 });

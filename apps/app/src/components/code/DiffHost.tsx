@@ -18,7 +18,7 @@ const BbDiffSplit = defineSplit<BbDiffProps & { fallback: ReactNode }>({
   id: "bb-diff",
   load: () => import("./BbDiff").then((module) => module.default),
   loading: ({ fallback }) => fallback,
-  preload: "render",
+  tier: "intent",
 });
 
 interface DiffHostProps extends Partial<DiffPresentation> {

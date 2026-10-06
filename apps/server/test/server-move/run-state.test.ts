@@ -281,10 +281,8 @@ describe("server move boot reconciliation", () => {
         }),
       );
       const destination: { state: "pending" | "ready" } = { state: "pending" };
-      const { environment, events, plugins } = createTestServerMoveEnvironment(
-        harness,
-        { timings: BOOT_TIMINGS },
-      );
+      const { environment, events, plugins, retired } =
+        createTestServerMoveEnvironment(harness, { timings: BOOT_TIMINGS });
       registerFakeDaemon(harness, {
         events,
         hostId: OLD,
@@ -323,7 +321,7 @@ describe("server move boot reconciliation", () => {
         expect(events).not.toContain("retire");
 
         destination.state = "ready";
-        await expect.poll(() => events.includes("retire")).toBe(true);
+        await retired;
 
         expect(coordinator.getStatus()?.state).toBe("completed");
         expect(events).toContain("plugins:stop");
@@ -349,7 +347,7 @@ describe("server move boot reconciliation", () => {
 
       const restored = requireRestored(await reconcile(harness));
       expect(restored.kind).toBe("completed");
-      const { environment, events } = createTestServerMoveEnvironment(harness);
+      const { environment, retired } = createTestServerMoveEnvironment(harness);
       const coordinator = createServerMoveCoordinator(environment);
       try {
         coordinator.restore(restored);
@@ -371,7 +369,7 @@ describe("server move boot reconciliation", () => {
         });
         expect(coordinator.isFrozen()).toBe(true);
         expect(isServerMoveSnapshotFenced(harness.db)).toBe(true);
-        await expect.poll(() => events.includes("retire")).toBe(true);
+        await retired;
         expect(
           JSON.parse(
             await readFile(join(harness.config.dataDir, "config.json"), "utf8"),

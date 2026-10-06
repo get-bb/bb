@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { WorkspaceFile } from "@bb/server-contract";
 import { DetailCard } from "@/components/ui/detail-card.js";
-import { ThreadStorageRow } from "./ThreadMetadataContent";
+import { ThreadStorageSection } from "./info/ThreadStorageSection";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
@@ -33,11 +33,9 @@ const FILES: WorkspaceFile[] = [
 function InteractiveRow({
   files,
   filesError,
-  isFilesLoading,
 }: {
   files?: readonly WorkspaceFile[];
   filesError?: Error | null;
-  isFilesLoading: boolean;
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const controller = useThreadStorageBrowser({
@@ -46,10 +44,9 @@ function InteractiveRow({
     selectedPath,
   });
   return (
-    <ThreadStorageRow
+    <ThreadStorageSection
       controller={controller}
       filesError={filesError ?? null}
-      isFilesLoading={isFilesLoading}
     />
   );
 }
@@ -62,25 +59,17 @@ export function Overview() {
         hint="Flat list of thread-storage files; click a row to select it"
       >
         <PanelStage>
-          <InteractiveRow files={FILES} isFilesLoading={false} />
-        </PanelStage>
-      </StoryRow>
-      <StoryRow label="loading" hint="Initial fetch with no prior data">
-        <PanelStage>
-          <InteractiveRow isFilesLoading={true} />
+          <InteractiveRow files={FILES} />
         </PanelStage>
       </StoryRow>
       <StoryRow label="error" hint="File-list request failed">
         <PanelStage>
-          <InteractiveRow
-            isFilesLoading={false}
-            filesError={new Error("Failed to load file list.")}
-          />
+          <InteractiveRow filesError={new Error("Failed to load file list.")} />
         </PanelStage>
       </StoryRow>
       <StoryRow label="empty" hint="Thread has no storage files yet">
         <PanelStage>
-          <InteractiveRow files={[]} isFilesLoading={false} />
+          <InteractiveRow files={[]} />
         </PanelStage>
       </StoryRow>
     </StoryCard>

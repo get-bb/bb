@@ -157,6 +157,7 @@ interface AppearanceSettingsSectionProps {
   customThemes: readonly string[];
   pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
+  navigationRail: boolean;
   onAppearanceThemeChange: (themeId: string) => void;
   onAppearanceThemePrefetch: (themeIds: readonly string[]) => void;
   onAppearanceThemePreview: (themeId: string | null) => void;
@@ -167,6 +168,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  showGitChanges: boolean;
+  onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
@@ -678,6 +681,7 @@ export function AppearanceSettingsSection({
   customThemes,
   pluginThemes,
   faviconColor,
+  navigationRail,
   onAppearanceThemeChange,
   onAppearanceThemePrefetch,
   onAppearanceThemePreview,
@@ -837,8 +841,8 @@ export function AppearanceSettingsSection({
       <SettingsSection title="Interface">
         <div className="space-y-5">
           <SidebarThreadListSetting />
-          <SidebarNavigationSetting />
-          <SidebarHeaderSetting />
+          <SidebarNavigationSetting navigationRail={navigationRail} />
+          <SidebarHeaderSetting navigationRail={navigationRail} />
           <CodeRendererSettings />
           <SidebarFooterSettings />
         </div>
@@ -848,6 +852,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  showGitChanges,
+  onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   desktopBrowserAvailable,
@@ -877,6 +883,18 @@ export function GeneralSettingsSection({
               checked={navigateToThreadAfterCreate}
               onCheckedChange={onNavigateToThreadAfterCreateChange}
               aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+            />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Show Git changes and Commit button"
+            description="Show changed files above the composer and the Commit button in the thread header."
+          >
+            <Switch
+              checked={showGitChanges}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onShowGitChangesChange}
+              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 
@@ -1055,6 +1073,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Show the latest release notes as a compact preview on the Updates page.",
   },
+  navigationRail: {
+    label: "Navigation rail",
+    description:
+      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. Wide windows only.",
+  },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
     description:
@@ -1189,6 +1212,7 @@ export function SettingsView() {
         customThemes={systemConfigQuery.data?.customThemes ?? []}
         pluginThemes={systemConfigQuery.data?.pluginThemes ?? []}
         faviconColor={appearance.faviconColor}
+        navigationRail={experiments.navigationRail}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
           updateAppearanceMutation.mutate(
@@ -1283,6 +1307,13 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          showGitChanges={generalSettings.showGitChanges}
+          onShowGitChangesChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              showGitChanges: enabled,
+            })
+          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({

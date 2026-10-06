@@ -75,5 +75,5 @@ export const LazyCommandPaletteBody = defineSplit<CommandPaletteBodyProps>({
     import("./CommandPaletteBody").then((module) => module.CommandPaletteBody),
   loading: CommandPaletteBodyPlaceholder,
   error: CommandPaletteBodyPlaceholder,
-  preload: "idle",
+  tier: "preload",
 });

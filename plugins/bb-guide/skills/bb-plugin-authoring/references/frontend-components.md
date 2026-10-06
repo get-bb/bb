@@ -21,8 +21,8 @@ className?, leadingContent?, messageActions? }` —
   `leadingContent` is a `ReactNode` rendered above the conversation,
   scrolling with it; `messageActions` is a list of
   `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
-  rendered in this instance's per-message action bar after the native and
-  slot-registered actions — `roles` limits the action to `"user"` and/or
+  rendered in this instance's per-message action bar after the native
+  actions (slot-registered `messageAction`s do not appear in `ThreadChat`) — `roles` limits the action to `"user"` and/or
   `"assistant"` messages (omitted = both), and `run(message)` receives the
   same narrow `ThreadChatMessageReference` as the `messageAction` slot;
   errors from `run` are contained and logged, never breaking the timeline.
@@ -309,6 +309,17 @@ serviceTier?, executionInputSources, environment, input }`. Hand it to
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
   does not fit in a ~420px column.
+- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
+  input (the prompt box's microphone preference, transcription service, and
+  errors). Props: `value`, `onValueChange(value)`, optional
+  `onVoiceInputActiveChange(active)`, and any other textarea attribute,
+  including `ref` and `className`, which reach the `<textarea>`. Style the
+  textarea yourself; bb adds bottom padding and the microphone controls when
+  voice input is supported and renders a plain textarea otherwise (also in
+  `renderSlot`). Transcripts append to `value` and are never submitted. Hold
+  submission while `onVoiceInputActiveChange` reports `true`. The registry's
+  `voice-input-textarea` item re-exports it, and `question-form` uses it for
+  free-text answers. Alias it on import like `experimental_NewThreadComposer`.
 
 
 ## Shared app and provider icons

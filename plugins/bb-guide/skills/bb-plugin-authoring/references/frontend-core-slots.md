@@ -149,7 +149,8 @@ target? })`. Inside the fixed-tab component,
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
   or short status without lifting state into the host sidebar. The host does
-  not mount it on compact viewports; on wider viewports it clips the component
+  not mount it on compact viewports or in the icon-only rail of the
+  `navigationRail` experiment; on wider viewports it clips the component
   to one line, 4rem wide by 1.25rem high, and ellipsizes ordinary long text.
   It shares the trailing action column and fades out for the host options
   button on row hover or keyboard focus without unmounting. Do not render

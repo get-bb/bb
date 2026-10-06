@@ -806,7 +806,8 @@ body {
   display: flex;
   align-items: center;
   width: max-content;
-  animation: company-proof-scroll 42s linear infinite;
+  animation: company-proof-scroll
+    calc(var(--company-proof-logos, 11) * 8s) linear infinite;
   will-change: transform;
 }
 
@@ -817,6 +818,39 @@ body {
 .company-proof.is-offscreen .company-proof-track {
   animation-play-state: paused;
   will-change: auto;
+}
+
+.company-proof-track.is-reverse {
+  animation-direction: reverse;
+}
+
+.company-proof-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .company-proof-rows:hover .company-proof-track {
+    animation-play-state: paused;
+  }
+
+  .company-proof-heading {
+    position: relative;
+  }
+
+  .company-proof-toggle {
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 6px);
+    transform: translateY(-50%);
+  }
+
+  .company-proof:not(.is-paused) .company-proof-toggle:not(:focus-visible) {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .company-proof-logos {
@@ -3039,10 +3073,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .nav-links {
     gap: 12px;
     font-size: 13px;
-  }
-
-  .updates-label {
-    display: none;
   }
 }
 

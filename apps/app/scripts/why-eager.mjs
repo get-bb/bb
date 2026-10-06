@@ -12,7 +12,7 @@
 // `--from` starts the walk at a lazy route module instead of the entry (for
 // example `--from=views/SplitWorkspaceRoute.tsx`) and skips modules the entry
 // already reaches, so it explains the route closure that bundle-budget.json
-// ratchets under `routeClosures`.
+// ratchets under `routeClosures` as part of its page journeys.
 import { build, loadConfigFromFile } from "vite";
 import path from "node:path";
 import process from "node:process";

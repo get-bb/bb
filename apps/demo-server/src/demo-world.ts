@@ -195,6 +195,9 @@ function createUiPreferences(): UiPreferenceEntries {
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
     ),
+    "infoPanel.collapsedSections": uiPreferenceEntry(
+      "infoPanel.collapsedSections",
+    ),
   };
 }
 

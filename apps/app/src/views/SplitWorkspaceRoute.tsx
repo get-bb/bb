@@ -1,9 +1,6 @@
-import { idleSplitDownload } from "@/lib/split-prefetch";
+import { queueSplitDownload } from "@/lib/split-prefetch";
 import { pluginDetailKeyFromRoute } from "@/components/plugin/plugin-detail-key";
-import { ModelReasoningMenu } from "@/components/pickers/ModelReasoningMenuSplit";
-import { useSplitPreload } from "@/lib/define-split";
-import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
-import { lazy, useMemo } from "react";
+import { useMemo } from "react";
 import { disableGlobalCursorStyles } from "react-resizable-panels";
 import { matchPath, Navigate, useLocation } from "react-router-dom";
 import { useAtomValue } from "jotai";
@@ -18,23 +15,17 @@ import {
 } from "@/lib/route-paths";
 import type { PaneContent } from "@/lib/split-layout";
 import { useRouteState } from "@/hooks/useRouteState";
-import { LegacyProjectComposeRedirect } from "./RootComposeView";
+import { LegacyProjectComposeRedirect } from "./LegacyProjectComposeRedirect";
 import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
+import { LazyPluginsView } from "./ToolsViewSplits";
 
 disableGlobalCursorStyles();
 
 const ROOT_COMPOSE_CONTENT = { kind: "new-thread" } as const;
 
-const PluginsView = lazy(() =>
-  import("./ToolsView").then((m) => ({ default: m.PluginsView })),
-);
-
-const markdownHtmlDownload = idleSplitDownload("markdown-html");
+queueSplitDownload("markdown-html");
 
 export default function SplitWorkspaceRoute() {
-  useSplitPreload(LazyThreadSecondaryPanel);
-  useSplitPreload(ModelReasoningMenu);
-  useSplitPreload(markdownHtmlDownload);
   const location = useLocation();
   const { projectId, threadId, isThreadView } = useRouteState();
   const pluginMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);
@@ -95,7 +86,7 @@ export default function SplitWorkspaceRoute() {
     !holdsPluginDetailPane(layout, routeContent.pluginId)
   ) {
     return (
-      <PluginsView
+      <LazyPluginsView
         detailKey={pluginDetailKeyFromRoute(
           routeContent.pluginId,
           location.search,

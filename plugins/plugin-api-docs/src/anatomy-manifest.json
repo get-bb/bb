@@ -2,13 +2,7 @@
   "$comment": "Shared UI-anatomy contract between the Plugin Guide surface fixtures (wireframes.tsx) and the real app. Ordered regions are rendered by both sides. surfaceFixtures records authoritative source anchors plus the minimum deterministic fidelity and states for interaction-heavy fixtures.",
   "appSidebar": ["top-reserve", "sidebar-navigation", "thread-list", "footer"],
   "sidebarFooter": ["settings", "plugin-footer-items", "bug-report"],
-  "messageActionBar": [
-    "copy",
-    "edit",
-    "send-to-main-thread",
-    "plugin-actions",
-    "message-menu"
-  ],
+  "messageActionBar": ["copy", "edit", "plugin-actions", "message-menu"],
   "mobileLayout": {
     "sources": [
       {

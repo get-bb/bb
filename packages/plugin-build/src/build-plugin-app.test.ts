@@ -241,6 +241,12 @@ describe("plugin app runtime shim", () => {
         "/repo/packages/shared-ui/src/components/ui/question-form.tsx",
       ),
     ).toBe("@bb/shared-ui/question-form-host");
+    expect(
+      sharedUiRuntimeModuleFor(
+        "./voice-input-textarea",
+        "/repo/packages/shared-ui/src/components/ui/question-form.tsx",
+      ),
+    ).toBe("@bb/shared-ui/voice-input-textarea");
     expect(sharedUiRuntimeModuleFor("./button", sharedUiComponent)).toBe(null);
     expect(
       sharedUiRuntimeModuleFor(

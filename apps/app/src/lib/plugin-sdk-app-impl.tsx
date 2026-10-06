@@ -9,6 +9,7 @@ import {
   usePluginCheckoutState,
 } from "@/components/plugin/usePluginBranchPickerState";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+import { VoiceInputTextarea } from "@/components/promptbox/VoiceInputTextarea";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
@@ -85,6 +86,7 @@ export const pluginSdkAppImplementation = {
   experimental_FileLink: ExperimentalFileLink,
   UrlLink: PluginUrlLink,
   experimental_NewThreadComposer: PluginNewThreadComposer,
+  experimental_VoiceInputTextarea: VoiceInputTextarea,
   experimental_ProviderModelPicker: PluginProviderModelPicker,
   experimental_PermissionModePicker: PluginPermissionModePicker,
   experimental_BranchPicker: PluginBranchPicker,

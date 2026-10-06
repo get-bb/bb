@@ -21,7 +21,7 @@ vi.mock("./thread-detail/SplitThreadArea", () => ({
   },
 }));
 
-vi.mock("./RootComposeView", () => ({
+vi.mock("./LegacyProjectComposeRedirect", () => ({
   LegacyProjectComposeRedirect: () => <div>legacy redirect</div>,
 }));
 

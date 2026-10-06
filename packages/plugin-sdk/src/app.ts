@@ -122,6 +122,9 @@ export const UrlLink = runtimeComponent("UrlLink");
 export const experimental_NewThreadComposer = runtimeComponent(
   "experimental_NewThreadComposer",
 );
+export const experimental_VoiceInputTextarea = runtimeComponent(
+  "experimental_VoiceInputTextarea",
+);
 export const experimental_ProviderModelPicker = runtimeComponent(
   "experimental_ProviderModelPicker",
 );

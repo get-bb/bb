@@ -705,6 +705,11 @@ both public links. Add `--details --json` or call `system.mobileAppReleases()`
 upload date. The server fetches only public metadata, caches it for five minutes,
 and returns `android: null` if unavailable or inconsistent. Download links remain
 usable during metadata failures. iOS version and release date are shown in TestFlight.
+Inside the Android app, Settings → Mobile also shows the installed version and
+compares its native build number with the published APK: up to date, update
+available, or newer than the published release. Older apps without build-number
+reporting and unavailable release metadata show that update status cannot be
+determined. The download button remains available in every state.
 The nightly release pipeline builds and publishes an Android preview APK after
 a successful npm nightly publication, alongside the iOS build. This runs on the
 daily 3 AM America/Los_Angeles schedule, a manual nightly publish, and the

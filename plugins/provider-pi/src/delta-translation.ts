@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import {
   ZERO_TOKEN_USAGE,
@@ -179,6 +181,30 @@ const piToolExecutionEndEventSchema = z
   })
   .passthrough();
 
+const piReadArgsSchema = z.object({
+  path: z.string().refine((path) => path.trim().length > 0),
+});
+
+const piImageContentBlockSchema = z.object({
+  type: z.literal("image"),
+  data: z.string().trim().min(1),
+  mimeType: z.string().regex(/^image\/[^\s/]+$/),
+});
+
+const piToolResultContentSchema = z.object({
+  content: z.array(z.unknown()),
+});
+
+function hasPiImageContent(result: unknown): boolean {
+  const parsed = piToolResultContentSchema.safeParse(result);
+  return (
+    parsed.success &&
+    parsed.data.content.some(
+      (block) => piImageContentBlockSchema.safeParse(block).success,
+    )
+  );
+}
+
 const piToolExecutionUpdateEventSchema = z
   .object({
     type: z.literal("tool_execution_update"),
@@ -218,6 +244,9 @@ type PiToolExecutionUpdateEvent = z.infer<
 const PI_EMPTY_BASH_OUTPUT_PLACEHOLDERS = ["(no output)"] as const;
 const PI_COMMAND_TOOL_NAMES = new Set(["bash"]);
 const PI_FILE_CHANGE_TOOL_NAMES = new Set(["edit", "write"]);
+const PI_IMAGE_READ_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
+const PI_UNICODE_SPACE_PATTERN = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+const URL_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:\/\//i;
 
 const ASSISTANT_STREAM_KEY = "assistant";
 
@@ -288,6 +317,38 @@ function classifyPiToolUse(
   }
 
   return { type: "tool", tool: toolName, args };
+}
+
+function resolvePiImageReadPath(
+  toolName: string,
+  args: unknown,
+  sessionCwd: string | undefined,
+): string | null {
+  if (toolName !== "read") {
+    return null;
+  }
+  const parsed = piReadArgsSchema.safeParse(args);
+  if (!parsed.success) {
+    return null;
+  }
+  let path = parsed.data.path.replace(PI_UNICODE_SPACE_PATTERN, " ");
+  if (path.startsWith("@")) {
+    path = path.slice(1);
+  }
+  if (path === "~" || path.startsWith("~/")) {
+    path = join(homedir(), path.slice(2));
+  }
+  if (URL_SCHEME_PATTERN.test(path)) {
+    return null;
+  }
+  const absolutePath = isAbsolute(path)
+    ? resolve(path)
+    : sessionCwd !== undefined && isAbsolute(sessionCwd)
+      ? resolve(sessionCwd, path)
+      : null;
+  return absolutePath !== null && PI_IMAGE_READ_PATH_PATTERN.test(absolutePath)
+    ? absolutePath
+    : null;
 }
 
 function classifyPiToolResultFallback(toolName: string): DeltaItemShape {
@@ -366,12 +427,17 @@ interface CreatePiDeltaTranslatorOptions {
 
 const MAX_STARTED_TOOL_SHAPES = 1024;
 
+interface StartedPiTool {
+  shape: DeltaItemShape;
+  deferredImageReadPath: string | null;
+}
+
 export function createPiDeltaTranslator(
   options: CreatePiDeltaTranslatorOptions,
 ) {
   const { resolveModelContextWindow } = options;
 
-  const startedToolShapes = new Map<string, DeltaItemShape>();
+  const startedToolShapes = new Map<string, StartedPiTool>();
   const cumulativeTokensByThreadId = new Map<
     string,
     ThreadEventTokenUsageBreakdown
@@ -389,8 +455,8 @@ export function createPiDeltaTranslator(
     return `${context?.threadId ?? ""} ${toolCallId}`;
   }
 
-  function rememberStartedToolShape(key: string, shape: DeltaItemShape): void {
-    startedToolShapes.set(key, shape);
+  function rememberStartedToolShape(key: string, started: StartedPiTool): void {
+    startedToolShapes.set(key, started);
     while (startedToolShapes.size > MAX_STARTED_TOOL_SHAPES) {
       const oldest = startedToolShapes.keys().next();
       if (oldest.done === true) {
@@ -830,10 +896,18 @@ export function createPiDeltaTranslator(
           piEvent.data.args,
           context?.cwd,
         );
+        const deferredImageReadPath = resolvePiImageReadPath(
+          piEvent.data.toolName,
+          piEvent.data.args,
+          context?.cwd,
+        );
         rememberStartedToolShape(
           toolShapeKey(context, piEvent.data.toolCallId),
-          shape,
+          { shape, deferredImageReadPath },
         );
+        if (deferredImageReadPath !== null) {
+          return [];
+        }
         return [
           {
             kind: "item.open",
@@ -859,23 +933,36 @@ export function createPiDeltaTranslator(
           ? extractPiCommandExecutionOutput(piEvent.data.result)
           : undefined;
         const shapeKey = toolShapeKey(context, piEvent.data.toolCallId);
-        const terminalShape =
-          startedToolShapes.get(shapeKey) ??
-          classifyPiToolResultFallback(piEvent.data.toolName);
+        const started = startedToolShapes.get(shapeKey);
         startedToolShapes.delete(shapeKey);
+        const deferredImageReadPath = started?.deferredImageReadPath ?? null;
+        const terminalShape: DeltaItemShape =
+          deferredImageReadPath !== null &&
+          !piEvent.data.isError &&
+          hasPiImageContent(piEvent.data.result)
+            ? { type: "imageView", path: deferredImageReadPath }
+            : (started?.shape ??
+              classifyPiToolResultFallback(piEvent.data.toolName));
+        const key = {
+          providerItemId: piEvent.data.toolCallId,
+          ...parentRefField,
+        };
+        const noTurnFallback = noTurnFallbackFor(piEvent.data, context);
+        const deferredOpen: ThreadDelta[] =
+          deferredImageReadPath === null
+            ? []
+            : [{ kind: "item.open", key, item: terminalShape, noTurnFallback }];
         return [
+          ...deferredOpen,
           {
             kind: "item.close",
-            key: {
-              providerItemId: piEvent.data.toolCallId,
-              ...parentRefField,
-            },
+            key,
             status: piEvent.data.isError ? "failed" : "completed",
             resultText,
             exitCode: piEvent.data.isError ? 1 : 0,
             ...(aggregatedOutput === undefined ? {} : { aggregatedOutput }),
             item: terminalShape,
-            noTurnFallback: noTurnFallbackFor(piEvent.data, context),
+            noTurnFallback,
           },
         ];
       }
@@ -884,6 +971,12 @@ export function createPiDeltaTranslator(
         const piEvent = piToolExecutionUpdateEventSchema.safeParse(event);
         if (!piEvent.success) {
           return unexpectedSdkEventDeltas(event, context);
+        }
+        const started = startedToolShapes.get(
+          toolShapeKey(context, piEvent.data.toolCallId),
+        );
+        if ((started?.deferredImageReadPath ?? null) !== null) {
+          return [];
         }
         if (PI_COMMAND_TOOL_NAMES.has(piEvent.data.toolName)) {
           const snapshot = extractPiCommandExecutionOutput(

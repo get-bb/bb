@@ -711,6 +711,7 @@ export function KeyboardSettingsSection() {
 
   return (
     <SettingsSection
+      actionPlacement="inline"
       action={
         <Button
           disabled={disabled || !hasOverrides}

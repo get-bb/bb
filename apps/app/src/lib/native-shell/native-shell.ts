@@ -54,6 +54,7 @@ function pickHandshakeFields(bridge: NativeBridgeGlobal): unknown {
   return {
     bridgeVersion: source.bridgeVersion,
     appVersion: source.appVersion,
+    androidVersionCode: source.androidVersionCode,
     platform: source.platform,
     profileMode: source.profileMode,
     secureContext: source.secureContext,

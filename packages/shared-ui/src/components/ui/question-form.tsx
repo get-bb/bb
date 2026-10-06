@@ -13,11 +13,13 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
   type RefObject,
 } from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
+import { VoiceInputTextarea } from "./voice-input-textarea";
 import { usePointerCoarse } from "./hooks/use-pointer-coarse";
 import { cn } from "../../lib/utils";
 import {
@@ -126,6 +128,7 @@ function QuestionOptionPreview({ preview }: { preview: string }) {
 }
 
 interface QuestionTabsProps {
+  disabled: boolean;
   currentIndex: number;
   formState: QuestionFormState;
   onSelect: (index: number) => void;
@@ -133,6 +136,7 @@ interface QuestionTabsProps {
 }
 
 function QuestionTabs({
+  disabled,
   currentIndex,
   formState,
   onSelect,
@@ -159,6 +163,7 @@ function QuestionTabs({
             >
               <button
                 type="button"
+                disabled={disabled}
                 onClick={() => onSelect(index)}
                 aria-pressed={isActive}
                 title={question.prompt}
@@ -193,6 +198,7 @@ interface QuestionInputBlockProps {
   onSelectOther: () => void;
   onFreeTextChange: (value: string) => void;
   onShortcutSubmit: () => void;
+  onVoiceInputActiveChange: (active: boolean) => void;
   shortcuts: ReadonlyMap<string, QuestionShortcut>;
 }
 
@@ -204,6 +210,7 @@ function QuestionInputBlock({
   onSelectOther,
   onFreeTextChange,
   onShortcutSubmit,
+  onVoiceInputActiveChange,
   shortcuts,
 }: QuestionInputBlockProps) {
   const freeTextRef = useRef<HTMLTextAreaElement>(null);
@@ -272,20 +279,18 @@ function QuestionInputBlock({
         ) : null}
       </div>
       {state.otherSelected ? (
-        <textarea
+        <VoiceInputTextarea
           ref={freeTextRef}
           aria-label={freeTextLabel}
           value={state.otherText}
           rows={1}
           autoFocus={!isPointerCoarse}
           autoComplete="off"
-          onChange={(event) => {
-            onFreeTextChange(event.target.value);
-            resizeFreeTextArea(event.target);
-          }}
+          onValueChange={onFreeTextChange}
+          onVoiceInputActiveChange={onVoiceInputActiveChange}
           onKeyDown={handleFreeTextKeyDown}
           placeholder="Type your own answer…"
-          className="mt-2 w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
+          className="mt-2 block w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
           style={{
             minHeight: `${FREE_TEXT_MIN_HEIGHT}px`,
             maxHeight: `${FREE_TEXT_MAX_HEIGHT}px`,
@@ -315,6 +320,7 @@ export function QuestionForm({
 }: QuestionFormProps) {
   const { formState, setFormState, currentIndex, setCurrentIndex, clearDraft } =
     useQuestionFormDraft(draftKey, questions);
+  const [voiceBusy, setVoiceBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
   const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
 
@@ -375,7 +381,7 @@ export function QuestionForm({
   };
 
   const submitAnswer = async (): Promise<void> => {
-    if (disabled || !allAnswered) return;
+    if (disabled || voiceBusy || !allAnswered) return;
     try {
       await onSubmit(buildQuestionAnswers(questions, formState));
       clearDraft();
@@ -383,6 +389,7 @@ export function QuestionForm({
   };
 
   const handleAdvance = (): void => {
+    if (disabled || voiceBusy) return;
     if (isLast) {
       void submitAnswer();
       return;
@@ -391,7 +398,7 @@ export function QuestionForm({
   };
 
   useEffect(() => {
-    if (disabled || currentQuestion === null) return;
+    if (disabled || voiceBusy || currentQuestion === null) return;
     return registerChoiceHandler((index) => {
       const choice = resolveQuestionShortcutChoice(currentQuestion, index);
       if (!choice) return false;
@@ -403,6 +410,7 @@ export function QuestionForm({
     });
   }, [
     disabled,
+    voiceBusy,
     currentQuestion,
     registerChoiceHandler,
     handleToggleOption,
@@ -437,6 +445,7 @@ export function QuestionForm({
     >
       {totalQuestions > 1 ? (
         <QuestionTabs
+          disabled={disabled || voiceBusy}
           currentIndex={currentIndex}
           formState={formState}
           onSelect={setCurrentIndex}
@@ -445,6 +454,7 @@ export function QuestionForm({
       ) : null}
       <div>
         <QuestionInputBlock
+          key={currentQuestion.id}
           disabled={disabled}
           question={currentQuestion}
           state={currentState}
@@ -455,6 +465,7 @@ export function QuestionForm({
           onFreeTextChange={(value) =>
             handleFreeTextChange(currentQuestion, value)
           }
+          onVoiceInputActiveChange={setVoiceBusy}
           onShortcutSubmit={handleAdvance}
           shortcuts={shortcuts}
         />
@@ -480,7 +491,7 @@ export function QuestionForm({
               type="button"
               size="sm"
               variant="outline"
-              disabled={disabled}
+              disabled={disabled || voiceBusy}
               onClick={() => setCurrentIndex((index) => Math.max(index - 1, 0))}
             >
               Back
@@ -489,7 +500,7 @@ export function QuestionForm({
           <Button
             type="button"
             size="sm"
-            disabled={disabled || (isLast && !allAnswered)}
+            disabled={disabled || voiceBusy || (isLast && !allAnswered)}
             onClick={handleAdvance}
           >
             {disabled ? (

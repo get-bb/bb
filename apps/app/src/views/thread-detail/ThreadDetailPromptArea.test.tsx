@@ -866,6 +866,7 @@ function buildPromptAreaElement({
   return (
     <QueryClientProvider client={testQueryClient}>
       <ThreadDetailPromptArea
+        showGitChanges={true}
         activeBackgroundAgentCount={0}
         activeBackgroundCommands={[]}
         activePromptMode={activePromptMode}

@@ -15,6 +15,11 @@ import { sdk } from "@/lib/sdk";
 import { MemoryRouter } from "react-router-dom";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MobileAppSection } from "./MobileAppSection";
+import {
+  buildBridgeInjectionScript,
+  type NativeShellHandshake,
+} from "@bb/mobile-bridge";
+import { resetNativeShellForTests } from "@/lib/native-shell/native-shell";
 
 beforeEach(() => {
   vi.spyOn(sdk.system, "config").mockResolvedValue(makeSystemConfig());
@@ -24,7 +29,70 @@ afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
+  Reflect.deleteProperty(window, "bb");
+  resetNativeShellForTests();
 });
+
+it.each([
+  { build: 3, latest: 4, status: "Update available" },
+  { build: 4, latest: 4, status: "You’re up to date" },
+  {
+    build: 5,
+    latest: 4,
+    status: "You’re running a newer build than the latest published release",
+  },
+  {
+    build: undefined,
+    latest: 4,
+    status:
+      "This app does not report its build number. Download the latest APK to check for updates.",
+  },
+  {
+    build: 4,
+    latest: null,
+    status:
+      "Unable to check for updates. You can still download the latest APK.",
+  },
+])(
+  "reports Android update status for build $build and release $latest",
+  async ({ build, latest, status }) => {
+    const handshake: NativeShellHandshake = {
+      bridgeVersion: 2,
+      appVersion: "0.39.0",
+      ...(build === undefined ? {} : { androidVersionCode: build }),
+      platform: "android",
+      profileMode: "connect",
+      secureContext: true,
+      safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+      capabilities: [],
+    };
+    new Function("window", buildBridgeInjectionScript(handshake))(window);
+    vi.spyOn(sdk.system, "mobileAppReleases").mockResolvedValue({
+      android:
+        latest === null
+          ? null
+          : {
+              version: "0.39.0",
+              versionCode: latest,
+              size: 147311657,
+              sha256: "a".repeat(64),
+              updatedAt: "2026-09-29T19:28:00Z",
+            },
+    });
+    renderSection();
+    expect(await screen.findByText(status)).toBeTruthy();
+    expect(
+      screen.getByText(
+        build === undefined
+          ? "Installed: 0.39.0"
+          : `Installed: 0.39.0 (build ${build})`,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Download Android APK" }),
+    ).toBeTruthy();
+  },
+);
 
 function renderSection() {
   return render(

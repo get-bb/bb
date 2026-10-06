@@ -1,8 +1,17 @@
 # UI code splitting
 
-Use `apps/app/src/lib/define-split.tsx` for new app UI boundaries. This is an
-app-local contract, not a Plugin SDK API. Existing plain `lazy` wrappers can be
-migrated when their feature is touched; avoid a repository-wide mechanical sweep.
+Use `apps/app/src/lib/define-split.tsx` for every app UI boundary. This is an
+app-local contract, not a Plugin SDK API. App code sorts into three tiers:
+
+| Tier      | What belongs here                                                        | Mechanism                                       |
+| --------- | ------------------------------------------------------------------------ | ----------------------------------------------- |
+| Core      | What the first paint of the boot shell or a page needs                   | Static imports                                  |
+| `preload` | Common UI that is not visible at first paint, such as the right panel    | `defineSplit({ tier: "preload" })`              |
+| `intent`  | Rare UI, such as customization, setup dialogs and context-menu contents | `defineSplit({ tier: "intent" })`               |
+
+The router's page components in `App.tsx` stay plain `React.lazy`: they suspend
+into the shared route boundary that marks route content painted, and a
+per-component boundary would mark it before the page loads.
 
 ## Declare a boundary
 
@@ -16,7 +25,7 @@ export const Editor = defineSplit({
   load: () =>
     import("./DocumentEditor").then((module) => module.DocumentEditor),
   loading: (props) => <EditorSkeleton title={props.title} />,
-  preload: "intent",
+  tier: "intent",
 });
 ```
 
@@ -50,14 +59,12 @@ Do not declare splits during render. Use a literal dynamic import path. Import
 implementation types with `import type` or `typeof import(...)`; do not re-export
 the implementation through a barrel imported by the shell.
 
-## Download policy and mounting
+## Tiers and mounting
 
-| Policy    | Behavior                                                                                                     |
-| --------- | ------------------------------------------------------------------------------------------------------------ |
-| `render`  | Load when rendered. No speculative scheduling.                                                               |
-| `intent`  | Load on rendering or a trigger's pointer-enter, focus, or pointer-down.                                      |
-| `startup` | With `useSplitPreload`, warm when the owning page mounts.                                                    |
-| `idle`    | With `useSplitPreload`, warm after two animation frames at browser idle, with a one-second timeout/fallback. |
+| Tier      | Behavior                                                                                                                   |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `intent`  | Load when rendered, or earlier on a trigger's pointer-enter, focus, or pointer-down.                                      |
+| `preload` | Queued when the split is defined. The queue drains at browser idle (one-second timeout/fallback) once no critical load is pending: the route import, the current page's split, and any split being rendered. Intent and rendering still load it earlier. |
 
 Wire intent on the actual trigger:
 
@@ -68,15 +75,19 @@ Wire intent on the actual trigger:
 ```
 
 If a trigger already handles one of those events, compose the handlers instead
-of overwriting one. `.preload()` is an explicit, safe warm-up available under any
-policy; it catches speculative failures, leaving rendering able to try again.
+of overwriting one. `.preload()` is an explicit, safe warm-up available in any
+tier; it catches speculative failures, leaving rendering able to try again.
+Use it from an explicit owner for data demand or related features, such as
+warming panel tab code when the right panel opens.
 
-Register startup/idle policies with `useSplitPreload(Split)` in their owning
-page or eager shell. Scheduling is cancelled if that owner unmounts before it
-starts; an import already started cannot be cancelled. Intent handlers still
-warm startup/idle splits if the user acts first. Use `.preload()` from an
-explicit owner for data demand or related features, such as warming panel tab
-code when the right panel opens.
+A preload-tier split needs no registration: defining it queues it, and
+`RouteContentPaintSignal` in `App.tsx` starts the queue with
+`startSplitPreloading()`, and marks route content painted only after critical
+loads settle, which also defers plugin frontend boot until the page's own code
+has arrived. Splits defined by modules that load later (a route
+chunk, for example) join the queue and drain at the next idle period. Tests do
+not start the queue, so defining a split never triggers a speculative import
+there.
 
 `.preload()` uses dynamic import: it downloads, parses, compiles and evaluates
 the module graph. An idle callback only schedules its start; it cannot guarantee
@@ -86,24 +97,27 @@ work for a slower first interaction. `modulepreload` parses/compiles early but
 defers evaluation.
 
 For download-only warming, register the split ID and implementation path with
-`splitPrefetch` in `vite.config.ts`. The build embeds its hashed asset URLs and
-static dependencies as inert JSON in the HTML. Create `idleSplitDownload(id)` at module scope and pass it to `useSplitPreload`
-in the owning page. IDs must uniquely identify a split. This lightweight descriptor
-avoids importing the component or its fallback just to schedule a download. It makes low
-priority fetches into the HTTP cache without importing modules; the real split
-keeps `preload: "render"`. An import already started suppresses speculative
-downloads; an import that follows a pending download waits for its bytes, avoiding
-duplicate transfers. Asset responses must be cacheable for subsequent
-imports to reuse them. BB serves hashed assets with immutable caching. Development
-HTML has no manifest, so dev servers retain demand loading. This is currently
-used for Markdown's sanitized HTML pipeline on workspace routes and queued
-messages when a thread view mounts, including split panes; other preload policies still
-import and execute their modules.
+`splitPrefetch` in `vite.config.ts`, and call `queueSplitDownload(id)` at module
+scope in the owning page. The build embeds its hashed asset URLs and static
+dependencies as inert JSON in the HTML, and the download joins the preload
+queue. It makes low priority fetches into the HTTP cache without importing
+modules; the real split stays in the `intent` tier. IDs must uniquely identify a
+split. An import already started suppresses speculative downloads; an import
+that follows a pending download waits for its bytes, avoiding duplicate
+transfers. Asset responses must be cacheable for subsequent imports to reuse
+them. BB serves hashed assets with immutable caching. Development HTML has no
+manifest, so dev servers retain demand loading. This is currently used for
+Markdown's sanitized HTML pipeline on workspace routes and queued messages when
+a thread view mounts.
 
-Downloading and mounting are separate. Keep the existing persistent responsive
-drawer's deferred realization and retained content. Preloading must not mount
-hidden UI, run its component effects, or replace the drawer. Avoid rendering a
-split merely to preload it.
+Mount gating is part of the split. `mountWhen(props)` keeps the implementation
+unmounted until it returns true, rendering `unmounted` (default nothing) in the
+meantime. With `keepMounted: true`, a split stays mounted after `mountWhen`
+turns false again, so closing preserves its state. Downloading never mounts:
+preload does not render hidden UI or run its effects.
+
+Keep the existing persistent responsive drawer's deferred realization and
+retained content. Avoid rendering a split merely to preload it.
 
 Pilots:
 
@@ -112,17 +126,18 @@ Pilots:
 - `LazyFilePreview`: render on demand; its code already warms through the panel
   shell’s shared Git-diff dependency on workspace-page load, and is explicitly
   included in panel-open warming.
-- `LazyThreadSecondaryPanel`: prop-aware desktop/drawer placeholders, startup
-  warm-up from the workspace route, intent on panel toggles, and realization on
-  first open. Opening also warms browser, terminal, new-tab and file-preview code. Closed desktop panels
+- `LazyThreadSecondaryPanel`: prop-aware desktop/drawer placeholders, preload
+  tier, intent on panel toggles, and `mountWhen` first open with `keepMounted`. Opening also warms browser, terminal, new-tab and file-preview code. Closed desktop panels
   retain a lightweight resizable Panel shell; loaded content stays mounted after
   closing. Inline failure preserves the resizable Panel structure.
 
 ## Enforce the boundary
 
 Add the heavy source module to `splitBoundaries` in
-`apps/app/bundle-budget.json`, listing `boot` and any measured route closure
-from which it must remain absent. The checker uses actual emitted module
+`apps/app/bundle-budget.json`, listing `boot` and any measured page journey
+(`ThreadPage`, `NewThreadPage`, `PluginFrontend`) from which it must remain
+absent. A journey is the union of its lazy entry chunks' static closures beyond
+the boot payload: what that page waits for after the shell paints. The checker uses actual emitted module
 membership, including modules bundled into shared chunks without a facade.
 Missing modules fail so deletion or renaming requires an intentional guard edit.
 
@@ -141,8 +156,8 @@ node apps/app/scripts/check-bundle-budget.mjs
 Verify a negative control: temporarily make the implementation eager in a
 protected closure, rebuild, and require the checker to reject that module for
 the intended reason. Restore the split and rebuild. Byte budgets alone cannot
-prove that a feature is lazy. Moving code out of boot can increase the additional
-route closure; report both. Do not increase limits to hide a regression.
+prove that a feature is lazy. Moving code out of boot can increase a page
+journey; report both. Do not increase limits to hide a regression.
 
 ## Review loading states
 

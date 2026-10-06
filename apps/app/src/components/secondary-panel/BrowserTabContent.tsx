@@ -63,6 +63,7 @@ import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserTo
 interface BrowserTabContentProps {
   tabId: string;
   desktopTarget?: BbDesktopBrowserTarget;
+  existingOnly?: true;
   initialUrl: string;
   addressFocusRequest: BrowserAddressFocusRequest | null;
   onAddressFocusRequestConsumed?: (request: BrowserAddressFocusRequest) => void;
@@ -383,6 +384,7 @@ function BrowserPageLoadError({
 export function BrowserTabContent({
   tabId,
   desktopTarget,
+  existingOnly,
   initialUrl,
   addressFocusRequest,
   onAddressFocusRequestConsumed,
@@ -461,6 +463,8 @@ export function BrowserTabContent({
   onUpdateRef.current = onUpdate;
   recordVisitRef.current = recordVisit;
   const initialUrlRef = useRef(initialUrl);
+  const existingOnlyRef = useRef(existingOnly);
+  const desktopTargetRef = useRef(desktopTarget);
   const [attachedBrowserViewIdentity, setAttachedBrowserViewIdentity] =
     useState<BrowserViewAttachIdentity | null>(null);
   const isBrowserViewAttached =
@@ -538,13 +542,14 @@ export function BrowserTabContent({
     const initialBounds = syncInitialBounds();
     const mountUrl = initialUrlRef.current;
     registerBrowserView({ environmentId, tabId, threadId });
-    const existingOnly =
-      desktopTarget !== undefined &&
-      !takeBrowserViewRecreation(tabId, desktopTarget);
+    const target = desktopTargetRef.current;
+    const attachExistingOnly =
+      existingOnlyRef.current === true &&
+      (target === undefined || !takeBrowserViewRecreation(tabId, target));
     desktopBrowser.attach({
       tabId,
       threadId,
-      ...(existingOnly ? { existingOnly: true } : {}),
+      ...(attachExistingOnly ? { existingOnly: true } : {}),
       url: mountUrl,
       bounds: initialBounds,
       visible: false,
@@ -612,7 +617,6 @@ export function BrowserTabContent({
     visibilityCoordinator,
     tabId,
     threadId,
-    desktopTarget,
   ]);
 
   useEffect(() => {

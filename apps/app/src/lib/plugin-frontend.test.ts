@@ -142,6 +142,7 @@ describe("installPluginRuntime", () => {
       "sonner",
       "tailwindMerge",
       "vaul",
+      "voiceInputTextarea",
     ]);
     expect((runtime.clsx as { default: unknown }).default).toBe(clsx);
     expect((runtime.sharedUiIcon as { Icon: unknown }).Icon).toBe(Icon);

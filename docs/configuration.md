@@ -370,6 +370,16 @@ it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
+The "Show Git changes and Commit button" switch in Settings → General defaults to on.
+Turn it off to hide the untracked, uncommitted, and committed file summary and
+expanded file list above every thread composer, plus the Commit action in the
+thread header and overflow menu. PR status, thread relationships,
+and workspace warnings remain visible. This server-wide preference persists
+across reloads and applies to every connected app client. Set it with
+`bb settings general showGitChanges false` or read the current config and call
+`sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.
+Older clients that omit the field preserve the saved value.
+
 The "Thread archive confirmation" switch in Settings → General defaults to on.
 Turn it off to archive a thread and its child threads immediately without a
 confirmation popup. The archive toast still offers Undo. This server-wide
@@ -927,7 +937,7 @@ a transient failure.
 
 ## Sidebar preferences
 
-Sidebar layout preferences are stored on the server in a keyed registry so
+Sidebar and Info panel layout preferences are stored on the server in a keyed registry so
 every window, device, and the CLI read the same value. Each key has a typed
 schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
@@ -955,6 +965,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
 | `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
 | `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `changes`, `forks`, `threadStorage`)     |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
@@ -1379,6 +1390,14 @@ Experimental surfaces are changed in Settings → Experiments or with
 bb stores only the experiments you set; the others follow the shipped default.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
+The default-off `navigationRail` experiment keeps a vertical rail of
+destinations on the left edge of the sidebar on every screen. Home returns to
+the last thread, Settings sits at the bottom, and New thread moves into the
+sidebar header. The sidebar beside the rail still swaps between the thread
+list, Plugins, Skills, and Settings. While it is on, bb draws the navigation
+itself, so the Navigation and Header choices under Settings → Appearance are
+not used; they apply again when the experiment is turned off. Narrow windows
+and phones keep the regular drawer.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
@@ -2004,3 +2023,13 @@ experiment takes effect live on that server. Without startup permission it
 cannot start collection. Turning it off restores normal logging thresholds,
 stops the sampler and flushes the in-flight profile; existing files remain.
 The launch flag only grants permission and still requires a restart to change.
+
+## Prompt Library
+
+The bundled Prompt Library plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--prompt-library`. Its
+**Search prompts** command defaults to Ctrl+R and can be rebound in Keyboard
+Settings. Search scope is remembered in browser local storage separately for
+new-thread and follow-up composers. Starred text and mentions persist in the
+plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
+for CLI and SDK commands.

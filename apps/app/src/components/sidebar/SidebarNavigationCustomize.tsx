@@ -12,8 +12,10 @@ import {
 
 export function SidebarNavigationCustomize({
   onClose,
+  surface,
 }: {
   onClose: (restoreFocus: boolean) => void;
+  surface: "sidebar" | "popover";
 }) {
   const model = useSidebarNavigationModel();
   const isCompactViewport = useIsCompactViewport();
@@ -29,19 +31,20 @@ export function SidebarNavigationCustomize({
   );
   if (model === null) return null;
   const { arrangement, state } = model;
+  const fillsContainer = surface === "popover" || isCompactViewport;
   return (
     <div
       className={cn(
-        "px-2 py-2",
-        isCompactViewport ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
+        surface === "sidebar" && "px-2 py-2",
+        fillsContainer ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
       )}
       data-testid="plugin-nav-sidebar-items"
       data-sidebar-navigation-customize-mode="true"
     >
       <SidebarVisibilityCustomize
-        title="Customize sidebar"
+        title={surface === "popover" ? "Customize rail" : "Customize sidebar"}
         listLabel="Sidebar navigation"
-        variant={isCompactViewport ? "compact" : "card"}
+        variant={fillsContainer ? "compact" : "card"}
         items={items}
         visibleIds={arrangement.visibleKeys}
         onActivate={(item, event) =>

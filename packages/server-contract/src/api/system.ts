@@ -334,6 +334,7 @@ export const systemAppUpdateActivitySchema = z.discriminatedUnion("phase", [
   z.object({
     phase: z.literal("restarting"),
     startedAt: z.string(),
+    targetCommit: z.string().nullable(),
     targetVersion: z.string(),
   }),
 ]);

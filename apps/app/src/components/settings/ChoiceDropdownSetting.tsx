@@ -39,14 +39,13 @@ export function ChoiceDropdownSetting({
 }) {
   return (
     <SettingsWithControl label={label} description={description}>
-      <div className="flex shrink-0 items-center gap-2">
-        {children}
+      <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
               size="sm"
-              className="min-w-40 justify-between"
+              className="min-w-0 flex-1 justify-between sm:w-40 sm:flex-none"
               aria-label={triggerAriaLabel}
               disabled={disabled}
             >
@@ -83,6 +82,7 @@ export function ChoiceDropdownSetting({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        {children}
       </div>
     </SettingsWithControl>
   );

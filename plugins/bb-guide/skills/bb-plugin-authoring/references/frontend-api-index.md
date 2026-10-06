@@ -15,6 +15,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_FileLink`
 - `UrlLink`
 - `experimental_NewThreadComposer`
+- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
+  input
 - `experimental_ProviderModelPicker`
 - `experimental_PermissionModePicker`
 - `experimental_BranchPicker` — the host's branch picker with its options
@@ -246,6 +248,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalPermissionModePickerProps`
 - `NewThreadRequest`
 - `NewThreadComposerProps`
+- `ExperimentalVoiceInputTextareaProps`
 - `MarkdownProps`
 - `UrlLinkProps`
 - `ExperimentalLiveFileTarget`

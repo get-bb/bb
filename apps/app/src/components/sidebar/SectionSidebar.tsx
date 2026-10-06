@@ -104,6 +104,7 @@ export function SectionSidebar({
   children,
   isResizing,
   mobileHosted = false,
+  navRailHosted = false,
   onResizeMouseDown,
   testIdPrefix,
 }: {
@@ -112,6 +113,7 @@ export function SectionSidebar({
   children: ReactNode;
   isResizing: boolean;
   mobileHosted?: boolean;
+  navRailHosted?: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   testIdPrefix: string;
 }) {
@@ -120,13 +122,15 @@ export function SectionSidebar({
       <SidebarTopReserveRow
         testId={`${testIdPrefix}-sidebar-top-reserve-row`}
       />
-      <div className="shrink-0 px-2 py-2">
-        <div className="space-y-1">
-          <SectionSidebarRow active={false} label={backLabel} to={backTo}>
-            <SectionSidebarIcon name="ChevronLeft" />
-          </SectionSidebarRow>
+      {navRailHosted ? null : (
+        <div className="shrink-0 px-2 py-2">
+          <div className="space-y-1">
+            <SectionSidebarRow active={false} label={backLabel} to={backTo}>
+              <SectionSidebarIcon name="ChevronLeft" />
+            </SectionSidebarRow>
+          </div>
         </div>
-      </div>
+      )}
       <SidebarContent>
         <div className="min-w-0 px-2">{children}</div>
       </SidebarContent>
@@ -138,11 +142,11 @@ export function SectionSidebar({
     </>
   );
 
-  if (mobileHosted) {
+  if (mobileHosted || navRailHosted) {
     return (
       <div
         data-testid={`${testIdPrefix}-sidebar-body`}
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
         {body}
       </div>

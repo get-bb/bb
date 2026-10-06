@@ -115,6 +115,7 @@ function useSettingsStoryState() {
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
+  const [showGitChanges, setShowGitChanges] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
@@ -139,6 +140,8 @@ function useSettingsStoryState() {
     openLinksInAppBrowser,
     rewriteLocalhostLinks,
     steerActiveThreadOnEnter,
+    showGitChanges,
+    setShowGitChanges,
     confirmThreadArchive,
     setConfirmThreadArchive,
     streamerMode,
@@ -175,6 +178,8 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
+        showGitChanges={state.showGitChanges}
+        onShowGitChangesChange={state.setShowGitChanges}
         confirmThreadArchive={state.confirmThreadArchive}
         onConfirmThreadArchiveChange={state.setConfirmThreadArchive}
         desktopBrowserAvailable={desktopBrowserAvailable}
@@ -222,6 +227,7 @@ function AppearanceSettingsStory() {
       customThemes={["Monochrome Lab", "Low Contrast"]}
       pluginThemes={[]}
       faviconColor={state.appearance.faviconColor}
+      navigationRail={false}
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))
       }

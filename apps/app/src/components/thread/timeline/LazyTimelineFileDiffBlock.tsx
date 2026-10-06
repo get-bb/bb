@@ -24,5 +24,5 @@ export const LazyTimelineFileDiffBlock =
         (module) => module.TimelineFileDiffBlock,
       ),
     loading: TimelineFileDiffBlockLoading,
-    preload: "render",
+    tier: "intent",
   });

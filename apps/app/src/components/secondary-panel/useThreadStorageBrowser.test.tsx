@@ -1,43 +1,36 @@
 // @vitest-environment jsdom
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import type { WorkspaceFile } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 
-const FILES: readonly WorkspaceFile[] = [
+const FILES: WorkspaceFile[] = [
   { name: "notes.md", path: "docs/notes.md" },
-  { name: "main.ts", path: "src/main.ts" },
+  { name: "Screenshot.png", path: "Attachments/Screenshot.png" },
 ];
 
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
-});
+afterEach(cleanup);
 
 describe("useThreadStorageBrowser", () => {
-  it("syncs files and selection into the model once it arrives, then destroys it on unmount", async () => {
-    const onSelectPath = vi.fn();
-    const { result, rerender, unmount } = renderHook(
-      ({ selectedPath }: { selectedPath: string | null }) =>
-        useThreadStorageBrowser({ files: FILES, onSelectPath, selectedPath }),
-      { initialProps: { selectedPath: "src/main.ts" } },
+  it("filters stored files by path without case sensitivity", () => {
+    const { result } = renderHook(() =>
+      useThreadStorageBrowser({
+        files: FILES,
+        onSelectPath: vi.fn(),
+        selectedPath: null,
+      }),
     );
 
-    await waitFor(() => {
-      expect(result.current.model).not.toBeNull();
+    act(() => {
+      result.current.setSearchQuery("attach");
     });
-    const model = result.current.model;
-    if (model === null) throw new Error("model should be loaded");
-    expect(model.getItem("src/main.ts")).not.toBeNull();
-    expect(model.getItem("docs/notes.md")).not.toBeNull();
-    expect(model.getSelectedPaths()).toEqual(["src/main.ts"]);
+    expect(result.current.filteredFiles.map((file) => file.path)).toEqual([
+      "Attachments/Screenshot.png",
+    ]);
 
-    rerender({ selectedPath: "docs/notes.md" });
-    expect(model.getSelectedPaths()).toEqual(["docs/notes.md"]);
-    expect(onSelectPath).not.toHaveBeenCalled();
-
-    const cleanUp = vi.spyOn(model, "cleanUp");
-    unmount();
-    expect(cleanUp).toHaveBeenCalledTimes(1);
+    act(() => {
+      result.current.setSearchQuery("");
+    });
+    expect(result.current.filteredFiles).toHaveLength(2);
   });
 });

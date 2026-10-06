@@ -32,17 +32,36 @@ import type { CSSProperties, ReactNode } from "react";
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
 import { trackLandingEvent, useInitAnalytics } from "../landing/analytics";
+import adobeLogo from "../assets/company-logos/adobe.svg";
+import atlassianLogo from "../assets/company-logos/atlassian.svg";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
+import browserbaseLogo from "../assets/company-logos/browserbase.png";
+import bytedanceLogo from "../assets/company-logos/bytedance.svg";
+import customerIoLogo from "../assets/company-logos/customer-io.png";
 import datadogLogo from "../assets/company-logos/datadog.svg";
 import figmaLogo from "../assets/company-logos/figma.svg";
+import gustoLogo from "../assets/company-logos/gusto.png";
+import hubspotLogo from "../assets/company-logos/hubspot.svg";
+import jetbrainsLogo from "../assets/company-logos/jetbrains.svg";
+import justEatTakeawayLogo from "../assets/company-logos/just-eat-takeaway.svg";
+import kernelLogo from "../assets/company-logos/kernel.png";
+import linearLogo from "../assets/company-logos/linear.svg";
 import metaLogo from "../assets/company-logos/meta.svg";
+import microsoftLogo from "../assets/company-logos/microsoft.svg";
 import moodysLogo from "../assets/company-logos/moodys.png";
 import notionLogo from "../assets/company-logos/notion.png";
+import oracleLogo from "../assets/company-logos/oracle.svg";
 import ownerLogo from "../assets/company-logos/owner.png";
 import pendoLogo from "../assets/company-logos/pendo.svg";
 import renderLogo from "../assets/company-logos/render.svg";
+import shopifyLogo from "../assets/company-logos/shopify.svg";
 import shortcutLogo from "../assets/company-logos/shortcut.svg";
 import simileLogo from "../assets/company-logos/simile.svg";
+import statsigLogo from "../assets/company-logos/statsig.svg";
+import stitchFixLogo from "../assets/company-logos/stitch-fix.png";
+import tencentLogo from "../assets/company-logos/tencent.png";
+import vercelLogo from "../assets/company-logos/vercel.svg";
+import zooxLogo from "../assets/company-logos/zoox.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
@@ -79,22 +98,54 @@ import {
 
 const COMPANY_PROOF = [
   ["Meta", metaLogo, "glyph"],
+  ["Microsoft", microsoftLogo, "glyph"],
   ["Figma", figmaLogo, "glyph"],
   ["Notion", notionLogo, "tile"],
+  ["Vercel", vercelLogo, "glyph"],
+  ["Shopify", shopifyLogo, "glyph"],
+  ["Adobe", adobeLogo, "glyph"],
+  ["Linear", linearLogo, "glyph"],
   ["Datadog", datadogLogo, "glyph"],
+  ["HubSpot", hubspotLogo, "glyph"],
+  ["Atlassian", atlassianLogo, "glyph"],
+  ["JetBrains", jetbrainsLogo, "glyph"],
   ["Owner.com", ownerLogo, "tile"],
   ["Pendo", pendoLogo, "glyph"],
+  ["ByteDance", bytedanceLogo, "glyph"],
   ["Blackstone", blackstoneLogo, "tile"],
   ["Moody's", moodysLogo, "tile"],
   ["Shortcut", shortcutLogo, "tile"],
+  ["Oracle", oracleLogo, "glyph"],
   ["Render", renderLogo, "glyph"],
+  ["Tencent", tencentLogo, "glyph"],
+  ["Gusto", gustoLogo, "tile"],
   ["Simile", simileLogo, "glyph"],
+  ["Browserbase", browserbaseLogo, "tile"],
+  ["Kernel", kernelLogo, "tile"],
+  ["Customer.io", customerIoLogo, "tile"],
+  ["Statsig", statsigLogo, "glyph"],
+  ["Zoox", zooxLogo, "tile"],
+  ["Stitch Fix", stitchFixLogo, "glyph"],
+  ["Just Eat Takeaway", justEatTakeawayLogo, "glyph"],
 ] as const;
 
-function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
+type CompanyProofEntry = (typeof COMPANY_PROOF)[number];
+
+const COMPANY_PROOF_ROWS = [
+  COMPANY_PROOF.filter((_, index) => index % 2 === 0),
+  COMPANY_PROOF.filter((_, index) => index % 2 === 1),
+];
+
+function CompanyProofLogos({
+  companies,
+  duplicate = false,
+}: {
+  companies: readonly CompanyProofEntry[];
+  duplicate?: boolean;
+}) {
   return (
     <ul className="company-proof-logos" aria-hidden={duplicate || undefined}>
-      {COMPANY_PROOF.map(([name, logo, kind]) => (
+      {companies.map(([name, logo, kind]) => (
         <li key={name} className="company-proof-company">
           <img
             src={logo}
@@ -107,6 +158,53 @@ function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function CompanyProofMarquee({
+  companies,
+  reverse,
+}: {
+  companies: readonly CompanyProofEntry[];
+  reverse: boolean;
+}) {
+  const [copies, setCopies] = useState(5);
+  const marqueeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const marquee = marqueeRef.current;
+    const firstCopy = marquee?.querySelector(".company-proof-logos");
+    if (!marquee || !firstCopy) return;
+
+    const measure = () => {
+      const copyWidth = firstCopy.getBoundingClientRect().width;
+      if (copyWidth === 0) return;
+      setCopies(Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(marquee);
+    observer.observe(firstCopy);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className="company-proof-marquee" ref={marqueeRef}>
+      <div
+        className={`company-proof-track${reverse ? " is-reverse" : ""}`}
+        style={
+          {
+            "--company-proof-copies": copies,
+            "--company-proof-logos": companies.length,
+          } as CSSProperties
+        }
+      >
+        <CompanyProofLogos companies={companies} />
+        {Array.from({ length: copies - 1 }, (_, i) => (
+          <CompanyProofLogos key={i} companies={companies} duplicate />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1599,9 +1697,7 @@ function SpawnSidebar() {
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
-  const [companyProofCopies, setCompanyProofCopies] = useState(5);
   const companyProofRef = useRef<HTMLElement>(null);
-  const companyProofMarqueeRef = useRef<HTMLDivElement>(null);
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1617,24 +1713,6 @@ function LandingPage() {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const marquee = companyProofMarqueeRef.current;
-    const firstCopy = marquee?.querySelector(".company-proof-logos");
-    if (!marquee || !firstCopy) return;
-
-    const measure = () => {
-      const copyWidth = firstCopy.getBoundingClientRect().width;
-      if (copyWidth === 0) return;
-      setCompanyProofCopies(
-        Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1),
-      );
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(marquee);
-    observer.observe(firstCopy);
-    return () => observer.disconnect();
-  }, []);
   return (
     <div className="wrap">
       <SiteNav />
@@ -1684,18 +1762,14 @@ function LandingPage() {
             />
           </button>
         </div>
-        <div className="company-proof-marquee" ref={companyProofMarqueeRef}>
-          <div
-            className="company-proof-track"
-            style={
-              { "--company-proof-copies": companyProofCopies } as CSSProperties
-            }
-          >
-            <CompanyProofLogos />
-            {Array.from({ length: companyProofCopies - 1 }, (_, i) => (
-              <CompanyProofLogos key={i} duplicate />
-            ))}
-          </div>
+        <div className="company-proof-rows">
+          {COMPANY_PROOF_ROWS.map((companies, index) => (
+            <CompanyProofMarquee
+              key={index}
+              companies={companies}
+              reverse={index === 1}
+            />
+          ))}
         </div>
       </section>
 

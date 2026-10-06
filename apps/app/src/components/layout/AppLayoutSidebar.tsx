@@ -1,5 +1,6 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useSidebarThreadReveal } from "@/components/sidebar/useSidebarThreadReveal";
+import { AppNavRail } from "@/components/sidebar/AppNavRail";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
@@ -9,6 +10,7 @@ export type AppLayoutSidebarMode = "app" | "settings" | "plugins" | "skills";
 
 interface AppLayoutSidebarProps {
   mode: AppLayoutSidebarMode;
+  navigationRail: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   appRoutePath: string;
@@ -18,6 +20,7 @@ interface AppLayoutSidebarProps {
 
 export function AppLayoutSidebar({
   mode,
+  navigationRail,
   onResizeMouseDown,
   isResizing,
   appRoutePath,
@@ -61,6 +64,45 @@ export function AppLayoutSidebar({
           />
         ) : null}
       </Sidebar>
+    );
+  }
+
+  if (navigationRail) {
+    return (
+      <AppSidebar
+        onResizeMouseDown={onResizeMouseDown}
+        isResizing={isResizing}
+        settingsRoutePath={settingsRoutePath}
+        navRail={{
+          hidden: renderedMode !== "app",
+          renderRail: (customize) => (
+            <AppNavRail
+              isAppMode={renderedMode === "app"}
+              isSettingsActive={renderedMode === "settings"}
+              settingsRoutePath={settingsRoutePath}
+              customize={customize}
+            />
+          ),
+          alternateBody:
+            renderedMode === "settings" ? (
+              <SettingsSidebar
+                onResizeMouseDown={onResizeMouseDown}
+                isResizing={isResizing}
+                appRoutePath={appRoutePath}
+                navRailHosted
+              />
+            ) : renderedMode === "plugins" || renderedMode === "skills" ? (
+              <ResourceSidebar
+                key={renderedMode}
+                workspace={renderedMode}
+                onResizeMouseDown={onResizeMouseDown}
+                isResizing={isResizing}
+                appRoutePath={toolsBackRoutePath}
+                navRailHosted
+              />
+            ) : null,
+        }}
+      />
     );
   }
 

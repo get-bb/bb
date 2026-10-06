@@ -19,6 +19,13 @@ user-installed plugins come from `bb plugin install` or the official store.
 Plugin state lives under `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file,
 secrets, logs).
 
+The builtin Prompt Library plugin is disabled by default. Enable it with
+`bb plugin enable bb--prompt-library` or Settings → Plugins. Open **+ → Prompts…**
+or press **Ctrl+R** in a composer to search, preview, star, and insert prompts.
+`bb prompts search [query...] [--project ID | --thread ID] [--json]` searches
+history; `bb prompts list [--json]`, `bb prompts star <text...> [--json]`, and
+`bb prompts unstar <id> [--json]` manage starred text and mentions. History restores text, mentions, and attachments into an empty composer. Inserting never sends a message.
+
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
@@ -694,7 +701,7 @@ zero-padding full-bleed body, including its scrolling; optional
 experimental_sidebarAccessory mounts a presentational live-value component at
 the trailing edge of the sidebar row on wide viewports, bounded to one short
 line, replaced visually by the host options button on hover/focus, and omitted
-on compact viewports),
+on compact viewports and in the navigationRail experiment's icon-only rail),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can

@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { useSplitPreload } from "@/lib/define-split";
+import { startSplitPreloading } from "@/lib/split-prefetch";
 import { PanelGroup } from "react-resizable-panels";
 import {
   LazyBrowserTabDeck,
@@ -54,11 +54,13 @@ vi.mock("./BrowserTabDeck", () => {
   imports.browser();
   return { BrowserTabDeck: () => <p>Browser loaded</p> };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 const noop = () => {};
 
 function Surface({ open, browser }: { open: boolean; browser: boolean }) {
-  useSplitPreload(LazyThreadSecondaryPanel);
   return (
     <PanelGroup direction="horizontal">
       <LazyThreadSecondaryPanel
@@ -98,9 +100,14 @@ function Surface({ open, browser }: { open: boolean; browser: boolean }) {
   );
 }
 
-it("warms the shell on page mount and tab code on first open without mounting hidden content", async () => {
+it("warms the shell once preloading starts and tab code on first open without mounting hidden content", async () => {
   const view = render(<Surface open={false} browser={false} />);
   await act(async () => {});
+  expect(imports.panel).not.toHaveBeenCalled();
+  vi.stubGlobal("requestIdleCallback", (callback: () => void) =>
+    window.setTimeout(callback, 0),
+  );
+  startSplitPreloading();
   await waitFor(() => expect(imports.panel).toHaveBeenCalledOnce());
   expect(screen.queryByRole("textbox", { name: "Panel draft" })).toBeNull();
   expect(imports.browser).not.toHaveBeenCalled();

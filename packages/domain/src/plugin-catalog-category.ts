@@ -102,9 +102,9 @@ export const PLUGIN_CATALOG_CATEGORIES = [
   },
   {
     id: "cloud-and-remote",
-    displayName: "Cloud & Remote",
+    displayName: "Environments & Cloud",
     description:
-      "Run bb work in cloud environments or access bb from elsewhere.",
+      "Create and manage where threads run, locally or in the cloud.",
   },
   {
     id: "command-line",

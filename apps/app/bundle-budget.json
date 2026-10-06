@@ -69,17 +69,15 @@
     "renderer in front of every thread's first paint even though almost no",
     "message contains $$ math.",
     "",
-    "routeClosures ratchets, per lazy route, the static-import closure of the",
-    "route chunk minus the boot chunks: the JavaScript between 'app shell",
-    "painted' and 'route content painted'. SplitWorkspaceRoute is every thread,",
-    "compose and plugin-panel page, so its closure is the second number that",
-    "decides how slow bb feels on a phone. Same 10% ratchet; its forbiddenPackages",
-    "are the diff engine, math, file tree and terminal code that only a user",
-    "action needs.",
-    "The composer (tiptap/prosemirror) is visible on every thread page and is",
-    "allowed until it moves behind a first-focus handoff. Run",
-    "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
-    "to print the static chain that pulled a package into the closure.",
+    "routeClosures ratchets page journeys: the union of the static-import",
+    "closures of a page's lazy chunks minus the boot chunks, the JavaScript",
+    "between 'app shell painted' and 'page content painted'. ThreadPage and",
+    "NewThreadPage decide how slow bb feels on a phone after boot. Their",
+    "forbiddenPackages are the diff engine, math, file tree and terminal code",
+    "that only a user action needs.",
+    "The composer (tiptap/prosemirror) is visible on both pages and is allowed.",
+    "Run `node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
+    "to print the static chain that pulled a package into the route.",
     "",
     "On 2026-09-29 the second split wave moved terminal output, queued messages,",
     "model-menu contents and command-palette contents behind demand/intent gates.",
@@ -108,9 +106,24 @@
     "prosemirror-dropcursor and prosemirror-gapcursor are forbidden on boot",
     "and workspace paths to catch accidental extension-barrel reintroduction.",
     "",
-    "On 2026-10-05 both SplitWorkspaceRoute limits again temporarily rose 5%",
-    "after microphone input preferences joined the composer. A follow-up will",
-    "lazy-load those preferences and ratchet these limits back down."
+    "On 2026-10-05 microphone input preferences joined the composer and both",
+    "SplitWorkspaceRoute limits temporarily rose 5%. The composer now loads",
+    "those preferences on demand, and both limits returned to their prior values.",
+    "",
+    "On 2026-10-05 route closures became page journeys. ThreadPage is the",
+    "workspace route plus ThreadDetailView's static imports, and NewThreadPage is",
+    "the workspace route plus RootComposeView's. Each counts the JavaScript a",
+    "page waits for beyond the boot payload, so moving code between the route and",
+    "a page's own chunk no longer changes the measured total.",
+    "",
+    "On 2026-10-05 an audit cut the boot payload from 1492.0 KB to 1358.5 KB",
+    "(sideEffects on client-core, thread-view and core-ui; sonner and the server",
+    "move view after first paint) and ThreadPage from 1880.0 KB to 1807.2 KB,",
+    "mostly by loading the new-thread view on demand. The boot limits stay,",
+    "leaving about 15% raw headroom, and both journey limits are set 25% above",
+    "their measured sizes (20% headroom) so ordinary feature work does not hit",
+    "them every week. The forbidden-package and split-boundary guards catch",
+    "structural regressions."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -142,95 +155,106 @@
     "prosemirror-view",
     "react-resizable-panels",
     "rehype-katex",
-    "shiki"
+    "shiki",
+    "sonner"
   ],
   "splitBoundaries": {
-    "src/components/code/BbDiff.tsx": [
-      "boot",
-      "SplitWorkspaceRoute"
-    ],
+    "src/components/code/BbDiff.tsx": ["boot", "ThreadPage", "NewThreadPage"],
     "src/components/code/BbSourceCode.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/sidebar/SidebarFooterCustomize.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/secondary-panel/FilePreview.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/secondary-panel/ThreadSecondaryPanel.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/sidebar/SidebarVisibilityCustomize.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/thread/timeline/TimelineFileDiffBlock.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/secondary-panel/BrowserTabDeck.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/secondary-panel/NewTabPage.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/secondary-panel/ThreadSecondaryPanelTabContent.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
-    ],
-    "src/components/secondary-panel/ThreadStorageFileTree.tsx": [
-      "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/promptbox/banner/QueuedMessagesList.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/thread/terminal/ThreadTerminalPanel.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/thread/timeline/TerminalOutputBlock.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/pickers/ModelReasoningMenu.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/commands/CommandPaletteBody.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/commands/PaletteShell.tsx": [
       "boot",
-      "SplitWorkspaceRoute"
+      "ThreadPage",
+      "NewThreadPage"
     ],
     "src/components/ui/markdown-html.tsx": [
       "boot",
-      "SplitWorkspaceRoute",
+      "ThreadPage",
+      "NewThreadPage",
       "PluginFrontend"
     ],
     "src/views/thread-detail/ThreadDetailView.tsx": [
       "boot",
-      "SplitWorkspaceRoute",
+      "NewThreadPage",
       "PluginFrontend"
     ],
     "src/components/plugin/PluginThreadChat.tsx": [
       "boot",
-      "SplitWorkspaceRoute",
+      "ThreadPage",
+      "NewThreadPage",
       "PluginFrontend"
-    ]
+    ],
+    "src/views/RootComposeView.tsx": ["boot", "ThreadPage"]
   },
   "onDemandPackages": {
-    "@pierre/trees": "src/components/secondary-panel/ThreadStorageFileTree.tsx",
     "ansi-to-html": "src/components/thread/timeline/TerminalOutputBlock.tsx",
     "katex": "src/components/ui/markdown-katex.ts",
     "rehype-katex": "src/components/ui/markdown-katex.ts",
@@ -238,9 +262,45 @@
     "rehype-sanitize": "src/components/ui/markdown-html.tsx"
   },
   "routeClosures": {
-    "SplitWorkspaceRoute": {
-      "maxBytes": 1142257,
-      "maxBrotliBytes": 333142,
+    "ThreadPage": {
+      "maxBytes": 2313248,
+      "maxBrotliBytes": 665732,
+      "forbiddenPackages": [
+        "@dnd-kit/accessibility",
+        "@dnd-kit/core",
+        "@dnd-kit/sortable",
+        "@dnd-kit/utilities",
+        "@pierre/diffs",
+        "@pierre/theming",
+        "@pierre/trees",
+        "@shikijs/core",
+        "@shikijs/engine-javascript",
+        "@shikijs/engine-oniguruma",
+        "@shikijs/langs",
+        "@shikijs/vscode-textmate",
+        "@tiptap/extension-code-block",
+        "@tiptap/extension-horizontal-rule",
+        "@tiptap/extension-link",
+        "@tiptap/extension-strike",
+        "@tiptap/extension-underline",
+        "@tiptap/starter-kit",
+        "@xterm/xterm",
+        "ansi-to-html",
+        "katex",
+        "linkifyjs",
+        "mermaid",
+        "oniguruma-to-es",
+        "prosemirror-dropcursor",
+        "prosemirror-gapcursor",
+        "rehype-katex",
+        "rehype-raw",
+        "rehype-sanitize",
+        "shiki"
+      ]
+    },
+    "NewThreadPage": {
+      "maxBytes": 1396228,
+      "maxBrotliBytes": 410950,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",
