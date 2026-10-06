@@ -42,7 +42,6 @@ import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
 import {
   DetailCard,
   DetailRow,
@@ -389,9 +388,7 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
         successMessage="Directory copied"
         errorMessage="Failed to copy directory"
       >
-        <TruncateStart>
-          {formatHomePathForDisplay(environment.path)}
-        </TruncateStart>
+        {formatHomePathForDisplay(environment.path)}
       </CopyableInlineLabel>
     </DetailRow>
   );

@@ -178,27 +178,23 @@ export function InfoRowAction({
   icon,
   label,
   onClick,
-  tooltip = false,
 }: {
   icon: IconName;
   label: string;
   onClick: () => void;
-  tooltip?: boolean;
 }) {
-  const button = (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100"
-    >
-      <Icon name={icon} className="size-3" aria-hidden />
-    </button>
-  );
-  if (!tooltip) return button;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          onClick={onClick}
+          className="relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100"
+        >
+          <Icon name={icon} className="size-3" aria-hidden />
+        </button>
+      </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );

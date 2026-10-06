@@ -43,14 +43,13 @@ export function CommitsSection({
                 {onCommitClick ? (
                   <InfoRowAction
                     icon="ExternalLink"
-                    label="Open in Diff tab"
+                    label="Open diff"
                     onClick={() => onCommitClick(commit.sha)}
                   />
                 ) : null}
                 <InfoRowAction
                   icon="Copy"
-                  label={`Copy commit ${commit.shortSha} SHA`}
-                  tooltip
+                  label="Copy commit SHA"
                   onClick={() => {
                     void copyToClipboardWithToast(commit.sha, {
                       successMessage: "Commit SHA copied",

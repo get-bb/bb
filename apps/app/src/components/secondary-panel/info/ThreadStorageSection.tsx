@@ -139,7 +139,7 @@ export function ThreadStorageSection({
               action={
                 <InfoRowAction
                   icon="ExternalLink"
-                  label={`Open ${getFileNameFromPath({ path: file.path })} in a tab`}
+                  label="Open in tab"
                   onClick={() => selectPath(file.path)}
                 />
               }
