@@ -1,4 +1,3 @@
-import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -15,7 +14,13 @@ import {
   resolveRightPanelFileIconName,
 } from "../rightPanelFileVisuals";
 import type { ThreadStorageBrowserController } from "../useThreadStorageBrowser";
-import { InfoList, InfoListRow, InfoRowAction, InfoSection } from "./info-list";
+import {
+  infoListCollapses,
+  InfoList,
+  InfoListRow,
+  InfoRowAction,
+  InfoSection,
+} from "./info-list";
 
 export interface ThreadStorageSectionProps {
   controller: ThreadStorageBrowserController;
@@ -39,19 +44,13 @@ function describeStorageError(error: Error): string {
   );
 }
 
-const STORAGE_ICON_BUTTON_CLASS =
-  "size-5 shrink-0 text-subtle-foreground hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:-my-2 max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
-
 export function ThreadStorageSection({
   controller,
   filesError,
 }: ThreadStorageSectionProps) {
   const {
-    closeSearch,
     filteredFiles,
-    isSearchOpen,
     loadedFiles,
-    openSearch,
     searchQuery,
     selectedPath,
     selectPath,
@@ -59,54 +58,42 @@ export function ThreadStorageSection({
   } = controller;
   if (loadedFiles.length === 0 && filesError == null) return null;
   return (
-    <InfoSection
-      label="Thread storage"
-      count={loadedFiles.length}
-      trailing={
-        isSearchOpen ? (
-          <div className="flex min-w-0 flex-1 items-center gap-1">
-            <Input
-              autoFocus
-              aria-label="Search files"
-              placeholder="Search files"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  closeSearch();
-                }
-              }}
-              className={cn(
-                "h-5 min-w-0 flex-1 rounded px-1.5 py-0 focus-visible:ring-0 max-md:pointer-coarse:-my-2 max-md:pointer-coarse:h-9",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Close search"
-              onClick={closeSearch}
-              className={STORAGE_ICON_BUTTON_CLASS}
-            >
-              <Icon name="X" />
-            </Button>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
+    <InfoSection label="Thread storage" count={loadedFiles.length}>
+      {infoListCollapses(loadedFiles.length) ? (
+        <div className="relative mb-1">
+          <Icon
+            name="Search"
+            className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 text-subtle-foreground"
+            aria-hidden
+          />
+          <Input
             aria-label="Search files"
-            onClick={openSearch}
-            className={STORAGE_ICON_BUTTON_CLASS}
-          >
-            <Icon name="Search" />
-          </Button>
-        )
-      }
-    >
+            placeholder="Search files"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && searchQuery !== "") {
+                event.preventDefault();
+                setSearchQuery("");
+              }
+            }}
+            className={cn(
+              "h-6 rounded px-6 py-0 focus-visible:ring-0 max-md:pointer-coarse:h-9",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
+          />
+          {searchQuery === "" ? null : (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => setSearchQuery("")}
+              className="absolute top-1/2 right-1 flex size-4 -translate-y-1/2 items-center justify-center rounded text-subtle-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:size-8"
+            >
+              <Icon name="X" className="size-3" aria-hidden />
+            </button>
+          )}
+        </div>
+      ) : null}
       {filesError ? (
         <EmptyState
           message={describeStorageError(filesError)}

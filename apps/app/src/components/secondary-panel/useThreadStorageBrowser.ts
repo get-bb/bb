@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { WorkspaceFile } from "@bb/server-contract";
 
 const EMPTY_STORAGE_FILES: readonly WorkspaceFile[] = [];
@@ -12,11 +12,8 @@ interface UseThreadStorageBrowserArgs {
 }
 
 export interface ThreadStorageBrowserController {
-  closeSearch: () => void;
   filteredFiles: readonly WorkspaceFile[];
-  isSearchOpen: boolean;
   loadedFiles: readonly WorkspaceFile[];
-  openSearch: () => void;
   searchQuery: string;
   selectedPath: string | null;
   selectPath: ThreadStoragePathSelectHandler;
@@ -28,7 +25,6 @@ export function useThreadStorageBrowser({
   onSelectPath,
   selectedPath,
 }: UseThreadStorageBrowserArgs): ThreadStorageBrowserController {
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const loadedFiles = files ?? EMPTY_STORAGE_FILES;
@@ -42,20 +38,9 @@ export function useThreadStorageBrowser({
     );
   }, [loadedFiles, searchQuery]);
 
-  const openSearch = useCallback(() => {
-    setIsSearchOpen(true);
-  }, []);
-  const closeSearch = useCallback(() => {
-    setIsSearchOpen(false);
-    setSearchQuery("");
-  }, []);
-
   return {
-    closeSearch,
     filteredFiles,
-    isSearchOpen,
     loadedFiles,
-    openSearch,
     searchQuery,
     selectedPath,
     selectPath: onSelectPath,

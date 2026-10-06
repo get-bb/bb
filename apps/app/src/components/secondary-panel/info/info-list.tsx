@@ -12,11 +12,18 @@ const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
 
 const INFO_LIST_DEFAULT_LIMIT = 5;
 
+export function infoListCollapses(
+  count: number,
+  limit: number = INFO_LIST_DEFAULT_LIMIT,
+): boolean {
+  return count > limit + 1;
+}
+
 const INFO_LIST_ROW_CLASS =
   "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors hover:bg-state-hover";
 
 const INFO_LIST_PRIMARY_CLASS =
-  "min-w-0 truncate text-left text-xs leading-5 no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
+  "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
 
 const INFO_LIST_QUIET_CONTROL_CLASS =
   "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -104,7 +111,6 @@ export interface InfoListRowProps {
   action?: ReactNode;
   trailing?: ReactNode;
   selected?: boolean;
-  muted?: boolean;
 }
 
 export function InfoListRow({
@@ -117,23 +123,17 @@ export function InfoListRow({
   action,
   trailing,
   selected = false,
-  muted = false,
 }: InfoListRowProps) {
-  const nameClass = muted ? "text-muted-foreground" : "text-foreground";
   const primary =
     target === null ? (
       <span
         title={title}
-        className={cn("min-w-0 truncate text-xs leading-5", nameClass)}
+        className="min-w-0 truncate text-xs leading-5 text-foreground"
       >
         {name}
       </span>
     ) : target.kind === "link" ? (
-      <Link
-        to={target.to}
-        title={title}
-        className={cn(INFO_LIST_PRIMARY_CLASS, nameClass)}
-      >
+      <Link to={target.to} title={title} className={INFO_LIST_PRIMARY_CLASS}>
         {name}
       </Link>
     ) : (
@@ -141,7 +141,7 @@ export function InfoListRow({
         type="button"
         title={title}
         onClick={target.onSelect}
-        className={cn(INFO_LIST_PRIMARY_CLASS, nameClass)}
+        className={INFO_LIST_PRIMARY_CLASS}
       >
         {name}
       </button>
@@ -245,7 +245,7 @@ export function InfoList<T>({
   rail = false,
 }: InfoListProps<T>) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const canToggle = items.length > limit + 1;
+  const canToggle = infoListCollapses(items.length, limit);
   const visibleItems = canToggle && !isExpanded ? items.slice(0, limit) : items;
   return (
     <ul className="relative m-0 list-none p-0">
