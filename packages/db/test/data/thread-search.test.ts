@@ -460,6 +460,93 @@ describe("thread search data", () => {
     }
   });
 
+  it("ranks a title as a title match only when it has every word", () => {
+    const { db, project } = setup();
+    try {
+      const fullTitle = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Moss plugins",
+      });
+      const partialTitle = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Moss editor",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: partialTitle.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "add plugins support",
+          },
+        ],
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, fullTitle.id);
+      setUpdatedAt.run(2, partialTitle.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "moss plugins",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        fullTitle.id,
+        partialTitle.id,
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("shows the message that has every word over an earlier partial match", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: thread.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "moss notes",
+          },
+          {
+            threadId: thread.id,
+            sourceKind: "assistant_message",
+            sourceKey: "event:2",
+            sourceSeq: 2,
+            text: "moss plugins",
+          },
+        ],
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "moss plugins",
+        limitPerGroup: 20,
+      });
+
+      expect(
+        results.active.results[0]?.matches.map((match) => ({
+          text: match.text,
+          sourceSeq: match.sourceSeq,
+        })),
+      ).toEqual([{ text: "moss plugins", sourceSeq: 2 }]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("returns title matches alongside the single best message match", () => {
     const { db, project } = setup();
     try {

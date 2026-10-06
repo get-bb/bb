@@ -1007,28 +1007,29 @@ function listThreadSearchMatchRows(
   const matchesAllTokensFirst =
     args.tokenMatchQueries.length > 1
       ? sql`thread_search_segments.rowid IN (
-          SELECT rowid FROM thread_search_segments_fts
-          WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
+          SELECT segmentRowid FROM all_token_segments
         ) DESC,`
       : sql``;
 
   return db.all<ThreadSearchMatchRow>(sql`
-    WITH matching_threads AS (
+    WITH all_token_segments AS MATERIALIZED (
+      SELECT rowid AS segmentRowid
+      FROM thread_search_segments_fts
+      WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
+    ),
+    matching_threads AS (
       ${sql.join(tokenThreadSelects, sql` INTERSECT `)}
     ),
     title_matching_threads AS (
       SELECT DISTINCT thread_search_segments.thread_id AS threadId
-      FROM thread_search_segments_fts
+      FROM all_token_segments
       JOIN thread_search_segments
-        ON thread_search_segments.rowid = thread_search_segments_fts.rowid
+        ON thread_search_segments.rowid = all_token_segments.segmentRowid
       JOIN threads AS titled ON titled.id = thread_search_segments.thread_id
-      WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
-        AND (
-          thread_search_segments.source_kind = 'title'
-          OR (
-            thread_search_segments.source_kind = 'title_fallback'
-            AND COALESCE(titled.title, '') = ''
-          )
+      WHERE thread_search_segments.source_kind = 'title'
+        OR (
+          thread_search_segments.source_kind = 'title_fallback'
+          AND COALESCE(titled.title, '') = ''
         )
     ),
     ranked_threads AS (
