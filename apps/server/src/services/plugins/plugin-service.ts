@@ -249,6 +249,7 @@ export interface PluginService {
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
   list(): InstalledPlugin[];
+  getDisplayName(id: string): string;
   providerCatalog(): Array<{
     id: string;
     displayName: string;
@@ -1550,6 +1551,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     handleUncaughtException,
 
     list,
+    getDisplayName(id) {
+      return (
+        loaded.get(id)?.manifest.name ?? identities.get(id)?.manifest.name ?? id
+      );
+    },
     providerCatalog() {
       return listInstalledPlugins(deps.db).flatMap((row) =>
         pluginProviderCatalog(row).map((provider) => ({

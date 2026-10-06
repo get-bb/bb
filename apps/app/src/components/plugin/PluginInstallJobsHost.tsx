@@ -5,7 +5,7 @@ import type {
   PluginInstallJobState,
 } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
-import { pluginNotificationDescription } from "@/components/plugin/PluginNotificationDescription";
+import { usePluginNotificationAction } from "@/components/plugin/PluginNotificationDescription";
 import {
   applyInstalledPlugin,
   invalidatePluginCatalogSearch,
@@ -22,30 +22,19 @@ function toastId(job: PluginInstallJob): string {
   return `plugin-install:${job.id}`;
 }
 
-function failureDescription(
-  job: Extract<PluginInstallJob, { state: "failed" }>,
-) {
-  return job.target.kind === "catalog"
-    ? pluginNotificationDescription(
-        { id: job.target.entryId, name: job.displayName },
-        "catalog",
-        job.error,
-      )
-    : job.error;
-}
-
 function progressTitle(job: ActivePluginInstallJob): string {
   switch (job.state) {
     case "queued":
-      return `${job.displayName} is waiting to install`;
+      return "Plugin installation queued";
     case "running":
-      return `Installing ${job.displayName}`;
+      return "Installing plugin…";
     case "cancelling":
-      return `Cancelling ${job.displayName}`;
+      return "Cancelling installation…";
   }
 }
 
 export function PluginInstallJobsHost() {
+  const action = usePluginNotificationAction();
   const queryClient = useQueryClient();
   const { data: jobs } = usePluginInstallJobs();
   const { mutate: cancelJob } = useCancelPluginInstallJob();
@@ -61,10 +50,7 @@ export function PluginInstallJobsHost() {
       if (isActivePluginInstallJob(job)) {
         appToast.loading(progressTitle(job), {
           id,
-          description:
-            job.state === "queued"
-              ? "It starts when the current install finishes."
-              : undefined,
+          description: job.displayName,
           ...(job.state === "cancelling"
             ? {}
             : {
@@ -86,12 +72,16 @@ export function PluginInstallJobsHost() {
         invalidatePluginCatalogSearch({ queryClient });
         appToast.success("Plugin installed", {
           id,
-          description: pluginNotificationDescription(job.plugin, "installed"),
+          description: job.plugin.name ?? job.plugin.id,
+          action: action(job.plugin.id, "app"),
         });
       } else if (job.state === "failed") {
         appToast.error("Plugin installation failed", {
           id,
-          description: failureDescription(job),
+          description: `${job.displayName} — ${job.error}`,
+          ...(job.target.kind === "catalog"
+            ? { action: action(job.target.entryId, "catalog") }
+            : {}),
         });
       } else {
         appToast.message("Plugin install cancelled", {
@@ -100,7 +90,7 @@ export function PluginInstallJobsHost() {
         });
       }
     }
-  }, [cancelJob, jobs, queryClient]);
+  }, [cancelJob, jobs, queryClient, action]);
 
   return null;
 }

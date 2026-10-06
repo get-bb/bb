@@ -45,7 +45,15 @@ const queryClients: QueryClient[] = [];
 function createDialogTestHarness() {
   const harness = createQueryClientTestHarness();
   queryClients.push(harness.queryClient);
-  return harness;
+  const Wrapper = harness.wrapper;
+  return {
+    ...harness,
+    wrapper: ({ children }: { children: import("react").ReactNode }) => (
+      <MemoryRouter>
+        <Wrapper>{children}</Wrapper>
+      </MemoryRouter>
+    ),
+  };
 }
 
 afterEach(async () => {
@@ -245,13 +253,9 @@ describe("UpdatePluginDialog", () => {
     const notification = getNotifications()[0];
     expect(notification?.title).toBe("Plugin update failed");
 
-    render(<MemoryRouter>{notification?.description}</MemoryRouter>);
-    expect(
-      screen.getByRole("link", { name: "Linear" }).getAttribute("href"),
-    ).toBe("/settings/plugins/linear?view=installed");
-    expect(
-      screen.getByRole("link", { name: "Linear" }).parentElement?.textContent,
-    ).toBe("Linear — plugin source is unavailable");
+    expect(notification?.description).toBe(
+      "Linear — plugin source is unavailable",
+    );
   });
 
   it("treats a malformed 2xx update response as an error, never success", async () => {

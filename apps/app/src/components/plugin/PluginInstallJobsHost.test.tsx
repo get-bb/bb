@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { MemoryRouter } from "react-router-dom";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { PluginInstallJob } from "@bb/server-contract";
@@ -39,7 +40,12 @@ function renderHost(initial: PluginInstallJob[]) {
     queries: { staleTime: Infinity },
   });
   queryClient.setQueryData(pluginInstallJobsQueryKey(), initial);
-  render(<PluginInstallJobsHost />, { wrapper });
+  render(
+    <MemoryRouter>
+      <PluginInstallJobsHost />
+    </MemoryRouter>,
+    { wrapper },
+  );
   return {
     queryClient,
     publish: (jobs: PluginInstallJob[]) =>
@@ -60,7 +66,7 @@ it("replaces the progress toast with the result once a watched install finishes"
   await publish([{ ...BASE, state: "succeeded", plugin: PLUGIN }]);
 
   expect(loading).toHaveBeenCalledWith(
-    "Installing Notes",
+    "Installing plugin…",
     expect.objectContaining({ id: "plugin-install:job-1" }),
   );
   expect(success).toHaveBeenCalledWith(

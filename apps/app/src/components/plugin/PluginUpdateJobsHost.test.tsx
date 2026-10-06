@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { MemoryRouter } from "react-router-dom";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { PluginUpdateJob } from "@bb/server-contract";
@@ -26,7 +27,12 @@ function mount(jobs: PluginUpdateJob[]) {
     queries: { staleTime: Infinity },
   });
   harness.queryClient.setQueryData(pluginUpdateJobsQueryKey(), jobs);
-  const view = render(<PluginUpdateJobsHost />, { wrapper: harness.wrapper });
+  const view = render(
+    <MemoryRouter>
+      <PluginUpdateJobsHost />
+    </MemoryRouter>,
+    { wrapper: harness.wrapper },
+  );
   return { ...view, ...harness };
 }
 
@@ -38,7 +44,7 @@ it.each(["updated", "rolled-back"] as const)(
     const error = vi.spyOn(appToast, "error").mockReturnValue("toast");
     const first = mount([{ ...base, state: "running", phase: "checking" }]);
     expect(loading).toHaveBeenCalledWith(
-      "Updating Notes",
+      "Updating plugin…",
       expect.objectContaining({ id: "plugin-update:update-1" }),
     );
     first.unmount();
@@ -55,7 +61,7 @@ it.each(["updated", "rolled-back"] as const)(
     const second = mount([completed]);
     const toast = outcome === "updated" ? success : error;
     expect(toast).toHaveBeenCalledWith(
-      outcome === "updated" ? "Plugin updated" : "Plugin update rolled back",
+      outcome === "updated" ? "Plugin updated" : "Plugin update failed",
       expect.objectContaining({ id: "plugin-update:update-1" }),
     );
     await act(async () => {

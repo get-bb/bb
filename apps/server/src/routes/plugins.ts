@@ -697,7 +697,7 @@ export function registerPluginRoutes(
     const pluginId = context.req.param("id");
     const job = updateJobs.start({
       pluginId,
-      displayName: pluginId,
+      displayName: plugins.getDisplayName(pluginId),
       run: async () => {
         const outcome = await plugins.applyUpdate(pluginId);
         if (!outcome.ok) throw new Error(outcome.error);

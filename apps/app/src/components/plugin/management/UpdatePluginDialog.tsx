@@ -10,7 +10,8 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
-import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
+import { usePluginNotificationAction } from "@/components/plugin/PluginNotificationDescription";
+import { appToast } from "@/components/ui/app-toast";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
@@ -57,6 +58,7 @@ function UpdatePluginDialogContent({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const notificationAction = usePluginNotificationAction();
   const name = plugin.name ?? plugin.id;
   const state = plugin.updateState;
   const update = useMutation({
@@ -67,12 +69,10 @@ function UpdatePluginDialogContent({
       onOpenChange(false);
     },
     onError: (error) => {
-      pluginToast.error(
-        "Plugin update failed",
-        plugin,
-        "installed",
-        pluginAdminErrorMessage(error),
-      );
+      appToast.error("Plugin update failed", {
+        description: `${plugin.name ?? plugin.id} — ${pluginAdminErrorMessage(error)}`,
+        action: notificationAction(plugin.id, "installed"),
+      });
     },
   });
 

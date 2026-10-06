@@ -10,39 +10,29 @@ import {
   trackPluginUpdate,
 } from "@/lib/plugin-update-tracking";
 import { appToast } from "@/components/ui/app-toast";
-import { pluginNotificationDescription } from "./PluginNotificationDescription";
-
-const PHASE_LABELS = {
-  preparing: "Preparing the update…",
-  activating: "Starting the new version…",
-  checking: "Watching for startup errors. This takes about 30 seconds.",
-  "rolling-back": "Restoring the previous version and its data…",
-};
+import { usePluginNotificationAction } from "./PluginNotificationDescription";
 
 export function PluginUpdateJobsHost() {
+  const action = usePluginNotificationAction();
   const queryClient = useQueryClient();
   const { data: jobs } = usePluginUpdateJobs();
   const seen = useRef(new Map<string, string>());
   useEffect(() => {
     for (const job of jobs ?? []) {
-      const state = job.state === "running" ? job.phase : job.state;
+      const state = job.state;
       const previous = seen.current.get(job.id);
       if (previous === state) continue;
       seen.current.set(job.id, state);
       const id = `plugin-update:${job.id}`;
-      const plugin = { id: job.pluginId, name: job.displayName };
       if (job.state === "queued" || job.state === "running") {
         trackPluginUpdate(job.id, true);
-        appToast.loading(`Updating ${job.displayName}`, {
-          id,
-          description: pluginNotificationDescription(
-            plugin,
-            "installed",
-            job.state === "queued"
-              ? "Waiting for the current update to finish."
-              : PHASE_LABELS[job.phase],
-          ),
-        });
+        appToast.loading(
+          job.state === "queued" ? "Plugin update queued" : "Updating plugin…",
+          {
+            id,
+            description: job.displayName,
+          },
+        );
         continue;
       }
       if (previous === undefined && !isWatchedPluginUpdate(job.id)) continue;
@@ -52,32 +42,26 @@ export function PluginUpdateJobsHost() {
       if (job.state === "failed") {
         appToast.error("Plugin update failed", {
           id,
-          description: pluginNotificationDescription(
-            plugin,
-            "installed",
-            job.error,
-          ),
+          description: `${job.displayName} — ${job.error}`,
+          action: action(job.pluginId, "installed"),
         });
       } else if (job.result.outcome === "rolled-back") {
-        appToast.error("Plugin update rolled back", {
+        appToast.error("Plugin update failed", {
           id,
-          description: pluginNotificationDescription(
-            plugin,
-            "installed",
-            job.result.detail ??
-              "The previous version and its data were restored.",
-          ),
+          description: `${job.displayName} — Previous version and data restored.`,
+          action: action(job.pluginId, "installed"),
         });
       } else {
         appToast.success(
           job.result.applied ? "Plugin updated" : "Plugin is up to date",
           {
             id,
-            description: pluginNotificationDescription(plugin, "installed"),
+            description: job.displayName,
+            action: action(job.pluginId, "app"),
           },
         );
       }
     }
-  }, [jobs, queryClient]);
+  }, [jobs, queryClient, action]);
   return null;
 }
