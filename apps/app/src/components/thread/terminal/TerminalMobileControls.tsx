@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getNativeShell } from "@/lib/native-shell/native-shell";
 import type { TerminalNavigationKey } from "./terminal-mobile-input";
@@ -44,8 +45,8 @@ function Key({
         onPress();
       }}
       className={cn(
-        "flex h-11 min-w-0 flex-1 touch-manipulation items-center justify-center rounded-lg border border-border/50 bg-background font-mono text-xs font-medium text-foreground shadow-xs transition-colors active:bg-state-active focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40",
-        active && "border-primary/40 bg-primary/10 text-primary",
+        "flex h-11 min-w-0 flex-1 touch-manipulation items-center justify-center rounded-md font-mono text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground active:bg-state-active active:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40",
+        active && "bg-state-active text-foreground",
         className,
       )}
     >
@@ -70,10 +71,10 @@ export function TerminalMobileControls({
       role="group"
       aria-label="Terminal keyboard controls"
       data-terminal-mobile-controls=""
-      className="shrink-0 border-t border-border bg-sidebar px-2 py-2"
+      className="shrink-0 border-t border-border/50 bg-sidebar px-2 py-1"
     >
       {expanded ? (
-        <div className="mb-2 flex gap-1">
+        <div className="mb-1 flex gap-1">
           <Key
             {...keyProps}
             label="Interrupt (Control C)"
@@ -102,7 +103,7 @@ export function TerminalMobileControls({
             label="Show or hide keyboard"
             onPress={onKeyboardToggle}
           >
-            ⌨
+            <Icon name="Keyboard" className="size-4" />
           </Key>
         </div>
       ) : null}
@@ -123,46 +124,25 @@ export function TerminalMobileControls({
           Ctrl
         </Key>
         <div className="flex min-w-0 flex-[4] gap-1">
-          <Key
-            {...keyProps}
-            label="Arrow left"
-            onPress={() => onArrow("left")}
-            className="text-base"
-          >
-            ←
+          <Key {...keyProps} label="Arrow left" onPress={() => onArrow("left")}>
+            <Icon name="ArrowLeft" className="size-4" />
           </Key>
-          <Key
-            {...keyProps}
-            label="Arrow down"
-            onPress={() => onArrow("down")}
-            className="text-base"
-          >
-            ↓
+          <Key {...keyProps} label="Arrow down" onPress={() => onArrow("down")}>
+            <Icon name="ArrowDown" className="size-4" />
           </Key>
-          <Key
-            {...keyProps}
-            label="Arrow up"
-            onPress={() => onArrow("up")}
-            className="text-base"
-          >
-            ↑
+          <Key {...keyProps} label="Arrow up" onPress={() => onArrow("up")}>
+            <Icon name="ArrowUp" className="size-4" />
           </Key>
           <Key
             {...keyProps}
             label="Arrow right"
             onPress={() => onArrow("right")}
-            className="text-base"
           >
-            →
+            <Icon name="ArrowRight" className="size-4" />
           </Key>
         </div>
-        <Key
-          {...keyProps}
-          label="Enter"
-          onPress={() => onInput("\r")}
-          className="border-primary/20 bg-primary/10 text-base text-primary"
-        >
-          ↵
+        <Key {...keyProps} label="Enter" onPress={() => onInput("\r")}>
+          <Icon name="CornerDownLeft" className="size-4" />
         </Key>
         <Key
           {...keyProps}
@@ -171,7 +151,7 @@ export function TerminalMobileControls({
           active={expanded}
           onPress={() => setExpanded(!expanded)}
         >
-          ···
+          <Icon name="MoreHorizontal" className="size-4" />
         </Key>
       </div>
     </div>
