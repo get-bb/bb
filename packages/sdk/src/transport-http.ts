@@ -12,7 +12,11 @@ export function createHttpTransport(
   args: CreateHttpTransportArgs,
 ): BbSdkTransport {
   const baseUrl = args.baseUrl ?? SAME_ORIGIN_BASE_URL;
-  const fetchImpl = args.fetch ?? fetch;
+  const underlyingFetch = args.fetch ?? fetch;
+  const fetchImpl: typeof fetch =
+    args.runtime === "browser"
+      ? (input, init) => underlyingFetch(input, { ...init, cache: "no-store" })
+      : underlyingFetch;
   const client = createApiClient(baseUrl, { fetch: fetchImpl });
 
   return {
