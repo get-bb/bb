@@ -82,10 +82,10 @@ const BB_VS_SUPERSET: Comparison = {
   slug: "bb-vs-superset",
   title: "bb vs Superset: The Free, Open-Source Alternative",
   description:
-    "bb is a free, open-source Superset alternative. Run Claude Code and Codex in parallel, let agents hand off work, and approve from your phone. No Pro plan.",
+    "bb is a free, open-source Superset alternative. Run Claude Code and Codex in parallel, let agents hand off work, and check in from your phone. No Pro plan.",
   competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The free, open-source Superset alternative",
-  sub: "Get Claude Code, Codex or any agent working together on the same task, and approve from your phone.",
+  sub: "Get Claude Code, Codex, or any agent working together on the same task, and check in from your phone.",
   heroVisual: null,
   tailored: pricingSection(PRICING_COPY, {
     plan: "Superset Pro",

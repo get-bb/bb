@@ -51,8 +51,8 @@ export const ANYWHERE_COPY: SectionCopy = {
   body: (
     <>
       <p>
-        Start tasks, answer your agents, and approve their work from the bb
-        desktop app, the mobile app, or any browser.
+        Start tasks and answer your agents from the bb desktop app, the mobile
+        app, or any browser.
       </p>
       <p>
         Run agents on your laptop, a desktop at home, or a cloud server, and
