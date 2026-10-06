@@ -225,7 +225,7 @@ describe("Docs nav panel", () => {
           panelId: "docs",
           id: "navigation",
           title: "Navigation",
-          icon: "ListView",
+          icon: "FileText",
           layout: "flush",
         },
       ],
