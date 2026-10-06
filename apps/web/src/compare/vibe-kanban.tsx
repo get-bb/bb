@@ -130,10 +130,10 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
           question: "Can I bring my Vibe Kanban tasks and worktrees?",
           answer: (
             <p>
-              Yes. Your branches and worktrees are plain Git, so add the same
-              repo to bb and pick up where you left off. If you exported your
-              Vibe Kanban issues, ask a bb agent to turn each one into a task on
-              your board.
+              Yes. Ask bb to do it. Your branches and worktrees are plain Git on
+              your machine, so a bb agent can add the repo and open each
+              worktree as a thread. If you exported your Vibe Kanban issues, it
+              can turn each one into a task on your board.
             </p>
           ),
         },
