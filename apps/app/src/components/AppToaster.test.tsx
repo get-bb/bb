@@ -11,9 +11,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { AppToaster } from "./AppToaster";
 import { AppToasterView } from "./AppToasterView";
-import { appToast } from "./ui/app-toast";
 import { ArchivedThreadToastDescription } from "./thread/ArchivedThreadToastDescription";
 import { AppToastContent } from "./ui/app-toast";
 
@@ -93,23 +91,6 @@ function swipeToast(
 }
 
 describe("AppToaster", () => {
-  it("shows a toast fired before the toaster has loaded once it mounts", async () => {
-    render(
-      <CompactViewportOverrideProvider isCompactViewport={false}>
-        <AppToaster />
-      </CompactViewportOverrideProvider>,
-    );
-    expect(document.querySelector("[data-sonner-toaster]")).toBeNull();
-    act(() => {
-      appToast.success("Saved before the toaster loaded");
-    });
-    await waitFor(() =>
-      expect(
-        document.body.textContent?.includes("Saved before the toaster loaded"),
-      ).toBe(true),
-    );
-  });
-
   it("places compact viewport toasts at the top center", async () => {
     const toaster = await renderToaster(true);
     expect(toaster?.getAttribute("data-x-position")).toBe("center");

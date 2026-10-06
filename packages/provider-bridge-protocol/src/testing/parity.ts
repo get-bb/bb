@@ -314,6 +314,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
+const REPLAY_STARTUP_CONCURRENCY = 4;
+const replayStartupQueue: (() => void)[] = [];
+let startingReplays = 0;
+
+async function acquireReplayStartup(): Promise<() => void> {
+  if (startingReplays < REPLAY_STARTUP_CONCURRENCY) {
+    startingReplays += 1;
+  } else {
+    await new Promise<void>((resolveSlot) =>
+      replayStartupQueue.push(resolveSlot),
+    );
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = replayStartupQueue.shift();
+    if (next === undefined) startingReplays -= 1;
+    else next();
+  };
+}
+
 export async function replayRecording(
   options: ReplayRecordingOptions,
 ): Promise<ParityRun> {
@@ -360,324 +382,371 @@ export async function replayRecording(
 
   profile.prepareState?.({ recording, stateDir, workspaceDir });
   const launch = options.bridge;
-  const child: ChildProcess = spawn(launch.command, launch.args, {
-    cwd: launch.cwd,
-    env: {
-      ...process.env,
-      ...launch.env,
-      ...profile.env({ replayCommand, wrapperPath, stateDir }),
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const releaseStartup = await acquireReplayStartup();
+  let spawnedChild: ChildProcess | undefined;
+  let childEnded: Promise<void> | undefined;
+  try {
+    const child: ChildProcess = spawn(launch.command, launch.args, {
+      cwd: launch.cwd,
+      env: {
+        ...process.env,
+        ...launch.env,
+        ...profile.env({ replayCommand, wrapperPath, stateDir }),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    spawnedChild = child;
+    childEnded = new Promise<void>((resolveEnded) => {
+      const onEnded = () => {
+        releaseStartup();
+        resolveEnded();
+      };
+      child.once("exit", onEnded);
+      child.once("error", onEnded);
+    });
 
-  const recordedCwd = recordedWorkspaceDir(recording);
-  const jsonText = (value: string): string =>
-    JSON.stringify(value).slice(1, -1);
-  const restoreRecordedWorkspace = (line: string): string =>
-    recordedCwd === null || recordedCwd === workspaceDir
-      ? line
-      : line.split(jsonText(workspaceDir)).join(jsonText(recordedCwd));
+    const recordedCwd = recordedWorkspaceDir(recording);
+    const jsonText = (value: string): string =>
+      JSON.stringify(value).slice(1, -1);
+    const restoreRecordedWorkspace = (line: string): string =>
+      recordedCwd === null || recordedCwd === workspaceDir
+        ? line
+        : line.split(jsonText(workspaceDir)).join(jsonText(recordedCwd));
 
-  const initializeId = PARITY_INITIALIZE_ID;
-  const startedAt = Date.now();
-  const lines: string[] = [];
-  const lineTimes: number[] = [];
-  const lineAfter: ParityRun["lineAfter"] = [];
-  let lastSentRuntimeEntry: { run: number; seq: number; ts: number } | null =
-    null;
-  const events: ThreadEvent[] = [];
-  const grammarViolations: ParityGrammarViolation[] = [];
-  const stalls: string[] = [];
-  let stderr = "";
-  const grammar = new ThreadEventGrammar();
-  const liveAssembler = options.createAssembler(providerId);
-  const planAssembler = (
-    options.createPlanAssembler ?? options.createAssembler
-  )(providerId);
-  const exactPlan = options.planFromCurrentLane === true;
-  const planRecording = exactPlan
-    ? withCurrentBridgeLane(recording)
-    : recording;
-  const steps = planRuntimeSteps(planRecording, planAssembler);
-  const plannedEventCount = exactPlan
-    ? assembleRecordedEvents(
-        planRecording,
-        options.createPlanAssembler ?? options.createAssembler,
-        providerId,
-      ).events.length
-    : null;
+    const initializeId = PARITY_INITIALIZE_ID;
+    const startedAt = Date.now();
+    const lines: string[] = [];
+    const lineTimes: number[] = [];
+    const lineAfter: ParityRun["lineAfter"] = [];
+    let lastSentRuntimeEntry: { run: number; seq: number; ts: number } | null =
+      null;
+    const events: ThreadEvent[] = [];
+    const grammarViolations: ParityGrammarViolation[] = [];
+    const stalls: string[] = [];
+    let stderr = "";
+    const grammar = new ThreadEventGrammar();
+    const liveAssembler = options.createAssembler(providerId);
+    const planAssembler = (
+      options.createPlanAssembler ?? options.createAssembler
+    )(providerId);
+    const exactPlan = options.planFromCurrentLane === true;
+    const planRecording = exactPlan
+      ? withCurrentBridgeLane(recording)
+      : recording;
+    const steps = planRuntimeSteps(planRecording, planAssembler);
+    const plannedEventCount = exactPlan
+      ? assembleRecordedEvents(
+          planRecording,
+          options.createPlanAssembler ?? options.createAssembler,
+          providerId,
+        ).events.length
+      : null;
 
-  const answeredIds = new Set<string>();
-  const pendingBridgeRequests: { id: string | number; method: string }[] = [];
-  const recordedAnswers = new Map<string, ParsedWireMessage[]>();
-  for (const step of steps) {
-    if (step.message !== null && isResponse(step.message)) {
-      const method =
-        methodOfRecordedBridgeRequest(
-          recording,
-          step.entry,
-          step.message.id as string | number,
-        ) ?? "?";
-      const queue = recordedAnswers.get(method) ?? [];
-      queue.push(step.message);
-      recordedAnswers.set(method, queue);
+    const answeredIds = new Set<string>();
+    const pendingBridgeRequests: { id: string | number; method: string }[] = [];
+    const recordedAnswers = new Map<string, ParsedWireMessage[]>();
+    for (const step of steps) {
+      if (step.message !== null && isResponse(step.message)) {
+        const method =
+          methodOfRecordedBridgeRequest(
+            recording,
+            step.entry,
+            step.message.id as string | number,
+          ) ?? "?";
+        const queue = recordedAnswers.get(method) ?? [];
+        queue.push(step.message);
+        recordedAnswers.set(method, queue);
+      }
     }
-  }
 
-  let lastOutputAt = Date.now();
-  const exited = new Promise<number | null>((resolveExit) => {
-    child.on("exit", (code) => resolveExit(code));
-  });
-  child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
-    stderr += chunk;
-    options.onStderr?.(chunk);
-  });
+    let lastOutputAt = Date.now();
+    const exited = new Promise<number | null>((resolveExit) => {
+      child.on("exit", (code) => resolveExit(code));
+      child.on("error", (error) => {
+        stalls.push(`bridge spawn failed: ${error.message}`);
+        resolveExit(null);
+      });
+    });
+    child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk;
+      options.onStderr?.(chunk);
+    });
 
-  function write(line: string): void {
-    if (child.stdin?.writable) {
-      child.stdin.write(`${line}\n`);
+    function write(line: string): void {
+      if (child.stdin?.writable) {
+        child.stdin.write(`${line}\n`);
+      }
     }
-  }
 
-  function answerBridgeRequest(message: ParsedWireMessage): void {
-    const method = message.method ?? "?";
-    const queue = recordedAnswers.get(method);
-    const recorded = queue?.shift();
-    if (recorded === undefined) {
-      stalls.push(
-        `no recorded answer for bridge request ${method} (${String(message.id)})`,
-      );
-      write(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: message.id,
-          error: { code: -32000, message: "parity replay: no recorded answer" },
-        }),
-      );
-      return;
-    }
-    write(JSON.stringify({ ...recorded, id: message.id }));
-  }
-
-  readBoundedLines({
-    input: child.stdout!,
-    onLine: (rawLine) => {
-      const line = restoreRecordedWorkspace(rawLine);
-      lastOutputAt = Date.now();
-      lines.push(line);
-      lineTimes.push(lastOutputAt - startedAt);
-      lineAfter.push(lastSentRuntimeEntry);
-      const message = parseWire(line);
-      if (message === null) return;
-      if (isResponse(message)) {
-        answeredIds.add(String(message.id));
+    function answerBridgeRequest(message: ParsedWireMessage): void {
+      const method = message.method ?? "?";
+      const queue = recordedAnswers.get(method);
+      const recorded = queue?.shift();
+      if (recorded === undefined) {
+        stalls.push(
+          `no recorded answer for bridge request ${method} (${String(message.id)})`,
+        );
+        write(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: {
+              code: -32000,
+              message: "parity replay: no recorded answer",
+            },
+          }),
+        );
         return;
       }
-      if (isRequest(message)) {
-        pendingBridgeRequests.push({
-          id: message.id as string | number,
-          method: message.method!,
-        });
-        answerBridgeRequest(message);
-        return;
-      }
-      if (message.method === THREAD_DELTA_NOTIFICATION_METHOD) {
-        let assembled: ThreadEvent[];
-        try {
-          assembled = liveAssembler.assembleMessage(message);
-        } catch (error) {
-          stalls.push(
-            `invalid thread/delta: ${error instanceof Error ? error.message : String(error)}`,
-          );
+      write(JSON.stringify({ ...recorded, id: message.id }));
+    }
+
+    readBoundedLines({
+      input: child.stdout!,
+      onLine: (rawLine) => {
+        const line = restoreRecordedWorkspace(rawLine);
+        lastOutputAt = Date.now();
+        lines.push(line);
+        lineTimes.push(lastOutputAt - startedAt);
+        lineAfter.push(lastSentRuntimeEntry);
+        const message = parseWire(line);
+        if (message === null) return;
+        if (isResponse(message)) {
+          answeredIds.add(String(message.id));
           return;
         }
-        for (const event of assembled) {
-          const result = grammar.observe(event);
-          if (result.kind === "violation") {
-            grammarViolations.push({
-              rule: result.rule,
-              reason: result.reason,
-              eventType: event.type,
-            });
-            continue;
-          }
-          events.push(event);
+        if (isRequest(message)) {
+          pendingBridgeRequests.push({
+            id: message.id as string | number,
+            method: message.method!,
+          });
+          answerBridgeRequest(message);
+          return;
         }
-      }
-    },
-    onOverflow: (bytes) => {
-      stalls.push(`oversized bridge line (${bytes} bytes)`);
-    },
-  });
-
-  async function waitFor(
-    label: string,
-    predicate: () => boolean,
-    limitMs: number = timeoutMs,
-    reportStall = true,
-  ): Promise<void> {
-    const deadline = Date.now() + limitMs;
-    while (!predicate()) {
-      if (child.exitCode !== null) {
-        stalls.push(`bridge exited while waiting for ${label}`);
-        return;
-      }
-      if (Date.now() > deadline) {
-        if (reportStall) stalls.push(`timed out waiting for ${label}`);
-        return;
-      }
-      await sleep(10);
-    }
-  }
-
-  const firstStep = steps.find(
-    (step) => step.message !== null && isRequest(step.message),
-  );
-  setCursor(
-    firstStep === undefined
-      ? "end"
-      : { run: firstStep.entry.run, seq: firstStep.entry.seq },
-  );
-  write(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: initializeId,
-      method: "initialize",
-      params: {
-        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-        client: { name: "bb-parity", version: "0" },
+        if (message.method === THREAD_DELTA_NOTIFICATION_METHOD) {
+          let assembled: ThreadEvent[];
+          try {
+            assembled = liveAssembler.assembleMessage(message);
+          } catch (error) {
+            stalls.push(
+              `invalid thread/delta: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            return;
+          }
+          for (const event of assembled) {
+            const result = grammar.observe(event);
+            if (result.kind === "violation") {
+              grammarViolations.push({
+                rule: result.rule,
+                reason: result.reason,
+                eventType: event.type,
+              });
+              continue;
+            }
+            events.push(event);
+          }
+        }
       },
-    }),
-  );
-  await waitFor("initialize response", () => answeredIds.has(initializeId));
+      onOverflow: (bytes) => {
+        stalls.push(`oversized bridge line (${bytes} bytes)`);
+      },
+    });
 
-  const sentRequestIds: string[] = [];
-  for (const step of steps) {
-    if (step.message === null || !isRequest(step.message)) {
-      if (step.message !== null && !isResponse(step.message)) {
-        lastSentRuntimeEntry = {
-          run: step.entry.run,
-          seq: step.entry.seq,
-          ts: step.entry.ts,
-        };
-        write(step.entry.line);
+    async function waitFor(
+      label: string,
+      predicate: () => boolean,
+      limitMs: number = timeoutMs,
+      reportStall = true,
+    ): Promise<void> {
+      const deadline = Date.now() + limitMs;
+      while (!predicate()) {
+        if (
+          child.exitCode !== null ||
+          child.signalCode !== null ||
+          child.pid === undefined
+        ) {
+          stalls.push(`bridge exited while waiting for ${label}`);
+          return;
+        }
+        if (Date.now() > deadline) {
+          if (reportStall) stalls.push(`timed out waiting for ${label}`);
+          return;
+        }
+        await sleep(10);
       }
-      continue;
     }
-    const request = step.message;
-    const method = request.method!;
-    await waitFor(`earlier requests before ${method}`, () =>
+
+    const firstStep = steps.find(
+      (step) => step.message !== null && isRequest(step.message),
+    );
+    setCursor(
+      firstStep === undefined
+        ? "end"
+        : { run: firstStep.entry.run, seq: firstStep.entry.seq },
+    );
+    write(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: initializeId,
+        method: "initialize",
+        params: {
+          protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+          client: { name: "bb-parity", version: "0" },
+        },
+      }),
+    );
+    await waitFor("initialize response", () => answeredIds.has(initializeId));
+    const initialized = answeredIds.has(initializeId);
+    if (!initialized) {
+      if (
+        child.pid !== undefined &&
+        child.exitCode === null &&
+        child.signalCode === null
+      )
+        child.kill("SIGKILL");
+      await childEnded;
+    }
+    releaseStartup();
+
+    const sentRequestIds: string[] = [];
+    for (const step of initialized ? steps : []) {
+      if (step.message === null || !isRequest(step.message)) {
+        if (step.message !== null && !isResponse(step.message)) {
+          lastSentRuntimeEntry = {
+            run: step.entry.run,
+            seq: step.entry.seq,
+            ts: step.entry.ts,
+          };
+          write(step.entry.line);
+        }
+        continue;
+      }
+      const request = step.message;
+      const method = request.method!;
+      await waitFor(`earlier requests before ${method}`, () =>
+        sentRequestIds.every((id) => answeredIds.has(id)),
+      );
+      await waitFor(
+        `${step.gate.started} turn/started and ${step.gate.completed} turn/completed before ${method}`,
+        () => {
+          const live = countTurns(events);
+          return (
+            live.started >= step.gate.started &&
+            live.completed >= step.gate.completed
+          );
+        },
+      );
+      await waitFor(
+        `${step.eventsBefore} events before ${method}`,
+        () =>
+          events.length >= step.eventsBefore ||
+          (!exactPlan && Date.now() - lastOutputAt >= orderTimeoutMs),
+        timeoutMs,
+        exactPlan,
+      );
+      await waitFor(
+        `the stream to drain before ${method}`,
+        () => Date.now() - lastOutputAt >= drainMs,
+        timeoutMs,
+        false,
+      );
+      if (child.exitCode !== null) break;
+      if (
+        method === "thread/stop" &&
+        typeof request.params === "object" &&
+        request.params !== null &&
+        (request.params as { intent?: unknown }).intent === "release"
+      ) {
+        const threadId = (request.params as { threadId?: unknown }).threadId;
+        if (typeof threadId === "string") grammar.clearThread(threadId);
+      }
+      const rewritten = rewriteRecordedMachineFacts(
+        step.entry.line,
+        workspaceDir,
+      );
+      const line =
+        profile.rewriteRuntimeLine === undefined
+          ? rewritten
+          : profile.rewriteRuntimeLine(rewritten, { replayCommand });
+      lastSentRuntimeEntry = {
+        run: step.entry.run,
+        seq: step.entry.seq,
+        ts: step.entry.ts,
+      };
+      write(line);
+      sentRequestIds.push(String(request.id));
+      const nextStep = steps
+        .slice(steps.indexOf(step) + 1)
+        .find(
+          (candidate) =>
+            candidate.message !== null && isRequest(candidate.message),
+        );
+      setCursor(
+        nextStep === undefined
+          ? "end"
+          : { run: nextStep.entry.run, seq: nextStep.entry.seq },
+      );
+    }
+    setCursor("end");
+    await waitFor("the last responses", () =>
       sentRequestIds.every((id) => answeredIds.has(id)),
     );
-    await waitFor(
-      `${step.gate.started} turn/started and ${step.gate.completed} turn/completed before ${method}`,
-      () => {
-        const live = countTurns(events);
-        return (
-          live.started >= step.gate.started &&
-          live.completed >= step.gate.completed
-        );
-      },
-    );
-    await waitFor(
-      `${step.eventsBefore} events before ${method}`,
-      () =>
-        events.length >= step.eventsBefore ||
-        (!exactPlan && Date.now() - lastOutputAt >= orderTimeoutMs),
-      timeoutMs,
-      exactPlan,
-    );
-    await waitFor(
-      `the stream to drain before ${method}`,
-      () => Date.now() - lastOutputAt >= drainMs,
-      timeoutMs,
-      false,
-    );
-    if (child.exitCode !== null) break;
-    if (
-      method === "thread/stop" &&
-      typeof request.params === "object" &&
-      request.params !== null &&
-      (request.params as { intent?: unknown }).intent === "release"
-    ) {
-      const threadId = (request.params as { threadId?: unknown }).threadId;
-      if (typeof threadId === "string") grammar.clearThread(threadId);
-    }
-    const rewritten = rewriteRecordedMachineFacts(
-      step.entry.line,
-      workspaceDir,
-    );
-    const line =
-      profile.rewriteRuntimeLine === undefined
-        ? rewritten
-        : profile.rewriteRuntimeLine(rewritten, { replayCommand });
-    lastSentRuntimeEntry = {
-      run: step.entry.run,
-      seq: step.entry.seq,
-      ts: step.entry.ts,
-    };
-    write(line);
-    sentRequestIds.push(String(request.id));
-    const nextStep = steps
-      .slice(steps.indexOf(step) + 1)
-      .find(
-        (candidate) =>
-          candidate.message !== null && isRequest(candidate.message),
+    if (plannedEventCount !== null) {
+      await waitFor(
+        `all ${plannedEventCount} planned events before closing the bridge`,
+        () => events.length >= plannedEventCount,
       );
-    setCursor(
-      nextStep === undefined
-        ? "end"
-        : { run: nextStep.entry.run, seq: nextStep.entry.seq },
-    );
-  }
-  setCursor("end");
-  await waitFor("the last responses", () =>
-    sentRequestIds.every((id) => answeredIds.has(id)),
-  );
-  if (plannedEventCount !== null) {
+    }
     await waitFor(
-      `all ${plannedEventCount} planned events before closing the bridge`,
-      () => events.length >= plannedEventCount,
+      "the stream to settle",
+      () => Date.now() - lastOutputAt >= settleMs,
     );
-  }
-  await waitFor(
-    "the stream to settle",
-    () => Date.now() - lastOutputAt >= settleMs,
-  );
-  child.stdin?.end();
-  let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
-  const exitCode = await Promise.race([
-    exited,
-    new Promise<null>((resolveTimeout) => {
-      shutdownTimer = setTimeout(() => {
-        stalls.push("bridge did not exit after stdin closed; killed");
-        child.kill("SIGKILL");
-        resolveTimeout(null);
-      }, timeoutMs);
-    }),
-  ]);
-  clearTimeout(shutdownTimer);
-  for (const directory of [stateDir, workspaceDir]) {
-    await rm(directory, {
-      force: true,
-      maxRetries: REPLAY_CLEANUP_RETRIES,
-      recursive: true,
-      retryDelay: REPLAY_CLEANUP_RETRY_DELAY_MS,
-    });
-  }
+    child.stdin?.end();
+    let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
+    const exitCode = await Promise.race([
+      exited,
+      new Promise<null>((resolveTimeout) => {
+        shutdownTimer = setTimeout(() => {
+          stalls.push("bridge did not exit after stdin closed; killed");
+          child.kill("SIGKILL");
+          resolveTimeout(null);
+        }, timeoutMs);
+      }),
+    ]);
+    clearTimeout(shutdownTimer);
 
-  return {
-    providerId,
-    recordingDir: options.recordingDir,
-    lines,
-    lineTimes,
-    lineAfter,
-    events,
-    grammarViolations,
-    stalls,
-    stderr,
-    exitCode,
-  };
+    return {
+      providerId,
+      recordingDir: options.recordingDir,
+      lines,
+      lineTimes,
+      lineAfter,
+      events,
+      grammarViolations,
+      stalls,
+      stderr,
+      exitCode,
+    };
+  } finally {
+    if (
+      spawnedChild !== undefined &&
+      spawnedChild.pid !== undefined &&
+      spawnedChild.exitCode === null &&
+      spawnedChild.signalCode === null
+    ) {
+      spawnedChild.kill("SIGKILL");
+      await childEnded;
+    }
+    releaseStartup();
+    for (const directory of [stateDir, workspaceDir]) {
+      await rm(directory, {
+        force: true,
+        maxRetries: REPLAY_CLEANUP_RETRIES,
+        recursive: true,
+        retryDelay: REPLAY_CLEANUP_RETRY_DELAY_MS,
+      });
+    }
+  }
 }
 
 export function assembleRecordedEvents(

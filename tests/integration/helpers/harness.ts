@@ -281,7 +281,7 @@ async function startIntegrationServer(
     watchInterests,
     workspaceReadCaches,
   };
-  const { app, injectWebSocket, pluginService } = createApp(
+  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     serverDeps,
     options.staticDir === undefined
       ? undefined
@@ -334,7 +334,8 @@ async function startIntegrationServer(
     machineAuth,
     providerRegistry,
     async close(): Promise<void> {
-      await new Promise<void>((resolve, reject) => {
+      await pluginService.stop();
+      const closed = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
             reject(error);
@@ -343,6 +344,8 @@ async function startIntegrationServer(
           resolve();
         });
       });
+      await closeWebSockets();
+      await closed;
     },
   };
 }
