@@ -4,6 +4,7 @@ import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   createContext,
+  Fragment,
   useCallback,
   useContext,
   useEffect,
@@ -82,6 +83,10 @@ function joinContinuations(command: string): string {
   return command.replace(/\s*\\\n\s*/g, " ");
 }
 
+function splitCommands(command: string): string[] {
+  return command.split(/(?<!\\)\n/);
+}
+
 export function CommandBlock({
   label = "Terminal",
   command,
@@ -96,8 +101,13 @@ export function CommandBlock({
         <CodeCopy text={joinContinuations(command)} />
       </div>
       <pre>
-        <span className="gd-dollar">$ </span>
-        {command}
+        {splitCommands(command).map((line, index) => (
+          <Fragment key={index}>
+            {index > 0 ? "\n" : null}
+            <span className="gd-dollar">$ </span>
+            {line}
+          </Fragment>
+        ))}
       </pre>
     </div>
   );
@@ -165,24 +175,7 @@ export function DoneWhen({ children }: { children: ReactNode }) {
   );
 }
 
-export interface Ring {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-export function ProductShot({
-  src,
-  alt,
-  caption,
-  ring,
-}: {
-  src: string;
-  alt: string;
-  caption: ReactNode;
-  ring: Ring | null;
-}) {
+export function ProductShot({ src, alt }: { src: string; alt: string }) {
   const size = getImageSize(src);
   return (
     <figure className="gd-shot">
@@ -191,20 +184,7 @@ export function ProductShot({
         style={size ? { maxWidth: `${size.width / 2}px` } : undefined}
       >
         <LightboxImage src={src} alt={alt} />
-        {ring ? (
-          <span
-            className="gd-ring"
-            aria-hidden="true"
-            style={{
-              left: `${ring.left}%`,
-              top: `${ring.top}%`,
-              width: `${ring.width}%`,
-              height: `${ring.height}%`,
-            }}
-          />
-        ) : null}
       </div>
-      <figcaption>{caption}</figcaption>
     </figure>
   );
 }
@@ -226,14 +206,5 @@ export function MorePath({
       </summary>
       <div className="gd-more-body">{brandProse(children)}</div>
     </details>
-  );
-}
-
-export function PromptCard({ prompt }: { prompt: string }) {
-  return (
-    <div className="gd-prompt-card">
-      <q>{prompt}</q>
-      <CodeCopy text={prompt} />
-    </div>
   );
 }

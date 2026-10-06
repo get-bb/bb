@@ -11,11 +11,11 @@
 }
 
 .gd-hero h1 {
-  max-width: 720px;
+  max-width: 860px;
 }
 
 .gd-hero .sub {
-  max-width: 620px;
+  max-width: 680px;
 }
 
 .gd-hero-actions {
@@ -29,12 +29,6 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.gd-meta {
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--subtle);
 }
 
 .gd-ic {
@@ -254,16 +248,6 @@
   height: 13px;
 }
 
-.gd-diagram-caption {
-  max-width: 860px;
-  margin: 18px auto 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) 96px minmax(0, 1fr);
-  font-size: 13px;
-  color: var(--subtle);
-  text-align: center;
-}
-
 .gd-plan {
   margin-top: 72px;
   padding: 64px 0;
@@ -332,35 +316,6 @@
   font-size: 12.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.gd-who {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  background: var(--surface-recessed);
-  color: var(--dim);
-}
-
-.gd-who .gd-ic {
-  width: 13px;
-  height: 13px;
-}
-
-.gd-who-agent {
-  background: color-mix(in oklab, var(--accent) 12%, var(--bg));
-  color: var(--accent);
-}
-
-.gd-plan-after {
-  margin-top: 18px;
-  font-size: 15px;
-  color: var(--dim);
 }
 
 .gd-handoff {
@@ -449,7 +404,7 @@
 .gd-handoff-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   padding: 12px 18px 16px;
   font-size: 13px;
@@ -499,80 +454,14 @@
   color: var(--dim);
 }
 
-.gd-body {
-  display: grid;
-  grid-template-columns: 204px minmax(0, 1fr);
-  gap: 48px;
+.gd-main {
   border-top: 1px solid var(--border-soft);
   padding: 8px 0 40px;
 }
 
-.gd-rail {
-  position: sticky;
-  top: 24px;
-  align-self: start;
-  padding-top: 48px;
-}
-
-.gd-rail-title {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--subtle);
-}
-
-.gd-rail ol {
-  list-style: none;
-  margin-top: 12px;
-}
-
-.gd-rail a {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 5px 0;
-  font-size: 13.5px;
-  line-height: 1.35;
-  color: var(--subtle);
-}
-
-.gd-rail a:hover {
-  color: var(--ink);
-}
-
-.gd-rail .gd-num {
-  width: 20px;
-  height: 20px;
-  font-size: 11px;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--subtle);
-}
-
-.gd-rail .gd-rail-dot {
-  display: inline-block;
-  width: 20px;
-  text-align: center;
-  color: var(--border);
-}
-
-.gd-rail a.active {
-  color: var(--heading);
-  font-weight: 600;
-}
-
-.gd-rail a.active .gd-num {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--bg);
-}
-
-.gd-rail-copy {
-  background: var(--bg);
-  margin-top: 22px;
-  width: 100%;
-  justify-content: center;
+.gd-main > section {
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 .gd-main section {
@@ -586,7 +475,7 @@
 
 .gd-step-head {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   column-gap: 12px;
 }
@@ -605,10 +494,6 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--heading);
-}
-
-.gd-step-head .gd-who {
-  justify-self: end;
 }
 
 .gd-lead {
@@ -662,6 +547,20 @@
   font-size: 16.5px;
   font-weight: 650;
   color: var(--heading-sub);
+}
+
+.gd-list {
+  margin-top: 14px;
+  padding-left: 20px;
+  color: var(--dim);
+}
+
+.gd-list li + li {
+  margin-top: 10px;
+}
+
+.gd-list li::marker {
+  color: var(--subtle);
 }
 
 .gd-code {
@@ -819,20 +718,6 @@
   height: auto;
 }
 
-.gd-ring {
-  position: absolute;
-  border-radius: 10px;
-  border: 2px solid var(--accent);
-  box-shadow: 0 0 0 5px color-mix(in oklab, var(--accent) 16%, transparent);
-}
-
-.gd-shot figcaption {
-  margin-top: 12px;
-  font-size: 13.5px;
-  color: var(--subtle);
-  text-align: center;
-}
-
 .gd-more {
   margin-top: 22px;
   border: 1px solid var(--border-soft);
@@ -875,37 +760,6 @@
   margin-top: 0;
 }
 
-.gd-prompts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 22px;
-}
-
-.gd-prompt-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px;
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  background: var(--surface);
-}
-
-.gd-prompt-card q {
-  quotes: none;
-  font-size: 14.5px;
-  line-height: 1.5;
-  color: var(--ink-strong);
-}
-
-.gd-prompt-card .gd-code-copy {
-  align-self: flex-start;
-  border-color: var(--border);
-  background: var(--bg);
-}
-
 .gd-main .cmp-faq-list {
   margin-top: 14px;
 }
@@ -917,44 +771,6 @@
 
 .gd-main .cmp-faq-answer p {
   margin-top: 0;
-}
-
-.gd-related {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 22px;
-}
-
-.gd-related a {
-  display: block;
-  padding: 18px;
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-}
-
-.gd-related a:hover {
-  border-color: var(--border);
-  background: var(--surface);
-}
-
-.gd-related-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 15.5px;
-  font-weight: 600;
-  color: var(--heading-sub);
-}
-
-.gd-related-title .gd-ic {
-  color: var(--subtle);
-}
-
-.gd-related p {
-  margin-top: 4px;
-  font-size: 14px;
-  color: var(--dim);
 }
 
 .gd-shot-frame .lightbox-trigger img {
@@ -997,23 +813,12 @@
   transform: translate(-50%, 0);
 }
 
-@media (max-width: 1080px) {
-  .gd-body {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-  .gd-rail {
-    display: none;
-  }
-}
-
 @media (max-width: 860px) {
   .gd-plan-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 36px;
   }
-  .gd-needs,
-  .gd-prompts {
+  .gd-needs {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1049,18 +854,12 @@
     width: 1px;
     background: var(--border);
   }
-  .gd-diagram-caption {
-    display: none;
-  }
   .gd-cmd {
     display: none;
   }
   .gd-plan {
     margin-top: 48px;
     padding: 48px 0;
-  }
-  .gd-related {
-    grid-template-columns: minmax(0, 1fr);
   }
   .gd-step-head {
     grid-template-columns: 30px minmax(0, 1fr);
@@ -1069,11 +868,6 @@
   .gd-step-head h2 {
     font-size: 22px;
     margin-top: 1px;
-  }
-  .gd-step-head .gd-who {
-    grid-column: 2;
-    justify-self: start;
-    margin-top: 8px;
   }
   .gd-handoff-head {
     flex-direction: column;

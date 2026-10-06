@@ -17,69 +17,62 @@ function delay(index: number): CSSProperties {
 
 export function RemoteServersConcept() {
   return (
-    <>
-      <div
-        className="gd-diagram"
-        role="img"
-        aria-label="Three branches on one remote machine, each dev server shared at its own getbb.app link"
-      >
-        <div className="gd-card">
-          <div className="gd-card-head">
-            <span className="gd-card-title">
-              <span className="gd-live" />
-              {MACHINE}
+    <div
+      className="gd-diagram"
+      role="img"
+      aria-label="Three branches on one remote machine, each dev server shared at its own getbb.app link"
+    >
+      <div className="gd-card">
+        <div className="gd-card-head">
+          <span className="gd-card-title">
+            <span className="gd-live" />
+            {MACHINE}
+          </span>
+          <span className="gd-card-detail">Linux · always on</span>
+        </div>
+        {SERVERS.map((server) => (
+          <div key={server.port} className="gd-row">
+            <span className="gd-branch">
+              <HugeiconsIcon icon={GitBranchIcon} className="gd-ic" />
+              {server.branch}
             </span>
-            <span className="gd-card-detail">Linux · always on</span>
+            <span className="gd-cmd">PORT={server.port} pnpm dev</span>
+            <span className="gd-port">:{server.port}</span>
           </div>
-          {SERVERS.map((server) => (
-            <div key={server.port} className="gd-row">
-              <span className="gd-branch">
-                <HugeiconsIcon icon={GitBranchIcon} className="gd-ic" />
-                {server.branch}
-              </span>
-              <span className="gd-cmd">PORT={server.port} pnpm dev</span>
-              <span className="gd-port">:{server.port}</span>
-            </div>
-          ))}
+        ))}
+      </div>
+      <div className="gd-wires" aria-hidden="true">
+        {SERVERS.map((server, index) => (
+          <span
+            key={server.port}
+            className="gd-wire"
+            style={{ top: `${76 + index * 48}px`, ...delay(index) }}
+          />
+        ))}
+      </div>
+      <div className="gd-card">
+        <div className="gd-card-head">
+          <span className="gd-card-title">
+            <span className="bb-mark" />
+            Shared links
+          </span>
+          <span className="gd-lock">
+            <HugeiconsIcon icon={LockIcon} className="gd-ic" />
+            Your account only
+          </span>
         </div>
-        <div className="gd-wires" aria-hidden="true">
-          {SERVERS.map((server, index) => (
-            <span
-              key={server.port}
-              className="gd-wire"
-              style={{ top: `${76 + index * 48}px`, ...delay(index) }}
-            />
-          ))}
-        </div>
-        <div className="gd-card">
-          <div className="gd-card-head">
-            <span className="gd-card-title">
-              <span className="bb-mark" />
-              Shared links
-            </span>
-            <span className="gd-lock">
-              <HugeiconsIcon icon={LockIcon} className="gd-ic" />
-              Your account only
+        {SERVERS.map((server, index) => (
+          <div
+            key={server.port}
+            className="gd-row gd-link"
+            style={delay(index)}
+          >
+            <span className="gd-url">
+              {MACHINE}--<b>{server.port}</b>.getbb.app
             </span>
           </div>
-          {SERVERS.map((server, index) => (
-            <div
-              key={server.port}
-              className="gd-row gd-link"
-              style={delay(index)}
-            >
-              <span className="gd-url">
-                {MACHINE}--<b>{server.port}</b>.getbb.app
-              </span>
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
-      <div className="gd-diagram-caption" aria-hidden="true">
-        <span>One worktree and terminal per branch</span>
-        <span />
-        <span>One private link per port</span>
-      </div>
-    </>
+    </div>
   );
 }
