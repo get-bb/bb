@@ -62,6 +62,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     data: {
       generalSettings: { ...defaultAppSettings },
       keybindings: [mocks.backBinding, mocks.forwardBinding],
+      defaultKeybindings: [mocks.backBinding, mocks.forwardBinding],
     },
   }),
 }));
@@ -120,6 +121,10 @@ function dispatch(command: KeyboardCommandId): boolean {
   return handled;
 }
 
+function available(command: KeyboardCommandId): boolean {
+  return harness.runner?.isCommandAvailable(command, null) ?? false;
+}
+
 async function expectPath(pathname: string) {
   await waitFor(() =>
     expect(screen.getByTestId("location").textContent).toBe(pathname),
@@ -144,6 +149,8 @@ describe("HistoryCommandHandlers", () => {
   it("moves through the sidebar's route history and closes the mobile sidebar", async () => {
     renderAt(A);
 
+    expect(available("history.back")).toBe(false);
+    expect(available("history.forward")).toBe(false);
     expect(dispatch("history.back")).toBe(false);
     expect(dispatch("history.forward")).toBe(false);
     expect(mocks.closeMobileSidebar).not.toHaveBeenCalled();
@@ -156,6 +163,8 @@ describe("HistoryCommandHandlers", () => {
           .getAttribute("aria-disabled") === "true",
       ).toBe(false),
     );
+    expect(available("history.back")).toBe(true);
+    expect(available("history.forward")).toBe(false);
 
     expect(dispatch("history.back")).toBe(true);
     await expectPath(A);
