@@ -101,11 +101,15 @@ export function ThreadSearchPaletteMode({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
+  const [shownCounts, setShownCounts] = useState<
+    Partial<Record<ThreadArchiveFilter, number>>
+  >({});
   const filterKey = lifecycles.join(",");
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
   if (previousFilterKey !== filterKey) {
     setPreviousFilterKey(filterKey);
     setExpandedGroups([]);
+    setShownCounts({});
     setHighlightedKey(null);
   }
   const [now] = useState(() => Date.now());
@@ -173,6 +177,7 @@ export function ThreadSearchPaletteMode({
             0,
             Math.max(
               limit,
+              shownCounts[lifecycle] ?? 0,
               rows.findIndex((row) => row.id === highlightedKey) + 1,
             ),
           );
@@ -184,7 +189,20 @@ export function ThreadSearchPaletteMode({
         groupOptions.push({ row: null, lifecycle });
       return groupOptions;
     });
-  }, [expandedGroups, highlightedKey, lifecycles, result]);
+  }, [expandedGroups, highlightedKey, lifecycles, result, shownCounts]);
+  useLayoutEffect(() => {
+    setShownCounts((current) => {
+      let next = current;
+      for (const lifecycle of lifecycles) {
+        const shown = options.filter(
+          (option) => option.lifecycle === lifecycle && option.row !== null,
+        ).length;
+        if (shown > (next[lifecycle] ?? 0))
+          next = { ...next, [lifecycle]: shown };
+      }
+      return next;
+    });
+  }, [lifecycles, options]);
   const retainedIndex = options.findIndex(
     (option) => optionKey(option) === highlightedKey,
   );
@@ -384,6 +402,7 @@ export function ThreadSearchPaletteMode({
         setHighlightedIndex(0);
         setHighlightedKey(null);
         setExpandedGroups([]);
+        setShownCounts({});
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}

@@ -171,23 +171,37 @@ function localMatchRows(
   return [...titleRows, ...projectRows];
 }
 
-function titleContainsQuery(title: string, query: string): boolean {
-  const haystack = title.toLowerCase();
-  return query
-    .toLowerCase()
-    .split(/\s+/u)
-    .filter(Boolean)
-    .every((term) => haystack.includes(term));
+const SEARCH_WORD_PATTERN = /[\p{L}\p{N}]+/gu;
+const LATIN_DIACRITIC_PATTERN = /[\u0300-\u036f]/gu;
+
+function searchWords(text: string): string[] {
+  return (
+    text
+      .normalize("NFD")
+      .replace(LATIN_DIACRITIC_PATTERN, "")
+      .toLowerCase()
+      .match(SEARCH_WORD_PATTERN) ?? []
+  );
 }
 
 function titleMatchesFirst(
   rows: readonly PaletteThreadSearchRow[],
   query: string,
 ): PaletteThreadSearchRow[] {
-  return [
-    ...rows.filter((row) => titleContainsQuery(row.primaryText, query)),
-    ...rows.filter((row) => !titleContainsQuery(row.primaryText, query)),
-  ];
+  const queryWords = searchWords(query);
+  const titleMatches: PaletteThreadSearchRow[] = [];
+  const otherMatches: PaletteThreadSearchRow[] = [];
+  for (const row of rows) {
+    const titleWords = searchWords(row.primaryText);
+    const isTitleMatch =
+      queryWords.length > 0 &&
+      queryWords.every((queryWord) =>
+        titleWords.some((titleWord) => titleWord.startsWith(queryWord)),
+      );
+    if (isTitleMatch) titleMatches.push(row);
+    else otherMatches.push(row);
+  }
+  return [...titleMatches, ...otherMatches];
 }
 
 function mergeActiveRows(

@@ -546,6 +546,42 @@ describe("buildPaletteThreadSearchRows", () => {
       ]);
     });
 
+    it.each([
+      ["cafe", "Café sync"],
+      ["plugin-sdk", "Plugin SDK docs"],
+      ["port", "Port forwarding"],
+    ])(
+      "matches %s against title words the way the server does",
+      (query, title) => {
+        const messageOnly = makeThread("message-only", {
+          title: "Import pipeline",
+          archivedAt: NOW - 1,
+        });
+        const titleHit = makeThread("title-hit", {
+          title,
+          archivedAt: NOW - 2,
+        });
+        const result = build({
+          query,
+          lifecycles: ["archived"],
+          searchResponse: {
+            active: { total: 0, results: [] },
+            archived: {
+              total: 2,
+              results: [
+                { thread: messageOnly, matches: [] },
+                { thread: titleHit, matches: [] },
+              ],
+            },
+          },
+        });
+        expect(result.rows.map((row) => row.threadId)).toEqual([
+          "title-hit",
+          "message-only",
+        ]);
+      },
+    );
+
     it("keeps loaded matches while server results are stale", () => {
       const result = build({
         query: "fix",

@@ -1459,6 +1459,12 @@ describe("CommandPalette", () => {
     };
     rerenderPalette();
     expectText(selectedOption(), "Fix 5");
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expectText(selectedOption(), "Fix 4");
+    expect(optionTitles()).toContainEqual(expect.stringContaining("Fix 5"));
+    expect(optionTitles()).not.toContain("Show more");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expectText(selectedOption(), "Fix 5");
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
       expect(routeNavigateMock).toHaveBeenCalledWith(
