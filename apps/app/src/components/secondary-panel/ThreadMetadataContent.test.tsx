@@ -399,7 +399,7 @@ describe("GitStatusRow", () => {
     expect(markup).toBe("");
   });
 
-  it("keeps the Dirty label when the merge base branch name contains it", () => {
+  it("marks a dirty tree with an icon when the merge base branch name contains dirty", () => {
     const markup = renderToStaticMarkup(
       <GitStatusRow
         thread={makeThread()}
@@ -419,7 +419,7 @@ describe("GitStatusRow", () => {
       />,
     );
 
-    expect(markup).toContain(">Dirty</span>");
+    expect(markup).toContain('aria-label="Uncommitted changes"');
     expect(markup).toContain("2 ahead of fix/dirty-check");
   });
 

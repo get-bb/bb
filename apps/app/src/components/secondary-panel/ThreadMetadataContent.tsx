@@ -613,6 +613,8 @@ export function MergeBaseRow({
   );
 }
 
+const DIRTY_GIT_STATUS_LABEL = "Uncommitted changes";
+
 const BRANCH_COMPARISON_SUMMARY_PATTERN = /^\d+ (ahead|behind)\b/;
 
 interface GitStatusRowProps {
@@ -662,6 +664,7 @@ export function GitStatusRow({
   const summaryRepeatsLabel =
     (display.label === "Ahead" || display.label === "Behind") &&
     BRANCH_COMPARISON_SUMMARY_PATTERN.test(display.summary);
+  const isDirty = display.label === "Dirty";
 
   return (
     <DetailRow
@@ -671,24 +674,34 @@ export function GitStatusRow({
       align="start"
       valueClassName="min-w-0"
     >
-      <div
-        className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
-        title={`${display.label} ${display.summary}`}
-      >
-        {summaryRepeatsLabel ? null : (
-          <span
-            className={cn(
-              "shrink-0",
-              display.label === "Dirty"
-                ? "text-destructive"
-                : "text-foreground",
-            )}
-          >
-            {display.label}
-          </span>
+      <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+        {isDirty ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                role="img"
+                aria-label={DIRTY_GIT_STATUS_LABEL}
+                className="flex shrink-0 items-center"
+              >
+                <Icon
+                  name="DiffModified"
+                  className="size-3 text-destructive"
+                  aria-hidden
+                />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{DIRTY_GIT_STATUS_LABEL}</TooltipContent>
+          </Tooltip>
+        ) : summaryRepeatsLabel ? null : (
+          <span className="shrink-0 text-foreground">{display.label}</span>
         )}
-        <span className="min-w-0 truncate text-muted-foreground">
-          {display.summary}
+        <span
+          className="min-w-0 truncate text-muted-foreground"
+          title={display.summary}
+        >
+          {isDirty && display.summary === ""
+            ? DIRTY_GIT_STATUS_LABEL
+            : display.summary}
         </span>
       </div>
     </DetailRow>
