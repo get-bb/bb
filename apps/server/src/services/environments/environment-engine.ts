@@ -1,6 +1,6 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
-import { updateThread } from "@bb/db";
+import { getLatestThreadSequence, updateThread } from "@bb/db";
 import {
   assertEnvironmentPathAvailable,
   findBlockingEnvironmentPathClaim,
@@ -253,6 +253,9 @@ function provisioningReporter(
           .where(eq(environments.id, row.id))
           .run();
         deps.hub.notifyThread(owner, ["events-appended"], {
+          timelineSequence: getLatestThreadSequence(deps.db, {
+            threadId: owner,
+          }),
           eventTypes: ["system/thread-provisioning"],
         });
       });
@@ -562,6 +565,9 @@ async function runCreate(
           ],
         });
         deps.hub.notifyThread(context.thread.id, ["events-appended"], {
+          timelineSequence: getLatestThreadSequence(deps.db, {
+            threadId: context.thread.id,
+          }),
           eventTypes: ["system/thread-provisioning"],
         });
       }
@@ -1145,6 +1151,9 @@ function appendThreadProvisioningEventToEnvironmentThreadsInTransaction(
       threadId: thread.id,
     });
     deps.hub.notifyThread(thread.id, ["events-appended"], {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: thread.id,
+      }),
       eventTypes: ["system/thread-provisioning"],
     });
   }
@@ -1366,6 +1375,9 @@ function settleEnvironmentProvisionOutcome(
           entries,
         });
         args.deps.hub.notifyThread(thread.id, ["events-appended"], {
+          timelineSequence: getLatestThreadSequence(args.deps.db, {
+            threadId: thread.id,
+          }),
           eventTypes: ["system/thread-provisioning"],
         });
         continue;

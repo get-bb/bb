@@ -861,63 +861,80 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("marks the timeline of an unviewed thread stale without scheduling a refetch", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const viewedTimelineKey = threadTimelineQueryKey("thr_viewed");
-    const unviewedTimelineKey = threadTimelineQueryKey("thr_unviewed");
-    queryClient.setQueryData(unviewedTimelineKey, { rows: [] });
-    const viewedTimelineQueryFn = vi.fn(async () => ({ rows: [] }));
-    const viewedObserver = new QueryObserver(queryClient, {
-      queryKey: viewedTimelineKey,
-      queryFn: viewedTimelineQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeViewed = viewedObserver.subscribe(() => {});
-    await vi.advanceTimersByTimeAsync(0);
-    viewedTimelineQueryFn.mockClear();
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-    for (const threadId of ["thr_viewed", "thr_unviewed"]) {
-      effects.handleChanged({
-        type: "changed",
-        entity: "thread",
-        id: threadId,
-        metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
-        changes: ["events-appended"],
+  it.each([
+    { cachedSequence: 1, isBehind: true },
+    { cachedSequence: 2, isBehind: false },
+    { cachedSequence: 3, isBehind: false },
+  ])(
+    "compares unviewed timeline sequence $cachedSequence with the notified sequence without refetching",
+    async ({ cachedSequence, isBehind }) => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const viewedTimelineKey = threadTimelineQueryKey("thr_viewed");
+      const unviewedTimelineKey = threadTimelineQueryKey("thr_unviewed");
+      queryClient.setQueryData(unviewedTimelineKey, {
+        rows: [],
+        maxSeq: cachedSequence,
       });
-    }
-    await vi.advanceTimersByTimeAsync(50);
+      const viewedTimelineQueryFn = vi.fn(async () => ({
+        rows: [],
+        maxSeq: 2,
+      }));
+      const viewedObserver = new QueryObserver(queryClient, {
+        queryKey: viewedTimelineKey,
+        queryFn: viewedTimelineQueryFn,
+        staleTime: Infinity,
+      });
+      const unsubscribeViewed = viewedObserver.subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      viewedTimelineQueryFn.mockClear();
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
-    expect(queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated).toBe(
-      true,
-    );
-    expect(hasThreadTimelineUnseenEvents(queryClient, "thr_unviewed")).toBe(
-      true,
-    );
-    expect(hasThreadTimelineUnseenEvents(queryClient, "thr_viewed")).toBe(
-      false,
-    );
-    const unviewedInvalidations = invalidateSpy.mock.calls.filter(
-      ([filters]) =>
-        JSON.stringify(filters?.queryKey) ===
-        JSON.stringify(threadTimelineQueryKeyPrefix("thr_unviewed")),
-    );
-    expect(unviewedInvalidations).toHaveLength(1);
-    expect(unviewedInvalidations[0]?.[0]?.refetchType).toBe("none");
-    const viewedInvalidations = invalidateSpy.mock.calls.filter(
-      ([filters]) =>
-        JSON.stringify(filters?.queryKey) ===
-        JSON.stringify(threadTimelineQueryKeyPrefix("thr_viewed")),
-    );
-    expect(viewedInvalidations).toHaveLength(1);
-    expect(viewedInvalidations[0]?.[0]?.refetchType).toBeUndefined();
-    expect(viewedTimelineQueryFn).toHaveBeenCalledTimes(1);
+      for (const threadId of ["thr_viewed", "thr_unviewed"]) {
+        effects.handleChanged({
+          type: "changed",
+          entity: "thread",
+          id: threadId,
+          metadata: {
+            eventTypes: ["item/completed"],
+            projectId: "project-1",
+            timelineSequence: 2,
+          },
+          changes: ["events-appended"],
+        });
+      }
+      await vi.advanceTimersByTimeAsync(50);
 
-    invalidateSpy.mockRestore();
-    unsubscribeViewed();
-    effects.dispose();
-  });
+      expect(
+        queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated,
+      ).toBe(true);
+      expect(hasThreadTimelineUnseenEvents(queryClient, "thr_unviewed")).toBe(
+        isBehind,
+      );
+      expect(hasThreadTimelineUnseenEvents(queryClient, "thr_viewed")).toBe(
+        false,
+      );
+      const unviewedInvalidations = invalidateSpy.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(threadTimelineQueryKeyPrefix("thr_unviewed")),
+      );
+      expect(unviewedInvalidations).toHaveLength(1);
+      expect(unviewedInvalidations[0]?.[0]?.refetchType).toBe("none");
+      const viewedInvalidations = invalidateSpy.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(threadTimelineQueryKeyPrefix("thr_viewed")),
+      );
+      expect(viewedInvalidations).toHaveLength(1);
+      expect(viewedInvalidations[0]?.[0]?.refetchType).toBeUndefined();
+      expect(viewedTimelineQueryFn).toHaveBeenCalledTimes(1);
+
+      invalidateSpy.mockRestore();
+      unsubscribeViewed();
+      effects.dispose();
+    },
+  );
 
   it("refreshes the full conversation outline once at turn completion, not for streaming deltas", async () => {
     vi.useFakeTimers();
@@ -1854,7 +1871,11 @@ describe("createRealtimeCacheEffects", () => {
       type: "changed",
       entity: "thread",
       id: "thr_1",
-      metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
+      metadata: {
+        eventTypes: ["item/completed"],
+        projectId: "project-1",
+        timelineSequence: 2,
+      },
       changes: ["events-appended"],
     });
     await vi.advanceTimersByTimeAsync(50);

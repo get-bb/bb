@@ -345,6 +345,7 @@ describe("thread event appends", () => {
         ["events-appended", "read-state-changed"],
         {
           eventTypes: ["client/turn/requested"],
+          timelineSequence: 1,
           projectId: thread.projectId,
         },
       );
@@ -392,7 +393,7 @@ describe("thread event appends", () => {
       expect(notifyThreadSpy).toHaveBeenCalledWith(
         thread.id,
         ["events-appended"],
-        { eventTypes: ["client/turn/requested"] },
+        { eventTypes: ["client/turn/requested"], timelineSequence: 1 },
       );
     } finally {
       await harness.cleanup();

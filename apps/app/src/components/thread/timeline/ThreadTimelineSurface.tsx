@@ -6,7 +6,6 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import { Button } from "@bb/shared-ui/button";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
-import { useDelayedBusyIndicator } from "@/components/ui/route-navigation-indicator";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
@@ -173,9 +172,10 @@ export function ThreadTimelineSurface({
   workspaceRootPath,
 }: ThreadTimelineSurfaceProps) {
   const showCatchUpIndicator =
-    useDelayedBusyIndicator(
-      isCatchingUpTimeline && !isThreadTimelinePending && !timelineError,
-    ) && !showOngoingIndicator;
+    isCatchingUpTimeline &&
+    !isThreadTimelinePending &&
+    !timelineError &&
+    !showOngoingIndicator;
   const showActiveThinking =
     activeThinking !== null && ongoingIndicatorLabel === undefined;
   const activeThinkingText = activeThinking?.text.trim() ?? "";
@@ -202,6 +202,16 @@ export function ThreadTimelineSurface({
   return (
     <TimelineReasoningExpansionProvider key={threadId}>
       <ConversationTimeline className="flex-1">
+        <div className="pointer-events-none sticky top-2 z-10 h-0 self-end">
+          {showCatchUpIndicator ? (
+            <div
+              role="status"
+              className="absolute right-2 top-0 whitespace-nowrap rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground shadow-sm"
+            >
+              {CATCH_UP_INDICATOR_LABEL}
+            </div>
+          ) : null}
+        </div>
         {leadingContent}
         {showLoadOlderRows ? (
           <LoadOlderMessages
@@ -253,18 +263,6 @@ export function ThreadTimelineSurface({
             className="mt-4 text-destructive"
           />
         ) : null}
-        <HeightTransition visible={showCatchUpIndicator}>
-          {showCatchUpIndicator ? (
-            <TimelineStatusIndicator
-              label={
-                <span role="status" className="animate-shine">
-                  {CATCH_UP_INDICATOR_LABEL}
-                </span>
-              }
-              className="mt-4 flex min-h-7 items-center"
-            />
-          ) : null}
-        </HeightTransition>
         <HeightTransition visible={showOngoingIndicator}>
           <TimelineWorkingIndicator
             key={ongoingIndicatorKey}

@@ -177,3 +177,33 @@ describe("ThreadTimelineSurface load-older control", () => {
     expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("ThreadTimelineSurface catch-up indicator", () => {
+  it("hides as soon as the timeline catches up", async () => {
+    vi.useFakeTimers();
+    const props = {
+      activeThinking: null,
+      contextBoundarySeq: null,
+      isThreadTimelinePending: false,
+      showOngoingIndicator: false,
+      threadId: "catch-up",
+      threadRuntimeDisplayStatus: "idle" as const,
+      timelineError: false,
+      timelineRows: [],
+      workspaceRootPath: undefined,
+    };
+    const view = render(
+      <ThreadTimelineSurface {...props} isCatchingUpTimeline />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(screen.getByRole("status").textContent).toBe(
+      "Loading latest messages…",
+    );
+    view.rerender(
+      <ThreadTimelineSurface {...props} isCatchingUpTimeline={false} />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+});

@@ -376,7 +376,7 @@ function startTimelineRefetch(queryClient: QueryClient): void {
 }
 
 function markTimelineHasNewEvents(queryClient: QueryClient): void {
-  markThreadTimelineUnseenEvents(queryClient, "thread-1");
+  markThreadTimelineUnseenEvents(queryClient, "thread-1", 2);
   void queryClient.invalidateQueries({
     queryKey: TIMELINE_QUERY_KEY,
     refetchType: "none",
@@ -1478,6 +1478,22 @@ describe("useThreadTimelineController commits", () => {
     });
     await flushQueryNotifications();
     expect(view.latest().isCatchingUpTimeline).toBe(false);
+  });
+
+  it("keeps a timeline stale when a completed fetch does not include the known event", async () => {
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    markTimelineHasNewEvents(queryClient);
+    const view = renderProfiledController(wrapper);
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(view.latest().isCatchingUpTimeline).toBe(true);
+    expect(hasThreadTimelineUnseenEvents(queryClient, "thread-1")).toBe(true);
   });
 
   it("clears unseen events once the catch-up fetch succeeds", async () => {

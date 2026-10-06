@@ -1,4 +1,5 @@
 import {
+  getLatestThreadSequence,
   getEnvironment,
   getThread,
   type EnvironmentRow,
@@ -101,6 +102,9 @@ export function ensureWorkspaceReadyEventInTransaction(
   });
   if (appendedSequence !== null)
     deps.hub.notifyThread(thread.id, ["events-appended"], {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: thread.id,
+      }),
       eventTypes: ["system/thread-provisioning"],
     });
   return true;

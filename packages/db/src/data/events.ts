@@ -491,6 +491,7 @@ export function insertEvents(
   for (const [threadId, eventTypes] of eventTypesByThreadId) {
     notifier.notifyThread(threadId, ["events-appended"], {
       eventTypes: Array.from(eventTypes),
+      timelineSequence: getLatestThreadSequence(db, { threadId }),
     });
   }
 
@@ -1024,6 +1025,7 @@ export function appendStoredThreadEvent(
   );
   notifier.notifyThread(args.threadId, ["events-appended"], {
     eventTypes: [args.type],
+    timelineSequence: sequence,
   });
   return sequence;
 }
@@ -3454,7 +3456,7 @@ const isNotDiagnosticEvent = sql`(
 )`;
 
 export function getLatestThreadSequence(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: GetLatestThreadSequenceArgs,
 ): number {
   return getHighWaterMarks(db, [args.threadId])[args.threadId] ?? 0;

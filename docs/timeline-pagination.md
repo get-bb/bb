@@ -179,3 +179,19 @@ indexed, bounded lookup. Crossing it rebuilds the prefix so empty completed
 messages keep the same fallback previews even when child payloads are omitted.
 The checkpoint cache retains at most 16 threads and 8 million characters of
 serialized previews and identity data; eviction only affects performance.
+
+## Catch-up feedback
+
+Event-append notifications include `metadata.timelineSequence`, the thread's
+stored event sequence after the write. Both server-side notification coalescing
+and client-side debouncing preserve the highest sequence. The client compares
+this with the cached timeline response's `maxSeq`; only a known newer sequence
+shows catch-up feedback. A refresh caused by cache age, or a delayed notification
+already covered by the cached response, does not show it. Notifications without
+a sequence still invalidate the cache but do not claim that messages are missing.
+
+A successful response acknowledges only sequences through its `maxSeq`, so a
+response that predates another known event cannot clear that event. The catch-up
+indicator disappears immediately when the cache catches up and floats over the
+timeline without adding or removing scroll height. Initial loads without cached
+rows continue to use the loading skeleton.

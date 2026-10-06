@@ -573,6 +573,7 @@ interface RealtimeDirtyContext {
 interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
   backgroundActivityChanged: boolean | undefined;
   eventTypes: readonly ThreadEventType[] | undefined;
+  timelineSequence: number | undefined;
   flushOnce: (key: string) => boolean;
   hasPendingInteraction: boolean | undefined;
   projectId: string | undefined;
@@ -847,6 +848,7 @@ function dirtyThreadSearchQueriesForCompletedTurn({
 
 function dirtyThreadTimelineQueries({
   eventTypes,
+  timelineSequence,
   queryClient,
   threadId,
 }: ThreadRealtimeDirtyContext): void {
@@ -858,11 +860,13 @@ function dirtyThreadTimelineQueries({
   });
   const outlineMayHaveChanged =
     eventTypes === undefined || eventTypes.includes("turn/completed");
+  if (threadId !== undefined && timelineSequence !== undefined) {
+    markThreadTimelineUnseenEvents(queryClient, threadId, timelineSequence);
+  }
   if (
     threadId !== undefined &&
     !hasActiveQueries(queryClient, threadTimelineQueryKeyPrefix(threadId))
   ) {
-    markThreadTimelineUnseenEvents(queryClient, threadId);
     for (const queryKey of [...timelineQueryKeys, ...outlineQueryKeys]) {
       queryClient.invalidateQueries({ queryKey, refetchType: "none" });
     }

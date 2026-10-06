@@ -146,6 +146,12 @@ function mergeThreadChangeMetadata({
     ? next.statusChange
     : (next.statusChange ?? current?.statusChange);
   const metadata: ThreadChangeMetadata = {};
+  const sequences = [current?.timelineSequence, next.timelineSequence].filter(
+    (sequence): sequence is number => sequence !== undefined,
+  );
+  if (sequences.length > 0) {
+    metadata.timelineSequence = Math.max(...sequences);
+  }
   if (eventTypes) {
     metadata.eventTypes = eventTypes;
   }
@@ -203,6 +209,7 @@ function flushThreadInvalidations(
       context: {
         backgroundActivityChanged: undefined,
         eventTypes: undefined,
+        timelineSequence: undefined,
         flushOnce,
         hasPendingInteraction: undefined,
         projectId: undefined,
@@ -221,6 +228,7 @@ function flushThreadInvalidations(
         context: {
           backgroundActivityChanged: metadata?.backgroundActivityChanged,
           eventTypes: metadata?.eventTypes,
+          timelineSequence: metadata?.timelineSequence,
           flushOnce,
           hasPendingInteraction: metadata?.hasPendingInteraction,
           projectId: metadata?.projectId,
@@ -262,6 +270,7 @@ function applyImmediateThreadChanges({
       context: {
         backgroundActivityChanged: merged?.backgroundActivityChanged,
         eventTypes: merged?.eventTypes,
+        timelineSequence: merged?.timelineSequence,
         flushOnce,
         hasPendingInteraction: merged?.hasPendingInteraction,
         projectId: merged?.projectId,

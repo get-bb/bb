@@ -495,6 +495,7 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
       threadId: "thread-1",
     });
 
+    let timelineSequence = 0;
     for (const eventType of [
       "item/agentMessage/delta",
       "item/agentMessage/delta",
@@ -502,6 +503,7 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
     ] as const) {
       hub.notifyThread("thread-1", ["events-appended"], {
         eventTypes: [eventType],
+        timelineSequence: ++timelineSequence,
       });
     }
 
@@ -511,7 +513,10 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
     expect(messagesOf(listSocket)[0]).toMatchObject({
       id: "thread-1",
       changes: ["events-appended"],
-      metadata: { eventTypes: ["item/agentMessage/delta"] },
+      metadata: {
+        eventTypes: ["item/agentMessage/delta"],
+        timelineSequence: 1,
+      },
     });
 
     vi.advanceTimersByTime(999);
@@ -521,7 +526,10 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
     expect(messagesOf(listSocket)[1]).toMatchObject({
       id: "thread-1",
       changes: ["events-appended"],
-      metadata: { eventTypes: ["item/agentMessage/delta", "item/started"] },
+      metadata: {
+        eventTypes: ["item/agentMessage/delta", "item/started"],
+        timelineSequence: 3,
+      },
     });
     expect(detailSocket.messages).toHaveLength(3);
     expect(listAndDetailSocket.messages).toHaveLength(3);
