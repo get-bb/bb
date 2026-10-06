@@ -27,7 +27,7 @@ export const PULL_REQUEST_STATE_DISPLAY: Record<
   open: {
     label: "Open",
     icon: "GitPullRequestArrow",
-    className: "text-success-foreground",
+    className: "text-success",
     dotClass: "bg-success",
   },
   draft: {
@@ -55,7 +55,7 @@ const CHECKS_DISPLAY: Record<ThreadPullRequestChecksState, PullRequestDisplay> =
     passing: {
       label: "Checks passing",
       icon: "CircleCheck",
-      className: "text-success-foreground",
+      className: "text-success",
     },
     failing: {
       label: "Checks failing",
@@ -84,7 +84,7 @@ const REVIEW_DISPLAY: Record<ThreadPullRequestReviewState, PullRequestDisplay> =
     approved: {
       label: "Approved",
       icon: "CircleCheck",
-      className: "text-success-foreground",
+      className: "text-success",
     },
     changes_requested: {
       label: "Changes requested",
@@ -115,7 +115,7 @@ const MERGEABILITY_DISPLAY: Record<
   mergeable: {
     label: "Mergeable",
     icon: "CircleCheck",
-    className: "text-success-foreground",
+    className: "text-success",
   },
   conflicts: {
     label: "Conflicts",
@@ -176,7 +176,7 @@ const ATTENTION_DISPLAY: Record<
   ready_to_merge: {
     label: "Ready to merge",
     icon: "GitPullRequestArrow",
-    className: "text-success-foreground",
+    className: "text-success",
   },
   merged: PULL_REQUEST_STATE_DISPLAY.merged,
   closed: PULL_REQUEST_STATE_DISPLAY.closed,
