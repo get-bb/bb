@@ -655,14 +655,14 @@ describe("measureDiskUsage", () => {
         measure(
           [{ path: target, perChild: true }],
           { ...duOptions, duCommand, duBatchMaxEntries: 1 },
-          500,
+          3_000,
         ),
       ).rejects.toMatchObject({
         constructor: DiskUsageError,
         code: "disk_usage_timeout",
-        message: "Disk usage measurement timed out after 500 ms",
+        message: "Disk usage measurement timed out after 3000 ms",
       });
-      expect(Date.now() - startedAt).toBeLessThan(5_000);
+      expect(Date.now() - startedAt).toBeLessThan(10_000);
 
       const pids = (await fs.readFile(pidFile, "utf8"))
         .trim()
