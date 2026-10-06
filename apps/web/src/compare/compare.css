@@ -2053,3 +2053,253 @@
     animation: none;
   }
 }
+
+.cmp-ledger {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 20px 22px 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 24px 60px color-mix(in oklab, var(--shade) 14%, transparent);
+  text-align: left;
+}
+
+.cmp-ledger-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.cmp-ledger-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
+.cmp-ledger-title {
+  margin: 14px 0 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--ink-strong);
+}
+
+.cmp-ledger-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cmp-ledger-label {
+  margin: 20px 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+
+.cmp-ledger-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cmp-ledger-thread {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+.cmp-ledger-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.cmp-ledger-agent {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cmp-ledger-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cmp-ledger-branch-ic {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.cmp-ledger-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--add);
+  white-space: nowrap;
+}
+
+.cmp-ledger-state-ic {
+  width: 13px;
+  height: 13px;
+}
+
+.cmp-ledger-comment {
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+}
+
+.cmp-ledger-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.cmp-ledger-time {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--subtle);
+}
+
+.cmp-ledger-comment p {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+
+.cmp-hero:has(.cmp-hero-visual) {
+  padding: 28px 0 40px;
+}
+
+.cmp-hero:has(.cmp-hero-visual) .cmp-logos {
+  margin-bottom: 22px;
+}
+
+.cmp-hero:has(.cmp-hero-visual) .cmp-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.cmp-hero:has(.cmp-hero-visual) .cmp-vs {
+  margin-bottom: 26px;
+}
+
+.cmp-hero:has(.cmp-hero-visual) h1 {
+  max-width: 900px;
+  font-size: clamp(30px, 4.4vw, 52px);
+}
+
+.cmp-hero:has(.cmp-hero-visual) .sub {
+  max-width: 640px;
+  margin-top: 16px;
+}
+
+.cmp-hero:has(.cmp-hero-visual) .install-options {
+  margin-top: 28px;
+}
+
+.cmp-hero-visual .cmp-tasks {
+  max-width: 1180px;
+  margin-top: 0;
+}
+
+.cmp-hero-visual .cmp-tasks-board {
+  gap: 16px;
+  padding: 18px 18px 30px;
+}
+
+.cmp-hero-visual .cmp-tasks-card {
+  gap: 7px;
+  padding: 12px 14px 13px;
+}
+
+.cmp-hero-visual .cmp-tasks-title {
+  font-size: 15px;
+}
+
+.cmp-hero-visual .cmp-tasks-col-head {
+  font-size: 14px;
+}
+
+@media (max-width: 720px) {
+  .cmp-hero:has(.cmp-hero-visual) {
+    padding: 16px 0 32px;
+  }
+
+  .cmp-hero:has(.cmp-hero-visual) .cmp-logos {
+    margin-bottom: 16px;
+  }
+
+  .cmp-hero:has(.cmp-hero-visual) .cmp-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  .cmp-hero:has(.cmp-hero-visual) h1 {
+    font-size: 30px;
+  }
+
+  .cmp-hero:has(.cmp-hero-visual) .sub {
+    margin-top: 12px;
+    font-size: 15.5px;
+  }
+
+  .cmp-hero:has(.cmp-hero-visual) .install-options {
+    margin-top: 20px;
+  }
+
+  .cmp-hero-visual .cmp-tasks-board {
+    gap: 10px;
+    padding: 12px 12px 20px;
+  }
+
+  .cmp-hero-visual .cmp-tasks-card {
+    padding: 9px 10px 10px;
+  }
+
+  .cmp-hero-visual .cmp-tasks-title {
+    font-size: 13.5px;
+  }
+}

@@ -1,31 +1,47 @@
 import vibeKanbanIcon from "../assets/competitors/vibe-kanban.png";
 import type { CompareHighlight, Comparison } from "./comparisons";
+import { CLOSER, FAQ_AGENTS, FAQ_REVIEW, cell, price } from "./compare-content";
 import {
-  CLOSER,
-  FAQ_GET_STARTED,
-  cell,
-  faqFree,
-  price,
-} from "./compare-content";
-import { AGENTS_COPY, agentsSection } from "./compare-sections";
-import { TasksBoard, type BrandLogo } from "./compare-visuals";
+  AGENTS_COPY,
+  agentsSection,
+  pluginsSection,
+  type SectionCopy,
+} from "./compare-sections";
+import { TaskLedger, TasksBoard, type BrandLogo } from "./compare-visuals";
 
 const VIBE_KANBAN_LOGO: BrandLogo = { kind: "image", src: vibeKanbanIcon };
 
-const BOARD_HIGHLIGHT: CompareHighlight = {
-  title: "Your board, with an agent behind every card",
-  wide: true,
-  visual: <TasksBoard />,
+const LEDGER_HIGHLIGHT: CompareHighlight = {
+  title: "Know where every task stands",
+  wide: false,
+  visual: <TaskLedger />,
   body: (
     <>
       <p>
-        bb has a task board built in, with IDs, labels, priorities, and
-        subtasks. Choose Delegate on a card and an agent starts on it while the
-        card moves to In Progress.
+        Each card keeps its agent threads, branches, comments, and subtasks in
+        one place. Agents post progress on the card and move it to In Review
+        when they’re done.
       </p>
       <p>
-        Comment on the card to steer it. When the work is done, it lands in In
-        Review, ready for you.
+        Come back after a break and see what’s running, what’s waiting on you,
+        and which agent did what, without hunting through terminals.
+      </p>
+    </>
+  ),
+};
+
+const BUILD_COPY: SectionCopy = {
+  title: "Missing something? Build it.",
+  body: (
+    <>
+      <p>
+        bb is open source and made to be changed. Install a plugin from the{" "}
+        <a href="/marketplace">marketplace</a>, or ask an agent to build the
+        panel or command you miss.
+      </p>
+      <p>
+        It shows up right away, and it’s yours to keep: no hosted service to
+        switch off.
       </p>
     </>
   ),
@@ -35,13 +51,13 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
   slug: "vibe-kanban-alternative",
   title: "Vibe Kanban Alternative: Bring Your Board to bb",
   description:
-    "Vibe Kanban’s maker shut down. bb is a free, open-source app with a built-in task board that hands work to Claude Code, Codex, and other agents.",
+    "Vibe Kanban shut down. bb is a free, open-source app with a local kanban board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
   competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
-  headline: "Keep your tasks going in bb",
-  sub: "Vibe Kanban shut down, but you can keep working: write a task, hand it to Claude Code, Codex, or any agent, and review the diff.",
-  heroVisual: null,
-  tailored: BOARD_HIGHLIGHT,
-  sections: [agentsSection(AGENTS_COPY)],
+  headline: "Vibe Kanban shut down. Bring your board to bb.",
+  sub: "A kanban board on your own machine, with no sign-in. Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
+  heroVisual: <TasksBoard />,
+  tailored: LEDGER_HIGHLIGHT,
+  sections: [agentsSection(AGENTS_COPY), pluginsSection(BUILD_COPY)],
   tableNote: null,
   table: [
     {
@@ -59,8 +75,8 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
         },
         {
           feature: "Active development",
-          bb: cell("yes", "Regular releases"),
-          competitor: cell("partial", "Community updates"),
+          bb: cell("yes", "Weekly releases"),
+          competitor: cell("partial", "No release since April"),
         },
       ],
     },
@@ -69,11 +85,11 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
       rows: [
         {
           feature: "Kanban board",
-          bb: cell("yes", "Built in"),
-          competitor: cell("partial", "Removed in 0.1.44"),
+          bb: cell("yes", "Local, no sign-in"),
+          competitor: cell("partial", "Projects off since 0.1.44"),
         },
         {
-          feature: "Git worktrees",
+          feature: "Git worktree per task",
           bb: cell("yes"),
           competitor: cell("yes"),
         },
@@ -83,14 +99,14 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
           competitor: cell("yes"),
         },
         {
+          feature: "Merge from the app",
+          bb: cell("yes", "Checks and Merge button"),
+          competitor: cell("yes"),
+        },
+        {
           feature: "Agent-to-agent handoff",
           bb: cell("yes", "Spawn, message, wait"),
           competitor: cell("no"),
-        },
-        {
-          feature: "Mobile app",
-          bb: cell("yes", "iOS beta, Android alpha"),
-          competitor: cell("no", "Browser only"),
         },
       ],
     },
@@ -100,54 +116,53 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
     {
       title: "Switching from Vibe Kanban",
       items: [
-        FAQ_GET_STARTED,
+        {
+          question: "Is Vibe Kanban shut down?",
+          answer: (
+            <p>
+              Yes. Its maker, bloop,{" "}
+              <a href="https://www.vibekanban.com/blog/shutdown">shut down</a>{" "}
+              in April 2026 and turned off its cloud, including shared projects
+              and issues. Version 0.1.44 turned off Projects for everyone, and
+              there hasn’t been a release since. Local workspaces still run.
+            </p>
+          ),
+        },
         {
           question: "What’s the difference between bb and Vibe Kanban?",
           answer: (
             <p>
               Both run Claude Code, Codex, and other coding agents in Git
-              worktrees, and both are free and open source. bb includes the task
-              board that Vibe Kanban’s official build no longer ships, and adds
-              agents that review each other’s work, scheduled automations, and
-              free access from your phone.
+              worktrees, and both are free and open source. bb keeps its task
+              board on your machine with no sign-in, and its agents can start,
+              message, and review each other’s work. bb is actively developed,
+              with a release every week.
             </p>
           ),
         },
         {
-          question: "Is Vibe Kanban still maintained?",
+          question: "Do I need an account to use bb?",
           answer: (
             <p>
-              Vibe Kanban’s maker, bloop,{" "}
-              <a href="https://www.vibekanban.com/blog/shutdown">shut down</a>{" "}
-              in April 2026 and turned off its hosted features. The open-source
-              project still gets community updates and local workspaces still
-              work, but the official build removed the board in version 0.1.44.
+              No. bb runs on your computer, and your tasks stay in its local
+              database. Signing in is optional and only turns on bb’s hosted
+              extras, like remote access.
             </p>
           ),
         },
         {
-          question: "Is there a Vibe Kanban alternative with a board?",
+          question: "Can I bring my Vibe Kanban tasks and worktrees?",
           answer: (
             <p>
-              Yes: bb. Its Tasks board is built in, with list and board views,
-              labels, priorities, and subtasks, and Delegate hands any task to
-              an agent in its own thread. It’s free and MIT-licensed.{" "}
-              <a href="/download/macos">Download bb</a>.
+              Yes. Your branches and worktrees are plain Git, so add the same
+              repo to bb and pick up where you left off. If you exported your
+              Vibe Kanban issues, ask a bb agent to turn each one into a task on
+              your board.
             </p>
           ),
         },
-        {
-          question: "Can I keep using Vibe Kanban alongside bb?",
-          answer: (
-            <p>
-              Yes, and there’s nothing to migrate. Both work with Git worktrees
-              on the same repo, so add the repo to bb and move one project at a
-              time. If you exported your Vibe Kanban issues, a bb agent can turn
-              each one into a task.
-            </p>
-          ),
-        },
-        faqFree(null),
+        FAQ_REVIEW,
+        FAQ_AGENTS,
       ],
     },
   ],
