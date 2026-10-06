@@ -1048,11 +1048,13 @@
 
 .cmp-compose-stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   margin: 0 12px 12px;
 }
 
 .cmp-compose-stack > .cmp-composer {
   grid-area: 1 / 1;
+  min-width: 0;
   margin: 0;
 }
 
@@ -1063,6 +1065,8 @@
 
 .cmp-input-stack {
   display: grid;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .cmp-input-stack > * {
