@@ -40,7 +40,7 @@ function describeStorageError(error: Error): string {
 }
 
 const STORAGE_ICON_BUTTON_CLASS =
-  "shrink-0 text-subtle-foreground hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
+  "size-5 shrink-0 text-subtle-foreground hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:-my-2 max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
 
 export function ThreadStorageSection({
   controller,
@@ -63,54 +63,50 @@ export function ThreadStorageSection({
       label="Thread storage"
       count={loadedFiles.length}
       trailing={
-        isSearchOpen ? null : (
+        isSearchOpen ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <Input
+              autoFocus
+              aria-label="Search files"
+              placeholder="Search files"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  closeSearch();
+                }
+              }}
+              className={cn(
+                "h-5 min-w-0 flex-1 rounded px-1.5 py-0 focus-visible:ring-0 max-md:pointer-coarse:-my-2 max-md:pointer-coarse:h-9",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Close search"
+              onClick={closeSearch}
+              className={STORAGE_ICON_BUTTON_CLASS}
+            >
+              <Icon name="X" />
+            </Button>
+          </div>
+        ) : (
           <Button
             type="button"
             variant="ghost"
             size="icon"
             aria-label="Search files"
             onClick={openSearch}
-            className={cn(
-              "size-5 max-md:pointer-coarse:-my-2",
-              STORAGE_ICON_BUTTON_CLASS,
-            )}
+            className={STORAGE_ICON_BUTTON_CLASS}
           >
             <Icon name="Search" />
           </Button>
         )
       }
     >
-      {isSearchOpen ? (
-        <div className="mb-1 flex h-7 items-center gap-1 max-md:pointer-coarse:h-10">
-          <Input
-            autoFocus
-            aria-label="Search files"
-            placeholder="Search files"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                closeSearch();
-              }
-            }}
-            className={cn(
-              "h-7 focus-visible:ring-0 max-md:pointer-coarse:h-10",
-              COARSE_POINTER_TEXT_SM_CLASS,
-            )}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Close search"
-            onClick={closeSearch}
-            className={cn("size-6", STORAGE_ICON_BUTTON_CLASS)}
-          >
-            <Icon name="X" />
-          </Button>
-        </div>
-      ) : null}
       {filesError ? (
         <EmptyState
           message={describeStorageError(filesError)}
