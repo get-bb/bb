@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import type { PluginInstallJob } from "@bb/server-contract";
 import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
 
-function prefersRespondAsync(context: Context): boolean {
+export function prefersRespondAsync(context: Context): boolean {
   return (context.req.header("prefer") ?? "")
     .split(",")
     .some(

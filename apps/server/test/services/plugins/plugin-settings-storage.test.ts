@@ -1,3 +1,4 @@
+import { createPluginUpdateJobs } from "../../../src/services/plugins/plugin-update-jobs.js";
 import {
   mkdtemp,
   mkdir,
@@ -296,6 +297,7 @@ describe("plugin settings + storage", () => {
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),
+        createPluginUpdateJobs({ notifyChanged: () => {} }),
       );
       const got = await app.request("/plugins/self-configuring/settings");
       const body = (await got.json()) as {
@@ -360,6 +362,7 @@ describe("plugin settings + storage", () => {
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),
+        createPluginUpdateJobs({ notifyChanged: () => {} }),
       );
 
       const got = await app.request("/plugins/configurable/settings");

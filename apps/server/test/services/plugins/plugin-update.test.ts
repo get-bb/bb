@@ -1,3 +1,6 @@
+import { registerPluginUpdateJobRoutes } from "../../../src/routes/plugin-update-jobs.js";
+import { pluginUpdateJobResponseSchema } from "@bb/server-contract";
+import { createPluginUpdateJobs } from "../../../src/services/plugins/plugin-update-jobs.js";
 import { execFile } from "node:child_process";
 import {
   mkdtemp,
@@ -363,11 +366,14 @@ describe("plugin update service and routes", () => {
     });
     await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
+    const updateJobs = createPluginUpdateJobs({ notifyChanged: () => {} });
+    registerPluginUpdateJobRoutes(app, updateJobs);
     registerPluginRoutes(
       app,
       { config: { serverPort: 3334 }, db },
       service,
       createPluginInstallJobs({ notifyChanged: () => {} }),
+      updateJobs,
     );
   });
 
@@ -533,6 +539,51 @@ describe("plugin update service and routes", () => {
     await run("git", ["clone", "--quiet", "--no-checkout", sourceRepo, clone]);
     await rename(join(clone, ".git"), join(rootDir, ".git"));
   }
+
+  it("accepts an update before activation finishes and exposes its result after reconnect", async () => {
+    const nextCommit = await commitPlugin(repo, "1.1.0");
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    afterArtifactPromoted = async () => gate;
+    const pending = app.request("/plugins/updater/update", {
+      method: "POST",
+      headers: { "content-type": "application/json", prefer: "respond-async" },
+      body: "{}",
+    });
+    let response: Response | undefined;
+    try {
+      response = await Promise.race([
+        pending,
+        new Promise<undefined>((resolve) => setTimeout(resolve, 250)),
+      ]);
+      expect(response?.status).toBe(202);
+    } finally {
+      release();
+      await pending;
+    }
+    if (response === undefined) return;
+    const { job } = pluginUpdateJobResponseSchema.parse(await response.json());
+    await vi.waitFor(
+      async () => {
+        const got = await app.request(`/plugins/update-jobs/${job.id}`);
+        expect(await got.json()).toMatchObject({
+          job: {
+            state: "completed",
+            pluginId: "updater",
+            result: {
+              applied: true,
+              outcome: "updated",
+              to: { version: nextCommit },
+            },
+          },
+        });
+      },
+      { timeout: 10_000 },
+    );
+    expect(getInstalledPlugin(db, "updater")?.version).toBe("1.1.0");
+  });
 
   it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
     db.$client

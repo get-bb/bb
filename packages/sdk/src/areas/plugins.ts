@@ -1,3 +1,9 @@
+import {
+  pluginUpdateJobResponseSchema,
+  pluginUpdateJobListResponseSchema,
+  type PluginUpdateJob,
+} from "@bb/server-contract";
+export type { PluginUpdateJob } from "@bb/server-contract";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   installedPluginSchema,
@@ -271,6 +277,11 @@ export interface PluginInstallJobsArea {
   list(args?: PluginInstallJobListArgs): Promise<PluginInstallJob[]>;
 }
 
+export interface PluginUpdateJobsArea {
+  get(args: { jobId: string }): Promise<PluginUpdateJob>;
+  list(args?: { signal?: AbortSignal }): Promise<PluginUpdateJob[]>;
+}
+
 export interface PluginsArea {
   experimental_discoverRpc(
     args?: PluginRpcDiscoveryQuery,
@@ -285,6 +296,8 @@ export interface PluginsArea {
     args?: PluginPruneCacheArgs,
   ): Promise<PluginPruneCacheResult>;
   applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
+  experimental_startUpdate(args: PluginIdArgs): Promise<PluginUpdateJob>;
+  experimental_updateJobs: PluginUpdateJobsArea;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
     args?: PluginCheckUpdatesArgs,
@@ -352,6 +365,40 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   function installJobPath(jobId: string, suffix = ""): string {
     const id = z.string().min(1).parse(jobId);
     return `/api/v1/plugins/install-jobs/${encodeURIComponent(id)}${suffix}`;
+  }
+
+  const updateJobs: PluginUpdateJobsArea = {
+    async get(input) {
+      const jobId = z.string().min(1).parse(input.jobId);
+      const response = await requestParsed(
+        `/api/v1/plugins/update-jobs/${encodeURIComponent(jobId)}`,
+        pluginUpdateJobResponseSchema,
+      );
+      return response.job;
+    },
+    async list(input = {}) {
+      const response = await requestParsed(
+        "/api/v1/plugins/update-jobs",
+        pluginUpdateJobListResponseSchema,
+        { signal: input.signal },
+      );
+      return response.jobs;
+    },
+  };
+
+  function requestUpdate(input: PluginIdArgs) {
+    return requestParsed(
+      pluginPath(input.pluginId, "/update"),
+      z.union([pluginUpdateJobResponseSchema, pluginApplyUpdateResultSchema]),
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          prefer: "respond-async",
+        },
+        body: JSON.stringify(pluginApplyUpdateRequestSchema.parse({})),
+      },
+    );
   }
 
   const installJobs: PluginInstallJobsArea = {
@@ -529,13 +576,26 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
 
   return {
     async applyUpdate(input) {
-      const body = pluginApplyUpdateRequestSchema.parse({});
-      return requestParsed(
-        pluginPath(input.pluginId, "/update"),
-        pluginApplyUpdateResultSchema,
-        jsonInit("POST", body),
+      const response = await requestUpdate(input);
+      if (!("job" in response)) return response;
+      let job = response.job;
+      while (job.state === "queued" || job.state === "running") {
+        await new Promise((resolve) =>
+          setTimeout(resolve, INSTALL_JOB_POLL_INTERVAL_MS),
+        );
+        job = await updateJobs.get({ jobId: job.id });
+      }
+      if (job.state === "completed") return job.result;
+      throw new Error(job.error);
+    },
+    async experimental_startUpdate(input) {
+      const response = await requestUpdate(input);
+      if ("job" in response) return response.job;
+      throw new Error(
+        "Update completed without a job; this BB server predates background updates",
       );
     },
+    experimental_updateJobs: updateJobs,
     async experimental_discoverRpc(input = {}) {
       const query = pluginRpcDiscoveryQuerySchema.parse(input);
       const params = new URLSearchParams();

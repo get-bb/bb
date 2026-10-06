@@ -1,3 +1,4 @@
+import { PluginUpdateJobsHost } from "./components/plugin/PluginUpdateJobsHost";
 import { LazyThreadDetailView } from "./views/thread-detail/LazyThreadDetailView";
 import { LazyRootComposeView } from "./views/LazyRootComposeView";
 import { useRouteState } from "./hooks/useRouteState";
@@ -288,7 +289,8 @@ export function AppRoutes() {
     if (isThreadView) void trackCriticalLoad(LazyThreadDetailView.preload());
   }, [isThreadView]);
   useEffect(() => {
-    if (isRootComposeView) void trackCriticalLoad(LazyRootComposeView.preload());
+    if (isRootComposeView)
+      void trackCriticalLoad(LazyRootComposeView.preload());
   }, [isRootComposeView]);
   return (
     <AppLayout>
@@ -484,6 +486,7 @@ export function App() {
               <ServerMoveOverlay />
               <AppUpdateHost />
               <PluginInstallJobsHost />
+              <PluginUpdateJobsHost />
             </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>

@@ -1295,3 +1295,7 @@ export function pluginInstallJobsQueryKey() {
 export function systemProviderCatalogQueryKey() {
   return [SYSTEM_PROVIDERS_QUERY_KEY, "catalog"] as const;
 }
+
+export function pluginUpdateJobsQueryKey() {
+  return ["plugin-update-jobs"] as const;
+}

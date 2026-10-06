@@ -3757,3 +3757,9 @@ should remain alongside it.
 Archives an environment's active thread trees through the host flow, including optimistic cache updates, pane cleanup, shared toast styling, and one ten-second Undo action. Undo restores only returned archived IDs, sequentially with lifecycle owners first. Archive failures show a host error toast and reject; Undo failures show a host error toast.
 
 Stabilize after verifying group archive and Undo with descendants, already archived threads, split panes, navigation during the Undo window, and failure rollback across sidebar organization modes.
+
+## `PluginBbSdk.plugins.experimental_startUpdate` and `experimental_updateJobs`
+
+Starts a server-owned plugin update and returns its job immediately. `experimental_updateJobs.list/get` exposes queued/running phases and terminal update, rollback, or failure results. Jobs continue across client disconnects; finished jobs remain for ten minutes. Jobs are in memory and do not survive server restarts. `applyUpdate` retains its result contract by polling the job; raw callers without `Prefer: respond-async` retain the synchronous response. Running updates cannot be cancelled during activation or rollback.
+
+Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.

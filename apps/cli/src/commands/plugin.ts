@@ -1291,8 +1291,57 @@ export function registerPluginCommands(
     );
 
   plugin
+    .command("update-jobs [job-id]")
+    .description(
+      "Show background plugin updates and results retained for ten minutes; running jobs survive client disconnections, but not a server restart",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (jobId: string | undefined, opts: JsonOutputOptions) => {
+        const updates =
+          createCliBbSdk(getUrl()).plugins.experimental_updateJobs;
+        const jobs =
+          jobId === undefined
+            ? await updates.list()
+            : [await updates.get({ jobId })];
+        if (opts.json) {
+          outputJson(opts, { jobs });
+          return;
+        }
+        if (jobs.length === 0) {
+          console.log("No recent plugin updates.");
+          return;
+        }
+        console.log(
+          renderBorderlessTable(
+            {
+              head: ["Job", "Plugin", "State", "Detail"],
+              colWidths: [38, 28, 12, 60],
+              trimTrailingWhitespace: true,
+            },
+            jobs.map((job) => [
+              job.id,
+              job.displayName,
+              job.state,
+              job.state === "running"
+                ? job.phase
+                : job.state === "failed"
+                  ? job.error
+                  : job.state === "completed"
+                    ? (job.result.detail ?? job.result.outcome)
+                    : "",
+            ]),
+          ),
+        );
+      }),
+    );
+
+  plugin
     .command("update [id]")
-    .description("Update one plugin, or all plugins with --all")
+    .description(
+      "Update one plugin, or all plugins with --all; waits for the server job by default",
+    )
+    .option("--no-wait", "Start background updates and return their job IDs")
     .option("--all", "Update every plugin with a compatible update")
     .option("--yes", "Skip confirmation prompts")
     .action(
@@ -1302,6 +1351,7 @@ export function registerPluginCommands(
           opts: {
             all?: boolean;
             yes?: boolean;
+            wait?: boolean;
           },
         ) => {
           if ((id === undefined) === !opts.all) {
@@ -1354,6 +1404,19 @@ export function registerPluginCommands(
               "Refusing to update without confirmation — re-run with --yes.",
               opts.yes === true,
             );
+
+            if (opts.wait === false) {
+              const job = await sdk.plugins.experimental_startUpdate({
+                pluginId: result.id,
+              });
+              console.log(
+                `Updating ${job.displayName} in the background (job ${job.id}).`,
+              );
+              console.log(
+                `Follow it with \`bb plugin update-jobs ${job.id}\`.`,
+              );
+              continue;
+            }
 
             let mutation: PluginApplyUpdateResult;
             try {

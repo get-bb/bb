@@ -304,6 +304,8 @@ type ExpectedPluginsKey =
   | "experimental_setSafeMode"
   | "experimental_pruneCache"
   | "applyUpdate"
+  | "experimental_startUpdate"
+  | "experimental_updateJobs"
   | "callRpc"
   | "catalog"
   | "checkUpdates"

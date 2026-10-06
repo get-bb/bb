@@ -58,6 +58,7 @@ import {
   serverMoveStatusQueryKey,
   systemAppUpdateQueryKey,
   pluginInstallJobsQueryKey,
+  pluginUpdateJobsQueryKey,
   sidebarNavigationQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
@@ -547,6 +548,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyEnvironmentProviderQueries,
       reconcilePluginFrontendBundles,
     ],
+  },
+  "plugin-update-jobs-changed": {
+    dirty: [() => [pluginUpdateJobsQueryKey()]],
   },
   "plugin-install-jobs-changed": {
     dirty: [dirtyPluginInstallJobQueries],

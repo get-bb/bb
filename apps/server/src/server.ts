@@ -1,3 +1,5 @@
+import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
+import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import {
   enrolledInstallerScript,
@@ -887,6 +889,10 @@ export function createApp(
   const pluginInstallJobs = createPluginInstallJobs({
     notifyChanged: () => deps.hub.notifySystem(["plugin-install-jobs-changed"]),
   });
+  const pluginUpdateJobs = createPluginUpdateJobs({
+    notifyChanged: () => deps.hub.notifySystem(["plugin-update-jobs-changed"]),
+  });
+  registerPluginUpdateJobRoutes(publicApi, pluginUpdateJobs);
   registerPluginInstallJobRoutes(publicApi, pluginInstallJobs);
   registerPluginCatalogRoutes(
     publicApi,
@@ -898,6 +904,7 @@ export function createApp(
     deps,
     pluginService,
     pluginInstallJobs,
+    pluginUpdateJobs,
     upgradeWebSocket,
   );
   registerSkillsRegistryRoutes(publicApi, deps);

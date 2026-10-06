@@ -1243,6 +1243,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create threads, send messages, and manage projects and machines",
           "Do what the [bb CLI](cli) and the app can do",
           "Have the threads it creates attributed to the plugin",
+          "Start plugin updates with experimental_startUpdate and follow progress or rollback with experimental_updateJobs; applyUpdate waits for the result",
         ],
         apiSymbols: [
           "BbPluginApi",
@@ -1253,6 +1254,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.plugins.experimental_getSafeMode",
           "PluginBbSdk.plugins.experimental_setSafeMode",
           "PluginBbSdk.plugins.experimental_pruneCache",
+          "PluginBbSdk.plugins.experimental_startUpdate",
+          "PluginBbSdk.plugins.experimental_updateJobs",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

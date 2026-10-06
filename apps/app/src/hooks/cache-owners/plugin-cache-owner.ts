@@ -1,3 +1,5 @@
+import type { PluginUpdateJob } from "@bb/server-contract";
+import { trackPluginUpdate } from "@/lib/plugin-update-tracking";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   pluginListQueryOptions,
@@ -8,6 +10,7 @@ import {
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginListQueryKeyPrefix,
   pluginInstallJobsQueryKey,
+  pluginUpdateJobsQueryKey,
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
   pluginSafeModeQueryKey,
@@ -111,4 +114,20 @@ export function invalidatePluginMarketplaces(args: {
     queryKey: pluginMarketplacesQueryKey(),
   });
   invalidatePluginCatalogSearch(args);
+}
+
+export function applyPluginUpdateJob(args: {
+  queryClient: QueryClient;
+  job: PluginUpdateJob;
+}): void {
+  trackPluginUpdate(args.job.id, true);
+  args.queryClient.setQueryData<PluginUpdateJob[]>(
+    pluginUpdateJobsQueryKey(),
+    (current) => {
+      const jobs = current ?? [];
+      return jobs.some((job) => job.id === args.job.id)
+        ? jobs.map((job) => (job.id === args.job.id ? args.job : job))
+        : [...jobs, args.job];
+    },
+  );
 }

@@ -68,6 +68,46 @@ export type PluginApplyUpdateResult = z.infer<
   typeof pluginApplyUpdateResultSchema
 >;
 
+export const pluginUpdatePhaseSchema = z.enum([
+  "preparing",
+  "activating",
+  "checking",
+  "rolling-back",
+]);
+export type PluginUpdatePhase = z.infer<typeof pluginUpdatePhaseSchema>;
+
+const pluginUpdateJobFields = {
+  id: z.string().min(1),
+  pluginId: z.string().min(1),
+  displayName: z.string().min(1),
+};
+
+export const pluginUpdateJobSchema = z.discriminatedUnion("state", [
+  z.object({ ...pluginUpdateJobFields, state: z.literal("queued") }),
+  z.object({
+    ...pluginUpdateJobFields,
+    state: z.literal("running"),
+    phase: pluginUpdatePhaseSchema,
+  }),
+  z.object({
+    ...pluginUpdateJobFields,
+    state: z.literal("completed"),
+    result: pluginApplyUpdateResultSchema,
+  }),
+  z.object({
+    ...pluginUpdateJobFields,
+    state: z.literal("failed"),
+    error: z.string(),
+  }),
+]);
+export type PluginUpdateJob = z.infer<typeof pluginUpdateJobSchema>;
+export const pluginUpdateJobResponseSchema = z.object({
+  job: pluginUpdateJobSchema,
+});
+export const pluginUpdateJobListResponseSchema = z.object({
+  jobs: z.array(pluginUpdateJobSchema),
+});
+
 export const pluginSourceHistoryEntrySchema = z.object({
   version: z.string(),
   activatedAt: z.number(),

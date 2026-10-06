@@ -62,6 +62,7 @@ export const SYSTEM_CHANGE_KINDS = [
   "config-changed",
   "plugins-changed",
   "plugin-install-jobs-changed",
+  "plugin-update-jobs-changed",
   "provider-registrations-changed",
   "ui-preferences-changed",
   "environment-availability-changed",
