@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { GUIDE_LINKS } from "./content-links";
 import { SiteFooter, SiteNav } from "./site-chrome";
 
 describe("site navigation", () => {
@@ -11,7 +10,7 @@ describe("site navigation", () => {
     const links = [...navLinks.matchAll(/<a [^>]*>/gu)].map(
       (match) => match[0],
     );
-    expect(links).toHaveLength(7 + GUIDE_LINKS.length);
+    expect(links).toHaveLength(7);
     expect(html).toMatch(
       /<details class="nav-menu"><summary class="nav-current">Plugins/,
     );
@@ -42,9 +41,7 @@ describe("site navigation", () => {
 
   it("marks Changelog current on the changelog route", () => {
     const html = renderToStaticMarkup(<SiteNav current="changelog" />);
-    expect(html).toContain(
-      'class="nav-current nav-wide" href="/changelog">Changelog',
-    );
+    expect(html).toContain('class="nav-current" href="/changelog">Changelog');
     expect(html).toContain("<summary>Plugins");
     const footer = renderToStaticMarkup(<SiteFooter />);
     expect(footer).toContain('href="/changelog">Changelog');
@@ -55,7 +52,7 @@ describe("site navigation", () => {
     const footer = renderToStaticMarkup(
       <SiteFooter current="/compare/superset-alternative" />,
     );
-    for (const title of ["Product", "Guides", "Compare", "Community"]) {
+    for (const title of ["Product", "Compare", "Community"]) {
       expect(footer).toContain(`<h2 class="footer-title">${title}</h2>`);
     }
     expect(footer).toContain(

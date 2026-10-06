@@ -1,27 +1,37 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 import { ComparePage, compareHead } from "../compare/compare-page";
 import { getComparison } from "../compare/comparisons";
+import { GuidePage, guideHead, loadGuide } from "../guides/guide-page";
 
 export const Route = createFileRoute("/compare/$slug")({
-  loader: ({ params }) => {
-    if (!getComparison(params.slug)) {
-      throw notFound();
-    }
-    return { slug: params.slug };
-  },
+  loader: ({ params }) =>
+    getComparison(params.slug)
+      ? { kind: "comparison" as const, slug: params.slug }
+      : { kind: "guide" as const, ...loadGuide("compare", params.slug) },
   head: ({ loaderData }) => {
-    const comparison = loaderData ? getComparison(loaderData.slug) : undefined;
-    return comparison ? compareHead(comparison) : { meta: [{ title: "bb" }] };
+    const comparison =
+      loaderData?.kind === "comparison"
+        ? getComparison(loaderData.slug)
+        : undefined;
+    if (comparison) {
+      return compareHead(comparison);
+    }
+    return guideHead(
+      loaderData?.kind === "guide" ? loaderData.guide : undefined,
+    );
   },
   component: CompareRoute,
 });
 
 function CompareRoute() {
-  const { slug } = Route.useLoaderData();
-  const comparison = getComparison(slug);
+  const data = Route.useLoaderData();
+  if (data.kind === "guide") {
+    return <GuidePage guide={data.guide} />;
+  }
+  const comparison = getComparison(data.slug);
   if (!comparison) {
-    throw new Error(`Comparison ${slug} is not registered`);
+    throw new Error(`Comparison ${data.slug} is not registered`);
   }
   return <ComparePage comparison={comparison} />;
 }

@@ -2,7 +2,15 @@ import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState } from "react";
+import {
+  cloneElement,
+  Fragment,
+  isValidElement,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { useInitAnalytics } from "../landing/analytics";
 import {
@@ -11,7 +19,6 @@ import {
   useScrollReveal,
 } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
-import { brandProse, faqJsonLd } from "../landing/prose";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import type { CompareCell, Comparison, Mark } from "./comparisons";
 import { BrandMark, type BrandLogo } from "./compare-visuals";
@@ -28,6 +35,70 @@ const TEAM_COMPANIES = [
   ["Mapbox", mapboxLogo],
 ] as const;
 
+function plainText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(plainText).join("");
+  }
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    const text = plainText(node.props.children);
+    return node.type === "p" || node.type === "li" ? `${text} ` : text;
+  }
+  return "";
+}
+
+function brandText(text: string): ReactNode {
+  const parts = text.split(/\b(bb)\b/);
+  if (parts.length === 1) return text;
+  return parts.map((part, index) =>
+    index % 2 === 1 ? (
+      <span key={index} className="cmp-bb">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
+function brandProse(node: ReactNode): ReactNode {
+  if (typeof node === "string") return brandText(node);
+  if (Array.isArray(node)) {
+    return node.map((child, index) => (
+      <Fragment key={index}>{brandProse(child)}</Fragment>
+    ));
+  }
+  if (
+    isValidElement<{ children?: ReactNode }>(node) &&
+    (node.type === Fragment ||
+      (typeof node.type === "string" && node.type !== "code")) &&
+    node.props.children !== undefined
+  ) {
+    return cloneElement(node, undefined, brandProse(node.props.children));
+  }
+  return node;
+}
+
+function faqJsonLd(comparison: Comparison): string {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: comparison.faq.flatMap((group) =>
+      group.items.map((item) => ({
+        "@type": "Question",
+        name: item.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: plainText(item.answer).replace(/\s+/g, " ").trim(),
+        },
+      })),
+    ),
+  };
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
 export function compareHead(comparison: Comparison) {
   return {
     meta: pageMeta(
@@ -36,12 +107,7 @@ export function compareHead(comparison: Comparison) {
       `/compare/${comparison.slug}`,
     ),
     links: siteHeadLinks(compareCss),
-    scripts: [
-      {
-        type: "application/ld+json",
-        children: faqJsonLd(comparison.faq.flatMap((group) => group.items)),
-      },
-    ],
+    scripts: [{ type: "application/ld+json", children: faqJsonLd(comparison) }],
   };
 }
 

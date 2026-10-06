@@ -11,7 +11,6 @@ import {
   FAQ_PRIVACY,
   FAQ_SUBSCRIPTIONS,
   cell,
-  linkedCell,
   faqFree,
   faqPhone,
   faqPlatforms,
@@ -59,10 +58,6 @@ const COST_SECTION = pricingSection(
         <p>
           It’s open source under the MIT license, so you can read every line and
           use it anywhere, including at work.
-        </p>
-        <p>
-          Setting up bb for your team?{" "}
-          <a href="/guides/remote-dev-servers#team">See how</a>.
         </p>
       </>
     ),
@@ -208,11 +203,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         },
         {
           feature: "Multiplayer workspaces",
-          bb: linkedCell(
-            "partial",
-            "Share one bb with your team",
-            "/guides/remote-dev-servers#team",
-          ),
+          bb: cell("partial", "Share one bb with your team"),
           competitor: cell("partial", "Prompt the same agent", true),
         },
         {
@@ -350,11 +341,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
             <p>
               Yes, free. Run bb on an always-on machine and share it with your
               team. Everyone sees the same projects, threads, terminals, and
-              links, and can jump into any thread.{" "}
-              <a href="/guides/remote-dev-servers#team">
-                Set it up for your team
-              </a>
-              .
+              links, and can jump into any thread.
             </p>
           ),
         },
