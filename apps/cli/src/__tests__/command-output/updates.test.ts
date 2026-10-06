@@ -506,7 +506,7 @@ describe("bb updates app command output", () => {
       runCommand(["updates", "app", "apply"], register),
     ).rejects.toThrow("process.exit:1");
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      "Error: In-app updates are off. Start bb with `npx bb-app start --in-app-updates` or `pnpm start --in-app-updates` to turn them on.",
+      "Error: In-app updates are off. Start bb with `npx bb-app start` or `pnpm start`, without `--no-in-app-updates`, to turn them on.",
     );
   });
 
