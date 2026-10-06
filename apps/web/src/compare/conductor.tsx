@@ -7,10 +7,8 @@ import {
   FAQ_CUSTOMIZE,
   FAQ_GET_STARTED,
   FAQ_LAPTOP,
-  FAQ_PARALLEL,
   FAQ_PERMISSIONS,
   FAQ_PRIVACY,
-  FAQ_REVIEW,
   FAQ_SUBSCRIPTIONS,
   cell,
   faqFree,
@@ -18,7 +16,6 @@ import {
   faqPlatforms,
   faqSchedule,
   faqTalk,
-  faqTeam,
   faqUsageLimit,
   price,
 } from "./compare-content";
@@ -35,18 +32,18 @@ import { FleetVisual, type BrandLogo } from "./compare-visuals";
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
 const AWAY_SECTION = anywhereSection({
-  title: "Keep working after you close your Mac",
+  title: "Agents that keep going after you close your Mac",
   body: (
     <>
       <p>
-        Add an always-on desktop or server to bb, and your agents keep running
-        there while you’re out. Answer them and approve their work from the bb
-        mobile app or any browser.
+        Your agents keep working on your other computers while your laptop
+        sleeps. Every thread follows you to your phone and any browser, so you
+        can check in, answer a question, or start the next task from wherever
+        you are.
       </p>
       <p>
-        In Conductor, closing your Mac ends local sessions, and the phone app
-        works with cloud workspaces on its $50-a-month Pro plan. In bb, it’s all
-        free.
+        In Conductor, closing your Mac ends local sessions, and phone access
+        comes with its $50-a-month Pro plan. In bb, it’s all free.
       </p>
     </>
   ),
@@ -81,10 +78,10 @@ export const BB_VS_CONDUCTOR: Comparison = {
   slug: "conductor-alternatives",
   title: "Conductor Alternatives: bb, the Free, Open-Source Option",
   description:
-    "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents on any computer you own, and approve from your phone.",
+    "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents on any computer you own, and keep working from anywhere.",
   competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
   headline: "The free, open-source Conductor alternative",
-  sub: "Run Claude Code, Codex, and any agent on Mac, Windows, or Linux, and approve their work from your phone.",
+  sub: "Run Claude Code, Codex, and any agent on Mac, Windows, or Linux, and keep working from anywhere while they keep going.",
   heroVisual: <FleetVisual />,
   tailored: AWAY_SECTION,
   sections: [
@@ -200,7 +197,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         },
         {
           feature: "Multiplayer workspaces",
-          bb: cell("no"),
+          bb: cell("partial", "Share one bb with your team"),
           competitor: cell("partial", "Prompt the same agent", true),
         },
         {
@@ -216,7 +213,6 @@ export const BB_VS_CONDUCTOR: Comparison = {
     {
       title: "Switching from Conductor",
       items: [
-        FAQ_GET_STARTED,
         {
           question: "What’s the difference between bb and Conductor?",
           answer: (
@@ -226,20 +222,8 @@ export const BB_VS_CONDUCTOR: Comparison = {
               on Mac, Windows, and Linux. Conductor is a closed-source Mac app
               that’s free locally, with cloud workspaces, scheduled routines,
               multiplayer, and its mobile app on the Pro plan, at $50 a month.
-              In bb, one agent can start another and hear back without you in
-              the middle.
-            </p>
-          ),
-        },
-        {
-          question: "What are the best Conductor alternatives?",
-          answer: (
-            <p>
-              bb is the free, open-source choice for most people leaving
-              Conductor. It runs on Mac, Windows, and Linux, keeps agents
-              working on any computer you own, lets Claude Code, Codex, and
-              other agents hand work to each other, and puts every thread on
-              your phone at no cost.
+              In bb, your agents keep working on any computer you own, follow
+              you to your phone, and can start each other and hear back.
             </p>
           ),
         },
@@ -256,34 +240,111 @@ export const BB_VS_CONDUCTOR: Comparison = {
           ),
         },
         {
-          question: "How do I switch from Conductor to bb?",
+          question: "How do I move a repo and my unfinished work to bb?",
           answer: (
             <p>
-              There’s nothing to migrate. Install bb and add the same repo
-              folder. Conductor’s workspaces are plain Git branches, so bb picks
-              up unfinished work where it is, and Conductor keeps working while
-              you try bb.
+              Install bb and add the repo folder you use with Conductor. To pick
+              up an unfinished workspace, start a thread and choose Existing
+              worktree: Conductor’s workspaces are Git worktrees, so bb opens
+              the branch and its changes right where they are. Your CLAUDE.md,
+              skills, MCP servers, slash commands, and agent sign-ins come
+              along, and Conductor keeps working while you try bb.
             </p>
           ),
         },
+        {
+          question: "What’s different day to day?",
+          answer: (
+            <ul>
+              <li>
+                Each Conductor workspace becomes a thread, and several threads
+                can share one worktree, so a reviewer can work right next to the
+                agent that wrote the code.
+              </li>
+              <li>
+                Your setup script moves to <code>.bb-env-setup.sh</code>, and
+                Files to copy becomes a <code>.worktreeinclude</code> file.
+              </li>
+              <li>
+                Threads run on whichever of your computers you pick, and follow
+                you to your phone and any browser.
+              </li>
+              <li>
+                Agents can start new threads and message each other, whatever
+                the provider.
+              </li>
+            </ul>
+          ),
+        },
+        FAQ_GET_STARTED,
       ],
     },
     {
-      title: "Working in bb",
+      title: "Your Conductor workflow in bb",
       items: [
-        FAQ_CUSTOMIZE,
-        FAQ_REVIEW,
-        faqSchedule("Conductor’s routines run only in its cloud, on Pro."),
-      ],
-    },
-    {
-      title: "Price and license",
-      items: [
-        faqFree(
-          ", while Conductor puts its mobile app, cloud workspaces, and routines on its Pro plan, at $50 a month",
+        {
+          question: "Does bb give each task its own workspace?",
+          answer: (
+            <p>
+              Yes. Start a thread in a worktree and it gets its own Git worktree
+              and branch, so agents never overwrite each other’s changes. Run as
+              many as you like: bb runs one thread per processor core and starts
+              the rest as others finish.
+            </p>
+          ),
+        },
+        {
+          question: "Does bb have setup and run scripts?",
+          answer: (
+            <p>
+              Yes. Commit a <code>.bb-env-setup.sh</code> at your repo root and
+              bb runs it in every new worktree. List untracked files like{" "}
+              <code>.env</code> in <code>.worktreeinclude</code> and bb copies
+              them in first, and <code>.bb-env-teardown.sh</code> cleans up when
+              a worktree goes away. Start your dev server in the thread’s
+              terminal or ask the agent to, and open it from anywhere at a
+              private link with bb Connect.
+            </p>
+          ),
+        },
+        {
+          question: "Can I review diffs and merge pull requests in bb?",
+          answer: (
+            <p>
+              Yes, without leaving the thread. Select lines in the diff and
+              choose Add to chat to send feedback. When the agent opens a pull
+              request, the thread shows its checks and a Merge button. The
+              GitHub plugin adds an issues and PR panel and Review with agent on
+              any PR.
+            </p>
+          ),
+        },
+        {
+          question: "Does bb have checkpoints?",
+          answer: (
+            <p>
+              bb lets you rewind the conversation instead. Edit any earlier
+              message to rerun the thread from there, or fork a new thread from
+              any message to try a different approach. Every change stays on the
+              thread’s own Git branch, so nothing lands until you merge it.
+            </p>
+          ),
+        },
+        {
+          question: "Does bb have multiplayer?",
+          answer: (
+            <p>
+              Yes, free. Run bb on an always-on machine and share it with your
+              team. Everyone sees the same projects, threads, terminals, and
+              links, and can jump into any thread.
+            </p>
+          ),
+        },
+        faqPhone(
+          "Conductor’s iPhone app works with its cloud workspaces, on the $50-a-month Pro plan.",
         ),
-        FAQ_SUBSCRIPTIONS,
-        faqUsageLimit(null),
+        faqSchedule("Conductor’s routines run only in its cloud, on Pro."),
+        FAQ_LAPTOP,
       ],
     },
     {
@@ -294,25 +355,20 @@ export const BB_VS_CONDUCTOR: Comparison = {
         faqTalk(
           ", while Conductor connects agents through MCP or its Pro cloud workspaces",
         ),
-        FAQ_PARALLEL,
         FAQ_PERMISSIONS,
+        FAQ_CUSTOMIZE,
       ],
     },
     {
-      title: "Mobile and remote",
+      title: "Price, platforms, and privacy",
       items: [
-        faqPhone(
-          "Conductor’s iPhone app works with its cloud workspaces, on the $50-a-month Pro plan.",
+        faqFree(
+          ", while Conductor puts its mobile app, cloud workspaces, and routines on its Pro plan, at $50 a month",
         ),
-        FAQ_LAPTOP,
-      ],
-    },
-    {
-      title: "Platforms, privacy, and teams",
-      items: [
+        FAQ_SUBSCRIPTIONS,
+        faqUsageLimit(null),
         faqPlatforms("Conductor runs only on macOS."),
         FAQ_PRIVACY,
-        faqTeam(", while Conductor Teams costs $60 per person a month"),
       ],
     },
   ],

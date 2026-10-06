@@ -4,11 +4,19 @@ import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
 import type { CompareCell, CompareFaq, Comparison, Mark } from "./comparisons";
 
 export function cell(mark: Mark | null, text = "", pro = false): CompareCell {
-  return { mark, value: "", text, pro };
+  return { mark, value: "", text, href: null, pro };
+}
+
+export function linkedCell(
+  mark: Mark | null,
+  text: string,
+  href: string,
+): CompareCell {
+  return { mark, value: "", text, href, pro: false };
 }
 
 export function price(value: string, text: string): CompareCell {
-  return { mark: null, value, text, pro: false };
+  return { mark: null, value, text, href: null, pro: false };
 }
 
 export const FAQ_GET_STARTED: CompareFaq = {

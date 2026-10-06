@@ -713,6 +713,13 @@
   color: var(--subtle);
 }
 
+.cmp-cell-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border);
+}
+
 .cmp-pro {
   display: inline-block;
   padding: 1px 7px;

@@ -44,6 +44,7 @@ export type CompareCell = {
   mark: Mark | null;
   value: string;
   text: string;
+  href: string | null;
   pro: boolean;
 };
 

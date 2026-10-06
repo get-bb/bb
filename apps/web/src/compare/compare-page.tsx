@@ -148,7 +148,11 @@ function Cell({ cell, us }: { cell: CompareCell; us: boolean }) {
           </span>
         ) : null}
       </span>
-      {cell.text ? <span className="cmp-cell-note">{cell.text}</span> : null}
+      {cell.text ? (
+        <span className="cmp-cell-note">
+          {cell.href ? <a href={cell.href}>{cell.text}</a> : cell.text}
+        </span>
+      ) : null}
     </td>
   );
 }
