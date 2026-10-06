@@ -1,3 +1,4 @@
+import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
@@ -157,7 +158,16 @@ export function Note({
 }) {
   return (
     <div className={warn ? "gd-note gd-note-warn" : "gd-note"}>
-      <strong>{title}</strong> {brandProse(children)}
+      {warn ? (
+        <HugeiconsIcon
+          icon={Alert02Icon}
+          className="gd-note-icon"
+          aria-hidden="true"
+        />
+      ) : null}
+      <span>
+        <strong>{title}</strong> {brandProse(children)}
+      </span>
     </div>
   );
 }

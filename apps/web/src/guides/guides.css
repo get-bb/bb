@@ -695,8 +695,18 @@
   color: var(--heading-sub);
 }
 
-.gd-note-warn strong {
-  color: var(--spark);
+.gd-note-warn {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.gd-note-icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-top: 3px;
+  color: var(--attention);
 }
 
 .gd-shot {
