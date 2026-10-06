@@ -36,6 +36,7 @@ export interface Guide {
   needs: GuideNeed[];
   steps: GuideStep[];
   sections: GuideSection[];
+  faqTitle: string;
   faq: GuideFaq[];
   closer: { title: string; body: string };
 }

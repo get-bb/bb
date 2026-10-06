@@ -55,7 +55,7 @@ export const REMOTE_DEV_SERVERS: Guide = {
   slug: "remote-dev-servers",
   title: "Run a dev server for every branch",
   description:
-    "Run each branch's server next to the code your agent edits, so it reloads on every change, and open it at a private link from anywhere.",
+    "Try each agent's work while it's still coding. Every branch runs its own live preview, and you can open it from any browser or your phone at a private link.",
   concept: <RemoteServersConcept />,
   handoffNote:
     "Paste it into a bb thread on your project. Your agent runs every step and stops if it needs you.",
@@ -309,6 +309,7 @@ export const REMOTE_DEV_SERVERS: Guide = {
       ),
     },
   ],
+  faqTitle: "Troubleshooting",
   faq: [
     {
       question: "Why does the link show a connection error?",

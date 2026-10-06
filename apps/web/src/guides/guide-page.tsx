@@ -193,7 +193,7 @@ export function GuidePage({ guide }: { guide: Guide }) {
           ))}
 
           <section id="faq">
-            <h2 className="gd-h2">FAQ</h2>
+            <h2 className="gd-h2">{guide.faqTitle}</h2>
             <div className="cmp-faq-list">
               {guide.faq.map((item) => (
                 <details key={item.question} className="cmp-faq-item">
