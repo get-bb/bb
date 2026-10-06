@@ -35,6 +35,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          BASE_SHA=$(git rev-parse HEAD^)
           selection=$(node scripts/plan-ci.mjs --full)
           if [[ -n "$BASE_SHA" ]]; then
             if git fetch --no-tags --depth=1 origin "$BASE_SHA" && npx --yes turbo@2.10.12 query affected --base "$BASE_SHA" --head HEAD > "$RUNNER_TEMP/ci-affected.json"; then
@@ -772,7 +773,7 @@ jobs:
 
   node-compat-smoke:
     name: Node Compatibility Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.event_name == 'push' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
