@@ -962,6 +962,13 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
               onCommitClick={onCommitClick}
             />
             <ChangesSection
+              kind="uncommitted"
+              workspaceStatus={workspaceStatus}
+              onChangedFileClick={onChangedFileClick}
+              onOpenChangedFile={onOpenChangedFile}
+            />
+            <ChangesSection
+              kind="committed"
               workspaceStatus={workspaceStatus}
               onChangedFileClick={onChangedFileClick}
               onOpenChangedFile={onOpenChangedFile}

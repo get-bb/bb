@@ -16,57 +16,69 @@ import {
   getParentFolderNameFromPath,
 } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
-import { InfoList, InfoListGroup, InfoListRow, InfoSection } from "./info-list";
+import { InfoList, InfoListRow, InfoSection } from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
+type ChangesSectionKind = "uncommitted" | "committed";
+
+const CHANGES_SECTION_COPY: Record<
+  ChangesSectionKind,
+  { id: string; label: string }
+> = {
+  uncommitted: { id: "uncommittedChanges", label: "Uncommitted changes" },
+  committed: { id: "committedChanges", label: "Committed changes" },
+};
+
 interface ChangesSectionProps {
+  kind: ChangesSectionKind;
   workspaceStatus: WorkspaceStatus | undefined;
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
   onOpenChangedFile?: (path: string) => void;
 }
 
 export function ChangesSection({
+  kind,
   workspaceStatus,
   onChangedFileClick,
   onOpenChangedFile,
 }: ChangesSectionProps) {
-  const sections = selectWorkspaceChangedFilesSections(workspaceStatus);
-  const collapse = useInfoSectionCollapse("changes");
-  if (sections.length === 0) return null;
+  const copy = CHANGES_SECTION_COPY[kind];
+  const collapse = useInfoSectionCollapse(copy.id);
+  const section = selectWorkspaceChangedFilesSections(workspaceStatus).find(
+    (candidate) =>
+      kind === "committed"
+        ? candidate.kind === "committed"
+        : candidate.kind !== "committed",
+  );
+  if (section === undefined) return null;
+  const tally = toChangeTally(section.stats);
   return (
-    <InfoSection label="Changes" collapse={collapse}>
-      {sections.map((section) => {
-        const tally = toChangeTally(section.stats);
-        return (
-          <InfoListGroup
-            key={section.kind}
-            label={section.kind === "committed" ? "Committed" : "Uncommitted"}
-            count={section.files.length}
-            trailing={
-              tally.lineStatsComplete ? (
-                <DiffStatsTally
-                  insertions={tally.insertions}
-                  deletions={tally.deletions}
-                  className="text-2xs tabular-nums"
-                />
-              ) : null
-            }
-          >
-            <InfoList
-              items={section.files}
-              getKey={(file) => `${file.status}:${file.path}`}
-              renderItem={(file) => (
-                <ChangedFileRow
-                  file={file}
-                  section={section}
-                  onChangedFileClick={onChangedFileClick}
-                  onOpenChangedFile={onOpenChangedFile}
-                />
-              )}
-            />
-          </InfoListGroup>
-        );
-      })}
+    <InfoSection
+      label={copy.label}
+      count={section.files.length}
+      collapse={collapse}
+      trailing={
+        tally.lineStatsComplete ? (
+          <DiffStatsTally
+            insertions={tally.insertions}
+            deletions={tally.deletions}
+            className="text-2xs tabular-nums"
+          />
+        ) : null
+      }
+    >
+      <InfoList
+        items={section.files}
+        getKey={(file) => `${file.status}:${file.path}`}
+        renderItem={(file) => (
+          <ChangedFileRow
+            file={file}
+            section={section}
+            onChangedFileClick={onChangedFileClick}
+            onOpenChangedFile={onOpenChangedFile}
+          />
+        )}
+      />
     </InfoSection>
   );
 }

@@ -834,6 +834,7 @@ export function ChangedFiles() {
       <StoryRow label="uncommitted">
         <RowStage>
           <ChangesSection
+            kind="uncommitted"
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...STORY_DIRTY_WORKING_TREE,
@@ -847,6 +848,7 @@ export function ChangedFiles() {
       <StoryRow label="committed, not merged">
         <RowStage>
           <ChangesSection
+            kind="committed"
             workspaceStatus={makeWorkspaceStatus({
               mergeBase: STORY_COMMITTED_MERGE_BASE,
             })}
@@ -857,6 +859,18 @@ export function ChangedFiles() {
       <StoryRow label="uncommitted + committed">
         <RowStage>
           <ChangesSection
+            kind="uncommitted"
+            workspaceStatus={makeWorkspaceStatus({
+              workingTree: {
+                ...STORY_DIRTY_WORKING_TREE,
+                state: "dirty_and_committed_unmerged",
+              },
+              mergeBase: STORY_COMMITTED_MERGE_BASE,
+            })}
+            onChangedFileClick={noop}
+          />
+          <ChangesSection
+            kind="committed"
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...STORY_DIRTY_WORKING_TREE,

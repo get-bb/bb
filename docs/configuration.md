@@ -953,7 +953,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
 | `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
 | `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `changes`, `forks`, `threadStorage`)     |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `committedChanges`, `forks`, `threadStorage`) |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the

@@ -113,31 +113,6 @@ export function InfoSection({ children, ...heading }: InfoSectionProps) {
   );
 }
 
-export function InfoListGroup({
-  label,
-  count,
-  trailing,
-  children,
-}: {
-  label: string;
-  count: number;
-  trailing?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="mt-2 min-w-0 first:mt-0">
-      <div className="flex h-6 min-w-0 items-center justify-between gap-3">
-        <span className="flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground">
-          <span className="truncate">{label}</span>
-          <span className="tabular-nums">{count}</span>
-        </span>
-        {trailing}
-      </div>
-      {children}
-    </div>
-  );
-}
-
 export type InfoListRowTarget =
   | { kind: "button"; onSelect: () => void }
   | { kind: "link"; to: string };
