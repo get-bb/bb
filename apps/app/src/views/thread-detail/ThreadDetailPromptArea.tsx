@@ -11,7 +11,6 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { atom, useAtom } from "jotai";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -181,9 +180,6 @@ export interface ThreadDetailSentMessageEdit {
 const THREAD_DETAIL_COMPOSER_TEXTAREA_ID = "thread-detail-follow-up-composer";
 const EMPTY_QUEUED_MESSAGES: readonly ThreadQueuedMessage[] = [];
 const NO_INLINE_EDITOR_SELECTION: ExperimentalComposerSelection = {};
-const dismissedGitShelfThreadIdsAtom = atom<ReadonlySet<string>>(
-  new Set<string>(),
-);
 
 interface ThreadDetailPromptAreaProps {
   activeBackgroundAgentCount: number;
@@ -213,6 +209,7 @@ interface ThreadDetailPromptAreaProps {
   projectId: string;
   resolveMentionLink: PromptMentionLinkResolver;
   workspaceChangedFilesSection: WorkspaceChangedFilesSection | null;
+  showGitChanges: boolean;
   workspaceStatusPending: boolean;
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
@@ -428,6 +425,7 @@ export function ThreadDetailPromptArea({
   projectId,
   resolveMentionLink,
   workspaceChangedFilesSection,
+  showGitChanges,
   workspaceStatusPending,
   contextBannerMergeBase,
   pendingTodos,
@@ -609,17 +607,6 @@ export function ThreadDetailPromptArea({
   );
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
-  const [dismissedGitShelfThreadIds, setDismissedGitShelfThreadIds] = useAtom(
-    dismissedGitShelfThreadIdsAtom,
-  );
-  const isGitShelfDismissed = dismissedGitShelfThreadIds.has(thread.id);
-  const handleDismissGitShelf = useCallback(() => {
-    setDismissedGitShelfThreadIds(
-      (current) => new Set([...current, thread.id]),
-    );
-    setExpandedBannerSection((current) => (current === "git" ? null : current));
-    setBottomPluginFocusNonce((nonce) => nonce + 1);
-  }, [setDismissedGitShelfThreadIds, thread.id]);
   const pullRequestSection =
     useMemo<ThreadPromptPullRequestSection | null>(() => {
       if (!pullRequest) {
@@ -2195,7 +2182,7 @@ export function ThreadDetailPromptArea({
           childThreadsSection={childThreadsSection}
           pullRequestSection={pullRequestSection}
           gitSection={
-            workspaceChangedFilesSection && !isGitShelfDismissed
+            workspaceChangedFilesSection && showGitChanges
               ? {
                   changedFiles: workspaceChangedFilesSection,
                   mergeBase: contextBannerMergeBase,
@@ -2205,8 +2192,7 @@ export function ThreadDetailPromptArea({
                 }
               : null
           }
-          gitSectionPending={workspaceStatusPending && !isGitShelfDismissed}
-          onDismissGitSection={handleDismissGitShelf}
+          gitSectionPending={workspaceStatusPending && showGitChanges}
           expandedSection={expandedBannerSection}
           onToggleSection={handleToggleBannerSection}
         />
@@ -2248,8 +2234,6 @@ export function ThreadDetailPromptArea({
       canUseGitUi,
       childPendingInteractionBanners,
       contextBannerMergeBase,
-      isGitShelfDismissed,
-      handleDismissGitShelf,
       environmentHostId,
       expandedBannerSection,
       handleDeleteQueuedMessage,
@@ -2294,6 +2278,7 @@ export function ThreadDetailPromptArea({
       thread.archivedAt,
       thread.id,
       workspaceChangedFilesSection,
+      showGitChanges,
       workspaceStatusPending,
     ],
   );

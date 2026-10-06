@@ -73,6 +73,16 @@ so they carry over between navigation plugins.
   plugin-specific settings out of `bb settings ui`; those legacy values are
   read only during one-time migration.
 
+## Git changes above the composer
+
+- Settings → General → Show git changes above composer defaults to on.
+- `bb settings general showGitChanges false` hides the untracked, uncommitted,
+  and committed summary and file list across every thread and connected client.
+- Set it to `true` to restore it. The server saves the choice across reloads.
+- PR status, thread relationships, and workspace warnings remain visible.
+- SDK callers use `sdk.system.updateGeneralSettings` with the current settings
+  and `showGitChanges`. Older clients that omit it preserve the saved choice.
+
 ## Keyboard shortcuts
 
 - `showKeyboardHints` defaults to true. Set it with

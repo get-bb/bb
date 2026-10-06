@@ -127,6 +127,13 @@ provider events. Warnings, errors, and model fallback stay visible. Existing
 unhandled-event preferences are preserved. Set it with
 `bb settings general showDiagnosticEvents <true|false>`.
 
+Settings → General → Show git changes above composer controls the git summary
+and expanded file list in every thread. `showGitChanges` defaults to true; use
+`bb settings general showGitChanges false` to hide it, or true to restore it.
+The server saves this preference across reloads and shares it across connected
+clients. PR status and workspace warnings remain visible. SDK callers can update
+`showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
+
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
 false. Outside an open typeahead menu, enabling it makes Enter steer a running

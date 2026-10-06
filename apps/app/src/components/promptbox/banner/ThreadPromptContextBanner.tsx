@@ -150,7 +150,6 @@ export type ThreadPromptContextBannerExpandedSection =
 interface ThreadPromptContextBannerProps {
   gitSection: ThreadPromptGitSection | null;
   gitSectionPending: boolean;
-  onDismissGitSection?: () => void;
   archivedSection: ThreadPromptArchivedSection | null;
   environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
   parentThreadSection: ThreadPromptParentThreadSection | null;
@@ -874,7 +873,6 @@ function ReadOnlyContextBanner({
 export function ThreadPromptContextBanner({
   gitSection,
   gitSectionPending,
-  onDismissGitSection,
   archivedSection,
   environmentGoneSection,
   parentThreadSection,
@@ -1087,16 +1085,6 @@ export function ThreadPromptContextBanner({
           ) : null}
           {pullRequestAction}
           {segmentAction}
-          {showGit && onDismissGitSection ? (
-            <button
-              type="button"
-              aria-label="Dismiss git changes for this session"
-              onClick={onDismissGitSection}
-              className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-            >
-              <Icon name="X" className="size-3.5" aria-hidden="true" />
-            </button>
-          ) : null}
         </div>
         {showParentThread && parentThreadSection && !isParentThreadOnly ? (
           <ParentThreadSectionBody

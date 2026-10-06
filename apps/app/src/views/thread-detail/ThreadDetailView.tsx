@@ -2561,6 +2561,9 @@ function ThreadDetailViewInternal(
       onChangedFileClick={handleChangedFileClick}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
+      showGitChanges={
+        systemConfigQuery.data?.generalSettings.showGitChanges ?? false
+      }
       workspaceChangedFilesSection={
         canUseGitUi ? workspaceChangedFilesSection : null
       }
