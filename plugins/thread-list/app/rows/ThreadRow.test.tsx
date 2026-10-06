@@ -13,6 +13,7 @@ import { DndContext, useDraggable } from "@dnd-kit/core";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarRenameProvider } from "./SidebarInlineRename.js";
 import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
@@ -109,23 +110,25 @@ function ThreadRowHarness({
   const content = (
     <TooltipProvider>
       <SidebarDraftPresenceSync />
-      <CustomizeRowActionsContext.Provider
-        value={onCustomizeRowActions ?? null}
-      >
-        <div
-          onPointerDown={onRowEvent}
-          onKeyDown={onRowEvent}
-          onClick={onRowEvent}
+      <SidebarRenameProvider>
+        <CustomizeRowActionsContext.Provider
+          value={onCustomizeRowActions ?? null}
         >
-          {sectionDestinations ? (
-            <ThreadSectionMoveProvider destinations={sectionDestinations}>
-              {row}
-            </ThreadSectionMoveProvider>
-          ) : (
-            row
-          )}
-        </div>
-      </CustomizeRowActionsContext.Provider>
+          <div
+            onPointerDown={onRowEvent}
+            onKeyDown={onRowEvent}
+            onClick={onRowEvent}
+          >
+            {sectionDestinations ? (
+              <ThreadSectionMoveProvider destinations={sectionDestinations}>
+                {row}
+              </ThreadSectionMoveProvider>
+            ) : (
+              row
+            )}
+          </div>
+        </CustomizeRowActionsContext.Provider>
+      </SidebarRenameProvider>
     </TooltipProvider>
   );
   return isCompactViewport === undefined ? (

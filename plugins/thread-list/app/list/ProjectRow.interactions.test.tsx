@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarRenameProvider } from "../rows/SidebarInlineRename.js";
 import { Provider, createStore } from "jotai";
 import {
   installTestPluginRuntime,
@@ -99,7 +100,9 @@ function Harness({ children, store }: HarnessProps) {
   return (
     <TooltipProvider>
       <SidebarDraftPresenceSync />
-      <Provider store={store}>{children}</Provider>
+      <Provider store={store}>
+        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      </Provider>
     </TooltipProvider>
   );
 }
