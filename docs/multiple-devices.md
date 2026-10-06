@@ -127,7 +127,7 @@ The token cannot read notifications. It cannot access the phone or authenticate
 to the bb server. Treat the token as private because a leak can cause unwanted
 notifications.
 
-The server sends a thread title and a short preview. Use these commands to
+The server sends a thread title and a short plain-text preview. Use these commands to
 manage device registrations and inspect the sender:
 
 ```bash
