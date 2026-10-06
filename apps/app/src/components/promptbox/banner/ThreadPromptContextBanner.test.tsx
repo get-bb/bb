@@ -527,6 +527,11 @@ describe("ThreadPromptContextBanner", () => {
     rerender(renderBanner([blocked, working]));
     expect(onToggleSection).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Active subthreads")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "2 active subthreads" })
+        .querySelector('[data-icon="CircleQuestion"]'),
+    ).not.toBeNull();
   });
 
   it("keeps failed-check detail accessible without a redundant label", () => {
