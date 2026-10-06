@@ -10,7 +10,6 @@ import {
   TEAM_COST,
   TEAM_TROUBLESHOOTING,
   WHEN_IT_PAYS,
-  spawnCommand,
   talkStep,
 } from "./agent-teams";
 
@@ -38,6 +37,10 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 5. Stop after the second review, even if issues remain. If the first review found nothing serious, stop after it.
 
 Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`;
+
+const SPAWN = `bb thread spawn --project "$BB_PROJECT_ID" \\
+    --environment "$BB_ENVIRONMENT_ID" --parent-self \\
+    --provider codex --prompt "Review this branch read-only..."`;
 
 export const CLAUDE_CODE_AND_CODEX: Guide = {
   slug: "claude-code-and-codex-together",
@@ -95,10 +98,7 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       lead: "The lead starts Codex as a subthread, with its own prompt, in the same worktree.",
       body: (
         <>
-          <CommandBlock
-            label="What the agent runs"
-            command={spawnCommand("codex")}
-          />
+          <CommandBlock label="What the agent runs" command={SPAWN} />
           {SUBTHREAD_SHOT}
         </>
       ),

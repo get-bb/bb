@@ -3,12 +3,6 @@ import type { ReactNode } from "react";
 import { CommandBlock, ProductShot } from "../guide-blocks";
 import type { GuideFaq, GuideSection, GuideStep } from "../guide-types";
 
-export function spawnCommand(provider: string): string {
-  return `bb thread spawn --project "$BB_PROJECT_ID" \\
-    --environment "$BB_ENVIRONMENT_ID" --parent-self \\
-    --provider ${provider} --prompt "Review this branch read-only..."`;
-}
-
 export const SUBTHREAD_SHOT = (
   <ProductShot
     src="/guides/claude-code-and-codex-together/subthread-sidebar.png"
