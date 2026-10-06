@@ -49,8 +49,7 @@ import {
   DETAIL_ROW_ICON_CLASS,
 } from "@/components/ui/detail-card.js";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { assertNever } from "@bb/core-ui";
+import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   BranchPicker,
@@ -61,10 +60,7 @@ import {
   selectWorkspaceChangedFilesSections,
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
-import {
-  getGitStatusDisplay,
-  type ThreadGitStatusDisplay,
-} from "@/components/workspace/workspace-status";
+import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -614,67 +610,21 @@ export function MergeBaseRow({
   );
 }
 
-interface GitStatusRowDisplay {
-  icon: IconName;
-  iconClassName: string;
-  text: string;
-  detail: string | null;
-}
-
-function withoutTrailingPeriod(text: string): string {
-  return text.replace(/\.$/, "");
-}
-
-function shortenBranchComparison(summary: string): string {
-  return withoutTrailingPeriod(summary).replace(" relative to ", " ");
-}
-
-export function describeGitStatusRow(
-  display: ThreadGitStatusDisplay,
-  mergeBaseBranch: string | undefined,
-): GitStatusRowDisplay {
-  switch (display.label) {
-    case "Dirty":
-    case "Untracked":
-      return {
-        icon: "DiffModified",
-        iconClassName: "text-destructive",
-        text: "Uncommitted",
-        detail:
-          display.summary === ""
-            ? null
-            : shortenBranchComparison(display.summary),
-      };
-    case "Up to date":
-    case "Clean":
-      return {
-        icon: "CircleCheck",
-        iconClassName: "text-subtle-foreground",
-        text:
-          display.label === "Up to date" && mergeBaseBranch
-            ? `Up to date with ${mergeBaseBranch}`
-            : "No changes",
-        detail: null,
-      };
-    case "Ahead":
-    case "Behind":
-    case "Diverged":
-      return {
-        icon: "GitBranch",
-        iconClassName: "text-subtle-foreground",
-        text: shortenBranchComparison(display.summary),
-        detail: null,
-      };
-    case "Unknown":
-      return {
-        icon: "AlertTriangle",
-        iconClassName: "text-warning",
-        text: withoutTrailingPeriod(display.summary),
-        detail: null,
-      };
-    default:
-      return assertNever(display.label);
+export function formatBranchComparison({
+  aheadCount,
+  behindCount,
+  baseBranch,
+}: {
+  aheadCount: number;
+  behindCount: number;
+  baseBranch: string;
+}): string {
+  if (aheadCount > 0 && behindCount > 0) {
+    return `${aheadCount} ahead, ${behindCount} behind ${baseBranch}`;
   }
+  if (aheadCount > 0) return `${aheadCount} ahead of ${baseBranch}`;
+  if (behindCount > 0) return `${behindCount} behind ${baseBranch}`;
+  return `Even with ${baseBranch}`;
 }
 
 interface GitStatusRowProps {
@@ -721,7 +671,14 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
-  const row = describeGitStatusRow(display, effectiveMergeBaseBranch);
+  const branchComparison =
+    workspaceStatus && effectiveMergeBaseBranch
+      ? formatBranchComparison({
+          aheadCount: workspaceStatus.mergeBase?.aheadCount ?? 0,
+          behindCount: workspaceStatus.mergeBase?.behindCount ?? 0,
+          baseBranch: effectiveMergeBaseBranch,
+        })
+      : null;
 
   return (
     <DetailRow
@@ -731,29 +688,22 @@ export function GitStatusRow({
       align="start"
       valueClassName="min-w-0"
     >
-      <div
-        className="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
-        title={row.detail ? `${row.text} · ${row.detail}` : row.text}
-      >
-        <Icon
-          name={row.icon}
-          className={cn("size-3 shrink-0", row.iconClassName)}
-          aria-hidden
-        />
-        <span
-          className={cn(
-            "text-foreground",
-            row.detail ? "shrink-0" : "min-w-0 truncate",
-          )}
-        >
-          {row.text}
+      {branchComparison || workspaceStatus ? (
+        <span className="block min-w-0 truncate text-foreground">
+          {branchComparison ?? display.summary.replace(/\.$/, "")}
         </span>
-        {row.detail ? (
-          <span className="min-w-0 truncate text-muted-foreground">
-            {row.detail}
+      ) : (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Icon
+            name="AlertTriangle"
+            className="size-3 shrink-0 text-warning"
+            aria-hidden
+          />
+          <span className="min-w-0 truncate text-foreground">
+            {display.summary.replace(/\.$/, "")}
           </span>
-        ) : null}
-      </div>
+        </span>
+      )}
     </DetailRow>
   );
 }

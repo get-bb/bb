@@ -6,10 +6,6 @@ import {
   DiffStatsTally,
 } from "@/components/ui/diff-stats-tally.js";
 import {
-  ChangedFilesBucketMenu,
-  useChangedFilesBucket,
-} from "./ChangedFilesBucketMenu";
-import {
   selectWorkspaceChangedFilesSections,
   toChangeTally,
   type WorkspaceChangedFileSelection,
@@ -20,12 +16,7 @@ import {
   getParentFolderNameFromPath,
 } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
-import {
-  InfoList,
-  InfoListRow,
-  InfoMenuTrigger,
-  InfoSection,
-} from "./info-list";
+import { InfoList, InfoListGroup, InfoListRow, InfoSection } from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 interface ChangesSectionProps {
@@ -40,55 +31,42 @@ export function ChangesSection({
   onOpenChangedFile,
 }: ChangesSectionProps) {
   const sections = selectWorkspaceChangedFilesSections(workspaceStatus);
-  const { activeSection, selectKind } = useChangedFilesBucket(sections);
   const collapse = useInfoSectionCollapse("changes");
-  if (activeSection === undefined) return null;
-  const tally = toChangeTally(activeSection.stats);
+  if (sections.length === 0) return null;
   return (
-    <InfoSection
-      label="Changes"
-      count={activeSection.files.length}
-      collapse={collapse}
-      accessory={
-        sections.length > 1 ? (
-          <ChangedFilesBucketMenu
-            sections={sections}
-            activeSection={activeSection}
-            onSelect={selectKind}
-            trigger={
-              <InfoMenuTrigger aria-label="Switch changed files bucket">
-                {activeSection.label}
-              </InfoMenuTrigger>
+    <InfoSection label="Changes" collapse={collapse}>
+      {sections.map((section) => {
+        const tally = toChangeTally(section.stats);
+        return (
+          <InfoListGroup
+            key={section.kind}
+            label={section.kind === "committed" ? "Committed" : "Uncommitted"}
+            count={section.files.length}
+            trailing={
+              tally.lineStatsComplete ? (
+                <DiffStatsTally
+                  insertions={tally.insertions}
+                  deletions={tally.deletions}
+                  className="text-2xs tabular-nums"
+                />
+              ) : null
             }
-          />
-        ) : (
-          <span className="ml-1.5 text-2xs text-subtle-foreground">
-            {activeSection.label}
-          </span>
-        )
-      }
-      trailing={
-        tally.lineStatsComplete ? (
-          <DiffStatsTally
-            insertions={tally.insertions}
-            deletions={tally.deletions}
-            className="text-2xs tabular-nums"
-          />
-        ) : null
-      }
-    >
-      <InfoList
-        items={activeSection.files}
-        getKey={(file) => `${file.status}:${file.path}`}
-        renderItem={(file) => (
-          <ChangedFileRow
-            file={file}
-            section={activeSection}
-            onChangedFileClick={onChangedFileClick}
-            onOpenChangedFile={onOpenChangedFile}
-          />
-        )}
-      />
+          >
+            <InfoList
+              items={section.files}
+              getKey={(file) => `${file.status}:${file.path}`}
+              renderItem={(file) => (
+                <ChangedFileRow
+                  file={file}
+                  section={section}
+                  onChangedFileClick={onChangedFileClick}
+                  onOpenChangedFile={onOpenChangedFile}
+                />
+              )}
+            />
+          </InfoListGroup>
+        );
+      })}
     </InfoSection>
   );
 }

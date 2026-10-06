@@ -1,10 +1,4 @@
-import {
-  Fragment,
-  useId,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { Fragment, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -119,24 +113,28 @@ export function InfoSection({ children, ...heading }: InfoSectionProps) {
   );
 }
 
-export function InfoMenuTrigger({
+export function InfoListGroup({
+  label,
+  count,
+  trailing,
   children,
-  className,
-  ...buttonProps
-}: ComponentProps<"button">) {
+}: {
+  label: string;
+  count: number;
+  trailing?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <button
-      type="button"
-      {...buttonProps}
-      className={cn(
-        INFO_LIST_QUIET_CONTROL_CLASS,
-        "ml-1.5 inline-flex h-5 items-center gap-0.5 px-0.5 data-[state=open]:text-foreground",
-        className,
-      )}
-    >
+    <div className="mt-2 min-w-0 first:mt-0">
+      <div className="flex h-6 min-w-0 items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground">
+          <span className="truncate">{label}</span>
+          <span className="tabular-nums">{count}</span>
+        </span>
+        {trailing}
+      </div>
       {children}
-      <Icon name="ChevronDown" className={INFO_LIST_CARET_CLASS} aria-hidden />
-    </button>
+    </div>
   );
 }
 
