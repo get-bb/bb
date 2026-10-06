@@ -235,21 +235,12 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         <h1>{brandProse(comparison.headline)}</h1>
         <p className="sub">{brandProse(comparison.sub)}</p>
         <InstallOptions placement="hero" />
+        {comparison.heroVisual ? (
+          <div className="cmp-hero-visual">{comparison.heroVisual}</div>
+        ) : null}
       </header>
 
-      <section className="cmp-team" data-reveal>
-        <h2>Built by alumni from</h2>
-        <ul className="company-proof-logos cmp-team-logos">
-          {TEAM_COMPANIES.map(([name, logo]) => (
-            <li key={name} className="company-proof-company">
-              <img src={logo} alt="" width={20} height={20} />
-              {name}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {comparison.highlights.map((highlight) =>
+      {[comparison.tailored, ...comparison.sections].map((highlight) =>
         highlight.wide ? (
           <section
             key={highlight.title}
@@ -318,6 +309,17 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         <h2 className="sec-title">{brandProse(comparison.closer.title)}</h2>
         <p>{brandProse(comparison.closer.body)}</p>
         <InstallOptions placement="closer" />
+        <div className="cmp-team">
+          <h3>Built by alumni from</h3>
+          <ul className="company-proof-logos cmp-team-logos">
+            {TEAM_COMPANIES.map(([name, logo]) => (
+              <li key={name} className="company-proof-company">
+                <img src={logo} alt="" width={20} height={20} />
+                {name}
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
 
       <SiteFooter />

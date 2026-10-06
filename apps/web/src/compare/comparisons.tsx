@@ -1,14 +1,18 @@
 import type { ReactNode } from "react";
 
 import supersetIcon from "../assets/competitors/superset.png";
-import { CustomizeBuild, ProviderChips } from "../landing/landing-visuals";
 import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
 import {
-  AgentSplit,
-  AnywhereVisual,
-  TeamCost,
-  type BrandLogo,
-} from "./compare-visuals";
+  AGENTS_COPY,
+  agentsSection,
+  ANYWHERE_COPY,
+  anywhereSection,
+  PLUGINS_COPY,
+  pluginsSection,
+  PRICING_COPY,
+  pricingSection,
+} from "./compare-sections";
+import type { BrandLogo } from "./compare-visuals";
 
 export type Mark = "yes" | "partial" | "no";
 
@@ -54,7 +58,9 @@ export type Comparison = {
   competitor: { name: string; logo: BrandLogo };
   headline: string;
   sub: string;
-  highlights: CompareHighlight[];
+  heroVisual: ReactNode | null;
+  tailored: CompareHighlight;
+  sections: CompareHighlight[];
   tableNote: string;
   table: CompareGroup[];
   faqTitle: string;
@@ -80,87 +86,16 @@ const BB_VS_SUPERSET: Comparison = {
   competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The free, open-source Superset alternative",
   sub: "Get Claude Code, Codex or any agent working together on the same task, and approve from your phone.",
-  highlights: [
-    {
-      title: "Run more agents, $0 more.",
-      wide: false,
-      visual: (
-        <TeamCost
-          plan="Superset Pro"
-          logo={SUPERSET_LOGO}
-          yearlyPerSeatMonthly={15}
-        />
-      ),
-      body: (
-        <>
-          <p>
-            You only pay for the AI plans you already have. bb is free, whether
-            you run one agent on your own or your whole team runs dozens.
-          </p>
-          <p>
-            The mobile app, automations, remote access, and plugins all come
-            included.
-          </p>
-        </>
-      ),
-    },
-    {
-      title: "Agents that work together like a team",
-      wide: true,
-      visual: <AgentSplit />,
-      body: (
-        <>
-          <p>
-            Claude Code builds a feature, Codex reviews it, and Cursor writes
-            the release notes. They pass work back and forth so you don’t have
-            to copy between tools.
-          </p>
-          <div className="providers cmp-providers">
-            <span className="label">Works with any agent</span>
-            <ProviderChips />
-          </div>
-          <p className="cmp-providers-note">
-            Need another? Add it with a <a href="/marketplace">plugin</a>.
-          </p>
-        </>
-      ),
-    },
-    {
-      title: "Keep working from anywhere",
-      wide: false,
-      visual: <AnywhereVisual />,
-      body: (
-        <>
-          <p>
-            Start tasks, answer your agents, and approve their work from the bb
-            desktop app, the mobile app, or any browser.
-          </p>
-          <p>
-            Run agents on your laptop, a desktop at home, or a cloud server, and
-            manage them all from one bb. They keep working while you’re out.
-          </p>
-        </>
-      ),
-    },
-    {
-      title: "Turn bb into the tool you need",
-      wide: false,
-      visual: <CustomizeBuild />,
-      body: (
-        <>
-          <p>
-            bb comes with everything you need out of the box: worktrees, diffs,
-            automations, a mobile app and more.
-          </p>
-          <p>
-            When you want more—or less—customize in Settings, browse the{" "}
-            <a href="/marketplace">plugin marketplace</a>, or ask an agent to
-            build exactly what you need, immediately available wherever you use
-            bb, including your phone.
-          </p>
-        </>
-      ),
-    },
+  heroVisual: null,
+  tailored: pricingSection(PRICING_COPY, {
+    plan: "Superset Pro",
+    logo: SUPERSET_LOGO,
+    yearlyPerSeatMonthly: 15,
+  }),
+  sections: [
+    agentsSection(AGENTS_COPY),
+    anywhereSection(ANYWHERE_COPY),
+    pluginsSection(PLUGINS_COPY),
   ],
   tableNote:
     "marks features that need a paid Superset plan, from $20 per user / month.",

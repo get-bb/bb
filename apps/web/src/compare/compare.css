@@ -50,12 +50,16 @@
   color: var(--subtle);
 }
 
+.cmp-hero-visual {
+  margin-top: 56px;
+}
+
 .cmp-team {
-  padding: 8px 0 56px;
+  margin-top: 64px;
   text-align: center;
 }
 
-.cmp-team h2 {
+.cmp-team h3 {
   color: var(--subtle);
   font-size: 13px;
   font-weight: 400;
@@ -807,8 +811,12 @@
 }
 
 @media (max-width: 720px) {
+  .cmp-hero-visual {
+    margin-top: 36px;
+  }
+
   .cmp-team {
-    padding: 0 0 48px;
+    margin-top: 48px;
   }
 
   .cmp-page .closer {
