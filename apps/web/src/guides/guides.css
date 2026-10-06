@@ -48,6 +48,12 @@
   text-align: left;
 }
 
+.gd-anywhere {
+  max-width: 520px;
+  margin: 56px auto 0;
+  text-align: left;
+}
+
 .gd-card {
   border: 1px solid var(--border);
   border-radius: 14px;

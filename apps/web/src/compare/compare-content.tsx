@@ -196,7 +196,7 @@ export function faqPhone(contrast: ReactNode): CompareFaq {
         Yes, for free. Use the bb mobile app, a public beta on iPhone through
         TestFlight (Apple’s beta testing app) and in alpha on Android, or open
         bb in any browser through bb Connect, bb’s free remote access.{" "}
-        {contrast}
+        {contrast} <a href="/guides/work-from-anywhere">Set it up</a>.
       </p>
     ),
   };

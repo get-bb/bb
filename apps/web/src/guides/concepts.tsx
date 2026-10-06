@@ -3,6 +3,8 @@ import LockIcon from "@hugeicons/core-free-icons/LockIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CSSProperties } from "react";
 
+import { AnywhereVisual } from "../compare/compare-visuals";
+
 const SERVERS = [
   { branch: "feat/checkout", port: 3001 },
   { branch: "fix/login", port: 3002 },
@@ -73,6 +75,14 @@ export function RemoteServersConcept() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+export function AnywhereConcept() {
+  return (
+    <div className="gd-anywhere">
+      <AnywhereVisual />
     </div>
   );
 }

@@ -45,6 +45,10 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 2251,
     height: 820,
   },
+  "/guides/work-from-anywhere/bb-connect-settings.png": {
+    width: 1540,
+    height: 850,
+  },
   "/guides/remote-dev-servers/add-a-machine.png": { width: 1024, height: 650 },
   "/guides/remote-dev-servers/new-project-machine.png": {
     width: 1024,
