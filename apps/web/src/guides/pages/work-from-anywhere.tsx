@@ -164,6 +164,7 @@ export const WORK_FROM_ANYWHERE: Guide = {
       ),
     },
   ],
+  faqTitle: "FAQ",
   faq: [
     {
       question: "Do I need to install anything on my phone?",
