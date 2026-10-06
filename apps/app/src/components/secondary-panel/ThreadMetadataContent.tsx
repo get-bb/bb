@@ -49,7 +49,8 @@ import {
   DETAIL_ROW_ICON_CLASS,
 } from "@/components/ui/detail-card.js";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { assertNever } from "@bb/core-ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   BranchPicker,
@@ -60,7 +61,10 @@ import {
   selectWorkspaceChangedFilesSections,
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
-import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
+import {
+  getGitStatusDisplay,
+  type ThreadGitStatusDisplay,
+} from "@/components/workspace/workspace-status";
 import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -610,9 +614,61 @@ export function MergeBaseRow({
   );
 }
 
-const DIRTY_GIT_STATUS_LABEL = "Uncommitted changes";
+interface GitStatusRowDisplay {
+  icon: IconName;
+  iconClassName: string;
+  text: string;
+  detail: string | null;
+}
 
-const BRANCH_COMPARISON_SUMMARY_PATTERN = /^\d+ (ahead|behind)\b/;
+function withoutTrailingPeriod(text: string): string {
+  return text.replace(/\.$/, "");
+}
+
+export function describeGitStatusRow(
+  display: ThreadGitStatusDisplay,
+  mergeBaseBranch: string | undefined,
+): GitStatusRowDisplay {
+  switch (display.label) {
+    case "Dirty":
+    case "Untracked":
+      return {
+        icon: "DiffModified",
+        iconClassName: "text-destructive",
+        text: "Uncommitted",
+        detail: display.summary === "" ? null : display.summary,
+      };
+    case "Up to date":
+    case "Clean":
+      return {
+        icon: "CircleCheck",
+        iconClassName: "text-subtle-foreground",
+        text:
+          display.label === "Up to date" && mergeBaseBranch
+            ? `Up to date with ${mergeBaseBranch}`
+            : "No changes",
+        detail: null,
+      };
+    case "Ahead":
+    case "Behind":
+    case "Diverged":
+      return {
+        icon: "GitBranch",
+        iconClassName: "text-subtle-foreground",
+        text: withoutTrailingPeriod(display.summary),
+        detail: null,
+      };
+    case "Unknown":
+      return {
+        icon: "AlertTriangle",
+        iconClassName: "text-warning",
+        text: withoutTrailingPeriod(display.summary),
+        detail: null,
+      };
+    default:
+      return assertNever(display.label);
+  }
+}
 
 interface GitStatusRowProps {
   thread: Thread;
@@ -658,10 +714,7 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
-  const summaryRepeatsLabel =
-    (display.label === "Ahead" || display.label === "Behind") &&
-    BRANCH_COMPARISON_SUMMARY_PATTERN.test(display.summary);
-  const isDirty = display.label === "Dirty";
+  const row = describeGitStatusRow(display, effectiveMergeBaseBranch);
 
   return (
     <DetailRow
@@ -671,35 +724,28 @@ export function GitStatusRow({
       align="start"
       valueClassName="min-w-0"
     >
-      <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-        {isDirty ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                role="img"
-                aria-label={DIRTY_GIT_STATUS_LABEL}
-                className="flex shrink-0 items-center"
-              >
-                <Icon
-                  name="DiffModified"
-                  className="size-3 text-destructive"
-                  aria-hidden
-                />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{DIRTY_GIT_STATUS_LABEL}</TooltipContent>
-          </Tooltip>
-        ) : summaryRepeatsLabel ? null : (
-          <span className="shrink-0 text-foreground">{display.label}</span>
-        )}
+      <div
+        className="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
+        title={row.detail ? `${row.text} · ${row.detail}` : row.text}
+      >
+        <Icon
+          name={row.icon}
+          className={cn("size-3 shrink-0", row.iconClassName)}
+          aria-hidden
+        />
         <span
-          className="min-w-0 truncate text-muted-foreground"
-          title={display.summary}
+          className={cn(
+            "text-foreground",
+            row.detail ? "shrink-0" : "min-w-0 truncate",
+          )}
         >
-          {isDirty && display.summary === ""
-            ? DIRTY_GIT_STATUS_LABEL
-            : display.summary}
+          {row.text}
         </span>
+        {row.detail ? (
+          <span className="min-w-0 truncate text-muted-foreground">
+            {row.detail}
+          </span>
+        ) : null}
       </div>
     </DetailRow>
   );

@@ -38,6 +38,7 @@ import {
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
+  describeGitStatusRow,
   GitStatusRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
@@ -399,7 +400,7 @@ describe("GitStatusRow", () => {
     expect(markup).toBe("");
   });
 
-  it("marks a dirty tree with an icon when the merge base branch name contains dirty", () => {
+  it("labels a dirty tree as uncommitted next to its branch comparison", () => {
     const markup = renderToStaticMarkup(
       <TooltipProvider>
         <GitStatusRow
@@ -421,25 +422,45 @@ describe("GitStatusRow", () => {
       </TooltipProvider>,
     );
 
-    expect(markup).toContain('aria-label="Uncommitted changes"');
+    expect(markup).toContain(">Uncommitted</span>");
     expect(markup).toContain("2 ahead of fix/dirty-check");
   });
 
-  it("drops the Ahead label when the summary already says how far ahead", () => {
-    const markup = renderToStaticMarkup(
-      <GitStatusRow
-        thread={makeThread()}
-        environment={null}
-        workspaceStatus={makeWorkspaceStatus({
-          branch: { currentBranch: "feature", defaultBranch: "main" },
-          mergeBase: makeWorkspaceMergeBase({ aheadCount: 6 }),
-        })}
-        workspaceStatusError={null}
-        selectedMergeBaseBranch={undefined}
-      />,
-    );
-
-    expect(markup).not.toContain(">Ahead</span>");
-    expect(markup).toContain("6 ahead of main");
+  it("describes every git status with one icon and a short phrase", () => {
+    expect(
+      describeGitStatusRow(
+        { label: "Up to date", summary: "No local changes relative to main." },
+        "main",
+      ),
+    ).toMatchObject({ icon: "CircleCheck", text: "Up to date with main" });
+    expect(
+      describeGitStatusRow(
+        { label: "Clean", summary: "No local changes." },
+        undefined,
+      ),
+    ).toMatchObject({ icon: "CircleCheck", text: "No changes" });
+    expect(
+      describeGitStatusRow(
+        { label: "Ahead", summary: "6 ahead of main" },
+        "main",
+      ),
+    ).toMatchObject({
+      icon: "GitBranch",
+      text: "6 ahead of main",
+      detail: null,
+    });
+    expect(
+      describeGitStatusRow({ label: "Untracked", summary: "" }, "main"),
+    ).toMatchObject({
+      icon: "DiffModified",
+      text: "Uncommitted",
+      detail: null,
+    });
+    expect(
+      describeGitStatusRow(
+        { label: "Unknown", summary: "Workspace not found." },
+        undefined,
+      ),
+    ).toMatchObject({ icon: "AlertTriangle", text: "Workspace not found" });
   });
 });
