@@ -163,8 +163,10 @@ of after it; see [ci-performance.md](ci-performance.md#windows-test-shards).
 
 App shards install the app and database dependency closures. Server shards
 install the server, host daemon, app, and plugin dependency closures, including
-the plugins loaded dynamically by the server test harness. Other shards retain
-the full workspace install. All use `--ignore-scripts`; Turbo runs the
+the plugins loaded dynamically by the server test harness. Plugin, host, build,
+and integration shards omit the mobile toolchain. The catch-all `packages-other`
+shard retains the full install because it runs mobile tests. All use
+`--ignore-scripts`; Turbo runs the
 generators and native-module preparation the suites depend on. They restore
 and save Turbo outputs. The cache key includes the runner OS, so a restored
 result was produced on Windows; a suite whose inputs are unchanged is not run

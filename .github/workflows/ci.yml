@@ -289,12 +289,15 @@ jobs:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
           SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
+          NON_MOBILE_SHARD: ${{ startsWith(matrix.shard, 'plugins-') || matrix.shard == 'packages-host' || matrix.shard == 'packages-build' || matrix.shard == 'integration' }}
         run: |
           filters=()
           if [[ "$APP_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
           elif [[ "$SERVER_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
+          elif [[ "$NON_MOBILE_SHARD" == "true" ]]; then
+            filters=(--filter '!@bb/mobile')
           fi
           bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts "${filters[@]}"
 
