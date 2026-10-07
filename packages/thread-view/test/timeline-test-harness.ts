@@ -35,6 +35,7 @@ import type {
 } from "../src/event-projection-types.js";
 import {
   buildThreadTimelineFromEvents,
+  buildThreadTimelineTurnDetailsFromEvents,
   formatThreadTimelineText,
 } from "../src/index.js";
 import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
@@ -1498,20 +1499,45 @@ export function renderTimelineFixture(
     },
   });
   const rows = timeline.rows;
-  const ownershipProjection = buildEventProjection(decodedEvents, {
-    ...args.projectionOptions,
-    threadName: args.projectionOptions.threadName ?? "",
-    turnMessageDetail: "full",
-  });
+  const ownershipProjection =
+    includeNestedRows || args.projectionOptions.turnMessageDetail === "full"
+      ? projection
+      : buildEventProjection(decodedEvents, {
+          ...args.projectionOptions,
+          threadName: args.projectionOptions.threadName ?? "",
+          turnMessageDetail: "full",
+        });
+  const pendingMessages = buildPendingSteerMessagesFromEvents(
+    EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+    decodedEvents,
+    commonProjectionOptions,
+  );
   assertTimelineSourceOwnership(
     decodedEvents,
     ownershipProjection,
     rows,
-    buildPendingSteerMessagesFromEvents(
-      EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-      decodedEvents,
-      commonProjectionOptions,
-    ),
+    pendingMessages,
+  );
+  const lazyRows = rows.map((row) => {
+    if (row.kind !== "turn") return row;
+    const details = buildThreadTimelineTurnDetailsFromEvents({
+      events: decodedEvents,
+      options: {
+        ...commonProjectionOptions,
+        sourceSeqStart: row.sourceSeqStart,
+        turnId: row.turnId,
+      },
+    });
+    if (details.kind !== "matched") {
+      throw new Error(`Missing lazy details for timeline summary ${row.id}`);
+    }
+    return { ...row, children: details.rows };
+  });
+  assertTimelineSourceOwnership(
+    decodedEvents,
+    ownershipProjection,
+    lazyRows,
+    pendingMessages,
   );
   const messages = flattenEventProjectionMessagesDeep(projection);
   const text = formatThreadTimelineText(rows, {

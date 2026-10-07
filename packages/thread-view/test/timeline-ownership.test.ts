@@ -271,4 +271,42 @@ describe("timeline source ownership", () => {
     expect(fixture.rows[0]).toMatchObject({ text: "Inspecting.\n" });
     expect(fixture.rows[1]).toMatchObject({ output: "result\n" });
   });
+  it.each(["provisioning", "turn"] as const)(
+    "clears provisioning correlation on a new %s lifecycle",
+    (kind) => {
+      const factory = createTimelineEventFactory({ threadId: "thread-1" });
+      const failed = factory.threadProvisioning({
+        provisioningId: "first",
+        status: "failed",
+        entries: [],
+      });
+      const boundary =
+        kind === "provisioning"
+          ? factory.threadProvisioning({
+              provisioningId: "second",
+              status: "active",
+              entries: [],
+            })
+          : factory.turnStarted({});
+      const error = factory.systemError({
+        code: "thread_provisioning_failed",
+        message: "Provisioning thread failed",
+        detail: "Unpaired error",
+      });
+      const fixture = renderTimelineFixture({
+        events: [failed, boundary, error],
+        projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
+      });
+      expect(fixture.rows).toContainEqual(
+        expect.objectContaining({
+          systemKind: "error",
+          detail: "Unpaired error",
+        }),
+      );
+      expect(fixture.rows[0]).toMatchObject({
+        operationKind: "thread-provisioning",
+        detail: null,
+      });
+    },
+  );
 });
