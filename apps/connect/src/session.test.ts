@@ -21,6 +21,7 @@ import {
 } from "@bb/connect-db";
 
 import {
+  invalidateSessionCookie,
   MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
   markMachineSeen,
   resolveLabel,
@@ -556,25 +557,151 @@ function countingDb(target: typeof db): {
   return { db: proxied, counts };
 }
 
-describe("single-flight gate caches", () => {
-  it("collapses a cold burst of label lookups into one D1 round trip", async () => {
-    seedUser("acct-flight");
-    seedServer({
-      id: "srv-flight",
-      userId: "acct-flight",
-      name: "default",
-      subdomain: "flight-label",
+function stalledDb(target: typeof db): typeof db {
+  const query: object = new Proxy(() => {}, {
+    get: (_query, prop) =>
+      prop === "then"
+        ? undefined
+        : prop === "get"
+          ? () => new Promise(() => {})
+          : () => query,
+  });
+  return new Proxy(target, {
+    get(t, prop) {
+      if (prop === "select") return () => query;
+      const value = Reflect.get(t, prop);
+      return typeof value === "function" ? value.bind(t) : value;
+    },
+  });
+}
+
+function gatedDb(target: typeof db, gate: Promise<void>): typeof db {
+  const wrap = (builder: object): object =>
+    new Proxy(builder, {
+      get(b, prop) {
+        const value = Reflect.get(b, prop);
+        if (typeof value !== "function") return value;
+        if (prop === "get") {
+          return async (...args: unknown[]) => {
+            await gate;
+            return value.apply(b, args);
+          };
+        }
+        return (...args: unknown[]) => {
+          const result = value.apply(b, args);
+          return typeof result === "object" && result !== null
+            ? wrap(result)
+            : result;
+        };
+      },
     });
+  return new Proxy(target, {
+    get(t, prop) {
+      const value = Reflect.get(t, prop);
+      if (prop === "select" && typeof value === "function") {
+        return (...args: unknown[]) => wrap(value.apply(t, args));
+      }
+      return typeof value === "function" ? value.bind(t) : value;
+    },
+  });
+}
+
+async function seedSignedSession(
+  userId: string,
+  secret: string,
+): Promise<string> {
+  seedUser(userId);
+  const token = `sess_${crypto.randomUUID()}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBuf = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(token),
+  );
+  const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+  db.insert(session)
+    .values({
+      id: `sess-${token}`,
+      token,
+      expiresAt: new Date(Date.now() + 60_000),
+      userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+  return `${token}.${sig}`;
+}
+
+describe("gate lookup caches", () => {
+  it("answers a label whose earlier lookup never settled", async () => {
+    seedUser("acct-stalled-label");
+    seedServer({
+      id: "srv-stalled-label",
+      userId: "acct-stalled-label",
+      name: "default",
+      subdomain: "stalled-label",
+    });
+
+    void resolveLabel("stalled-label", stalledDb(db));
+
+    await expect(resolveLabel("stalled-label", db)).resolves.toMatchObject({
+      kind: "server",
+      userId: "acct-stalled-label",
+    });
+  });
+
+  it("verifies a session cookie whose earlier lookup never settled", async () => {
+    const secret = "stalled-secret";
+    const cookieValue = await seedSignedSession("acct-stalled-cookie", secret);
+
+    void verifySessionCookieDetails(cookieValue, secret, stalledDb(db));
+
+    await expect(
+      verifySessionCookieDetails(cookieValue, secret, db),
+    ).resolves.toMatchObject({ userId: "acct-stalled-cookie" });
+  });
+
+  it("serves later session verifications from the cache", async () => {
+    const secret = "cached-secret";
+    const cookieValue = await seedSignedSession("acct-cached-cookie", secret);
     const counted = countingDb(db);
 
-    const resolved = await Promise.all(
-      Array.from({ length: 6 }, () => resolveLabel("flight-label", counted.db)),
-    );
+    await verifySessionCookieDetails(cookieValue, secret, counted.db);
+    await verifySessionCookieDetails(cookieValue, secret, counted.db);
 
     expect(counted.counts.select).toBe(1);
-    for (const label of resolved) {
-      expect(label).toMatchObject({ kind: "server", userId: "acct-flight" });
-    }
+  });
+
+  it("does not cache a lookup that was in flight when its cookie was invalidated", async () => {
+    const secret = "invalidated-secret";
+    const cookieValue = await seedSignedSession(
+      "acct-invalidated-cookie",
+      secret,
+    );
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const inFlight = verifySessionCookieDetails(
+      cookieValue,
+      secret,
+      gatedDb(db, gate),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    invalidateSessionCookie(cookieValue);
+    release();
+    await inFlight;
+    const counted = countingDb(db);
+    await verifySessionCookieDetails(cookieValue, secret, counted.db);
+
+    expect(counted.counts.select).toBe(1);
   });
 
   it("does not cache a failed lookup: the next request retries D1", async () => {
@@ -603,48 +730,6 @@ describe("single-flight gate caches", () => {
     await expect(
       resolveLabel("flight-retry", failingOnce),
     ).resolves.toMatchObject({ kind: "server", userId: "acct-flight-retry" });
-  });
-
-  it("collapses a cold burst of session verifications into one D1 round trip", async () => {
-    seedUser("acct-cookie-flight");
-    const token = `sess_flight_${crypto.randomUUID()}`;
-    const secret = "flight-secret";
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"],
-    );
-    const sigBuf = await crypto.subtle.sign(
-      "HMAC",
-      key,
-      new TextEncoder().encode(token),
-    );
-    const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-    const cookieValue = `${token}.${sig}`;
-    db.insert(session)
-      .values({
-        id: `sess-${token}`,
-        token,
-        expiresAt: new Date(Date.now() + 60_000),
-        userId: "acct-cookie-flight",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    const counted = countingDb(db);
-
-    const verified = await Promise.all(
-      Array.from({ length: 6 }, () =>
-        verifySessionCookieDetails(cookieValue, secret, counted.db),
-      ),
-    );
-
-    expect(counted.counts.select).toBe(1);
-    expect(verified.map((details) => details?.userId)).toEqual(
-      Array.from({ length: 6 }, () => "acct-cookie-flight"),
-    );
   });
 });
 
@@ -723,24 +808,34 @@ describe("machine credential cache", () => {
     vi.useRealTimers();
   });
 
-  it("answers a burst of daemon requests with one D1 lookup", async () => {
-    const credential = await seedMachine("machine-burst");
+  it("answers repeat daemon requests from the cache", async () => {
+    const credential = await seedMachine("machine-repeat");
     const counted = countingDb(db);
 
-    const verified = await Promise.all(
-      Array.from({ length: 6 }, () =>
-        verifyMachineCredentialDetails(credential, counted.db),
-      ),
-    );
     await verifyMachineCredentialDetails(credential, counted.db);
+    const verified = await verifyMachineCredentialDetails(
+      credential,
+      counted.db,
+    );
 
     expect(counted.counts.select).toBe(1);
-    expect(verified).toEqual(
-      Array.from({ length: 6 }, () => ({
-        machineId: "machine-burst",
-        userId: "acct-machine-burst",
-      })),
-    );
+    expect(verified).toEqual({
+      machineId: "machine-repeat",
+      userId: "acct-machine-repeat",
+    });
+  });
+
+  it("verifies a credential whose earlier lookup never settled", async () => {
+    const credential = await seedMachine("machine-stalled");
+
+    void verifyMachineCredentialDetails(credential, stalledDb(db));
+
+    await expect(
+      verifyMachineCredentialDetails(credential, db),
+    ).resolves.toEqual({
+      machineId: "machine-stalled",
+      userId: "acct-machine-stalled",
+    });
   });
 
   it("caches an unknown credential so retries do not reach D1", async () => {
