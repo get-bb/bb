@@ -1243,7 +1243,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create threads, send messages, and manage projects and machines",
           "Do what the [bb CLI](cli) and the app can do",
           "Have the threads it creates attributed to the plugin",
-          "Start plugin updates with experimental_startUpdate and follow progress or rollback with experimental_updateJobs; applyUpdate waits for the result",
+          "Start plugin updates in the background and follow their progress or rollback",
         ],
         apiSymbols: [
           "BbPluginApi",
