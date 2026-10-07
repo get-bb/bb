@@ -35,6 +35,7 @@ import {
   ThreadRowActionsCustomizingContext,
   type ThreadRowActionsCustomizing,
 } from "./customizeRowActionsContext.js";
+import { useFinishRowActionsOnOutsideClick } from "./ThreadRowActionsCustomize.js";
 
 export interface ThreadListVisibilityGroup extends SidebarVisibilityItem {
   id: SidebarSectionId;
@@ -151,6 +152,9 @@ export function ThreadListVisibility({
       setRowActionsThreadId(null);
     },
     [rowActionsThreadId],
+  );
+  useFinishRowActionsOnOutsideClick(
+    rowActionsThreadId === null ? null : finishCustomizingRowActions,
   );
   const rowActionsCustomizing = useMemo<ThreadRowActionsCustomizing | null>(
     () =>

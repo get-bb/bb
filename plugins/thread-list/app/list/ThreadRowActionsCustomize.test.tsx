@@ -6,9 +6,22 @@ import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { threadRowActionsAtom } from "../preferences/atoms.js";
 
 installTestPluginRuntime();
-const { assignRowActionSlot, ThreadRowActionsEditor } = await import(
-  "./ThreadRowActionsCustomize.js"
-);
+const {
+  assignRowActionSlot,
+  ThreadRowActionsEditor,
+  useFinishRowActionsOnOutsideClick,
+} = await import("./ThreadRowActionsCustomize.js");
+
+function OutsideClickHarness({
+  onDone,
+  showEditor,
+}: {
+  onDone: (restoreFocus: boolean) => void;
+  showEditor: boolean;
+}) {
+  useFinishRowActionsOnOutsideClick(onDone);
+  return showEditor ? <ThreadRowActionsEditor onDone={onDone} /> : null;
+}
 
 afterEach(() => {
   cleanup();
@@ -102,4 +115,42 @@ it("offers Hide only for a filled slot and finishes on Escape", async () => {
     { key: "Escape" },
   );
   expect(finish).toHaveBeenCalledWith(true);
+});
+
+it("keeps customizing through picker choices and dismissals, then finishes on a click elsewhere", async () => {
+  const store = createStore();
+  store.set(threadRowActionsAtom, ["archive"]);
+  const finish = vi.fn();
+  render(
+    <Provider store={store}>
+      <OutsideClickHarness onDone={finish} showEditor />
+    </Provider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Row action 1: Empty" }));
+  fireEvent.keyDown(await screen.findByRole("menuitemradio", { name: "Pin" }), {
+    key: "Enter",
+  });
+  await waitFor(() =>
+    expect(store.get(threadRowActionsAtom)).toEqual(["pin", "archive"]),
+  );
+  expect(finish).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Row action 1: Empty" }));
+  await screen.findByRole("menu");
+  fireEvent.pointerDown(document.body);
+  fireEvent.click(document.body);
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  expect(finish).not.toHaveBeenCalled();
+
+  fireEvent.pointerDown(document.body);
+  fireEvent.click(document.body);
+  expect(finish).toHaveBeenCalledWith(false);
+});
+
+it("finishes on a click elsewhere after the edited row unmounts", () => {
+  const finish = vi.fn();
+  render(<OutsideClickHarness onDone={finish} showEditor={false} />);
+  fireEvent.pointerDown(document.body);
+  fireEvent.click(document.body);
+  expect(finish).toHaveBeenCalledWith(false);
 });

@@ -190,25 +190,25 @@ export function ThreadRowActionsEditor({
   );
 }
 
-export function ThreadRowActionsCustomizeFooter({
-  onDone,
-  style,
-}: {
-  onDone: (restoreFocus: boolean) => void;
-  style: CSSProperties;
-}) {
+function isSlotPickerOpen(): boolean {
+  return (
+    document.querySelector(`${SLOT_SELECTOR}[aria-expanded="true"]`) !== null
+  );
+}
+
+export function useFinishRowActionsOnOutsideClick(
+  onDone: ((restoreFocus: boolean) => void) | null,
+) {
   useEffect(() => {
+    if (onDone === null) return;
     let pickerWasOpen = false;
     const handlePointerDown = () => {
-      pickerWasOpen =
-        document.querySelector(`${SLOT_SELECTOR}[aria-expanded="true"]`) !==
-        null;
+      pickerWasOpen = isSlotPickerOpen();
     };
     const handleClick = (event: MouseEvent) => {
-      if (pickerWasOpen) {
-        pickerWasOpen = false;
-        return;
-      }
+      const pickerClick = pickerWasOpen || isSlotPickerOpen();
+      pickerWasOpen = false;
+      if (pickerClick) return;
       if (
         event.target instanceof Element &&
         event.target.closest(CUSTOMIZE_SELECTOR)
@@ -223,6 +223,15 @@ export function ThreadRowActionsCustomizeFooter({
       document.removeEventListener("click", handleClick, true);
     };
   }, [onDone]);
+}
+
+export function ThreadRowActionsCustomizeFooter({
+  onDone,
+  style,
+}: {
+  onDone: (restoreFocus: boolean) => void;
+  style: CSSProperties;
+}) {
   return (
     <div
       {...{ [CUSTOMIZE_ATTRIBUTE]: "" }}

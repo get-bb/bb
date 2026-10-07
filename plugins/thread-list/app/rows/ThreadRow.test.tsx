@@ -629,7 +629,7 @@ describe("ThreadRow", () => {
     expect(customize).toHaveBeenCalledWith("thr_test");
   });
 
-  it("customizes row actions on the real row until Done or a click elsewhere", async () => {
+  it("customizes row actions on the real row until Done", () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), ["pin"]);
     const finish = vi.fn();
     renderThreadRow({ onFinishCustomizingRowActions: finish });
@@ -646,21 +646,8 @@ describe("ThreadRow", () => {
       ).map((slot) => slot.dataset.rowActionSlot),
     ).toEqual(["none", "none", "pin"]);
     expect(screen.getByText("Shown on hover for every thread.")).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Row action 1: Empty" }),
-    );
-    await screen.findByRole("menuitemradio", { name: "Pin" });
-    fireEvent.pointerDown(document.body);
-    fireEvent.click(document.body);
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    expect(finish).not.toHaveBeenCalled();
-
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(finish).toHaveBeenLastCalledWith(true);
-    fireEvent.pointerDown(document.body);
-    fireEvent.click(document.body);
-    expect(finish).toHaveBeenLastCalledWith(false);
+    expect(finish).toHaveBeenCalledWith(true);
   });
 
   it("asks the host to confirm deletion from the menu", async () => {
