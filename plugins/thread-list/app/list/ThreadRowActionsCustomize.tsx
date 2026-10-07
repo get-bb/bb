@@ -20,7 +20,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon, type IconName } from "@/components/ui/icon";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { cn } from "@/lib/utils";
 import {
   THREAD_ROW_ACTION_IDS,
@@ -142,7 +141,7 @@ export function ThreadRowActionsEditor({
       role="group"
       aria-label="Row actions"
       {...{ [CUSTOMIZE_ATTRIBUTE]: "" }}
-      className="relative z-10 flex shrink-0 items-center gap-0.5"
+      className="relative z-10 flex shrink-0 items-center gap-1 pr-0.5"
       onClick={(event) => event.stopPropagation()}
       onClickCapture={onClickCapture}
       onKeyDown={(event) => finishOnEscape(event, onDone)}
@@ -176,12 +175,12 @@ export function ThreadRowActionsEditor({
         type="button"
         size="sm"
         aria-label="Done"
-        className="h-7 shrink-0 gap-1 rounded-md px-2 text-xs focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-background/60 max-md:pointer-coarse:size-9 max-md:pointer-coarse:px-0"
+        className="ml-0.5 h-6 shrink-0 gap-0.5 rounded-md px-1.5 text-xs font-normal focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-background/60 max-md:pointer-coarse:size-8 max-md:pointer-coarse:px-0"
         onClick={() => onDone(true)}
       >
         <Icon
           name="Check"
-          className="size-3.5 max-md:pointer-coarse:size-5"
+          className="size-3 max-md:pointer-coarse:size-4"
           aria-hidden
         />
         <span className="max-md:pointer-coarse:hidden">Done</span>
@@ -260,7 +259,7 @@ function RowActionSlotPicker({
             title={label}
             className={cn(
               SIDEBAR_CONTROL_BUTTON_CLASS,
-              "flex touch-none items-center justify-center border focus-visible:bg-state-hover focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-sidebar-ring/60",
+              "flex size-6 touch-none items-center justify-center border focus-visible:bg-state-hover focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-sidebar-ring/60 max-md:pointer-coarse:size-8",
               value === null
                 ? "border-dashed border-sidebar-foreground/25"
                 : "border-sidebar-foreground/15",
@@ -276,7 +275,7 @@ function RowActionSlotPicker({
             <Icon
               name={value === null ? "Plus" : THREAD_ROW_ACTIONS[value].icon}
               className={cn(
-                COARSE_POINTER_ICON_SIZE_CLASS,
+                "size-3.5 max-md:pointer-coarse:size-4",
                 value === null && "text-muted-foreground",
               )}
             />
