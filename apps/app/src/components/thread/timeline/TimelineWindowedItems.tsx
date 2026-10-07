@@ -9,6 +9,7 @@ import {
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import {
   defaultRangeExtractor,
+  elementScroll,
   useVirtualizer,
   type Range,
 } from "@tanstack/react-virtual";
@@ -55,6 +56,7 @@ export function TimelineWindowedItems({
   itemKeys,
   measurements,
   renderItem,
+  startAtEnd,
 }: TimelineWindowedItemsProps) {
   const [scrollAdjustmentsKeepMomentum] = useState(
     () => typeof navigator === "undefined" || !isIOSWebKit(navigator),
@@ -133,9 +135,33 @@ export function TimelineWindowedItems({
     },
     [forcedIndexes],
   );
-  const initialOffset = useCallback(
-    () => resolvedGetScrollElement()?.scrollTop ?? 0,
-    [resolvedGetScrollElement],
+  const initialOffset = useCallback(() => {
+    const scrollElement = resolvedGetScrollElement();
+    if (!startAtEnd) return scrollElement?.scrollTop ?? 0;
+    let estimatedEnd = scrollMargin;
+    for (let index = 0; index < itemKeys.length; index += 1) {
+      estimatedEnd += estimateSize(index) + (index > 0 ? gap : 0);
+    }
+    const viewportHeight = scrollElement?.clientHeight || initialRect.height;
+    return Math.max(0, estimatedEnd - viewportHeight);
+  }, [
+    estimateSize,
+    gap,
+    initialRect,
+    itemKeys,
+    resolvedGetScrollElement,
+    scrollMargin,
+    startAtEnd,
+  ]);
+  const scrollToFn = useCallback<typeof elementScroll<HTMLElement>>(
+    (offset, options, instance) => {
+      const container = containerElementRef.current;
+      if (container !== null) {
+        container.style.height = `${instance.getTotalSize()}px`;
+      }
+      elementScroll(offset, options, instance);
+    },
+    [],
   );
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
@@ -153,6 +179,7 @@ export function TimelineWindowedItems({
     overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
     rangeExtractor,
     scrollMargin,
+    scrollToFn,
     useFlushSync: false,
   });
   const containerRef = useComposedRefs(
