@@ -46,9 +46,8 @@ const PLANS_SECTION = {
         you pick the right one for each task.
       </p>
       <p>
-        When an account hits its limit, bb can move the thread to another
-        account you own, or pick the work back up once the limit resets. bb
-        itself is free.
+        When an agent hits a usage limit, bb picks the work back up once the
+        limit resets. bb itself is free.
       </p>
     </>
   ),
@@ -76,7 +75,7 @@ export const BB_VS_CURSOR: Comparison = {
     "bb is a free, open-source Cursor alternative. Run Claude Code and Codex directly on your Claude and ChatGPT subscriptions, next to Cursor’s agent, and change anything with plugins.",
   competitor: { name: "Cursor", logo: CURSOR_LOGO },
   headline: "The Cursor alternative for your Claude and ChatGPT subscriptions",
-  sub: "Run Claude Code and Codex directly on the subscriptions you already have, next to Cursor’s own agent, in an app you can change with plugins. Free and open source.",
+  sub: "Run Claude Code and Codex on the subscriptions you already have, not at API rates. Cursor’s agent works too. Free and open source.",
   heroVisual: <AgentSplit />,
   tailored: PLANS_SECTION,
   sections: [
