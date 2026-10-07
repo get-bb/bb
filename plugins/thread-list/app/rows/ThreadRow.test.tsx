@@ -1778,7 +1778,7 @@ describe("ThreadRow", () => {
   });
 
   it.each(["timer", "native context menu"])(
-    "restores the row when %s opens its menu and still allows deliberate dragging",
+    "keeps the row still when %s opens its menu and still allows deliberate dragging",
     async (trigger) => {
       const onDragStart = vi.fn();
       const thread = createThread();
@@ -1835,17 +1835,14 @@ describe("ThreadRow", () => {
       if (trigger === "native context menu") fireEvent.contextMenu(link);
       await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
       expect(
-        slot.container.querySelector("[data-sidebar-touch-armed=true]"),
-      ).not.toBeNull();
+        slot.container.querySelector("[data-sidebar-section-drag-overlay]"),
+      ).toBeNull();
       await act(async () => new Promise((resolve) => setTimeout(resolve, 250)));
       expect(
         document.querySelector(
           '[data-persistent-drawer-content][data-state="open"]',
         ),
       ).not.toBeNull();
-      expect(
-        slot.container.querySelector("[data-sidebar-touch-armed-chip]"),
-      ).toBeNull();
       expect(onDragStart).not.toHaveBeenCalled();
       fireEvent.touchMove(link, { touches: [{ clientX: 26, clientY: 10 }] });
       await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
