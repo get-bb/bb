@@ -16,7 +16,9 @@ import { Route as PluginGuideRouteImport } from "./routes/plugin-guide";
 import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
 import { Route as LinkRouteImport } from "./routes/link";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
+import { Route as ClaudeCodeParallelAgentsRouteImport } from "./routes/claude-code-parallel-agents";
 import { Route as ClaudeCodeMobileRouteImport } from "./routes/claude-code-mobile";
+import { Route as ClaudeCodeAndCodexRouteImport } from "./routes/claude-code-and-codex";
 import { Route as ChangelogRouteImport } from "./routes/changelog";
 import { Route as BlogRouteImport } from "./routes/blog";
 import { Route as IndexRouteImport } from "./routes/index";
@@ -79,9 +81,20 @@ const DashboardRoute = DashboardRouteImport.update({
   path: "/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any);
+const ClaudeCodeParallelAgentsRoute =
+  ClaudeCodeParallelAgentsRouteImport.update({
+    id: "/claude-code-parallel-agents",
+    path: "/claude-code-parallel-agents",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const ClaudeCodeMobileRoute = ClaudeCodeMobileRouteImport.update({
   id: "/claude-code-mobile",
   path: "/claude-code-mobile",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ClaudeCodeAndCodexRoute = ClaudeCodeAndCodexRouteImport.update({
+  id: "/claude-code-and-codex",
+  path: "/claude-code-and-codex",
   getParentRoute: () => rootRouteImport,
 } as any);
 const ChangelogRoute = ChangelogRouteImport.update({
@@ -223,7 +236,9 @@ export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
+  "/claude-code-and-codex": typeof ClaudeCodeAndCodexRoute;
   "/claude-code-mobile": typeof ClaudeCodeMobileRoute;
+  "/claude-code-parallel-agents": typeof ClaudeCodeParallelAgentsRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
@@ -259,7 +274,9 @@ export interface FileRoutesByTo {
   "/": typeof IndexRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
+  "/claude-code-and-codex": typeof ClaudeCodeAndCodexRoute;
   "/claude-code-mobile": typeof ClaudeCodeMobileRoute;
+  "/claude-code-parallel-agents": typeof ClaudeCodeParallelAgentsRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
@@ -296,7 +313,9 @@ export interface FileRoutesById {
   "/": typeof IndexRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
+  "/claude-code-and-codex": typeof ClaudeCodeAndCodexRoute;
   "/claude-code-mobile": typeof ClaudeCodeMobileRoute;
+  "/claude-code-parallel-agents": typeof ClaudeCodeParallelAgentsRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace_": typeof MarketplaceRouteWithChildren;
@@ -334,7 +353,9 @@ export interface FileRouteTypes {
     | "/"
     | "/blog"
     | "/changelog"
+    | "/claude-code-and-codex"
     | "/claude-code-mobile"
+    | "/claude-code-parallel-agents"
     | "/dashboard"
     | "/link"
     | "/marketplace"
@@ -370,7 +391,9 @@ export interface FileRouteTypes {
     | "/"
     | "/blog"
     | "/changelog"
+    | "/claude-code-and-codex"
     | "/claude-code-mobile"
+    | "/claude-code-parallel-agents"
     | "/dashboard"
     | "/link"
     | "/marketplace"
@@ -406,7 +429,9 @@ export interface FileRouteTypes {
     | "/"
     | "/blog"
     | "/changelog"
+    | "/claude-code-and-codex"
     | "/claude-code-mobile"
+    | "/claude-code-parallel-agents"
     | "/dashboard"
     | "/link"
     | "/marketplace_"
@@ -443,7 +468,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   BlogRoute: typeof BlogRoute;
   ChangelogRoute: typeof ChangelogRoute;
+  ClaudeCodeAndCodexRoute: typeof ClaudeCodeAndCodexRoute;
   ClaudeCodeMobileRoute: typeof ClaudeCodeMobileRoute;
+  ClaudeCodeParallelAgentsRoute: typeof ClaudeCodeParallelAgentsRoute;
   DashboardRoute: typeof DashboardRoute;
   LinkRoute: typeof LinkRoute;
   MarketplaceRoute: typeof MarketplaceRouteWithChildren;
@@ -525,11 +552,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DashboardRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/claude-code-parallel-agents": {
+      id: "/claude-code-parallel-agents";
+      path: "/claude-code-parallel-agents";
+      fullPath: "/claude-code-parallel-agents";
+      preLoaderRoute: typeof ClaudeCodeParallelAgentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/claude-code-mobile": {
       id: "/claude-code-mobile";
       path: "/claude-code-mobile";
       fullPath: "/claude-code-mobile";
       preLoaderRoute: typeof ClaudeCodeMobileRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/claude-code-and-codex": {
+      id: "/claude-code-and-codex";
+      path: "/claude-code-and-codex";
+      fullPath: "/claude-code-and-codex";
+      preLoaderRoute: typeof ClaudeCodeAndCodexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/changelog": {
@@ -735,7 +776,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlogRoute: BlogRoute,
   ChangelogRoute: ChangelogRoute,
+  ClaudeCodeAndCodexRoute: ClaudeCodeAndCodexRoute,
   ClaudeCodeMobileRoute: ClaudeCodeMobileRoute,
+  ClaudeCodeParallelAgentsRoute: ClaudeCodeParallelAgentsRoute,
   DashboardRoute: DashboardRoute,
   LinkRoute: LinkRoute,
   MarketplaceRoute: MarketplaceRouteWithChildren,

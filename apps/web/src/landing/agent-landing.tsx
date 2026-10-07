@@ -36,16 +36,16 @@ import type {
 } from "../compare/comparisons";
 import compareCss from "../compare/compare.css?url";
 
-export const CLAUDE_CODE_MOBILE_PATH = "/claude-code-mobile";
-
 export type LandingVariant = "phone" | "codex-review" | "parallel";
 
-export function parseLandingVariant(value: unknown): LandingVariant {
-  return value === "codex-review" || value === "parallel" ? value : "phone";
-}
+export const LANDING_PAGE_PATHS: Record<LandingVariant, string> = {
+  phone: "/claude-code-mobile",
+  "codex-review": "/claude-code-and-codex",
+  parallel: "/claude-code-parallel-agents",
+};
 
 const PHONE_SECTION: CompareHighlight = {
-  title: "Step away. Answer from your phone.",
+  title: "Step away. Reply from your phone.",
   wide: false,
   visual: <AnywhereVisual />,
   body: (
@@ -184,9 +184,9 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
   phone: {
     title: "Claude Code Mobile: See Which Agent Needs You — bb",
     description:
-      "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and answer from any phone browser. Free and open source.",
+      "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and reply from any phone browser. Free and open source.",
     headline: "See which agent needs you from your phone",
-    sub: "Answer Claude Code, Codex, and your other agents from any phone browser. Free and open source.",
+    sub: "Check on Claude Code, Codex, and your other agents and reply from any phone browser. Free and open source.",
     sections: [PHONE_SECTION, CODEX_SECTION, PARALLEL_SECTION],
     faq: [
       PHONE_FAQ,
@@ -200,9 +200,9 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
   "codex-review": {
     title: "Use Claude Code and Codex Together — bb",
     description:
-      "Have Codex review Claude Code’s work, or the reverse, with no copy-paste between them. Both run in one free, open-source app.",
+      "Have Codex review Claude Code’s work with no copy-paste between them. Both run in one free, open-source app, on the subscriptions you already have.",
     headline: "Have Codex review Claude Code’s work",
-    sub: "Or the reverse, with no copy-paste, on the subscriptions you already have. Free and open source.",
+    sub: "Both run in one app on the subscriptions you already have, with no copy-paste between them. Free and open source.",
     sections: [CODEX_SECTION, PARALLEL_SECTION, PHONE_SECTION],
     faq: [
       {
@@ -217,8 +217,8 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     title: "Run Claude Code Agents in Parallel — bb",
     description:
       "Run Claude Code, Codex, and other agents in parallel, each in its own Git worktree, and always know which one needs you. Free and open source.",
-    headline: "Run agents in parallel and always know which one needs you",
-    sub: "One list shows which agents are running, waiting on you, or done. Free and open source.",
+    headline: "Run your own software factory of coding agents",
+    sub: "Claude Code, Codex, and more work in parallel, and one list shows which are running, waiting on you, or done. Free and open source.",
     sections: [PARALLEL_SECTION, CODEX_SECTION, PHONE_SECTION],
     faq: [
       {
@@ -236,16 +236,14 @@ const CLOSER = {
   body: "Free and open source, on your own machines. Bring the agents you already use.",
 };
 
-export function claudeCodeMobileHead(variant: LandingVariant) {
+export function agentLandingHead(variant: LandingVariant) {
   const content = VARIANTS[variant];
+  const path = LANDING_PAGE_PATHS[variant];
   return {
-    meta: pageMeta(content.title, content.description, CLAUDE_CODE_MOBILE_PATH),
+    meta: pageMeta(content.title, content.description, path),
     links: [
       ...siteHeadLinks(compareCss),
-      {
-        rel: "canonical",
-        href: `https://getbb.app${CLAUDE_CODE_MOBILE_PATH}`,
-      },
+      { rel: "canonical", href: `https://getbb.app${path}` },
     ],
     scripts: [
       { type: "application/ld+json", children: faqJsonLd(content.faq) },
@@ -253,7 +251,7 @@ export function claudeCodeMobileHead(variant: LandingVariant) {
   };
 }
 
-export function ClaudeCodeMobilePage({ variant }: { variant: LandingVariant }) {
+export function AgentLandingPage({ variant }: { variant: LandingVariant }) {
   useInitAnalytics();
   useScrollReveal();
   const content = VARIANTS[variant];
@@ -280,7 +278,7 @@ export function ClaudeCodeMobilePage({ variant }: { variant: LandingVariant }) {
 
       <Closer closer={CLOSER} />
 
-      <SiteFooter current={CLAUDE_CODE_MOBILE_PATH} />
+      <SiteFooter current={LANDING_PAGE_PATHS[variant]} />
     </div>
   );
 }

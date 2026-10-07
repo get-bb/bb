@@ -13,7 +13,11 @@ export const COMPARE_LINKS: ContentLink[] = [
   { label: "bb vs Vibe Kanban", href: "/compare/vibe-kanban-alternative" },
 ];
 
-export const LANDING_PATHS: string[] = ["/claude-code-mobile"];
+export const LANDING_PATHS: string[] = [
+  "/claude-code-mobile",
+  "/claude-code-and-codex",
+  "/claude-code-parallel-agents",
+];
 
 export const CONTENT_PATHS: string[] = [
   ...[...GUIDE_LINKS, ...COMPARE_LINKS].map((link) => link.href),

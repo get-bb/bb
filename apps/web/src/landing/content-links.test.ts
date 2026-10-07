@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { COMPARISONS } from "../compare/comparisons";
 import { GUIDES } from "../guides/guides";
-import { CLAUDE_CODE_MOBILE_PATH } from "./claude-code-mobile";
+import { LANDING_PAGE_PATHS } from "./agent-landing";
 import { CONTENT_PATHS } from "./content-links";
 
 describe("CONTENT_PATHS", () => {
@@ -10,7 +10,7 @@ describe("CONTENT_PATHS", () => {
     const pages = [
       ...COMPARISONS.map((comparison) => `/compare/${comparison.slug}`),
       ...GUIDES.map((guide) => `/${guide.section}/${guide.slug}`),
-      CLAUDE_CODE_MOBILE_PATH,
+      ...Object.values(LANDING_PAGE_PATHS),
     ];
     expect([...CONTENT_PATHS].sort()).toEqual(pages.sort());
   });
