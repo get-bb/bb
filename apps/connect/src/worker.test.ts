@@ -1089,34 +1089,61 @@ describe("gate request deadline", () => {
     expect(await response.text()).toContain("(stage: response-head)");
   });
 
-  it("cancels a response that arrives after the deadline answered", async () => {
-    const cancel = vi.fn(async () => {});
-    let answer: (response: Response) => void = () => {};
-    const { env, ctx } = makeEnv(
-      () =>
-        new Promise<Response>((resolve) => {
-          answer = resolve;
-        }),
-    );
-    const response = await settle(
-      worker.fetch(
-        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
-          headers: machineHeaders,
-        }),
-        env as never,
-        ctx,
-      ),
-      RESP_HEAD_TIMEOUT_MS,
-    );
-    expect(response.status).toBe(504);
+  it.each(["HTTP", "WebSocket"])(
+    "disposes a late %s response after the deadline answered",
+    async (kind) => {
+      const cancel = vi.fn(async () => {});
+      const socketEvents: string[] = [];
+      let answer: (response: Response) => void = () => {};
+      const { env, ctx } = makeEnv(
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const response = await settle(
+        worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers:
+              kind === "WebSocket"
+                ? { ...machineHeaders, upgrade: "websocket" }
+                : machineHeaders,
+          }),
+          env as never,
+          ctx,
+        ),
+        RESP_HEAD_TIMEOUT_MS,
+      );
+      expect(response.status).toBe(504);
 
-    const late = new Response("late");
-    Object.defineProperty(late, "body", { value: { cancel } });
-    answer(late);
-    await vi.advanceTimersByTimeAsync(0);
+      const late = new Response(kind === "HTTP" ? "late" : null);
+      if (kind === "HTTP") {
+        Object.defineProperty(late, "body", { value: { cancel } });
+      } else {
+        Object.defineProperties(late, {
+          status: { value: 101 },
+          webSocket: {
+            value: {
+              accept() {
+                socketEvents.push("accepted");
+              },
+              close() {
+                socketEvents.push("closed");
+              },
+            },
+          },
+        });
+      }
+      answer(late);
+      await vi.advanceTimersByTimeAsync(0);
 
-    expect(cancel).toHaveBeenCalled();
-  });
+      if (kind === "HTTP") {
+        expect(cancel).toHaveBeenCalled();
+      } else {
+        expect(socketEvents).toEqual(["accepted", "closed"]);
+      }
+    },
+  );
 
   it("marks a tunnel dial still waiting on the tunnel object after three seconds", async () => {
     const credential = "bbcred_server_secret";

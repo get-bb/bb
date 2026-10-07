@@ -40,10 +40,16 @@ const STALL_MESSAGES: Record<GateStage, string> = {
 const STALLED = Symbol("stalled");
 
 function discardLateResponse(work: Promise<Response>): void {
-  work.then(
-    (response) => response.body?.cancel().catch(() => {}),
-    () => {},
-  );
+  void work
+    .then((response) => {
+      const socket = response.webSocket;
+      if (socket != null) {
+        socket.accept();
+        socket.close(1000, "request deadline exceeded");
+      }
+      return response.body?.cancel();
+    })
+    .catch(() => {});
 }
 
 export async function withGateDeadline({
