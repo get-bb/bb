@@ -18,6 +18,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   cacheDir: "node_modules/.vite/ladle",
+  build: { target: "esnext" },
   worker: {
     format: "es",
   },
