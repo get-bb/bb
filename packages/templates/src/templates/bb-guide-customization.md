@@ -136,6 +136,13 @@ The server saves this preference across reloads and shares it across connected
 clients. Thread relationships and workspace warnings remain visible. SDK callers can update
 `showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
 
+Settings → General → Keep history after clearing context controls whether a
+cleared thread still shows its earlier messages above the `Context cleared`
+boundary. `keepHistoryAfterContextClear` defaults to false; use
+`bb settings general keepHistoryAfterContextClear true` to keep them in the
+timeline, outline, and message lookups. The next prompt still starts a fresh
+provider conversation.
+
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
 false. Outside an open typeahead menu, enabling it makes Enter steer a running

@@ -89,6 +89,17 @@ so they carry over between navigation plugins.
 - SDK callers use `sdk.system.updateGeneralSettings` with the current settings
   and `showGitChanges`. Older clients that omit it preserve the saved choice.
 
+## Cleared context history
+
+- Settings → General → Keep history after clearing context defaults to off.
+- `bb settings general keepHistoryAfterContextClear true` keeps messages from
+  before the latest `Context cleared` boundary in the timeline, conversation
+  outline, and `bb thread log --message` lookups. The next prompt still starts a
+  fresh provider conversation, and the context meter still resets.
+- SDK callers use `sdk.system.updateGeneralSettings` with the current settings
+  and `keepHistoryAfterContextClear`. Older clients that omit it preserve the
+  saved choice.
+
 ## Keyboard shortcuts
 
 - `showKeyboardHints` defaults to true. Set it with

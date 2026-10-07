@@ -20,6 +20,7 @@ export const appSettingsSchema = z
     steerActiveThreadOnEnter: z.boolean(),
     confirmThreadArchive: z.boolean(),
     showDiagnosticEvents: z.boolean(),
+    keepHistoryAfterContextClear: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
     providerCompletedTurnDisplay: z.record(
@@ -54,6 +55,7 @@ export const defaultAppSettings: AppSettings = {
   steerActiveThreadOnEnter: true,
   confirmThreadArchive: true,
   showDiagnosticEvents: false,
+  keepHistoryAfterContextClear: false,
   providerOrder: [],
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
@@ -74,6 +76,7 @@ export const appSettingsUpdateSchema = z.union([
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
     showGitChanges: z.boolean().optional(),
+    keepHistoryAfterContextClear: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
@@ -81,6 +84,7 @@ export const appSettingsUpdateSchema = z.union([
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
     showGitChanges: z.boolean().optional(),
+    keepHistoryAfterContextClear: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
   }),
 ]);

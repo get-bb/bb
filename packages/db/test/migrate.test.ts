@@ -1771,6 +1771,7 @@ describe("migrate", () => {
         steerActiveThreadOnEnter: true,
         confirmThreadArchive: true,
         showDiagnosticEvents: true,
+        keepHistoryAfterContextClear: false,
         providerOrder: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},

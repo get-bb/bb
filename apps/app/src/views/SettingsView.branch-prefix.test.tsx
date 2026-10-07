@@ -29,6 +29,8 @@ function renderSection(overrides?: {
         onConfirmThreadArchiveChange={
           overrides?.onConfirmThreadArchiveChange ?? vi.fn()
         }
+        keepHistoryAfterContextClear={false}
+        onKeepHistoryAfterContextClearChange={vi.fn()}
         desktopBrowserAvailable={overrides?.desktopBrowserAvailable ?? false}
         generalSettingsDisabled={false}
         managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}

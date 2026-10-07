@@ -172,6 +172,8 @@ interface GeneralSettingsSectionProps {
   onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
+  keepHistoryAfterContextClear: boolean;
+  onKeepHistoryAfterContextClearChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
   generalSettingsDisabled: boolean;
   managedBranchPrefix: string;
@@ -856,6 +858,8 @@ export function GeneralSettingsSection({
   onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
+  keepHistoryAfterContextClear,
+  onKeepHistoryAfterContextClearChange,
   desktopBrowserAvailable,
   generalSettingsDisabled,
   managedBranchPrefix,
@@ -960,6 +964,18 @@ export function GeneralSettingsSection({
               disabled={generalSettingsDisabled}
               onCheckedChange={onConfirmThreadArchiveChange}
               aria-label="Thread archive confirmation"
+            />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Keep history after clearing context"
+            description="Keep earlier messages above the Context cleared divider. The agent still starts fresh."
+          >
+            <Switch
+              checked={keepHistoryAfterContextClear}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onKeepHistoryAfterContextClearChange}
+              aria-label="Keep history after clearing context"
             />
           </SettingsWithControl>
         </div>
@@ -1319,6 +1335,15 @@ export function SettingsView() {
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
               confirmThreadArchive: enabled,
+            })
+          }
+          keepHistoryAfterContextClear={
+            generalSettings.keepHistoryAfterContextClear
+          }
+          onKeepHistoryAfterContextClearChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              keepHistoryAfterContextClear: enabled,
             })
           }
           desktopBrowserAvailable={desktopBrowserAvailable}

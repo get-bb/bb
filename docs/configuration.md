@@ -381,6 +381,16 @@ across reloads and applies to every connected app client. Set it with
 `sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.
 Older clients that omit the field preserve the saved value.
 
+The "Keep history after clearing context" switch in Settings → General defaults
+to off. When off, a thread's timeline, conversation outline, and message lookup
+start at its latest `Context cleared` boundary. Turn it on to keep earlier
+messages above the boundary; they load on scroll like other older activity and
+appear in the outline and `bb thread log --message` lookups. Clearing still starts a
+fresh provider conversation and resets the context meter either way. Set it
+with `bb settings general keepHistoryAfterContextClear true` or
+`bb.sdk.system.updateGeneralSettings` using `keepHistoryAfterContextClear`.
+Older clients that omit the field preserve the saved value.
+
 The "Thread archive confirmation" switch in Settings → General defaults to on.
 Turn it off to archive a thread and its child threads immediately without a
 confirmation popup. The archive toast still offers Undo. This server-wide
