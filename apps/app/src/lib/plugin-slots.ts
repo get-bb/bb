@@ -20,6 +20,7 @@ import type {
   ExperimentalSidebarHeaderRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
+  PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
@@ -50,6 +51,7 @@ export interface PluginRegistrationSet {
   experimentalSidebarHeaders?: readonly ExperimentalSidebarHeaderRegistration[];
   threadLists?: readonly PluginThreadListRegistration[];
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
+  threadActions?: readonly PluginThreadActionRegistration[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
   sourceCodeRenderers?: readonly PluginSourceCodeRendererRegistration[];
@@ -95,6 +97,8 @@ export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
   extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
+export interface PluginThreadActionSlot
+  extends PluginThreadActionRegistration, PluginSlotBase {}
 export interface PluginBrowserToolbarActionSlot
   extends ExperimentalPluginBrowserToolbarActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
@@ -133,6 +137,7 @@ export interface PluginSlotSnapshot {
   experimentalSidebarHeaders: readonly ExperimentalSidebarHeaderSlot[];
   threadLists: readonly PluginThreadListSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
+  threadActions: readonly PluginThreadActionSlot[];
   browserToolbarActions: readonly PluginBrowserToolbarActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
   sourceCodeRenderers: readonly PluginSourceCodeRendererSlot[];
@@ -161,6 +166,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   experimentalSidebarHeaders: [],
   threadLists: [],
   threadHeaderActions: [],
+  threadActions: [],
   browserToolbarActions: [],
   fileOpeners: [],
   sourceCodeRenderers: [],
@@ -196,6 +202,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "experimentalSidebarHeaders",
   "threadLists",
   "threadHeaderActions",
+  "threadActions",
   "browserToolbarActions",
   "fileOpeners",
   "sourceCodeRenderers",
@@ -255,6 +262,7 @@ function flattenRegistrations(
     experimentalSidebarHeaders: stamp(set.experimentalSidebarHeaders),
     threadLists: stamp(set.threadLists),
     threadHeaderActions: stamp(set.threadHeaderActions),
+    threadActions: stamp(set.threadActions),
     browserToolbarActions: stamp(set.browserToolbarActions),
     fileOpeners: stamp(set.fileOpeners),
     sourceCodeRenderers: stamp(set.sourceCodeRenderers),

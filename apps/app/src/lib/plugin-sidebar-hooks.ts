@@ -1,10 +1,13 @@
 import { useCallback, useMemo } from "react";
 import { useStore } from "jotai";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   PERSONAL_PROJECT_ID,
   type Host,
+  type Thread,
   type ThreadListEntry,
 } from "@bb/domain";
+import type { ThreadResponse } from "@bb/server-contract";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
   PluginSdkApp,
@@ -40,6 +43,7 @@ import {
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
 import {
   usePinThread,
   useUnpinThread,
@@ -265,33 +269,45 @@ export function useSidebarThreadEntry(
   return useThreadEntryMap().get(threadId) ?? null;
 }
 
+export function useResolveSidebarThread(): (threadId: string) => Thread | null {
+  const entriesById = useThreadEntryMap();
+  const queryClient = useQueryClient();
+  return useCallback(
+    (threadId: string) =>
+      entriesById.get(threadId) ??
+      queryClient.getQueryData<ThreadResponse>(threadQueryKey(threadId)) ??
+      null,
+    [entriesById, queryClient],
+  );
+}
+
 export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const navigate = useRouteNavigate();
   const store = useStore();
   const isCompact = useIsCompactViewport();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
-  const entriesById = useThreadEntryMap();
+  const resolveThread = useResolveSidebarThread();
   const { mutateAsync: pinThreadAsync } = usePinThread();
   const { mutateAsync: unpinThreadAsync } = useUnpinThread();
   const { mutateAsync: updateThreadAsync } = useUpdateThread();
 
   const requireEntry = useCallback(
-    (threadId: string): ThreadListEntry => {
-      const entry = entriesById.get(threadId);
-      if (entry === undefined) {
+    (threadId: string): Thread => {
+      const entry = resolveThread(threadId);
+      if (entry === null) {
         throw new Error(`Unknown thread: ${threadId}`);
       }
       return entry;
     },
-    [entriesById],
+    [resolveThread],
   );
 
   return useMemo<PluginSidebarThreadActions>(
     () => ({
       open(threadId, options) {
-        const entry = entriesById.get(threadId);
-        if (entry === undefined) return;
+        const entry = resolveThread(threadId);
+        if (entry === null) return;
         const { projectId } = entry;
         if (options?.split) {
           store.set(getThreadConversationCollapsedAtom(threadId), false);
@@ -363,12 +379,12 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       },
     }),
     [
-      entriesById,
       hostActions,
       isCompact,
       navigate,
       pinThreadAsync,
       requireEntry,
+      resolveThread,
       setRootComposeProjectId,
       store,
       unpinThreadAsync,

@@ -27,6 +27,7 @@ import {
   invalidateThreadMetadataBatch,
   rollbackThreadMetadataBatchTransaction,
 } from "@/hooks/cache-owners/thread-state-cache-owner";
+import { setCachedThreadPluginMetadata } from "@/hooks/cache-owners/thread-plugin-metadata-cache-owner";
 
 import {
   applySidebarSectionCreateResult,
@@ -344,15 +345,23 @@ export function bindSdkToPlugin(
           pluginId: args.pluginId ?? pluginId,
         });
       },
-      updatePluginMetadata(
+      async updatePluginMetadata(
         args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
           pluginId?: string;
         },
       ) {
-        return sdk.threads.updatePluginMetadata({
+        const targetPluginId = args.pluginId ?? pluginId;
+        const metadata = await sdk.threads.updatePluginMetadata({
           ...args,
-          pluginId: args.pluginId ?? pluginId,
+          pluginId: targetPluginId,
         });
+        setCachedThreadPluginMetadata(
+          queryClient,
+          targetPluginId,
+          args.threadId,
+          metadata,
+        );
+        return metadata;
       },
       fork(args: ThreadForkArgs) {
         return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));

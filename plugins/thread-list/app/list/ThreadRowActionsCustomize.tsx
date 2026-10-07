@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -16,30 +16,43 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { cn } from "@/lib/utils";
 import {
-  THREAD_ROW_ACTION_IDS,
-  THREAD_ROW_ACTION_LIMIT,
-  type ThreadRowActionId,
-} from "../../shared/preferences.js";
+  experimental_useSidebarThreads,
+  experimental_useThreadActions,
+  useSdk,
+  type PluginThreadActionTarget,
+} from "@get-bb/plugin-sdk/app";
+import { THREAD_ROW_ACTION_LIMIT } from "../../shared/preferences.js";
 import { arrayMove } from "../model/array-move.js";
 import { threadRowActionsAtom } from "../preferences/atoms.js";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { useSidebarSortable } from "../rows/sortableMotion.js";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
-import { THREAD_ROW_ACTIONS } from "../rows/threadRowActions.js";
+import { toThreadActionTarget } from "../rows/threadActionTarget.js";
 import { SidebarCustomizePanel } from "./SidebarVisibilityCustomize.js";
 
-type RowActionSlot = ThreadRowActionId | null;
+type RowActionSlot = string | null;
 
-function isThreadRowActionId(id: unknown): id is ThreadRowActionId {
-  return (
-    typeof id === "string" &&
-    (THREAD_ROW_ACTION_IDS as readonly string[]).includes(id)
-  );
+interface RowActionOptionModel {
+  key: string;
+  label: string;
+  icon: IconName;
 }
 
-export function getRowActionSlots(
-  enabled: readonly ThreadRowActionId[],
-): RowActionSlot[] {
+const UNKNOWN_ACTION_ICON: IconName = "CircleQuestion";
+
+const PICKER_FALLBACK_TARGET: PluginThreadActionTarget = {
+  id: "",
+  projectId: "",
+  parentThreadId: null,
+  archivedAt: null,
+  pinnedAt: null,
+  sectionId: null,
+  isUnread: true,
+  status: "idle",
+  environment: null,
+};
+
+export function getRowActionSlots(enabled: readonly string[]): RowActionSlot[] {
   return [
     ...Array.from(
       { length: Math.max(0, THREAD_ROW_ACTION_LIMIT - enabled.length) },
@@ -50,26 +63,97 @@ export function getRowActionSlots(
 }
 
 export function assignRowActionSlot(
-  enabled: readonly ThreadRowActionId[],
+  enabled: readonly string[],
   slotIndex: number,
   value: RowActionSlot,
-): ThreadRowActionId[] {
+): string[] {
   const slots = getRowActionSlots(enabled);
   const previous = slots[slotIndex] ?? null;
   const existingIndex = value === null ? -1 : slots.indexOf(value);
   if (existingIndex !== -1) slots[existingIndex] = previous;
   slots[slotIndex] = value;
-  return slots.filter((slot): slot is ThreadRowActionId => slot !== null);
+  return slots.filter((slot): slot is string => slot !== null);
+}
+
+function usePluginNames(pluginIds: readonly string[]): ReadonlyMap<string, string> {
+  const sdk = useSdk();
+  const [names, setNames] = useState<ReadonlyMap<string, string>>(new Map());
+  const wanted = pluginIds.length > 0;
+  useEffect(() => {
+    if (!wanted) return;
+    let cancelled = false;
+    void sdk.plugins
+      .list()
+      .then((result) => {
+        if (cancelled) return;
+        setNames(
+          new Map(
+            result.plugins.map((plugin) => [plugin.id, plugin.name ?? plugin.id]),
+          ),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [sdk, wanted]);
+  return names;
+}
+
+function useRowActionCatalog(
+  originThreadId: string | null,
+): readonly RowActionOptionModel[] {
+  const { threads } = experimental_useSidebarThreads();
+  const thread =
+    threads.find((candidate) => candidate.id === originThreadId) ?? threads[0];
+  const target = useMemo<PluginThreadActionTarget>(
+    () =>
+      thread === undefined
+        ? PICKER_FALLBACK_TARGET
+        : {
+            ...toThreadActionTarget(thread),
+            parentThreadId: null,
+            archivedAt: null,
+            pinnedAt: null,
+            isUnread: true,
+          },
+    [thread],
+  );
+  const items = experimental_useThreadActions(target, "button");
+  const pluginIds = useMemo(
+    () => [
+      ...new Set(
+        items.flatMap((item) => (item.pluginId === null ? [] : [item.pluginId])),
+      ),
+    ],
+    [items],
+  );
+  const pluginNames = usePluginNames(pluginIds);
+  return useMemo(
+    () =>
+      items.map((item) => ({
+        key: item.key,
+        label:
+          item.pluginId === null
+            ? item.action.label
+            : `${item.action.label} · ${pluginNames.get(item.pluginId) ?? item.pluginId}`,
+        icon: item.action.icon,
+      })),
+    [items, pluginNames],
+  );
 }
 
 export function ThreadRowActionsCustomize({
   onDone,
+  originThreadId,
   variant,
 }: {
   onDone: () => void;
+  originThreadId: string | null;
   variant: "compact" | "card";
 }) {
   const [enabled, setEnabled] = useAtom(threadRowActionsAtom);
+  const catalog = useRowActionCatalog(originThreadId);
   const slots = getRowActionSlots(enabled);
   const groupRef = useRef<HTMLDivElement>(null);
   const focusSlot = useRef<number | null>(null);
@@ -90,8 +174,7 @@ export function ThreadRowActionsCustomize({
     (event: DragEndEvent) => {
       const activeId = event.active.id;
       const overId = event.over?.id;
-      if (!isThreadRowActionId(activeId) || !isThreadRowActionId(overId))
-        return;
+      if (typeof activeId !== "string" || typeof overId !== "string") return;
       setEnabled((current) => {
         const from = current.indexOf(activeId);
         const to = current.indexOf(overId);
@@ -135,6 +218,7 @@ export function ThreadRowActionsCustomize({
                 {slots.map((slot, index) => (
                   <RowActionSlotPicker
                     key={slot ?? `empty-${index}`}
+                    catalog={catalog}
                     index={index}
                     value={slot}
                     reorderDisabled={slot === null || enabled.length < 2}
@@ -195,11 +279,13 @@ function FakeThreadRowTitle({ width }: { width: string }) {
 }
 
 function RowActionSlotPicker({
+  catalog,
   index,
   value,
   reorderDisabled,
   onChange,
 }: {
+  catalog: readonly RowActionOptionModel[];
   index: number;
   value: RowActionSlot;
   reorderDisabled: boolean;
@@ -212,7 +298,11 @@ function RowActionSlotPicker({
     id: value ?? `empty-${index}`,
     disabled: reorderDisabled,
   });
-  const label = `Row action ${index + 1}: ${value === null ? "None" : THREAD_ROW_ACTIONS[value].label}`;
+  const selected =
+    value === null ? null : catalog.find((option) => option.key === value);
+  const label = `Row action ${index + 1}: ${
+    value === null ? "None" : (selected?.label ?? value)
+  }`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -244,7 +334,7 @@ function RowActionSlotPicker({
           >
             {value !== null && (
               <Icon
-                name={THREAD_ROW_ACTIONS[value].icon}
+                name={selected?.icon ?? UNKNOWN_ACTION_ICON}
                 className={COARSE_POINTER_ICON_SIZE_CLASS}
               />
             )}
@@ -263,18 +353,18 @@ function RowActionSlotPicker({
           buttonRef.current?.focus();
         }}
       >
-        {THREAD_ROW_ACTION_IDS.map((id) => (
+        {catalog.map((option) => (
           <RowActionOption
-            key={id}
-            icon={THREAD_ROW_ACTIONS[id].icon}
-            label={THREAD_ROW_ACTIONS[id].label}
-            selected={value === id}
+            key={option.key}
+            icon={option.icon}
+            label={option.label}
+            selected={value === option.key}
             onSelect={() => {
-              focusHandedOff.current = onChange(id);
+              focusHandedOff.current = onChange(option.key);
             }}
           />
         ))}
-        <DropdownMenuSeparator />
+        {catalog.length > 0 ? <DropdownMenuSeparator /> : null}
         <RowActionOption
           icon="EyeOff"
           label="Hide"

@@ -1,27 +1,56 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
-import plugin, { migrateFromUiPreferences } from "./server.js";
+import plugin, {
+  migrateFromUiPreferences,
+  migrateToUiPreferences,
+} from "./server.js";
 import { defaultPreferences } from "./shared/preferences.js";
 
 const PLUGIN_ID = "thread-list";
+
+interface UiPreferenceWrite {
+  key: string;
+  value: unknown;
+  expectedRevision: number;
+}
 
 function setup(options: {
   uiPreferences?: Record<string, { revision: number; value: unknown }>;
   uiPreferencesFail?: boolean;
 } = {}) {
-  return createFakePluginHost({
+  const uiStore = new Map(Object.entries(options.uiPreferences ?? {}));
+  const uiWrites: UiPreferenceWrite[] = [];
+  const host = createFakePluginHost({
     pluginId: PLUGIN_ID,
     sdk: {
       system: {
         uiPreferences: {
           list: async () => {
             if (options.uiPreferencesFail) throw new Error("offline");
-            return { preferences: options.uiPreferences ?? {} };
+            return { preferences: Object.fromEntries(uiStore) };
+          },
+          set: async (args: UiPreferenceWrite) => {
+            const current = uiStore.get(args.key);
+            if ((current?.revision ?? 0) !== args.expectedRevision) {
+              throw new Error(`revision conflict on ${args.key}`);
+            }
+            uiWrites.push(args);
+            const next = {
+              revision: (current?.revision ?? 0) + 1,
+              value: args.value,
+            };
+            uiStore.set(args.key, next);
+            return { key: args.key, ...next };
+          },
+          reset: async (args: { key: string }) => {
+            uiStore.delete(args.key);
+            return { key: args.key, revision: 0, value: null };
           },
         },
       },
     },
   });
+  return { ...host, uiStore, uiWrites };
 }
 
 describe("thread-list preferences rpc", () => {
@@ -49,9 +78,7 @@ describe("thread-list preferences rpc", () => {
         value: "machine",
       }),
     ).resolves.toEqual({ key: "organizationMode", value: "machine" });
-    await expect(bb.storage.kv.get("preference:organizationMode")).resolves.toBe(
-      "machine",
-    );
+    await expect(bb.storage.kv.get("preference:organizationMode")).resolves.toBeUndefined();
     const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: { organizationMode: string };
     };
@@ -110,17 +137,29 @@ describe("thread-list preferences rpc", () => {
     const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: { rowActions: string[] };
     };
-    expect(listed.preferences.rowActions).toEqual(["archive"]);
+    expect(listed.preferences.rowActions).toEqual(["core:archive"]);
     await expect(
       harness.behavior.callRpc("setPreference", {
         key: "rowActions",
-        value: ["pin", "archive", "pin"],
+        value: ["pin", "core:archive", "core:pin"],
       }),
-    ).resolves.toEqual({ key: "rowActions", value: ["pin", "archive"] });
+    ).resolves.toEqual({
+      key: "rowActions",
+      value: ["core:pin", "core:archive"],
+    });
     await expect(
       harness.behavior.callRpc("setPreference", {
         key: "rowActions",
-        value: ["archive", "delete"],
+        value: ["core:archive", "push-notifications/notifications"],
+      }),
+    ).resolves.toEqual({
+      key: "rowActions",
+      value: ["core:archive", "push-notifications/notifications"],
+    });
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["core:archive", ""],
       }),
     ).rejects.toThrow(/Invalid value for rowActions/);
     await expect(
@@ -129,22 +168,70 @@ describe("thread-list preferences rpc", () => {
         value: ["archive", "pin", "read", "rename"],
       }),
     ).rejects.toThrow(/at most 3 row actions/);
-    await expect(
-      harness.behavior.callRpc("setPreference", {
-        key: "rowActions",
-        value: ["archive", "pin", "read", "pin"],
-      }),
-    ).resolves.toEqual({ key: "rowActions", value: ["archive", "pin", "read"] });
   });
 
-  it("drops unknown stored row actions instead of resetting the rest", async () => {
+  it("migrates legacy row action ids and keeps keys it does not know", async () => {
     const { bb, harness } = setup();
-    await bb.storage.kv.set("preference:rowActions", ["pin", "futureAction", "archive"]);
+    await bb.storage.kv.set("preference:rowActions", [
+      "pin",
+      "futureAction",
+      "archive",
+      "rename",
+    ]);
     await plugin(bb);
     const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: { rowActions: string[] };
     };
-    expect(listed.preferences.rowActions).toEqual(["pin", "archive"]);
+    expect(listed.preferences.rowActions).toEqual([
+      "core:pin",
+      "futureAction",
+      "core:archive",
+    ]);
+  });
+
+  it("stores organisation mode and manual section order in bb's sidebar preferences, not plugin storage", async () => {
+    const { bb, harness, uiStore, uiWrites } = setup({
+      uiPreferences: {
+        "sidebar.manualSectionOrder": {
+          revision: 4,
+          value: ["pinned", "sections", "threads"],
+        },
+      },
+    });
+    await plugin(bb);
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "manualSectionOrder",
+        value: ["threads", "pinned", "sections"],
+      }),
+    ).resolves.toEqual({
+      key: "manualSectionOrder",
+      value: ["threads", "pinned", "sections"],
+    });
+    expect(uiWrites).toEqual([
+      {
+        key: "sidebar.manualSectionOrder",
+        value: ["threads", "pinned", "sections"],
+        expectedRevision: 4,
+      },
+    ]);
+    await expect(bb.storage.kv.get("preference:manualSectionOrder")).resolves.toBeUndefined();
+    expect(harness.realtimeSignals).toContainEqual({
+      channel: "preferences",
+      payload: { key: "manualSectionOrder", value: ["threads", "pinned", "sections"] },
+    });
+
+    uiStore.set("sidebar.organizationMode", { revision: 9, value: "project" });
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { organizationMode: string; manualSectionOrder: string[] };
+    };
+    expect(listed.preferences.organizationMode).toBe("project");
+    expect(listed.preferences.manualSectionOrder).toEqual(["threads", "pinned", "sections"]);
+
+    await expect(
+      harness.behavior.callRpc("resetPreference", { key: "organizationMode" }),
+    ).resolves.toEqual({ key: "organizationMode", value: "chronological" });
+    expect(uiStore.has("sidebar.organizationMode")).toBe(false);
   });
 
   it("falls back to the default when a stored value no longer parses", async () => {
@@ -162,7 +249,7 @@ describe("migration from bb's sidebar preferences", () => {
   it("copies non-default values once and never overwrites a value the plugin already has", async () => {
     const { bb } = setup({
       uiPreferences: {
-        "sidebar.organizationMode": { revision: 3, value: "machine" },
+        "sidebar.sectionOrder": { revision: 3, value: ["threads", "pinned", "projects"] },
         "sidebar.collapsedProjects": { revision: 1, value: ["proj_a"] },
         "sidebar.chronologicalSort": { revision: 0, value: "updated" },
         "sidebar.hiddenGroups": { revision: 2, value: ["not-a-group"] },
@@ -170,20 +257,77 @@ describe("migration from bb's sidebar preferences", () => {
     });
     await bb.storage.kv.set("preference:collapsedProjects", ["proj_mine"]);
     const first = await migrateFromUiPreferences(bb);
-    expect(first.migrated).toEqual(["organizationMode"]);
-    await expect(bb.storage.kv.get("preference:organizationMode")).resolves.toBe(
-      "machine",
-    );
+    expect(first.migrated).toEqual(["sectionOrder"]);
+    await expect(bb.storage.kv.get("preference:sectionOrder")).resolves.toEqual([
+      "threads",
+      "pinned",
+      "projects",
+    ]);
     await expect(bb.storage.kv.get("preference:collapsedProjects")).resolves.toEqual([
       "proj_mine",
     ]);
     await expect(bb.storage.kv.get("preference:chronologicalSort")).resolves.toBeUndefined();
     await expect(bb.storage.kv.get("preference:hiddenGroups")).resolves.toBeUndefined();
 
-    await bb.storage.kv.delete("preference:organizationMode");
+    await bb.storage.kv.delete("preference:sectionOrder");
     const second = await migrateFromUiPreferences(bb);
     expect(second.migrated).toEqual([]);
+    await expect(bb.storage.kv.get("preference:sectionOrder")).resolves.toBeUndefined();
+  });
+
+  it("reads organisation mode live from bb on a fresh install that only has the old core keys", async () => {
+    const { bb, harness, uiWrites } = setup({
+      uiPreferences: {
+        "sidebar.organizationMode": { revision: 3, value: "machine" },
+        "sidebar.sectionOrder": { revision: 1, value: ["threads", "pinned", "projects"] },
+      },
+    });
+    await plugin(bb);
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { organizationMode: string; sectionOrder: string[] };
+    };
+    expect(listed.preferences.organizationMode).toBe("machine");
+    expect(listed.preferences.sectionOrder).toEqual(["threads", "pinned", "projects"]);
     await expect(bb.storage.kv.get("preference:organizationMode")).resolves.toBeUndefined();
+    await expect(bb.storage.kv.get("preference:sectionOrder")).resolves.toEqual([
+      "threads",
+      "pinned",
+      "projects",
+    ]);
+    expect(uiWrites).toEqual([]);
+  });
+
+  it("moves plugin-stored organisation mode and section order back into bb once", async () => {
+    const { bb, harness, uiStore, uiWrites } = setup({
+      uiPreferences: {
+        "sidebar.organizationMode": { revision: 2, value: "chronological" },
+      },
+    });
+    await bb.storage.kv.set("preference:organizationMode", "machine");
+    await bb.storage.kv.set("preference:manualSectionOrder", ["threads", "pinned", "sections"]);
+    await bb.storage.kv.set("preference:collapsedProjects", ["proj_mine"]);
+    await plugin(bb);
+    expect(uiWrites).toEqual([
+      { key: "sidebar.organizationMode", value: "machine", expectedRevision: 2 },
+      {
+        key: "sidebar.manualSectionOrder",
+        value: ["threads", "pinned", "sections"],
+        expectedRevision: 0,
+      },
+    ]);
+    await expect(bb.storage.kv.get("preference:organizationMode")).resolves.toBeUndefined();
+    await expect(bb.storage.kv.get("preference:manualSectionOrder")).resolves.toBeUndefined();
+    await expect(bb.storage.kv.get("preference:collapsedProjects")).resolves.toEqual(["proj_mine"]);
+    await expect(bb.storage.kv.get("migration:core-ui-preferences:v2")).resolves.toBe(true);
+    const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { organizationMode: string };
+    };
+    expect(listed.preferences.organizationMode).toBe("machine");
+
+    uiStore.set("sidebar.organizationMode", { revision: 7, value: "project" });
+    await bb.storage.kv.set("preference:organizationMode", "machine");
+    expect((await migrateToUiPreferences(bb)).migrated).toEqual([]);
+    expect(uiStore.get("sidebar.organizationMode")?.value).toBe("project");
   });
 
   it("skips the migration without marking it done when bb cannot be read", async () => {

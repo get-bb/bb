@@ -36,6 +36,7 @@ import {
   type ExperimentalSidebarHeaderProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
+  type PluginThreadActionContext,
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
@@ -274,6 +275,7 @@ type SlotPropsByName = {
   experimental_sidebarHeader: ExperimentalSidebarHeaderProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
+  experimental_threadAction: PluginThreadActionContext;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
   experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
@@ -365,6 +367,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "projectId",
     "isCompactViewport",
   ],
+  experimental_threadAction: ["thread", "surface", "metadata", "rpc"],
   experimental_browserToolbarAction: [
     "threadId",
     "tabId",

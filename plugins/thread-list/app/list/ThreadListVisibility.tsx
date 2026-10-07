@@ -177,6 +177,7 @@ export function ThreadListVisibility({
           {customizing === "rowActions" ? (
             <ThreadRowActionsCustomize
               onDone={() => setCustomizing(null)}
+              originThreadId={rowActionsOrigin.current?.threadId ?? null}
               variant={compact ? "compact" : "card"}
             />
           ) : customizing === "list" ? (

@@ -38,12 +38,16 @@ is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
 
 `rowActions` picks up to three quick-action buttons a thread row shows on
-hover, left to right before its actions menu. Choose from `split`, `copyLink`, `read`,
-`pin`, `move` (opens a section menu), `rename`, and `archive`; the default is `'["archive"]'` and `'[]'`
-leaves only the menu. For example,
-`bb thread-list prefs set rowActions '["pin","archive"]'`. In the app, a thread
-row's actions menu has Customize row actions, which previews the row's three
-action slots; each slot picks an action or Hide, and filled slots drag to reorder.
+hover, left to right before its actions menu. Values are thread action keys:
+bb's own are `core:split`, `core:copyLink`, `core:read`, `core:pin`, `core:move`
+(opens a section menu), `core:rename`, and `core:archive`; a plugin action is
+`<pluginId>/<actionId>`. The default is `'["core:archive"]'` and `'[]'` leaves
+only the menu. Bare legacy ids such as `archive` are read and written as
+`core:archive`; keys with no registered action are kept but skipped on the row.
+For example, `bb thread-list prefs set rowActions '["core:pin","core:archive"]'`.
+In the app, a thread row's actions menu has Customize row actions, which
+previews the row's three action slots and lists every registered action, core
+and plugin; each slot picks an action or Hide, and filled slots drag to reorder.
 
 Organize → Rows → Provider icons toggles the icon before each thread title.
 `showProviderIcons` defaults to `true`; use

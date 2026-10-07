@@ -30,6 +30,7 @@ import type {
   ExperimentalSidebarHeaderRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
+  PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
@@ -357,6 +358,7 @@ export interface CollectedPluginAppRegistrations {
   experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadActions: PluginThreadActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
@@ -483,6 +485,7 @@ export function collectPluginAppRegistrations(
     experimentalSidebarHeaders: [],
     threadLists: [],
     threadHeaderActions: [],
+    threadActions: [],
     browserToolbarActions: [],
     fileOpeners: [],
     sourceCodeRenderers: [],
@@ -513,6 +516,7 @@ export function collectPluginAppRegistrations(
     sidebarHeader: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
     sourceCodeRenderer: new Set<string>(),
@@ -810,6 +814,19 @@ export function collectPluginAppRegistrations(
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadAction(registration) {
+        const kind = "slots.experimental_threadAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadAction, id);
+        if (typeof registration.resolve !== "function") {
+          throw new Error(`${kind}: "resolve" must be a function`);
+        }
+        collected.threadActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          resolve: registration.resolve,
         });
       },
       experimental_browserToolbarAction(registration) {
