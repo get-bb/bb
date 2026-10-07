@@ -52,6 +52,14 @@ bb.providers.register({
   // `supportedServiceTiers: [{ id, label?, description? }]` (an empty array
   // hides the picker for that model; omit it to accept every declared tier).
   serviceTiers: undefined,
+  // Provider-specific picker choices, such as an on/off switch. A
+  // `model/list` entry narrows the values a model accepts with
+  // `experimental_supportedModelOptions: { [optionId]: valueIds }`. bb shows
+  // the option only when some model lists a non-default value, greys out
+  // models that reject the selected value (with its modelUnavailableReason),
+  // and hands the resolved values to deriveProviderOptions as
+  // `ctx.experimental_modelOptions`.
+  experimental_modelOptions: undefined,
   composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
   // Cold-cache fallback models: shown only until the first model/list probe
   // completes, or when a probe fails transiently. A non-empty list has

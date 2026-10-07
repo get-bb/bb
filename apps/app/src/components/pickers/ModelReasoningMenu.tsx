@@ -8,6 +8,7 @@ import {
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import {
   DEFAULT_SERVICE_TIER,
+  type ProviderModelOption,
   type ProviderOptionDescriptor,
   type ReasoningLevel,
   type ServiceTier,
@@ -73,6 +74,10 @@ export interface ModelReasoningMenuProps {
   serviceTierOptions: readonly ProviderOptionDescriptor[];
   serviceTierValue: ServiceTier | undefined;
   onServiceTierChange: (value: ServiceTier) => void;
+  modelOptions: readonly ProviderModelOption[];
+  modelOptionValues: Readonly<Record<string, string>>;
+  onModelOptionChange: (optionId: string, valueId: string) => void;
+  modelConflictReasons: ReadonlyMap<string, string>;
   onStartHandoff: (() => void) | null;
 }
 
@@ -107,6 +112,10 @@ export function ModelReasoningMenu({
   serviceTierOptions,
   serviceTierValue,
   onServiceTierChange,
+  modelOptions,
+  modelOptionValues,
+  onModelOptionChange,
+  modelConflictReasons,
   onStartHandoff,
 }: ModelReasoningMenuProps) {
   const isCompactViewport = useIsCompactViewport();
@@ -174,6 +183,7 @@ export function ModelReasoningMenu({
                     qualifier={option.routeProviderId}
                     selected={!isPreviewing && option.value === modelValue}
                     disabled={selectionBlocked}
+                    disabledReason={modelConflictReasons.get(option.value)}
                     onClick={() => onModelSelect(option.value)}
                   />
                 );
@@ -189,6 +199,7 @@ export function ModelReasoningMenu({
                   isPreviewing={isPreviewing}
                   modelValue={modelValue}
                   options={moreModelOptions}
+                  conflictReasons={modelConflictReasons}
                   onSelect={onModelSelect}
                 />
               ) : null}
@@ -345,6 +356,15 @@ export function ModelReasoningMenu({
           </>
         ) : null}
 
+        {modelOptions.map((option) => (
+          <ModelOptionSection
+            key={option.id}
+            option={option}
+            valueId={modelOptionValues[option.id] ?? option.defaultValue}
+            onChange={(valueId) => onModelOptionChange(option.id, valueId)}
+          />
+        ))}
+
         {onStartHandoff ? (
           <>
             <div className="shrink-0 border-t border-border" />
@@ -418,6 +438,80 @@ function MoreModelsToggleRow({
   );
 }
 
+function ModelOptionSection({
+  option,
+  valueId,
+  onChange,
+}: {
+  option: ProviderModelOption;
+  valueId: string;
+  onChange: (valueId: string) => void;
+}) {
+  const isCompactViewport = useIsCompactViewport();
+  const enabledValue = option.values.find(
+    (value) => value.id !== option.defaultValue,
+  );
+  if (option.values.length === 2 && enabledValue !== undefined) {
+    return (
+      <>
+        <div className="shrink-0 border-t border-border" />
+        <div className="shrink-0 p-1">
+          <div
+            className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs"
+            title={option.description}
+          >
+            <span className="min-w-0 truncate">{option.label}</span>
+            <Switch
+              checked={valueId === enabledValue.id}
+              onCheckedChange={(checked) =>
+                onChange(checked ? enabledValue.id : option.defaultValue)
+              }
+              aria-label={option.label}
+              className={cn(LIST_HOVER_TRANSITION, "[&>span]:size-3.5")}
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="shrink-0 border-t border-border" />
+      <div className="shrink-0 px-2 py-2.5">
+        <MenuSectionLabel className="mb-2 px-1 py-0">
+          {option.label}
+        </MenuSectionLabel>
+        <ToggleGroup
+          type="single"
+          aria-label={option.label}
+          value={valueId}
+          onValueChange={(next) => {
+            if (option.values.some((value) => value.id === next)) {
+              onChange(next);
+            }
+          }}
+          className="flex gap-1"
+        >
+          {option.values.map((value) => (
+            <ToggleGroupItem
+              key={value.id}
+              value={value.id}
+              title={value.description}
+              className={cn(
+                "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
+                isCompactViewport && "h-9 text-sm",
+                LIST_HOVER_TRANSITION,
+              )}
+            >
+              {value.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+    </>
+  );
+}
+
 function MoreModelsSubmenu({
   open,
   onOpenChange,
@@ -426,6 +520,7 @@ function MoreModelsSubmenu({
   isPreviewing,
   modelValue,
   options,
+  conflictReasons,
   onSelect,
 }: {
   open: boolean;
@@ -435,6 +530,7 @@ function MoreModelsSubmenu({
   isPreviewing: boolean;
   modelValue: string;
   options: readonly ModelPickerOption[];
+  conflictReasons: ReadonlyMap<string, string>;
   onSelect: (value: string) => void;
 }) {
   const { isLastHovered, hoverProps } = useMenuItemHover();
@@ -520,6 +616,7 @@ function MoreModelsSubmenu({
               label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
               qualifier={option.routeProviderId}
               selected={!isPreviewing && option.value === modelValue}
+              disabledReason={conflictReasons.get(option.value)}
               onClick={() => onSelect(option.value)}
             />
           ))}
@@ -534,6 +631,7 @@ function MenuRowButton({
   qualifier,
   selected,
   disabled = false,
+  disabledReason,
   onClick,
   isActive,
   id,
@@ -543,6 +641,7 @@ function MenuRowButton({
   qualifier?: string;
   selected: boolean;
   disabled?: boolean;
+  disabledReason?: string;
   onClick: () => void;
   isActive?: boolean;
   id?: string;
@@ -556,21 +655,26 @@ function MenuRowButton({
       id={id}
       role={role}
       disabled={disabled}
+      aria-disabled={disabledReason !== undefined ? true : undefined}
+      title={disabledReason}
       aria-selected={role === "option" ? Boolean(isActive) : undefined}
-      onClick={onClick}
+      onClick={disabledReason !== undefined ? undefined : onClick}
       className={cn(
         "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
         isActive && "bg-state-active",
-        disabled && "cursor-not-allowed opacity-60",
+        (disabled || disabledReason !== undefined) &&
+          "cursor-not-allowed opacity-60",
         "py-[0.3125rem] max-md:pointer-coarse:py-2",
       )}
       {...hoverProps}
     >
       <span
         className="truncate"
-        title={qualifier ? `${label} · ${qualifier}` : label}
+        title={
+          disabledReason ?? (qualifier ? `${label} · ${qualifier}` : label)
+        }
       >
         {base}
         {tag ? (

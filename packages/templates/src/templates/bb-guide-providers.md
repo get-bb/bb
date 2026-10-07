@@ -44,6 +44,17 @@ models` shows a Service tiers column, and `--json` reports
 tiers per model, in which case the model accepts every tier the provider
 lists). Pass a tier id to `--service-tier`; a tier the provider does not list
 is rejected.
+
+Some providers add their own choices to the model picker, such as Codex's
+`daybreak` switch. `bb provider list --json` reports each provider's
+`experimental_modelOptions` (id, label, values, defaultValue), and
+`bb provider models` shows a Model options column (`--json`:
+`experimental_supportedModelOptions` per model) with the values each model
+accepts. Pass `--model-option <id>=<value>` to `bb thread spawn` or
+`bb thread tell`, repeated once per option. An omitted option keeps the
+thread's previous value, then the project's remembered value, then the
+provider's default; an option or value the provider does not declare is
+rejected.
 `--host` is an alias for `--machine`. Machine and environment selectors are
 mutually exclusive because an environment already selects its machine. When no
 selector is supplied, both commands intentionally inspect the server machine.

@@ -1,6 +1,8 @@
 import { memo } from "react";
 import type {
+  ModelOptionValues,
   PermissionMode,
+  ProviderModelOption,
   ProviderOptionDescriptor,
   ReasoningLevel,
   ServiceTier,
@@ -46,6 +48,12 @@ interface ExecutionServiceTierConfig {
   options: readonly ProviderOptionDescriptor[];
 }
 
+interface ExecutionModelOptionsConfig {
+  declarations: readonly ProviderModelOption[];
+  values: Readonly<Record<string, string>>;
+  onChange: (values: ModelOptionValues) => void;
+}
+
 interface ExecutionReasoningConfig {
   value: ReasoningLevel;
   options: readonly PickerOption<ReasoningLevel>[];
@@ -64,6 +72,7 @@ export interface ExecutionControlsProps {
   provider: ExecutionProviderConfig;
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
+  modelOptions?: ExecutionModelOptionsConfig;
   reasoning: ExecutionReasoningConfig;
   handoff?: ModelReasoningPickerHandoff;
   disabled?: boolean;
@@ -74,6 +83,7 @@ export const ExecutionControls = memo(function ExecutionControls({
   providerRouting,
   model,
   serviceTier,
+  modelOptions,
   reasoning,
   handoff,
   disabled,
@@ -123,6 +133,9 @@ export const ExecutionControls = memo(function ExecutionControls({
           }
           onServiceTierChange={handleServiceTierChange}
           serviceTierSupportByProvider={serviceTier?.supportByProvider}
+          modelOptionDeclarations={modelOptions?.declarations}
+          modelOptionValues={modelOptions?.values}
+          onModelOptionValuesChange={modelOptions?.onChange}
           muted
           disabled={disabled}
           handoff={handoff}

@@ -212,6 +212,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     supportsServiceTier: false,
     serviceTierSupportByProvider: {},
     isLoadingModels: false,
+    providers: [],
   }),
 }));
 

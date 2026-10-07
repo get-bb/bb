@@ -12,7 +12,12 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import {
+  findModelForOptionValues,
+  modelOptionConflictReason,
   resolveServiceTierOptions,
+  visibleModelOptions,
+  type ModelOptionValues,
+  type ProviderModelOption,
   type ProviderOptionDescriptor,
   type ReasoningLevel,
   type ServiceTier,
@@ -104,6 +109,18 @@ export interface ModelReasoningPickerHandoff {
 
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 const EMPTY_MODEL_OPTIONS: readonly ModelPickerOption[] = [];
+const EMPTY_MODEL_OPTION_DECLARATIONS: readonly ProviderModelOption[] = [];
+const EMPTY_MODEL_OPTION_VALUES: Readonly<Record<string, string>> = {};
+
+function toModelOptionSource(option: ModelPickerOption) {
+  return {
+    model: option.value,
+    isDefault: option.isDefault === true,
+    ...(option.supportedModelOptions
+      ? { experimental_supportedModelOptions: option.supportedModelOptions }
+      : {}),
+  };
+}
 const EMPTY_SERVICE_TIER_OPTIONS: readonly ProviderOptionDescriptor[] = [];
 const preserveModelLabel = (displayName: string): string => displayName;
 const MODEL_CYCLE_COMMANDS = [
@@ -188,6 +205,9 @@ interface ModelReasoningPickerProps {
   onServiceTierChange: (value: ServiceTier) => void;
   commandShortcutsEnabled?: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
+  modelOptionDeclarations?: readonly ProviderModelOption[];
+  modelOptionValues?: Readonly<Record<string, string>>;
+  onModelOptionValuesChange?: (values: ModelOptionValues) => void;
   className?: string;
   muted?: boolean;
   modal?: boolean;
@@ -220,6 +240,9 @@ export function ModelReasoningPicker({
   onServiceTierChange,
   commandShortcutsEnabled = true,
   serviceTierSupportByProvider,
+  modelOptionDeclarations = EMPTY_MODEL_OPTION_DECLARATIONS,
+  modelOptionValues = EMPTY_MODEL_OPTION_VALUES,
+  onModelOptionValuesChange,
   className,
   muted,
   modal = true,
@@ -545,6 +568,84 @@ export function ModelReasoningPicker({
     hasSelectedModel && modelOptions.length > 0
       ? serviceTierOptions.find((option) => option.id === serviceTierValue)
       : undefined;
+  const modelOptionProvider = useMemo(
+    () => ({ experimental_modelOptions: [...modelOptionDeclarations] }),
+    [modelOptionDeclarations],
+  );
+  const modelOptionSources = useMemo(
+    () => [...modelOptions, ...moreModelOptions].map(toModelOptionSource),
+    [modelOptions, moreModelOptions],
+  );
+  const modelOptionsApply =
+    onModelOptionValuesChange !== undefined && !isPreviewing && !handoffMode;
+  const shownModelOptions = useMemo(
+    () =>
+      modelOptionsApply && hasActiveModelOptions
+        ? visibleModelOptions({
+            provider: modelOptionProvider,
+            models: modelOptionSources,
+          })
+        : EMPTY_MODEL_OPTION_DECLARATIONS,
+    [
+      hasActiveModelOptions,
+      modelOptionProvider,
+      modelOptionSources,
+      modelOptionsApply,
+    ],
+  );
+  const modelConflictReasons = useMemo(() => {
+    const reasons = new Map<string, string>();
+    if (!modelOptionsApply) return reasons;
+    for (const source of modelOptionSources) {
+      const reason = modelOptionConflictReason({
+        provider: modelOptionProvider,
+        model: source,
+        values: modelOptionValues,
+      });
+      if (reason !== null) reasons.set(source.model, reason);
+    }
+    return reasons;
+  }, [
+    modelOptionProvider,
+    modelOptionSources,
+    modelOptionValues,
+    modelOptionsApply,
+  ]);
+  const activeModelOptionLabels = hasSelectedModel
+    ? modelOptionDeclarations.flatMap((option) => {
+        const valueId = modelOptionValues[option.id];
+        if (valueId === undefined || valueId === option.defaultValue) return [];
+        const value = option.values.find(
+          (candidate) => candidate.id === valueId,
+        );
+        if (value === undefined) return [];
+        return [option.values.length === 2 ? option.label : value.label];
+      })
+    : [];
+  const handleModelOptionChange = useCallback(
+    (optionId: string, valueId: string) => {
+      if (onModelOptionValuesChange === undefined) return;
+      const nextValues = { ...modelOptionValues, [optionId]: valueId };
+      const compatible = findModelForOptionValues({
+        provider: modelOptionProvider,
+        models: modelOptionSources,
+        currentModel: modelValue,
+        values: nextValues,
+      });
+      if (compatible !== null && compatible.model !== modelValue) {
+        onModelChange(compatible.model);
+      }
+      onModelOptionValuesChange(nextValues);
+    },
+    [
+      modelOptionProvider,
+      modelOptionSources,
+      modelOptionValues,
+      modelValue,
+      onModelChange,
+      onModelOptionValuesChange,
+    ],
+  );
   const showReasoningSection =
     !isShowingModelError &&
     activeReasoningOptions.length > 0 &&
@@ -577,6 +678,7 @@ export function ModelReasoningPicker({
   const handleModelSelect = useCallback(
     (model: string) => {
       if (previewSelectionBlocked) return;
+      if (modelConflictReasons.has(model)) return;
       if (handoff !== undefined && handoffMode) {
         handoff.onSelect({
           providerId: activeProviderId,
@@ -599,6 +701,7 @@ export function ModelReasoningPicker({
       handoffMode,
       handoffReasoningLevel,
       isPreviewing,
+      modelConflictReasons,
       onModelChange,
       previewSelection,
       previewSelectionBlocked,
@@ -905,6 +1008,9 @@ export function ModelReasoningPicker({
     selectedServiceTierOption
       ? ` (${selectedServiceTierOption.label} mode)`
       : "",
+    activeModelOptionLabels.length > 0
+      ? ` · ${activeModelOptionLabels.join(" · ")}`
+      : "",
   ].join("");
   const trigger = (
     <Button
@@ -986,6 +1092,15 @@ export function ModelReasoningPicker({
                 {triggerReasoningLabel}
               </span>
             ) : null}
+            {activeModelOptionLabels.map((label) => (
+              <span
+                key={label}
+                className="shrink-0 text-subtle-foreground"
+                data-promptbox-hide-compact=""
+              >
+                {label}
+              </span>
+            ))}
           </>
         )}
       </span>
@@ -1136,6 +1251,10 @@ export function ModelReasoningPicker({
           serviceTierOptions={activeServiceTierOptions}
           serviceTierValue={serviceTierValue}
           onServiceTierChange={onServiceTierChange}
+          modelOptions={shownModelOptions}
+          modelOptionValues={modelOptionValues}
+          onModelOptionChange={handleModelOptionChange}
+          modelConflictReasons={modelConflictReasons}
           onStartHandoff={
             handoff !== undefined && !handoffMode && providerOptions.length > 0
               ? startHandoffMode

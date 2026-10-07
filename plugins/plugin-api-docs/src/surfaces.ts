@@ -533,6 +533,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Bring any CLI agent into bb, with its own models and icon",
           "Run every thread started with it through a bridge the plugin ships",
           "Report context usage, service tiers, and install status",
+          "Add a model picker switch, such as Codex's Daybreak, that greys out incompatible models",
         ],
         apiSymbols: [
           "contextSnapshotSchema",
@@ -542,6 +543,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginProviderDeclaration",
           "AvailableModel",
           "ModelServiceTier",
+          "PluginProviderModelOptionDeclaration",
+          "PluginProviderModelOptionValueDeclaration",
+          "PluginProviderOptionsContext",
           "providerInstallationStatusParamsSchema",
           "ProviderInstallationStatusParams",
           "PluginProviderIconRegistration",

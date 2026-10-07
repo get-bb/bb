@@ -781,6 +781,7 @@ describe("useThreadCreationOptions", () => {
         value: "global-model",
         label: "Global Model",
         routeProviderId: "openai-codex",
+        isDefault: true,
       });
     });
   });

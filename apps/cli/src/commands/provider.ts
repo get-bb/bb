@@ -205,6 +205,9 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
   const listsServiceTiers = models.some(
     (model) => model.supportedServiceTiers !== undefined,
   );
+  const listsModelOptions = models.some(
+    (model) => model.experimental_supportedModelOptions !== undefined,
+  );
   const rows = models.map((model) => [
     model.model,
     model.displayName ?? model.model,
@@ -218,6 +221,15 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
               : model.supportedServiceTiers.map((tier) => tier.id).join(", "),
         ]
       : []),
+    ...(listsModelOptions
+      ? [
+          Object.entries(model.experimental_supportedModelOptions ?? {})
+            .map(
+              ([optionId, valueIds]) => `${optionId}: ${valueIds.join(", ")}`,
+            )
+            .join("; "),
+        ]
+      : []),
   ]);
   printBorderlessTable(
     {
@@ -226,11 +238,15 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
         "Name",
         "Default",
         ...(listsServiceTiers ? ["Service tiers"] : []),
+        ...(listsModelOptions ? ["Model options"] : []),
       ],
-      colWidths: columnWidths(
-        rows,
-        listsServiceTiers ? [5, 4, 7, 13] : [5, 4, 7],
-      ),
+      colWidths: columnWidths(rows, [
+        5,
+        4,
+        7,
+        ...(listsServiceTiers ? [13] : []),
+        ...(listsModelOptions ? [13] : []),
+      ]),
       trimTrailingWhitespace: true,
     },
     rows,
