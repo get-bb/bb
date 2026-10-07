@@ -360,6 +360,35 @@ describe("compact overlay dismissal callbacks", () => {
 });
 
 describe("responsive Dialog", () => {
+  it("keeps showing its last open content until the compact close animation settles", () => {
+    vi.useFakeTimers();
+    mockPointerCoarse(true);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    const renderAt = (target: string | null) => (
+      <CompactViewportOverrideProvider isCompactViewport>
+        <Dialog open={target !== null}>
+          <DialogContent>
+            <DialogTitle>Rename</DialogTitle>
+            {target ? <p>Renaming {target}</p> : null}
+          </DialogContent>
+        </Dialog>
+      </CompactViewportOverrideProvider>
+    );
+
+    const view = render(renderAt("alpha"));
+    act(() => vi.advanceTimersByTime(120));
+    expect(screen.getByText("Renaming alpha")).toBeTruthy();
+
+    view.rerender(renderAt(null));
+    expect(screen.getByText("Renaming alpha")).toBeTruthy();
+
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.queryByText("Renaming alpha")).toBeNull();
+
+    view.rerender(renderAt("beta"));
+    expect(screen.getByText("Renaming beta")).toBeTruthy();
+  });
+
   it("links the persistent mobile dialog to its title and description", () => {
     mockPointerCoarse(true);
     const frames: FrameRequestCallback[] = [];
