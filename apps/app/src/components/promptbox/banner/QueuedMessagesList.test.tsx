@@ -451,8 +451,7 @@ describe("QueuedMessagesList", () => {
       "[data-queued-messages-previous-count]",
     );
     expect(previousCount?.textContent).toBe("1");
-    fireEvent.animationEnd(previousCount!);
-    expect(count()?.textContent).toBe("2");
+    expect(count()?.lastElementChild?.textContent).toBe("2");
 
     rerender(
       <QueuedMessagesList {...sharedProps} queuedMessages={[secondMessage]} />,
