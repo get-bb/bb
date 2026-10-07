@@ -42,6 +42,28 @@ describe("pi extension ui interaction", () => {
     await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("Allow once"));
   });
 
+  it("lets a select dialog retry after a failed submit", async () => {
+    const submit = vi
+      .fn<(value: unknown) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(undefined);
+    const view = render(
+      { requestId: "ui-1", method: "select", options: ["Allow once", "Deny"] },
+      { submit },
+    );
+    fireEvent.click(view.getByText("Allow once"));
+    fireEvent.click(view.getByText("Submit answer"));
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(
+        (view.getByText("Submit answer").closest("button") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(view.getByText("Submit answer"));
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+  });
+
   it("keeps submit disabled until a select option is chosen", () => {
     const view = render({
       requestId: "ui-1",
