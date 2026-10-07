@@ -109,8 +109,8 @@ const BB_VS_SUPERSET: Comparison = {
   tailored: pricingSection(PRICING_COPY, {
     plan: "Superset Pro",
     logo: SUPERSET_LOGO,
-    yearlyPerSeatMonthly: 20,
-    priceNote: "Superset Pro at $20 per user a month.",
+    yearlyPerSeatMonthly: 15,
+    priceNote: "Superset Pro at $15 per user a month, billed yearly.",
   }),
   sections: [
     agentsSection(AGENTS_COPY),
@@ -118,7 +118,7 @@ const BB_VS_SUPERSET: Comparison = {
     pluginsSection(PLUGINS_COPY),
   ],
   tableNote:
-    "marks features that need a paid Superset plan, from $20 per user / month.",
+    "marks features that need a paid Superset plan, from $15 per user / month, billed yearly.",
   table: [
     {
       title: "Price and license",
@@ -126,7 +126,10 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Pricing",
           bb: price("$0", "Any team size"),
-          competitor: price("$0 solo", "$20 per user / month for teams"),
+          competitor: price(
+            "$0 solo",
+            "$15 per user / month for teams, billed yearly",
+          ),
         },
         {
           feature: "Open-source license",
@@ -141,7 +144,7 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Web access from any browser",
           bb: cell("yes", "Free with bb Connect"),
-          competitor: cell("no", "No web dashboard"),
+          competitor: cell("no", "Desktop and iPhone only"),
         },
         {
           feature: "Run agents on other machines",
@@ -180,7 +183,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Automatic with Account Pooler"),
+          bb: cell("yes", "Account Pooler, experimental"),
           competitor: cell("partial", "Manual default switch"),
         },
       ],
@@ -191,12 +194,12 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Plugin marketplace",
           bb: cell("yes", "Gallery or agent-built"),
-          competitor: cell("partial", "Themes and integrations"),
+          competitor: cell("partial", "Themes only"),
         },
         {
           feature: "Linear integration",
           bb: cell("yes", "Community plugin"),
-          competitor: cell("partial", "", true),
+          competitor: cell("yes", "Two-way issue sync", true),
         },
         {
           feature: "GitHub integration",
@@ -215,7 +218,7 @@ const BB_VS_SUPERSET: Comparison = {
       rows: [
         {
           feature: "Windows support",
-          bb: cell("yes", "Native app"),
+          bb: cell("yes", "Alpha"),
           competitor: cell("no", "Planned, no date"),
         },
         {
@@ -281,7 +284,7 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Side chats",
           bb: cell("yes", "Ask without derailing the agent"),
-          competitor: cell("no"),
+          competitor: cell("partial", "Fork a session"),
         },
         {
           feature: "Drafts",
@@ -296,7 +299,7 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Voice input",
           bb: cell("yes", "Dictate prompts"),
-          competitor: cell("no"),
+          competitor: cell("partial", "Dictation on iPhone", true),
         },
       ],
     },
@@ -312,11 +315,12 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               Both run Claude Code, Codex, and other coding agents in parallel
               on your repo. bb is free for any team size and open source, while
-              Superset charges $20 per user a month for teams. bb includes phone
-              and browser access, remote machines, and automations at no cost,
-              and runs natively on <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>.
-              When one agent starts another, the new agent gets its own thread
-              (one conversation with one agent) that you can open and message.
+              Superset charges $15 per user a month for teams, billed yearly. bb
+              includes phone and browser access, remote machines, and
+              automations at no cost, and runs on{" "}
+              <a href={WINDOWS_DOWNLOAD_URL}>Windows</a> (alpha). When one agent
+              starts another, the new agent gets its own thread (one
+              conversation with one agent) that you can open and message.
             </p>
           ),
         },
@@ -345,9 +349,9 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               Yes: bb. It’s free for any team size and MIT-licensed, so you can
               use and change it for anything, including at work. Superset
-              charges $20 per user a month for teams, and its Elastic License
-              2.0 makes the code public but isn’t an open-source license.{" "}
-              <a href="/download/macos">Download bb</a>.
+              charges $15 per user a month for teams, billed yearly, and its
+              Elastic License 2.0 makes the code public but isn’t an open-source
+              license. <a href="/download/macos">Download bb</a>.
             </p>
           ),
         },
@@ -377,7 +381,7 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Price and license",
       items: [
         faqFree(
-          ", while Superset puts its mobile app, remote machines, and automations on its $20-per-user Pro plan",
+          ", while Superset puts its mobile app, remote machines, and automations on its Pro plan, from $15 per user a month billed yearly",
         ),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(
@@ -409,7 +413,9 @@ const BB_VS_SUPERSET: Comparison = {
       items: [
         faqPlatforms("Superset doesn’t run on Windows yet."),
         FAQ_PRIVACY,
-        faqTeam(", while Superset charges $20 per user a month for teams"),
+        faqTeam(
+          ", while Superset charges $15 per user a month for teams, billed yearly",
+        ),
       ],
     },
   ],

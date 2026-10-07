@@ -34,19 +34,20 @@ import { AgentSplit, PlansVisual, type BrandLogo } from "./compare-visuals";
 const CURSOR_LOGO: BrandLogo = { kind: "image", src: cursorIcon };
 
 const PLANS_SECTION = {
-  title: "Every agent, on the plans you already pay for",
+  title: "Every agent on its own subscription",
   wide: false,
   visual: <PlansVisual />,
   body: (
     <>
       <p>
-        Claude Code runs on your Claude plan, Codex on your ChatGPT plan, and
-        Cursor’s agent on your Cursor plan. Each agent works the way its own
-        team built it, and you pick the right one for each task.
+        Claude Code runs on your Claude subscription, Codex on your ChatGPT
+        subscription, and Cursor’s agent on your Cursor plan, with nothing
+        billed in between. Each agent works the way its own team built it, and
+        you pick the right one for each task.
       </p>
       <p>
-        When a Claude or Codex account hits its limit, bb moves the thread to
-        your next one and it keeps going. bb itself is free.
+        When an agent hits a usage limit, bb picks the work back up once the
+        limit resets. bb itself is free.
       </p>
     </>
   ),
@@ -68,12 +69,13 @@ const AWAY_SECTION = anywhereSection({
 
 export const BB_VS_CURSOR: Comparison = {
   slug: "cursor-alternative",
-  title: "Cursor Alternative for Coding Agents: bb, Free and Open Source",
+  title:
+    "Cursor Alternative for Your Claude and ChatGPT Subscriptions: bb, Free and Open Source",
   description:
-    "bb is a free, open-source Cursor alternative for running coding agents. Claude Code, Codex, and Cursor’s agent work together on your machines, on the plans you already pay for.",
+    "bb is a free, open-source Cursor alternative. Run Claude Code and Codex directly on your Claude and ChatGPT subscriptions, next to Cursor’s agent, and change anything with plugins.",
   competitor: { name: "Cursor", logo: CURSOR_LOGO },
-  headline: "The Cursor alternative for running all your coding agents",
-  sub: "Claude Code, Codex, and Cursor’s own agent work together on the plans you already pay for. Free and open source.",
+  headline: "The Cursor alternative for your Claude and ChatGPT subscriptions",
+  sub: "Run Claude Code and Codex directly on the subscriptions you already have, next to Cursor’s own agent, in an app you can change with plugins. Free and open source.",
   heroVisual: <AgentSplit />,
   tailored: PLANS_SECTION,
   sections: [
@@ -94,16 +96,23 @@ export const BB_VS_CURSOR: Comparison = {
         {
           feature: "Claude and GPT models",
           bb: cell("yes", "Billed to your Claude and ChatGPT plans"),
-          competitor: cell("yes", "Billed to your Cursor usage", true),
+          competitor: cell(
+            "yes",
+            "Billed to Cursor usage or your API keys",
+            true,
+          ),
         },
         {
           feature: "Agent-to-agent handoff",
           bb: cell("yes", "Any provider, each in its own thread"),
-          competitor: cell("partial", "Subagents inside Cursor’s agent"),
+          competitor: cell(
+            "partial",
+            "Subagents and Projects, Cursor’s agent only",
+          ),
         },
         {
           feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Automatic with Account Pooler"),
+          bb: cell("yes", "Account Pooler, experimental"),
           competitor: cell("no", "On-demand billing instead"),
         },
       ],
@@ -114,7 +123,7 @@ export const BB_VS_CURSOR: Comparison = {
         {
           feature: "Pricing",
           bb: price("$0", "You pay agent providers directly"),
-          competitor: price("$20 / mo", "Teams at $40 per user / month"),
+          competitor: price("$20 / mo", "Teams from $40 per user / month"),
         },
         {
           feature: "Open-source license",
@@ -139,7 +148,7 @@ export const BB_VS_CURSOR: Comparison = {
         {
           feature: "Mobile app",
           bb: cell("yes", "iOS beta, Android alpha"),
-          competitor: cell("yes", "iOS beta, web on Android"),
+          competitor: cell("yes", "iPhone and iPad, web on Android"),
         },
         {
           feature: "Scheduled automations",
@@ -164,11 +173,14 @@ export const BB_VS_CURSOR: Comparison = {
         {
           feature: "Plugin marketplace",
           bb: cell("yes", "Panels, commands, and agents"),
-          competitor: cell("yes", "Rules, skills, and MCP servers"),
+          competitor: cell(
+            "yes",
+            "Skills, MCP servers, hooks, and automations",
+          ),
         },
         {
           feature: "Code editor",
-          bb: cell("partial", "Opens your worktree in Cursor"),
+          bb: cell("partial", "File Editor plugin, no Tab completion"),
           competitor: cell("yes", "Full editor with Tab"),
         },
       ],
@@ -183,12 +195,14 @@ export const BB_VS_CURSOR: Comparison = {
           question: "What’s the difference between bb and Cursor?",
           answer: (
             <p>
-              Cursor is a code editor with its own agent, plus cloud agents on
-              its paid plans. bb isn’t an editor: it’s a free, open-source app
-              for running coding agents. Claude Code, Codex, Cursor’s agent, and
-              others run side by side on your own machines, each on its own
-              plan, and they can start and message each other. You can keep
-              editing in Cursor while bb runs the agents.
+              Cursor is a code editor and agents app built around its own agent,
+              with cloud agents, Projects, and automations on its paid plans,
+              and it bills Claude and GPT models at API rates. bb is a free,
+              open-source app for running coding agents: Claude Code and Codex
+              run directly on your Claude and ChatGPT subscriptions, next to
+              Cursor’s agent and others, on your own machines, and they can
+              start and message each other. Plugins let you change almost
+              anything, including adding a code editor.
             </p>
           ),
         },
@@ -296,9 +310,9 @@ export const BB_VS_CURSOR: Comparison = {
           question: "Does bb have a code editor?",
           answer: (
             <p>
-              bb opens any thread’s worktree in Cursor, VS Code, or another
-              editor you have installed. For quick edits without leaving bb,
-              turn on the File Editor plugin.
+              Yes. The built-in File Editor plugin edits files inside bb with
+              Monaco, the editor from VS Code. bb also opens any thread’s
+              worktree in Cursor, VS Code, or another editor you have installed.
             </p>
           ),
         },
@@ -312,7 +326,7 @@ export const BB_VS_CURSOR: Comparison = {
       title: "Price, platforms, and privacy",
       items: [
         faqFree(
-          ", while Cursor puts cloud agents and frontier models on its paid plans",
+          ", while Cursor puts cloud agents, Projects, and frontier models on its paid plans",
         ),
         faqPlatforms(null),
         FAQ_PRIVACY,

@@ -62,7 +62,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
         {
           feature: "Kanban board",
           bb: cell("yes", "Tasks plugin, local"),
-          competitor: cell("partial", "Projects off since 0.1.44"),
+          competitor: cell("no", "Retired in 0.1.44"),
         },
         {
           feature: "Git worktree per task",
@@ -82,7 +82,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
         {
           feature: "Agent-to-agent handoff",
           bb: cell("yes", "Spawn, message, wait"),
-          competitor: cell("no"),
+          competitor: cell("yes", "Through its MCP server"),
         },
       ],
     },
@@ -98,10 +98,10 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
             <p>
               Its maker, bloop,{" "}
               <a href="https://www.vibekanban.com/blog/shutdown">shut down</a>{" "}
-              in April 2026 and turned off its cloud, including shared projects
-              and issues. The open-source app continues as a community project,
-              but version 0.1.44 turned off Projects for everyone, and there
-              hasn’t been a release since. Local workspaces still run.
+              in April 2026 and said it would remove cloud projects, issues, and
+              organizations. The open-source app continues as a community
+              project, but version 0.1.44 turned off Projects for everyone, and
+              there hasn’t been a release since. Local workspaces still run.
             </p>
           ),
         },
@@ -110,10 +110,10 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
           answer: (
             <p>
               Both run Claude Code, Codex, and other coding agents in Git
-              worktrees, and both are free and open source. bb’s Tasks plugin
-              keeps your board on your machine with no sign-in, and bb’s agents
-              can start, message, and review each other’s work. bb is actively
-              developed, with a release every week.
+              worktrees, and both are free and open source. Vibe Kanban retired
+              its board in 0.1.44; bb’s Tasks plugin keeps yours on your machine
+              with no sign-in. bb is actively developed, with a release every
+              week.
             </p>
           ),
         },

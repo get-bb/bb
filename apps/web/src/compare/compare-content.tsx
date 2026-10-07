@@ -26,7 +26,7 @@ export const FAQ_GET_STARTED: CompareFaq = {
       <li>
         Download bb for <a href="/download/macos">macOS</a> (Apple Silicon),{" "}
         <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (alpha). On an Intel Mac, run{" "}
+        <a href="/download/linux">Linux</a> (both alpha). On an Intel Mac, run{" "}
         <code>npx bb-app@latest</code>, which needs Node.js 22.19 or later.
       </li>
       <li>
@@ -108,13 +108,14 @@ export const FAQ_SUBSCRIPTIONS: CompareFaq = {
 
 export function faqUsageLimit(contrast: ReactNode): CompareFaq {
   return {
-    question: "Can bb switch accounts when I hit a usage limit?",
+    question: "What happens when I hit a usage limit?",
     answer: (
       <p>
-        Yes, with Account Pooler, an experimental plugin built into bb. Turn it
-        on and add the Claude Code and Codex accounts you own. When one account
-        hits its limit, bb moves the thread’s requests to the next one, so it
-        keeps running. {contrast}
+        bb picks the work back up. When an agent stops on a usage limit that
+        reports when it resets, bb sends the message again a little after the
+        reset, so you don’t have to come back and press send. To keep going on
+        another Claude Code or Codex account you own, turn on Account Pooler, an
+        experimental plugin built into bb. {contrast}
       </p>
     ),
   };
@@ -224,7 +225,7 @@ export function faqPlatforms(contrast: ReactNode): CompareFaq {
         Yes. Download the app for{" "}
         <a href="/download/macos">Apple Silicon Macs</a>,{" "}
         <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (alpha), or run{" "}
+        <a href="/download/linux">Linux</a> (both alpha), or run{" "}
         <code>npx bb-app@latest</code> on an Intel Mac. {contrast}
       </p>
     ),

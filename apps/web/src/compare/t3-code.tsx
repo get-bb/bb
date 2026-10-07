@@ -19,35 +19,46 @@ import {
   faqUsageLimit,
   price,
 } from "./compare-content";
-import { pluginsSection, SPAWN_COPY, spawnSection } from "./compare-sections";
-import { AgentSplit, type BrandLogo } from "./compare-visuals";
+import { CustomizeBuild } from "../landing/landing-visuals";
+import { agentsSection } from "./compare-sections";
+import type { BrandLogo } from "./compare-visuals";
 
 const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
 
-const CUSTOMIZE_SECTION = pluginsSection({
-  title: "Change anything, no fork needed",
+const AGENTS_SECTION = agentsSection({
+  title: "Every agent, in threads you can talk to",
   body: (
     <p>
-      Browse the <a href="/marketplace">plugin marketplace</a> or ask an agent
-      to build the panel, command, or agent you want. It’s ready right away,
-      wherever you use bb, including your phone.
+      Claude Code, Codex, Cursor, OpenCode, and more run side by side. When one
+      agent starts another, the new one is a full thread you can open and
+      message mid-run, from any device.
     </p>
   ),
 });
 
 export const BB_VS_T3_CODE: Comparison = {
   slug: "t3-code-alternatives",
-  title: "T3 Code Alternatives: bb, Where Your Agents Work Together",
+  title: "T3 Code Alternatives: bb, Change Anything Without Forking",
   description:
-    "bb is a free, open-source T3 Code alternative. Claude Code, Codex, and other agents start and message each other, and plugins let you change anything without forking.",
+    "bb is a free, open-source T3 Code alternative you can change without forking. Add panels, commands, and agents from the plugin marketplace, or have your agent build them.",
   competitor: { name: "T3 Code", logo: T3_CODE_LOGO },
-  headline: "The T3 Code alternative where your agents work together",
-  sub: "Claude Code builds, Codex reviews in its own thread, and you can message either one mid-run. Free and open source, on Mac, Windows, and Linux.",
-  heroVisual: <AgentSplit />,
-  tailored: CUSTOMIZE_SECTION,
-  sections: [spawnSection(SPAWN_COPY)],
+  headline: "The T3 Code alternative you can change without forking",
+  sub: "Add a panel, a command, or an agent from the plugin marketplace, or have your agent build one. It works everywhere you use bb, including your phone. Free and open source.",
+  heroVisual: <CustomizeBuild />,
+  tailored: AGENTS_SECTION,
+  sections: [],
   tableNote: null,
   table: [
+    {
+      title: "Customize",
+      rows: [
+        {
+          feature: "Plugin marketplace",
+          bb: cell("yes", "Gallery or agent-built"),
+          competitor: cell("no", "Fork the code"),
+        },
+      ],
+    },
     {
       title: "Agents",
       rows: [
@@ -58,7 +69,7 @@ export const BB_VS_T3_CODE: Comparison = {
         },
         {
           feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Switches accounts automatically"),
+          bb: cell("yes", "Account Pooler, experimental"),
           competitor: cell("partial", "Tracks limits, you switch"),
         },
         {
@@ -68,16 +79,6 @@ export const BB_VS_T3_CODE: Comparison = {
             "yes",
             "Claude Code, Codex, Cursor, OpenCode, and more",
           ),
-        },
-      ],
-    },
-    {
-      title: "Customize",
-      rows: [
-        {
-          feature: "Plugin marketplace",
-          bb: cell("yes", "Gallery or agent-built"),
-          competitor: cell("no", "Fork the code"),
         },
       ],
     },
@@ -133,10 +134,11 @@ export const BB_VS_T3_CODE: Comparison = {
             <p>
               Both are free, MIT-licensed apps that run Claude Code, Codex, and
               other coding agents in Git worktrees on your own machines, with
-              mobile and remote access. In bb, every agent another agent starts
-              is a full thread you can open and message mid-run. You change bb
-              with plugins instead of a fork, and Account Pooler moves a thread
-              to your next account when one hits its limit.
+              mobile and remote access, and both let agents hand work to each
+              other. bb is built to be changed: install a plugin from the
+              marketplace or have an agent build one, instead of keeping a fork.
+              And in bb, every agent another agent starts is a full thread you
+              can open and message mid-run.
             </p>
           ),
         },

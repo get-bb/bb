@@ -108,7 +108,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
       rows: [
         {
           feature: "Windows support",
-          bb: cell("yes", "Native app"),
+          bb: cell("yes", "Alpha"),
           competitor: cell("no", "Mac only"),
         },
         {
@@ -204,12 +204,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
         {
           feature: "Multiplayer workspaces",
           bb: cell("partial", "Share one bb with your team"),
-          competitor: cell("partial", "Prompt the same agent", true),
+          competitor: cell("yes", "Shared cloud workspaces", true),
         },
         {
           feature: "Team plans and SSO",
           bb: cell("no"),
-          competitor: cell("partial", "SSO on Enterprise"),
+          competitor: cell("yes", "Teams plan, SSO on Enterprise", true),
         },
       ],
     },
@@ -249,11 +249,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
           question: "How do I move a repo and my unfinished work to bb?",
           answer: (
             <p>
-              Ask bb to do it. Your repo and Conductor’s workspaces are plain
-              Git worktrees on your machine, so a bb agent can add the repo and
-              open each unfinished workspace as a thread. Your CLAUDE.md,
-              skills, MCP servers, slash commands, and agent sign-ins come
-              along, and Conductor keeps working while you try bb.
+              Ask bb to do it. Conductor’s local workspaces are plain Git
+              worktrees on your Mac, and its cloud workspaces push to branches,
+              so a bb agent can add the repo and open each unfinished workspace
+              or branch as a thread. Your CLAUDE.md, skills, MCP servers, slash
+              commands, and agent sign-ins come along, and Conductor keeps
+              working while you try bb.
             </p>
           ),
         },
@@ -262,13 +263,13 @@ export const BB_VS_CONDUCTOR: Comparison = {
           answer: (
             <ul>
               <li>
-                Each Conductor workspace becomes a thread, and several threads
-                can share one worktree, so a reviewer can work right next to the
-                agent that wrote the code.
+                Each Conductor chat becomes a thread. Threads can get their own
+                worktree or share one, like chats in a workspace.
               </li>
               <li>
-                Your setup script moves to <code>.bb-env-setup.sh</code>, and
-                Files to copy becomes a <code>.worktreeinclude</code> file.
+                Your setup script moves to <code>.bb-env-setup.sh</code>. A{" "}
+                <code>.worktreeinclude</code> file works as is, and Files to
+                copy patterns from Conductor’s settings move into it.
               </li>
               <li>
                 Threads run on whichever of your computers you pick, and follow
@@ -372,7 +373,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         ),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(null),
-        faqPlatforms("Conductor runs only on macOS."),
+        faqPlatforms("Conductor’s desktop app runs only on macOS."),
         FAQ_PRIVACY,
       ],
     },
