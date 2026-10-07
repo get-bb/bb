@@ -19,6 +19,10 @@ import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
+function toFolderHint(folderPath: string | null): string | null {
+  return folderPath === null ? null : `${folderPath}/`;
+}
+
 interface ChangedFilesHandlers {
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
   onOpenChangedFile?: (path: string) => void;
@@ -127,7 +131,7 @@ function ChangedFileRow({
       }
       leadingLabel={glyph.label}
       name={fileName}
-      context={getParentFolderPathFromPath({ path: file.path })}
+      context={toFolderHint(getParentFolderPathFromPath({ path: file.path }))}
       title={`${glyph.label} · ${file.path}`}
       target={
         onChangedFileClick
