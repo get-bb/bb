@@ -404,8 +404,14 @@ export function UsageSettingsContent({
             ? emptyUsageMessage(selected)
             : null;
   return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4 sm:items-start">
+    <section className="@container/usage-settings space-y-3">
+      <div
+        className={cn(
+          machines.length > 1
+            ? "flex flex-col gap-3 @min-[36rem]/usage-settings:flex-row @min-[36rem]/usage-settings:justify-between @min-[36rem]/usage-settings:gap-4 @min-[36rem]/usage-settings:items-start"
+            : "flex flex-row items-start justify-between gap-4",
+        )}
+      >
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
             <h2 className="min-w-0 text-sm font-semibold text-foreground">
