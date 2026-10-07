@@ -22,6 +22,7 @@ import {
 import { parseFileEditFromItemEvent } from "./file-edit-parsing.js";
 import { parseWebActivityLifecycleEvent } from "./web-activity-lifecycle.js";
 import { parseOperationMessage } from "./parse-operation-message.js";
+import { normalizeProvisioningFailures } from "./normalize-provisioning-failures.js";
 import { parseErrorMessage } from "./parse-error-message.js";
 import {
   normalizeEventProjection,
@@ -979,7 +980,9 @@ function buildFlatProjectionData(
   }
 
   finalizeProjectionState({ state, options: args.options });
-  const messages = sortEventProjectionMessagesBySource(state.messages);
+  const messages = sortEventProjectionMessagesBySource(
+    normalizeProvisioningFailures(orderedEvents, state.messages),
+  );
   const callMessageById = buildCallMessageById(messages);
   enrichBackgroundAgentModels(messages, callMessageById);
   return {

@@ -487,6 +487,7 @@ export interface EventProjectionErrorMessage extends EventProjectionMessageBase 
   message: string;
   detail: string | null;
   rawType: string;
+  systemErrorCode: string | null;
   providerErrorInfo?: ProviderErrorInfo;
   willRetry?: boolean;
 }
