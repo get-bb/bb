@@ -22,7 +22,6 @@ import {
   faqFree,
   faqPhone,
 } from "../compare/compare-content";
-import { PLUGINS_COPY, pluginsSection } from "../compare/compare-sections";
 import {
   AgentSplit,
   AnywhereVisual,
@@ -148,6 +147,17 @@ const FAQ_LIMIT_RESET: CompareFaq = {
   ),
 };
 
+const FAQ_BOTH_PLANS: CompareFaq = {
+  question: "Do I need a plan for both Claude Code and Codex?",
+  answer: (
+    <p>
+      Yes. Each agent runs signed in as usual, with its own plan or API key,
+      the way you use it today, and bb adds no model bill of its own. Any pair
+      of agents works the same way, including two Claude Code threads.
+    </p>
+  ),
+};
+
 const PHONE_FAQ: CompareFaqGroup = {
   title: "Your phone",
   items: [
@@ -180,7 +190,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     description:
       "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and answer from any phone browser. Free and open source.",
     headline: "See which agent needs you, from your phone",
-    sub: "Claude Code, Codex, and your other agents across all your machines, in one list. Step away, then answer questions and preview what was built from any phone browser. Free and open source.",
+    sub: "Install bb on your computer, then step away. Claude Code, Codex, and your other agents show up in one list on your phone, where you can answer questions and preview what was built. Free and open source.",
     sections: [PHONE_SECTION, CODEX_SECTION, PARALLEL_SECTION],
     faq: [
       PHONE_FAQ,
@@ -201,10 +211,10 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     faq: [
       {
         title: "Running several agents",
-        items: [FAQ_CODEX_TOGETHER, FAQ_PARALLEL, FAQ_LIMIT_RESET, FAQ_AGENTS],
+        items: [FAQ_BOTH_PLANS, FAQ_PARALLEL, FAQ_LIMIT_RESET, FAQ_AGENTS],
       },
-      PHONE_FAQ,
       START_FAQ,
+      PHONE_FAQ,
     ],
   },
   parallel: {
@@ -217,10 +227,10 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     faq: [
       {
         title: "Running several agents",
-        items: [FAQ_PARALLEL, FAQ_LIMIT_RESET, FAQ_CODEX_TOGETHER, FAQ_AGENTS],
+        items: [FAQ_LIMIT_RESET, FAQ_CODEX_TOGETHER, FAQ_AGENTS],
       },
-      PHONE_FAQ,
       START_FAQ,
+      PHONE_FAQ,
     ],
   },
 };
@@ -270,7 +280,7 @@ export function ClaudeCodeMobilePage({
         </div>
       </header>
 
-      {[...content.sections, pluginsSection(PLUGINS_COPY)].map((highlight) => (
+      {content.sections.map((highlight) => (
         <Highlight key={highlight.title} highlight={highlight} />
       ))}
 
