@@ -307,6 +307,7 @@ export function createStorage(
           archivedAt: thread.archivedAt,
           updatedAt: thread.updatedAt,
           hidden: thread.visibility === "hidden",
+          pinned: thread.pinnedAt !== null,
           running: ["starting", "active", "stopping"].includes(thread.status),
           sizeBytes,
         })),

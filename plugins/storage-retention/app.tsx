@@ -972,6 +972,7 @@ function StoragePage({
                               title={thread.title}
                               pills={[
                                 ...(thread.hidden ? ["hidden"] : []),
+                                ...(thread.pinned ? ["pinned"] : []),
                                 ...(thread.running
                                   ? ["running"]
                                   : thread.archivedAt !== null

@@ -12,6 +12,7 @@ export const hostStorageThreadSchema = z.object({
   updatedAt: z.number(),
   running: z.boolean(),
   hidden: z.boolean(),
+  pinned: z.boolean(),
   sizeBytes: byteCountSchema,
 });
 export type HostStorageThread = z.infer<typeof hostStorageThreadSchema>;
