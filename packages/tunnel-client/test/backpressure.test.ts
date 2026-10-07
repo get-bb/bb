@@ -143,9 +143,11 @@ describe("tunnel response backpressure", () => {
       ),
       true,
     );
-    const heldAt = tunnel.frames.length;
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(tunnel.frames.length).toBe(heldAt);
+    const settledAt = tunnel.frames.length;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(tunnel.frames.length).toBe(settledAt);
+    expect(tunnel.bodyBytes()).toBeLessThan(CHUNK_BYTES * CHUNK_COUNT);
     expect(tunnel.frames.some((frame) => frame.type === "body-end")).toBe(
       false,
     );
