@@ -46,6 +46,7 @@ function InteractiveRow({
     files,
     onSelectPath: setSelectedPath,
     selectedPath,
+    threadId: "thr_story",
   });
   return (
     <ThreadStorageSection

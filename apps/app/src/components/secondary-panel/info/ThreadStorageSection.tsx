@@ -15,15 +15,29 @@ import {
   INFO_LIST_CARET_CLASS,
   infoListCollapses,
   InfoList,
+  InfoListMoreRow,
   InfoListRow,
   InfoSection,
 } from "./info-list";
 import {
   buildThreadStorageTree,
   flattenThreadStorageNode,
+  type ThreadStorageFlattenOptions,
   type ThreadStorageTreeRow,
 } from "./thread-storage-tree";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
+
+const THREAD_STORAGE_FOLDER_CHILD_LIMIT = 5;
+
+const SEARCH_FLATTEN_OPTIONS: ThreadStorageFlattenOptions = {
+  isExpanded: () => true,
+  showsAllChildren: () => true,
+  childLimit: THREAD_STORAGE_FOLDER_CHILD_LIMIT,
+};
+
+function threadStorageRowKey(row: ThreadStorageTreeRow): string {
+  return row.kind === "more" ? `${row.folderPath}/:more` : row.node.path;
+}
 
 export interface ThreadStorageSectionProps {
   controller: ThreadStorageBrowserController;
@@ -56,12 +70,15 @@ export function ThreadStorageSection({
 }: ThreadStorageSectionProps) {
   const {
     expandedFolders,
+    foldersShowingAll,
+    lastSelectedPath,
     filteredFiles,
     loadedFiles,
     searchQuery,
     selectedPath,
     selectPath,
     setSearchQuery,
+    showAllInFolder,
     toggleFolder,
   } = controller;
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -74,14 +91,41 @@ export function ThreadStorageSection({
   const searchRows = useMemo(
     () =>
       isSearching
-        ? tree.flatMap((node) => flattenThreadStorageNode(node, () => true))
+        ? tree.flatMap((node) =>
+            flattenThreadStorageNode(node, SEARCH_FLATTEN_OPTIONS),
+          )
         : [],
     [isSearching, tree],
   );
+  const revealIndex =
+    lastSelectedPath === null
+      ? null
+      : tree.findIndex(
+          (node) =>
+            node.path === lastSelectedPath ||
+            lastSelectedPath.startsWith(`${node.path}/`),
+        );
   if (loadedFiles.length === 0 && filesError == null) return null;
   const isFolderExpanded = (folderPath: string) =>
     isSearching || expandedFolders.has(folderPath);
-  const renderRow = ({ node, depth }: ThreadStorageTreeRow) => {
+  const flattenOptions: ThreadStorageFlattenOptions = {
+    isExpanded: isFolderExpanded,
+    showsAllChildren: (folderPath) => foldersShowingAll.has(folderPath),
+    childLimit: THREAD_STORAGE_FOLDER_CHILD_LIMIT,
+  };
+  const renderRow = (row: ThreadStorageTreeRow) => {
+    if (row.kind === "more") {
+      return (
+        <InfoListMoreRow
+          key={`${row.folderPath}/:more`}
+          label={`${row.hiddenCount} more`}
+          expanded={false}
+          depth={row.depth}
+          onToggle={() => showAllInFolder(row.folderPath)}
+        />
+      );
+    }
+    const { node, depth } = row;
     if (node.kind === "folder") {
       const expanded = isFolderExpanded(node.path);
       return (
@@ -105,7 +149,10 @@ export function ThreadStorageSection({
           target={
             isSearching
               ? null
-              : { kind: "button", onSelect: () => toggleFolder(node.path) }
+              : {
+                  kind: "button",
+                  onSelect: () => toggleFolder(node.chainPaths),
+                }
           }
         />
       );
@@ -199,15 +246,16 @@ export function ThreadStorageSection({
       ) : isSearching ? (
         <InfoList
           items={searchRows}
-          getKey={(row) => row.node.path}
+          getKey={threadStorageRowKey}
           renderItem={renderRow}
         />
       ) : (
         <InfoList
           items={tree}
           getKey={(node) => node.path}
+          revealIndex={revealIndex === -1 ? null : revealIndex}
           renderItem={(node) =>
-            flattenThreadStorageNode(node, isFolderExpanded).map(renderRow)
+            flattenThreadStorageNode(node, flattenOptions).map(renderRow)
           }
         />
       )}
