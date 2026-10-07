@@ -121,7 +121,7 @@ export function ThreadStorageSection({
         actions={[
           {
             icon: "ExternalLink",
-            label: "Open in tab",
+            label: "Open file in tab",
             onSelect: () => selectPath(node.path),
           },
         ]}

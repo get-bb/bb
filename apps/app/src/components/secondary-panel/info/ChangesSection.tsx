@@ -142,7 +142,7 @@ function ChangedFileRow({
           ? [
               {
                 icon: "ExternalLink",
-                label: "Open in tab",
+                label: "Open file in tab",
                 onSelect: () => onOpenChangedFile(file.path),
               },
             ]
