@@ -475,6 +475,33 @@ describe("multi-select and multi-question flows", () => {
     },
   );
 
+  it.each(["submit", "cancel"] as const)(
+    "keeps answers on screen and locks the form after a successful %s",
+    async (action) => {
+      const draftKey = `thr_draft:pint_settled_${action}`;
+      const storageKey = `bb.question-draft.v1:${draftKey}`;
+      try {
+        const slot = render(singleSelect, {
+          draftKey,
+          [action]: async () => {},
+        });
+        fireEvent.click(getButtonByText(slot, "SQLite"));
+        const buttonLabel = action === "submit" ? "Submit answer" : "Cancel";
+        await act(async () =>
+          fireEvent.click(getButtonByText(slot, buttonLabel)),
+        );
+        expect(window.localStorage.getItem(storageKey)).toBeNull();
+        expect(
+          getButtonByText(slot, "SQLite").getAttribute("aria-pressed"),
+        ).toBe("true");
+        expect(getButtonByText(slot, "Submit answer").disabled).toBe(true);
+        expect(getButtonByText(slot, "Cancel").disabled).toBe(true);
+      } finally {
+        window.localStorage.removeItem(storageKey);
+      }
+    },
+  );
+
   it("advances and submits multiple questions entirely by keyboard", () => {
     const submit = vi.fn(async () => undefined);
     const slot = render(multi, { submit });

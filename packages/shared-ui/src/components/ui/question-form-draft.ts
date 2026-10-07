@@ -77,6 +77,9 @@ export function useQuestionFormDraft(
     [questions],
   );
   const [localDraft, setLocalDraft] = useState(initialDraft);
+  const [retainedDraft, setRetainedDraft] = useState<QuestionDraft | null>(
+    null,
+  );
   const getSnapshot = useCallback((): QuestionDraft => {
     if (!storageKey || typeof window === "undefined") return initialDraft;
     const cached = drafts.get(storageKey);
@@ -109,25 +112,22 @@ export function useQuestionFormDraft(
     getSnapshot,
     () => initialDraft,
   );
-  const writeDraft = (draft: QuestionDraft, clear = false) => {
+  const writeDraft = (draft: QuestionDraft) => {
     if (!storageKey || typeof window === "undefined") {
       setLocalDraft(draft);
       return;
     }
-    const raw = clear
-      ? null
-      : JSON.stringify({ version: 1, signature, ...draft });
+    const raw = JSON.stringify({ version: 1, signature, ...draft });
     let storedRaw: string | null = null;
     try {
       storedRaw = window.localStorage.getItem(storageKey);
-      if (raw === null) window.localStorage.removeItem(storageKey);
-      else window.localStorage.setItem(storageKey, raw);
+      window.localStorage.setItem(storageKey, raw);
       storedRaw = raw;
     } catch {}
     drafts.set(storageKey, { raw: storedRaw, signature, draft });
     window.dispatchEvent(new Event(CHANGE_EVENT));
   };
-  const draft = storageKey ? storedDraft : localDraft;
+  const draft = retainedDraft ?? (storageKey ? storedDraft : localDraft);
   return {
     ...draft,
     setFormState: (update: (state: QuestionFormState) => QuestionFormState) => {
@@ -143,12 +143,18 @@ export function useQuestionFormDraft(
       });
     },
     clearDraft: () => {
+      setRetainedDraft(draft);
       if (
         !storageKey ||
-        JSON.stringify(getSnapshot().formState) ===
+        typeof window === "undefined" ||
+        JSON.stringify(getSnapshot().formState) !==
           JSON.stringify(draft.formState)
       )
-        writeDraft(initialDraft, true);
+        return;
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {}
+      drafts.delete(storageKey);
     },
   };
 }
