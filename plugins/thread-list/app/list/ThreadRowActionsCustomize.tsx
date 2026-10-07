@@ -188,7 +188,7 @@ export function ThreadRowActionsEditor({
             aria-label="Done"
             className={cn(
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "shrink-0 rounded-md focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+              "shrink-0 rounded-md focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-background/60",
             )}
             onClick={() => onDone(true)}
           >
@@ -271,7 +271,7 @@ function RowActionSlotPicker({
             title={label}
             className={cn(
               SIDEBAR_CONTROL_BUTTON_CLASS,
-              "flex touch-none items-center justify-center border focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+              "flex touch-none items-center justify-center border focus-visible:bg-state-hover focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-sidebar-ring/60",
               value === null
                 ? "border-dashed border-sidebar-foreground/25"
                 : "border-sidebar-foreground/15",
