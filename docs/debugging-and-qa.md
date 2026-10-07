@@ -115,6 +115,23 @@ checkpoint can perform filesystem writes and synchronization on the server
 thread. `operation: "exec"` also covers maintenance batches. SQL string
 literals are redacted and parameter values are never logged.
 
+Only while performance diagnostics are enabled, slow-DB records also include
+`diagnostics.resourceUsage`: process-wide deltas for `minorPageFault`,
+`majorPageFault`, `fsRead`, `fsWrite`, `voluntaryContextSwitches`, and
+`involuntaryContextSwitches`. These are counts, not bytes or durations, from
+[Node's resourceUsage](https://nodejs.org/api/process.html#processresourceusage).
+They can include activity on other process threads. Unsupported OS counters
+remain zero; in particular, zero filesystem counters do not rule out I/O or
+fsync waits. Page faults do not identify whether the fault was on the SQLite
+mmap, the server heap, or another mapping, and these counters do not measure
+swap-in bytes.
+
+`diagnostics.wal.sizeBytes` is the WAL's physical file size, sampled only when
+emitting a slow log with diagnostics enabled. Missing or inaccessible WAL files
+and in-memory databases report null. WAL size can include space reused by
+earlier generations; it does not measure uncheckpointed backlog or identify
+checkpoint progress. Resource sampling is also disabled with the live gate.
+
 ## Pending Question Drafts
 
 Native provider questions and Ask User Question plugin forms save partial
