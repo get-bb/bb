@@ -9,6 +9,7 @@ import {
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitTimeoutMs,
   parseThreadWaitPollIntervalMs,
+  parseModelOptions,
   parseServiceTier,
   parsePermissionMode,
 } from "../commands/thread/helpers.js";
@@ -74,6 +75,30 @@ const acceptedParserCases = [
 describe("accepted thread argument values", () => {
   it.each(acceptedParserCases)("parses $label", ({ parse, expected }) => {
     expect(parse()).toBe(expected);
+  });
+});
+
+describe("parseModelOptions", () => {
+  it("parses repeated id=value pairs and omits an absent flag", () => {
+    expect(parseModelOptions(undefined)).toBeUndefined();
+    expect(parseModelOptions(["daybreak=on", "verbosity=low"])).toEqual({
+      daybreak: "on",
+      verbosity: "low",
+    });
+  });
+
+  it.each([
+    ["daybreak", "Invalid model option 'daybreak'"],
+    ["Daybreak=on", "Invalid model option 'Daybreak=on'"],
+    ["daybreak=", "Invalid model option 'daybreak='"],
+  ])("rejects %s", (value, message) => {
+    expect(() => parseModelOptions([value])).toThrow(message);
+  });
+
+  it("rejects the same option twice", () => {
+    expect(() => parseModelOptions(["daybreak=on", "daybreak=off"])).toThrow(
+      "Model option 'daybreak' is given more than once.",
+    );
   });
 });
 

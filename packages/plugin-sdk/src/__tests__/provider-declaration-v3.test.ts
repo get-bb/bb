@@ -327,6 +327,64 @@ describe("provider declaration target-state fields", () => {
   });
 });
 
+describe("provider declaration model options", () => {
+  const daybreak = {
+    id: "daybreak",
+    label: "Daybreak",
+    description: "Broader cybersecurity capabilities",
+    values: [
+      {
+        id: "off",
+        label: "Off",
+        modelUnavailableReason: "Turn on Daybreak to use this model",
+      },
+      {
+        id: "on",
+        label: "On",
+        modelUnavailableReason: "Turn off Daybreak to use this model",
+      },
+    ],
+    defaultValue: "off",
+  };
+
+  it("carries declared options through validation, frozen", () => {
+    const normalized = validatePluginProviderDeclaration(
+      declaration({ experimental_modelOptions: [daybreak] }),
+    );
+    expect(normalized.experimental_modelOptions).toEqual([daybreak]);
+    expect(Object.isFrozen(normalized.experimental_modelOptions)).toBe(true);
+    expect(
+      Object.isFrozen(normalized.experimental_modelOptions?.[0]?.values),
+    ).toBe(true);
+  });
+
+  it("omits the field when a plugin does not declare it", () => {
+    const normalized = validatePluginProviderDeclaration(declaration());
+    expect("experimental_modelOptions" in normalized).toBe(false);
+  });
+
+  it.each([
+    [[], "must be a non-empty array"],
+    [[{ ...daybreak, id: "Daybreak" }], "ids matching"],
+    [[{ ...daybreak, values: [daybreak.values[0]] }], "(at least two)"],
+    [[daybreak, daybreak], 'id "daybreak" is duplicated'],
+    [
+      [{ ...daybreak, values: [daybreak.values[0], daybreak.values[0]] }],
+      'values id "off" is duplicated',
+    ],
+    [
+      [{ ...daybreak, defaultValue: "auto" }],
+      'defaultValue "auto" is not one of its values',
+    ],
+  ])("rejects %j", (modelOptions, message) => {
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({ experimental_modelOptions: modelOptions }),
+      ),
+    ).toThrow(message);
+  });
+});
+
 describe("provider declaration fields renamed in SDK 0.4.16", () => {
   it.each([
     ["experimental_family", "family", "my-agent"],

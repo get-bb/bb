@@ -269,6 +269,7 @@ export function seedQueuedMessage(
     permissionMode?: PermissionMode;
     senderThreadId?: string | null;
     serviceTier?: string;
+    modelOptions?: Record<string, string>;
     /** Defaults to a row with no wait: an ordinary queued message. */
     waitingOn?: QueuedMessageWaitingOn | null;
     sendAt?: number | null;
@@ -282,6 +283,7 @@ export function seedQueuedMessage(
     permissionMode: args.permissionMode ?? "full",
     senderThreadId: args.senderThreadId ?? null,
     serviceTier: args.serviceTier ?? "default",
+    modelOptions: args.modelOptions ?? {},
     waitingOn: args.waitingOn ?? null,
     sendAt: args.sendAt ?? null,
     payload: { kind: "inline" },

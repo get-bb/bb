@@ -434,6 +434,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
         model: execution.model,
         reasoningLevel: execution.reasoningLevel,
         serviceTier: execution.serviceTier,
+        experimental_modelOptions: execution.modelOptions,
         permissionMode: execution.permissionMode,
         ...(args.request.executionInputSources !== undefined
           ? { executionInputSources: args.request.executionInputSources }

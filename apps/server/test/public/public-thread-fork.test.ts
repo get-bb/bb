@@ -942,6 +942,7 @@ describe("public thread fork route", () => {
                 permissionMode: "full",
                 reasoningLevel: "medium",
                 serviceTier: "default",
+                modelOptions: {},
                 source: "client/turn/requested",
               },
               initiator: "user",

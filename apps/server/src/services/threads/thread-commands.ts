@@ -209,6 +209,7 @@ function toRuntimeExecutionOptions(
       model: args.execution.model,
       permissionMode,
       ...(promptMode !== undefined ? { promptMode } : {}),
+      experimental_modelOptions: args.execution.modelOptions,
     }) ?? {};
   const base = {
     model: args.execution.model,

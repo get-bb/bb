@@ -14,6 +14,7 @@ import {
   dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
   dropQueuedMessageEditHeldUntilColumn,
+  dropModelOptionsColumns,
 } from "./helpers/rewind.js";
 
 const THREAD_DRAFTS_MIGRATION_TIMESTAMP = 1790322211064;
@@ -54,6 +55,7 @@ it.each([false, true])(
           reasoningLevel: "medium",
           permissionMode: "auto",
           serviceTier: "default",
+          modelOptions: {},
           waitingOn:
             pluginId === null
               ? null
@@ -114,6 +116,7 @@ it.each([false, true])(
       rewindThreadPruningWork(db);
       dropPluginEnabledFollowsDefaultColumn(db);
       dropQueuedMessageEditHeldUntilColumn(db);
+      dropModelOptionsColumns(db);
       migrate(db);
       migrate(db);
 

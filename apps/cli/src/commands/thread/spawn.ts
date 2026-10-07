@@ -34,6 +34,8 @@ import {
   uploadClientAttachmentInputs,
   PERMISSION_MODE_HELP,
   PLAN_HELP,
+  MODEL_OPTION_HELP,
+  parseModelOptions,
   parseServiceTier,
   SERVICE_TIER_HELP,
 } from "./helpers.js";
@@ -59,6 +61,7 @@ interface ThreadSpawnCommandOptions {
   title?: string;
   lifecycleOwnerThread?: string;
   serviceTier?: string;
+  modelOption?: string[];
   permissionMode?: string;
   plan?: boolean;
   parentSelf?: boolean;
@@ -372,6 +375,7 @@ export function registerSpawnCommand(
     )
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", SERVICE_TIER_HELP)
+    .option("--model-option <id=value>", MODEL_OPTION_HELP, collectOption, [])
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--plan", PLAN_HELP)
     .option(
@@ -544,6 +548,7 @@ export function registerSpawnCommand(
             });
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
+        const modelOptions = parseModelOptions(opts.modelOption);
         const permissionMode = parsePermissionMode(opts.permissionMode);
         const visibility =
           opts.visibility === undefined
@@ -592,6 +597,9 @@ export function registerSpawnCommand(
             ...(reasoningLevel ? { reasoningLevel } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),
+            ...(modelOptions
+              ? { experimental_modelOptions: modelOptions }
+              : {}),
             ...(permissionMode ? { permissionMode } : {}),
             ...(visibility ? { visibility } : {}),
             environment,

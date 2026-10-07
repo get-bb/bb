@@ -69,6 +69,7 @@ import { advanceEnvironmentProvisioning } from "../../src/services/environments/
 const THREAD_START_EXECUTION = {
   model: "gpt-5",
   serviceTier: "default",
+  modelOptions: {},
   reasoningLevel: "medium",
   permissionMode: "accept-edits",
   source: "client/turn/requested",

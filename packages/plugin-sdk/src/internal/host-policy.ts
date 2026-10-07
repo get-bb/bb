@@ -13,6 +13,7 @@ import {
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
 } from "@bb/domain/plugin-interaction-limits";
 import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
+import { providerModelOptionSchema } from "@bb/domain/model-options";
 import {
   COMPLETED_TURN_DISPLAY_VALUES,
   DEFAULT_COMPLETED_TURN_DISPLAY,
@@ -51,6 +52,7 @@ import type {
   PluginProviderExtensionKindDeclaration,
   PluginProviderFallbackModel,
   PluginProviderModelCatalogScope,
+  PluginProviderModelOptionDeclaration,
   PluginProviderOptionDescriptor,
   PluginProviderPermissionMode,
   PluginProviderReasoningLevel,
@@ -801,6 +803,74 @@ function validateProviderOptionDescriptors(args: {
   return Object.freeze(normalized);
 }
 
+function validateProviderModelOptions(
+  providerId: string,
+  value: unknown,
+): readonly PluginProviderModelOptionDeclaration[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(
+      `provider "${providerId}" experimental_modelOptions must be a non-empty array of { id, label, description?, values, defaultValue }`,
+    );
+  }
+  const seen = new Set<string>();
+  return Object.freeze(
+    value.map((entry, index): PluginProviderModelOptionDeclaration => {
+      const field = `experimental_modelOptions[${index}]`;
+      const parsed = providerModelOptionSchema.safeParse(entry);
+      if (!parsed.success) {
+        throw new Error(
+          `provider "${providerId}" ${field} must be { id, label, description?, values: [{ id, label, description?, modelUnavailableReason? }, ...] (at least two), defaultValue } with ids matching [a-z][a-z0-9-]*`,
+        );
+      }
+      const option = parsed.data;
+      if (seen.has(option.id)) {
+        throw new Error(
+          `provider "${providerId}" experimental_modelOptions id ${JSON.stringify(option.id)} is duplicated`,
+        );
+      }
+      seen.add(option.id);
+      const valueIds = new Set<string>();
+      for (const optionValue of option.values) {
+        if (valueIds.has(optionValue.id)) {
+          throw new Error(
+            `provider "${providerId}" ${field}.values id ${JSON.stringify(optionValue.id)} is duplicated`,
+          );
+        }
+        valueIds.add(optionValue.id);
+      }
+      if (!valueIds.has(option.defaultValue)) {
+        throw new Error(
+          `provider "${providerId}" ${field}.defaultValue ${JSON.stringify(option.defaultValue)} is not one of its values`,
+        );
+      }
+      return Object.freeze({
+        id: option.id,
+        label: option.label,
+        ...(option.description === undefined
+          ? {}
+          : { description: option.description }),
+        values: Object.freeze(
+          option.values.map((optionValue) =>
+            Object.freeze({
+              id: optionValue.id,
+              label: optionValue.label,
+              ...(optionValue.description === undefined
+                ? {}
+                : { description: optionValue.description }),
+              ...(optionValue.modelUnavailableReason === undefined
+                ? {}
+                : {
+                    modelUnavailableReason: optionValue.modelUnavailableReason,
+                  }),
+            }),
+          ),
+        ),
+        defaultValue: option.defaultValue,
+      });
+    }),
+  );
+}
+
 function validateProviderExtensionKinds(
   providerId: string,
   value: unknown,
@@ -1285,6 +1355,7 @@ const MOVED_PROVIDER_CAPABILITY_FIELDS: Readonly<Record<string, string>> =
 const READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS: ReadonlySet<string> =
   new Set([
     "experimental_bridgeOptions",
+    "experimental_modelOptions",
     "experimental_visibility",
     "experimental_nativeSkillRoots",
     "experimental_nativeCommandRoots",
@@ -1516,6 +1587,10 @@ export function validatePluginProviderDeclaration(
           field: "serviceTiers",
           value: declaration.serviceTiers,
         });
+  const modelOptions =
+    declaration.experimental_modelOptions === undefined
+      ? undefined
+      : validateProviderModelOptions(id, declaration.experimental_modelOptions);
   const reasoningLevels =
     declaration.reasoningLevels === undefined
       ? undefined
@@ -1591,6 +1666,9 @@ export function validatePluginProviderDeclaration(
     completedTurnDisplay,
     ...(strings === undefined ? {} : { strings: strings }),
     ...(serviceTiers === undefined ? {} : { serviceTiers: serviceTiers }),
+    ...(modelOptions === undefined
+      ? {}
+      : { experimental_modelOptions: modelOptions }),
     ...(reasoningLevels === undefined
       ? {}
       : { reasoningLevels: reasoningLevels }),
@@ -2393,9 +2471,7 @@ export interface NormalizedPluginEnvironmentProvider {
     PluginEnvironmentProviderDeclaration["experimental_existingPath"]
   > | null;
   create: PluginEnvironmentProviderDeclaration["create"];
-  restore: NonNullable<
-    PluginEnvironmentProviderDeclaration["restore"]
-  > | null;
+  restore: NonNullable<PluginEnvironmentProviderDeclaration["restore"]> | null;
   remove: PluginEnvironmentProviderDeclaration["remove"];
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }

@@ -121,6 +121,7 @@ function turnRequestData({
       permissionMode: "workspace-write",
       source: "client/turn/requested",
       serviceTier: "default",
+      modelOptions: {},
     },
   } as const;
 }
@@ -535,6 +536,7 @@ describe("thread runtime display", () => {
           reasoningLevel: "medium",
           permissionMode: "auto",
           serviceTier: "default",
+          modelOptions: {},
           waitingOn: { kind: "thread-busy" },
           sendAt: null,
           payload: { kind: "inline" },

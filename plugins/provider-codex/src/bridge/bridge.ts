@@ -60,7 +60,13 @@ import {
   extractCodexMacOsPermissionRequest,
   type CodexMacOsPermissionRequest,
 } from "../interactive-requests.js";
-import { parseModelsResponse } from "../models.js";
+import {
+  codexDaybreakProgram,
+  parseCyberAccessPrograms,
+  parseModelsResponse,
+  splitDaybreakAliasModels,
+  type CodexDaybreakProgram,
+} from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
 import {
   codexTurnSchema,
@@ -532,12 +538,14 @@ const codexProviderOptionsSchema = z
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
+    daybreak: z.boolean().optional(),
   })
   .passthrough();
 
 interface DecodedCodexOptions {
   sessionOptions: CodexSessionOptions;
   additionalWorkspaceWriteRoots: string[];
+  daybreak: boolean;
 }
 
 function decodeCodexOptions(
@@ -557,7 +565,68 @@ function decodeCodexOptions(
         : {}),
     },
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots ?? [],
+    daybreak: decoded.daybreak === true,
   };
+}
+
+const DAYBREAK_CATALOG_TTL_MS = 5 * 60 * 1000;
+const daybreakCatalogs = new WeakMap<
+  CodexAppServerConnection,
+  { expiresAt: number; programs: Promise<Map<string, string[] | null>> }
+>();
+
+function readCyberAccessPrograms(
+  connection: CodexAppServerConnection,
+): Promise<Map<string, string[] | null>> {
+  const cached = daybreakCatalogs.get(connection);
+  if (cached !== undefined && cached.expiresAt > Date.now()) {
+    return cached.programs;
+  }
+  const programs = connection
+    .request({
+      method: "model/list",
+      params: { includeHidden: true, limit: 100 },
+      resultSchema: ignoredChildResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    })
+    .then((result) => {
+      const data = (result as { data?: unknown } | null)?.data;
+      const byModel = new Map<string, string[] | null>();
+      for (const entry of Array.isArray(data) ? data : []) {
+        const model = (entry as { model?: unknown } | null)?.model;
+        if (typeof model === "string") {
+          byModel.set(model, parseCyberAccessPrograms(entry));
+        }
+      }
+      return byModel;
+    });
+  daybreakCatalogs.set(connection, {
+    expiresAt: Date.now() + DAYBREAK_CATALOG_TTL_MS,
+    programs,
+  });
+  programs.catch(() => {
+    if (daybreakCatalogs.get(connection)?.programs === programs) {
+      daybreakCatalogs.delete(connection);
+    }
+  });
+  return programs;
+}
+
+async function resolveDaybreakProgram(
+  connection: CodexAppServerConnection,
+  model: string | undefined,
+): Promise<CodexDaybreakProgram> {
+  const programs =
+    model === undefined
+      ? null
+      : ((await readCyberAccessPrograms(connection)).get(model) ?? null);
+  const program = codexDaybreakProgram(programs);
+  if (program === null) {
+    throw new Error(
+      `Daybreak isn't available for ${model ?? "this model"}. Turn off Daybreak or choose another model.`,
+    );
+  }
+  return program;
 }
 
 function constructionSignature(
@@ -1487,10 +1556,7 @@ async function handleModelList(id: string | number): Promise<void> {
         model.isDefault = model.model === configuredModel;
       }
     }
-    sendResult(id, {
-      models,
-      selectedOnlyModels: [],
-    });
+    sendResult(id, splitDaybreakAliasModels(models));
   } catch (error) {
     if (connection !== null) {
       retireModelListConnection(connection);
@@ -1873,6 +1939,12 @@ async function handleTurnStart(
         ),
         options: decoded.sessionOptions,
       });
+      const cyberAccessProgram = decoded.daybreak
+        ? await resolveDaybreakProgram(
+            connection,
+            decoded.sessionOptions.model ?? undefined,
+          )
+        : undefined;
       const previousPermissions = session.turnPermissionSettings;
       session.turnPermissionSettings = permissionSettings;
       result = await connection
@@ -1886,6 +1958,7 @@ async function handleTurnStart(
             sandboxPolicy: permissionSettings.sandboxPolicy,
             model: decoded.sessionOptions.model ?? undefined,
             serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
+            ...(cyberAccessProgram === undefined ? {} : { cyberAccessProgram }),
           },
           resultSchema: ignoredChildResultSchema,
           timeoutMs: CHILD_REQUEST_TIMEOUT_MS,

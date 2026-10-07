@@ -201,6 +201,7 @@ describe("thread runtime config", () => {
           permissionMode: "accept-edits",
           reasoningLevel: "medium",
           serviceTier: "default",
+          modelOptions: {},
           source: "client/turn/requested",
         } as const;
         const expectedSpec = {
@@ -339,6 +340,7 @@ describe("thread runtime config", () => {
           permissionMode: "accept-edits",
           reasoningLevel: "medium",
           serviceTier: "default",
+          modelOptions: {},
           source: "client/turn/requested",
         } as const;
 
@@ -496,6 +498,7 @@ describe("thread runtime config", () => {
             reasoningLevel: "medium",
             permissionMode: "accept-edits",
             serviceTier: "default",
+            modelOptions: {},
           },
         },
       );
@@ -544,6 +547,7 @@ describe("thread runtime config", () => {
             reasoningLevel: "medium",
             permissionMode: "accept-edits",
             serviceTier: "default",
+            modelOptions: {},
           },
         },
       );
@@ -648,6 +652,7 @@ describe("thread runtime config", () => {
             reasoningLevel: "medium",
             permissionMode: "accept-edits",
             serviceTier: "default",
+            modelOptions: {},
           },
         },
       );
@@ -899,6 +904,7 @@ describe("thread runtime config", () => {
       expect(codex.options.providerOptions).toEqual({
         memoryEnabled: true,
         providerSubagentsEnabled: true,
+        daybreak: false,
       });
       expect(codex.options.promptMode).toBeUndefined();
       expect(codex.options).not.toHaveProperty("memoryEnabled");
@@ -986,6 +992,7 @@ describe("thread runtime config", () => {
           permissionMode: "auto",
           reasoningLevel: "medium",
           serviceTier: "default",
+          modelOptions: {},
           source: "client/turn/requested",
         },
         fork: null,
@@ -1057,6 +1064,7 @@ describe("thread runtime config", () => {
           permissionMode: "accept-edits",
           reasoningLevel: "medium",
           serviceTier: "default",
+          modelOptions: {},
           source: "client/turn/requested",
         },
         fork: null,
@@ -1087,6 +1095,7 @@ describe("thread runtime config", () => {
           permissionMode: "full",
           reasoningLevel: "medium",
           serviceTier: "default",
+          modelOptions: {},
           source: "client/turn/requested",
         },
         fork: null,

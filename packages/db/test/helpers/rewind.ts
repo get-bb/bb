@@ -42,3 +42,17 @@ export function dropQueuedMessageEditHeldUntilColumn(db: DbConnection): void {
     );
   }
 }
+
+export function dropModelOptionsColumns(db: DbConnection): void {
+  for (const table of [
+    "project_execution_defaults",
+    "queued_thread_messages",
+  ]) {
+    const columns = db.$client
+      .prepare<[], { name: string }>(`PRAGMA table_info(${table})`)
+      .all();
+    if (columns.some((column) => column.name === "model_options_json")) {
+      db.$client.exec(`ALTER TABLE ${table} DROP COLUMN model_options_json`);
+    }
+  }
+}

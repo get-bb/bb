@@ -45,6 +45,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      modelOptions: {},
     });
 
     expect(
@@ -57,6 +58,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      modelOptions: {},
     });
   });
 
@@ -70,6 +72,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      modelOptions: {},
     });
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
@@ -78,6 +81,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "high",
       permissionMode: "accept-edits",
       serviceTier: "fast",
+      modelOptions: { daybreak: "on" },
     });
 
     expect(
@@ -90,6 +94,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "high",
       permissionMode: "accept-edits",
       serviceTier: "fast",
+      modelOptions: { daybreak: "on" },
     });
   });
 
@@ -103,6 +108,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      modelOptions: {},
     });
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
@@ -111,6 +117,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "high",
       permissionMode: "auto",
       serviceTier: "fast",
+      modelOptions: {},
     });
 
     expect(
@@ -133,6 +140,7 @@ describe("project-execution-defaults", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      modelOptions: {},
     });
 
     expect(deleteProject(db, noopNotifier, project.id)).toBe(true);

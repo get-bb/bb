@@ -836,12 +836,14 @@ function resolveExecutionIntoPayload(
     model: execution.model,
     reasoningLevel: execution.reasoningLevel,
     serviceTier: execution.serviceTier,
+    experimental_modelOptions: execution.modelOptions,
     permissionMode: execution.permissionMode,
     executionInputSources: {
       ...(payload.executionInputSources ?? {}),
       model: "explicit",
       reasoningLevel: "explicit",
       serviceTier: "explicit",
+      modelOptions: "explicit",
       permissionMode: "explicit",
     },
   };

@@ -148,6 +148,7 @@ function retryExecution(failed: FailedTurnRecord): {
   model: string;
   reasoningLevel: SendMessageRequest["reasoningLevel"];
   serviceTier: SendMessageRequest["serviceTier"];
+  experimental_modelOptions: SendMessageRequest["experimental_modelOptions"];
   permissionMode?: PermissionMode;
 } {
   const { execution } = failed.request;
@@ -158,6 +159,7 @@ function retryExecution(failed: FailedTurnRecord): {
     model: execution.model,
     reasoningLevel: execution.reasoningLevel,
     serviceTier: execution.serviceTier,
+    experimental_modelOptions: execution.modelOptions,
     ...(permissionMode === undefined ? {} : { permissionMode }),
   };
 }

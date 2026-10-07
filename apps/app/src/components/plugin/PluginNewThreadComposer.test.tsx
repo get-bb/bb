@@ -175,6 +175,7 @@ const PROJECT = makeProjectWithThreadsResponse({
     providerId: "codex",
     model: "gpt-5.6",
     serviceTier: "default",
+    modelOptions: {},
     reasoningLevel: "medium",
     permissionMode: "auto",
   },

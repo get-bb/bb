@@ -99,6 +99,7 @@ describe("buildPluginProviderRegistration", () => {
     expect(registration.envPassthrough).toStrictEqual([]);
     expect(
       registration.deriveProviderOptions({
+        experimental_modelOptions: {},
         threadId: "thr_1",
         projectId: "proj_1",
         model: "m",
@@ -195,6 +196,7 @@ describe("buildPluginProviderRegistration", () => {
 
     expect(
       registration.deriveProviderOptions({
+        experimental_modelOptions: {},
         threadId: "thr_1",
         projectId: "proj_1",
         model: "m-1",
@@ -235,6 +237,7 @@ describe("buildPluginProviderRegistration", () => {
     });
     expect(() =>
       registration.deriveProviderOptions({
+        experimental_modelOptions: {},
         threadId: "thr_1",
         projectId: "proj_1",
         model: "m",

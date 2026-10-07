@@ -117,6 +117,7 @@ const PROJECT_DEFAULT_EXECUTION_OPTIONS = {
   reasoningLevel: "high",
   permissionMode: "accept-edits",
   serviceTier: "default",
+  modelOptions: {},
 } as const;
 
 export const THREAD_DEFAULT_EXECUTION_OPTIONS: ResolvedThreadExecutionOptions =
@@ -125,6 +126,7 @@ export const THREAD_DEFAULT_EXECUTION_OPTIONS: ResolvedThreadExecutionOptions =
     permissionMode: PROJECT_DEFAULT_EXECUTION_OPTIONS.permissionMode,
     reasoningLevel: PROJECT_DEFAULT_EXECUTION_OPTIONS.reasoningLevel,
     serviceTier: PROJECT_DEFAULT_EXECUTION_OPTIONS.serviceTier,
+    modelOptions: PROJECT_DEFAULT_EXECUTION_OPTIONS.modelOptions,
     source: "client/turn/requested",
   };
 
@@ -215,6 +217,7 @@ export function queuedMessage(args: {
     reasoningLevel: THREAD_DEFAULT_EXECUTION_OPTIONS.reasoningLevel,
     permissionMode: THREAD_DEFAULT_EXECUTION_OPTIONS.permissionMode,
     serviceTier: THREAD_DEFAULT_EXECUTION_OPTIONS.serviceTier,
+    experimental_modelOptions: {},
     groupWithNext: false,
     sendAt: null,
     waitingOn: null,

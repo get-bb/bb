@@ -125,5 +125,6 @@ export function rememberProjectExecutionDefaultsForCreate(
     reasoningLevel: args.execution.reasoningLevel,
     permissionMode: args.execution.permissionMode,
     serviceTier: args.execution.serviceTier,
+    modelOptions: args.execution.modelOptions,
   });
 }

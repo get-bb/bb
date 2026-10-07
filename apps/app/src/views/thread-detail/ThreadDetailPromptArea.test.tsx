@@ -987,6 +987,7 @@ describe("ThreadDetailPromptArea", () => {
       permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
+      modelOptions: {},
       source: "client/turn/requested",
     };
     mocks.promptDraft.text = "Keep this follow-up queued";
@@ -1032,6 +1033,7 @@ describe("ThreadDetailPromptArea", () => {
       permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
+      modelOptions: {},
       source: "client/turn/requested",
     };
     mocks.promptDraft.text = "Untouched follow-up draft";
@@ -1147,6 +1149,7 @@ describe("ThreadDetailPromptArea", () => {
       permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
+      modelOptions: {},
       source: "client/turn/requested",
     };
     mocks.queuedMessages = [makeQueuedMessage()];
@@ -1290,6 +1293,7 @@ describe("ThreadDetailPromptArea", () => {
       permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
+      modelOptions: {},
       source: "client/turn/requested",
     };
     mocks.promptDraft.text = "Keep this bottom draft";
@@ -1577,6 +1581,7 @@ describe("ThreadDetailPromptArea", () => {
       permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
+      modelOptions: {},
       source: "client/turn/requested",
     };
     mocks.queuedMessages = [
@@ -2022,6 +2027,7 @@ describe("ThreadDetailPromptArea", () => {
       permissionMode: "full",
       reasoningLevel: "medium",
       serviceTier: "default",
+      modelOptions: {},
       source: "client/turn/requested",
     };
 
@@ -2318,6 +2324,7 @@ describe("ThreadDetailPromptArea", () => {
       permissionMode: "full",
       reasoningLevel: "medium",
       serviceTier: "default",
+      modelOptions: {},
       source: "client/turn/requested",
     };
     mocks.createThreadMutateAsync.mockResolvedValue({

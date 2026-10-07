@@ -163,6 +163,7 @@ describe("resolveNewThreadProjectDefaultsState", () => {
     providerId: "codex",
     model: "gpt-5.6-sol",
     serviceTier: "default" as const,
+    modelOptions: {},
     reasoningLevel: "medium" as const,
     permissionMode: "auto" as const,
   };

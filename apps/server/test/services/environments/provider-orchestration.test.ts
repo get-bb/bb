@@ -198,6 +198,7 @@ function saveProviderStartup(
     execution: {
       model: "gpt-5",
       serviceTier: "default",
+      modelOptions: {},
       reasoningLevel: "medium",
       permissionMode: "accept-edits",
       source: "client/turn/requested",
@@ -640,6 +641,7 @@ describe("core environment orchestration", () => {
             execution: {
               model: "gpt-5",
               serviceTier: "default",
+              modelOptions: {},
               reasoningLevel: "medium",
               permissionMode: "accept-edits",
               source: "client/turn/requested",

@@ -4,6 +4,7 @@ import {
   threadVisibilitySchema,
   type PermissionMode,
   type ReasoningLevel,
+  type ModelOptionValues,
   type ServiceTier,
   type ThreadVisibility,
 } from "@bb/domain";
@@ -31,6 +32,8 @@ import {
 } from "../../context-env.js";
 import {
   parsePermissionMode,
+  MODEL_OPTION_HELP,
+  parseModelOptions,
   parseServiceTier,
   SERVICE_TIER_HELP,
   PERMISSION_MODE_HELP,
@@ -86,6 +89,7 @@ interface ThreadTellCommandOptions {
   permissionMode?: string;
   reasoningLevel?: string;
   serviceTier?: string;
+  modelOption?: string[];
   mode?: string;
   plan?: boolean;
   file?: string[];
@@ -125,6 +129,7 @@ interface PostThreadMessageArgs {
   permissionMode?: PermissionMode;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
+  modelOptions?: ModelOptionValues;
   senderThreadId?: string;
   plan?: boolean;
   files?: readonly string[];
@@ -490,6 +495,7 @@ export function registerActionsCommands(
     .option("--json", "Print machine-readable JSON output")
     .option("--model <model>", "Model ID for this message")
     .option("--service-tier <tier>", SERVICE_TIER_HELP)
+    .option("--model-option <id=value>", MODEL_OPTION_HELP, collectOption, [])
     .option(
       "--reasoning-level <level>",
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
@@ -535,6 +541,7 @@ export function registerActionsCommands(
             permissionMode: parsePermissionMode(opts.permissionMode),
             reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
             serviceTier: parseServiceTier(opts.serviceTier),
+            modelOptions: parseModelOptions(opts.modelOption),
             senderThreadId: resolveSenderThreadId(id),
             plan: opts.plan,
             files: opts.file,
@@ -661,6 +668,9 @@ async function postThreadMessage(
       ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
       ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
       ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
+      ...(args.modelOptions
+        ? { experimental_modelOptions: args.modelOptions }
+        : {}),
       ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
       ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
     });

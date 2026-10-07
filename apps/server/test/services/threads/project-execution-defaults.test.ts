@@ -38,6 +38,7 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        modelOptions: {},
       });
 
       await createThreadFromRequest(harness.deps, {
@@ -63,6 +64,7 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        modelOptions: {},
       });
     });
   });
@@ -83,6 +85,7 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        modelOptions: {},
       });
 
       await createThreadFromRequest(harness.deps, {
@@ -112,6 +115,7 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "high",
         permissionMode: "accept-edits",
         serviceTier: "fast",
+        modelOptions: { daybreak: "off" },
       });
     });
   });
@@ -151,6 +155,7 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        modelOptions: {},
       });
 
       await createThreadFromRequest(harness.deps, {
@@ -182,6 +187,7 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        modelOptions: {},
       });
     });
   });

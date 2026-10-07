@@ -60,6 +60,7 @@ describe("thread provisioning state", () => {
         execution: {
           model: "gpt-5",
           serviceTier: "default",
+          modelOptions: {},
           reasoningLevel: "medium",
           permissionMode: "full",
           source: "client/turn/requested",

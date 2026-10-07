@@ -759,6 +759,7 @@ describe("startup queue waits", () => {
       const pluginHeld = seedQueuedMessage(harness.deps, {
         content: pluginInput,
         threadId: thread.id,
+        modelOptions: { daybreak: "off" },
         waitingOn: {
           kind: "plugin",
           pluginId: "limiter",

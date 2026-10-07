@@ -8,6 +8,10 @@ import {
 } from "./shared-types.js";
 import { extensionKindSchema } from "./provider-extension-kind.js";
 import { threadEventItemPresentationSchema } from "./item-presentation.js";
+import {
+  providerModelOptionSchema,
+  supportedModelOptionsSchema,
+} from "./model-options.js";
 
 export const modelReasoningEffortSchema = z.object({
   reasoningEffort: reasoningLevelSchema,
@@ -31,6 +35,7 @@ export const availableModelSchema = z.object({
   supportedReasoningEfforts: z.array(modelReasoningEffortSchema),
   defaultReasoningEffort: reasoningLevelSchema,
   supportedServiceTiers: z.array(modelServiceTierSchema).optional(),
+  experimental_supportedModelOptions: supportedModelOptionsSchema.optional(),
   isDefault: z.boolean(),
 });
 export type AvailableModel = z.infer<typeof availableModelSchema>;
@@ -133,6 +138,7 @@ export const providerInfoSchema = z.object({
   available: z.boolean(),
   strings: providerStringsSchema.optional(),
   serviceTiers: z.array(providerOptionDescriptorSchema).optional(),
+  experimental_modelOptions: z.array(providerModelOptionSchema).optional(),
   reasoningLevels: z.array(providerOptionDescriptorSchema).optional(),
   extensionKinds: providerExtensionKindsSchema.optional(),
 });

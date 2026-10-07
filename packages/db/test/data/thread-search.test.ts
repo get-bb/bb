@@ -102,6 +102,7 @@ function turnRequestData(input: PromptInput[]) {
     execution: {
       model: "gpt-5",
       serviceTier: "default" as const,
+      modelOptions: {},
       reasoningLevel: "medium" as const,
       permissionMode: "full" as const,
       source: "client/turn/requested" as const,

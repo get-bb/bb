@@ -65,6 +65,7 @@ describe("extractThreadTimelineModelFallback", () => {
           execution: {
             model: "claude-opus-4-8",
             serviceTier: "default",
+            modelOptions: {},
             reasoningLevel: "medium",
             permissionMode: "full",
             source: "client/turn/requested",

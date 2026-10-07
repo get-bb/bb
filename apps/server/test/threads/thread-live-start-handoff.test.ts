@@ -35,6 +35,7 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 const START_EXECUTION = {
   model: "gpt-5",
   serviceTier: "default",
+  modelOptions: {},
   reasoningLevel: "medium",
   permissionMode: "accept-edits",
   source: "client/turn/requested",

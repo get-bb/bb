@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseModelsResponse } from "./models.js";
+import {
+  codexDaybreakProgram,
+  parseModelsResponse,
+  splitDaybreakAliasModels,
+} from "./models.js";
 
 describe("parseModelsResponse", () => {
   it("parses a live-shaped Codex payload with max and ultra", () => {
@@ -144,6 +148,7 @@ describe("parseModelsResponse", () => {
         ],
         defaultReasoningEffort: "medium",
         supportedServiceTiers: [{ id: "fast" }],
+        experimental_supportedModelOptions: { daybreak: ["off"] },
         isDefault: true,
       },
     ]);
@@ -241,6 +246,84 @@ describe("parseModelsResponse", () => {
           ],
         }),
       ).toEqual([{ id: "fast" }]);
+    });
+  });
+});
+
+function catalogEntry(model: string, cyber: string[] | null) {
+  return {
+    id: model,
+    model,
+    displayName: model,
+    supportedReasoningEfforts: [
+      { reasoningEffort: "medium", description: "Medium" },
+    ],
+    defaultReasoningEffort: "medium",
+    isDefault: model === "gpt-6-astra",
+    ...(cyber === null ? {} : { availableAccessPrograms: { cyber } }),
+  };
+}
+
+describe("Daybreak model options", () => {
+  const models = parseModelsResponse({
+    data: [
+      catalogEntry("gpt-6-astra", ["standard"]),
+      catalogEntry("gpt-6-sol", ["standard", "daybreakBlue"]),
+      catalogEntry("gpt-cyber-red", ["daybreakRed"]),
+      catalogEntry("gpt-daybreak-blue-latest", ["daybreakBlue"]),
+      catalogEntry("gpt-legacy", null),
+    ],
+  });
+
+  it("maps each model's cyber access programs to Daybreak values", () => {
+    expect(
+      Object.fromEntries(
+        models.map((model) => [
+          model.model,
+          model.experimental_supportedModelOptions?.daybreak,
+        ]),
+      ),
+    ).toEqual({
+      "gpt-6-astra": ["off"],
+      "gpt-6-sol": ["off", "on"],
+      "gpt-cyber-red": ["on"],
+      "gpt-daybreak-blue-latest": ["on"],
+      "gpt-legacy": ["off"],
+    });
+  });
+
+  it("prefers Daybreak Blue and reports no program without a Daybreak entry", () => {
+    expect(codexDaybreakProgram(["daybreakRed", "daybreakBlue"])).toBe(
+      "daybreakBlue",
+    );
+    expect(codexDaybreakProgram(["daybreakRed"])).toBe("daybreakRed");
+    expect(codexDaybreakProgram(["standard"])).toBeNull();
+    expect(codexDaybreakProgram(null)).toBeNull();
+  });
+
+  it("moves the Daybreak alias models to selected-only once the switch can replace them", () => {
+    const split = splitDaybreakAliasModels(models);
+    expect(split.models.map((model) => model.model)).toEqual([
+      "gpt-6-astra",
+      "gpt-6-sol",
+      "gpt-cyber-red",
+      "gpt-legacy",
+    ]);
+    expect(split.selectedOnlyModels.map((model) => model.model)).toEqual([
+      "gpt-daybreak-blue-latest",
+    ]);
+  });
+
+  it("keeps the aliases listed when no other model offers Daybreak", () => {
+    const aliasOnly = parseModelsResponse({
+      data: [
+        catalogEntry("gpt-6-astra", ["standard"]),
+        catalogEntry("gpt-daybreak-blue-latest", ["daybreakBlue"]),
+      ],
+    });
+    expect(splitDaybreakAliasModels(aliasOnly)).toEqual({
+      models: aliasOnly,
+      selectedOnlyModels: [],
     });
   });
 });

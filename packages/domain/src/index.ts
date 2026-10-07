@@ -45,6 +45,7 @@ export * from "./provider-event.js";
 export * from "./provider-extension-kind.js";
 export * from "./provider-fork.js";
 export * from "./provider-model-catalog.js";
+export * from "./model-options.js";
 export * from "./provider-types.js";
 export * from "./raw-thread-id.js";
 export * from "./reasoning-efforts.js";

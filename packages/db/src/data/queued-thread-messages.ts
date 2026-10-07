@@ -22,6 +22,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import {
   QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX,
   projectAttachmentPaths,
+  serializeModelOptionValues,
 } from "@bb/domain";
 import type {
   PermissionMode,
@@ -74,6 +75,7 @@ export interface CreateQueuedThreadMessageInput {
   reasoningLevel: string;
   permissionMode: PermissionMode;
   serviceTier: string;
+  modelOptions: Readonly<Record<string, string>>;
   /**
    * Why the row is queued, written in the SAME insert rather than by a
    * follow-up update: a row that existed with no wait for even one statement
@@ -370,7 +372,8 @@ function queuedMessageGroupingEnvelopeMatches(
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
     queuedMessage.permissionMode === firstQueuedMessage.permissionMode &&
-    queuedMessage.serviceTier === firstQueuedMessage.serviceTier
+    queuedMessage.serviceTier === firstQueuedMessage.serviceTier &&
+    queuedMessage.modelOptionsJson === firstQueuedMessage.modelOptionsJson
   );
 }
 
@@ -656,6 +659,7 @@ export function createQueuedThreadMessageInTransaction(
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,
       serviceTier: input.serviceTier,
+      modelOptionsJson: serializeModelOptionValues(input.modelOptions),
       waitingOn:
         input.waitingOn === null ? null : JSON.stringify(input.waitingOn),
       waitHolder:

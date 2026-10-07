@@ -50,6 +50,7 @@ describe("thread execution plan input sources", () => {
         reasoningLevel: "medium",
         permissionMode: "auto",
         serviceTier: "fast",
+        modelOptions: {},
       });
       const resolve = (
         input: ReturnType<typeof buildExistingThreadExecutionInput>,
@@ -78,6 +79,122 @@ describe("thread execution plan input sources", () => {
     });
   });
 
+  it("resolves model options from the request, then project defaults, then the declared default", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-model-options",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      const remember = (modelOptions: Record<string, string>) =>
+        upsertProjectExecutionDefaults(harness.deps.db, {
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-6-sol",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+          serviceTier: "default",
+          modelOptions,
+        });
+      const resolve = async (
+        input: ReturnType<typeof buildExistingThreadExecutionInput>,
+      ) =>
+        (
+          await resolveExistingThreadExecutionPlan(harness.deps, {
+            executionSource: "client/turn/requested",
+            input,
+            threadId: thread.id,
+          })
+        ).resolvedExecution.modelOptions;
+
+      remember({});
+      expect(await resolve({})).toEqual({ daybreak: "off" });
+      remember({ daybreak: "on" });
+      expect(await resolve({})).toEqual({ daybreak: "on" });
+      expect(
+        await resolve(
+          buildExistingThreadExecutionInput({
+            experimental_modelOptions: { daybreak: "off" },
+          }),
+        ),
+      ).toEqual({ daybreak: "off" });
+      remember({ daybreak: "maybe", retired: "on" });
+      expect(await resolve({})).toEqual({ daybreak: "off" });
+      expect(
+        await resolve({
+          modelOptions: {
+            source: "client-preference",
+            value: { daybreak: "maybe" },
+          },
+        }),
+      ).toEqual({ daybreak: "off" });
+    });
+  });
+
+  it("rejects an explicit model option the provider does not declare", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-model-options-invalid",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      upsertProjectExecutionDefaults(harness.deps.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-6-sol",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+        modelOptions: {},
+      });
+      const resolve = (modelOptions: Record<string, string>) =>
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input: buildExistingThreadExecutionInput({
+            experimental_modelOptions: modelOptions,
+          }),
+          threadId: thread.id,
+        });
+
+      await expect(resolve({ turbo: "on" })).rejects.toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message:
+            "Provider codex has no model option turbo. Model options: daybreak.",
+        },
+      });
+      await expect(resolve({ daybreak: "maybe" })).rejects.toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message:
+            "Model option daybreak does not accept maybe. Values: off, on.",
+        },
+      });
+    });
+  });
+
   it("accepts the tiers a provider lists and rejects an explicit tier it does not", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -102,6 +219,7 @@ describe("thread execution plan input sources", () => {
         reasoningLevel: "medium",
         permissionMode: "auto",
         serviceTier: "turbo",
+        modelOptions: {},
       });
       const resolve = (
         input: ReturnType<typeof buildExistingThreadExecutionInput>,
@@ -164,6 +282,7 @@ describe("thread execution plan input sources", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "fast",
+        modelOptions: {},
       });
       const resolve = (
         input: ReturnType<typeof buildExistingThreadExecutionInput>,
@@ -249,6 +368,7 @@ describe("thread execution plan input sources", () => {
         reasoningLevel: "medium",
         permissionMode: "auto",
         serviceTier: "default",
+        modelOptions: {},
       });
 
       const ignoredDisplayedValue = resolveProjectExecutionDefaultsForCreate(

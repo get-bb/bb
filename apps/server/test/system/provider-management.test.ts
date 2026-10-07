@@ -121,6 +121,7 @@ describe("provider management", () => {
               providerId: "acp-opencode",
               model: "default",
               serviceTier: "default",
+              modelOptions: {},
               reasoningLevel: "medium",
               permissionMode: "auto",
             },

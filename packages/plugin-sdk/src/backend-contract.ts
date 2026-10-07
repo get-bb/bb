@@ -1336,6 +1336,42 @@ export interface PluginProviderOptionDescriptor {
   description?: string;
 }
 
+/** One value of a {@link PluginProviderModelOptionDeclaration}. */
+export interface PluginProviderModelOptionValueDeclaration {
+  /** Stable value id (`[a-z][a-z0-9-]*`, at most 64 characters). */
+  id: string;
+  label: string;
+  description?: string;
+  /**
+   * Shown on a model row the picker disables while this value is selected,
+   * because the model's `experimental_supportedModelOptions` does not list
+   * it. For example "Turn off Daybreak to use this model".
+   */
+  modelUnavailableReason?: string;
+}
+
+/**
+ * A provider-specific choice rendered in bb's model picker, such as a
+ * per-thread switch. Each `model/list` entry may narrow the values it
+ * accepts with `experimental_supportedModelOptions: { [optionId]: valueIds }`;
+ * an entry without the option id accepts every value. The picker shows the
+ * option only when some model explicitly lists a non-default value, disables
+ * models that reject the selected value, and moves the selection to a
+ * compatible model when the value changes. The resolved values reach
+ * {@link PluginProviderDeclaration.deriveProviderOptions} as
+ * `experimental_modelOptions`. Two values render as a switch.
+ */
+export interface PluginProviderModelOptionDeclaration {
+  /** Stable option id (`[a-z][a-z0-9-]*`, at most 64 characters). */
+  id: string;
+  label: string;
+  description?: string;
+  /** At least two values with unique ids. */
+  values: readonly PluginProviderModelOptionValueDeclaration[];
+  /** The id of one of `values`; used when nothing selected or inherited applies. */
+  defaultValue: string;
+}
+
 /**
  * Payload schemas for one extension kind this provider emits, keyed by the
  * kind's local name (the server prefixes the plugin id to form the
@@ -1369,6 +1405,14 @@ export interface PluginProviderOptionsContext {
    * calls it natively.
    */
   promptMode?: "plan";
+  /**
+   * The resolved value of every option this provider declares in
+   * `experimental_modelOptions`, keyed by option id. Values were selected for
+   * this command or inherited from the thread's previous turn or the project
+   * defaults; undeclared ids never appear. `{}` when the provider declares
+   * no options.
+   */
+  experimental_modelOptions: Readonly<Record<string, string>>;
   /**
    * This plugin's own settings values (`bb.settings.define`), read at call
    * time. Secret settings are omitted — provider options ride the daemon
@@ -1520,6 +1564,9 @@ export interface PluginProviderDeclaration {
    * `model/list` entry narrows the list with `supportedServiceTiers`. The
    * coarse `capabilities.supportsServiceTier` stays until WS2a stabilizes. */
   serviceTiers?: readonly PluginProviderOptionDescriptor[];
+  /** Provider-specific picker options ({@link PluginProviderModelOptionDeclaration}).
+   * Non-empty when present, unique ids. See docs/api_to_audit.md. */
+  experimental_modelOptions?: readonly PluginProviderModelOptionDeclaration[];
   /** Reasoning levels as picker options with labels, beside the coarse
    * `capabilities.reasoningLevels` ladder (ids only). Non-empty when present,
    * unique ids. WS2a merges the two. */

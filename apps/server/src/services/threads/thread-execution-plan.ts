@@ -1,9 +1,11 @@
 import { getAppSettings, getProjectExecutionDefaults, getThread } from "@bb/db";
 import {
   DEFAULT_SERVICE_TIER,
+  providerModelOptions,
   providerServiceTierOptions,
   reconcileServiceTier,
   type CallerExecutionInputSource,
+  type ModelOptionValues,
   type PermissionMode,
   type ProjectExecutionDefaults,
   type ReasoningLevel,
@@ -36,6 +38,7 @@ interface ExistingThreadExecutionInput {
   permissionMode?: ExecutionPlanFieldInput<PermissionMode>;
   reasoningLevel?: ExecutionPlanFieldInput<ReasoningLevel>;
   serviceTier?: ExecutionPlanFieldInput<ServiceTier>;
+  modelOptions?: ExecutionPlanFieldInput<ModelOptionValues>;
 }
 
 export interface ExistingThreadExecutionInputRequest {
@@ -43,6 +46,7 @@ export interface ExistingThreadExecutionInputRequest {
   permissionMode?: PermissionMode;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
+  experimental_modelOptions?: ModelOptionValues;
   executionInputSources?: ExistingThreadExecutionInputRequestSources;
 }
 
@@ -51,6 +55,7 @@ interface ExistingThreadExecutionInputRequestSources {
   permissionMode?: CallerExecutionInputSource;
   reasoningLevel?: CallerExecutionInputSource;
   serviceTier?: CallerExecutionInputSource;
+  modelOptions?: CallerExecutionInputSource;
 }
 
 interface ResolveExistingThreadExecutionPlanArgs {
@@ -143,7 +148,8 @@ function hasExecutionInput(input: ExistingThreadExecutionInput): boolean {
     input.model !== undefined ||
     input.permissionMode !== undefined ||
     input.reasoningLevel !== undefined ||
-    input.serviceTier !== undefined
+    input.serviceTier !== undefined ||
+    input.modelOptions !== undefined
   );
 }
 
@@ -179,6 +185,10 @@ export function buildExistingThreadExecutionInput(
     request.serviceTier,
     resolveRequestInputSource(sources, "serviceTier"),
   );
+  const modelOptions = toRequestInputField(
+    request.experimental_modelOptions,
+    resolveRequestInputSource(sources, "modelOptions"),
+  );
   const reasoningLevel = toRequestInputField(
     request.reasoningLevel,
     resolveRequestInputSource(sources, "reasoningLevel"),
@@ -190,6 +200,7 @@ export function buildExistingThreadExecutionInput(
   return {
     ...(model ? { model } : {}),
     ...(serviceTier ? { serviceTier } : {}),
+    ...(modelOptions ? { modelOptions } : {}),
     ...(reasoningLevel ? { reasoningLevel } : {}),
     ...(permissionMode ? { permissionMode } : {}),
   };
@@ -266,6 +277,52 @@ function resolveProviderServiceTier(
           DEFAULT_SERVICE_TIER,
           ...supported.map((tier) => tier.id),
         ].join(", ")}.`,
+  );
+}
+
+function resolveProviderModelOptions(
+  registry: ProviderRegistryService,
+  args: {
+    providerId: string;
+    requested: ExecutionPlanFieldInput<ModelOptionValues> | undefined;
+    inherited: readonly (ModelOptionValues | undefined)[];
+  },
+): ModelOptionValues {
+  const declared = providerModelOptions(registry.get(args.providerId)?.info);
+  const requested = args.requested?.value ?? {};
+  if (args.requested?.source === "explicit") {
+    for (const [optionId, valueId] of Object.entries(requested)) {
+      const option = declared.find((candidate) => candidate.id === optionId);
+      if (option === undefined) {
+        throw new ProviderCapabilityValidationError(
+          400,
+          "invalid_request",
+          declared.length === 0
+            ? `Provider ${args.providerId} has no model options.`
+            : `Provider ${args.providerId} has no model option ${optionId}. Model options: ${declared.map((candidate) => candidate.id).join(", ")}.`,
+        );
+      }
+      if (!option.values.some((value) => value.id === valueId)) {
+        throw new ProviderCapabilityValidationError(
+          400,
+          "invalid_request",
+          `Model option ${optionId} does not accept ${valueId}. Values: ${option.values.map((value) => value.id).join(", ")}.`,
+        );
+      }
+    }
+  }
+  return Object.fromEntries(
+    declared.map((option) => {
+      const candidate = [
+        requested[option.id],
+        ...args.inherited.map((values) => values?.[option.id]),
+      ].find(
+        (valueId) =>
+          valueId !== undefined &&
+          option.values.some((value) => value.id === valueId),
+      );
+      return [option.id, candidate ?? option.defaultValue];
+    }),
   );
 }
 
@@ -371,11 +428,18 @@ export async function resolveExistingThreadExecutionPlan(
       })
     : DEFAULT_SERVICE_TIER;
 
+  const modelOptions = resolveProviderModelOptions(deps.providerRegistry, {
+    providerId: thread.providerId,
+    requested: args.input.modelOptions,
+    inherited: [lastExecution?.modelOptions, projectExecution?.modelOptions],
+  });
+
   const resolvedExecution = {
     model,
     permissionMode,
     reasoningLevel,
     serviceTier,
+    modelOptions,
     source: args.executionSource,
   };
   return {
