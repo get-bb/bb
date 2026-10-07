@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -9,18 +9,20 @@ import {
   formatLifecycleErrorDescription,
 } from "@/lib/lifecycle-errors";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import {
-  getFileNameFromPath,
-  getParentFolderNameFromPath,
-  resolveRightPanelFileIconName,
-} from "../rightPanelFileVisuals";
+import { resolveRightPanelFileIconName } from "../rightPanelFileVisuals";
 import type { ThreadStorageBrowserController } from "../useThreadStorageBrowser";
 import {
+  INFO_LIST_CARET_CLASS,
   infoListCollapses,
   InfoList,
   InfoListRow,
   InfoSection,
 } from "./info-list";
+import {
+  buildThreadStorageTree,
+  flattenThreadStorageNode,
+  type ThreadStorageTreeRow,
+} from "./thread-storage-tree";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
 export interface ThreadStorageSectionProps {
@@ -53,16 +55,79 @@ export function ThreadStorageSection({
   filesError,
 }: ThreadStorageSectionProps) {
   const {
+    expandedFolders,
     filteredFiles,
     loadedFiles,
     searchQuery,
     selectedPath,
     selectPath,
     setSearchQuery,
+    toggleFolder,
   } = controller;
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const collapse = useInfoSectionCollapse("threadStorage");
+  const tree = useMemo(
+    () => buildThreadStorageTree(filteredFiles),
+    [filteredFiles],
+  );
   if (loadedFiles.length === 0 && filesError == null) return null;
+  const isSearching = searchQuery.trim() !== "";
+  const isFolderExpanded = (folderPath: string) =>
+    isSearching || expandedFolders.has(folderPath);
+  const renderRow = ({ node, depth }: ThreadStorageTreeRow) => {
+    if (node.kind === "folder") {
+      const expanded = isFolderExpanded(node.path);
+      return (
+        <InfoListRow
+          key={node.path}
+          depth={depth}
+          leading={
+            <Icon
+              name="ChevronRight"
+              className={cn(
+                INFO_LIST_CARET_CLASS,
+                "text-subtle-foreground",
+                expanded && "rotate-90",
+              )}
+              aria-hidden
+            />
+          }
+          name={node.name}
+          title={node.path}
+          expanded={expanded}
+          target={
+            isSearching
+              ? null
+              : { kind: "button", onSelect: () => toggleFolder(node.path) }
+          }
+        />
+      );
+    }
+    return (
+      <InfoListRow
+        key={node.path}
+        depth={depth}
+        leading={
+          <Icon
+            name={resolveRightPanelFileIconName(node.path)}
+            className="size-3 text-subtle-foreground"
+            aria-hidden
+          />
+        }
+        name={node.name}
+        title={`Open ${node.path}`}
+        selected={selectedPath === node.path}
+        target={{ kind: "button", onSelect: () => selectPath(node.path) }}
+        actions={[
+          {
+            icon: "ExternalLink",
+            label: "Open in tab",
+            onSelect: () => selectPath(node.path),
+          },
+        ]}
+      />
+    );
+  };
   const closeSearch = () => {
     setIsSearchOpen(false);
     setSearchQuery("");
@@ -126,31 +191,11 @@ export function ThreadStorageSection({
         <EmptyState message="No files match search." />
       ) : (
         <InfoList
-          items={filteredFiles}
-          getKey={(file) => file.path}
-          renderItem={(file) => (
-            <InfoListRow
-              leading={
-                <Icon
-                  name={resolveRightPanelFileIconName(file.path)}
-                  className="size-3 text-subtle-foreground"
-                  aria-hidden
-                />
-              }
-              name={getFileNameFromPath({ path: file.path })}
-              context={getParentFolderNameFromPath({ path: file.path })}
-              title={`Open ${file.path}`}
-              selected={selectedPath === file.path}
-              target={{ kind: "button", onSelect: () => selectPath(file.path) }}
-              actions={[
-                {
-                  icon: "ExternalLink",
-                  label: "Open in tab",
-                  onSelect: () => selectPath(file.path),
-                },
-              ]}
-            />
-          )}
+          items={tree}
+          getKey={(node) => node.path}
+          renderItem={(node) =>
+            flattenThreadStorageNode(node, isFolderExpanded).map(renderRow)
+          }
         />
       )}
     </InfoSection>

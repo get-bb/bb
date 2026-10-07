@@ -15,7 +15,7 @@ import { formatCompactRelativeTime } from "@/lib/relative-time";
 const INFO_LIST_LEADING_CLASS =
   "flex size-3 shrink-0 items-center justify-center";
 
-const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
+export const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
 
 const INFO_LIST_DEFAULT_LIMIT = 5;
 
@@ -27,7 +27,7 @@ export function infoListCollapses(
 }
 
 const INFO_LIST_ROW_CLASS =
-  "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors hover:bg-state-hover";
+  "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors";
 
 const INFO_LIST_PRIMARY_CLASS =
   "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
@@ -149,7 +149,11 @@ export interface InfoListRowProps {
   actions?: readonly InfoRowActionItem[];
   trailing?: ReactNode;
   selected?: boolean;
+  depth?: number;
+  expanded?: boolean;
 }
+
+const INFO_LIST_INDENT_REM = 1.125;
 
 export function InfoListRow({
   leading,
@@ -161,6 +165,8 @@ export function InfoListRow({
   actions = [],
   trailing,
   selected = false,
+  depth = 0,
+  expanded,
 }: InfoListRowProps) {
   const primary =
     target === null ? (
@@ -178,6 +184,7 @@ export function InfoListRow({
       <button
         type="button"
         title={title}
+        aria-expanded={expanded}
         onClick={target.onSelect}
         className={INFO_LIST_PRIMARY_CLASS}
       >
@@ -187,8 +194,25 @@ export function InfoListRow({
   return (
     <li
       className={cn(INFO_LIST_ROW_CLASS, selected && "bg-state-active")}
+      style={
+        depth > 0
+          ? {
+              paddingLeft: `calc(0.25rem + ${depth * INFO_LIST_INDENT_REM}rem)`,
+            }
+          : undefined
+      }
       aria-current={selected ? "true" : undefined}
     >
+      {Array.from({ length: depth }, (_, level) => (
+        <span
+          key={level}
+          className="pointer-events-none absolute inset-y-0 w-px bg-border"
+          style={{
+            left: `calc(0.25rem + 5.5px + ${level * INFO_LIST_INDENT_REM}rem)`,
+          }}
+          aria-hidden
+        />
+      ))}
       {leadingLabel ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -367,7 +391,7 @@ export function InfoList<T>({
             onClick={() => setIsExpanded((value) => !value)}
             className={cn(
               INFO_LIST_QUIET_CONTROL_CLASS,
-              "-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 items-center gap-1.5 px-1 text-left hover:bg-state-hover",
+              "-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 items-center gap-1.5 px-1 text-left",
             )}
           >
             <span className={INFO_LIST_LEADING_CLASS}>
