@@ -115,10 +115,8 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
 }
 
 describe("theme.css neutral ramp", () => {
-  it("keeps coarse mobile sidebar titles stable under hover and open action states", () => {
-    const mobileRules = css.slice(
-      css.indexOf("@media (max-width: 767px) and (pointer: coarse)"),
-    );
+  it("keeps touch sidebar titles stable under hover and open action states", () => {
+    const mobileRules = css.slice(css.indexOf("@media (hover: none)"));
 
     expect(mobileRules).toMatch(
       /\.bb-sidebar-hover-actions-row:is\(:hover, :has\(:focus-visible\)\)\s+\.bb-sidebar-hover-actions-inset,\s+\.bb-sidebar-hover-actions-row:has\(\s+\.bb-sidebar-hover-actions\[data-sidebar-hover-actions-open="true"\]\s+\)\s+\.bb-sidebar-hover-actions-inset\s*\{\s*padding-right:\s*0;/,

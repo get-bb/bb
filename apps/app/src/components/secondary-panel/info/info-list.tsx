@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
@@ -228,8 +229,10 @@ export interface InfoRowActionItem {
   onSelect: () => void;
 }
 
-const INFO_ROW_ACTION_CLASS =
-  "relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100";
+const INFO_ROW_ACTION_CLASS = cn(
+  "relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100",
+  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+);
 
 function InfoRowAction({
   action,
@@ -265,7 +268,7 @@ function InfoRowInlineActions({
     <InfoRowAction
       key={action.label}
       action={action}
-      className={collapsesOnTouch ? "pointer-coarse:hidden" : undefined}
+      className={collapsesOnTouch ? "[@media(hover:none)]:hidden" : undefined}
     />
   ));
 }
@@ -284,7 +287,7 @@ function InfoRowTouchActionsMenu({
         <button
           type="button"
           aria-label="More actions"
-          className={cn(INFO_ROW_ACTION_CLASS, "hidden pointer-coarse:flex")}
+          className={cn(INFO_ROW_ACTION_CLASS, "hidden [@media(hover:none)]:flex")}
         >
           <Icon name="MoreHorizontal" className="size-3" aria-hidden />
         </button>

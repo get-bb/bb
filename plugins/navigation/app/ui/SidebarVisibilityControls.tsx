@@ -291,7 +291,7 @@ export function SidebarOverflowItem({
           }
           className={cn(
             SIDEBAR_HOVER_ACTIONS_CLASS,
-            "absolute inset-y-0 right-0 flex items-center pointer-coarse:opacity-100 pointer-coarse:pointer-events-auto",
+            "absolute inset-y-0 right-0 flex items-center [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto",
           )}
         >
           {actions}

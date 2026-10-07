@@ -881,7 +881,7 @@ function EnvironmentThreadGroupHeader({
             SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
             "relative flex items-center justify-end",
             rename.isEditing && "hidden",
-            isCollapsed && "max-md:pointer-coarse:hidden",
+            isCollapsed && "[@media(hover:none)]:hidden",
           )}
         >
           <EnvironmentThreadGroupHeaderActions
