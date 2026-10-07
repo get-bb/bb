@@ -262,28 +262,78 @@ describe("ConnectTunnel socket lifecycle", () => {
     }
   });
 
-  it("backs off for minutes when another bb takes over the tunnel", async () => {
+  function replace(socket: (typeof fakeWebSockets.instances)[number]): void {
+    socket.emit(
+      "close",
+      1000,
+      Buffer.from("replaced by a new tunnel connection"),
+    );
+  }
+
+  function openLatest(): (typeof fakeWebSockets.instances)[number] {
+    const socket = fakeWebSockets.instances.at(-1)!;
+    socket.readyState = 1;
+    socket.emit("open");
+    return socket;
+  }
+
+  it("reconnects at once when a tunnel is replaced once, as by its own abandoned dial", async () => {
     vi.useFakeTimers();
     const { fakeHost, tunnel } = createTunnelFixture();
 
     try {
       await tunnel.start();
       await vi.advanceTimersByTimeAsync(0);
-      const socket = fakeWebSockets.instances[0]!;
-      socket.readyState = 1;
-      socket.emit("open");
+      replace(openLatest());
 
-      socket.emit(
-        "close",
-        1000,
-        Buffer.from("replaced by a new tunnel connection"),
-      );
+      expect(tunnel.status().lastError).not.toContain("another bb connected");
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fakeWebSockets.instances).toHaveLength(2);
+    } finally {
+      tunnel.stop();
+      vi.useRealTimers();
+      await fakeHost.harness.dispose();
+    }
+  });
+
+  it("backs off for minutes when another bb keeps taking over the tunnel", async () => {
+    vi.useFakeTimers();
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      await vi.advanceTimersByTimeAsync(0);
+      replace(openLatest());
+      await vi.advanceTimersByTimeAsync(10_000);
+      replace(openLatest());
 
       expect(tunnel.status().lastError).toContain("another bb connected");
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(fakeWebSockets.instances).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(4 * 60_000);
       expect(fakeWebSockets.instances).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(fakeWebSockets.instances).toHaveLength(3);
+    } finally {
+      tunnel.stop();
+      vi.useRealTimers();
+      await fakeHost.harness.dispose();
+    }
+  });
+
+  it("treats replacements minutes apart as separate abandoned dials", async () => {
+    vi.useFakeTimers();
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      await vi.advanceTimersByTimeAsync(0);
+      replace(openLatest());
+      await vi.advanceTimersByTimeAsync(10_000);
+      openLatest();
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+      replace(fakeWebSockets.instances.at(-1)!);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fakeWebSockets.instances).toHaveLength(3);
     } finally {
       tunnel.stop();
       vi.useRealTimers();

@@ -34,6 +34,7 @@ const TUNNEL_HANDSHAKE_TIMEOUT_MS = 10_000;
 const TUNNEL_CLOSE_GRACE_MS = 1_000;
 const TUNNEL_CLEAN_CLOSE_CODE = 1000;
 const TUNNEL_REPLACED_RETRY_MS = 5 * 60_000;
+const TUNNEL_REPLACED_REPEAT_WINDOW_MS = 60_000;
 
 export interface ConnectIdentity {
   serverId: string;
@@ -93,6 +94,7 @@ export class ConnectTunnel {
   private lastRemoteActivityAt: number | null = null;
   private remoteClients = 0;
   private nextRetryAt: number | null = null;
+  private lastReplacedAt: number | null = null;
   private shareRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private shareActivationEpoch = 0;
 
@@ -565,10 +567,16 @@ export class ConnectTunnel {
         code === TUNNEL_CLEAN_CLOSE_CODE &&
         reason.toString() === TUNNEL_REPLACED_CLOSE_REASON
       ) {
-        this.lastError =
-          "another bb connected with this server's identity and took over bb connect";
-        retry(`${detail}; ${this.lastError}`, TUNNEL_REPLACED_RETRY_MS);
-        return;
+        const replacedAgain =
+          this.lastReplacedAt !== null &&
+          now - this.lastReplacedAt < TUNNEL_REPLACED_REPEAT_WINDOW_MS;
+        this.lastReplacedAt = now;
+        if (replacedAgain) {
+          this.lastError =
+            "another bb connected with this server's identity and took over bb connect";
+          retry(`${detail}; ${this.lastError}`, TUNNEL_REPLACED_RETRY_MS);
+          return;
+        }
       }
       retry(detail);
     });
