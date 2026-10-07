@@ -534,6 +534,15 @@ function upsertRunningExecCall(
     return createRunningExecCall(incoming, meta, threadId, scopeFields.scope);
   }
 
+  if (
+    existing.kind === "command" &&
+    existing.approvalStatus === "waiting_for_approval" &&
+    incoming.kind === "command" &&
+    incoming.approvalStatus === null &&
+    incoming.status === "pending"
+  ) {
+    existing.startedAt = meta.createdAt;
+  }
   mergeRunningExecutionMetadata(existing, incoming);
   mergeExecutionCompletion(existing, incoming);
   if (!existing.parentToolCallId && incoming.parentToolCallId) {
@@ -781,6 +790,7 @@ function mergeExecutionSummary(
     switch (incoming.kind) {
       case "command":
         if (target.kind !== "command") return;
+        if ("startedAt" in incoming) target.startedAt = incoming.startedAt;
         mergeCommandExecutionFields(target, incoming);
         break;
       case "tool-call":
@@ -993,6 +1003,20 @@ export function onExecBegin(
         call.createdAt,
       );
     }
+    return;
+  }
+
+  const historyMatch = findExecMessageInHistoryCells(state, call.callId);
+  if (existingRunning && historyMatch) {
+    mergeExecutionSummary(historyMatch.call, call);
+    historyMatch.cell.sourceSeqEnd = Math.max(
+      historyMatch.cell.sourceSeqEnd,
+      call.sourceSeqEnd,
+    );
+    historyMatch.cell.createdAt = Math.max(
+      historyMatch.cell.createdAt,
+      call.createdAt,
+    );
     return;
   }
 
