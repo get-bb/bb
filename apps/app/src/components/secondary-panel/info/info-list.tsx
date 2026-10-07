@@ -10,12 +10,13 @@ import {
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { TruncateStart } from "@/components/ui/truncate-start";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
 
 const INFO_LIST_LEADING_CLASS =
   "flex size-3 shrink-0 items-center justify-center";
 
-const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
+export const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
 
 const INFO_LIST_DEFAULT_LIMIT = 5;
 
@@ -27,13 +28,13 @@ export function infoListCollapses(
 }
 
 const INFO_LIST_ROW_CLASS =
-  "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors hover:bg-state-hover";
+  "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors has-[:focus-visible]:bg-state-hover";
 
 const INFO_LIST_PRIMARY_CLASS =
-  "min-w-0 truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring";
+  "min-w-0 cursor-pointer truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none";
 
 const INFO_LIST_QUIET_CONTROL_CLASS =
-  "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none";
 
 function InfoCountPill({ count }: { count: number }) {
   return (
@@ -149,6 +150,29 @@ export interface InfoListRowProps {
   actions?: readonly InfoRowActionItem[];
   trailing?: ReactNode;
   selected?: boolean;
+  depth?: number;
+  expanded?: boolean;
+}
+
+const INFO_LIST_INDENT_REM = 1.125;
+
+function infoListIndentStyle(depth: number) {
+  return depth > 0
+    ? { paddingLeft: `calc(0.25rem + ${depth * INFO_LIST_INDENT_REM}rem)` }
+    : undefined;
+}
+
+function InfoListIndentGuides({ depth }: { depth: number }) {
+  return Array.from({ length: depth }, (_, level) => (
+    <span
+      key={level}
+      className="pointer-events-none absolute inset-y-0 w-px bg-border"
+      style={{
+        left: `calc(0.25rem + 5.5px + ${level * INFO_LIST_INDENT_REM}rem)`,
+      }}
+      aria-hidden
+    />
+  ));
 }
 
 export function InfoListRow({
@@ -161,6 +185,8 @@ export function InfoListRow({
   actions = [],
   trailing,
   selected = false,
+  depth = 0,
+  expanded,
 }: InfoListRowProps) {
   const primary =
     target === null ? (
@@ -178,6 +204,7 @@ export function InfoListRow({
       <button
         type="button"
         title={title}
+        aria-expanded={expanded}
         onClick={target.onSelect}
         className={INFO_LIST_PRIMARY_CLASS}
       >
@@ -187,8 +214,10 @@ export function InfoListRow({
   return (
     <li
       className={cn(INFO_LIST_ROW_CLASS, selected && "bg-state-active")}
+      style={infoListIndentStyle(depth)}
       aria-current={selected ? "true" : undefined}
     >
+      <InfoListIndentGuides depth={depth} />
       {leadingLabel ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -208,9 +237,9 @@ export function InfoListRow({
       <span className="flex min-w-0 flex-1 items-center gap-1 pr-2">
         {primary}
         {context ? (
-          <span className="shrink-0 text-2xs text-subtle-foreground">
+          <TruncateStart className="min-w-0 text-2xs text-subtle-foreground [flex-shrink:9999]">
             {context}
-          </span>
+          </TruncateStart>
         ) : null}
         <InfoRowInlineActions actions={actions} />
       </span>
@@ -330,12 +359,50 @@ export function InfoRowTime({
   );
 }
 
+export function InfoListMoreRow({
+  label,
+  expanded,
+  onToggle,
+  depth = 0,
+}: {
+  label: string;
+  expanded: boolean;
+  onToggle: () => void;
+  depth?: number;
+}) {
+  return (
+    <li className="relative">
+      <InfoListIndentGuides depth={depth} />
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        style={infoListIndentStyle(depth)}
+        className={cn(
+          INFO_LIST_QUIET_CONTROL_CLASS,
+          "-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 cursor-pointer items-center gap-1.5 px-1 text-left",
+        )}
+      >
+        <span className={INFO_LIST_LEADING_CLASS}>
+          <Icon
+            name="ChevronDown"
+            className={cn(INFO_LIST_CARET_CLASS, expanded && "rotate-180")}
+            aria-hidden
+          />
+        </span>
+        {label}
+      </button>
+    </li>
+  );
+}
+
 export interface InfoListProps<T> {
   items: readonly T[];
   getKey: (item: T) => string;
   renderItem: (item: T) => ReactNode;
   limit?: number;
   rail?: boolean;
+  revealIndex?: number | null;
 }
 
 export function InfoList<T>({
@@ -344,15 +411,24 @@ export function InfoList<T>({
   renderItem,
   limit = INFO_LIST_DEFAULT_LIMIT,
   rail = false,
+  revealIndex = null,
 }: InfoListProps<T>) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [revealedIndex, setRevealedIndex] = useState<number | null>(null);
+  if (revealIndex !== revealedIndex) {
+    setRevealedIndex(revealIndex);
+    if (revealIndex !== null && revealIndex >= limit) setIsExpanded(true);
+  }
   const canToggle = infoListCollapses(items.length, limit);
   const visibleItems = canToggle && !isExpanded ? items.slice(0, limit) : items;
   return (
     <ul className="relative m-0 list-none p-0 max-md:pointer-coarse:[--text-xs--line-height:1.125rem] max-md:pointer-coarse:[--text-xs:0.8125rem]">
       {rail ? (
         <span
-          className="pointer-events-none absolute top-3 bottom-3 left-[5.5px] w-px bg-border"
+          className={cn(
+            "pointer-events-none absolute top-3 left-[5.5px] w-px bg-border [mask-image:linear-gradient(to_bottom,black_calc(100%-1rem),transparent)]",
+            canToggle ? "bottom-6" : "-bottom-3",
+          )}
           aria-hidden
         />
       ) : null}
@@ -360,29 +436,11 @@ export function InfoList<T>({
         <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
       ))}
       {canToggle ? (
-        <li>
-          <button
-            type="button"
-            aria-expanded={isExpanded}
-            onClick={() => setIsExpanded((value) => !value)}
-            className={cn(
-              INFO_LIST_QUIET_CONTROL_CLASS,
-              "-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 items-center gap-1.5 px-1 text-left hover:bg-state-hover",
-            )}
-          >
-            <span className={INFO_LIST_LEADING_CLASS}>
-              <Icon
-                name="ChevronDown"
-                className={cn(
-                  INFO_LIST_CARET_CLASS,
-                  isExpanded && "rotate-180",
-                )}
-                aria-hidden
-              />
-            </span>
-            {isExpanded ? "Show less" : `${items.length - limit} more`}
-          </button>
-        </li>
+        <InfoListMoreRow
+          label={isExpanded ? "Show less" : `${items.length - limit} more`}
+          expanded={isExpanded}
+          onToggle={() => setIsExpanded((value) => !value)}
+        />
       ) : null}
     </ul>
   );

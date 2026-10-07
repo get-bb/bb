@@ -1303,6 +1303,7 @@ function ThreadDetailViewInternal(
     files: threadStorageFiles?.files,
     onSelectPath: handleSelectStorageBrowserPath,
     selectedPath: activeStorageFilePath,
+    threadId,
   });
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),

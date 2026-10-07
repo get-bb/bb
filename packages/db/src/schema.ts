@@ -1074,6 +1074,7 @@ export const queuedThreadMessages = sqliteTable(
     retryReason: text("retry_reason"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
+    editHeldUntil: integer("edit_held_until"),
     sortKey: text("sort_key").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),

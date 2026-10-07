@@ -161,7 +161,12 @@ suite exactly once:
 The shards are sized so that each finishes with the slowest Linux job instead
 of after it; see [ci-performance.md](ci-performance.md#windows-test-shards).
 
-The jobs install every workspace package with `--ignore-scripts`; Turbo runs the
+App shards install the app and database dependency closures. Server shards
+install the server, host daemon, app, and plugin dependency closures, including
+the plugins loaded dynamically by the server test harness. Plugin, host, build,
+and integration shards omit the mobile toolchain. The catch-all `packages-other`
+shard retains the full install because it runs mobile tests. All use
+`--ignore-scripts`; Turbo runs the
 generators and native-module preparation the suites depend on. They restore
 and save Turbo outputs. The cache key includes the runner OS, so a restored
 result was produced on Windows; a suite whose inputs are unchanged is not run
@@ -281,3 +286,7 @@ process-heavy suite is unexplained; running it alone avoids it.
 Keep the Linux suite running to protect existing behavior. Windows Server CI must
 eventually be supplemented with Windows 11 verification for installation,
 interactive terminals, updates, and actual provider sessions.
+
+Both Windows packaging smoke jobs install the workspace excluding `@bb/mobile`.
+The React Native toolchain is not part of the desktop or launcher dependency
+chain; all Turbo build dependencies and both runtime smoke checks remain enabled.

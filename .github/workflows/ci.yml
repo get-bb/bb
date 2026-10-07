@@ -19,7 +19,7 @@ jobs:
   plan:
     name: Select CI checks
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
@@ -45,6 +45,24 @@ jobs:
           fi
           echo "selection=$selection" >> "$GITHUB_OUTPUT"
           echo "$selection" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check dependency inputs
+        id: dependencies
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: echo "required=$(node scripts/ci-dependencies-changed.mjs "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
+      - name: Setup dependency validation tools
+        if: steps.dependencies.outputs.required == 'true'
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Validate frozen dependency installation
+        if: steps.dependencies.outputs.required == 'true'
+        timeout-minutes: 5
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
 
       - name: Check provider-literal ratchet
         env:
@@ -146,7 +164,7 @@ jobs:
         env:
           TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
       - name: Build bb-app and boot it
         shell: bash
@@ -204,7 +222,7 @@ jobs:
         env:
           TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
       - name: Package the desktop app
         env:
@@ -270,10 +288,16 @@ jobs:
           TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+          SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
+          NON_MOBILE_SHARD: ${{ startsWith(matrix.shard, 'plugins-') || matrix.shard == 'packages-host' || matrix.shard == 'packages-build' || matrix.shard == 'integration' }}
         run: |
           filters=()
           if [[ "$APP_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+          elif [[ "$SERVER_SHARD" == "true" ]]; then
+            filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
+          elif [[ "$NON_MOBILE_SHARD" == "true" ]]; then
+            filters=(--filter '!@bb/mobile')
           fi
           bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts "${filters[@]}"
 
@@ -409,11 +433,10 @@ jobs:
       # so turbo's default of ten concurrent tasks only adds contention here.
       # Measured pinned to 4 CPUs, two rounds each: 96 s / 110 s at the
       # default vs 90 s / 58 s at four.
-      - name: Build
-        run: pnpm exec turbo run build ${{ fromJSON(needs.plan.outputs.selection).buildFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+      - name: Build plugin SDK for version validation
+        if: ${{ fromJSON(needs.plan.outputs.selection).sdkBuild }}
+        run: pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --concurrency=4
 
-      # Runs after build and typecheck, so the guard's own turbo build is a
-      # cache hit and the package it packs is the one this commit really ships.
       # A published version whose packed files or consumer-facing manifest
       # fields changed is a hard failure; an unreachable registry or a failed
       # local pack (exit 2) is infrastructure, not a finding.
@@ -431,6 +454,9 @@ jobs:
             exit 0
           fi
           exit "$guard_exit"
+
+      - name: Build
+        run: pnpm exec turbo run build ${{ fromJSON(needs.plan.outputs.selection).buildFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       # Guards the JavaScript that blocks first paint in the web app, and the
       # thread route's static closure that blocks first thread paint. Heavy
@@ -518,8 +544,7 @@ jobs:
       - name: Install Electron runtime libraries
         if: ${{ contains(matrix.filter, '--filter=@bb/desktop') }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64
+          bash .github/actions/setup-workspace/install-electron-libraries.sh
           ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
 
       - name: Test

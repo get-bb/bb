@@ -988,6 +988,13 @@
       "when": 1791411660016,
       "tag": "0140_stamp_onboarding_existing_installs",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "6",
+      "when": 1791414564985,
+      "tag": "0141_moaning_vector",
+      "breakpoints": true
     }
   ]
 }

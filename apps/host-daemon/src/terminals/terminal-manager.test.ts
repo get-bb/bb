@@ -1082,19 +1082,33 @@ describe("TerminalManager", () => {
   it("flushes the first output after an idle period without the batch delay", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
+    vi.useFakeTimers({
+      toFake: [
+        "setTimeout",
+        "clearTimeout",
+        "setImmediate",
+        "clearImmediate",
+        "performance",
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(4);
 
     pty.emitData("a");
-    await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(collectTerminalOutput(harness.messages)).toBe("a");
 
     pty.emitData("b");
-    await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(3);
 
     expect(collectTerminalOutput(harness.messages)).toBe("a");
-    await vi.waitFor(() => {
-      expect(collectTerminalOutput(harness.messages)).toBe("ab");
-    });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(collectTerminalOutput(harness.messages)).toBe("ab");
+
+    await vi.advanceTimersByTimeAsync(4);
+    pty.emitData("c");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(collectTerminalOutput(harness.messages)).toBe("abc");
   });
 
   it("pauses the PTY a window ahead of acknowledged output and resumes on acknowledgement", async () => {

@@ -127,6 +127,7 @@ function searchBox(slot: ReturnType<typeof renderSlot>) {
 }
 
 afterEach(() => {
+  cleanup();
   if (originalScroll)
     Object.defineProperty(Element.prototype, "scrollIntoView", originalScroll);
   else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
@@ -134,7 +135,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   pickerWidth = 728;
-  cleanup();
   window.localStorage.clear();
 });
 

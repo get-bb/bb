@@ -178,6 +178,24 @@ it("falls back to full coverage for unknown paths", () => {
   ).toBe(true);
 });
 
+it("skips the matrix for CI documentation but keeps executable documentation contracts", () => {
+  const plan = fixture().plan("docs/ci-performance.md");
+  expect(plan.tests.include).toEqual([]);
+  expect(plan["windows-tests"].include).toEqual([]);
+  expect(plan.buildNeeded).toBe(false);
+  expect(plan.staticNeeded).toBe(false);
+  expect(plan.packaging).toBe(false);
+  for (const path of [
+    "docs/provider-plugin-api.md",
+    "docs/api_to_audit.md",
+    "docs/lifecycle-diagrams.md",
+  ]) {
+    const protectedPlan = fixture().plan(path);
+    expect(protectedPlan.tests.include.length).toBeGreaterThan(0);
+    expect(protectedPlan.buildNeeded).toBe(true);
+  }
+});
+
 it.each(["missing base", "malformed query"])(
   "fails open to full coverage for %s",
   (failure) => {
@@ -200,5 +218,42 @@ it.each(["missing base", "malformed query"])(
     expect(plan.reason).toBe("Full cross-platform coverage");
     expect(plan.foundation).toBe(true);
     expect(plan.packaging).toBe(true);
+  },
+);
+
+it.each([
+  ["pnpm-lock.yaml", true],
+  ["pnpm-workspace.yaml", true],
+  ["package.json", true],
+  ["apps/app/package.json", true],
+  [".npmrc", true],
+  [".pnpmfile.cjs", true],
+  ["patches/sonner.patch", true],
+  ["apps/app/src/index.ts", false],
+  ["docs/ci-performance.md", false],
+])("requires dependency validation for %s: %s", (path, required) => {
+  const f = fixture();
+  f.put(path, "changed\n");
+  f.git("add", ".");
+  f.git("commit", "-m", "change");
+  const output = execFileSync(
+    process.execPath,
+    [join(root, "scripts/ci-dependencies-changed.mjs"), f.base],
+    { cwd: f.cwd, encoding: "utf8" },
+  );
+  expect(output.trim()).toBe(String(required));
+});
+
+it.each(["", "missing-ref"])(
+  "requires dependency validation without usable history (%s)",
+  (base) => {
+    const f = fixture();
+    expect(
+      execFileSync(
+        process.execPath,
+        [join(root, "scripts/ci-dependencies-changed.mjs"), base],
+        { cwd: f.cwd, encoding: "utf8" },
+      ).trim(),
+    ).toBe("true");
   },
 );

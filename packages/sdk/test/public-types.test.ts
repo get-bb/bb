@@ -468,6 +468,8 @@ type ExpectedThreadInteractionsKey =
 type ExpectedThreadQueuedMessagesKey =
   | "create"
   | "delete"
+  | "experimental_holdForEdit"
+  | "experimental_releaseEditHold"
   | "list"
   | "reorder"
   | "send"
