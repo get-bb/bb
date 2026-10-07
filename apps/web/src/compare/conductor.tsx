@@ -32,7 +32,7 @@ import { FleetVisual, type BrandLogo } from "./compare-visuals";
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
 const AWAY_SECTION = anywhereSection({
-  title: "Keep working after you close your laptop",
+  title: "Keep agents running on an always-on machine",
   body: (
     <>
       <p>
@@ -153,7 +153,10 @@ export const BB_VS_CONDUCTOR: Comparison = {
       rows: [
         {
           feature: "Multi-agent support",
-          bb: cell("yes", "Claude Code, Codex, and more"),
+          bb: cell(
+            "yes",
+            "Claude Code, Codex, Cursor, OpenCode, and any ACP agent",
+          ),
           competitor: cell("yes", "Claude Code, Codex, Cursor, OpenCode"),
         },
         {

@@ -74,7 +74,10 @@ export const BB_VS_T3_CODE: Comparison = {
         },
         {
           feature: "Multi-agent support",
-          bb: cell("yes", "Claude Code, Codex, Pi, and any ACP agent"),
+          bb: cell(
+            "yes",
+            "Claude Code, Codex, Cursor, OpenCode, and any ACP agent",
+          ),
           competitor: cell(
             "yes",
             "Claude Code, Codex, Cursor, OpenCode, and more",

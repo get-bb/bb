@@ -25,11 +25,11 @@ const LEDGER_HIGHLIGHT: CompareHighlight = {
 
 export const BB_VS_VIBE_KANBAN: Comparison = {
   slug: "vibe-kanban-alternative",
-  title: "Vibe Kanban Alternative: Bring Your Board to bb",
+  title: "Vibe Kanban Alternative: Get Your Board Back in bb",
   description:
     "Vibe Kanban is sunsetting. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
   competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
-  headline: "Vibe Kanban is sunsetting. Bring your board to bb.",
+  headline: "Vibe Kanban is sunsetting. Get your board back in bb.",
   sub: "Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
   heroVisual: <TasksBoard compact={false} />,
   tailored: LEDGER_HIGHLIGHT,
@@ -136,6 +136,26 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
               worktree as a thread. If you exported your Vibe Kanban issues, it
               can turn each one into a task on your board.
             </p>
+          ),
+        },
+        {
+          question: "How do I get started?",
+          answer: (
+            <ol>
+              <li>
+                Download bb for <a href="/download/macos">macOS</a> (Apple
+                Silicon), Windows, or <a href="/download/linux">Linux</a> (both
+                alpha).
+              </li>
+              <li>
+                Install and sign in to a coding agent, like Claude Code, Codex,
+                Cursor, or OpenCode.
+              </li>
+              <li>
+                Install the Tasks plugin from bb’s plugin marketplace, then add
+                your project and create your first task.
+              </li>
+            </ol>
           ),
         },
         FAQ_REVIEW,

@@ -94,13 +94,9 @@ export const BB_VS_CURSOR: Comparison = {
           competitor: cell("partial", "As editor extensions"),
         },
         {
-          feature: "Claude and GPT models",
-          bb: cell("yes", "Billed to your Claude and ChatGPT plans"),
-          competitor: cell(
-            "yes",
-            "Billed to Cursor usage or your API keys",
-            true,
-          ),
+          feature: "Use your Claude or ChatGPT subscription",
+          bb: cell("yes", "Claude Code and Codex, signed in as usual"),
+          competitor: cell("no", "API rates through Cursor usage or your keys"),
         },
         {
           feature: "Agent-to-agent handoff",
@@ -123,7 +119,10 @@ export const BB_VS_CURSOR: Comparison = {
         {
           feature: "Pricing",
           bb: price("$0", "You pay agent providers directly"),
-          competitor: price("$20 / mo", "Teams from $40 per user / month"),
+          competitor: price(
+            "$0 Hobby",
+            "Pro $20 / mo, Teams from $40 per user / month",
+          ),
         },
         {
           feature: "Open-source license",

@@ -173,7 +173,10 @@ const BB_VS_SUPERSET: Comparison = {
       rows: [
         {
           feature: "Multi-agent support",
-          bb: cell("yes", "Plus any you add"),
+          bb: cell(
+            "yes",
+            "Claude Code, Codex, Cursor, OpenCode, and any ACP agent",
+          ),
           competitor: cell("yes", "Any CLI agent"),
         },
         {
