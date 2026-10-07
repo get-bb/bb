@@ -23,6 +23,8 @@ function renderSection(overrides?: {
   return render(
     <>
       <GeneralSettingsSection
+        showGitChanges={true}
+        onShowGitChangesChange={vi.fn()}
         confirmThreadArchive={overrides?.confirmThreadArchive ?? true}
         onConfirmThreadArchiveChange={
           overrides?.onConfirmThreadArchiveChange ?? vi.fn()

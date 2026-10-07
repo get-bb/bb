@@ -39,6 +39,8 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
 };
 export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
+export const WINDOWS_DOWNLOAD_URL =
+  "https://github.com/get-bb/bb/releases/latest";
 
 export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
 
@@ -50,7 +52,7 @@ export function downloadHref(
 }
 
 declare const __SITE_ORIGIN__: string;
-export const SITE_URL = __SITE_ORIGIN__;
+const SITE_URL = __SITE_ORIGIN__;
 export const SITE_TITLE = "bb: the IDE that builds itself";
 export const SITE_DESCRIPTION =
   "bb can control, customize, and automate itself, laying the groundwork for your own software factory. Fully open source and local-first, with Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes.";

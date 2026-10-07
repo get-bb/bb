@@ -368,6 +368,7 @@ function buildPromptArea({
       <ShellProbe />
       <PublishedHostDraftProbe />
       <ThreadDetailPromptArea
+        showGitChanges={true}
         activeBackgroundAgentCount={0}
         activeBackgroundCommands={[]}
         activePromptMode={null}
@@ -385,7 +386,6 @@ function buildPromptArea({
         onChangedFileClick={vi.fn()}
         parentThreadSection={null}
         pendingInteractions={pendingInteractions}
-        pendingInteractionsInitialLoading={false}
         queuedMessageCount={0}
         pendingTodos={null}
         projectId={PROJECT_ID}

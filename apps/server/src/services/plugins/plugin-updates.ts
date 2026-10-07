@@ -37,6 +37,7 @@ import {
   type createManagedPluginArtifacts,
 } from "./managed-plugin-artifacts.js";
 import { MARKETPLACE_FETCH_TIMEOUT_MS } from "../plugin-catalog/marketplace-http.js";
+import { removeUnusedPluginArtifacts } from "./plugin-artifact-gc.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
   isServerMoveFrozen,
@@ -689,6 +690,12 @@ export function createPluginUpdates(
           }
           throw error;
         }
+        await removeUnusedPluginArtifacts({
+          db: deps.db,
+          dataDir: deps.dataDir,
+          pluginId: id,
+          warn: (message) => deps.logger.warn(message),
+        });
         await runArtifactGc();
         const updatedRow = getInstalledPlugin(deps.db, id);
         if (!updatedRow) {

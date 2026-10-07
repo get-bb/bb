@@ -269,7 +269,7 @@ describe("bb cloud AI service", () => {
     expect(fetchCalls).toEqual([]);
   });
 
-  it("sends the prompt through bb-account's fetch with a 5 second timeout", async () => {
+  it("sends the prompt through bb-account's fetch with a 7 second timeout", async () => {
     const { complete, fetchCalls } = await setup({ fetch: () => COMPLETED });
     await expect(complete("Write a title", { signal })).resolves.toBe(
       "Fix the flaky login test",
@@ -280,7 +280,7 @@ describe("bb cloud AI service", () => {
         method: "POST",
         path: "/api/ai/v1/complete",
         body: { prompt: "Write a title" },
-        timeoutMs: 5_000,
+        timeoutMs: 7_000,
       },
     ]);
   });

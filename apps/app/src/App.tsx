@@ -1,3 +1,4 @@
+import { PluginUpdateJobsHost } from "./components/plugin/PluginUpdateJobsHost";
 import { LazyThreadDetailView } from "./views/thread-detail/LazyThreadDetailView";
 import { LazyRootComposeView } from "./views/LazyRootComposeView";
 import { useRouteState } from "./hooks/useRouteState";
@@ -76,6 +77,7 @@ import { DesktopZoomIndicator } from "./components/layout/DesktopZoomIndicator";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
 import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
+import { PluginInstallJobsHost } from "./components/plugin/PluginInstallJobsHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 import {
   startSplitPreloading,
@@ -287,7 +289,8 @@ export function AppRoutes() {
     if (isThreadView) void trackCriticalLoad(LazyThreadDetailView.preload());
   }, [isThreadView]);
   useEffect(() => {
-    if (isRootComposeView) void trackCriticalLoad(LazyRootComposeView.preload());
+    if (isRootComposeView)
+      void trackCriticalLoad(LazyRootComposeView.preload());
   }, [isRootComposeView]);
   return (
     <AppLayout>
@@ -482,6 +485,8 @@ export function App() {
               <ProviderCliInstallLogDialogHost />
               <ServerMoveOverlay />
               <AppUpdateHost />
+              <PluginInstallJobsHost />
+              <PluginUpdateJobsHost />
             </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>

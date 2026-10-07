@@ -771,7 +771,7 @@ describe("thread runtime config", () => {
           { threadId: thread.id },
         ),
       ).rejects.toThrow(
-        "Provider codex does not support ultracode reasoning level. Supported reasoning levels: low, medium, high, xhigh, max, ultra.",
+        "Provider codex does not support ultracode reasoning level. Supported reasoning levels: none, low, medium, high, xhigh, max, ultra.",
       );
     });
   });

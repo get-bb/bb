@@ -359,7 +359,7 @@ function BrowseShelf({
     <ResourceSourceShelf
       label={shelf.label}
       description={shelf.description}
-      hideDescriptionOnMobile
+      hideDescriptionWhenNarrow
       leading={
         shelf.key === "collection:bb-official" ? (
           <span
@@ -370,7 +370,10 @@ function BrowseShelf({
         ) : shelf.key === "collection:new-and-notable" ? (
           <Icon name="News01" className="size-4 text-foreground" aria-hidden />
         ) : (
-          <PluginCategoryIcon categoryId={shelf.categoryId} className="size-4" />
+          <PluginCategoryIcon
+            categoryId={shelf.categoryId}
+            className="size-4"
+          />
         )
       }
       browseAction={
@@ -379,7 +382,8 @@ function BrowseShelf({
             asChild
             className={cn(
               "underline underline-offset-4",
-              shelf.entries.length <= SHELF_ENTRY_LIMIT && "sm:hidden",
+              shelf.entries.length <= SHELF_ENTRY_LIMIT &&
+                "@min-[40rem]/resource-shelf:hidden",
             )}
           >
             <Link
@@ -398,7 +402,7 @@ function BrowseShelf({
       <div data-plugin-shelf>
         <div
           data-plugin-shelf-grid
-          className="grid gap-2 max-sm:[&>*:nth-child(n+3)]:hidden"
+          className="grid gap-2 @max-[40rem]/resource-shelf:[&>*:nth-child(n+3)]:hidden"
         >
           {visible.map((entry) => (
             <PluginCatalogCard

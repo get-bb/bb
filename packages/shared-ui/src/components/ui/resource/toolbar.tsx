@@ -152,12 +152,7 @@ export function ResourceToolbar({
       menuObserver.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [
-    compact,
-    expandSearchOnFocus,
-    hasCombinedControls,
-    showCombined,
-  ]);
+  }, [compact, expandSearchOnFocus, hasCombinedControls, showCombined]);
 
   useLayoutEffect(() => {
     if (!restoreControlFocus.current) return;
@@ -175,10 +170,8 @@ export function ResourceToolbar({
       data-resource-toolbar
       data-search-expanded={searchExpanded || undefined}
       className={cn(
-        "flex w-full min-w-0 items-center gap-2",
-        compact
-          ? "@container/resource-toolbar flex-nowrap max-md:gap-1"
-          : "flex-wrap",
+        "@container/resource-toolbar flex w-full min-w-0 items-center gap-2",
+        compact ? "flex-nowrap max-md:gap-1" : "flex-wrap",
       )}
     >
       <form
@@ -199,7 +192,7 @@ export function ResourceToolbar({
           "flex items-center gap-2",
           compact
             ? "min-w-0 flex-1 basis-40"
-            : "w-full min-w-0 sm:w-auto sm:flex-1",
+            : "w-full min-w-0 @min-[32rem]/resource-toolbar:w-auto @min-[32rem]/resource-toolbar:flex-1",
           showSearchButton && "min-w-8 max-w-8 grow-0 shrink-0",
         )}
       >
@@ -917,10 +910,7 @@ export function ResourceCreateButton({
       aria-label={label}
       type="button"
       size="sm"
-      className={cn(
-        "rounded-r-none",
-        compactWhenNarrow && "pl-2 pr-1",
-      )}
+      className={cn("rounded-r-none", compactWhenNarrow && "pl-2 pr-1")}
       onClick={() => onCreate()}
     >
       <Icon name="MessageCirclePlus" className="size-4" aria-hidden />

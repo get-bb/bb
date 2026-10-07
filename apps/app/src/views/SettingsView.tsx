@@ -168,6 +168,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  showGitChanges: boolean;
+  onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
@@ -250,7 +252,7 @@ const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
 };
 
 const SETTINGS_DROPDOWN_TRIGGER_CLASS =
-  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-36";
+  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs @min-[36rem]/settings:w-36";
 const SETTINGS_DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 
@@ -519,7 +521,7 @@ export function LocalOpenTargetSettingsSection({
           : "Enable";
 
     return (
-      <SettingsSection title="File Preferences">
+      <SettingsSection title="File preferences">
         <SettingsWithControl
           label="Local editor integration"
           description={
@@ -560,7 +562,7 @@ export function LocalOpenTargetSettingsSection({
   }
 
   return (
-    <SettingsSection title="File Preferences">
+    <SettingsSection title="File preferences">
       <div className="space-y-5">
         <LocalOpenTargetPreferenceControl
           definition={DIRECTORY_TARGET_PREFERENCE}
@@ -850,6 +852,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  showGitChanges,
+  onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   desktopBrowserAvailable,
@@ -879,6 +883,18 @@ export function GeneralSettingsSection({
               checked={navigateToThreadAfterCreate}
               onCheckedChange={onNavigateToThreadAfterCreateChange}
               aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+            />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Show Git changes and Commit button"
+            description="Show changed files above the composer and the Commit button in the thread header."
+          >
+            <Switch
+              checked={showGitChanges}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onShowGitChangesChange}
+              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 
@@ -1060,7 +1076,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   navigationRail: {
     label: "Navigation rail",
     description:
-      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. Wide windows only.",
+      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. The rail stays when the sidebar is collapsed. Wide windows only.",
   },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
@@ -1291,6 +1307,13 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          showGitChanges={generalSettings.showGitChanges}
+          onShowGitChangesChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              showGitChanges: enabled,
+            })
+          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({

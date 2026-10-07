@@ -4,6 +4,7 @@ import {
   type ReactNode,
 } from "react";
 import { useClipboardCopy, type ClipboardCopyOptions } from "@/lib/clipboard";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
@@ -96,7 +97,8 @@ export function CopyableInlineLabel({
       <Icon
         name={copied ? "Check" : "Copy"}
         className={cn(
-          "size-3 shrink-0 text-subtle-foreground transition-opacity group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100 pointer-coarse:opacity-100",
+          "size-3 shrink-0 text-subtle-foreground transition-opacity group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100",
+          HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
           copied ? "opacity-100" : "opacity-0",
         )}
       />

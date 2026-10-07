@@ -5,6 +5,10 @@ import {
 } from "@bb/shared-ui/resource-pagination";
 import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  useCancelPluginInstallJob,
+  useCatalogEntryInstallJob,
+} from "@/hooks/queries/plugin-install-job-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCard, PluginCardGrid, PluginCardAuthor } from "./PluginCard";
 import {
@@ -68,6 +72,8 @@ export function PluginCatalogCard({
 }) {
   const count = pluginInstallCountPresentation(entry);
   const installBlocker = catalogEntryInstallBlocker(entry);
+  const installJob = useCatalogEntryInstallJob(entry);
+  const { mutate: cancelInstall } = useCancelPluginInstallJob();
   return (
     <PluginCard
       leading={<CatalogEntryIconChip entry={entry} compact />}
@@ -95,6 +101,8 @@ export function PluginCatalogCard({
             unavailableReason={installBlocker}
             count={count}
             onInstall={() => onInstall(entry)}
+            installJob={installJob}
+            onCancelInstall={cancelInstall}
           />
         )
       }

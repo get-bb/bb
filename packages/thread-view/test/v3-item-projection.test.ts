@@ -103,6 +103,94 @@ const SUBAGENT_PRESENTATION: ThreadEventItemPresentation = {
 };
 
 describe("v3 item projection", () => {
+  it.each([
+    { decision: "allow_once", interleaved: false },
+    { decision: "allow_for_session", interleaved: true },
+  ] as const)(
+    "excludes the approval wait after $decision (interleaved: $interleaved)",
+    ({ decision, interleaved }) => {
+      const event = createTimelineEventFactory({
+        threadId: "thread-1",
+        turnId: "turn-1",
+      });
+      const command = { itemId: "command-1", command: "mkdir -p build" };
+      const approval = event.permissionGrantLifecycle({
+        status: "resolved",
+        providerId: "claude-code",
+        resolution: { decision, grantedPermissions: null },
+        createdAt: 145_000,
+      });
+      approval.data.interaction.payload = {
+        kind: "approval",
+        reason: null,
+        subject: {
+          kind: "command",
+          ...command,
+          cwd: "/repo",
+          actions: [],
+          sessionGrant: null,
+        },
+      };
+      const events = [
+        event.turnStarted({ createdAt: 0, seq: 0 }),
+        event.commandStarted({ ...command, createdAt: 1_000, seq: 1 }),
+        event.commandStarted({
+          ...command,
+          approvalStatus: "waiting_for_approval",
+          createdAt: 2_000,
+          seq: 2,
+        }),
+        ...(interleaved
+          ? [
+              event.commandStarted({
+                itemId: "other-command",
+                command: "pwd",
+                createdAt: 3_000,
+                seq: 3,
+              }),
+            ]
+          : []),
+        { ...approval, seq: 4 },
+      ];
+      const running = renderTimelineFixture({
+        events,
+        projectionOptions: { turnMessageDetail: "full" },
+      });
+      expect(workRow(running.rows, "command", command.itemId)).toMatchObject({
+        startedAt: 145_000,
+        sourceSeqStart: 1,
+        approvalStatus: null,
+        completedAt: null,
+      });
+      const completed = renderTimelineFixture({
+        events: [
+          ...events,
+          event.commandCompleted({
+            ...command,
+            exitCode: 0,
+            createdAt: 145_100,
+            seq: 5,
+          }),
+        ],
+        projectionOptions: { turnMessageDetail: "full" },
+      });
+      expect(workRow(completed.rows, "command", command.itemId)).toMatchObject({
+        startedAt: 145_000,
+        completedAt: 145_100,
+        sourceSeqStart: 1,
+      });
+      expect(
+        workRows(completed.rows).filter(
+          (row) => "callId" in row && row.callId === command.itemId,
+        ),
+      ).toHaveLength(1);
+      const [viewRow] = buildTimelineViewRows([
+        workRow(completed.rows, "command", command.itemId),
+      ]);
+      expect(viewRow && plainTitle(viewRow)).toBe("Ran mkdir -p build");
+    },
+  );
+
   it("projects fileRead and search items to file-read and search rows; bare tool calls derive no intent", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const v3 = renderTimelineFixture({

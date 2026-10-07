@@ -159,6 +159,11 @@
     "sonner"
   ],
   "splitBoundaries": {
+    "src/components/promptbox/MicrophonePreferences.tsx": [
+      "boot",
+      "ThreadPage",
+      "NewThreadPage"
+    ],
     "src/components/code/BbDiff.tsx": ["boot", "ThreadPage", "NewThreadPage"],
     "src/components/code/BbSourceCode.tsx": [
       "boot",

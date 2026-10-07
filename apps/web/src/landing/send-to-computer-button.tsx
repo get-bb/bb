@@ -5,7 +5,7 @@ import { useState } from "react";
 import { copyPlainText } from "../lib/copy-plain-text";
 import { trackLandingEvent } from "./analytics";
 import type { CtaPlacement } from "./site";
-import { SITE_TITLE, SITE_URL } from "./site";
+import { SITE_TITLE } from "./site";
 
 export function SendToComputerButton({
   placement,
@@ -18,12 +18,13 @@ export function SendToComputerButton({
       name: "landing_send_to_computer_clicked",
       properties: { placement },
     });
+    const url = window.location.href;
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({
           title: SITE_TITLE,
           text: "Download bb on your computer",
-          url: SITE_URL,
+          url,
         });
         return;
       } catch (error) {
@@ -32,7 +33,7 @@ export function SendToComputerButton({
         }
       }
     }
-    const copied = await copyPlainText(SITE_URL);
+    const copied = await copyPlainText(url);
     setStatus(copied ? "copied" : "failed");
     setTimeout(() => setStatus("idle"), 1500);
   };

@@ -11,7 +11,7 @@ import {
   ArchivedRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
-import { ChangesSection } from "./info/ChangesSection";
+import { UncommittedChangesSection } from "./info/ChangesSection";
 import { CommitsSection } from "./info/CommitsSection";
 import {
   PanelStage,
@@ -595,7 +595,6 @@ export function GitStatus() {
             environment={makeEnvironment()}
             workspaceStatus={makeWorkspaceStatus()}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -611,7 +610,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -635,7 +633,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -659,7 +656,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -683,7 +679,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -722,7 +717,6 @@ export function GitStatus() {
               },
             })}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -733,7 +727,6 @@ export function GitStatus() {
             environment={makeEnvironment({ status: "destroyed" })}
             workspaceStatus={undefined}
             workspaceStatusError={null}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -744,7 +737,6 @@ export function GitStatus() {
             environment={makeEnvironment()}
             workspaceStatus={undefined}
             workspaceStatusError={new Error("git status failed: ENOENT")}
-            selectedMergeBaseBranch={undefined}
           />
         </RowStage>
       </StoryRow>
@@ -805,7 +797,7 @@ export function ChangedFiles() {
     <StoryCard>
       <StoryRow label="uncommitted">
         <RowStage>
-          <ChangesSection
+          <UncommittedChangesSection
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...STORY_DIRTY_WORKING_TREE,
@@ -818,7 +810,7 @@ export function ChangedFiles() {
       </StoryRow>
       <StoryRow label="committed, not merged">
         <RowStage>
-          <ChangesSection
+          <CommitsSection
             workspaceStatus={makeWorkspaceStatus({
               mergeBase: STORY_COMMITTED_MERGE_BASE,
             })}
@@ -828,7 +820,17 @@ export function ChangedFiles() {
       </StoryRow>
       <StoryRow label="uncommitted + committed">
         <RowStage>
-          <ChangesSection
+          <UncommittedChangesSection
+            workspaceStatus={makeWorkspaceStatus({
+              workingTree: {
+                ...STORY_DIRTY_WORKING_TREE,
+                state: "dirty_and_committed_unmerged",
+              },
+              mergeBase: STORY_COMMITTED_MERGE_BASE,
+            })}
+            onChangedFileClick={noop}
+          />
+          <CommitsSection
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 ...STORY_DIRTY_WORKING_TREE,

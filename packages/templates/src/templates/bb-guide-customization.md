@@ -127,6 +127,15 @@ provider events. Warnings, errors, and model fallback stay visible. Existing
 unhandled-event preferences are preserved. Set it with
 `bb settings general showDiagnosticEvents <true|false>`.
 
+Settings → General → Show Git changes and Commit button controls the git
+summary, expanded file list, and Commit action in the thread header and overflow
+menu.
+`showGitChanges` defaults to true; use
+`bb settings general showGitChanges false` to hide them, or true to restore them.
+The server saves this preference across reloads and shares it across connected
+clients. PR status and workspace warnings remain visible. SDK callers can update
+`showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
+
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
 false. Outside an open typeahead menu, enabling it makes Enter steer a running
@@ -168,9 +177,12 @@ branches bb creates after the change.
   bb settings general <key> <value>
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
-  bb settings usage [--machine <id-or-name>]
+  bb settings usage [--machine <id-or-name>] [--refresh]
   bb settings version [--force]
   bb settings reload
+
+Use `--refresh` to fetch fresh provider usage; ordinary reads may reuse results
+for 10 seconds. The SDK equivalent is `bb.sdk.system.usageLimits({ refresh: true })`.
 
 `bb settings ai-services` shows which AI service writes thread titles (and so
 branch names), commit messages, and voice transcripts, plus every service a
@@ -201,7 +213,11 @@ The default-off `navigationRail` experiment keeps a vertical rail of
 destinations on the left edge of the sidebar on every screen. Home returns to
 the last thread, Settings sits at the bottom, and New thread moves into the
 sidebar header. The sidebar beside the rail still swaps between the thread
-list, Plugins, Skills, and Settings. While it is on, bb draws the navigation
+list, Plugins, Skills, and Settings. Collapsing the sidebar hides that list
+and leaves the rail in place. In the macOS desktop app the rail and a title
+bar across the top of the window share one background; the title bar holds
+the window controls, Back and Forward, and the sidebar toggle, and the
+sidebar and page sit in a card with a rounded top-left corner. While it is on, bb draws the navigation
 itself, so the Navigation and Header choices under Settings → Appearance are
 not used; they apply again when the experiment is turned off. Narrow windows
 and phones keep the regular drawer.
@@ -300,6 +316,14 @@ plugin frontend runs. CLI/SDK callers should clear conflicting explicit
 bindings in the same update; plugin defaults yield to explicit bindings.
 
 Push notifications
+
+For a standalone development APK from a source checkout, run
+`pnpm mobile:apk:dev`. It writes `apps/mobile/build-output/bb-dev.apk`, named
+**bb dev** with orange icons and separate package `app.getbb.mobile.dev`.
+Append `-- x86_64` for an Intel emulator. The command sets
+`BB_MOBILE_VARIANT=dev`; direct Expo commands default to `production`.
+The dev variant skips production Firebase and HTTPS app-link registration.
+See `apps/mobile/README.md` for prerequisites and per-thread artifact delivery.
 
 Android source builds accept `GOOGLE_SERVICES_JSON` (path to Firebase Android
 configuration), with `apps/mobile/google-services.json` as a local fallback.
@@ -455,9 +479,9 @@ are visible by default. Example:
 
 Client-local UI preferences
 
-Open microphone preferences by right-clicking the composer microphone or pressing
-Shift+F10 while it is focused. A warning opens preferences when the microphone
-is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+Open microphone preferences by right-clicking the composer microphone, pressing
+Shift+F10 while it is focused, or clicking the Microphone control in Settings →
+Voice Input. A warning opens preferences when the microphone is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
 preferences starts a local microphone preview with the recording waveform and
 a list of inputs. Closing preferences releases the preview. The recording controls
 contain only cancel, stop, and send; microphone preferences are available while idle.

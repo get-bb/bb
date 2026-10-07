@@ -61,6 +61,7 @@ import { createProject } from "../src/data/projects.js";
 import {
   createThread,
   listRunningThreads,
+  listArchivedThreadsPendingTeardown,
   listThreadsWithPendingInteractionState,
 } from "../src/data/threads.js";
 
@@ -1039,8 +1040,8 @@ describe("slow query index plans", () => {
           expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
         });
         const supportQueries = statements.filter((statement) =>
-          statement.sql.includes(
-            "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+          /from events indexed by events_thread_turn_type_item_sequence_idx/i.test(
+            statement.sql,
           ),
         );
         expect(supportQueries.length).toBeGreaterThan(0);
@@ -1059,6 +1060,25 @@ describe("slow query index plans", () => {
       }
     },
   );
+
+  it("discovers archived teardown work without walking archived thread history", () => {
+    const { db } = setup();
+    try {
+      const captured = captureStatements(db, () => {
+        listArchivedThreadsPendingTeardown(db);
+      });
+      const statement = captured[0]!;
+      const details = queryPlanDetails({ db, ...statement });
+      expect(details).toMatch(/SEARCH threads USING INDEX \S+ \(status=\?\)/);
+      expect(details).toContain(
+        "SEARCH threads USING INDEX sqlite_autoindex_threads_1 (id=?)",
+      );
+      expect(details).not.toContain("CORRELATED SCALAR SUBQUERY");
+      expect(details).not.toContain("SCAN threads");
+    } finally {
+      db.$client.close();
+    }
+  });
 
   it("uses the active-thread maintenance index for emitted idle checks", () => {
     const { db, logger } = setup();
@@ -1425,7 +1445,20 @@ describe("slow query index plans", () => {
   });
 
   it("pins maintenance discovery to the typed sequence index", () => {
-    const { db } = setup();
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/diff/updated",
+        scope: turnScope("pruning-turn"),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: "{}",
+        createdAt: 1,
+      },
+    ]);
     const statements = captureStatements(db, () => {
       advanceThreadPruning(db, "turn-diffs");
     });
@@ -1504,8 +1537,8 @@ describe("slow query index plans", () => {
     expect(discoveryPlan).toContain("USING INTEGER PRIMARY KEY (rowid=?)");
     expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
     const supportQueries = statements.filter((statement) =>
-      statement.sql.includes(
-        "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+      /from events indexed by events_thread_turn_type_item_sequence_idx/i.test(
+        statement.sql,
       ),
     );
     expect(supportQueries.length).toBeGreaterThan(0);
@@ -1513,7 +1546,7 @@ describe("slow query index plans", () => {
       expect(queryPlanDetails({ db, ...statement })).toContain(
         "USING INDEX events_thread_turn_type_item_sequence_idx",
       );
-      expect(statement.sql).toContain("LIMIT ?");
+      expect(statement.sql).toMatch(/LIMIT \?/i);
     }
     const pruneQuery = findOnlyDebugLog({
       logger,

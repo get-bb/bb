@@ -56,7 +56,6 @@ import {
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import {
   getLatestPendingInteraction,
-  isPendingInteractionStateUnknown,
   useThread,
   useThreadPendingInteractions,
   useThreadQueuedMessages,
@@ -224,10 +223,6 @@ function EmbeddedThreadChatWithComposer({
   const hasComposerBlockingPendingInteraction =
     activePendingInteraction !== null &&
     activePendingInteraction.payload.kind !== "plugin";
-  const pendingInteractionsInitialLoading = isPendingInteractionStateUnknown(
-    pendingInteractionsQuery.data,
-    pendingInteractionsQuery.isFetching,
-  );
   useThreadReadTracking({
     markThreadRead,
     thread: threadQuery.data,
@@ -416,7 +411,6 @@ function EmbeddedThreadChatWithComposer({
         childThreadId: threadId,
         hasPendingInteraction: hasComposerBlockingPendingInteraction,
         isDefaultExecutionOptionsLoading,
-        isPendingInteractionsInitialLoading: pendingInteractionsInitialLoading,
         isStopRequested,
         onStop: handleStopThread,
         runtimeDisplayStatus: displayStatus,
@@ -427,7 +421,6 @@ function EmbeddedThreadChatWithComposer({
       handleStopThread,
       isDefaultExecutionOptionsLoading,
       isStopRequested,
-      pendingInteractionsInitialLoading,
       threadId,
     ],
   );

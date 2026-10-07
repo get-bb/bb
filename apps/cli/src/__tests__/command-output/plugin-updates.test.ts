@@ -242,6 +242,45 @@ describe("bb plugin update commands", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("starts an update without waiting and lets the user inspect its job", async () => {
+    const job = {
+      id: "update-1",
+      pluginId: "notes",
+      displayName: "Notes",
+      state: "running",
+      phase: "checking",
+    };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          results: [
+            {
+              id: "notes",
+              outcome: "update-available",
+              installed: version("1.0.0"),
+              candidate: version("1.1.0"),
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(pluginList("notes", "npm:notes@^1")))
+      .mockResolvedValueOnce(jsonResponse({ job }, 202));
+    await runCommand(
+      ["plugin", "update", "notes", "--yes", "--no-wait"],
+      register,
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "bb plugin update-jobs update-1",
+    );
+    vi.mocked(console.log).mockClear();
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ job }));
+    await runCommand(["plugin", "update-jobs", "update-1", "--json"], register);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify({ jobs: [job] }, null, 2),
+    ]);
+  });
+
   it("--all updates compatible results and skips pinned and incompatible", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

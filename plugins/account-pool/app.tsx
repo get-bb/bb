@@ -273,8 +273,8 @@ function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+    <section className="@container/pool-section space-y-3">
+      <div className="flex flex-col gap-3 @min-[36rem]/pool-section:flex-row @min-[36rem]/pool-section:items-start @min-[36rem]/pool-section:justify-between @min-[36rem]/pool-section:gap-4">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
@@ -355,7 +355,7 @@ function QuotaValue({
   return (
     <div
       className={cn(
-        "w-16 text-left tabular-nums transition-opacity sm:text-right",
+        "w-16 text-left tabular-nums transition-opacity @min-[32rem]/account-row:text-right",
         refreshing && "opacity-50",
       )}
     >
@@ -411,7 +411,7 @@ function AccountRow({
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "flex items-center gap-3 text-sm",
+        "@container/account-row flex items-center gap-3 text-sm",
         isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
       )}
     >
@@ -436,7 +436,7 @@ function AccountRow({
       >
         <button
           type="button"
-          className="grid min-w-0 flex-1 grid-cols-1 items-center gap-y-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-y-0"
+          className="grid min-w-0 flex-1 grid-cols-1 items-center gap-y-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring @min-[32rem]/account-row:grid-cols-[minmax(0,1fr)_auto] @min-[32rem]/account-row:gap-y-0"
           aria-label={`Open ${account.label}`}
           onClick={onOpen}
         >
@@ -466,7 +466,7 @@ function AccountRow({
               {refreshing ? <span>refreshing usage…</span> : null}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:flex-nowrap sm:gap-1">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 @min-[32rem]/account-row:flex-nowrap @min-[32rem]/account-row:gap-1">
             {slots.map((slot) => (
               <QuotaValue
                 key={slot.key}

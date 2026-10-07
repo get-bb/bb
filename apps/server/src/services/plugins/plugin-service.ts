@@ -56,6 +56,7 @@ import {
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
   type PluginCapabilitySummary,
+  type PluginCachePruneResponse,
   type PluginSafeModeUpdateResponse,
   type PluginSourceDetail,
   type PluginSourceSelection,
@@ -111,6 +112,10 @@ import {
   parsePluginSource,
   recoverInterruptedGitPluginPromotion,
 } from "./install-sources.js";
+import {
+  prunePluginCache,
+  removeUnusedPluginArtifacts,
+} from "./plugin-artifact-gc.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
@@ -244,6 +249,7 @@ export interface PluginService {
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
   list(): InstalledPlugin[];
+  getDisplayName(id: string): string;
   providerCatalog(): Array<{
     id: string;
     displayName: string;
@@ -285,6 +291,7 @@ export interface PluginService {
   getSource(id: string): Promise<PluginSourceDetail | undefined>;
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
   remove(id: string): Promise<boolean>;
+  pruneCache(args: { dryRun: boolean }): Promise<PluginCachePruneResponse>;
   setEnabled(
     id: string,
     enabled: boolean,
@@ -1544,6 +1551,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     handleUncaughtException,
 
     list,
+    getDisplayName(id) {
+      return (
+        loaded.get(id)?.manifest.name ?? identities.get(id)?.manifest.name ?? id
+      );
+    },
     providerCatalog() {
       return listInstalledPlugins(deps.db).flatMap((row) =>
         pluginProviderCatalog(row).map((provider) => ({
@@ -1676,11 +1688,28 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           if (managedDir !== undefined) {
             await rm(managedDir, { recursive: true, force: true });
           }
+          await removeUnusedPluginArtifacts({
+            db: deps.db,
+            dataDir: deps.dataDir,
+            pluginId: id,
+            warn: (message) => logger.warn(message),
+          });
         }
         await syncCliSkill();
         notifyPluginsChanged();
         return removed;
       });
+    },
+
+    pruneCache({ dryRun }) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        prunePluginCache({
+          db: deps.db,
+          dataDir: deps.dataDir,
+          dryRun,
+          warn: (message) => logger.warn(message),
+        }),
+      );
     },
 
     async setEnabled(id, enabled) {

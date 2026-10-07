@@ -82,7 +82,10 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
-import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
+import {
+  useOptionalIsSidebarShowing,
+  useSidebarKeepsCollapsedRail,
+} from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import type {
   FixedPanelViewTab,
@@ -134,6 +137,7 @@ interface CollapsedPanelTrafficLightReserveArgs {
   isConversationCollapsed: boolean;
   renderAsDrawer: boolean;
   isSidebarShowing: boolean | null;
+  sidebarKeepsCollapsedRail: boolean;
   reserveMacosTrafficLights: boolean;
 }
 
@@ -141,12 +145,17 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
   isConversationCollapsed,
   renderAsDrawer,
   isSidebarShowing,
+  sidebarKeepsCollapsedRail,
   reserveMacosTrafficLights,
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
-  const reserves =
-    reserveMacosTrafficLights &&
-    (renderAsDrawer || (isConversationCollapsed && isSidebarShowing === false));
-  return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
+  if (!reserveMacosTrafficLights) return false;
+  if (renderAsDrawer) return MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
+  return (
+    isConversationCollapsed &&
+    isSidebarShowing === false &&
+    !sidebarKeepsCollapsedRail &&
+    MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
+  );
 }
 
 const HIDE_PANEL_LABEL = "Hide right panel";
@@ -405,11 +414,13 @@ function ThreadSecondaryPanelContent({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
+  const sidebarKeepsCollapsedRail = useSidebarKeepsCollapsedRail();
   const collapsedPanelTrafficLightReserveClassName =
     resolveCollapsedPanelTrafficLightReserveClassName({
       isConversationCollapsed,
       renderAsDrawer,
       isSidebarShowing,
+      sidebarKeepsCollapsedRail,
       reserveMacosTrafficLights: shouldReserveMacosTrafficLights({
         desktopInfo,
         windowState: desktopWindowState,

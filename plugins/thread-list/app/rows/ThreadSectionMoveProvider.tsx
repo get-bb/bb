@@ -52,12 +52,12 @@ export function ThreadSectionMoveProvider({
             });
             return;
           }
-          void sdk.threads
-            .unpin({ threadId })
-            .then(() => sdk.threads.update({ threadId, sectionId }))
-            .catch(() => {
-              toast.error("Failed to unpin and move thread.");
-            });
+          void Promise.all([
+            sdk.threads.unpin({ threadId }),
+            sdk.threads.update({ threadId, sectionId }),
+          ]).catch(() => {
+            toast.error("Failed to unpin and move thread.");
+          });
           return;
         }
         if (thread.sectionId === sectionId) return;

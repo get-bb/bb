@@ -2,13 +2,13 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useId,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { SidebarRenameDialog } from "./SidebarRenameDialog.js";
 import { SidebarRenameEditor, renameError } from "./SidebarRenameEditor.js";
 
 interface SidebarRenameArgs {
@@ -23,8 +23,11 @@ interface SidebarRenameArgs {
   ownerKey?: string;
 }
 
+type RenamePresentation = "inline" | "dialog";
+
 export interface RenameSession extends SidebarRenameArgs {
   ownerKey: string;
+  presentation: RenamePresentation;
   draft: string;
   pending: Promise<boolean> | null;
   error: string | null;
@@ -90,7 +93,12 @@ function useRenameController() {
   );
 
   const start = useCallback(
-    async (args: SidebarRenameArgs & { ownerKey: string }) => {
+    async (
+      args: SidebarRenameArgs & {
+        ownerKey: string;
+        presentation: RenamePresentation;
+      },
+    ) => {
       const request = ++startRequestRef.current;
       const current = sessionRef.current;
       if (
@@ -140,6 +148,10 @@ export function SidebarRenameProvider({ children }: { children: ReactNode }) {
   return (
     <SidebarRenameContext.Provider value={controller}>
       {children}
+      <SidebarRenameDialog
+        session={controller.session}
+        controller={controller}
+      />
     </SidebarRenameContext.Provider>
   );
 }
@@ -151,29 +163,26 @@ export function useSidebarRenameState() {
 export function useSidebarRename(args: SidebarRenameArgs) {
   const compact = useIsCompactViewport();
   const pendingMenuRename = useRef<(() => void) | null>(null);
-  const shared = useContext(SidebarRenameContext);
-  const local = useRenameController();
-  const controller = shared ?? local;
+  const controller = useContext(SidebarRenameContext);
+  if (!controller) {
+    throw new Error("useSidebarRename requires a SidebarRenameProvider");
+  }
   const generatedOwnerKey = useId();
   const ownerKey = args.ownerKey ?? generatedOwnerKey;
-  const { session, start, cancel } = controller;
+  const { session, start } = controller;
   const isEditing =
     session?.ownerKey === ownerKey &&
     session.kind === args.kind &&
-    session.id === args.id;
+    session.id === args.id &&
+    session.presentation === "inline";
   const startEditing = useCallback(() => {
-    void start({ ...args, ownerKey });
+    void start({ ...args, ownerKey, presentation: "inline" });
   }, [args, start, ownerKey]);
-
-  useEffect(() => {
-    if (
-      !shared &&
-      session &&
-      (session.kind !== args.kind || session.id !== args.id)
-    ) {
-      cancel();
-    }
-  }, [args.id, args.kind, cancel, session, shared]);
+  const startEditingFromDoubleClick = useCallback(() => {
+    if (compact) return false;
+    startEditing();
+    return true;
+  }, [compact, startEditing]);
 
   return {
     editor: isEditing ? (
@@ -185,9 +194,13 @@ export function useSidebarRename(args: SidebarRenameArgs) {
     ) : null,
     isEditing,
     startEditing,
+    startEditingFromDoubleClick,
     startEditingFromMenu: () => {
-      if (compact) startEditing();
-      else pendingMenuRename.current = startEditing;
+      if (compact) {
+        void start({ ...args, ownerKey, presentation: "dialog" });
+      } else {
+        pendingMenuRename.current = startEditing;
+      }
     },
     onCloseAutoFocus: (event: Event) => {
       const begin = pendingMenuRename.current;

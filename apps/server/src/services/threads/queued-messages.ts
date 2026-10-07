@@ -1,4 +1,5 @@
 import {
+  getLatestThreadSequence,
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessageGroup,
   createQueuedThreadMessageInTransaction,
@@ -596,6 +597,9 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     thread.id,
     ["events-appended", "queue-changed", "status-changed"],
     {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: thread.id,
+      }),
       eventTypes: ["client/turn/requested"],
       ...buildThreadStatusChangeMetadata(deps, activeThread),
     },

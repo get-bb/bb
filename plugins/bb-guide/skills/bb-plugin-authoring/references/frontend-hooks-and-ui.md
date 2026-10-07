@@ -203,7 +203,13 @@ diff viewers, and the new-thread composer.
   update path.
 - The registry's `icon` is a thin wrapper over `experimental_Icon`: vendored
   components draw bb's glyphs, including icons other plugins register, from
-  the host at runtime instead of bundling an icon set.
+  the host at runtime instead of bundling an icon set. Draw your own icons
+  through it too. Plugins scaffolded before SDK 0.5.16 vendored an older
+  `icon.tsx` (plus `icon-extended.tsx` and `icon-registry.ts`) that imports
+  `@hugeicons/*`: rerun `npx shadcn add @bb/icon`, delete the other two
+  files, and drop `@hugeicons/core-free-icons` and `@hugeicons/react` from
+  `dependencies`. A git install keeps every version's `node_modules` on the
+  user's disk, and the full hugeicons set is over 100 MB per copy.
 - `toast`: `import { toast } from "sonner"` — runtime-shimmed to the host's
   Toaster (`toast.success("Saved")` just works; never mount your own
   `<Toaster>`).
@@ -233,7 +239,7 @@ plugin types --check` reports drift). Never list one in `dependencies` —
   `@pierre/diffs` import. The shim stays for compatibility, but hand-rolled
   Pierre usage means owning patch normalization and the code theme yourself,
   and it opts you out of any installed renderer replacement.
-- Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
+- Everything else bundles from YOUR `node_modules` (lucide,
   non-portal radix, zod, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no

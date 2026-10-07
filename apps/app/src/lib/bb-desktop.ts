@@ -5,6 +5,7 @@ import type {
 } from "@bb/desktop-contract";
 
 export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[84px]";
+export const MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS = "pl-[84px]";
 export const MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS = "pl-[104px]";
 
 export const BROWSER_SIDEBAR_TRIGGER_INSET_CLASS = "pl-[12px]";

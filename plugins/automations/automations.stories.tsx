@@ -395,6 +395,37 @@ export function OverviewRows() {
   );
 }
 
+export function ResponsiveOverviewRows() {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4">
+      {OVERVIEW_ENTRIES.map(({ automation: value, project }, index) =>
+        "execution" in value ? (
+          <OverviewRow
+            key={value.id}
+            automation={
+              index === 0
+                ? {
+                    ...value,
+                    trigger: {
+                      triggerType: "schedule",
+                      cron: "*/5 9-17 * * *",
+                      timezone: "America/Los_Angeles",
+                    },
+                  }
+                : value
+            }
+            project={project}
+            onNavigate={noop}
+            onEnabledChange={async () => {}}
+            onRunNow={async () => {}}
+            onDelete={noop}
+          />
+        ) : null,
+      )}
+    </div>
+  );
+}
+
 export function OverviewStates() {
   const states = [
     {

@@ -33,62 +33,100 @@ describe("createAgentRuntime lifecycle", () => {
   });
 
   describe("thread setup and configuration", () => {
-    it("allows thread/start to outlive the generic JSON-RPC timeout", async () => {
-      const realSetTimeout = setTimeout;
-      const sleepReal = (ms: number): Promise<void> =>
-        new Promise((resolve) => {
-          realSetTimeout(resolve, ms);
+    it.each([
+      {
+        method: "start",
+        requestTimeoutMs: undefined,
+        advanceMs: 30_001,
+        timesOut: false,
+      },
+      {
+        method: "resume",
+        requestTimeoutMs: undefined,
+        advanceMs: 30_001,
+        timesOut: false,
+      },
+      {
+        method: "resume",
+        requestTimeoutMs: 500,
+        advanceMs: 501,
+        timesOut: true,
+      },
+    ] as const)(
+      "uses the construction deadline for thread/$method (requestTimeoutMs=$requestTimeoutMs)",
+      async ({ method, requestTimeoutMs, advanceMs, timesOut }) => {
+        const realSetTimeout = setTimeout;
+        const sleepReal = (ms: number): Promise<void> =>
+          new Promise((resolve) => {
+            realSetTimeout(resolve, ms);
+          });
+        vi.useFakeTimers();
+        const record = createScriptedEchoRequestRecord();
+        const runtime = createScriptedEchoRuntime({
+          runtime: {
+            workspacePath: tmpDir,
+            env: record.env,
+            onEvent: () => undefined,
+            threadCreation: { requestTimeoutMs },
+          },
+          launch: { scripted: { startDelayMs: 1_500 } },
         });
-      vi.useFakeTimers();
-      const record = createScriptedEchoRequestRecord();
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          env: record.env,
-          onEvent: () => undefined,
-        },
-        launch: { scripted: { startDelayMs: 1_500 } },
-      });
-      let settled = false;
-      const startOutcome = runtime
-        .startThread({
+        let settled = false;
+        const threadArgs = {
           environmentId: "env-1",
           threadId: "t1",
           projectId: "p1",
           providerId: "fake",
           options: fullRuntimeOptions,
-        })
-        .then(
+        };
+        const construction =
+          method === "start"
+            ? runtime.startThread(threadArgs)
+            : runtime.resumeThread({
+                ...threadArgs,
+                providerThreadId: "prov-1",
+              });
+        const constructionOutcome = construction.then(
           (result) => ({ status: "resolved" as const, result }),
           (error: unknown) => ({ status: "rejected" as const, error }),
         );
-      void startOutcome.then(() => {
-        settled = true;
-      });
-
-      try {
-        for (
-          let attempt = 0;
-          record.last("thread/start") === undefined;
-          attempt += 1
-        ) {
-          if (attempt >= 1_000) {
-            throw new Error("The bridge never received thread/start");
-          }
-          await sleepReal(10);
-        }
-        await vi.advanceTimersByTimeAsync(30_001);
-        expect(settled).toBe(false);
-
-        expect(await startOutcome).toEqual({
-          status: "resolved",
-          result: { providerThreadId: "prov-1" },
+        void constructionOutcome.then(() => {
+          settled = true;
         });
-      } finally {
-        vi.useRealTimers();
-        await runtime.shutdown();
-      }
-    });
+
+        try {
+          for (
+            let attempt = 0;
+            record.last(`thread/${method}`) === undefined;
+            attempt += 1
+          ) {
+            if (attempt >= 1_000) {
+              throw new Error(`The bridge never received thread/${method}`);
+            }
+            await sleepReal(10);
+          }
+          await vi.advanceTimersByTimeAsync(advanceMs);
+
+          if (timesOut) {
+            expect(await constructionOutcome).toEqual({
+              status: "rejected",
+              error: new Error(`JSON-RPC request timed out: thread/${method}`),
+            });
+            expect(runtime.hasThread("t1")).toBe(false);
+            expect(runtime.getProviderSession("t1")).toBeNull();
+          } else {
+            expect(settled).toBe(false);
+            expect(await constructionOutcome).toEqual({
+              status: "resolved",
+              result: { providerThreadId: "prov-1" },
+            });
+          }
+        } finally {
+          vi.useRealTimers();
+          await runtime.shutdown();
+        }
+      },
+    );
 
     it("fails session construction when the thread/start result carries no providerThreadId", async () => {
       const record = createScriptedEchoRequestRecord();

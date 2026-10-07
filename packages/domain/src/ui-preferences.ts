@@ -197,7 +197,7 @@ export const uiPreferenceDefinitions = {
   "infoPanel.collapsedSections": defineUiPreference(
     uiPreferenceStringListSchema,
     [],
-    "Thread Info panel section ids that are collapsed, such as commits, changes, forks, or threadStorage.",
+    "Thread Info panel section ids that are collapsed, such as commits, uncommittedChanges, forks, or threadStorage.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 

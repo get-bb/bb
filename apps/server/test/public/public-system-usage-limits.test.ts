@@ -61,6 +61,95 @@ function handleUsageRequest(
 }
 
 describe("GET /api/v1/system/usage-limits", () => {
+  it("shares concurrent usage requests but refreshes on explicit reload and reconnect", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "shared-usage",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        async handle(request) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return handleUsageRequest(request);
+        },
+      });
+      const read = async (refresh = false) => {
+        const response = await harness.app.request(
+          `/api/v1/system/usage-limits?hostId=${host.id}&refresh=${refresh}`,
+        );
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual(USAGE_RESPONSE);
+      };
+      const count = () =>
+        responder.requests.filter(
+          (request) => request.command.type === "provider.usage",
+        ).length;
+      try {
+        await Promise.all(Array.from({ length: 8 }, read));
+        expect(count()).toBe(3);
+        await read();
+        expect(count()).toBe(3);
+        await Promise.all(Array.from({ length: 8 }, () => read(true)));
+        expect(count()).toBe(6);
+        await read();
+        expect(count()).toBe(6);
+        harness.hub.notifyHost(host.id, ["host-connected"]);
+        await read();
+        expect(count()).toBe(9);
+      } finally {
+        responder.unregister();
+      }
+    });
+  });
+
+  it("retries provider usage errors instead of retaining them", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "retry-usage",
+      });
+      let probes = 0;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle(request) {
+          if (request.command.type === "provider.usage" && ++probes === 1) {
+            return {
+              ok: true,
+              result: {
+                supported: true,
+                usage: {
+                  status: "error",
+                  message: "offline",
+                  accountEmail: null,
+                  planLabel: null,
+                },
+              },
+            };
+          }
+          return handleUsageRequest(request);
+        },
+      });
+      try {
+        const url = `/api/v1/system/usage-limits?hostId=${host.id}&providerId=codex`;
+        const failed = await harness.app.request(url);
+        expect(await failed.json()).toEqual({
+          codex: {
+            status: "error",
+            message: "offline",
+            accountEmail: null,
+            planLabel: null,
+          },
+        });
+        const recovered = await harness.app.request(url);
+        expect(await recovered.json()).toEqual({ codex: USAGE_RESPONSE.codex });
+        expect(probes).toBe(2);
+      } finally {
+        responder.unregister();
+      }
+    });
+  });
+
   it("does not start a usage probe the provider did not declare", async () => {
     await withTestHarness(async (harness) => {
       harness.deps.providerRegistry.register(

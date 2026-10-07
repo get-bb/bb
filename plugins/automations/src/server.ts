@@ -60,12 +60,14 @@ export default async function plugin(bb: BbPluginApi) {
           `Automation startup reconciliation failed: ${errorMessage(error)}`,
         );
       }
+      let serverHostId: string | null = null;
       while (!signal.aborted) {
         try {
+          serverHostId ??= (await bb.sdk.system.config()).primaryHostId;
           await sweepDueAutomations(bb, db, {
             pluginDataDir,
             serverUrl: resolveServerUrl(),
-            serverHostId: (await bb.sdk.system.config()).primaryHostId,
+            serverHostId,
           });
         } catch (error) {
           bb.log.error(`Automation sweep failed: ${errorMessage(error)}`);

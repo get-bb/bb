@@ -161,15 +161,21 @@ describe("ThreadTimelineRows windowing", () => {
   });
 
   it.each([
-    { count: 19, compact: false },
-    { count: 20, compact: false },
-    { count: 59, compact: false },
-    { count: 19, compact: true },
-    { count: 20, compact: true },
-    { count: 39, compact: true },
+    { count: 19, compact: false, iPhone: false },
+    { count: 20, compact: false, iPhone: false },
+    { count: 59, compact: false, iPhone: false },
+    { count: 19, compact: true, iPhone: false },
+    { count: 20, compact: true, iPhone: false },
+    { count: 39, compact: true, iPhone: false },
+    { count: 59, compact: true, iPhone: true },
   ])(
-    "bounds mounted content for $count top-level rows (compact: $compact)",
-    async ({ count, compact }) => {
+    "bounds mounted content for $count top-level rows (compact: $compact, iPhone: $iPhone)",
+    async ({ count, compact, iPhone }) => {
+      if (iPhone) {
+        vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+        );
+      }
       const scrollElement = document.createElement("div");
       scrollElement.setAttribute("data-test-main-scroll", "");
       const bottomAnchor: BottomAnchorContextValue = {
@@ -213,7 +219,7 @@ describe("ThreadTimelineRows windowing", () => {
         expect(view.container.textContent).toContain(
           `Window message ${count - 1}`,
         );
-        if (count < 20) {
+        if (count < 20 || iPhone) {
           expect(mountedRows.length).toBe(count);
           expect(
             view.container.querySelector("[data-timeline-virtual-spacer]"),

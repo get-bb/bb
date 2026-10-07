@@ -192,3 +192,64 @@ export function Overview() {
     </StoryCard>
   );
 }
+
+const MARKER_WIDTH_CASES = [
+  {
+    label: "1–9",
+    text: Array.from(
+      { length: 9 },
+      (_, index) => `${index + 1}. Item ${index + 1}`,
+    ).join("\n"),
+  },
+  { label: "10–12", text: "10. Item ten\n11. Item eleven\n12. Item twelve" },
+  {
+    label: "98–101",
+    text: "98. Item ninety-eight\n99. Item ninety-nine\n100. Item one hundred\n101. Item one hundred one",
+  },
+  {
+    label: "Nested 7–11",
+    text: "1. Outer item\n\n   7. Nested seven\n   8. Nested eight\n   9. Nested nine\n   10. Nested ten\n   11. Nested eleven\n\n2. Another outer item",
+  },
+];
+
+export function OrderedListMarkers() {
+  return (
+    <StoryCard>
+      {(["user", "assistant"] as const).map((role) => (
+        <StoryRow
+          key={role}
+          label={role}
+          hint="single, double, triple digits and nested lists"
+        >
+          <div data-marker-width-role={role} className="w-full space-y-4">
+            {MARKER_WIDTH_CASES.map(({ label, text }) => (
+              <div key={label}>
+                <div className="mb-2 text-sm text-muted-foreground">
+                  {label}
+                </div>
+                {role === "user" ? (
+                  <UserMessage text={text} />
+                ) : (
+                  <TimelineStage>
+                    <ConversationMessageContent
+                      role="assistant"
+                      id="msg_marker_widths"
+                      threadId="thr_demo"
+                      turnId="turn_demo"
+                      text={text}
+                      timestamp={0}
+                      attachments={null}
+                      showActions={false}
+                      mobileActionDisplay="inline"
+                      streaming={false}
+                    />
+                  </TimelineStage>
+                )}
+              </div>
+            ))}
+          </div>
+        </StoryRow>
+      ))}
+    </StoryCard>
+  );
+}

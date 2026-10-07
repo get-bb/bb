@@ -1,4 +1,5 @@
-import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { prepareCachedQuery } from "../connection.js";
+import { and, asc, eq, inArray, isNotNull, isNull, ne, or, placeholder, sql } from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
@@ -8,7 +9,7 @@ import type {
   EnvironmentStatus,
 } from "@bb/domain";
 import { areHostPathsEqual, evaluateEnvironmentLifecycleEvent } from "@bb/domain";
-import type { DbConnection, DbTransaction } from "../connection.js";
+import type { DbConnection, DbTransaction, DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { environments, threads } from "../schema.js";
 import { createEnvironmentId } from "../ids.js";
@@ -76,10 +77,15 @@ export function createEnvironment(
   return row;
 }
 
+const prepareGetEnvironment = (db: DbQueryConnection) =>
+  db
+    .select()
+    .from(environments)
+    .where(eq(environments.id, placeholder("id")))
+    .prepare();
+
 export function getEnvironment(db: EnvironmentReadConnection, id: string) {
-  return (
-    db.select().from(environments).where(eq(environments.id, id)).get() ?? null
-  );
+  return prepareCachedQuery(db, prepareGetEnvironment).get({ id }) ?? null;
 }
 
 export function findProjectEnvironmentByHostPath(

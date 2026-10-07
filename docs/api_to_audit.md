@@ -90,6 +90,12 @@ Before stabilization, audit schema export fidelity (especially refinements and t
 
 Before stabilization, audit whether official store plugins should count as included, whether a plugin calling `experimental_setSafeMode` should be allowed to stop itself and others, whether the toggle should run asynchronously for installs with many slow plugins, and whether startup needs an out-of-band override (env var or flag) for a plugin that breaks the server before the toggle is reachable.
 
+## Plugin cache pruning
+
+`bb.sdk.plugins.experimental_pruneCache({ dryRun? })` (`POST /plugins/cache/prune`) deletes cached git and npm plugin versions under `<data>/plugins/cache` that no installed plugin uses, and returns `{ dryRun, removed, bytes }`. Each `removed` entry has `pluginId` (`null` for a cache directory with no artifact record), `version` (git commit or npm version), `path`, and the `bytes` it freed; a shared monorepo checkout is counted once. It removes every non-active version regardless of age (for example versions left by earlier bb releases, the candidate of a rolled-back update, or an interrupted operation) and unrecorded commit or version directories. It keeps every installed plugin's active version, versions a pending or restoring rollback still needs, any directory containing or inside an installed plugin's root (legacy and path installs), and in-flight staging directories. It runs under the plugin registration lock, so it never overlaps an install, update, or removal. `dryRun: true` reports the same entries without deleting. Removing a plugin deletes its cached versions immediately, and a successful update deletes the plugin's replaced versions once activation has stabilized; only the update's state snapshot stays for the 7-day retention window. The same operation backs `bb plugin prune [--dry-run]` and the command palette's Clean up plugin cache.
+
+Before stabilization, audit whether the response should report retained-but-unused sizes so a UI can show reclaimable space without a dry run, and whether stale `.staging`, `.promoting`, and `.corrupt` directories left by crashes should be collected too.
+
 ## RPC caller identity (`ExperimentalPluginRpcHandlerContext.experimental_caller`)
 
 Every `bb.rpc.register` handler receives a second argument, an
@@ -3745,3 +3751,15 @@ steer, which is recorded by its request and shown at its acceptance.
 Stabilize once message links have shipped and the seq has stayed stable across
 edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
 should remain alongside it.
+
+## `PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`
+
+Archives an environment's active thread trees through the host flow, including optimistic cache updates, pane cleanup, shared toast styling, and one ten-second Undo action. Undo restores only returned archived IDs, sequentially with lifecycle owners first. Archive failures show a host error toast and reject; Undo failures show a host error toast.
+
+Stabilize after verifying group archive and Undo with descendants, already archived threads, split panes, navigation during the Undo window, and failure rollback across sidebar organization modes.
+
+## `PluginBbSdk.plugins.experimental_startUpdate` and `experimental_updateJobs`
+
+Starts a server-owned plugin update and returns its job immediately. `experimental_updateJobs.list/get` exposes queued/running phases and terminal update, rollback, or failure results. Jobs continue across client disconnects; finished jobs remain for ten minutes. Jobs are in memory and do not survive server restarts. `applyUpdate` retains its result contract by polling the job; raw callers without `Prefer: respond-async` retain the synchronous response. Running updates cannot be cancelled during activation or rollback.
+
+Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.

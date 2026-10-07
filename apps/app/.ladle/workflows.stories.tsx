@@ -1,13 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import { PluginSlotMount } from "../src/components/plugin/PluginSlotMount";
 import {
   installTestPluginRuntime,
   loadPluginApp,
-  renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import type { WorkflowRunView } from "./src/ui-contract.js";
+import type { WorkflowRunView } from "../../../plugins/workflows/src/ui-contract.js";
 
 installTestPluginRuntime();
-const workflowAppModule = await import("./src/app.js");
+const workflowAppModule = await import("../../../plugins/workflows/src/app.js");
 const { EmptyOrError, LoadingPreview, WorkflowRunPanelState } =
   workflowAppModule;
 const workflowApp = await loadPluginApp(async () => workflowAppModule);
@@ -65,34 +65,42 @@ const LOADED_RUN: WorkflowRunView = {
 };
 
 function LoadedPanel() {
-  const mountRef = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    let cancelled = false;
-    let cleanup = () => undefined;
-    queueMicrotask(() => {
-      if (cancelled || mountRef.current === null) return;
-      const slot = renderSlot(
-        workflowPanel,
-        { threadId: "thr_origin", params: { runId: LOADED_RUN.id } },
-        { rpc: { workflowRunView: () => ({ run: LOADED_RUN }) } },
-      );
-      slot.container.classList.add("h-full");
-      mountRef.current.append(slot.container);
-      cleanup = () => {
-        slot.unmount();
-        slot.container.remove();
-      };
-    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url === "/api/v1/plugins/workflows/rpc/workflowRunView") {
+        return new Response(
+          JSON.stringify({ ok: true, result: { run: LOADED_RUN } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      return originalFetch(input, init);
+    };
+    setReady(true);
     return () => {
-      cancelled = true;
-      cleanup();
+      globalThis.fetch = originalFetch;
     };
   }, []);
+  const Panel = workflowPanel.component;
   return (
-    <div
-      ref={mountRef}
-      className="h-72 w-full max-w-sm overflow-hidden border border-border-seam"
-    />
+    <div className="h-72 w-full max-w-sm overflow-hidden border border-border-seam">
+      {ready ? (
+        <PluginSlotMount
+          pluginId="workflows"
+          slotKind="threadPanelActions"
+          slotId="workflow-run"
+        >
+          <Panel threadId="thr_origin" params={{ runId: LOADED_RUN.id }} />
+        </PluginSlotMount>
+      ) : null}
+    </div>
   );
 }
 

@@ -26,6 +26,7 @@ function escapeXml(value: string): string {
 export function sitemapXml(
   origin: string,
   posts: readonly Post[],
+  contentPaths: readonly string[],
   marketplace: PublicMarketplaceData,
 ): string {
   const pages: SitemapPage[] = [
@@ -34,6 +35,7 @@ export function sitemapXml(
     { path: "/changelog" },
     { path: "/plugin-guide" },
     { path: "/privacy" },
+    ...contentPaths.map((path) => ({ path })),
     ...posts.map((post) => ({
       path: `/blog/${encodeURIComponent(post.slug)}`,
       lastmod: post.dateIso,

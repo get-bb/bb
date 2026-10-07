@@ -158,12 +158,13 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 
 ## In-App Updates
 
-In-app updates are off unless you start bb with `--in-app-updates`:
-`npx bb-app start --in-app-updates` (or a global `bb-app`), or
-`pnpm start --in-app-updates` from a source checkout. bb then runs under a small
+In-app updates are on when you start bb with `npx bb-app start` (or a global
+`bb-app`) or with `pnpm start` from a source checkout. bb runs under a small
 update shim, so Settings → Updates and `bb updates app apply` can update bb
-without a terminal. Without the flag, bb starts as before and Settings → Updates
-shows the npm upgrade command for release installs. Source checkouts show their
+without a terminal. Pass `--no-in-app-updates` to turn them off: bb then starts
+without the shim and Settings → Updates shows the npm upgrade command for
+release installs. `--in-app-updates`, which earlier releases needed, is still
+accepted and changes nothing. Source checkouts show their
 Git revision, or a labeled build version when unavailable, and are never compared
 with npm releases. Without the update shim, no freshness indicator is shown.
 Failed checks report “Latest unknown”; release checks can be retried in the UI,
@@ -273,9 +274,9 @@ another voice service.
 bb accepts voice recordings up to 25 MB. A service may set a lower limit;
 Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
 
-Open microphone preferences by right-clicking the composer microphone or pressing
-Shift+F10 while it is focused. A warning opens preferences when the microphone
-is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+Open microphone preferences by right-clicking the composer microphone, pressing
+Shift+F10 while it is focused, or clicking the Microphone control in Settings →
+Voice Input. A warning opens preferences when the microphone is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
 preferences starts a local microphone preview with the recording waveform and
 a list of inputs. Closing preferences releases the preview. The recording controls
 contain only cancel, stop, and send; microphone preferences are available while idle.
@@ -296,7 +297,7 @@ stop recording or switch microphones automatically. While idle, a warning opens
 preferences on click. Audio preview runs only while microphone preferences are
 open; it is not saved or transcribed.
 
-The microphone picker in Settings → Voice Input is client-local. It stores the
+The microphone preference is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
 back to the system default and other available inputs when it is disconnected,
@@ -369,6 +370,16 @@ keeps "Queue" because a one-time migration stamps the old default onto it. Set
 it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
+
+The "Show Git changes and Commit button" switch in Settings → General defaults to on.
+Turn it off to hide the untracked, uncommitted, and committed file summary and
+expanded file list above every thread composer, plus the Commit action in the
+thread header and overflow menu. PR status, thread relationships,
+and workspace warnings remain visible. This server-wide preference persists
+across reloads and applies to every connected app client. Set it with
+`bb settings general showGitChanges false` or read the current config and call
+`sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.
+Older clients that omit the field preserve the saved value.
 
 The "Thread archive confirmation" switch in Settings → General defaults to on.
 Turn it off to archive a thread and its child threads immediately without a
@@ -513,9 +524,11 @@ untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
 as the sidebar's back and forward arrows: they move through the pages opened
 in the current window, like browser history. They use `Mod+[` / `Mod+]` on
 desktop and the web; in the browser, bb handles the key instead of the
-browser's own Back while it has somewhere to go. At either end the shortcut
-does nothing. Hovering an arrow shows its
-current shortcut.
+browser's own Back while it has somewhere to go. At either end the desktop app
+does nothing, while the web app leaves the key to the browser's own Back or
+Forward. The commands appear in the command palette only when there is
+somewhere to go, and they don't run while the in-app browser has focus.
+Hovering an arrow shows its current shortcut.
 
 On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
 `Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
@@ -953,7 +966,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
 | `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
 | `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `changes`, `forks`, `threadStorage`)     |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`)                   |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
@@ -1382,7 +1395,11 @@ The default-off `navigationRail` experiment keeps a vertical rail of
 destinations on the left edge of the sidebar on every screen. Home returns to
 the last thread, Settings sits at the bottom, and New thread moves into the
 sidebar header. The sidebar beside the rail still swaps between the thread
-list, Plugins, Skills, and Settings. While it is on, bb draws the navigation
+list, Plugins, Skills, and Settings. Collapsing the sidebar hides that list
+and leaves the rail in place. In the macOS desktop app the rail and a title
+bar across the top of the window share one background; the title bar holds
+the window controls, Back and Forward, and the sidebar toggle, and the
+sidebar and page sit in a card with a rounded top-left corner. While it is on, bb draws the navigation
 itself, so the Navigation and Header choices under Settings → Appearance are
 not used; they apply again when the experiment is turned off. Narrow windows
 and phones keep the regular drawer.
@@ -1685,6 +1702,14 @@ directory and reused by subsequent runs. Its generated command accepts
 `--host-daemon-port <port>` when an explicit port is required.
 
 ## Source Development
+
+`pnpm mobile:apk:dev` builds the standalone Android development app, **bb dev**,
+with orange icons and package `app.getbb.mobile.dev`. Output is
+`apps/mobile/build-output/bb-dev.apk`; append `-- x86_64` for an Intel emulator.
+The build command sets `BB_MOBILE_VARIANT=dev` for Expo configuration. Direct
+Expo commands accept `BB_MOBILE_VARIANT=production` (the default) or `dev`;
+other values fail validation. The dev variant omits production Firebase and
+HTTPS app-link registration. See [mobile build instructions](../apps/mobile/README.md#android-local-apk-and-verification).
 
 For source development only, `pnpm dev`, `pnpm start:worktree`,
 `pnpm start:worktree-remote`, `pnpm start:worktree --dryrun`,

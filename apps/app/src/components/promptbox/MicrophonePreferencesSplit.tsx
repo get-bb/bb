@@ -3,7 +3,6 @@ import { defineSplit } from "@/lib/define-split";
 
 export const MicrophonePreferencesSplit = defineSplit<{
   open: boolean;
-  activeStream: MediaStream | null;
   onCaptureReady?: () => void;
 }>({
   id: "microphone-preferences",

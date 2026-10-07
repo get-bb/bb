@@ -1,10 +1,4 @@
-import {
-  Fragment,
-  useId,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { Fragment, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -13,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
@@ -104,6 +99,27 @@ function InfoSectionHeading({
   );
 }
 
+export function InfoSubheading({
+  label,
+  count,
+  trailing,
+}: {
+  label: string;
+  count: number;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="mt-3 mb-1 flex h-5 min-w-0 items-center justify-between gap-3">
+      <span className="flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground">
+        <span className="truncate">{label}</span>
+        <span aria-hidden="true">·</span>
+        <span className="tabular-nums">{count}</span>
+      </span>
+      {trailing}
+    </div>
+  );
+}
+
 export interface InfoSectionProps extends InfoSectionHeadingProps {
   children: ReactNode;
 }
@@ -116,27 +132,6 @@ export function InfoSection({ children, ...heading }: InfoSectionProps) {
       <InfoSectionHeading {...heading} bodyId={bodyId} />
       {collapsed ? null : <div id={bodyId}>{children}</div>}
     </section>
-  );
-}
-
-export function InfoMenuTrigger({
-  children,
-  className,
-  ...buttonProps
-}: ComponentProps<"button">) {
-  return (
-    <button
-      type="button"
-      {...buttonProps}
-      className={cn(
-        INFO_LIST_QUIET_CONTROL_CLASS,
-        "ml-1.5 inline-flex h-5 items-center gap-0.5 px-0.5 data-[state=open]:text-foreground",
-        className,
-      )}
-    >
-      {children}
-      <Icon name="ChevronDown" className={INFO_LIST_CARET_CLASS} aria-hidden />
-    </button>
   );
 }
 
@@ -234,8 +229,10 @@ export interface InfoRowActionItem {
   onSelect: () => void;
 }
 
-const INFO_ROW_ACTION_CLASS =
-  "relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100";
+const INFO_ROW_ACTION_CLASS = cn(
+  "relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground opacity-0 transition-[opacity,background-color,color] hover:bg-state-active hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100",
+  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+);
 
 function InfoRowAction({
   action,
@@ -271,7 +268,7 @@ function InfoRowInlineActions({
     <InfoRowAction
       key={action.label}
       action={action}
-      className={collapsesOnTouch ? "pointer-coarse:hidden" : undefined}
+      className={collapsesOnTouch ? "[@media(hover:none)]:hidden" : undefined}
     />
   ));
 }
@@ -290,7 +287,7 @@ function InfoRowTouchActionsMenu({
         <button
           type="button"
           aria-label="More actions"
-          className={cn(INFO_ROW_ACTION_CLASS, "hidden pointer-coarse:flex")}
+          className={cn(INFO_ROW_ACTION_CLASS, "hidden [@media(hover:none)]:flex")}
         >
           <Icon name="MoreHorizontal" className="size-3" aria-hidden />
         </button>
@@ -352,7 +349,7 @@ export function InfoList<T>({
   const canToggle = infoListCollapses(items.length, limit);
   const visibleItems = canToggle && !isExpanded ? items.slice(0, limit) : items;
   return (
-    <ul className="relative m-0 list-none p-0">
+    <ul className="relative m-0 list-none p-0 max-md:pointer-coarse:[--text-xs--line-height:1.125rem] max-md:pointer-coarse:[--text-xs:0.8125rem]">
       {rail ? (
         <span
           className="pointer-events-none absolute top-3 bottom-3 left-[5.5px] w-px bg-border"

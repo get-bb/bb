@@ -107,6 +107,7 @@ export type SystemExecutionOptionsQuery = z.infer<
 >;
 
 export const systemUsageLimitsQuerySchema = z.object({
+  refresh: z.enum(["true", "false"]).optional(),
   hostId: z.string().min(1).optional(),
   providerId: z.string().min(1).optional(),
 });

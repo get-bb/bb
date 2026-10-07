@@ -30,14 +30,11 @@ import {
   makeHost,
   makeThread as makeThreadFixture,
 } from "@bb/test-helpers/domain-fixtures";
-import {
-  makeWorkspaceMergeBase,
-  makeWorkspaceStatus,
-  makeWorkspaceWorkingTree,
-} from "@bb/test-helpers";
+import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
+  formatBranchComparison,
   GitStatusRow,
   ThreadMetadataCard,
 } from "./ThreadMetadataContent";
@@ -392,54 +389,39 @@ describe("GitStatusRow", () => {
         })}
         workspaceStatus={undefined}
         workspaceStatusError={new Error("should not have queried")}
-        selectedMergeBaseBranch={undefined}
       />,
     );
 
     expect(markup).toBe("");
   });
 
-  it("marks a dirty tree with an icon when the merge base branch name contains dirty", () => {
-    const markup = renderToStaticMarkup(
-      <TooltipProvider>
+  it("compares the branch with the merge base the daemon reported", () => {
+    const render = (
+      mergeBase: ReturnType<typeof makeWorkspaceMergeBase> | null,
+    ) =>
+      renderToStaticMarkup(
         <GitStatusRow
           thread={makeThread()}
           environment={null}
-          workspaceStatus={makeWorkspaceStatus({
-            workingTree: makeWorkspaceWorkingTree({
-              state: "dirty_and_committed_unmerged",
-              hasUncommittedChanges: true,
-            }),
-            mergeBase: makeWorkspaceMergeBase({
-              mergeBaseBranch: "fix/dirty-check",
-              aheadCount: 2,
-            }),
-          })}
+          workspaceStatus={makeWorkspaceStatus({ mergeBase })}
           workspaceStatusError={null}
-          selectedMergeBaseBranch={undefined}
-        />
-      </TooltipProvider>,
-    );
+        />,
+      );
 
-    expect(markup).toContain('aria-label="Uncommitted changes"');
-    expect(markup).toContain("2 ahead of fix/dirty-check");
+    expect(
+      render(
+        makeWorkspaceMergeBase({ mergeBaseBranch: "release", aheadCount: 2 }),
+      ),
+    ).toContain("2 ahead of release");
+    expect(render(null)).toBe("");
   });
 
-  it("drops the Ahead label when the summary already says how far ahead", () => {
-    const markup = renderToStaticMarkup(
-      <GitStatusRow
-        thread={makeThread()}
-        environment={null}
-        workspaceStatus={makeWorkspaceStatus({
-          branch: { currentBranch: "feature", defaultBranch: "main" },
-          mergeBase: makeWorkspaceMergeBase({ aheadCount: 6 }),
-        })}
-        workspaceStatusError={null}
-        selectedMergeBaseBranch={undefined}
-      />,
-    );
-
-    expect(markup).not.toContain(">Ahead</span>");
-    expect(markup).toContain("6 ahead of main");
+  it("phrases the branch comparison against its merge base", () => {
+    const compare = (aheadCount: number, behindCount: number) =>
+      formatBranchComparison({ aheadCount, behindCount, baseBranch: "main" });
+    expect(compare(0, 0)).toBe("Even with main");
+    expect(compare(6, 0)).toBe("6 ahead of main");
+    expect(compare(0, 3)).toBe("3 behind main");
+    expect(compare(4, 2)).toBe("4 ahead, 2 behind main");
   });
 });

@@ -310,6 +310,7 @@ export function registerSystemRoutes(
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
+      showGitChanges: settings.showGitChanges ?? current.showGitChanges,
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
       showDiagnosticEvents:

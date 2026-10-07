@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type ComponentPropsWithoutRef,
+  type CSSProperties,
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -931,13 +932,28 @@ function MarkdownUnorderedList({ children }: MarkdownUnorderedListProps) {
 function MarkdownOrderedList({
   children,
   className: _className,
-  node: _node,
+  node,
   ...orderedListProps
 }: MarkdownOrderedListProps) {
+  const itemCount =
+    node?.children.filter(
+      (child) => child.type === "element" && child.tagName === "li",
+    ).length ?? Children.toArray(children).filter(isValidElement).length;
+  const start = orderedListProps.start ?? 1;
+  const markerDigits = Math.max(
+    String(start).length,
+    String(start + Math.max(0, itemCount - 1)).length,
+  );
+  const style: CSSProperties & { "--markdown-list-marker-digits": number } = {
+    "--markdown-list-marker-digits": markerDigits,
+    paddingInlineStart:
+      "calc(var(--spacing) * 5 + (var(--markdown-list-marker-digits) - 1) * 1ch)",
+  };
   return (
     <ol
       {...orderedListProps}
       className="mb-2 list-decimal pl-5 text-foreground"
+      style={style}
     >
       {children}
     </ol>

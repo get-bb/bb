@@ -1,4 +1,5 @@
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { prepareCachedQuery } from "../connection.js";
+import { and, eq, inArray, isNull, ne, placeholder } from "drizzle-orm";
 import {
   resolveEnvironmentHostLifecycle,
   type HostChangeKind,
@@ -6,7 +7,11 @@ import {
   type JsonValue,
   type PermissionMode,
 } from "@bb/domain";
-import type { DbConnection, DbTransaction } from "../connection.js";
+import type {
+  DbConnection,
+  DbTransaction,
+  DbQueryConnection,
+} from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { environments, hosts } from "../schema.js";
 import { createHostId } from "../ids.js";
@@ -169,8 +174,15 @@ export function markHostSeen(
     .run();
 }
 
+const prepareGetHost = (db: DbQueryConnection) =>
+  db
+    .select()
+    .from(hosts)
+    .where(eq(hosts.id, placeholder("id")))
+    .prepare();
+
 export function getHost(db: HostWriteConnection, id: string) {
-  return db.select().from(hosts).where(eq(hosts.id, id)).get() ?? null;
+  return prepareCachedQuery(db, prepareGetHost).get({ id }) ?? null;
 }
 
 export function getNonDestroyedHost(db: DbConnection, id: string) {

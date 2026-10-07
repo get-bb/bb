@@ -332,17 +332,40 @@ export function useThreadCreationOptions(
     selectedProviderIdBeforeReadyFallback,
   );
   const executionOptionsQueryEnabled = enabled;
+  const routingSelectionKey = JSON.stringify([
+    scope,
+    resetKey,
+    environmentId,
+    rawEnvironmentSelectionValue,
+    selectedProviderIdBeforeReadyFallback,
+  ]);
+  const [catalogRouting, setCatalogRouting] = useState(() => ({
+    selectionKey: routingSelectionKey,
+    routing: resolveThreadCreationProviderRouting({
+      environmentId,
+      environmentHostId,
+      environmentSelectionValue: rawEnvironmentSelectionValue,
+      modelCatalogScope: knownModelCatalogScope,
+      scope,
+    }),
+  }));
+  let defaultCatalogRouting = catalogRouting.routing;
+  if (catalogRouting.selectionKey !== routingSelectionKey) {
+    defaultCatalogRouting = resolveThreadCreationProviderRouting({
+      environmentId,
+      environmentHostId,
+      environmentSelectionValue: rawEnvironmentSelectionValue,
+      modelCatalogScope: knownModelCatalogScope,
+      scope,
+    });
+    setCatalogRouting({
+      selectionKey: routingSelectionKey,
+      routing: defaultCatalogRouting,
+    });
+  }
   const executionOptionsRouting = resolveProviderRouting
     ? resolveProviderRouting(rawEnvironmentSelectionValue)
-    : resolveThreadCreationProviderRouting({
-        environmentId,
-        environmentHostId,
-        environmentSelectionValue: rawEnvironmentSelectionValue,
-        ...(knownModelCatalogScope === undefined
-          ? {}
-          : { modelCatalogScope: knownModelCatalogScope }),
-        scope,
-      });
+    : defaultCatalogRouting;
   const canResolveReadyProvider =
     executionOptionsQueryEnabled &&
     scope === "new-thread" &&

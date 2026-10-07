@@ -6,10 +6,6 @@ import {
   DiffStatsTally,
 } from "@/components/ui/diff-stats-tally.js";
 import {
-  ChangedFilesBucketMenu,
-  useChangedFilesBucket,
-} from "./ChangedFilesBucketMenu";
-import {
   selectWorkspaceChangedFilesSections,
   toChangeTally,
   type WorkspaceChangedFileSelection,
@@ -20,74 +16,82 @@ import {
   getParentFolderNameFromPath,
 } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
-import {
-  InfoList,
-  InfoListRow,
-  InfoMenuTrigger,
-  InfoSection,
-} from "./info-list";
+import { InfoList, InfoListRow, InfoSection } from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
-interface ChangesSectionProps {
-  workspaceStatus: WorkspaceStatus | undefined;
+interface ChangedFilesHandlers {
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
   onOpenChangedFile?: (path: string) => void;
 }
 
-export function ChangesSection({
+export function selectChangedFilesSection(
+  workspaceStatus: WorkspaceStatus | undefined,
+  kind: "uncommitted" | "committed",
+): WorkspaceChangedFilesSection | undefined {
+  return selectWorkspaceChangedFilesSections(workspaceStatus).find(
+    (candidate) =>
+      kind === "committed"
+        ? candidate.kind === "committed"
+        : candidate.kind !== "committed",
+  );
+}
+
+export function ChangedFilesTally({
+  section,
+}: {
+  section: WorkspaceChangedFilesSection;
+}) {
+  const tally = toChangeTally(section.stats);
+  if (!tally.lineStatsComplete) return null;
+  return (
+    <DiffStatsTally
+      insertions={tally.insertions}
+      deletions={tally.deletions}
+      className="text-2xs tabular-nums"
+    />
+  );
+}
+
+export function ChangedFilesList({
+  section,
+  onChangedFileClick,
+  onOpenChangedFile,
+}: ChangedFilesHandlers & { section: WorkspaceChangedFilesSection }) {
+  return (
+    <InfoList
+      items={section.files}
+      getKey={(file) => `${file.status}:${file.path}`}
+      renderItem={(file) => (
+        <ChangedFileRow
+          file={file}
+          section={section}
+          onChangedFileClick={onChangedFileClick}
+          onOpenChangedFile={onOpenChangedFile}
+        />
+      )}
+    />
+  );
+}
+
+export function UncommittedChangesSection({
   workspaceStatus,
   onChangedFileClick,
   onOpenChangedFile,
-}: ChangesSectionProps) {
-  const sections = selectWorkspaceChangedFilesSections(workspaceStatus);
-  const { activeSection, selectKind } = useChangedFilesBucket(sections);
-  const collapse = useInfoSectionCollapse("changes");
-  if (activeSection === undefined) return null;
-  const tally = toChangeTally(activeSection.stats);
+}: ChangedFilesHandlers & { workspaceStatus: WorkspaceStatus | undefined }) {
+  const collapse = useInfoSectionCollapse("uncommittedChanges");
+  const section = selectChangedFilesSection(workspaceStatus, "uncommitted");
+  if (section === undefined) return null;
   return (
     <InfoSection
-      label="Changes"
-      count={activeSection.files.length}
+      label="Uncommitted files"
+      count={section.files.length}
       collapse={collapse}
-      accessory={
-        sections.length > 1 ? (
-          <ChangedFilesBucketMenu
-            sections={sections}
-            activeSection={activeSection}
-            onSelect={selectKind}
-            trigger={
-              <InfoMenuTrigger aria-label="Switch changed files bucket">
-                {activeSection.label}
-              </InfoMenuTrigger>
-            }
-          />
-        ) : (
-          <span className="ml-1.5 text-2xs text-subtle-foreground">
-            {activeSection.label}
-          </span>
-        )
-      }
-      trailing={
-        tally.lineStatsComplete ? (
-          <DiffStatsTally
-            insertions={tally.insertions}
-            deletions={tally.deletions}
-            className="text-2xs tabular-nums"
-          />
-        ) : null
-      }
+      trailing={<ChangedFilesTally section={section} />}
     >
-      <InfoList
-        items={activeSection.files}
-        getKey={(file) => `${file.status}:${file.path}`}
-        renderItem={(file) => (
-          <ChangedFileRow
-            file={file}
-            section={activeSection}
-            onChangedFileClick={onChangedFileClick}
-            onOpenChangedFile={onOpenChangedFile}
-          />
-        )}
+      <ChangedFilesList
+        section={section}
+        onChangedFileClick={onChangedFileClick}
+        onOpenChangedFile={onOpenChangedFile}
       />
     </InfoSection>
   );

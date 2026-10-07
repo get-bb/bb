@@ -16,6 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
@@ -178,10 +179,12 @@ export const MessageColumnWidthContext =
 
 const ACTION_BUTTON_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
-const HOVER_REVEAL_CLASS =
-  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
+const HOVER_REVEAL_CLASS = cn(
+  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100",
+  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+);
 const MOBILE_INLINE_ACTION_CLASS =
-  "max-md:pointer-coarse:size-7 max-md:pointer-coarse:opacity-100 max-md:pointer-coarse:disabled:opacity-40 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
+  "max-md:pointer-coarse:size-7 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
 const MOBILE_OVERFLOW_ACTION_CLASS = "max-md:pointer-coarse:hidden";
 const ACTION_TOOLTIP_SIDE = "bottom";
 const MENU_CONTENT_WIDTH_CLASS = "max-w-[min(16rem,calc(100vw-1rem))]";

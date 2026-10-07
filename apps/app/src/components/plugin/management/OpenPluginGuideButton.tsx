@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
@@ -7,6 +7,10 @@ import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import { searchPluginCatalog } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  isActivePluginInstallJob,
+  usePluginInstallJob,
+} from "@/hooks/queries/plugin-install-job-queries";
 import {
   pluginListQueryOptions,
   setPluginEnabled,
@@ -23,6 +27,13 @@ export function OpenPluginGuideButton() {
   const [installTarget, setInstallTarget] = useState<AddPluginInitial | null>(
     null,
   );
+  const [installJobId, setInstallJobId] = useState<string | null>(null);
+  const installJob = usePluginInstallJob(installJobId);
+  useEffect(() => {
+    if (installJob === null || isActivePluginInstallJob(installJob)) return;
+    setInstallJobId(null);
+    if (installJob.state === "succeeded") navigate(PLUGIN_GUIDE_PATH);
+  }, [installJob, navigate]);
   const open = useMutation({
     meta: { showErrorToast: false },
     mutationFn: async () => {
@@ -88,7 +99,7 @@ export function OpenPluginGuideButton() {
         onOpenChange={(isOpen) => {
           if (!isOpen) setInstallTarget(null);
         }}
-        onInstalled={() => navigate(PLUGIN_GUIDE_PATH)}
+        onInstallStarted={(job) => setInstallJobId(job.id)}
       />
     </>
   );

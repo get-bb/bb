@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type UIEvent,
 } from "react";
-import { ChangesSection } from "./info/ChangesSection";
+import { UncommittedChangesSection } from "./info/ChangesSection";
 import { CommitsSection } from "./info/CommitsSection";
 import { ForksSection } from "./info/RelatedThreadsSection";
 import {
@@ -66,10 +66,12 @@ import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSe
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
+  describePullRequestStatus,
+  getPullRequestNextStep,
   getPullRequestStateDisplay,
-  getPullRequestAttentionDisplay,
-  getPullRequestGithubCheckStatus,
+  isPullRequestAutoMergeOn,
 } from "@/lib/pull-request-display";
+import { PullRequestNextStepLabel } from "@/components/pull-request/PullRequestNextStepLabel";
 import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
@@ -388,7 +390,9 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
         successMessage="Directory copied"
         errorMessage="Failed to copy directory"
       >
-        {formatHomePathForDisplay(environment.path)}
+        <span className="text-muted-foreground">
+          {formatHomePathForDisplay(environment.path)}
+        </span>
       </CopyableInlineLabel>
     </DetailRow>
   );
@@ -441,10 +445,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const handlePullRequestClick = useUrlAnchorClickHandler(pullRequest?.url);
   if (!pullRequest) return null;
   const stateDisplay = getPullRequestStateDisplay(pullRequest);
-  const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
-  const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
-  const statusDisplay =
-    attentionDisplay.label !== stateDisplay.label ? attentionDisplay : null;
+  const nextStep = getPullRequestNextStep(pullRequest);
   return (
     <DetailRow
       label={
@@ -454,31 +455,43 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
       }
       valueClassName="min-w-0"
     >
-      <a
-        href={pullRequest.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={handlePullRequestClick}
-        aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
-        className="flex h-5 max-w-full min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <GithubFaviconIcon status={checkStatus} />
-        <span className="shrink-0 text-muted-foreground">
-          #{pullRequest.number}
-        </span>
-        <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-1.5 text-muted-foreground">
-          <PullRequestStateIcon
-            pullRequest={pullRequest}
-            className="size-3.5"
-          />
-          <span>{stateDisplay.label}</span>
-        </span>
-        {statusDisplay ? (
-          <span className={cn("min-w-0 truncate", statusDisplay.className)}>
-            {statusDisplay.label}
+      <span className="flex h-5 max-w-full min-w-0 items-center gap-2">
+        <a
+          href={pullRequest.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handlePullRequestClick}
+          aria-label={`Pull request ${pullRequest.number}: ${describePullRequestStatus(pullRequest)}`}
+          className="flex min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <GithubFaviconIcon />
+          <span className="shrink-0 text-muted-foreground">
+            #{pullRequest.number}
           </span>
+          <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-1.5 text-muted-foreground">
+            <PullRequestStateIcon
+              pullRequest={pullRequest}
+              className="size-3.5"
+            />
+            <span>{stateDisplay.label}</span>
+          </span>
+          {nextStep ? <PullRequestNextStepLabel nextStep={nextStep} /> : null}
+        </a>
+        {isPullRequestAutoMergeOn(pullRequest) ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                role="img"
+                aria-label="Auto-merge on"
+                className="flex shrink-0 items-center text-subtle-foreground"
+              >
+                <Icon name="Zap" className="size-3" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Auto-merge on</TooltipContent>
+          </Tooltip>
         ) : null}
-      </a>
+      </span>
     </DetailRow>
   );
 }
@@ -528,6 +541,23 @@ interface MergeBaseRowProps {
   onMergeBasePickerOpenChange?: (open: boolean) => void;
   onMergeBaseBranchSearchQueryChange?: (query: string) => void;
   defaultOpen?: boolean;
+}
+
+export function formatBranchComparison({
+  aheadCount,
+  behindCount,
+  baseBranch,
+}: {
+  aheadCount: number;
+  behindCount: number;
+  baseBranch: string;
+}): string {
+  if (aheadCount > 0 && behindCount > 0) {
+    return `${aheadCount} ahead, ${behindCount} behind ${baseBranch}`;
+  }
+  if (aheadCount > 0) return `${aheadCount} ahead of ${baseBranch}`;
+  if (behindCount > 0) return `${behindCount} behind ${baseBranch}`;
+  return `Even with ${baseBranch}`;
 }
 
 export function MergeBaseRow({
@@ -604,15 +634,11 @@ export function MergeBaseRow({
           defaultOpen={defaultOpen}
         />
       ) : (
-        mergeBaseBranch
+        <span className="min-w-0 truncate">{mergeBaseBranch}</span>
       )}
     </DetailRow>
   );
 }
-
-const DIRTY_GIT_STATUS_LABEL = "Uncommitted changes";
-
-const BRANCH_COMPARISON_SUMMARY_PATTERN = /^\d+ (ahead|behind)\b/;
 
 interface GitStatusRowProps {
   thread: Thread;
@@ -620,7 +646,6 @@ interface GitStatusRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
-  selectedMergeBaseBranch: string | undefined;
 }
 
 export function GitStatusRow({
@@ -629,7 +654,6 @@ export function GitStatusRow({
   workspaceStatus,
   workspaceStatusError,
   workspaceUnavailable,
-  selectedMergeBaseBranch,
 }: GitStatusRowProps) {
   if (
     !shouldShowWorkspaceStatus({
@@ -642,27 +666,32 @@ export function GitStatusRow({
   ) {
     return null;
   }
+  if (workspaceStatus) {
+    const mergeBase = workspaceStatus.mergeBase;
+    if (!mergeBase?.mergeBaseBranch) return null;
+    return (
+      <DetailRow
+        label={
+          <DetailRowIconLabel icon="FileDiff">Git status</DetailRowIconLabel>
+        }
+        valueClassName="min-w-0"
+      >
+        <span className="block min-w-0 truncate text-foreground">
+          {formatBranchComparison({
+            aheadCount: mergeBase.aheadCount,
+            behindCount: mergeBase.behindCount,
+            baseBranch: mergeBase.mergeBaseBranch,
+          })}
+        </span>
+      </DetailRow>
+    );
+  }
 
-  const isWorkspaceDeleted = environment?.status === "destroyed";
-  const effectiveMergeBaseBranch = resolveDisplayedMergeBaseBranch(
-    selectedMergeBaseBranch,
-    workspaceStatus,
-  );
-  const showBranchComparisonUi = Boolean(
-    effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
-  );
-  const display = getGitStatusDisplay(workspaceStatus, {
-    mergeBaseBranch: effectiveMergeBaseBranch,
-    showBranchComparison: showBranchComparisonUi,
+  const display = getGitStatusDisplay(undefined, {
     error: workspaceStatusError,
     workspaceUnavailable,
-    workspaceDeleted: isWorkspaceDeleted,
+    workspaceDeleted: environment?.status === "destroyed",
   });
-  const summaryRepeatsLabel =
-    (display.label === "Ahead" || display.label === "Behind") &&
-    BRANCH_COMPARISON_SUMMARY_PATTERN.test(display.summary);
-  const isDirty = display.label === "Dirty";
-
   return (
     <DetailRow
       label={
@@ -671,36 +700,19 @@ export function GitStatusRow({
       align="start"
       valueClassName="min-w-0"
     >
-      <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-        {isDirty ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                role="img"
-                aria-label={DIRTY_GIT_STATUS_LABEL}
-                className="flex shrink-0 items-center"
-              >
-                <Icon
-                  name="DiffModified"
-                  className="size-3 text-destructive"
-                  aria-hidden
-                />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{DIRTY_GIT_STATUS_LABEL}</TooltipContent>
-          </Tooltip>
-        ) : summaryRepeatsLabel ? null : (
-          <span className="shrink-0 text-foreground">{display.label}</span>
-        )}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Icon
+          name="AlertTriangle"
+          className="size-3 shrink-0 text-warning"
+          aria-hidden
+        />
         <span
-          className="min-w-0 truncate text-muted-foreground"
+          className="min-w-0 truncate text-foreground"
           title={display.summary}
         >
-          {isDirty && display.summary === ""
-            ? DIRTY_GIT_STATUS_LABEL
-            : display.summary}
+          {display.summary.replace(/\.$/, "")}
         </span>
-      </div>
+      </span>
     </DetailRow>
   );
 }
@@ -944,7 +956,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
                 workspaceStatus={workspaceStatus}
                 workspaceStatusError={workspaceStatusError}
                 workspaceUnavailable={workspaceUnavailable}
-                selectedMergeBaseBranch={selectedMergeBaseBranch}
               />
             </>
           ) : null}
@@ -957,8 +968,10 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
             <CommitsSection
               workspaceStatus={workspaceStatus}
               onCommitClick={onCommitClick}
+              onChangedFileClick={onChangedFileClick}
+              onOpenChangedFile={onOpenChangedFile}
             />
-            <ChangesSection
+            <UncommittedChangesSection
               workspaceStatus={workspaceStatus}
               onChangedFileClick={onChangedFileClick}
               onOpenChangedFile={onOpenChangedFile}

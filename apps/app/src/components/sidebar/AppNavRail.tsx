@@ -28,15 +28,14 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
@@ -44,7 +43,7 @@ import {
   useSidebarNavigationSplit,
 } from "@/lib/plugin-sidebar-navigation";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
-import { NAV_RAIL_WIDTH_CLASS } from "./SidebarChrome";
+import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
 import { SidebarNavigationCustomize } from "./SidebarNavigationCustomize";
 import { SidebarNavigationIcon } from "./SidebarNavigationModel";
 import { NEW_THREAD_NAVIGATION_ITEM_ID } from "./sidebarNavigationItems";
@@ -271,11 +270,7 @@ export function AppNavRail({
   const navigate = useNavigate();
   const settingsShortcut = useAppCommandShortcut("settings.open");
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const desktopWindowState = useDesktopWindowState();
-  const reserveMacosTrafficLights = shouldReserveMacosTrafficLights({
-    desktopInfo,
-    windowState: desktopWindowState,
-  });
+  const isFramed = useIsSidebarFramed();
 
   const isHomeActive =
     isAppMode &&
@@ -307,20 +302,27 @@ export function AppNavRail({
   return (
     <div
       data-testid="app-nav-rail"
-      className={cn("flex shrink-0 flex-col", NAV_RAIL_WIDTH_CLASS)}
+      className={cn(
+        "relative z-10 flex shrink-0 flex-col",
+        NAV_RAIL_WIDTH_CLASS,
+      )}
     >
-      <div
-        aria-hidden="true"
-        className={cn(
-          CHROME_ROW_HEIGHT_CLASS,
-          "shrink-0",
-          !reserveMacosTrafficLights && "bg-surface-recessed",
-          shouldUseMacosDesktopChrome(desktopInfo) && MACOS_WINDOW_DRAG_CLASS,
-        )}
-      />
+      {isFramed ? null : (
+        <div
+          aria-hidden="true"
+          className={cn(
+            CHROME_ROW_HEIGHT_CLASS,
+            "shrink-0 bg-surface-recessed",
+            shouldUseMacosDesktopChrome(desktopInfo) && MACOS_WINDOW_DRAG_CLASS,
+          )}
+        />
+      )}
       <nav
         aria-label="Primary navigation"
-        className="flex min-h-0 flex-1 flex-col items-center gap-2.5 bg-surface-recessed pb-2.5"
+        className={cn(
+          "flex min-h-0 flex-1 flex-col items-center gap-2.5 pb-2.5",
+          isFramed ? "pt-2" : "bg-surface-recessed",
+        )}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
           <RailButton

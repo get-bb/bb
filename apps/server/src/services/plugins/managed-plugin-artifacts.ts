@@ -49,7 +49,6 @@ import {
   realPathInside,
   runInstallCommand,
 } from "./install-sources.js";
-import { gitSelectorRefName } from "./git-source-intent.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type { PluginServiceDeps } from "./plugin-service-internal.js";
 import {
@@ -162,6 +161,18 @@ async function cloneGitCommit(
     "--detach",
     commit,
   ]);
+  const checkedOutCommit = await runInstallCommand("git", [
+    "-C",
+    stagingDir,
+    "rev-parse",
+    "HEAD",
+  ]);
+  if (!checkedOutCommit.startsWith(commit)) {
+    throw new Error(
+      `git resolved ${commit}, but checked out ${checkedOutCommit}`,
+    );
+  }
+  await rm(join(stagingDir, ".git"), { recursive: true, force: true });
 }
 
 function npmSourceString(intent: NpmSourceIntentForResolution): string {
@@ -684,7 +695,6 @@ export function createManagedPluginArtifacts(
       );
     }
     const resolvedSelector = resolution.selector;
-    const checkoutRef = gitSelectorRefName(resolvedSelector);
     function identityFor(
       subdirectory: string | null,
     ): InstallRegistrationIdentity {
@@ -793,17 +803,6 @@ export function createManagedPluginArtifacts(
           stagedManifest.id,
         );
         refuseBuiltinShadow(stagedManifest.id);
-        const checkedOutCommit = await runInstallCommand("git", [
-          "-C",
-          stagingDir,
-          "rev-parse",
-          "HEAD",
-        ]);
-        if (!checkedOutCommit.startsWith(resolvedCommit)) {
-          throw new Error(
-            `git resolved ${checkoutRef} to ${resolvedCommit}, but checked out ${checkedOutCommit}`,
-          );
-        }
         await validateInstallDir({
           rootDir: stagedRealRoot,
           source,

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginComposerScope } from "@get-bb/plugin-sdk/app";
@@ -89,7 +95,7 @@ function render(
     recent?: RecentPromptRow[];
   } = {},
 ) {
-  const search = vi.fn((_input: SearchPromptsInput) => ({
+  const search = vi.fn(async (_input: SearchPromptsInput) => ({
     starred: options.starred ?? [starredRow("prompt_1", "starred prompt")],
     recent: options.recent ?? [recentRow("h1", "recent prompt")],
   }));
@@ -120,6 +126,7 @@ afterEach(() => {
   if (originalScroll)
     Object.defineProperty(Element.prototype, "scrollIntoView", originalScroll);
   else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   pickerWidth = 728;
@@ -168,6 +175,7 @@ describe("prompt library popup", () => {
         name: /Review @project:proj_b/,
       });
       fireEvent.click(choice);
+      fireEvent.click(slot.getByRole("button", { name: "Insert" }));
       expect(slot.composer.draft.text).toBe(
         `${existing}Review @project:proj_b`,
       );
@@ -239,6 +247,58 @@ describe("prompt library popup", () => {
     ).toEqual(["Project", "All"]);
   });
 
+  it("recovers a stuck search in place and ignores its late response", async () => {
+    vi.useFakeTimers();
+    const { slot, search } = render();
+    let resolveStale!: (value: Awaited<ReturnType<typeof search>>) => void;
+    const stale = new Promise<Awaited<ReturnType<typeof search>>>((resolve) => {
+      resolveStale = resolve;
+    });
+    search.mockImplementationOnce(() => stale);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(slot.getByText("Loading prompts…")).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(slot.getByRole("alert").textContent).toContain("timed out");
+    fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(slot.getByRole("option", { name: /recent prompt/ })).toBeTruthy();
+    expect(slot.queryByRole("alert")).toBeNull();
+
+    await act(async () =>
+      resolveStale({
+        starred: [],
+        recent: [recentRow("stale", "obsolete response")],
+      }),
+    );
+    expect(slot.queryByText("obsolete response")).toBeNull();
+    expect(slot.getByRole("option", { name: /recent prompt/ })).toBeTruthy();
+  });
+
+  it("retries a failed search without changing the query or losing loaded prompts", async () => {
+    const { slot, search } = render();
+    await slot.findByRole("option", { name: /recent prompt/ });
+    search.mockRejectedValueOnce(new Error("Connection interrupted"));
+    fireEvent.change(searchBox(slot), { target: { value: "recent" } });
+    expect(await slot.findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("Connection interrupted"),
+    );
+    expect(slot.getByRole("option", { name: /recent prompt/ })).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(slot.queryByRole("alert")).toBeNull());
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(3));
+    expect(search).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: "recent", scope: "global" }),
+    );
+  });
+
   it("stars and unstars prompts with Mod+S", async () => {
     const { slot, star, unstar } = render({
       recent: [
@@ -278,6 +338,8 @@ describe("prompt library popup", () => {
     await slot.findByText("recent prompt");
 
     fireEvent.click(slot.getByText("recent prompt"));
+    expect(slot.composer.draft.text).toBe("Before merging, ");
+    fireEvent.click(slot.getByRole("button", { name: "Insert" }));
 
     expect(slot.composer.draft.text).toBe("Before merging, recent prompt");
   });
@@ -303,6 +365,56 @@ describe("prompt library popup", () => {
       ),
     );
     expect(slot.composer.draft.text).toBe(long);
+  });
+
+  it("keeps the preview selected while moving the mouse to its star action", async () => {
+    const { slot, star } = render({
+      recent: [
+        recentRow("h1", "recent prompt"),
+        recentRow("h2", "other prompt"),
+      ],
+    });
+    await slot.findByText("recent prompt");
+    fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
+    fireEvent.mouseEnter(slot.getByRole("option", { name: /other prompt/ }));
+    fireEvent.mouseMove(slot.getByRole("option", { name: /other prompt/ }));
+
+    const preview = slot.getByRole("region", { name: "Prompt preview" });
+    expect(preview.textContent).toContain("recent prompt");
+    fireEvent.click(within(preview).getByRole("button", { name: "Star" }));
+    await waitFor(() =>
+      expect(star).toHaveBeenCalledWith({ prompt: draft("recent prompt") }),
+    );
+  });
+
+  it("keeps the same recent prompt selected when starring changes row positions", async () => {
+    const { slot, search } = render();
+    await slot.findByText("recent prompt");
+    fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
+    search.mockResolvedValue({
+      starred: [
+        starredRow("prompt_new", "recent prompt"),
+        starredRow("prompt_1", "starred prompt"),
+      ],
+      recent: [recentRow("h1", "recent prompt", "prompt_new")],
+    });
+    fireEvent.click(
+      within(slot.getByRole("region", { name: "Prompt preview" })).getByRole(
+        "button",
+        { name: "Star" },
+      ),
+    );
+    await waitFor(() => expect(slot.getAllByRole("option")).toHaveLength(3));
+    expect(slot.getByRole("option", { selected: true }).textContent).toContain(
+      "recent prompt",
+    );
+    const preview = slot.getByRole("region", { name: "Prompt preview" });
+    expect(preview.textContent).toContain("recent prompt");
+    expect(
+      within(preview)
+        .getByRole("button", { name: "Starred" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("opens a preview on tap when there is no room for two panes", async () => {

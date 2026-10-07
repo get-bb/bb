@@ -243,7 +243,6 @@ describe("POST /api/ai/v1/complete", () => {
     expect(calls[0].headers.get("x-title")).toBe("bb");
     expect(calls[0].body).toEqual({
       model: MODELS[0],
-      models: MODELS.slice(1),
       messages: [{ role: "user", content: prompt }],
       max_tokens: 128,
       temperature: 0.2,
@@ -276,13 +275,35 @@ describe("POST /api/ai/v1/complete", () => {
     expect(JSON.stringify(logs)).not.toContain("Fix the login flow");
   });
 
-  it("omits the fallback list when only one model is configured", async () => {
-    const { deps, calls } = harness({ config: { models: [MODELS[0]] } });
+  it("gives the next model its own attempt when one hangs", async () => {
+    const { deps, calls } = harness({
+      upstreamTimeoutMs: 20,
+      upstream: ({ body, signal }) =>
+        body.model === MODELS[0]
+          ? new Promise<Response>((_resolve, reject) => {
+              signal?.addEventListener("abort", () =>
+                reject(new DOMException("aborted", "AbortError")),
+              );
+            })
+          : Response.json({
+              model: MODELS[1],
+              choices: [
+                { message: { role: "assistant", content: "Retitled" } },
+              ],
+              usage: { prompt_tokens: 120, completion_tokens: 2, cost: 0.0001 },
+            }),
+    });
     const response = await complete(deps, { prompt: "Write a title" });
 
     expect(response.status).toBe(200);
-    expect(calls[0].body).toMatchObject({ model: MODELS[0] });
-    expect(calls[0].body).not.toHaveProperty("models");
+    expect(await response.json()).toMatchObject({
+      text: "Retitled",
+      model: MODELS[1],
+      usage: { costMicros: RESERVE_MICROS },
+    });
+    expect(calls.map((call) => call.body.model)).toEqual(MODELS.slice(0, 2));
+    expect(calls.every((call) => !("models" in call.body))).toBe(true);
+    expect(calls[1]?.signal?.aborted).toBe(false);
   });
 
   it("accepts the credential in either auth header", async () => {
@@ -489,6 +510,7 @@ describe("POST /api/ai/v1/complete", () => {
     ];
     let index = 0;
     const { deps } = harness({
+      config: { models: [MODELS[0]] },
       upstream: () => {
         const next = responses[index];
         index += 1;
@@ -543,6 +565,7 @@ describe("POST /api/ai/v1/complete", () => {
       reservedMicros: 0,
     });
     expect(db.select().from(aiRequestLog).get()).toMatchObject({
+      model: MODELS.at(-1),
       outcome: "timeout",
       costMicros: RESERVE_MICROS,
     });

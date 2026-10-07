@@ -1,4 +1,5 @@
 import {
+  getLatestThreadSequence,
   getEnvironment,
   getThread,
   type EnvironmentRow,
@@ -47,16 +48,6 @@ interface EnsureWorkspaceReadyEventArgs {
   threadId: string;
 }
 
-export function loadActiveThreadProvisionContext(
-  deps: Pick<AppDeps, "db">,
-  threadId: string,
-) {
-  const thread = getThread(deps.db, threadId);
-  return thread?.status === "starting" && thread.deletedAt === null
-    ? getThreadProvisionContext(deps.db, threadId)
-    : null;
-}
-
 export function ensureWorkspaceReadyEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   args: EnsureWorkspaceReadyEventArgs,
@@ -101,6 +92,9 @@ export function ensureWorkspaceReadyEventInTransaction(
   });
   if (appendedSequence !== null)
     deps.hub.notifyThread(thread.id, ["events-appended"], {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: thread.id,
+      }),
       eventTypes: ["system/thread-provisioning"],
     });
   return true;

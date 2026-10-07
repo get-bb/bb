@@ -70,6 +70,22 @@ afterEach(() => {
 });
 
 describe("prompt library server", () => {
+  it("searches a full pasted prompt including text beyond 256 characters", async () => {
+    const prefix =
+      "Please verify the changes on this branch and explain the results. ".repeat(
+        8,
+      );
+    const query = `${prefix}zebra`;
+    const { call } = await setup([
+      entry("match", 1, query),
+      entry("other", 2, `${prefix}yak`),
+    ]);
+
+    await expect(call("search", { ...GLOBAL, query })).resolves.toMatchObject({
+      recent: [{ id: "match" }],
+    });
+  });
+
   it("lists starred prompts first and collapses repeated history, newest first", async () => {
     const { call } = await setup([
       entry("h1", 1, "write the release notes"),

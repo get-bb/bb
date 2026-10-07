@@ -450,7 +450,6 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
             onOpenChange={(open) => {
               if (!open) setInstallTarget(null);
             }}
-            onInstalled={() => void listQuery.refetch()}
           />
         </ResourceScrollPage>
       </div>

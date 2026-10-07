@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createPortal } from "react-dom";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   PluginDetailRouteNavigationProvider,
   RouteAnchor,
@@ -93,6 +94,77 @@ describe("RouteAnchor transition navigation", () => {
       isPending: false,
       pathname: "/threads/thr-new",
     });
+  });
+
+  it.each([
+    {
+      modifier: { metaKey: true },
+      href: "/projects/prj-a/threads/thr-next",
+      projectId: "prj-a",
+    },
+    {
+      modifier: { ctrlKey: true },
+      href: "/projects/prj-a/threads/thr-next",
+      projectId: "prj-a",
+    },
+    {
+      modifier: { metaKey: true },
+      href: "/threads/thr-next",
+      projectId: PERSONAL_PROJECT_ID,
+    },
+  ])(
+    "opens $href in a split on modifier click $modifier",
+    ({ modifier, href, projectId }) => {
+      render(
+        <MemoryRouter initialEntries={["/threads/thr-current"]}>
+          <RouteNavigationProvider>
+            <CurrentPath />
+            <RouteAnchor href={href}>open thr-next</RouteAnchor>
+          </RouteNavigationProvider>
+        </MemoryRouter>,
+      );
+
+      const notPrevented = fireEvent.click(
+        screen.getByRole("link", { name: "open thr-next" }),
+        modifier,
+      );
+
+      expect(notPrevented).toBe(false);
+      expect(openPaneContentInSplit).toHaveBeenCalledTimes(1);
+      expect(openPaneContentInSplit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: { kind: "thread", projectId, threadId: "thr-next" },
+          route: href,
+        }),
+      );
+      expect(screen.getByTestId("current-path").textContent).toBe(
+        "/threads/thr-current",
+      );
+    },
+  );
+
+  it("leaves shift-click to the browser", () => {
+    render(
+      <MemoryRouter initialEntries={["/threads/thr-current"]}>
+        <RouteNavigationProvider>
+          <CurrentPath />
+          <RouteAnchor href="/projects/prj-a/threads/thr-next">
+            open thr-next
+          </RouteAnchor>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const notPrevented = fireEvent.click(
+      screen.getByRole("link", { name: "open thr-next" }),
+      { shiftKey: true },
+    );
+
+    expect(notPrevented).toBe(true);
+    expect(openPaneContentInSplit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/threads/thr-current",
+    );
   });
 });
 

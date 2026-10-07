@@ -14,8 +14,10 @@ Disabled by default. Enable **Prompt Library** in Settings → Plugins or run
 ## How it works
 
 1. Press **Ctrl+R** in the composer, or open the plus menu and choose **Prompts…**.
-2. Type to search. Use the arrow keys to move, **Tab** to switch scope, and **Enter** to insert.
+2. Type to search. Click a prompt or use the arrow keys to preview it, **Tab** to switch scope, and **Enter** or **Insert** to insert. Moving the mouse leaves the selection unchanged.
 3. Press **Cmd+S** (**Ctrl+S** elsewhere) or click the star to star or unstar the highlighted prompt. With text in the composer, **Star current draft** stars it.
+
+If a search fails or takes more than 5 seconds, click **Retry** to repeat it without closing the picker or retyping. Previously loaded prompts stay available while searching or after an error.
 
 Inserting into an empty composer restores the whole prompt, including mentions and attachments. Otherwise the prompt's text and mentions go where the cursor was. Starred prompts keep text and mentions; attachments are dropped.
 

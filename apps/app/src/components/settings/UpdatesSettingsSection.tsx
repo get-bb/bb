@@ -313,7 +313,7 @@ function RowStateCaption({
   children: ReactNode;
 }) {
   return (
-    <span className={cn("min-w-0 text-xs break-words", stateTextClass(state))}>
+    <span className={cn("min-w-0 text-2xs break-words", stateTextClass(state))}>
       {children}
     </span>
   );

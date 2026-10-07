@@ -14,6 +14,7 @@ vi.mock("@/components/ui/app-toast", () => ({
 }));
 
 import { copyTextToClipboard, copyToClipboardWithToast } from "./clipboard";
+import { readMessageClipboardHtml } from "./message-clipboard";
 
 function installClipboard(writeText: (text: string) => Promise<void>): void {
   Object.defineProperty(navigator, "clipboard", {
@@ -101,9 +102,9 @@ describe("copyTextToClipboard", () => {
 });
 
 describe("copyToClipboardWithToast", () => {
-  it("copies both representations through the native shell instead of trusting WebView clipboard success", async () => {
+  it("copies Android HTML metadata with a plain text fallback", async () => {
     const request = vi.fn().mockResolvedValue({ copied: true });
-    nativeMocks.getNativeShell.mockReturnValue({ copyTextAndImage: request });
+    nativeMocks.getNativeShell.mockReturnValue({ copyRichText: request });
     const write = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -116,31 +117,38 @@ describe("copyToClipboardWithToast", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(request).toHaveBeenCalledWith(
-      "A photo",
-      new URL("/attachments/photo.png", window.location.href).href,
-    );
+    const [text, html] = request.mock.calls[0] ?? [];
+    expect(text).toBe("A photo");
+    expect(readMessageClipboardHtml(html)).toEqual({
+      version: 1,
+      text: "A photo",
+      imageUrl: new URL("/attachments/photo.png", window.location.href).href,
+    });
     expect(write).not.toHaveBeenCalled();
     expect(toastMocks.success).toHaveBeenCalledWith("Copied");
   });
 
-  it.each(["rejected", "invalid"])(
+  it.each(["rejected", "invalid", "foreign image"])(
     "preserves text and reports partial success after a %s native image copy",
     async (failure) => {
       const request =
         failure === "rejected"
           ? vi.fn().mockRejectedValue(new Error("Image unavailable"))
           : vi.fn().mockResolvedValue({});
-      nativeMocks.getNativeShell.mockReturnValue({ copyTextAndImage: request });
+      nativeMocks.getNativeShell.mockReturnValue({ copyRichText: request });
       const writeText = vi.fn().mockResolvedValue(undefined);
       installClipboard(writeText);
 
       await expect(
         copyToClipboardWithToast("A photo", {
-          imageUrl: "/attachments/photo.png",
+          imageUrl:
+            failure === "foreign image"
+              ? "https://other.example/photo.png"
+              : "/attachments/photo.png",
         }),
       ).resolves.toBe(true);
 
+      if (failure === "foreign image") expect(request).not.toHaveBeenCalled();
       expect(writeText).toHaveBeenCalledWith("A photo");
       expect(toastMocks.success).toHaveBeenCalledWith(
         "Copied text; image could not be copied",

@@ -18,6 +18,7 @@ declare module "ws" {
     );
     static readonly OPEN: number;
     readonly readyState: number;
+    readonly bufferedAmount: number;
     readonly protocol: string;
     send(data: string | Buffer | Uint8Array): void;
     close(code?: number, reason?: string): void;

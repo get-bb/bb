@@ -1031,7 +1031,7 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("re-routes to the host once the first probe's own roster declares host scope", async () => {
+  it("keeps a loaded catalog visible when its first roster reveals host scope", async () => {
     const hostScoped = executionOptionsResponse();
     const [provider] = hostScoped.providers;
     if (provider === undefined) throw new Error("fixture has no provider");
@@ -1039,14 +1039,16 @@ describe("useThreadCreationOptions", () => {
       ...provider.capabilities,
       modelCatalogScope: "host",
     };
-    vi.mocked(sdk.system.executionOptions).mockResolvedValue(hostScoped);
+    vi.mocked(sdk.system.executionOptions).mockImplementation((args) =>
+      args?.hostId ? new Promise(() => {}) : Promise.resolve(hostScoped),
+    );
 
     const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () =>
+    const { result, rerender } = renderHook(
+      ({ environmentId }) =>
         useThreadCreationOptions({
           scope: "component-local",
-          environmentId: "env_follow_up",
+          environmentId,
           environmentHostId: "host_follow_up",
           resetKey: "thr_cold_cache",
           initialProviderId: GLOBAL_PROVIDER_ID,
@@ -1054,18 +1056,30 @@ describe("useThreadCreationOptions", () => {
           initialReasoningLevel: "medium",
           initialPermissionMode: "full",
         }),
-      { wrapper },
+      { wrapper, initialProps: { environmentId: "env_follow_up" } },
     );
 
     await waitFor(() => {
-      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
-        expect.objectContaining({ environmentId: "env_follow_up" }),
-      );
+      expect(result.current.modelOptions).toHaveLength(2);
     });
+    expect(result.current.isLoadingModels).toBe(false);
+    expect(
+      result.current.reasoningOptions.map((option) => option.value),
+    ).toEqual(["medium", "high"]);
+    expect(result.current.executionOptionsRouting).toEqual({
+      environmentId: "env_follow_up",
+    });
+    expect(sdk.system.executionOptions).toHaveBeenCalledTimes(1);
+
+    rerender({ environmentId: "env_changed" });
     await waitFor(() => {
-      expect(result.current.executionOptionsRouting).toEqual({
-        hostId: "host_follow_up",
-      });
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          hostId: "host_follow_up",
+          providerId: GLOBAL_PROVIDER_ID,
+        }),
+      );
     });
   });
 

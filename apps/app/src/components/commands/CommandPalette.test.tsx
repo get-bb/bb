@@ -460,6 +460,11 @@ describe("CommandPalette", () => {
       expect(
         screen.getAllByRole("button", { name: "Open in split" }),
       ).toHaveLength(1);
+      expect(
+        document.querySelectorAll(
+          'button[aria-label="Open in split"][aria-hidden="true"]',
+        ),
+      ).toHaveLength(1);
       expect(document.querySelector("[data-palette-footer]")).toBeNull();
       if (activation === "click") fireEvent.click(button);
       else
@@ -524,6 +529,25 @@ describe("CommandPalette", () => {
       }
     },
   );
+
+  it("keeps the split column on every row when the highlighted thread is already open", async () => {
+    modeState.activeRecents = [
+      makeThread("origin"),
+      makeThread("second", { updatedAt: 1 }),
+    ];
+    renderPalette({ layout: splitLayout });
+    openThreadSearch();
+    await screen.findByRole("option", { name: /Title origin/ });
+    const reservedColumns = () =>
+      document.querySelectorAll('button[aria-label="Open in split"]');
+    expect(reservedColumns()).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Open in split" })).toBeNull();
+    fireEvent.keyDown(searchField(), { key: "ArrowDown" });
+    expect(reservedColumns()).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Open in split" }),
+    ).toHaveLength(1);
+  });
 
   it("expands Show more on modifier Enter without opening a split, and hides the action for no matches", async () => {
     modeState.searchResponse = {
@@ -1381,9 +1405,9 @@ describe("CommandPalette", () => {
       expect.stringContaining("Fix 0"),
       expect.stringContaining("Fix 1"),
       expect.stringContaining("please fix 2"),
-      expect.stringContaining("we should fix it"),
       expect.stringContaining("Fix 3"),
       expect.stringContaining("Fix 4"),
+      expect.stringContaining("Fix 5"),
       "Show more",
     ]);
     expectText(selectedOption(), "Fix 1");
@@ -1393,6 +1417,184 @@ describe("CommandPalette", () => {
       expect(routeNavigateMock).toHaveBeenCalledWith(
         "/projects/project-1/threads/fix-2",
         { state: { searchMessageSeq: 12, searchThreadId: "fix-2" } },
+      ),
+    );
+  });
+
+  it("keeps a highlighted row in view when server rows push it down", async () => {
+    modeState.activeRecents = Array.from({ length: 6 }, (_, index) =>
+      makeThread(`fix-${index}`, {
+        title: `Fix ${index}`,
+        lastReadAt: Date.now(),
+        updatedAt: Date.now() - index,
+      }),
+    );
+    const { rerenderPalette } = renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "fx" } });
+    for (let index = 0; index < 5; index++)
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    expectText(selectedOption(), "Fix 5");
+    modeState.searchResponse = {
+      active: {
+        total: 1,
+        results: [
+          {
+            thread: makeThread("fx-rollout", { title: "Fx rollout" }),
+            matches: [
+              {
+                sourceKind: "title",
+                text: "Fx rollout",
+                highlightRanges: [{ start: 0, end: 2 }],
+                sourceSeq: null,
+              },
+            ],
+          },
+        ],
+      },
+      archived: { total: 0, results: [] },
+    };
+    rerenderPalette();
+    expectText(selectedOption(), "Fix 5");
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expectText(selectedOption(), "Fix 4");
+    expect(optionTitles()).toContainEqual(expect.stringContaining("Fix 5"));
+    expect(optionTitles()).not.toContain("Show more");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expectText(selectedOption(), "Fix 5");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(routeNavigateMock).toHaveBeenCalledWith(
+        "/projects/project-1/threads/fix-5",
+        { state: undefined },
+      ),
+    );
+  });
+
+  it("puts an exact title match first even when the server ranks message matches above it", async () => {
+    const now = Date.now();
+    const thread = (id: string, title: string, minutesAgo: number) =>
+      makeThread(id, {
+        title,
+        lastReadAt: now,
+        updatedAt: now - minutesAgo * 60_000,
+      });
+    const mossPlugins = thread("moss-plugins", "Moss plugins", 600);
+    const sceneSeed = thread("scene-seed", "SceneSeed", 5);
+    const briefs = thread("briefs", "Briefs & Action Cards", 10);
+    const contentPlan = thread("content", "Content strategy and calendar", 20);
+    const blogPost = thread("blog", "Plugins blog post", 30);
+    const mossEditor = thread("moss-editor", "Moss editor in bb", 40);
+    modeState.activeRecents = [
+      sceneSeed,
+      briefs,
+      contentPlan,
+      blogPost,
+      mossEditor,
+      mossPlugins,
+    ];
+    const message = (text: string, term: string, sourceSeq: number) => ({
+      sourceKind: "assistant_message" as const,
+      text,
+      highlightRanges: [
+        {
+          start: text.toLowerCase().indexOf(term),
+          end: text.toLowerCase().indexOf(term) + term.length,
+        },
+      ],
+      sourceSeq,
+    });
+    modeState.searchResponse = {
+      active: {
+        total: 5,
+        results: [
+          {
+            thread: sceneSeed,
+            matches: [
+              message(
+                "The required Moss authoring files are still unavailable on this host",
+                "moss",
+                3,
+              ),
+            ],
+          },
+          {
+            thread: briefs,
+            matches: [
+              message(
+                "Ready at https://github.com/brsbl/bb-plugins/pull/240",
+                "plugins",
+                4,
+              ),
+            ],
+          },
+          {
+            thread: mossPlugins,
+            matches: [
+              message(
+                "Command: git reset --hard origin/bb/moss-viewer-plugin",
+                "moss",
+                88,
+              ),
+            ],
+          },
+          {
+            thread: contentPlan,
+            matches: [
+              message("I pinned the three Moss notes for this post", "moss", 5),
+            ],
+          },
+          {
+            thread: blogPost,
+            matches: [
+              {
+                sourceKind: "title",
+                text: "Plugins blog post",
+                highlightRanges: [{ start: 0, end: 7 }],
+                sourceSeq: null,
+              },
+            ],
+          },
+        ],
+      },
+      archived: { total: 0, results: [] },
+    };
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+
+    fireEvent.change(input, { target: { value: "moss" } });
+    expect(
+      screen
+        .getAllByRole("option")
+        .slice(0, 2)
+        .map((option) => option.querySelector(".bb-thread-title")?.textContent)
+        .sort(),
+    ).toEqual(["Moss editor in bb", "Moss plugins"]);
+
+    fireEvent.change(input, { target: { value: "moss plugins" } });
+    const [first] = screen.getAllByRole("option");
+    expect(first.getAttribute("aria-selected")).toBe("true");
+    expect(first.querySelector(".bb-thread-title")?.textContent).toBe(
+      "Moss plugins",
+    );
+    expect(first.querySelector(".bb-thread-title mark")?.textContent).toBe(
+      "Moss plugins",
+    );
+    expectText(
+      first.querySelector("[data-palette-thread-excerpt]"),
+      "git reset",
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(routeNavigateMock).toHaveBeenCalledWith(
+        "/projects/project-1/threads/moss-plugins",
+        { state: { searchMessageSeq: 88, searchThreadId: "moss-plugins" } },
       ),
     );
   });
@@ -1714,17 +1916,14 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("option").querySelector("mark")?.textContent).toBe(
       "matching",
     );
-    const metadata = screen
-      .getByRole("option")
-      .querySelector("[data-palette-thread-metadata]");
-    const projectIcon = metadata?.querySelector('[data-icon="Folder"]');
-    expect(projectIcon?.previousSibling?.textContent).toBe(
-      "Title archived-message · ",
+    const option = screen.getByRole("option");
+    expect(option.querySelector(".bb-thread-title")?.textContent).toBe(
+      "Title archived-message",
     );
-    expect(projectIcon?.nextSibling?.textContent).toBe("Palette project");
-    expect(metadata?.textContent).toContain(
-      "Title archived-message · Palette project · ",
-    );
+    const excerpt = option.querySelector("[data-palette-thread-excerpt]");
+    expect(excerpt?.textContent).toBe("matching archived message");
+    expect(excerpt?.querySelector("mark")?.textContent).toBe("matching");
+    expect(option.querySelector("[data-palette-thread-metadata]")).toBeNull();
     fireEvent.keyDown(input, { key: "Enter" });
 
     const state = {
