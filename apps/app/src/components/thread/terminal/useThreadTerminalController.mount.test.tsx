@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { TerminalSession } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import {
-  resetFixedPanelTabsStateForTest,
-  useActiveFixedRightTerminalId,
-  useSetFixedRightTerminalActiveTerminal,
-} from "@/lib/fixed-panel-tabs";
 import {
   useThreadTerminalController,
   type ThreadTerminalControllerArgs,
@@ -38,19 +33,16 @@ function controllerArgs(
   visibility: PanelVisibility,
 ): ThreadTerminalControllerArgs {
   return {
-    canCreateTerminal: true,
     isPanelOpen: visibility.isPanelOpen,
     isPanelPersistedOpen: visibility.isPanelPersistedOpen,
-    syncThreadId: null,
     target: { kind: "thread", threadId: "thr_1" },
+    terminalId: session.id,
   };
 }
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  localStorage.clear();
-  resetFixedPanelTabsStateForTest();
 });
 
 describe("useThreadTerminalController terminal view mounting", () => {
@@ -113,42 +105,24 @@ describe("useThreadTerminalController terminal view mounting", () => {
     expect(result.current.shouldMountTerminalView).toBe(true);
   });
 
-  it("leaves the selection alone while a fixed tab still shows its previous terminal", async () => {
-    const otherSession = makeTerminalSession({
-      id: "term_2",
+  it("never shows a sibling terminal in place of its own missing terminal", async () => {
+    const sibling = makeTerminalSession({
+      id: "term_sibling",
       threadId: "thr_1",
-      environmentId: "env_1",
-      hostId: "host_1",
     });
-    vi.mocked(sdk.terminals.list).mockResolvedValue({
-      sessions: [session, otherSession],
-    });
+    vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [sibling] });
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(
-      () => {
-        const controller = useThreadTerminalController({
-          ...controllerArgs({ isPanelOpen: true, isPanelPersistedOpen: true }),
-          fixedTerminalId: session.id,
-          panelStateId: "plugin-page",
-        });
-        return {
-          activeTerminalId: useActiveFixedRightTerminalId("plugin-page", null),
-          controller,
-          selectTerminal: useSetFixedRightTerminalActiveTerminal(
-            "plugin-page",
-            null,
-          ),
-        };
-      },
+      () =>
+        useThreadTerminalController(
+          controllerArgs({ isPanelOpen: true, isPanelPersistedOpen: true }),
+        ),
       { wrapper },
     );
+
     await waitFor(() => {
-      expect(result.current.controller.activeSession?.id).toBe(session.id);
+      expect(sdk.terminals.list).toHaveBeenCalled();
     });
-
-    act(() => result.current.selectTerminal(otherSession.id));
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(result.current.activeTerminalId).toBe(otherSession.id);
+    expect(result.current.activeSession).toBeNull();
   });
 });

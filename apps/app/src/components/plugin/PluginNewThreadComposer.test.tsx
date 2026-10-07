@@ -135,7 +135,6 @@ vi.mock("@/hooks/queries/thread-terminal-queries", async (importOriginal) => {
     useTerminals: () => ({ data: undefined }),
     useEnvironmentTerminals: () => ({ data: undefined }),
     useCloseTerminal: () => ({ mutate: mocks.closeTerminal }),
-    useCloseEnvironmentTerminal: () => ({ mutate: mocks.closeTerminal }),
   };
 });
 

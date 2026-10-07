@@ -1391,6 +1391,13 @@ terminal, as for user-started terminals. Requested in #1132 and by a plugin
 author whose code review page could not show a terminal in the reviewed
 worktree.
 
+**Core callers.** Every surface's terminal tabs go through
+`usePanelTerminals`: its `open` is the navigation handler this API calls, and
+core's Start terminal row, the `terminal.open` shortcut, and terminal tab
+selection use the same `select` path after creating or choosing a terminal.
+`usePanelTerminals.test.tsx` runs one contract table against the thread view,
+New thread screen, and plugin page rules.
+
 **Audit before stabilizing.**
 
 1. Decide whether plugins need tabs that hide without closing the terminal

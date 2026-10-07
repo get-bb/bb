@@ -54,9 +54,6 @@ import {
   type ComposerSource,
 } from "@/lib/plugin-composer-handle";
 import { BbHttpError, sdk } from "@/lib/sdk";
-import { applyTerminalSessionUpsert } from "@/hooks/cache-owners/terminal-cache-owner";
-import { appQueryClient } from "@/lib/app-query-client";
-import { isVisibleTerminalSession } from "@/lib/terminal-session-visibility";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
@@ -425,9 +422,7 @@ export function useBbNavigate(): BbNavigate {
           if (error instanceof BbHttpError && error.status === 404) return null;
           throw error;
         });
-      if (session === null || !isVisibleTerminalSession(session)) return false;
-      applyTerminalSessionUpsert({ queryClient: appQueryClient, session });
-      return appNavigation.openTerminal(session);
+      return session !== null && appNavigation.openTerminal(session);
     },
     [appNavigation],
   );

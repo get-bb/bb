@@ -70,7 +70,7 @@ interface RootComposePanelTabContentProps {
   rootPanelThreadId: string | null;
   rootProjectHostId: string | null;
   shouldAutoFocusNewTab: boolean;
-  shouldAutoFocusTerminal: boolean;
+  autoFocusTerminalId: string | null;
   tab: SecondaryFileFixedPanelTab;
   terminalTarget: RootComposeTerminalTarget | null;
 }
@@ -155,7 +155,7 @@ export function RootComposePanelTabContent({
   rootPanelThreadId,
   rootProjectHostId,
   shouldAutoFocusNewTab,
-  shouldAutoFocusTerminal,
+  autoFocusTerminalId,
   tab,
   terminalTarget,
 }: RootComposePanelTabContentProps) {
@@ -166,16 +166,15 @@ export function RootComposePanelTabContent({
       return terminalTarget === null ? null : (
         <LazyThreadTerminalPanel
           autoFocus={
-            pane.isFocused && tab.id === activeTabId && shouldAutoFocusTerminal
+            pane.isFocused &&
+            tab.id === activeTabId &&
+            tab.terminalId === autoFocusTerminalId
           }
-          canCreateTerminal={canCreateTerminal}
           isPanelOpen={isPanelOpen}
           isPanelPersistedOpen={isPanelPersistedOpen}
           onAutoFocusHandled={onAutoFocusTerminalHandled}
           onOpenLink={onOpenPanelLink}
           onSelectionAddToChat={onSelectionAddToChat}
-          panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
-          syncThreadId={null}
           target={terminalTarget}
           terminalId={tab.terminalId}
         />

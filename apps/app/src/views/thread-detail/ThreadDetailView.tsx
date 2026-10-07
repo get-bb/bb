@@ -108,11 +108,8 @@ import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
-import {
-  useCloseThreadTerminal,
-  useCreateThreadTerminal,
-  useThreadTerminals,
-} from "@/hooks/queries/thread-terminal-queries";
+import { useThreadTerminals } from "@/hooks/queries/thread-terminal-queries";
+import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import {
   findEnvironmentDisplayProvider,
   getEnvironmentSummaryChrome,
@@ -283,24 +280,17 @@ import {
 import {
   useFixedPanelTabsStorageMaintenance,
   useReconciledFixedPanelTabsState,
-  useRemoveFixedRightTerminalTab,
-  useSetFixedRightTerminalActiveTerminal,
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
 import {
   createGitDiffFixedPanelTab,
-  createNewTabFixedPanelTab,
   createThreadInfoFixedPanelTab,
   type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  DEFAULT_TERMINAL_COLS,
-  DEFAULT_TERMINAL_ROWS,
-} from "@/components/thread/terminal/useThreadTerminalController";
 import {
   getActiveFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
@@ -612,20 +602,6 @@ function ThreadDetailViewInternal(
     threadId,
     threadId,
   );
-  const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
-    threadId,
-    threadId,
-  );
-  const [shouldAutoFocusTerminal, setShouldAutoFocusTerminal] = useState(false);
-  const handleTerminalAutoFocusHandled = useCallback(
-    () => setShouldAutoFocusTerminal(false),
-    [],
-  );
-  const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
-    threadId,
-    threadId,
-    secondaryPanelDrawerVisibility.closeDrawer,
-  );
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(
     threadId,
     threadId,
@@ -889,8 +865,6 @@ function ThreadDetailViewInternal(
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
   });
-  const createTerminal = useCreateThreadTerminal();
-  const closeTerminal = useCloseThreadTerminal();
   const loadedTerminalSessions = terminalsListQuery.data?.sessions;
   const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsById = useMemo(
@@ -1605,84 +1579,30 @@ function ThreadDetailViewInternal(
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
   }, [handleOpenNewTab, isFocused]);
-  const handleStartTerminal = useCallback(() => {
-    if (!canCreateTerminal || createTerminal.isPending || !threadId) {
-      return;
-    }
-    const newTab = createNewTabFixedPanelTab();
-    void createTerminal
-      .mutateAsync({
-        threadId,
-        cols: DEFAULT_TERMINAL_COLS,
-        rows: DEFAULT_TERMINAL_ROWS,
-      })
-      .then((session) => {
-        closeTab(newTab.id, { remember: false });
-        setShouldAutoFocusTerminal(true);
-        setActiveFixedTerminal(session.id);
-        openCompactDrawer();
-      })
-      .catch(() => undefined);
-  }, [
-    canCreateTerminal,
-    closeTab,
-    createTerminal,
-    openCompactDrawer,
-    setActiveFixedTerminal,
-    threadId,
-  ]);
-  useAppCommandHandler("terminal.open", () => {
-    if (
-      !isFocused ||
-      !canCreateTerminal ||
-      createTerminal.isPending ||
-      !threadId
-    ) {
-      return false;
-    }
-    handleStartTerminal();
-    return true;
+  const acceptsThreadTerminal = useCallback(
+    (session: TerminalSession) => session.threadId === threadId,
+    [threadId],
+  );
+  const terminals = usePanelTerminals({
+    panelStateId: threadId,
+    syncThreadId: threadId,
+    createTarget:
+      canCreateTerminal && threadId !== undefined
+        ? { kind: "thread", threadId }
+        : null,
+    isFocused,
+    acceptsSession: acceptsThreadTerminal,
+    tabsCarryTarget: false,
+    reveal: openCompactDrawer,
+    onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
   });
-  const handleActivateTerminalTab = useCallback(
-    (terminalId: string) => {
-      setShouldAutoFocusTerminal(true);
-      setActiveFixedTerminal(terminalId);
-      openCompactDrawer();
-    },
-    [openCompactDrawer, setActiveFixedTerminal],
-  );
-  const handleOpenTerminal = useCallback(
-    (session: TerminalSession): boolean => {
-      if (session.threadId !== threadId) return false;
-      handleActivateTerminalTab(session.id);
-      return true;
-    },
-    [handleActivateTerminalTab, threadId],
-  );
   const appNavigationCapabilities = useMemo(
     () => ({
       openFilePreview: handleOpenLiveFilePreview,
       openFixedTab,
-      openTerminal: handleOpenTerminal,
+      openTerminal: terminals.open,
     }),
-    [handleOpenLiveFilePreview, handleOpenTerminal, openFixedTab],
-  );
-  const handleCloseTerminalTab = useCallback(
-    (terminalId: string) => {
-      if (!threadId) {
-        removeFixedTerminalTab(terminalId);
-        return;
-      }
-      closeTerminal.mutate(
-        { mode: "force", threadId, terminalId },
-        {
-          onSuccess: () => {
-            removeFixedTerminalTab(terminalId);
-          },
-        },
-      );
-    },
-    [closeTerminal, removeFixedTerminalTab, threadId],
+    [handleOpenLiveFilePreview, openFixedTab, terminals.open],
   );
   const handleCloseWindowRequest = useCallback(() => {
     if (pluginDetails.activePluginId !== null) {
@@ -1697,7 +1617,7 @@ function ThreadDetailViewInternal(
       isSecondaryFileTab(activeFixedSecondaryTab)
     ) {
       if (activeFixedSecondaryTab.kind === "terminal") {
-        handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
+        terminals.close(activeFixedSecondaryTab.terminalId);
       } else {
         closeTab(activeFixedSecondaryTab.id);
       }
@@ -1709,9 +1629,9 @@ function ThreadDetailViewInternal(
     activeFixedSecondaryTab,
     closeSecondaryPanel,
     closeTab,
-    handleCloseTerminalTab,
     isSecondaryPanelOpen,
     pluginDetails,
+    terminals,
   ]);
   useAppCommandHandler("panel.toggle", () => {
     if (!isFocused) return false;
@@ -2619,15 +2539,14 @@ function ThreadDetailViewInternal(
         return (
           <LazyThreadTerminalPanel
             autoFocus={
-              tab.id === activeFixedSecondaryTabId && shouldAutoFocusTerminal
+              tab.id === activeFixedSecondaryTabId &&
+              tab.terminalId === terminals.autoFocusTerminalId
             }
-            canCreateTerminal={canCreateTerminal}
             isPanelOpen={isSecondaryPanelOpen}
             isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
-            onAutoFocusHandled={handleTerminalAutoFocusHandled}
+            onAutoFocusHandled={terminals.handleAutoFocusHandled}
             onOpenLink={handleOpenTimelineLink}
             onSelectionAddToChat={handleSelectionAddToChat}
-            syncThreadId={thread.id}
             target={{ kind: "thread", threadId: thread.id }}
             terminalId={tab.terminalId}
           />
@@ -2651,7 +2570,7 @@ function ThreadDetailViewInternal(
               canCreateTerminal
                 ? () => {
                     activateTab(tab.id);
-                    handleStartTerminal();
+                    terminals.start();
                   }
                 : undefined
             }
@@ -2814,8 +2733,8 @@ function ThreadDetailViewInternal(
               session === undefined || session.status === "running"
                 ? null
                 : session.status,
-            onSelect: () => handleActivateTerminalTab(tab.terminalId),
-            onClose: () => handleCloseTerminalTab(tab.terminalId),
+            onSelect: () => terminals.select(tab.terminalId),
+            onClose: () => terminals.close(tab.terminalId),
           };
         }
         case "workspace-file-preview":
