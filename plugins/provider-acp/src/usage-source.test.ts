@@ -95,11 +95,16 @@ it("publishes only its own maintenance providers without a display and only meas
     expect(collect).toHaveBeenCalledWith({
       hostId: "online",
       providerId: "acp-custom",
+      refresh: false,
     });
     await read("online", "acp-custom");
     expect(collect).toHaveBeenCalledTimes(1);
     await read("online", "acp-custom", true);
     expect(collect).toHaveBeenCalledTimes(2);
+    expect(collect).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ refresh: true }),
+    );
     expect(await read("offline", "acp-custom")).toMatchObject({
       observedAt: null,
       usage: { status: "error" },
@@ -223,6 +228,10 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
     finish!();
     await Promise.all([first, second, forced]);
     expect(collect).toHaveBeenCalledTimes(2);
+    expect(collect).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ refresh: true }),
+    );
   } finally {
     finish?.();
     await harness.lifecycle.dispose();

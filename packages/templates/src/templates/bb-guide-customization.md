@@ -177,9 +177,12 @@ branches bb creates after the change.
   bb settings general <key> <value>
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
-  bb settings usage [--machine <id-or-name>]
+  bb settings usage [--machine <id-or-name>] [--refresh]
   bb settings version [--force]
   bb settings reload
+
+Use `--refresh` to fetch fresh provider usage; ordinary reads may reuse results
+for 10 seconds. The SDK equivalent is `bb.sdk.system.usageLimits({ refresh: true })`.
 
 `bb settings ai-services` shows which AI service writes thread titles (and so
 branch names), commit messages, and voice transcripts, plus every service a

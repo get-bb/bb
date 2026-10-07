@@ -32,6 +32,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb settings version`
 - `bb settings reload`
 
+`bb settings usage` accepts `--refresh` to fetch fresh provider usage.
+
 ## project
 
 - `bb project`

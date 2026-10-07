@@ -366,12 +366,12 @@ describe("bb settings commands", () => {
     });
 
     await runCommand(
-      ["settings", "usage", "--machine", "builder", "--json"],
+      ["settings", "usage", "--machine", "builder", "--refresh", "--json"],
       register,
     );
 
     expect(getUsage).toHaveBeenCalledWith({
-      query: { hostId: "host-remote" },
+      query: { hostId: "host-remote", refresh: "true" },
     });
   });
 
