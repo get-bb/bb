@@ -157,7 +157,7 @@ function ChangedFileRow({
                 : undefined
             }
             className={cn(
-              "group/diff relative z-10 flex h-full shrink-0 items-center",
+              "group/diff relative z-10 -mr-1 -ml-2 flex h-full min-w-16 shrink-0 items-center justify-end pr-1 pl-2",
               onChangedFileClick && "cursor-pointer",
             )}
           >
