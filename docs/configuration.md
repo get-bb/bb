@@ -373,9 +373,9 @@ it with
 
 The "Show Git changes and Commit button" switch in Settings → General defaults to on.
 Turn it off to hide the untracked, uncommitted, and committed file summary and
-expanded file list above every thread composer, plus the Commit action in the
-thread header and overflow menu. PR status, thread relationships,
-and workspace warnings remain visible. This server-wide preference persists
+expanded file list above every thread composer, the pull-request status and actions
+in that shelf, and the Commit action in the thread header and overflow menu.
+Thread relationships and workspace warnings remain visible. This server-wide preference persists
 across reloads and applies to every connected app client. Set it with
 `bb settings general showGitChanges false` or read the current config and call
 `sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.

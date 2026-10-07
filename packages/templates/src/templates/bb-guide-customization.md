@@ -128,12 +128,12 @@ unhandled-event preferences are preserved. Set it with
 `bb settings general showDiagnosticEvents <true|false>`.
 
 Settings → General → Show Git changes and Commit button controls the git
-summary, expanded file list, and Commit action in the thread header and overflow
-menu.
+summary, expanded file list, pull-request status and actions above the composer,
+and Commit action in the thread header and overflow menu.
 `showGitChanges` defaults to true; use
 `bb settings general showGitChanges false` to hide them, or true to restore them.
 The server saves this preference across reloads and shares it across connected
-clients. PR status and workspace warnings remain visible. SDK callers can update
+clients. Thread relationships and workspace warnings remain visible. SDK callers can update
 `showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
 
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to

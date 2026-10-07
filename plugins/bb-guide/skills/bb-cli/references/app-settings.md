@@ -81,10 +81,11 @@ so they carry over between navigation plugins.
 
 - Settings → General → Show Git changes and Commit button defaults to on.
 - `bb settings general showGitChanges false` hides the untracked, uncommitted,
-  and committed summary and file list, plus Commit in the header and overflow menu.
+  and committed summary and file list, pull-request status and actions above the
+  composer, and Commit in the header and overflow menu.
 - Set it to `true` to restore them across every thread and connected client.
   The server saves the choice across reloads.
-- PR status, thread relationships, and workspace warnings remain visible.
+- Thread relationships and workspace warnings remain visible.
 - SDK callers use `sdk.system.updateGeneralSettings` with the current settings
   and `showGitChanges`. Older clients that omit it preserve the saved choice.
 

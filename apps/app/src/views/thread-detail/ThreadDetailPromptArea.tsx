@@ -2176,7 +2176,7 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
-          pullRequestSection={pullRequestSection}
+          pullRequestSection={showGitChanges ? pullRequestSection : null}
           gitSection={
             workspaceChangedFilesSection && showGitChanges
               ? {
