@@ -46,8 +46,9 @@ const PLANS_SECTION = {
         you pick the right one for each task.
       </p>
       <p>
-        When an agent hits a usage limit, bb picks the work back up once the
-        limit resets. bb itself is free.
+        When an account hits its limit, bb can move the thread to another
+        account you own, or pick the work back up once the limit resets. bb
+        itself is free.
       </p>
     </>
   ),
@@ -89,14 +90,14 @@ export const BB_VS_CURSOR: Comparison = {
       title: "Agents",
       rows: [
         {
-          feature: "Claude Code and Codex agents",
-          bb: cell("yes", "Side by side with Cursor’s agent"),
-          competitor: cell("partial", "As editor extensions"),
-        },
-        {
           feature: "Use your Claude or ChatGPT subscription",
           bb: cell("yes", "Claude Code and Codex, signed in as usual"),
           competitor: cell("no", "API rates through Cursor usage or your keys"),
+        },
+        {
+          feature: "Claude Code and Codex agents",
+          bb: cell("yes", "Side by side with Cursor’s agent"),
+          competitor: cell("partial", "As editor extensions"),
         },
         {
           feature: "Agent-to-agent handoff",
@@ -211,8 +212,9 @@ export const BB_VS_CURSOR: Comparison = {
             <p>
               Yes, for running coding agents: bb. It’s free for any team size
               and MIT-licensed, so you can use and change it for anything,
-              including at work. You pay only for the agent plans you already
-              have. <a href="/download/macos">Download bb</a>.
+              including at work, and Claude Code and Codex run directly on the
+              Claude and ChatGPT subscriptions you already have.{" "}
+              <a href="/download/macos">Download bb</a>.
             </p>
           ),
         },
@@ -220,10 +222,10 @@ export const BB_VS_CURSOR: Comparison = {
           question: "Can I use Cursor with bb?",
           answer: (
             <p>
-              Yes. Keep editing in Cursor, and open any thread’s worktree in it
-              with one click. You can also pick Cursor as the agent for any bb
-              thread: bb runs Cursor’s agent CLI with your own sign-in and plan,
-              so your rules and MCP servers come along.
+              Yes. Pick Cursor as the agent for any bb thread: bb runs Cursor’s
+              agent CLI with your own sign-in and plan, so your rules and MCP
+              servers come along. You can also open any thread’s worktree in
+              Cursor with one click.
             </p>
           ),
         },
@@ -243,6 +245,10 @@ export const BB_VS_CURSOR: Comparison = {
           question: "What’s different day to day?",
           answer: (
             <ul>
+              <li>
+                Claude and GPT usage comes out of your Claude and ChatGPT
+                subscriptions instead of usage-based billing.
+              </li>
               <li>
                 Each agent task is a thread you can open from your computer,
                 phone, or any browser.

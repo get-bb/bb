@@ -150,9 +150,9 @@ export const BB_VS_T3_CODE: Comparison = {
           answer: (
             <p>
               Yes: bb. It’s free for any team size and MIT-licensed, so you can
-              use and change it for anything, including at work. Your agents
-              work together across providers, and plugins add whatever you need
-              without forking. <a href="/download/macos">Download bb</a>.
+              use and change it for anything, including at work. Plugins add
+              whatever you need without forking, and your agents work together
+              across providers. <a href="/download/macos">Download bb</a>.
             </p>
           ),
         },
@@ -173,6 +173,10 @@ export const BB_VS_T3_CODE: Comparison = {
           answer: (
             <ul>
               <li>
+                When you want a new panel, command, or agent, you install or
+                build a plugin instead of patching the app.
+              </li>
+              <li>
                 When an agent starts another, the new one is a full thread you
                 can message.
               </li>
@@ -185,11 +189,18 @@ export const BB_VS_T3_CODE: Comparison = {
                 <code>.bb-env-setup.sh</code>, and untracked files like{" "}
                 <code>.env</code> go in <code>.worktreeinclude</code>.
               </li>
-              <li>
-                When you want a new panel, command, or agent, you install or
-                build a plugin instead of patching the app.
-              </li>
             </ul>
+          ),
+        },
+        FAQ_CUSTOMIZE,
+        {
+          question: "Do my skills and slash commands work in bb?",
+          answer: (
+            <p>
+              Yes. bb reads each agent’s own skills and slash commands and shows
+              them in that agent’s <code>/</code> menu, so the ones you use
+              today keep working.
+            </p>
           ),
         },
         FAQ_GET_STARTED,
@@ -235,7 +246,6 @@ export const BB_VS_T3_CODE: Comparison = {
         },
         faqPhone(null),
         faqSchedule(null),
-        FAQ_CUSTOMIZE,
       ],
     },
     {

@@ -1,6 +1,6 @@
 import vibeKanbanIcon from "../assets/competitors/vibe-kanban.png";
 import type { CompareHighlight, Comparison } from "./comparisons";
-import { CLOSER, FAQ_AGENTS, FAQ_REVIEW, cell, price } from "./compare-content";
+import { FAQ_AGENTS, FAQ_REVIEW, cell, price } from "./compare-content";
 import {
   AGENTS_COPY,
   agentsSection,
@@ -163,5 +163,8 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
       ],
     },
   ],
-  closer: CLOSER,
+  closer: {
+    title: "Get your board back",
+    body: "Free and open source, with a release every week. Bring the AI plans you already pay for.",
+  },
 };
