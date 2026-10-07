@@ -1923,7 +1923,7 @@ function TimelineRowsList({
             getScrollElement={getWindowingScrollElement}
             itemKeys={itemKeys}
             measurements={measurements}
-            startAtEnd={
+            pinnedToEnd={
               isTopLevelList &&
               detailScrollRoot === null &&
               bottomAnchor?.isAtBottom === true

@@ -89,7 +89,7 @@ function renderWindowedItems(options?: {
   clientHeight?: number;
   measurements?: Map<string, number>;
   snapAutoHeight?: () => void;
-  startAtEnd?: boolean;
+  pinnedToEnd?: boolean;
 }) {
   const measurements = options?.measurements ?? new Map<string, number>();
   Object.defineProperty(scrollElement, "clientHeight", {
@@ -110,7 +110,7 @@ function renderWindowedItems(options?: {
           getScrollElement={() => scrollElement}
           itemKeys={ITEM_KEYS}
           measurements={measurements}
-          startAtEnd={options?.startAtEnd ?? false}
+          pinnedToEnd={options?.pinnedToEnd ?? false}
           renderItem={(
             index: number,
             state: TimelineWindowedItemRenderState,
@@ -204,7 +204,7 @@ describe("TimelineWindowedItems", () => {
           getScrollElement={() => root}
           itemKeys={ITEM_KEYS}
           measurements={new Map()}
-          startAtEnd={false}
+          pinnedToEnd={false}
           renderItem={(index, state) => {
             rendered.add(index);
             return (
@@ -243,7 +243,7 @@ describe("TimelineWindowedItems", () => {
         getScrollElement={() => scrollElement}
         itemKeys={ITEM_KEYS}
         measurements={measurements}
-        startAtEnd={false}
+        pinnedToEnd={false}
         renderItem={(index, state) => (
           <div
             key={ITEM_KEYS[index]}
@@ -277,7 +277,7 @@ describe("TimelineWindowedItems", () => {
         getScrollElement={getScrollElement}
         itemKeys={ITEM_KEYS.slice(0, count)}
         measurements={measurements}
-        startAtEnd={false}
+        pinnedToEnd={false}
         renderItem={(index, state) => (
           <div
             key={ITEM_KEYS[index]}
@@ -399,7 +399,7 @@ describe("TimelineWindowedItems", () => {
   });
 
   it("starts its range at the end of the list when pinned to the bottom", async () => {
-    renderWindowedItems({ startAtEnd: true });
+    renderWindowedItems({ pinnedToEnd: true });
 
     await waitFor(() => expect(screen.getByTestId("content-98")).toBeTruthy());
     expect(screen.queryByTestId("wrapper-0")).toBeNull();
@@ -446,6 +446,36 @@ describe("TimelineWindowedItems", () => {
 
     expect(wrapperHeight).toBe(3_500);
     expect(scrollElement.scrollTop).toBe(3_404);
+  });
+
+  it("keeps the end in place when a visible row grows while pinned to the end", async () => {
+    clampScrollTopToContentHeight(readSpacerHeight);
+    renderWindowedItems({ pinnedToEnd: true });
+    await waitFor(() => expect(screen.getByTestId("content-98")).toBeTruthy());
+    scrollElement.scrollTop = 3_104;
+
+    itemHeights.set(98, 332);
+    act(() => {
+      reportItemResize(screen.getByTestId("wrapper-98"), 332);
+    });
+
+    expect(readSpacerHeight()).toBe(3_500);
+    expect(scrollElement.scrollTop).toBe(3_404);
+  });
+
+  it("leaves the growing last row to the scroll root while pinned to the end", async () => {
+    clampScrollTopToContentHeight(readSpacerHeight);
+    renderWindowedItems({ pinnedToEnd: true });
+    await waitFor(() => expect(screen.getByTestId("content-99")).toBeTruthy());
+    scrollElement.scrollTop = 3_104;
+
+    itemHeights.set(99, 332);
+    act(() => {
+      reportItemResize(screen.getByTestId("wrapper-99"), 332);
+    });
+
+    expect(readSpacerHeight()).toBe(3_500);
+    expect(scrollElement.scrollTop).toBe(3_104);
   });
 
   it("renders everything when its scrollport has no usable geometry", async () => {

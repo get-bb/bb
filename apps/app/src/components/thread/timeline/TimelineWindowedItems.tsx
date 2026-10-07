@@ -58,7 +58,7 @@ export function TimelineWindowedItems({
   itemKeys,
   measurements,
   renderItem,
-  startAtEnd,
+  pinnedToEnd,
 }: TimelineWindowedItemsProps) {
   const [scrollAdjustmentsKeepMomentum] = useState(
     () => typeof navigator === "undefined" || !isIOSWebKit(navigator),
@@ -139,7 +139,7 @@ export function TimelineWindowedItems({
   );
   const initialOffset = useCallback(() => {
     const scrollElement = resolvedGetScrollElement();
-    if (!startAtEnd) return scrollElement?.scrollTop ?? 0;
+    if (!pinnedToEnd) return scrollElement?.scrollTop ?? 0;
     let estimatedEnd = scrollMargin;
     for (let index = 0; index < itemKeys.length; index += 1) {
       estimatedEnd += estimateSize(index) + (index > 0 ? gap : 0);
@@ -153,7 +153,7 @@ export function TimelineWindowedItems({
     itemKeys,
     resolvedGetScrollElement,
     scrollMargin,
-    startAtEnd,
+    pinnedToEnd,
   ]);
   const snapAutoHeight = useContext(AutoHeightSnapContext);
   const scrollToFn = useCallback<typeof elementScroll<HTMLElement>>(
@@ -197,12 +197,13 @@ export function TimelineWindowedItems({
       _delta,
       instance,
     ) => {
+      if (pinnedToEnd) return item.index < instance.options.count - 1;
       const scrollTop = resolvedGetScrollElement()?.scrollTop ?? 0;
       if (item.start >= scrollTop) return false;
       if (!instance.itemSizeCache.has(item.key)) return true;
       return item.end <= scrollTop && instance.scrollDirection !== "backward";
     };
-  }, [resolvedGetScrollElement, virtualizer]);
+  }, [pinnedToEnd, resolvedGetScrollElement, virtualizer]);
 
   const updateScrollGeometry = useCallback(() => {
     if (!configured) return;
