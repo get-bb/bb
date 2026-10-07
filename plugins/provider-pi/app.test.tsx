@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent } from "@testing-library/react";
+import { act, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { PI_EXTENSION_UI_KIND } from "./src/extension-ui-contract.js";
@@ -99,6 +99,28 @@ describe("pi extension ui interaction", () => {
     });
     fireEvent.click(view.getByText("Submit"));
     await vi.waitFor(() => expect(submit).toHaveBeenCalledWith("hello"));
+  });
+
+  it("keeps an input dialog locked after a successful submit and retryable after a failure", async () => {
+    const submit = vi
+      .fn<(value: unknown) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(undefined);
+    const view = render(
+      { requestId: "ui-3", method: "input", placeholder: "type here" },
+      { submit },
+    );
+    const input = view.getByPlaceholderText("type here") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.click(view.getByText("Submit"));
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(input.disabled).toBe(false));
+
+    fireEvent.click(view.getByText("Submit"));
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(input.disabled).toBe(true);
+    expect(input.value).toBe("hello");
   });
 
   it("renders editor prefill and submits the edited text", async () => {

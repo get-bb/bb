@@ -52,7 +52,17 @@ function ExtensionUiInteraction({
     setBusy(true);
     try {
       await submit(value as never);
-    } finally {
+    } catch (cause) {
+      setBusy(false);
+      throw cause;
+    }
+  };
+
+  const dismiss = async () => {
+    setBusy(true);
+    try {
+      await cancel();
+    } catch {
       setBusy(false);
     }
   };
@@ -158,7 +168,7 @@ function ExtensionUiInteraction({
             size="sm"
             variant="ghost"
             disabled={busy}
-            onClick={() => void cancel()}
+            onClick={() => void dismiss()}
           >
             Cancel
           </Button>

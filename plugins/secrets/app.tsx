@@ -28,7 +28,10 @@ function SecretRequestInteraction({
   );
   const [values, setValues] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<
+    "submit" | "cancel" | null
+  >(null);
+  const busy = pendingAction !== null;
   const [formError, setFormError] = useState<string | null>(null);
 
   if (!parsed.success) {
@@ -64,20 +67,20 @@ function SecretRequestInteraction({
       return;
     }
     setFormError(null);
-    setBusy(true);
+    setPendingAction("submit");
     try {
-      try {
-        await submit({ values });
-        setValues({});
-      } catch {}
-    } finally {
-      setBusy(false);
+      await submit({ values });
+    } catch {
+      setPendingAction(null);
     }
   };
   const cancelRequest = async () => {
+    setPendingAction("cancel");
     try {
       await cancel();
-    } catch {}
+    } catch {
+      setPendingAction(null);
+    }
   };
 
   return (
@@ -195,7 +198,7 @@ function SecretRequestInteraction({
           className="w-full @min-[24rem]/secrets:w-auto"
           disabled={busy}
         >
-          {busy ? (
+          {pendingAction === "submit" ? (
             <HugeiconsIcon
               icon={Loading03Icon}
               className="size-3 animate-spin"

@@ -63,10 +63,9 @@ export function PluginPendingInteractionComposer({
           value,
         });
       } catch (cause) {
+        setSubmitting(false);
         setError(cause instanceof Error ? cause.message : String(cause));
         throw cause;
-      } finally {
-        setSubmitting(false);
       }
     },
     [interaction.id, interaction.threadId],
@@ -85,10 +84,9 @@ export function PluginPendingInteractionComposer({
         });
       }
     } catch (cause) {
+      setSubmitting(false);
       setError(cause instanceof Error ? cause.message : String(cause));
       throw cause;
-    } finally {
-      setSubmitting(false);
     }
   }, [origin, interaction.id, interaction.threadId, stopThread]);
   const dismissLabel = origin === "plugin" ? "Cancel" : "Stop turn";
