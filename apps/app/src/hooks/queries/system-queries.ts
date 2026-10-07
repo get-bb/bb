@@ -273,6 +273,39 @@ export function useSystemProviderInfo({
   );
 }
 
+async function requestOfferedProviderExecutionOptions({
+  environmentId,
+  hostId,
+  providerId,
+  signal,
+}: Omit<SystemExecutionOptionsQueryArgs, "writeLastKnown"> & {
+  signal: AbortSignal;
+}): Promise<{
+  response: SystemExecutionOptionsResponse;
+  loadedProviderId: string | null;
+}> {
+  const request = (requestedProviderId: string | null) =>
+    sdk.system.executionOptions({
+      environmentId: environmentId ?? undefined,
+      hostId: hostId ?? undefined,
+      providerId: requestedProviderId ?? undefined,
+      signal,
+    });
+  const response = await request(providerId);
+  const fallbackProviderId = response.providers[0]?.id;
+  if (
+    providerId === null ||
+    fallbackProviderId === undefined ||
+    response.providers.some((provider) => provider.id === providerId)
+  ) {
+    return { response, loadedProviderId: providerId };
+  }
+  return {
+    response: await request(fallbackProviderId),
+    loadedProviderId: fallbackProviderId,
+  };
+}
+
 function systemExecutionOptionsQueryOptions({
   environmentId,
   hostId,
@@ -286,13 +319,15 @@ function systemExecutionOptionsQueryOptions({
       providerId,
     }),
     queryFn: async ({ signal }) => {
-      const response = await sdk.system.executionOptions({
-        environmentId: environmentId ?? undefined,
-        hostId: hostId ?? undefined,
-        providerId: providerId ?? undefined,
-        signal,
-      });
-      const modelsProviderId = providerId ?? response.providers[0]?.id ?? null;
+      const { response, loadedProviderId } =
+        await requestOfferedProviderExecutionOptions({
+          environmentId,
+          hostId,
+          providerId,
+          signal,
+        });
+      const modelsProviderId =
+        loadedProviderId ?? response.providers[0]?.id ?? null;
       if (writeLastKnown) {
         writeCachedProviderList(
           providerListCacheKey({ environmentId, hostId }),
@@ -304,10 +339,14 @@ function systemExecutionOptionsQueryOptions({
             selectedOnlyModels: response.selectedOnlyModels,
           };
           writeCachedModelCatalog(
-            modelCatalogCacheKey({ environmentId, hostId, providerId }),
+            modelCatalogCacheKey({
+              environmentId,
+              hostId,
+              providerId: loadedProviderId,
+            }),
             catalog,
           );
-          if (providerId === null && modelsProviderId !== null) {
+          if (loadedProviderId === null && modelsProviderId !== null) {
             writeCachedModelCatalog(
               modelCatalogCacheKey({
                 environmentId,

@@ -48,7 +48,11 @@ const commandHandlers = vi.hoisted(
 );
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { executionOptions: vi.fn() } },
+  sdk: {
+    system: {
+      executionOptions: vi.fn(() => new Promise<never>(() => undefined)),
+    },
+  },
 }));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
