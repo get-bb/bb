@@ -1154,7 +1154,14 @@ describe("gate request deadline", () => {
         credentialHash: await sha256Hex(credential),
       },
     });
-    const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
+    let reachTunnelObject: () => void = () => {};
+    const reachedTunnelObject = new Promise<void>((resolve) => {
+      reachTunnelObject = resolve;
+    });
+    const { env, ctx } = makeEnv(() => {
+      reachTunnelObject();
+      return new Promise<Response>(() => {});
+    });
     void worker.fetch(
       visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
         headers: {
@@ -1165,6 +1172,7 @@ describe("gate request deadline", () => {
       env as never,
       ctx,
     );
+    await reachedTunnelObject;
     await vi.advanceTimersByTimeAsync(2_999);
     expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
