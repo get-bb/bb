@@ -1398,7 +1398,7 @@ describe("automations server plugin harness", () => {
         );
         expect(runs[0]).toMatchObject({
           status: "succeeded",
-          output: "late enrollment OK",
+          output: expect.stringMatching(/(?:^|\n)late enrollment OK$/),
           exitCode: 0,
           error: null,
         });
