@@ -38,3 +38,14 @@ export function getQueuedMessagesDrawerHeight({
     DRAWER_CHROME_HEIGHT + DRAWER_LIST_PADDING + rowsHeight,
   );
 }
+
+export function getPendingQueuedMessagesDrawerHeight(
+  queuedMessageCount: number,
+): number {
+  return Math.min(
+    DRAWER_HEIGHT,
+    DRAWER_CHROME_HEIGHT +
+      DRAWER_LIST_PADDING +
+      Math.max(1, queuedMessageCount) * DRAWER_ROW_HEIGHT,
+  );
+}

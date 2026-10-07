@@ -559,6 +559,7 @@ function Row({
   readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
+  const [queueExpanded, setQueueExpanded] = useState(true);
   const [mentionRanges, setMentionRanges] =
     useState<PromptTextMention[]>(initialMentions);
   const [storyQueuedMessages, setStoryQueuedMessages] = useState(
@@ -706,8 +707,8 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
-        defaultExpanded
-        onExpandedChange={noop}
+        expanded={queueExpanded}
+        onExpandedChange={setQueueExpanded}
         onDelete={(id) =>
           setStoryQueuedMessages((current) =>
             current.filter((message) => message.id !== id),

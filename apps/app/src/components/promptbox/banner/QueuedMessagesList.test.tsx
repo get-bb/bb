@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useContext, useLayoutEffect } from "react";
+import { useContext, useLayoutEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,24 +46,28 @@ function QueuedMessagesList({
   attachedToComposer = true,
   sendAction = "send-now",
   defaultExpanded = false,
-  onExpandedChange = noop,
+  onExpandedChange,
   ...props
 }: Omit<
   QueuedMessagesListProps,
-  "attachedToComposer" | "sendAction" | "defaultExpanded" | "onExpandedChange"
+  "attachedToComposer" | "sendAction" | "expanded" | "onExpandedChange"
 > & {
   attachedToComposer?: boolean;
   sendAction?: QueuedMessagesListProps["sendAction"];
   defaultExpanded?: boolean;
   onExpandedChange?: QueuedMessagesListProps["onExpandedChange"];
 }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   return (
     <QueuedMessagesListComponent
       {...props}
       attachedToComposer={attachedToComposer}
       sendAction={sendAction}
-      defaultExpanded={defaultExpanded}
-      onExpandedChange={onExpandedChange}
+      expanded={expanded}
+      onExpandedChange={(nextExpanded) => {
+        setExpanded(nextExpanded);
+        onExpandedChange?.(nextExpanded);
+      }}
     />
   );
 }
@@ -166,6 +170,27 @@ function renderQueuedMessagesWithOptions(
       onSetGroupBoundary={noop}
       onEdit={noop}
       onDelete={noop}
+    />,
+  );
+}
+
+function renderQueuedMessagesWithExpandedSpy(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  onExpandedChange: QueuedMessagesListProps["onExpandedChange"],
+) {
+  return render(
+    <QueuedMessagesList
+      queuedMessages={queuedMessages}
+      sendDisabled={false}
+      actionDisabled={false}
+      processingMessageId={null}
+      processingAction={null}
+      onSend={noop}
+      onReorder={noop}
+      onSetGroupBoundary={noop}
+      onEdit={noop}
+      onDelete={noop}
+      onExpandedChange={onExpandedChange}
     />,
   );
 }
@@ -602,51 +627,27 @@ describe("QueuedMessagesList", () => {
     ).toBeNull();
   });
 
-  it("reports the open choice and restores it on remount", () => {
-    const sharedProps = {
-      sendDisabled: false,
-      actionDisabled: false,
-      processingMessageId: null,
-      processingAction: null,
-      onSend: noop,
-      onReorder: noop,
-      onSetGroupBoundary: noop,
-      onEdit: noop,
-      onDelete: noop,
-    } as const;
+  it("reports each open and close to its owner", () => {
     const onExpandedChange = vi.fn();
-    const queuedMessages = [
-      makeQueuedMessage("q_one", "First queued message"),
-    ];
-    const first = render(
-      <QueuedMessagesList
-        {...sharedProps}
-        queuedMessages={queuedMessages}
-        onExpandedChange={onExpandedChange}
-      />,
+    const { container, getByRole } = renderQueuedMessagesWithExpandedSpy(
+      [
+        makeQueuedMessage("q_one", "First queued message"),
+        makeQueuedMessage("q_two", "Second queued message"),
+      ],
+      onExpandedChange,
     );
-    expandQueue();
-    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
-    first.unmount();
-
-    const { container } = render(
-      <QueuedMessagesList
-        {...sharedProps}
-        queuedMessages={queuedMessages}
-        defaultExpanded
-        onExpandedChange={onExpandedChange}
-      />,
-    );
-    expect(
+    const mode = () =>
       container
         .querySelector("[data-queued-messages-mode]")
-        ?.getAttribute("data-queued-messages-mode"),
-    ).toBe("drawer");
+        ?.getAttribute("data-queued-messages-mode");
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Collapse queued messages" }),
-    );
+    fireEvent.click(getByRole("button", { name: "Toggle queued messages" }));
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+    expect(mode()).toBe("drawer");
+
+    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
     expect(onExpandedChange).toHaveBeenLastCalledWith(false);
+    expect(mode()).toBe("collapsed");
   });
 
   it("uses labeled inline icon actions with tooltips", async () => {
@@ -898,6 +899,7 @@ describe("QueuedMessagesList", () => {
     );
     const sharedProps = {
       queuedMessages,
+      defaultExpanded: true,
       sendDisabled: false,
       actionDisabled: false,
       processingMessageId: null,
@@ -1006,6 +1008,7 @@ describe("QueuedMessagesList", () => {
     ];
     const sharedProps = {
       queuedMessages,
+      defaultExpanded: true,
       sendDisabled: false,
       actionDisabled: false,
       processingMessageId: null,

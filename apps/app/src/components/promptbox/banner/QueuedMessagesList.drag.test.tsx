@@ -47,7 +47,7 @@ describe("QueuedMessagesList group-handle drag", () => {
         onSetGroupBoundary={onSetGroupBoundary}
         onEdit={noop}
         onDelete={noop}
-        defaultExpanded
+        expanded
         onExpandedChange={noop}
       />,
     );

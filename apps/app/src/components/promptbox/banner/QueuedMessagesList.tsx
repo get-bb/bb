@@ -1189,7 +1189,7 @@ export function QueuedMessagesList({
   onSetGroupBoundary,
   onEdit,
   onDelete,
-  defaultExpanded,
+  expanded,
   onExpandedChange,
 }: QueuedMessagesListProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById();
@@ -1207,9 +1207,12 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [mode, setMode] = useState<QueueSurfaceMode>(
-    defaultExpanded ? "drawer" : "collapsed",
-  );
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const mode: QueueSurfaceMode = workspaceOpen
+    ? "workspace"
+    : expanded
+      ? "drawer"
+      : "collapsed";
   const arrivals = useQueuedMessageArrivals(queuedMessages);
   const [expandedMobileActionsId, setExpandedMobileActionsId] = useState<
     string | null
@@ -1226,7 +1229,6 @@ export function QueuedMessagesList({
   const surfaceRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const wasInlineEditingRef = useRef(false);
-  const inlineEditorDismissModeRef = useRef<QueueSurfaceMode | null>(null);
   useEffect(() => {
     if (expandedMobileActionsId === null) return;
 
@@ -1465,34 +1467,25 @@ export function QueuedMessagesList({
 
   useEffect(() => {
     if (inlineEditor) {
-      if (!wasInlineEditingRef.current) {
-        inlineEditorDismissModeRef.current = null;
-      }
-      setMode("workspace");
+      setWorkspaceOpen(true);
     } else if (wasInlineEditingRef.current) {
-      setMode(inlineEditorDismissModeRef.current ?? "drawer");
-      inlineEditorDismissModeRef.current = null;
+      setWorkspaceOpen(false);
     }
     wasInlineEditingRef.current = inlineEditor !== undefined;
   }, [inlineEditor]);
 
-  useEffect(() => {
-    if (mode === "workspace") return;
-    onExpandedChange(mode === "drawer");
-  }, [mode, onExpandedChange]);
-
   const openWorkspace = useCallback(() => {
-    setMode("workspace");
+    setWorkspaceOpen(true);
   }, []);
   const collapseDrawer = useCallback(() => {
     setExpandedMobileActionsId(null);
-    setMode("collapsed");
-    inlineEditorDismissModeRef.current = "collapsed";
+    setWorkspaceOpen(false);
+    onExpandedChange(false);
     inlineEditor?.onDismiss();
-  }, [inlineEditor]);
+  }, [inlineEditor, onExpandedChange]);
   const showDrawer = useCallback(() => {
-    setMode("drawer");
-  }, []);
+    onExpandedChange(true);
+  }, [onExpandedChange]);
   const isExpanded = mode !== "collapsed";
   const focus = useDisclosureFocusHandoff(
     isExpanded,
