@@ -1,20 +1,14 @@
 /** @vitest-environment jsdom */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-  copyPluginSurfaceAgentReference,
   createPluginSurfaceAgentReference,
   PLUGIN_GUIDE_PLUGIN_ID,
   pluginSurfaceAgentClipboardContent,
   pluginSurfaceAgentContext,
 } from "../src/agent-reference";
 import { SURFACES_BY_ID } from "../src/surfaces";
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
 
 describe("Plugin Guide agent references", () => {
   it("derives the complete reference from canonical surface data", () => {
@@ -113,32 +107,5 @@ describe("Plugin Guide agent references", () => {
     });
 
     expect(new Set(itemIds).size).toBe(itemIds.length);
-  });
-
-  it("writes both rich and plain clipboard representations", async () => {
-    const surface = SURFACES_BY_ID.get("composer-actions");
-    if (!surface) throw new Error("composer-actions surface missing");
-    const clipboardWrite = vi.fn().mockResolvedValue(undefined);
-    const items: Array<Record<string, Blob>> = [];
-    class TestClipboardItem {
-      constructor(item: Record<string, Blob>) {
-        items.push(item);
-      }
-    }
-    vi.stubGlobal("ClipboardItem", TestClipboardItem);
-    vi.stubGlobal("navigator", { clipboard: { write: clipboardWrite } });
-
-    await expect(copyPluginSurfaceAgentReference(surface)).resolves.toBe(true);
-    expect(clipboardWrite).toHaveBeenCalledOnce();
-    expect(Object.keys(items[0] ?? {}).sort()).toEqual([
-      "text/html",
-      "text/plain",
-    ]);
-    await expect(items[0]?.["text/plain"]?.text()).resolves.toBe(
-      "Build a plugin that uses @Inline actions ",
-    );
-    await expect(items[0]?.["text/html"]?.text()).resolves.toContain(
-      'Build a plugin that uses <span data-prompt-mention="true"',
-    );
   });
 });

@@ -10,6 +10,7 @@ import {
 import {
   definePluginApp,
   experimental_Icon as PluginIcon,
+  experimental_copyToClipboard,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -1876,10 +1877,9 @@ function DeveloperStorage({
       return next;
     });
   const copyPath = async (value: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
+    if (await experimental_copyToClipboard({ text: value })) {
       setCopyStatus({ text: `${label} copied`, failed: false });
-    } catch {
+    } else {
       setCopyStatus({
         text: `Could not copy ${label.toLowerCase()}`,
         failed: true,
