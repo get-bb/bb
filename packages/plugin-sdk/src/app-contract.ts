@@ -3395,6 +3395,18 @@ export interface BbNavigate {
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,
   ): boolean;
+  /**
+   * Show a terminal session in this surface's BB terminal panel: select its
+   * tab, adding one when needed, and reveal the panel. Create the session
+   * first with `useSdk().terminals.create`, whose scope chooses the thread,
+   * environment, or host directory it runs in. A thread surface accepts only
+   * that thread's terminals, the New thread screen only terminals in its
+   * current terminal scope, and a plugin page any terminal. Resolves false
+   * for unknown or exited terminals and surfaces without a terminal panel.
+   * Closing the tab closes the terminal. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_openTerminal(options: { terminalId: string }): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------

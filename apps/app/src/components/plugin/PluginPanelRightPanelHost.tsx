@@ -48,9 +48,13 @@ import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/Br
 import {
   useCloseFixedSecondaryPanel,
   useReconciledFixedPanelTabsState,
+  upsertTerminalTab,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import type { TerminalCreateTarget } from "@bb/server-contract";
+import type {
+  TerminalCreateTarget,
+  TerminalSession,
+} from "@bb/server-contract";
 import {
   createPluginPageFixedPanelTab,
   createTerminalFixedPanelTab,
@@ -206,6 +210,18 @@ function findPluginRightPanelTogglePortal(
     }
   }
   return null;
+}
+
+function terminalTargetForSession(
+  session: TerminalSession,
+): TerminalCreateTarget {
+  if (session.threadId !== null) {
+    return { kind: "thread", threadId: session.threadId };
+  }
+  if (session.environmentId !== null) {
+    return { kind: "environment", environmentId: session.environmentId };
+  }
+  return { kind: "host_path", hostId: session.hostId, cwd: session.initialCwd };
 }
 
 function terminalScope(target: TerminalCreateTarget | null) {
@@ -569,9 +585,31 @@ export function PluginPanelRightPanelHost({
     },
     [openTab, panel, revealPanel, selectPersistedPanelTab],
   );
+  const openTerminal = useCallback(
+    (session: TerminalSession) => {
+      if (panel === null) return false;
+      selectPersistedPanelTab();
+      const target = terminalTargetForSession(session);
+      const tab = createTerminalFixedPanelTab({
+        terminalId: session.id,
+        target,
+      });
+      updatePanelState((state) => ({
+        ...state,
+        secondary: {
+          ...state.secondary,
+          tabs: upsertTerminalTab(state.secondary.tabs, session.id, target),
+          activeTabId: tab.id,
+        },
+      }));
+      revealPanel();
+      return true;
+    },
+    [panel, revealPanel, selectPersistedPanelTab, updatePanelState],
+  );
   const navigationCapabilities = useMemo(
-    () => ({ openFilePreview, openFixedTab }),
-    [openFilePreview, openFixedTab],
+    () => ({ openFilePreview, openFixedTab, openTerminal }),
+    [openFilePreview, openFixedTab, openTerminal],
   );
   const hidePanel = useCallback(() => {
     setIsPluginDetailPanelOpen(false);

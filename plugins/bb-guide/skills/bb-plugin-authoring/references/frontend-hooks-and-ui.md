@@ -43,7 +43,8 @@ Hooks:
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
 openThreadPanel({ actionId, title?, params? }), openUrl(url),
-experimental_openFilePreview(options), experimental_openFileExternally(options) }`.
+experimental_openFilePreview(options), experimental_openFileExternally(options),
+experimental_openTerminal({ terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
@@ -52,6 +53,13 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
+  `experimental_openTerminal` shows a terminal the plugin created with
+  `useSdk().terminals.create` in the current surface's terminal panel; the
+  create scope (thread, environment, or host path) picks its directory. It
+  resolves false for unknown or exited terminals, for a thread surface when
+  the terminal belongs to another thread, and for the New thread screen when
+  it is outside that screen's terminal scope. Plugin pages accept any
+  terminal. Closing the tab closes the terminal.
 - `useComposer()` → one stable handle for the composer the calling surface
   belongs to: inside a composer slot, that composer; in a thread's panels,
   that thread's composer; elsewhere, the current route's draft. The same

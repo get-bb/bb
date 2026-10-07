@@ -40,6 +40,7 @@ import { resetRecentlyClosedPanelTabsForTest } from "@/components/secondary-pane
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
@@ -644,6 +645,20 @@ function FileIntentButtons() {
         }
       >
         Open storage file
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openTerminal(
+            makeTerminalSession({
+              id: "terminal-1",
+              threadId: null,
+              environmentId: "environment-1",
+            }),
+          )
+        }
+      >
+        Open worktree terminal
       </button>
       <button
         type="button"
@@ -1432,6 +1447,44 @@ describe("PluginPanelRightPanelHost", () => {
     );
     expect(await screen.findByTestId("plugin-page-terminal")).toBeTruthy();
     expect(secondaryPanelState.tabKinds).toContain("terminal");
+  });
+
+  it("opens a plugin-created terminal once, targeted at its own scope", async () => {
+    const panelStateId = getPluginPagePanelStateId({
+      panelPath: "board",
+      pluginId: "demo",
+    });
+    const target = {
+      kind: "environment" as const,
+      environmentId: "environment-1",
+    };
+    const tab = createTerminalFixedPanelTab({
+      terminalId: "terminal-1",
+      target,
+    });
+    renderHost();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open worktree terminal" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open worktree terminal" }),
+    );
+
+    expect(await screen.findByTestId("plugin-page-terminal")).toBeTruthy();
+    const storedValue = localStorage.getItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+    );
+    if (storedValue === null) {
+      throw new Error("Expected plugin panel state to be persisted");
+    }
+    expect(JSON.parse(storedValue)).toMatchObject({
+      secondary: {
+        activeTabId: tab.id,
+        isOpen: true,
+        tabs: [{ kind: "terminal", terminalId: "terminal-1", target }],
+      },
+    });
   });
 
   it("keeps a restored thread-targeted terminal out of thread tab sync", async () => {

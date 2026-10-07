@@ -53,7 +53,9 @@ import {
   listedComposerHandles,
   type ComposerSource,
 } from "@/lib/plugin-composer-handle";
-import { sdk } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
+import { applyTerminalSessionUpsert } from "@/hooks/cache-owners/terminal-cache-owner";
+import { isVisibleTerminalSession } from "@/lib/terminal-session-visibility";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
@@ -335,6 +337,7 @@ export function useBbNavigate(): BbNavigate {
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const appNavigation = useAppNavigationHost();
   const toThread = useCallback(
     (threadId: string) => {
@@ -412,6 +415,22 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
+  const experimental_openTerminal = useCallback<
+    BbNavigate["experimental_openTerminal"]
+  >(
+    async ({ terminalId }) => {
+      const session = await sdk.terminals
+        .get({ terminalId })
+        .catch((error: unknown) => {
+          if (error instanceof BbHttpError && error.status === 404) return null;
+          throw error;
+        });
+      if (session === null || !isVisibleTerminalSession(session)) return false;
+      applyTerminalSessionUpsert({ queryClient, session });
+      return appNavigation.openTerminal(session);
+    },
+    [appNavigation, queryClient],
+  );
   return useMemo<BbNavigate>(
     () => ({
       toThread,
@@ -421,6 +440,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openTerminal,
       openUrl,
     }),
     [
@@ -431,6 +451,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openTerminal,
       openUrl,
     ],
   );

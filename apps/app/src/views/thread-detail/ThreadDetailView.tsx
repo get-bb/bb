@@ -1381,10 +1381,6 @@ function ThreadDetailViewInternal(
       thread,
     ],
   );
-  const appNavigationCapabilities = useMemo(
-    () => ({ openFilePreview: handleOpenLiveFilePreview, openFixedTab }),
-    [handleOpenLiveFilePreview, openFixedTab],
-  );
   const handleOpenTimelinePluginPanel =
     useCallback<ThreadTimelineOpenPluginPanelHandler>(
       ({ pluginId, actionId, title, params }) => {
@@ -1654,6 +1650,22 @@ function ThreadDetailViewInternal(
       openCompactDrawer();
     },
     [openCompactDrawer, setActiveFixedTerminal],
+  );
+  const handleOpenTerminal = useCallback(
+    (session: TerminalSession): boolean => {
+      if (session.threadId !== threadId) return false;
+      handleActivateTerminalTab(session.id);
+      return true;
+    },
+    [handleActivateTerminalTab, threadId],
+  );
+  const appNavigationCapabilities = useMemo(
+    () => ({
+      openFilePreview: handleOpenLiveFilePreview,
+      openFixedTab,
+      openTerminal: handleOpenTerminal,
+    }),
+    [handleOpenLiveFilePreview, handleOpenTerminal, openFixedTab],
   );
   const handleCloseTerminalTab = useCallback(
     (terminalId: string) => {

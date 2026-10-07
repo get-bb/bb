@@ -392,6 +392,21 @@ export function canCreateRootComposeTerminal({
   return connectedHostIds.has(terminalTarget.hostId);
 }
 
+export function isRootComposeTerminalSession(
+  session: TerminalSession,
+  terminalTarget: RootComposeTerminalTarget,
+): boolean {
+  if (session.threadId !== null) return false;
+  if (terminalTarget.kind === "environment") {
+    return session.environmentId === terminalTarget.environmentId;
+  }
+  return (
+    session.environmentId === null &&
+    session.hostId === terminalTarget.hostId &&
+    (terminalTarget.cwd === null || session.initialCwd === terminalTarget.cwd)
+  );
+}
+
 export function buildRootComposeTerminalSessions({
   environmentTerminalSessions,
   globalTerminalSessions,
@@ -403,13 +418,8 @@ export function buildRootComposeTerminalSessions({
     return environmentTerminalSessions;
   }
   if (terminalTarget?.kind === "host_path") {
-    return globalTerminalSessions?.filter(
-      (session) =>
-        session.threadId === null &&
-        session.environmentId === null &&
-        session.hostId === terminalTarget.hostId &&
-        (terminalTarget.cwd === null ||
-          session.initialCwd === terminalTarget.cwd),
+    return globalTerminalSessions?.filter((session) =>
+      isRootComposeTerminalSession(session, terminalTarget),
     );
   }
   return undefined;
@@ -1065,14 +1075,6 @@ function RootComposeSurface({
       rootPanelThreadId,
     ],
   );
-  const appNavigationCapabilities = useMemo(
-    () => ({
-      openFilePreview: handleOpenLiveFilePreview,
-      openFixedTab: (intent: AppFixedTabOpenIntent) =>
-        openAppFixedTabFromDestinations([], intent),
-    }),
-    [handleOpenLiveFilePreview],
-  );
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
     (resource) => {
       if (resource.kind === "thread") {
@@ -1331,6 +1333,28 @@ function RootComposeSurface({
       openCompactDrawer();
     },
     [openCompactDrawer, setActiveFixedTerminal],
+  );
+  const handleOpenTerminal = useCallback(
+    (session: TerminalSession): boolean => {
+      if (
+        rootPanelTerminalTarget === null ||
+        !isRootComposeTerminalSession(session, rootPanelTerminalTarget)
+      ) {
+        return false;
+      }
+      handleActivateTerminalTab(session.id);
+      return true;
+    },
+    [handleActivateTerminalTab, rootPanelTerminalTarget],
+  );
+  const appNavigationCapabilities = useMemo(
+    () => ({
+      openFilePreview: handleOpenLiveFilePreview,
+      openFixedTab: (intent: AppFixedTabOpenIntent) =>
+        openAppFixedTabFromDestinations([], intent),
+      openTerminal: handleOpenTerminal,
+    }),
+    [handleOpenLiveFilePreview, handleOpenTerminal],
   );
   const handleCloseTerminalTab = useCallback(
     (terminalId: string) => {

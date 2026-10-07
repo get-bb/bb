@@ -48,6 +48,13 @@ the current host accepted the intent. Targets never infer an ambient workspace.
 The frontend harness records both methods and accepts `openFilePreview` and
 `openFileExternally` behavior options.
 
+To show a terminal beside your UI, create it with `useSdk().terminals.create`
+in the thread, environment, or host directory you want, then call
+`useBbNavigate().experimental_openTerminal({ terminalId })`. It resolves
+whether the current surface selected the terminal's tab; thread surfaces accept
+only their own thread's terminals. The harness records the call and accepts an
+`openTerminal` behavior option.
+
 A nav panel's `fixedTabs` entries must include the containing nav
 panel's `id` as `panelId`; each entry is also a stable reference to that
 plugin's own tab. Give a targeted tab an `experimental_target.validate` type guard, call
