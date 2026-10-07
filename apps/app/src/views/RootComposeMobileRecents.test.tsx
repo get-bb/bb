@@ -37,6 +37,22 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => threadActions,
 }));
 
+const sidebarActions = vi.hoisted(() => ({
+  open: vi.fn(),
+  openNewThread: vi.fn(),
+  setPinned: vi.fn(async () => undefined),
+  setRead: vi.fn(async () => undefined),
+  rename: vi.fn(async () => undefined),
+  archive: vi.fn(),
+  requestDelete: vi.fn(),
+}));
+
+vi.mock("@/lib/plugin-sidebar-hooks", () => ({
+  useSidebarThreadActions: () => sidebarActions,
+  useResolveSidebarThread: () => () => null,
+  useSidebarThreadEntry: () => null,
+}));
+
 const personalProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "personal-workspace",
@@ -712,7 +728,7 @@ describe("RootComposeMobileRecents", () => {
     const pin = screen.getByRole("menuitem", { name: "Pin" });
     fireEvent.pointerDown(pin, { pointerType: "touch" });
     fireEvent.click(pin);
-    expect(threadActions.togglePin).toHaveBeenCalledWith(thread);
+    expect(sidebarActions.setPinned).toHaveBeenCalledWith(thread.id, true);
   });
 
   it("shows concurrent Plan activity before the runtime spinner", () => {

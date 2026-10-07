@@ -59,6 +59,44 @@ describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_threadAction", () => {
+  const resolve = () => null;
+
+  it("collects a thread action with its resolver", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({
+        id: "notifications",
+        title: "Notifications",
+        resolve,
+      });
+    });
+    expect(collectPluginAppRegistrations(definition).threadActions).toEqual([
+      { id: "notifications", title: "Notifications", resolve },
+    ]);
+  });
+
+  it("rejects two thread actions with the same id", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({ id: "a", title: "One", resolve });
+      app.slots.experimental_threadAction({ id: "a", title: "Two", resolve });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/"a"/);
+  });
+
+  it("rejects a resolver that is not a function", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({
+        id: "a",
+        title: "One",
+        resolve: null as unknown as () => null,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(
+      '"resolve" must be a function',
+    );
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadHeaderAction", () => {
   it("collects a header action", () => {
     const definition = definePluginApp((app) => {

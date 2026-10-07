@@ -30,6 +30,7 @@ export const {
   useComposerView,
   experimental_useSidebarThreads,
   experimental_useSidebarThreadActions,
+  experimental_useThreadActions,
   experimental_useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit,
   useSidebarThreadDraft,

@@ -13,6 +13,8 @@ Read `testing.md` for examples and fidelity limits.
 - `ExperimentalFixedTabOpenCall`
 - `ComposerLog`
 - `SidebarActionCall`
+- `TestThreadActionsResolver` — what `renderSlot` `options.threadActions` returns for
+  `experimental_useThreadActions(target, surface)`; receives the slot's `useRpc()` client
 - `installTestPluginRuntime`
 - `CapturedPluginApp`
 - `PluginAppSource`

@@ -225,18 +225,21 @@ export async function fetchPluginSdkSettings(
   return values;
 }
 
+export function createPluginRpcClient<
+  Contract extends PluginRpcContract = PluginRpcContract,
+>(pluginId: string): PluginRpcClient<Contract> {
+  const client = {
+    call: (method: string, input?: unknown) =>
+      callPluginRpc(fetch, pluginId, method, input),
+  };
+  return client as PluginRpcClient<Contract>;
+}
+
 export function useRpc<
   Contract extends PluginRpcContract = PluginRpcContract,
 >(): PluginRpcClient<Contract> {
   const pluginId = usePluginId();
-  const client = useMemo(
-    () => ({
-      call: (method: string, input?: unknown) =>
-        callPluginRpc(fetch, pluginId, method, input),
-    }),
-    [pluginId],
-  );
-  return client as PluginRpcClient<Contract>;
+  return useMemo(() => createPluginRpcClient<Contract>(pluginId), [pluginId]);
 }
 
 export function useRealtime(

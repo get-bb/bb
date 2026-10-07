@@ -185,6 +185,30 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "thread-actions",
+        title: "Thread menu actions",
+        summary:
+          "Add an action to every thread menu and the sidebar row's quick actions. With this, a plugin can:",
+        bullets: [
+          "Appear in the header menu, the row menu, the right-click menu, and the long-press drawer",
+          "Offer a list of choices that bb renders as a submenu, a drawer step, or a popover",
+          "Read its own per-thread metadata and update the row when that metadata changes",
+          "Become a sidebar row quick action when the user picks it in Customize row actions",
+        ],
+        apiSymbols: [
+          "PluginThreadActionRegistration",
+          "PluginThreadActionContext",
+          "PluginThreadActionTarget",
+          "PluginThreadAction",
+          "PluginThreadActionChoices",
+          "PluginThreadActionChoice",
+          "PluginThreadActionItem",
+          "experimental_useThreadActions",
+        ],
+        firstParty: ["Thread list"],
+        experimental: true,
+      },
+      {
         id: "timeline-renderers",
         title: "Timeline entry content",
         summary:

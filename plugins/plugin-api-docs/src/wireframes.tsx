@@ -989,6 +989,12 @@ export function AppShellWireframe({
             at="above"
           />
           <MeasuredBadge
+            id="thread-actions"
+            label="Plugin thread actions, in the thread menu"
+            anchor='[data-guide-region="thread-actions"]'
+            at="above"
+          />
+          <MeasuredBadge
             id="content-scripts"
             label="App-wide plugin scripts, running in the whole window"
             anchor="[data-guide-frame]"
@@ -1115,7 +1121,14 @@ function AppShellWireframeBody({
             <span className="truncate text-foreground">
               Fix flaky checkout tests
             </span>
-            <MiniIcon icon="MoreHorizontal" className="size-3.5" />
+            <Mark
+              id="thread-actions"
+              label="Plugin thread actions, in the thread menu"
+              className="flex h-6.5 items-center px-1"
+              showChip={false}
+            >
+              <MiniIcon icon="MoreHorizontal" className="size-3.5" />
+            </Mark>
             <span className="flex-1" />
             <Mark
               id="thread-header"

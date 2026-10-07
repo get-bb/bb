@@ -19,7 +19,10 @@ export interface ThreadSectionMoveDestination {
 
 interface ThreadSectionMoveContextValue {
   destinations: readonly ThreadSectionMoveDestination[];
-  moveThread: (thread: Thread, sectionId: string | null) => void;
+  moveThread: (
+    thread: Pick<Thread, "id" | "pinnedAt" | "sectionId">,
+    sectionId: string | null,
+  ) => void;
 }
 
 const ThreadSectionMoveContext =
