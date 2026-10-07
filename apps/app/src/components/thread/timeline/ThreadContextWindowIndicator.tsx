@@ -52,15 +52,15 @@ export function ThreadContextWindowCard({
   return (
     <div
       className={cn(
-        "@container/context-window w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md max-md:px-4",
+        "@container/context-window w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md max-md:pointer-coarse:px-4",
         details &&
           "transition-[width] duration-200 ease-out motion-reduce:transition-none",
         details && detailsExpanded && "w-90",
         className,
       )}
     >
-      <div className="flex flex-col gap-2 max-md:gap-3">
-        <div className="flex items-baseline justify-between gap-2 text-xs max-md:text-sm">
+      <div className="flex flex-col gap-2 max-md:pointer-coarse:gap-3">
+        <div className="flex items-baseline justify-between gap-2 text-xs max-md:pointer-coarse:text-sm">
           <span
             className={cn(
               "text-muted-foreground",
@@ -75,8 +75,10 @@ export function ThreadContextWindowCard({
         </div>
         <div
           className={cn(
-            "relative h-1.5 w-full overflow-hidden rounded-full bg-border transition-[height] duration-200 motion-reduce:transition-none max-md:h-2",
-            details && detailsExpanded && "order-2 h-4 max-md:h-5",
+            "relative h-1.5 w-full overflow-hidden rounded-full bg-border transition-[height] duration-200 motion-reduce:transition-none max-md:pointer-coarse:h-2",
+            details &&
+              detailsExpanded &&
+              "order-2 h-4 max-md:pointer-coarse:h-5",
           )}
         >
           <div
@@ -97,7 +99,7 @@ export function ThreadContextWindowCard({
         </div>
         <div
           className={cn(
-            "flex items-baseline justify-between gap-2 text-xs tabular-nums text-muted-foreground max-md:text-sm",
+            "flex items-baseline justify-between gap-2 text-xs tabular-nums text-muted-foreground max-md:pointer-coarse:text-sm",
             details && detailsExpanded && "order-1",
           )}
         >
@@ -116,7 +118,7 @@ export function ThreadContextWindowCard({
       </div>
       {details ? (
         <>
-          <div className="-mx-2 max-md:-mx-4">
+          <div className="-mx-2 max-md:pointer-coarse:-mx-4">
             <ContextWindowReveal id={detailsId} open={detailsExpanded}>
               <ThreadContextWindowDetails
                 details={details}
@@ -126,7 +128,7 @@ export function ThreadContextWindowCard({
           </div>
           <button
             type="button"
-            className="ml-auto mt-2 flex cursor-pointer items-center gap-1.5 rounded-xs text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:mt-3 max-md:py-1 max-md:text-sm"
+            className="ml-auto mt-2 flex cursor-pointer items-center gap-1.5 rounded-xs text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:mt-3 max-md:pointer-coarse:py-1 max-md:pointer-coarse:text-sm"
             aria-expanded={detailsExpanded}
             aria-controls={detailsId}
             onClick={() => setDetailsExpanded((value) => !value)}
@@ -193,7 +195,7 @@ export function ThreadContextWindowIndicator({
         <button
           type="button"
           {...triggerHoverProps}
-          className="-m-1 inline-flex size-8 cursor-pointer max-md:my-0 max-md:-mr-3 max-md:-ml-1 max-md:h-11 max-md:w-auto max-md:gap-1.5 max-md:pl-2 max-md:pr-3.5 items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="-m-1 inline-flex size-8 cursor-pointer max-md:pointer-coarse:my-0 max-md:pointer-coarse:-mr-3 max-md:pointer-coarse:-ml-1 max-md:pointer-coarse:h-11 max-md:w-auto max-md:gap-1.5 max-md:pointer-coarse:pl-2 max-md:pointer-coarse:pr-3.5 items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Context window ${usedPercent}% used`}
         >
           <span

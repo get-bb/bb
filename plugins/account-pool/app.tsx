@@ -725,7 +725,7 @@ function UserCodeBlock({ userCode }: { userCode: string }) {
           type="button"
           variant="ghost"
           aria-label="Copy Codex sign-in code"
-          className="col-start-3 size-11 justify-self-start text-muted-foreground hover:text-foreground sm:size-9"
+          className="col-start-3 size-9 justify-self-start text-muted-foreground hover:text-foreground max-sm:pointer-coarse:size-11"
           onClick={copy}
         >
           <Icon name={copyState === "copied" ? "Check" : "Copy"} />
@@ -1527,7 +1527,9 @@ function AccountPoolSettings() {
                   Cancel
                 </Button>
                 <Button
-                  disabled={apiKey.trim().length === 0 || pending.has("api-key")}
+                  disabled={
+                    apiKey.trim().length === 0 || pending.has("api-key")
+                  }
                   onClick={() =>
                     void run("api-key", async () => {
                       await rpc.call("account.add", {

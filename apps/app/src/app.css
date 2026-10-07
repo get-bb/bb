@@ -425,11 +425,13 @@
     }
   }
 
-  @media (width < 48rem) {
+  @media (width < 48rem) and (pointer: coarse) {
     [data-new-thread-footer] button {
       min-block-size: 2.75rem;
     }
+  }
 
+  @media (width < 48rem) {
     [data-new-thread-footer]
       [data-promptbox-shrinkable-control]:has(~ :not(:empty)) {
       flex-shrink: 0 !important;
