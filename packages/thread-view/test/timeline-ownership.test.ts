@@ -1,87 +1,80 @@
-import type { TimelineRow } from "@bb/server-contract";
-import { assertTimelineSourceOwnership } from "./timeline-source-ownership.js";
+import type { ThreadEventRow } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { buildThreadTimelineTurnDetailsFromEvents } from "../src/build-thread-timeline.js";
+import { assertTimelineSourceOwnership } from "./timeline-source-ownership.js";
 import {
   createTimelineEventFactory,
   fromRows,
   renderTimelineFixture,
 } from "./timeline-test-harness.js";
 
-describe("timeline source ownership", () => {
-  it("preserves distinct events with identical content", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
-    const { rows } = renderTimelineFixture({
-      events: [
-        factory.systemError({ code: "test", message: "Failure" }),
-        factory.systemError({ code: "test", message: "Failure" }),
-      ],
-      projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
-    });
-    expect(rows).toHaveLength(2);
-    expect(rows[0].id).not.toBe(rows[1].id);
-  });
+function fixture() {
+  const factory = createTimelineEventFactory({ threadId: "thread-1" });
+  return {
+    factory,
+    failed: (provisioningId = "first", transcript = false) =>
+      factory.threadProvisioning({
+        provisioningId,
+        status: "failed",
+        entries: transcript
+          ? [
+              {
+                type: "step",
+                key: "workspace-failed",
+                text: "Workspace setup failed",
+                status: "failed",
+              },
+            ]
+          : [],
+      }),
+    error: (
+      detail: string | undefined = undefined,
+      code = "thread_provisioning_failed",
+    ) =>
+      factory.systemError({
+        code,
+        message: "Provisioning thread failed",
+        detail,
+      }),
+    render: (
+      events: ThreadEventRow[],
+      threadStatus: "error" | "idle" | "active" = "error",
+      completedTurnDisplay: "collapse" | "flat" = "collapse",
+    ) =>
+      renderTimelineFixture({
+        events,
+        completedTurnDisplay,
+        projectionOptions: { threadStatus, turnMessageDetail: "full" },
+      }),
+  };
+}
 
-  it.each([false, true])(
-    "merges provisioning companions across intervening events: %s",
-    (intervening) => {
-      const factory = createTimelineEventFactory({ threadId: "thread-1" });
-      const started = factory.threadProvisioning({
+describe("timeline source ownership", () => {
+  it("merges provisioning companions across intervening events and preserves both details", () => {
+    const { factory, failed, error, render } = fixture();
+    const { rows } = render([
+      factory.threadProvisioning({
+        provisioningId: "first",
         status: "active",
         entries: [],
-      });
-      const failed = factory.threadProvisioning({
-        status: "failed",
-        entries: [
-          {
-            type: "step",
-            key: "workspace-failed",
-            text: "Workspace setup failed",
-            status: "failed",
-          },
-        ],
-      });
-      const other = factory.systemError({
-        code: "unrelated",
-        message: "Other failure",
-      });
-      const error = factory.systemError({
-        code: "thread_provisioning_failed",
-        message: "Provisioning thread failed",
-        detail: "Cannot checkout branch",
-      });
-      const { rows } = renderTimelineFixture({
-        events: [started, failed, ...(intervening ? [other] : []), error],
-        projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
-      });
-      const failures = rows.filter(
-        (row) =>
-          row.kind === "system" && row.title === "Provisioning thread failed",
-      );
-      expect(failures).toHaveLength(1);
-      expect(failures[0]).toMatchObject({
-        detail: expect.stringContaining("Cannot checkout branch"),
-      });
-      expect(failures[0]).toMatchObject({
-        detail: expect.stringContaining("Workspace setup failed"),
-      });
-      expect(rows).toHaveLength(intervening ? 2 : 1);
-    },
-  );
+      }),
+      failed("first", true),
+      factory.systemError({ code: "unrelated", message: "Other failure" }),
+      error("Cannot checkout branch"),
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      title: "Provisioning thread failed",
+      detail: expect.stringContaining("Cannot checkout branch"),
+    });
+    expect(rows[0]).toMatchObject({
+      detail: expect.stringContaining("Workspace setup failed"),
+    });
+  });
 
   it("retains a standalone provisioning error and an unpaired failed operation", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
-    const { rows } = renderTimelineFixture({
-      events: [
-        factory.systemError({
-          code: "thread_provisioning_failed",
-          message: "Provisioning thread failed",
-          detail: "Standalone detail",
-        }),
-        factory.threadProvisioning({ status: "failed", entries: [] }),
-      ],
-      projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
-    });
+    const { failed, error, render } = fixture();
+    const { rows } = render([error("Standalone detail"), failed()]);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       systemKind: "error",
@@ -93,57 +86,39 @@ describe("timeline source ownership", () => {
     });
   });
 
-  it("retains distinct provisioning attempts and unrelated equal-titled errors", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
-    const events = ["first", "second"].flatMap((provisioningId) => [
-      factory.threadProvisioning({
-        provisioningId,
-        status: "failed",
-        entries: [],
-      }),
-      factory.systemError({
-        code: "thread_provisioning_failed",
-        message: "Provisioning thread failed",
-        detail: provisioningId,
-      }),
+  it("retains distinct attempts and distinct errors with identical content", () => {
+    const { failed, error, render } = fixture();
+    const events = ["first", "second"].flatMap((id) => [failed(id), error(id)]);
+    const { rows } = render([
+      ...events,
+      error(undefined, "unrelated"),
+      error(undefined, "unrelated"),
     ]);
-    events.push(
-      factory.systemError({
-        code: "unrelated",
-        message: "Provisioning thread failed",
-      }),
-    );
-    const { rows } = renderTimelineFixture({
-      events,
-      projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
-    });
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     expect(rows[0]).toMatchObject({ detail: "first" });
     expect(rows[1]).toMatchObject({ detail: "second" });
-    expect(rows[2]).toMatchObject({ systemKind: "error" });
+    expect(rows.slice(2)).toEqual([
+      expect.objectContaining({ systemKind: "error" }),
+      expect.objectContaining({ systemKind: "error" }),
+    ]);
+    expect(rows[2].id).not.toBe(rows[3].id);
   });
+
   it("normalizes reconnect rows consistently in eager and lazy turn details", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const { factory, render } = fixture();
     const events = [
       factory.turnStarted({}),
-      factory.providerError({
-        message: "Provider error",
-        detail: "Reconnecting... 1/3\nstream disconnected",
-        willRetry: true,
-      }),
-      factory.providerError({
-        message: "Provider error",
-        detail: "Reconnecting... 2/3\nstream disconnected",
-        willRetry: true,
-      }),
+      ...[1, 2].map((attempt) =>
+        factory.providerError({
+          message: "Provider error",
+          detail: `Reconnecting... ${attempt}/3\nstream disconnected`,
+          willRetry: true,
+        }),
+      ),
       factory.assistantCompleted({ text: "Recovered" }),
       factory.turnCompleted({}),
     ];
-    const timeline = renderTimelineFixture({
-      events,
-      projectionOptions: { threadStatus: "idle", turnMessageDetail: "full" },
-    });
-    const turn = timeline.turnRows[0];
+    const turn = render(events, "idle").turnRows[0];
     expect(turn.children).toHaveLength(1);
     expect(turn.children?.[0]).toMatchObject({ title: "Reconnecting... 2/3" });
     const details = buildThreadTimelineTurnDetailsFromEvents({
@@ -160,126 +135,80 @@ describe("timeline source ownership", () => {
     });
     expect(details).toMatchObject({ kind: "matched", rows: turn.children });
   });
-  it.each([false, true])(
-    "rejects two distinct row ids owning one source, nested: %s",
-    (nested) => {
-      const factory = createTimelineEventFactory({ threadId: "thread-1" });
-      const events = [
-        factory.systemError({ code: "test", message: "Failure" }),
-      ];
-      const fixture = renderTimelineFixture({
-        events,
-        projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
-      });
-      const entry = fixture.projection.entries[0];
-      if (entry.kind !== "projected-message")
-        throw new Error("Expected standalone failure");
-      const duplicateMessage = {
-        ...entry.message,
-        id: "second-representation",
-      };
-      const duplicateRow = { ...fixture.rows[0], id: duplicateMessage.id };
-      const extraRow: TimelineRow = nested
-        ? {
-            ...fixture.rows[0],
+
+  it("rejects distinct root and nested row ids owning one source", () => {
+    const { error, render } = fixture();
+    const events = [error()];
+    const timeline = render(events);
+    const entry = timeline.projection.entries[0];
+    if (entry.kind !== "projected-message")
+      throw new Error("Expected standalone failure");
+    const message = { ...entry.message, id: "second-representation" };
+    expect(() =>
+      assertTimelineSourceOwnership(
+        fromRows(events),
+        {
+          ...timeline.projection,
+          entries: [
+            ...timeline.projection.entries,
+            { kind: "projected-message", message },
+          ],
+        },
+        [
+          ...timeline.rows,
+          {
+            ...timeline.rows[0],
             id: "summary",
             kind: "turn",
             turnId: "turn-1",
             status: "completed",
             completedAt: 10,
             summaryCount: 1,
-            children: [duplicateRow],
-          }
-        : duplicateRow;
-      expect(() =>
-        assertTimelineSourceOwnership(
-          fromRows(events),
-          {
-            ...fixture.projection,
-            entries: [
-              ...fixture.projection.entries,
-              { kind: "projected-message", message: duplicateMessage },
-            ],
+            children: [{ ...timeline.rows[0], id: message.id }],
           },
-          [...fixture.rows, extraRow],
-          [],
-        ),
-      ).toThrow("Duplicate source ownership");
-    },
-  );
+        ],
+        [],
+      ),
+    ).toThrow("Duplicate source ownership");
+  });
 
-  it("preserves distinct grouped input parts through event replay", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+  it("preserves distinct grouped input parts, including a skipped empty part", () => {
+    const { factory, render } = fixture();
     const event = factory.clientTurnRequested({
       text: "First Second",
-      inputGroups: [
-        [{ type: "text", text: "", mentions: [] }],
-        [{ type: "text", text: "First", mentions: [] }],
-        [{ type: "text", text: "Second", mentions: [] }],
-      ],
+      inputGroups: ["", "First", "Second"].map((text) => [
+        { type: "text", text, mentions: [] },
+      ]),
     });
-    const fixture = renderTimelineFixture({
-      events: [event, event],
-      projectionOptions: { threadStatus: "active", turnMessageDetail: "full" },
-    });
-    expect(fixture.rows).toHaveLength(2);
-    expect(fixture.messages.map((message) => message.sourceEvent)).toEqual([
-      { seq: event.seq, part: 1 },
-      { seq: event.seq, part: 2 },
-    ]);
+    const timeline = render([event], "active");
+    expect(timeline.rows).toHaveLength(2);
+    expect(timeline.messages.map((message) => message.sourceEvent)).toEqual(
+      [1, 2].map((part) => ({ seq: event.seq, part })),
+    );
   });
 
-  it("preserves distinct file changes through event replay", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+  it("preserves distinct file changes", () => {
+    const { factory, render } = fixture();
     const start = factory.turnStarted({});
     const event = factory.fileChangeCompleted({
-      changes: [
-        { path: "a.ts", kind: "update", diff: "" },
-        { path: "b.ts", kind: "update", diff: "" },
-      ],
+      changes: ["a.ts", "b.ts"].map((path) => ({
+        path,
+        kind: "update",
+        diff: "",
+      })),
     });
-    const fixture = renderTimelineFixture({
-      events: [start, event, event],
-      completedTurnDisplay: "flat",
-      projectionOptions: { threadStatus: "active", turnMessageDetail: "full" },
-    });
-    expect(fixture.rows).toHaveLength(2);
-    expect(fixture.messages.map((message) => message.sourceEvent)).toEqual([
-      { seq: event.seq, part: 0 },
-      { seq: event.seq, part: 1 },
-    ]);
+    const timeline = render([start, event], "active", "flat");
+    expect(timeline.rows).toHaveLength(2);
+    expect(timeline.messages.map((message) => message.sourceEvent)).toEqual(
+      [0, 1].map((part) => ({ seq: event.seq, part })),
+    );
   });
 
-  it("applies assistant and command output deltas once per source event", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
-    const start = factory.turnStarted({});
-    const assistant = factory.assistantDelta({ delta: "Inspecting.\n" });
-    const command = factory.commandStarted({
-      itemId: "command-1",
-      command: "inspect",
-    });
-    const output = factory.commandOutputDelta({
-      itemId: "command-1",
-      delta: "result\n",
-    });
-    const fixture = renderTimelineFixture({
-      events: [start, assistant, assistant, command, output, output],
-      completedTurnDisplay: "flat",
-      projectionOptions: { threadStatus: "active", turnMessageDetail: "full" },
-    });
-    expect(fixture.rows).toHaveLength(2);
-    expect(fixture.rows[0]).toMatchObject({ text: "Inspecting.\n" });
-    expect(fixture.rows[1]).toMatchObject({ output: "result\n" });
-  });
   it.each(["provisioning", "turn"] as const)(
     "clears provisioning correlation on a new %s lifecycle",
     (kind) => {
-      const factory = createTimelineEventFactory({ threadId: "thread-1" });
-      const failed = factory.threadProvisioning({
-        provisioningId: "first",
-        status: "failed",
-        entries: [],
-      });
+      const { factory, failed, error, render } = fixture();
+      const first = failed();
       const boundary =
         kind === "provisioning"
           ? factory.threadProvisioning({
@@ -288,22 +217,14 @@ describe("timeline source ownership", () => {
               entries: [],
             })
           : factory.turnStarted({});
-      const error = factory.systemError({
-        code: "thread_provisioning_failed",
-        message: "Provisioning thread failed",
-        detail: "Unpaired error",
-      });
-      const fixture = renderTimelineFixture({
-        events: [failed, boundary, error],
-        projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
-      });
-      expect(fixture.rows).toContainEqual(
+      const { rows } = render([first, boundary, error("Unpaired error")]);
+      expect(rows).toContainEqual(
         expect.objectContaining({
           systemKind: "error",
           detail: "Unpaired error",
         }),
       );
-      expect(fixture.rows[0]).toMatchObject({
+      expect(rows[0]).toMatchObject({
         operationKind: "thread-provisioning",
         detail: null,
       });

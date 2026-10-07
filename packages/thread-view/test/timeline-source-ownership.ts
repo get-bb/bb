@@ -20,9 +20,8 @@ export function assertTimelineSourceOwnership(
     for (const entry of current.entries) {
       for (const message of getProjectionEntryMessages(entry)) {
         const id = `${prefix}${message.id}`;
-        if (sourceByRowId.has(id)) {
+        if (sourceByRowId.has(id))
           throw new Error(`Duplicate projected message ${id}`);
-        }
         if (message.kind === "file-edit" && message.changes.length > 0) {
           for (const [index] of message.changes.entries()) {
             sourceByRowId.set(`${id}:file-change:${index}`, {
@@ -64,9 +63,11 @@ export function assertTimelineSourceOwnership(
       const source = sourceByRowId.get(row.id);
       if (!source)
         throw new Error(`Missing source identity for timeline row ${row.id}`);
-      const event = eventsByIdentity.get(
-        JSON.stringify([source.threadId, source.sourceEvent.seq]),
-      );
+      const {
+        threadId,
+        sourceEvent: { seq, part },
+      } = source;
+      const event = eventsByIdentity.get(JSON.stringify([threadId, seq]));
       if (!event)
         throw new Error(`Missing source event for timeline row ${row.id}`);
       const partCount =
@@ -77,18 +78,9 @@ export function assertTimelineSourceOwnership(
               event.item.type === "fileChange"
             ? Math.max(1, event.item.changes.length)
             : 1;
-      if (
-        !Number.isInteger(source.sourceEvent.part) ||
-        source.sourceEvent.part < 0 ||
-        source.sourceEvent.part >= partCount
-      ) {
+      if (!Number.isInteger(part) || part < 0 || part >= partCount)
         throw new Error(`Invalid source part for timeline row ${row.id}`);
-      }
-      const key = JSON.stringify([
-        source.threadId,
-        source.sourceEvent.seq,
-        source.sourceEvent.part,
-      ]);
+      const key = JSON.stringify([threadId, seq, part]);
       const previous = ownerBySource.get(key);
       if (previous)
         throw new Error(

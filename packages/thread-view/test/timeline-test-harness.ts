@@ -1,4 +1,4 @@
-import { buildPendingSteerMessagesFromEvents } from "../src/pending-steer-projection.js";
+import { buildPendingSteerMessagesFromEvents } from "../src/build-thread-timeline.js";
 import { assertTimelineSourceOwnership } from "./timeline-source-ownership.js";
 import {
   buildThreadEvent,
@@ -1512,12 +1512,6 @@ export function renderTimelineFixture(
     decodedEvents,
     commonProjectionOptions,
   );
-  assertTimelineSourceOwnership(
-    decodedEvents,
-    ownershipProjection,
-    rows,
-    pendingMessages,
-  );
   const lazyRows = rows.map((row) => {
     if (row.kind !== "turn") return row;
     const details = buildThreadTimelineTurnDetailsFromEvents({
@@ -1533,12 +1527,15 @@ export function renderTimelineFixture(
     }
     return { ...row, children: details.rows };
   });
-  assertTimelineSourceOwnership(
-    decodedEvents,
-    ownershipProjection,
-    lazyRows,
-    pendingMessages,
-  );
+  for (const candidateRows of [rows, lazyRows]) {
+    assertTimelineSourceOwnership(
+      decodedEvents,
+      ownershipProjection,
+      candidateRows,
+      pendingMessages,
+    );
+  }
+
   const messages = flattenEventProjectionMessagesDeep(projection);
   const text = formatThreadTimelineText(rows, {
     color: false,
