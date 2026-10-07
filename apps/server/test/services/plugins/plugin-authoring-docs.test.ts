@@ -7,6 +7,7 @@ import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type ExperimentalAppOverlayProps,
+  type ExperimentalMessageMetadataProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -280,6 +281,7 @@ type SlotPropsByName = {
   experimental_diffRenderer: PluginDiffRendererProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
+  experimental_messageMetadata: ExperimentalMessageMetadataProps;
   commandPaletteAction: PluginCommandContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
@@ -390,6 +392,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "Original",
   ],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
+  experimental_messageMetadata: ["message"],
   messageAction: [
     "threadId",
     "message",

@@ -67,6 +67,15 @@ openWorkspaceFile }` — register a leaf
   rather than trusting paths. Reference implementation:
   `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
   iframe preview, including relative assets and normal web loading).
+- `experimental_messageMetadata` → React metadata beside realized user and assistant
+  messages in the main timeline and embedded `ThreadChat`. Registration:
+  `{ id, placement?: "above" | "below", component }`; omitted placement means below.
+  The component receives `{ message }` with stable `id`, `threadId`, `createdAt`,
+  `turnId`, and `role`; user messages also have `initiator`. Filter by returning
+  null. Contributions retain plugin/registration order within each placement;
+  each throw is contained independently. Text streaming does not update this
+  context, and windowed-out rows unmount the component. See the Plugin Guide
+  message metadata card for the public contract and examples.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
   assistant-message text-selection menu. Slot actions are limited to the main

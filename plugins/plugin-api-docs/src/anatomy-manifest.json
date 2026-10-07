@@ -27,6 +27,24 @@
     ]
   },
   "surfaceFixtures": {
+    "message-metadata": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": { "anchor": ["Yesterday, 3:42 PM"] },
+      "fixtureClassAnchors": ["text-muted-foreground"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/thread/timeline/MessageMetadata.tsx",
+          "anchors": ["aria-label=\"Message metadata\"", "<PluginSlotMount", "<slot.component message={message} />"]
+        },
+        {
+          "path": "apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx",
+          "anchors": ["placement=\"above\"", "slots={pluginMessageMetadata}"]
+        }
+      ]
+    },
     "composer-actions": {
       "groupId": "composer",
       "fidelity": "flow",
