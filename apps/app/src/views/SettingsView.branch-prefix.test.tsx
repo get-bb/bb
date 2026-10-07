@@ -40,6 +40,7 @@ function renderSection(overrides?: {
         }
         onNavigateToThreadAfterCreateChange={vi.fn()}
         onOpenLinksInAppBrowserChange={vi.fn()}
+        onReplaySetupGuide={vi.fn()}
         onRewriteLocalhostLinksChange={vi.fn()}
         onSteerActiveThreadOnEnterChange={vi.fn()}
         openLinksInAppBrowser={false}

@@ -1154,16 +1154,16 @@ describe("gate request deadline", () => {
         credentialHash: await sha256Hex(credential),
       },
     });
-    let reachedTunnel: () => void = () => {};
-    const tunnelReached = new Promise<void>((resolve) => {
-      reachedTunnel = resolve;
+    let reachTunnelObject: () => void = () => {};
+    const reachedTunnelObject = new Promise<void>((resolve) => {
+      reachTunnelObject = resolve;
     });
     let answer: (response: Response) => void = () => {};
     const tunnelResponse = new Promise<Response>((resolve) => {
       answer = resolve;
     });
     const { env, ctx } = makeEnv(() => {
-      reachedTunnel();
+      reachTunnelObject();
       return tunnelResponse;
     });
     const pending = worker.fetch(
@@ -1176,7 +1176,7 @@ describe("gate request deadline", () => {
       env as never,
       ctx,
     );
-    await tunnelReached;
+    await reachedTunnelObject;
     await vi.advanceTimersByTimeAsync(2_999);
     expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);

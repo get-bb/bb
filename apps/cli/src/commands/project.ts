@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { Command } from "commander";
 import type {
   CreateProjectSourceRequest,
+  HostDiscoveredRepo,
   ProjectResponse,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
@@ -20,6 +21,12 @@ import {
 interface ProjectListCommandOptions {
   includePersonal?: boolean;
   json?: boolean;
+}
+
+interface ProjectDiscoverCommandOptions {
+  host?: string;
+  json?: boolean;
+  machine?: string;
 }
 
 interface ProjectCreateCommandOptions {
@@ -338,6 +345,30 @@ export function registerProjectCommands(
           return;
         }
         printProjectTable(projects);
+      }),
+    );
+
+  project
+    .command("discover")
+    .description("Find git repositories used recently on a machine")
+    .option("--machine <id-or-name>", "Machine to scan")
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: ProjectDiscoverCommandOptions) => {
+        const serverUrl = getUrl();
+        const sdk = createCliBbSdk(serverUrl);
+        const hostId = await resolveProjectSourceHostId(opts, serverUrl);
+        const result = await sdk.hosts.experimental_discoverRepos({ hostId });
+        if (outputJson(opts, result)) return;
+        if (result.repos.length === 0) {
+          console.log("No recently used git repositories found");
+        } else {
+          printDiscoveredRepoTable(result.repos);
+        }
+        if (result.truncated) {
+          console.log("The scan ran out of time, so the list may be partial.");
+        }
       }),
     );
 
@@ -689,6 +720,26 @@ function printProject(project: ProjectResponse): void {
     }
   }
   console.log("");
+}
+
+function printDiscoveredRepoTable(repos: HostDiscoveredRepo[]): void {
+  const rows = repos.map((repo) => [
+    repo.name,
+    repo.path,
+    repo.lastActivityAt.slice(0, 10),
+    repo.projectId ?? "-",
+  ]);
+  printBorderlessTable(
+    {
+      head: ["NAME", "PATH", "LAST ACTIVE", "PROJECT"],
+      colWidths: columnWidths(
+        [["NAME", "PATH", "LAST ACTIVE", "PROJECT"], ...rows],
+        [4, 4, 4, 4],
+      ),
+      trimTrailingWhitespace: true,
+    },
+    rows,
+  );
 }
 
 function printProjectTable(projects: ProjectResponse[]): void {

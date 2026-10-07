@@ -284,6 +284,7 @@ type ExpectedHostsKey =
   | "delete"
   | "experimental_deleteOldServerCopy"
   | "directory"
+  | "experimental_discoverRepos"
   | "get"
   | "installProviderCli"
   | "list"
