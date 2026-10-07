@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
   SortableContext,
 } from "@dnd-kit/sortable";
 import { useAtom } from "jotai";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,7 +34,6 @@ import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { useSidebarSortable } from "../rows/sortableMotion.js";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
 import { THREAD_ROW_ACTIONS } from "../rows/threadRowActions.js";
-import { SidebarCustomizePanel } from "./SidebarVisibilityCustomize.js";
 
 type RowActionSlot = ThreadRowActionId | null;
 
@@ -62,12 +69,35 @@ export function assignRowActionSlot(
   return slots.filter((slot): slot is ThreadRowActionId => slot !== null);
 }
 
-export function ThreadRowActionsCustomize({
+const CUSTOMIZE_ATTRIBUTE = "data-row-actions-customize";
+const CUSTOMIZE_SELECTOR = `[${CUSTOMIZE_ATTRIBUTE}]`;
+const SLOT_SELECTOR = "[data-sidebar-customize-launch]";
+
+export function focusFirstRowActionSlot(root: Element | null | undefined) {
+  root
+    ?.querySelector<HTMLElement>(`${CUSTOMIZE_SELECTOR} ${SLOT_SELECTOR}`)
+    ?.focus({ preventScroll: true });
+}
+
+function finishOnEscape(
+  event: KeyboardEvent<HTMLElement>,
+  onDone: (restoreFocus: boolean) => void,
+) {
+  if (
+    event.key !== "Escape" ||
+    !(event.target instanceof Node) ||
+    !event.currentTarget.contains(event.target)
+  )
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  onDone(true);
+}
+
+export function ThreadRowActionsEditor({
   onDone,
-  variant,
 }: {
-  onDone: () => void;
-  variant: "compact" | "card";
+  onDone: (restoreFocus: boolean) => void;
 }) {
   const [enabled, setEnabled] = useAtom(threadRowActionsAtom);
   const slots = getRowActionSlots(enabled);
@@ -108,89 +138,112 @@ export function ThreadRowActionsCustomize({
   });
 
   return (
-    <SidebarCustomizePanel
-      onDone={onDone}
-      testIdPrefix="sidebar-thread-list-row-actions"
-      title="Customize row actions"
-      variant={variant}
-    >
-      <div
-        className="space-y-0.5 px-1 pb-1"
-        data-testid="sidebar-thread-list-row-actions-preview"
-      >
-        <div className="flex h-7 items-center gap-2 rounded-md bg-sidebar-accent pl-2 max-md:pointer-coarse:h-9">
-          <FakeThreadRowTitle width="w-full" />
-          <div
-            ref={groupRef}
-            role="group"
-            aria-label="Row actions"
-            className="flex shrink-0 items-center gap-0.5"
-            onClickCapture={onClickCapture}
-          >
-            <DndContext {...dndContextProps}>
-              <SortableContext
-                items={enabled}
-                strategy={horizontalListSortingStrategy}
-              >
-                {slots.map((slot, index) => (
-                  <RowActionSlotPicker
-                    key={slot ?? `empty-${index}`}
-                    index={index}
-                    value={slot}
-                    reorderDisabled={slot === null || enabled.length < 2}
-                    onChange={(value) => {
-                      if (value === slot) return false;
-                      const next = assignRowActionSlot(enabled, index, value);
-                      focusSlot.current =
-                        value === null
-                          ? index
-                          : getRowActionSlots(next).indexOf(value);
-                      setEnabled(next);
-                      return true;
-                    }}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-            <span
-              aria-hidden="true"
-              className={cn(
-                SIDEBAR_CONTROL_BUTTON_CLASS,
-                "pointer-events-none flex items-center justify-center",
-              )}
-            >
-              <Icon
-                name="MoreHorizontal"
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
-              />
-            </span>
-          </div>
-        </div>
-        <FakeThreadRow width="w-2/5" />
-      </div>
-    </SidebarCustomizePanel>
-  );
-}
-
-function FakeThreadRow({ width }: { width: string }) {
-  return (
     <div
-      aria-hidden="true"
-      className="flex h-7 items-center gap-2 pl-2 max-md:pointer-coarse:h-9"
+      ref={groupRef}
+      role="group"
+      aria-label="Row actions"
+      {...{ [CUSTOMIZE_ATTRIBUTE]: "" }}
+      data-testid="sidebar-thread-list-row-actions-editor"
+      className="relative z-10 flex shrink-0 items-center gap-0.5"
+      onClick={(event) => event.stopPropagation()}
+      onClickCapture={onClickCapture}
+      onKeyDown={(event) => finishOnEscape(event, onDone)}
     >
-      <FakeThreadRowTitle width={width} />
+      <DndContext {...dndContextProps}>
+        <SortableContext
+          items={enabled}
+          strategy={horizontalListSortingStrategy}
+        >
+          {slots.map((slot, index) => (
+            <RowActionSlotPicker
+              key={slot ?? `empty-${index}`}
+              index={index}
+              value={slot}
+              reorderDisabled={slot === null || enabled.length < 2}
+              onChange={(value) => {
+                if (value === slot) return false;
+                const next = assignRowActionSlot(enabled, index, value);
+                focusSlot.current =
+                  value === null
+                    ? index
+                    : getRowActionSlots(next).indexOf(value);
+                setEnabled(next);
+                return true;
+              }}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      <span
+        aria-hidden="true"
+        className={cn(
+          SIDEBAR_CONTROL_BUTTON_CLASS,
+          "pointer-events-none flex items-center justify-center text-muted-foreground",
+        )}
+      >
+        <Icon
+          name="MoreHorizontal"
+          className={COARSE_POINTER_ICON_SIZE_CLASS}
+        />
+      </span>
     </div>
   );
 }
 
-function FakeThreadRowTitle({ width }: { width: string }) {
+export function ThreadRowActionsCustomizeFooter({
+  onDone,
+  style,
+}: {
+  onDone: (restoreFocus: boolean) => void;
+  style: CSSProperties;
+}) {
+  useEffect(() => {
+    let pickerWasOpen = false;
+    const handlePointerDown = () => {
+      pickerWasOpen =
+        document.querySelector(`${SLOT_SELECTOR}[aria-expanded="true"]`) !==
+        null;
+    };
+    const handleClick = (event: MouseEvent) => {
+      if (pickerWasOpen) {
+        pickerWasOpen = false;
+        return;
+      }
+      if (
+        event.target instanceof Element &&
+        event.target.closest(CUSTOMIZE_SELECTOR)
+      )
+        return;
+      onDone(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("click", handleClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("click", handleClick, true);
+    };
+  }, [onDone]);
   return (
-    <span aria-hidden="true" className="flex min-w-0 flex-1 items-center gap-2">
-      <span className="size-1.5 shrink-0 rounded-full bg-sidebar-foreground/20" />
-      <span
-        className={cn("h-1.5 rounded-full bg-sidebar-foreground/15", width)}
-      />
-    </span>
+    <div
+      {...{ [CUSTOMIZE_ATTRIBUTE]: "" }}
+      data-testid="sidebar-thread-list-row-actions-footer"
+      className="flex items-center gap-2 pr-1"
+      style={style}
+      onKeyDown={(event) => finishOnEscape(event, onDone)}
+    >
+      <p className="min-w-0 flex-1 text-xs leading-5 text-muted-foreground">
+        Shown on hover for every thread.
+      </p>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-6 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2 max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-sm"
+        onClick={() => onDone(true)}
+      >
+        Done
+      </Button>
+    </div>
   );
 }
 
@@ -212,7 +265,7 @@ function RowActionSlotPicker({
     id: value ?? `empty-${index}`,
     disabled: reorderDisabled,
   });
-  const label = `Row action ${index + 1}: ${value === null ? "None" : THREAD_ROW_ACTIONS[value].label}`;
+  const label = `Row action ${index + 1}: ${value === null ? "Empty" : THREAD_ROW_ACTIONS[value].label}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -242,12 +295,13 @@ function RowActionSlotPicker({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setOpen(true)}
           >
-            {value !== null && (
-              <Icon
-                name={THREAD_ROW_ACTIONS[value].icon}
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
-              />
-            )}
+            <Icon
+              name={value === null ? "Plus" : THREAD_ROW_ACTIONS[value].icon}
+              className={cn(
+                COARSE_POINTER_ICON_SIZE_CLASS,
+                value === null && "text-muted-foreground",
+              )}
+            />
           </button>
         </span>
       </DropdownMenuTrigger>
@@ -274,15 +328,19 @@ function RowActionSlotPicker({
             }}
           />
         ))}
-        <DropdownMenuSeparator />
-        <RowActionOption
-          icon="EyeOff"
-          label="Hide"
-          selected={value === null}
-          onSelect={() => {
-            focusHandedOff.current = onChange(null);
-          }}
-        />
+        {value !== null && (
+          <>
+            <DropdownMenuSeparator />
+            <RowActionOption
+              icon="EyeOff"
+              label="Hide"
+              selected={false}
+              onSelect={() => {
+                focusHandedOff.current = onChange(null);
+              }}
+            />
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

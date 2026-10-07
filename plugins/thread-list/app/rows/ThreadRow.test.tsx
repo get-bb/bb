@@ -43,7 +43,10 @@ import {
   preferenceValueAtom,
   resetPreferencesSyncForTest,
 } from "../preferences/preferences-sync.js";
-import { CustomizeRowActionsContext } from "../list/customizeRowActionsContext.js";
+import {
+  CustomizeRowActionsContext,
+  ThreadRowActionsCustomizingContext,
+} from "../list/customizeRowActionsContext.js";
 
 installTestPluginRuntime();
 const { SidebarDraftPresenceSync } =
@@ -86,6 +89,7 @@ interface HarnessProps {
   options?: ThreadRowOptions;
   onRowEvent?: () => void;
   onCustomizeRowActions?: (threadId: string) => void;
+  onFinishCustomizingRowActions?: (restoreFocus: boolean) => void;
   sectionDestinations?: readonly ThreadSectionMoveDestination[];
 }
 
@@ -97,6 +101,7 @@ function ThreadRowHarness({
   options = DEFAULT_OPTIONS,
   onRowEvent,
   onCustomizeRowActions,
+  onFinishCustomizingRowActions,
   sectionDestinations,
 }: HarnessProps) {
   const row = (
@@ -114,19 +119,27 @@ function ThreadRowHarness({
         <CustomizeRowActionsContext.Provider
           value={onCustomizeRowActions ?? null}
         >
-          <div
-            onPointerDown={onRowEvent}
-            onKeyDown={onRowEvent}
-            onClick={onRowEvent}
+          <ThreadRowActionsCustomizingContext.Provider
+            value={
+              onFinishCustomizingRowActions
+                ? { threadId: thread.id, onDone: onFinishCustomizingRowActions }
+                : null
+            }
           >
-            {sectionDestinations ? (
-              <ThreadSectionMoveProvider destinations={sectionDestinations}>
-                {row}
-              </ThreadSectionMoveProvider>
-            ) : (
-              row
-            )}
-          </div>
+            <div
+              onPointerDown={onRowEvent}
+              onKeyDown={onRowEvent}
+              onClick={onRowEvent}
+            >
+              {sectionDestinations ? (
+                <ThreadSectionMoveProvider destinations={sectionDestinations}>
+                  {row}
+                </ThreadSectionMoveProvider>
+              ) : (
+                row
+              )}
+            </div>
+          </ThreadRowActionsCustomizingContext.Provider>
         </CustomizeRowActionsContext.Provider>
       </SidebarRenameProvider>
     </TooltipProvider>
@@ -614,6 +627,40 @@ describe("ThreadRow", () => {
       screen.getByRole("menuitem", { name: "Customize row actions" }),
     );
     expect(customize).toHaveBeenCalledWith("thr_test");
+  });
+
+  it("customizes row actions on the real row until Done or a click elsewhere", async () => {
+    getDefaultStore().set(preferenceValueAtom("rowActions"), ["pin"]);
+    const finish = vi.fn();
+    renderThreadRow({ onFinishCustomizingRowActions: finish });
+    expect(screen.getByRole("link", { name: "Open Thread" })).toBeTruthy();
+    expect(
+      document
+        .querySelector("[data-sidebar-thread-trailing]")
+        ?.classList.contains("hidden"),
+    ).toBe(true);
+    const editor = screen.getByRole("group", { name: "Row actions" });
+    expect(
+      Array.from(
+        editor.querySelectorAll<HTMLElement>("[data-row-action-slot]"),
+      ).map((slot) => slot.dataset.rowActionSlot),
+    ).toEqual(["none", "none", "pin"]);
+    expect(screen.getByText("Shown on hover for every thread.")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Row action 1: Empty" }),
+    );
+    await screen.findByRole("menuitemradio", { name: "Pin" });
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(finish).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(finish).toHaveBeenLastCalledWith(true);
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    expect(finish).toHaveBeenLastCalledWith(false);
   });
 
   it("asks the host to confirm deletion from the menu", async () => {

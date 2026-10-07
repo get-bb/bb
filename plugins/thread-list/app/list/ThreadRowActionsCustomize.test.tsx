@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { threadRowActionsAtom } from "../preferences/atoms.js";
 
 installTestPluginRuntime();
-const { assignRowActionSlot, ThreadRowActionsCustomize } = await import(
+const { assignRowActionSlot, ThreadRowActionsEditor } = await import(
   "./ThreadRowActionsCustomize.js"
 );
 
@@ -14,12 +14,12 @@ afterEach(() => {
   cleanup();
 });
 
-it("previews empty slots before shown actions, next to the menu", () => {
+it("shows empty slots before chosen actions, next to the menu", () => {
   const store = createStore();
   store.set(threadRowActionsAtom, ["pin", "archive"]);
   render(
     <Provider store={store}>
-      <ThreadRowActionsCustomize onDone={() => {}} variant="card" />
+      <ThreadRowActionsEditor onDone={() => {}} />
     </Provider>,
   );
   expect(
@@ -60,7 +60,7 @@ it.each([
     store.set(threadRowActionsAtom, [...initial]);
     render(
       <Provider store={store}>
-        <ThreadRowActionsCustomize onDone={() => {}} variant="card" />
+        <ThreadRowActionsEditor onDone={() => {}} />
       </Provider>,
     );
     const slotButton = (index: number) =>
@@ -75,3 +75,31 @@ it.each([
     });
   },
 );
+
+it("offers Hide only for a filled slot and finishes on Escape", async () => {
+  const store = createStore();
+  store.set(threadRowActionsAtom, ["archive"]);
+  const finish = vi.fn();
+  render(
+    <Provider store={store}>
+      <ThreadRowActionsEditor onDone={finish} />
+    </Provider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Row action 1: Empty" }));
+  await screen.findByRole("menuitemradio", { name: "Pin" });
+  expect(screen.queryByRole("menuitemradio", { name: "Hide" })).toBeNull();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  expect(finish).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+  fireEvent.click(screen.getByRole("button", { name: "Row action 3: Archive" }));
+  expect(await screen.findByRole("menuitemradio", { name: "Hide" })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+  fireEvent.keyDown(
+    screen.getByRole("button", { name: "Row action 3: Archive" }),
+    { key: "Escape" },
+  );
+  expect(finish).toHaveBeenCalledWith(true);
+});
