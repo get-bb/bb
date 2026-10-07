@@ -186,7 +186,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     title: "Claude Code Mobile: See Which Agent Needs You — bb",
     description:
       "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and reply from any phone browser. Free and open source.",
-    headline: "See which agent needs you from your phone",
+    headline: "Claude Code on your phone. See which agent needs you.",
     sub: "Claude Code, Codex, and your other agents in one list, marked running, waiting on you, or done. Reply from any phone browser. Free and open source.",
     closer: "Know which agent needs you",
     sections: [PHONE_SECTION, CODEX_SECTION, PARALLEL_SECTION],
@@ -204,7 +204,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     description:
       "Have Codex review Claude Code’s work with no copy-paste between them. Both run in one free, open-source app, on the subscriptions you already have.",
     headline: "Have Codex review Claude Code’s work",
-    sub: "Both run in one app on the subscriptions you already have, with no copy-paste between them. Free and open source.",
+    sub: "No copy-paste between them. Both run in one app on the subscriptions you already have. Free and open source.",
     closer: "Let your agents check each other’s work",
     sections: [CODEX_SECTION, PARALLEL_SECTION, PHONE_SECTION],
     faq: [
@@ -221,7 +221,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     description:
       "Run Claude Code, Codex, and other agents in parallel, each in its own Git worktree, and always know which one needs you. Free and open source.",
     headline: "Run your own software factory of coding agents",
-    sub: "Claude Code, Codex, and more work in parallel, and one list shows which are running, waiting on you, or done. Free and open source.",
+    sub: "Run Claude Code, Codex, and more in parallel. One list shows which are running, waiting on you, or done. Free and open source.",
     closer: "Put your software factory to work",
     sections: [PARALLEL_SECTION, CODEX_SECTION, PHONE_SECTION],
     faq: [
