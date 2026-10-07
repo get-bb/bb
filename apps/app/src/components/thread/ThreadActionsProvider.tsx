@@ -349,8 +349,8 @@ export function ThreadActionsProvider({
         if (destination !== null) viewedRouteRef.current = destination;
         appToast.success(
           response.archivedThreadIds.length === 1
-            ? "Thread Archived"
-            : "Threads Archived",
+            ? "Thread archived"
+            : "Threads archived",
           {
             description: `Archived ${response.archivedThreadIds.length} ${response.archivedThreadIds.length === 1 ? "thread" : "threads"}`,
             cancel: {
@@ -425,7 +425,7 @@ export function ThreadActionsProvider({
             viewedRouteRef.current = archiveDestination;
           }
           const toastId = `thread-archived-${thread.id}`;
-          appToast.success("Thread Archived", {
+          appToast.success("Thread archived", {
             description: (
               <ArchivedThreadToastDescription
                 archivedThreadCount={response.archivedThreadIds.length}

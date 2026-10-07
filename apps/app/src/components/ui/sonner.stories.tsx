@@ -209,7 +209,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     usage: ["Thread archive succeeds", "Thread name opens the archived thread"],
     current: {
       tone: "success",
-      title: "Thread Archived",
+      title: "Thread archived",
       description: (
         <ArchivedThreadToastDescription
           archivedThreadCount={1}
@@ -231,7 +231,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     ],
     current: {
       tone: "success",
-      title: "Thread Archived",
+      title: "Thread archived",
       description: (
         <ArchivedThreadToastDescription
           archivedThreadCount={3}
