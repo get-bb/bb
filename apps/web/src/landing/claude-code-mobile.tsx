@@ -19,9 +19,11 @@ import {
   FAQ_GET_STARTED,
   FAQ_PARALLEL,
   FAQ_PRIVACY,
+  FAQ_SUBSCRIPTIONS,
   faqFree,
   faqPhone,
 } from "../compare/compare-content";
+import { PLUGINS_COPY, pluginsSection } from "../compare/compare-sections";
 import {
   AgentSplit,
   AnywhereVisual,
@@ -141,19 +143,8 @@ const FAQ_LIMIT_RESET: CompareFaq = {
     <p>
       bb picks the work back up. When an agent stops on a usage limit that
       reports when it resets, bb sends the message again a little after the
-      reset, up to four times per turn, so you don’t have to come back and
-      press send. Credit and spend limits aren’t retried.
-    </p>
-  ),
-};
-
-const FAQ_BOTH_PLANS: CompareFaq = {
-  question: "Do I need a plan for both Claude Code and Codex?",
-  answer: (
-    <p>
-      Yes. Each agent runs signed in as usual, with its own plan or API key,
-      the way you use it today, and bb adds no model bill of its own. Any pair
-      of agents works the same way, including two Claude Code threads.
+      reset, up to four times per turn, so you don’t have to come back and press
+      send. Credit and spend limits aren’t retried.
     </p>
   ),
 };
@@ -175,6 +166,11 @@ const START_FAQ: CompareFaqGroup = {
   items: [FAQ_GET_STARTED, faqFree(""), FAQ_PRIVACY],
 };
 
+const START_WITH_PLANS_FAQ: CompareFaqGroup = {
+  title: "Getting started",
+  items: [FAQ_GET_STARTED, FAQ_SUBSCRIPTIONS, faqFree(""), FAQ_PRIVACY],
+};
+
 type VariantContent = {
   title: string;
   description: string;
@@ -189,8 +185,8 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     title: "Claude Code Mobile: See Which Agent Needs You — bb",
     description:
       "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and answer from any phone browser. Free and open source.",
-    headline: "See which agent needs you, from your phone",
-    sub: "Install bb on your computer, then step away. Claude Code, Codex, and your other agents show up in one list on your phone, where you can answer questions and preview what was built. Free and open source.",
+    headline: "See which agent needs you from your phone",
+    sub: "Install bb on your computer, then answer Claude Code, Codex, and your other agents from any phone browser. Free and open source.",
     sections: [PHONE_SECTION, CODEX_SECTION, PARALLEL_SECTION],
     faq: [
       PHONE_FAQ,
@@ -198,7 +194,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
         title: "Running several agents",
         items: [FAQ_PARALLEL, FAQ_CODEX_TOGETHER, FAQ_LIMIT_RESET, FAQ_AGENTS],
       },
-      START_FAQ,
+      START_WITH_PLANS_FAQ,
     ],
   },
   "codex-review": {
@@ -206,12 +202,12 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     description:
       "Have Codex review Claude Code’s work, or the reverse, with no copy-paste between them. Both run in one free, open-source app.",
     headline: "Have Codex review Claude Code’s work",
-    sub: "Or the reverse, with no copy-paste between them. Both run in one app, each signed in as usual, and you’ll see which one needs you.",
+    sub: "Or the reverse, with no copy-paste, on the subscriptions you already have. Free and open source.",
     sections: [CODEX_SECTION, PARALLEL_SECTION, PHONE_SECTION],
     faq: [
       {
         title: "Running several agents",
-        items: [FAQ_BOTH_PLANS, FAQ_PARALLEL, FAQ_LIMIT_RESET, FAQ_AGENTS],
+        items: [FAQ_SUBSCRIPTIONS, FAQ_PARALLEL, FAQ_LIMIT_RESET, FAQ_AGENTS],
       },
       START_FAQ,
       PHONE_FAQ,
@@ -222,14 +218,14 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     description:
       "Run Claude Code, Codex, and other agents in parallel, each in its own Git worktree, and always know which one needs you. Free and open source.",
     headline: "Run agents in parallel and always know which one needs you",
-    sub: "One list shows which agents are running, waiting on you, or done. Each can get its own Git worktree.",
+    sub: "One list shows which agents are running, waiting on you, or done. Free and open source.",
     sections: [PARALLEL_SECTION, CODEX_SECTION, PHONE_SECTION],
     faq: [
       {
         title: "Running several agents",
         items: [FAQ_LIMIT_RESET, FAQ_CODEX_TOGETHER, FAQ_AGENTS],
       },
-      START_FAQ,
+      START_WITH_PLANS_FAQ,
       PHONE_FAQ,
     ],
   },
@@ -257,11 +253,7 @@ export function claudeCodeMobileHead(variant: LandingVariant) {
   };
 }
 
-export function ClaudeCodeMobilePage({
-  variant,
-}: {
-  variant: LandingVariant;
-}) {
+export function ClaudeCodeMobilePage({ variant }: { variant: LandingVariant }) {
   useInitAnalytics();
   useScrollReveal();
   const content = VARIANTS[variant];
@@ -280,7 +272,7 @@ export function ClaudeCodeMobilePage({
         </div>
       </header>
 
-      {content.sections.map((highlight) => (
+      {[...content.sections, pluginsSection(PLUGINS_COPY)].map((highlight) => (
         <Highlight key={highlight.title} highlight={highlight} />
       ))}
 
