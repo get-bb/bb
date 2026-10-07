@@ -102,17 +102,19 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     [bbNavigate],
   );
   return (
-    <div
-      data-guide-stage-viewport
-      className="h-full min-h-0 w-full flex-1 overflow-y-auto px-3 pb-6 pt-5 sm:px-6 [container-type:size] [--guide-stage-gap:3cqh] lg:pb-0 lg:pt-4"
-    >
-      <ProductMap
-        pluginPageHref={pluginPageHref}
-        renderPluginIcon={renderPluginIcon}
-        initialSlideId={subPath.split("/")[0] || undefined}
-        onSlideChange={onSlideChange}
-        onCopyForAgent={copyPluginSurfaceAgentReference}
-      />
+    <div className="@container/guide-page flex h-full min-h-0 min-w-0 flex-1">
+      <div
+        data-guide-stage-viewport
+        className="h-full min-h-0 w-full flex-1 overflow-y-auto px-3 pb-6 pt-5 @min-[40rem]/guide-page:px-6 [container-type:size] [--guide-stage-gap:3cqh] @min-[64rem]/guide-page:pb-0 @min-[64rem]/guide-page:pt-4"
+      >
+        <ProductMap
+          pluginPageHref={pluginPageHref}
+          renderPluginIcon={renderPluginIcon}
+          initialSlideId={subPath.split("/")[0] || undefined}
+          onSlideChange={onSlideChange}
+          onCopyForAgent={copyPluginSurfaceAgentReference}
+        />
+      </div>
     </div>
   );
 }
