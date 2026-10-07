@@ -42,7 +42,10 @@ export function MicrophonePreferencesPopoverContent({
             {warning}
           </p>
         ) : null}
-        <MicrophonePreferencesSplit open={open} onCaptureReady={onCaptureReady} />
+        <MicrophonePreferencesSplit
+          open={open}
+          onCaptureReady={onCaptureReady}
+        />
       </div>
     </PopoverContent>
   );

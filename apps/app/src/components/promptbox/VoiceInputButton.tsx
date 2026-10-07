@@ -79,7 +79,9 @@ export function VoiceInputButton({
               {visibleWarning ? (
                 <>
                   <span className="block">{visibleWarning}</span>
-                  <span className="block">Click to open voice preferences.</span>
+                  <span className="block">
+                    Click to open voice preferences.
+                  </span>
                 </>
               ) : (
                 "Start voice input · Right-click for voice preferences"
