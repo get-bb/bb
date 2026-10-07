@@ -14,7 +14,6 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
-import { BbHttpError } from "@/lib/sdk";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
 type QueuedMessageSendGuard = "current-head" | "exists" | "none";
@@ -33,7 +32,9 @@ interface UseQueuedMessageActionsArgs {
   onSendSuccess?: () => void;
   onSaveSuccess?: () => void;
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
-  clearInlineQueuedMessageEditor: () => void;
+  clearInlineQueuedMessageEditor: (
+    expected?: InlineQueuedMessageEditState,
+  ) => void;
   activeComposerDraftInput: PromptInput[];
 }
 
@@ -139,7 +140,8 @@ export function useQueuedMessageActions({
     if (
       !inlineEditingQueuedMessage ||
       activeComposerDraftInput.length === 0 ||
-      updateQueuedMessage.isPending
+      updateQueuedMessage.isPending ||
+      queuedEditActionPending
     ) {
       return;
     }
@@ -149,7 +151,6 @@ export function useQueuedMessageActions({
         (message) => message.id === inlineEditingQueuedMessage.queuedMessageId,
       )
     ) {
-      clearInlineQueuedMessageEditor();
       return;
     }
     const { expectedUpdatedAt, editToken, ownerThreadId, queuedMessageId } =
@@ -164,11 +165,8 @@ export function useQueuedMessageActions({
         queuedMessageId,
       });
       onSaveSuccess?.();
-      clearInlineQueuedMessageEditor();
+      clearInlineQueuedMessageEditor(inlineEditingQueuedMessage);
     } catch (error) {
-      if (error instanceof BbHttpError && error.status === 404) {
-        clearInlineQueuedMessageEditor();
-      }
       showMutationErrorToast({
         error,
         fallbackMessage: "Failed to update queued message",
@@ -181,6 +179,7 @@ export function useQueuedMessageActions({
     }
   }, [
     activeComposerDraftInput,
+    queuedEditActionPending,
     clearInlineQueuedMessageEditor,
     inlineEditingQueuedMessage,
     onSaveSuccess,

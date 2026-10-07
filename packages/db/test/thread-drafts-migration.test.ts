@@ -13,6 +13,7 @@ import {
   dropPluginEnabledFollowsDefaultColumn,
   dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
+  dropQueuedMessageEditTokenColumn,
 } from "./helpers/rewind.js";
 
 const THREAD_DRAFTS_MIGRATION_TIMESTAMP = 1790322211064;
@@ -112,6 +113,7 @@ it.each([false, true])(
       dropIdleLifecycleIndexes(db);
       rewindThreadPruningWork(db);
       dropPluginEnabledFollowsDefaultColumn(db);
+      dropQueuedMessageEditTokenColumn(db);
       migrate(db);
       migrate(db);
 

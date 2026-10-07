@@ -3,14 +3,24 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { useQueuedMessageActions } from "./useQueuedMessageActions";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 
 const mocks = vi.hoisted(() => ({
+  save: vi.fn(),
   begin: vi.fn(),
   cancel: vi.fn(),
   error: vi.fn(),
 }));
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useUpdateThreadQueuedMessage: () => ({
+    mutateAsync: mocks.save,
+    isPending: false,
+  }),
+  useDeleteThreadQueuedMessage: () => ({ isPending: false }),
+  useReorderThreadQueuedMessage: () => ({ isPending: false }),
+  useSendThreadQueuedMessage: () => ({ isPending: false }),
+  useSetThreadQueuedMessageGroupBoundary: () => ({ isPending: false }),
   useBeginThreadQueuedMessageEdit: () => ({
     mutateAsync: mocks.begin,
     isPending: false,
@@ -290,4 +300,212 @@ describe("queued editor admission", () => {
       }),
     );
   });
+});
+
+it("preserves a draft after another client takes over and consumes the row, including remount", async () => {
+  const { queued, held } = fixture();
+  const hook = renderHook(
+    ({ rows }) =>
+      useInlineQueuedMessageEditing({
+        ownerThreadId: queued.threadId,
+        queuedMessages: rows,
+      }),
+    { initialProps: { rows: [queued] } },
+  );
+  await act(async () =>
+    hook.result.current.beginEditQueuedMessage({
+      queuedMessageId: queued.id,
+      queuedMessageIndex: 0,
+    }),
+  );
+  act(() =>
+    hook.result.current.queuedMessageDraftSession!.setDraft((draft) => ({
+      ...draft,
+      text: "UNSAVED A",
+    })),
+  );
+  hook.rerender({
+    rows: [{ ...held, editToken: "other-client", updatedAt: 3 }],
+  });
+  expect(hook.result.current.queuedEditActionPending).toBe(true);
+  hook.rerender({ rows: [] });
+  expect(hook.result.current.inlineEditingQueuedMessage?.draft.text).toBe(
+    "UNSAVED A",
+  );
+  hook.unmount();
+  const restored = renderHook(() =>
+    useInlineQueuedMessageEditing({
+      ownerThreadId: queued.threadId,
+      queuedMessages: [],
+    }),
+  );
+  expect(restored.result.current.inlineEditingQueuedMessage?.draft.text).toBe(
+    "UNSAVED A",
+  );
+  expect(restored.result.current.queuedEditActionPending).toBe(true);
+  act(() => restored.result.current.dismissInlineQueuedMessageEditor());
+  expect(restored.result.current.inlineEditingQueuedMessage).toBeNull();
+  expect(
+    sessionStorage.getItem(`bb:queued-edit:${queued.threadId}`),
+  ).toBeNull();
+  expect(mocks.cancel).not.toHaveBeenCalled();
+});
+
+it.each(["save", "cancel"] as const)(
+  "does not let a delayed %s clear a restored editor for another owner",
+  async (operation) => {
+    const { queued } = fixture();
+    const b = makeThreadQueuedMessage({
+      id: "queued-b",
+      threadId: "thread-b",
+      editToken: "token-b",
+      updatedAt: 2,
+    });
+    const bHook = renderHook(() =>
+      useInlineQueuedMessageEditing({
+        ownerThreadId: b.threadId,
+        queuedMessages: [b],
+      }),
+    );
+    mocks.begin.mockResolvedValueOnce(b);
+    await act(async () =>
+      bHook.result.current.beginEditQueuedMessage({
+        queuedMessageId: b.id,
+        queuedMessageIndex: 0,
+      }),
+    );
+    act(() =>
+      bHook.result.current.queuedMessageDraftSession!.setDraft((draft) => ({
+        ...draft,
+        text: "UNSAVED B",
+      })),
+    );
+    bHook.unmount();
+    const hook = renderHook(
+      ({ owner, rows }) => {
+        const edit = useInlineQueuedMessageEditing({
+          ownerThreadId: owner,
+          queuedMessages: rows,
+        });
+        const actions = useQueuedMessageActions({
+          threadId: owner,
+          queuedMessages: rows,
+          queuedEditActionPending: edit.queuedEditActionPending,
+          sendProcessingPersistence: "clear-on-settle",
+          inlineEditingQueuedMessage: edit.inlineEditingQueuedMessage,
+          clearInlineQueuedMessageEditor: edit.clearInlineQueuedMessageEditor,
+          activeComposerDraftInput: [
+            { type: "text", text: "SAVED A", mentions: [] },
+          ],
+        });
+        return { edit, actions };
+      },
+      { initialProps: { owner: queued.threadId, rows: [queued] } },
+    );
+    await act(async () =>
+      hook.result.current.edit.beginEditQueuedMessage({
+        queuedMessageId: queued.id,
+        queuedMessageIndex: 0,
+      }),
+    );
+    const held = { ...queued, editToken: "edit-owner", updatedAt: 2 };
+    hook.rerender({ owner: queued.threadId, rows: [held] });
+    const pending = createDeferredPromise<typeof queued>();
+    (operation === "save" ? mocks.save : mocks.cancel).mockReturnValueOnce(
+      pending.promise,
+    );
+    let save: Promise<void> | undefined;
+    act(() => {
+      if (operation === "save")
+        save = hook.result.current.actions.handleSaveInlineQueuedMessage();
+      else hook.result.current.edit.dismissInlineQueuedMessageEditor();
+    });
+    hook.rerender({ owner: b.threadId, rows: [b] });
+    await act(async () => {
+      pending.resolve(queued);
+      await save;
+    });
+    await waitFor(() =>
+      expect(
+        hook.result.current.edit.inlineEditingQueuedMessage?.draft.text,
+      ).toBe("UNSAVED B"),
+    );
+    expect(sessionStorage.getItem(`bb:queued-edit:${b.threadId}`)).toContain(
+      "UNSAVED B",
+    );
+  },
+);
+
+it("keeps newer persisted changes after same-owner remount while an old Save resolves", async () => {
+  const { queued, held } = fixture();
+  const first = renderHook(
+    ({ rows }) => {
+      const edit = useInlineQueuedMessageEditing({
+        ownerThreadId: queued.threadId,
+        queuedMessages: rows,
+      });
+      const actions = useQueuedMessageActions({
+        threadId: queued.threadId,
+        queuedMessages: rows,
+        queuedEditActionPending: edit.queuedEditActionPending,
+        sendProcessingPersistence: "clear-on-settle",
+        inlineEditingQueuedMessage: edit.inlineEditingQueuedMessage,
+        clearInlineQueuedMessageEditor: edit.clearInlineQueuedMessageEditor,
+        activeComposerDraftInput: [
+          { type: "text", text: "SUBMITTED", mentions: [] },
+        ],
+      });
+      return { edit, actions };
+    },
+    { initialProps: { rows: [queued] } },
+  );
+  await act(async () =>
+    first.result.current.edit.beginEditQueuedMessage({
+      queuedMessageId: queued.id,
+      queuedMessageIndex: 0,
+    }),
+  );
+  first.rerender({ rows: [held] });
+  const pending = createDeferredPromise<typeof queued>();
+  mocks.save.mockReturnValueOnce(pending.promise);
+  let save: Promise<void> | undefined;
+  act(() => {
+    save = first.result.current.actions.handleSaveInlineQueuedMessage();
+  });
+  first.unmount();
+  const second = renderHook(
+    ({ rows }) =>
+      useInlineQueuedMessageEditing({
+        ownerThreadId: queued.threadId,
+        queuedMessages: rows,
+      }),
+    { initialProps: { rows: [held] } },
+  );
+  act(() =>
+    second.result.current.queuedMessageDraftSession!.setDraft((draft) => ({
+      ...draft,
+      text: "NEW UNSAVED AFTER REMOUNT",
+    })),
+  );
+  await act(async () => {
+    pending.resolve(queued);
+    await save;
+  });
+  second.rerender({ rows: [] });
+  expect(second.result.current.inlineEditingQueuedMessage?.draft.text).toBe(
+    "NEW UNSAVED AFTER REMOUNT",
+  );
+  expect(sessionStorage.getItem(`bb:queued-edit:${queued.threadId}`)).toContain(
+    "NEW UNSAVED AFTER REMOUNT",
+  );
+  second.unmount();
+  const third = renderHook(() =>
+    useInlineQueuedMessageEditing({
+      ownerThreadId: queued.threadId,
+      queuedMessages: [],
+    }),
+  );
+  expect(third.result.current.inlineEditingQueuedMessage?.draft.text).toBe(
+    "NEW UNSAVED AFTER REMOUNT",
+  );
 });

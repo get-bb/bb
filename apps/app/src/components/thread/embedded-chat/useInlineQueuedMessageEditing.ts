@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ThreadQueuedMessage } from "@bb/domain";
+import {
+  threadQueuedMessageSchema,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
 import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import type { PromptDraftState } from "@bb/client-core";
 import {
@@ -47,7 +50,9 @@ interface UseInlineQueuedMessageEditingResult {
     ) => InlineQueuedMessageEditState | null,
   ) => void;
   dismissInlineQueuedMessageEditor: () => void;
-  clearInlineQueuedMessageEditor: () => void;
+  clearInlineQueuedMessageEditor: (
+    expected?: InlineQueuedMessageEditState,
+  ) => void;
   cancelHeldQueuedMessageEdit: (queuedMessageId: string) => void;
   beginEditQueuedMessage: (request: QueuedMessageEditRequest) => void;
   queuedMessageDraftSession: InlineComposerDraftSession | null;
@@ -59,6 +64,8 @@ export function useInlineQueuedMessageEditing({
   queuedMessages,
   onBeginEdit,
 }: UseInlineQueuedMessageEditingArgs): UseInlineQueuedMessageEditingResult {
+  const ownerThreadIdRef = useRef(ownerThreadId);
+  ownerThreadIdRef.current = ownerThreadId;
   const beginEdit = useBeginThreadQueuedMessageEdit();
   const cancelEdit = useCancelThreadQueuedMessageEdit();
   const requestPendingRef = useRef(false);
@@ -99,6 +106,13 @@ export function useInlineQueuedMessageEditing({
               queuedMessageId: next.queuedMessageId,
               editToken: next.editToken,
               draft: serializePromptDraftStorage(next.draft),
+              settings: {
+                model: next.model,
+                reasoningLevel: next.reasoningLevel,
+                permissionMode: next.permissionMode,
+                serviceTier: next.serviceTier,
+                updatedAt: next.expectedUpdatedAt,
+              },
             }),
           );
         } catch {}
@@ -124,6 +138,13 @@ export function useInlineQueuedMessageEditing({
                 queuedMessageId: next.queuedMessageId,
                 editToken: next.editToken,
                 draft: serializePromptDraftStorage(next.draft),
+                settings: {
+                  model: next.model,
+                  reasoningLevel: next.reasoningLevel,
+                  permissionMode: next.permissionMode,
+                  serviceTier: next.serviceTier,
+                  updatedAt: next.expectedUpdatedAt,
+                },
               }),
             );
           } catch {}
@@ -133,25 +154,58 @@ export function useInlineQueuedMessageEditing({
     },
     [],
   );
-  const clearInlineQueuedMessageEditor = useCallback(() => {
-    if (!mountedRef.current) return;
-    const current = inlineEditingQueuedMessageRef.current;
-    if (current) {
-      try {
-        sessionStorage.removeItem(`bb:queued-edit:${current.ownerThreadId}`);
-      } catch {}
-    }
-    commitInlineQueuedMessage(null);
-  }, [commitInlineQueuedMessage]);
+  const clearInlineQueuedMessageEditor = useCallback(
+    (expected?: InlineQueuedMessageEditState) => {
+      if (expected) {
+        try {
+          const key = `bb:queued-edit:${expected.ownerThreadId}`;
+          const stored = z
+            .object({
+              queuedMessageId: z.string(),
+              editToken: z.string(),
+              draft: z.string().nullable(),
+            })
+            .safeParse(JSON.parse(sessionStorage.getItem(key) ?? "null"));
+          if (
+            stored.success &&
+            stored.data.queuedMessageId === expected.queuedMessageId &&
+            stored.data.editToken === expected.editToken &&
+            stored.data.draft === serializePromptDraftStorage(expected.draft)
+          )
+            sessionStorage.removeItem(key);
+        } catch {}
+      }
+      if (!mountedRef.current) return;
+      const current = inlineEditingQueuedMessageRef.current;
+      if (
+        expected &&
+        (!current ||
+          current.ownerThreadId !== expected.ownerThreadId ||
+          current.queuedMessageId !== expected.queuedMessageId ||
+          current.editToken !== expected.editToken ||
+          current.editSessionId !== expected.editSessionId ||
+          serializePromptDraftStorage(current.draft) !==
+            serializePromptDraftStorage(expected.draft))
+      )
+        return;
+      if (current) {
+        try {
+          sessionStorage.removeItem(`bb:queued-edit:${current.ownerThreadId}`);
+        } catch {}
+      }
+      commitInlineQueuedMessage(null);
+    },
+    [commitInlineQueuedMessage],
+  );
   const dismissInlineQueuedMessageEditor = useCallback(() => {
     if (!mountedRef.current) return;
     const current = inlineEditingQueuedMessageRef.current;
     if (!current || requestPendingRef.current) return;
     const row = queuedMessagesByIdRef.current.get(current.queuedMessageId);
     if (
-      row &&
-      row.updatedAt >= current.expectedUpdatedAt &&
-      row.editToken !== current.editToken
+      !row ||
+      (row.updatedAt >= current.expectedUpdatedAt &&
+        row.editToken !== current.editToken)
     ) {
       clearInlineQueuedMessageEditor();
       return;
@@ -164,7 +218,7 @@ export function useInlineQueuedMessageEditing({
         expectedUpdatedAt: current.expectedUpdatedAt,
         editToken: current.editToken,
       })
-      .then(clearInlineQueuedMessageEditor)
+      .then(() => clearInlineQueuedMessageEditor(current))
       .catch((error) =>
         showMutationErrorToast({
           error,
@@ -179,14 +233,10 @@ export function useInlineQueuedMessageEditing({
   const inlineEditingQueuedMessage = useMemo(
     () =>
       inlineEditingQueuedMessageState !== null &&
-      inlineEditingQueuedMessageState.ownerThreadId === ownerThreadId &&
-      queuedMessages.some(
-        (message) =>
-          message.id === inlineEditingQueuedMessageState.queuedMessageId,
-      )
+      inlineEditingQueuedMessageState.ownerThreadId === ownerThreadId
         ? inlineEditingQueuedMessageState
         : null,
-    [inlineEditingQueuedMessageState, ownerThreadId, queuedMessages],
+    [inlineEditingQueuedMessageState, ownerThreadId],
   );
   useEffect(() => {
     if (
@@ -194,8 +244,6 @@ export function useInlineQueuedMessageEditing({
       inlineEditingQueuedMessageState.ownerThreadId !== ownerThreadId
     ) {
       commitInlineQueuedMessage(null);
-    } else if (inlineEditingQueuedMessageState && !inlineEditingQueuedMessage) {
-      clearInlineQueuedMessageEditor();
     }
   }, [
     ownerThreadId,
@@ -244,7 +292,7 @@ export function useInlineQueuedMessageEditing({
             expectedUpdatedAt: previous.expectedUpdatedAt,
             editToken: previous.editToken,
           });
-          clearInlineQueuedMessageEditor();
+          clearInlineQueuedMessageEditor(previous);
           if (previous.queuedMessageId === queuedMessageId) return;
         }
         const held = await beginEdit.mutateAsync({
@@ -255,7 +303,8 @@ export function useInlineQueuedMessageEditing({
         });
         if (held.editToken === null)
           throw new Error("Queue edit was not admitted");
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || ownerThreadIdRef.current !== ownerThreadId)
+          return;
         commitInlineQueuedMessage({
           draft: queuedInputToDraft(held.content),
           editToken: held.editToken,
@@ -292,13 +341,20 @@ export function useInlineQueuedMessageEditing({
   );
 
   useEffect(() => {
-    if (inlineEditingQueuedMessageState || requestPendingRef.current) return;
+    if (inlineEditingQueuedMessageState) return;
     try {
       const stored = z
         .object({
           queuedMessageId: z.string(),
           editToken: z.string(),
           draft: z.string().nullable(),
+          settings: threadQueuedMessageSchema.pick({
+            model: true,
+            reasoningLevel: true,
+            permissionMode: true,
+            serviceTier: true,
+            updatedAt: true,
+          }),
         })
         .safeParse(
           JSON.parse(
@@ -307,24 +363,24 @@ export function useInlineQueuedMessageEditing({
         );
       if (!stored.success) return;
       const index = queuedMessages.findIndex(
-        (row) =>
-          row.id === stored.data.queuedMessageId &&
-          row.editToken === stored.data.editToken,
+        (row) => row.id === stored.data.queuedMessageId,
       );
       const row = queuedMessages[index];
-      if (!row || row.editToken === null) return;
+      const ownsRow = row?.editToken === stored.data.editToken;
       commitInlineQueuedMessage({
         draft: parsePromptDraftStorage(stored.data.draft),
-        editToken: row.editToken,
+        editToken: stored.data.editToken,
         editSessionId: (inlineEditSessionIdRef.current += 1),
-        expectedUpdatedAt: row.updatedAt,
-        model: row.model,
+        expectedUpdatedAt: ownsRow
+          ? row.updatedAt
+          : stored.data.settings.updatedAt,
+        model: stored.data.settings.model,
         ownerThreadId,
-        permissionMode: row.permissionMode,
-        queuedMessageId: row.id,
+        permissionMode: stored.data.settings.permissionMode,
+        queuedMessageId: stored.data.queuedMessageId,
         queuedMessageIndex: index,
-        reasoningLevel: row.reasoningLevel,
-        serviceTier: row.serviceTier,
+        reasoningLevel: stored.data.settings.reasoningLevel,
+        serviceTier: stored.data.settings.serviceTier,
       });
     } catch {}
   }, [
@@ -369,7 +425,8 @@ export function useInlineQueuedMessageEditing({
         editSessionId,
         setDraft: (update) => {
           const current = inlineEditingQueuedMessageRef.current;
-          if (current === null) return;
+          if (current === null || current.editSessionId !== editSessionId)
+            return;
           commitInlineQueuedMessage({
             ...current,
             draft: update(current.draft),
@@ -392,12 +449,10 @@ export function useInlineQueuedMessageEditing({
       beginEdit.isPending ||
       cancelEdit.isPending ||
       (inlineEditingQueuedMessage !== null &&
-        queuedMessages.some(
+        !queuedMessages.some(
           (row) =>
             row.id === inlineEditingQueuedMessage.queuedMessageId &&
-            row.editToken !== null &&
-            row.updatedAt >= inlineEditingQueuedMessage.expectedUpdatedAt &&
-            row.editToken !== inlineEditingQueuedMessage.editToken,
+            row.editToken === inlineEditingQueuedMessage.editToken,
         )),
   };
 }

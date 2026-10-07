@@ -606,6 +606,29 @@ function applyPreservedLeadGroupAfterReorder(
   return changed ? listQueuedThreadMessages(db, threadId) : queuedMessages;
 }
 
+function preserveHeldGroupsAfterReorder(
+  before: QueuedThreadMessageRow[],
+  after: QueuedThreadMessageRow[],
+): QueuedThreadMessageRow[] {
+  const nextGroups = partitionQueuedMessageGroups(after);
+  for (const group of partitionQueuedMessageGroups(before)) {
+    if (!group.some((row) => row.editToken !== null)) continue;
+    const nextGroup = nextGroups.find((rows) =>
+      rows.some((row) => row.id === group[0]?.id),
+    );
+    if (
+      !nextGroup ||
+      !stringArraysEqual(
+        group.map((row) => row.id),
+        nextGroup.map((row) => row.id),
+      )
+    ) {
+      throw new ReorderQueuedThreadMessageRollback({ kind: "claimed" });
+    }
+  }
+  return after;
+}
+
 export function createQueuedThreadMessageInTransaction(
   tx: DbTransaction,
   input: CreateQueuedThreadMessageInput,
@@ -1284,23 +1307,28 @@ export function reorderQueuedThreadMessage({
           if (groupResult.kind === "updated") {
             return {
               kind: "reordered",
-              queuedMessages: groupResult.queuedMessages,
+              queuedMessages: preserveHeldGroupsAfterReorder(
+                currentQueuedMessages,
+                groupResult.queuedMessages,
+              ),
             };
           }
         } else {
           return {
             kind: "reordered",
-            queuedMessages: applyPreservedLeadGroupAfterReorder(
-              tx,
-              threadId,
-              originalLeadGroupIds,
+            queuedMessages: preserveHeldGroupsAfterReorder(
+              currentQueuedMessages,
+              applyPreservedLeadGroupAfterReorder(tx, threadId, originalLeadGroupIds),
             ),
           };
         }
 
         return {
           kind: "reordered",
-          queuedMessages: listQueuedThreadMessages(tx, threadId),
+          queuedMessages: preserveHeldGroupsAfterReorder(
+            currentQueuedMessages,
+            listQueuedThreadMessages(tx, threadId),
+          ),
         };
       },
       { behavior: "immediate" },

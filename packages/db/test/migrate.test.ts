@@ -7,6 +7,7 @@ import {
   dropPluginEnabledFollowsDefaultColumn,
   dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
+  dropQueuedMessageEditTokenColumn,
 } from "./helpers/rewind.js";
 import { defaultAppSettings } from "@bb/domain";
 import {
@@ -718,6 +719,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropIdleLifecycleIndexes(db);
   rewindThreadPruningWork(db);
   dropPluginEnabledFollowsDefaultColumn(db);
+  dropQueuedMessageEditTokenColumn(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
   db.$client.exec("DROP INDEX IF EXISTS threads_lifecycle_owner_idx");

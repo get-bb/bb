@@ -714,10 +714,17 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
   useBeginThreadQueuedMessageEdit: () => ({
     isPending: false,
-    mutateAsync: async ({ queuedMessageId }: { queuedMessageId: string }) => ({
-      ...mocks.queuedMessages?.find((row) => row.id === queuedMessageId),
-      editToken: "test-edit-token",
-    }),
+    mutateAsync: async ({ queuedMessageId }: { queuedMessageId: string }) => {
+      const rows = mocks.queuedMessages;
+      if (!rows) throw new Error("Queued messages unavailable");
+      const row = rows.find((row) => row.id === queuedMessageId);
+      if (!row) throw new Error("Queued message not found");
+      const held = { ...row, editToken: "test-edit-token" };
+      mocks.queuedMessages = rows.map((message) =>
+        message.id === queuedMessageId ? held : message,
+      );
+      return held;
+    },
   }),
   useCancelThreadQueuedMessageEdit: () => ({
     isPending: false,
@@ -920,6 +927,7 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 beforeAll(() => LazyQueuedMessagesList.preload());
 
 beforeEach(() => {
+  sessionStorage.clear();
   testQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -1702,7 +1710,7 @@ describe("ThreadDetailPromptArea", () => {
     });
   });
 
-  it("dismisses an inline edit when its thread changes or its live row disappears", async () => {
+  it("restores the inline draft after navigation and preserves it when the live row disappears", async () => {
     mocks.promptDraft.text = "Untouched bottom draft";
     mocks.queuedMessages = [makeQueuedMessage()];
     const view = renderPromptArea();
@@ -1714,24 +1722,20 @@ describe("ThreadDetailPromptArea", () => {
         screen.queryByTestId("inline-queued-message-editor"),
       ).not.toBeNull(),
     );
-
     view.rerender(
       buildPromptAreaElement({ thread: makeThread({ id: "thr_2" }) }),
     );
     await waitFor(() =>
-      expect(
-        (
-          screen.getByRole("textbox", {
-            name: "Composer message",
-          }) as HTMLInputElement
-        ).value,
-      ).toBe("Untouched bottom draft"),
+      expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull(),
     );
-
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Untouched bottom draft");
     view.rerender(buildPromptAreaElement());
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
     await waitFor(() =>
       expect(
         screen.queryByTestId("inline-queued-message-editor"),
@@ -1739,16 +1743,17 @@ describe("ThreadDetailPromptArea", () => {
     );
     mocks.queuedMessages = [];
     view.rerender(buildPromptAreaElement());
-    await waitFor(() =>
-      expect(
-        (
-          screen.getByRole("textbox", {
-            name: "Composer message",
-          }) as HTMLInputElement
-        ).value,
-      ).toBe("Untouched bottom draft"),
-    );
+    expect(screen.queryByTestId("inline-queued-message-editor")).not.toBeNull();
     expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
+    expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull();
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Untouched bottom draft");
   });
 
   it("does not attach a delayed queued upload to a later edit or the bottom draft", async () => {
@@ -1843,7 +1848,7 @@ describe("ThreadDetailPromptArea", () => {
     ).toBe("0");
   });
 
-  it("dismisses a missing queued message but keeps a stale edit recoverable", async () => {
+  it("preserves a queued draft after stale or missing save responses", async () => {
     mocks.queuedMessages = [makeQueuedMessage()];
     mocks.updateQueuedMessageMutateAsync.mockRejectedValueOnce(
       new BbHttpError({
@@ -1894,10 +1899,14 @@ describe("ThreadDetailPromptArea", () => {
       inlineEditor.getByRole("button", { name: "Submit composer" }),
     );
     await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "Cancel queued edit" }),
-      ).toBeNull(),
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        "Failed to update queued message",
+        { description: "Queued message not found" },
+      ),
     );
+    expect(
+      screen.queryByRole("button", { name: "Cancel queued edit" }),
+    ).not.toBeNull();
   });
 
   it("auto-collapses concurrently running workflows into a stack that expands to independently expandable cards", () => {

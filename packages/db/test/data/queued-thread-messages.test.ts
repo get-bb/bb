@@ -1965,6 +1965,19 @@ describe("queued message edit admission", () => {
     expect(getQueuedThreadMessage(db, lead.id)?.groupWithNext).toBe(true);
     expect(getQueuedThreadMessage(db, lead.id)?.claimedAt).toBeNull();
   });
+  it("rolls back an independent reorder that would split a held lead group", () => {
+    const { db, thread } = setup();
+    const lead = queue(db, thread.id, "lead");
+    const tail = queue(db, thread.id, "tail");
+    const independent = queue(db, thread.id, "independent");
+    setQueuedThreadMessageGroupBoundary({ db, notifier: noopNotifier, threadId: thread.id, expectedGroupedPrefixQueuedMessageIds: [lead.id, tail.id], groupBoundaryQueuedMessageId: tail.id });
+    const current = getQueuedThreadMessage(db, tail.id)!;
+    beginQueuedThreadMessageEdit(db, noopNotifier, { id: tail.id, threadId: thread.id, expectedUpdatedAt: current.updatedAt });
+    const before = listQueuedThreadMessages(db, thread.id);
+    expect(reorderQueuedThreadMessage({ db, notifier: noopNotifier, threadId: thread.id, queuedMessageId: independent.id, previousQueuedMessageId: null, nextQueuedMessageId: lead.id }).kind).toBe("claimed");
+    expect(listQueuedThreadMessages(db, thread.id)).toEqual(before);
+    expect(claimQueuedThreadMessageGroup(db, noopNotifier, lead.id, { kind: "explicit-send" })).toBeNull();
+  });
   it("fences two clients and rejects delayed saves/cancels after a new edit", () => {
     const { db, thread } = setup();
     const row = queue(db, thread.id, "original");

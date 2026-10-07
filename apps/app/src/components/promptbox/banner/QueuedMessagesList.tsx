@@ -947,18 +947,12 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                             : `Edit queued message ${index + 1}`
                         }
                       >
-                        <Icon
-                          name={
-                            queuedMessage.editToken !== null ? "Close" : "Edit"
-                          }
-                          className="size-4"
-                          aria-hidden
-                        />
+                        <Icon name={"Edit"} className="size-4" aria-hidden />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent className="max-md:hidden">
                       {queuedMessage.editToken !== null
-                        ? "Cancel held edit"
+                        ? "Resume held edit"
                         : "Edit"}
                     </TooltipContent>
                   </Tooltip>
@@ -1140,9 +1134,16 @@ function QueuedMessageInlineEditorSlot({
       <OverflowFade placement="above" tone="surface-raised" className="z-10" />
       <InlineMessageEditorFrame
         cancelLabel="Stop editing queued message"
-        label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
+        label={
+          editor.notice
+            ? "Recovered queued draft"
+            : `Editing queued message ${editor.queuedMessageIndex + 1}`
+        }
         onCancel={editor.onDismiss}
       >
+        {editor.notice ? (
+          <p className="text-sm text-muted-foreground">{editor.notice}</p>
+        ) : null}
         <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
           <div
             data-queued-editor-typeahead-reservation=""

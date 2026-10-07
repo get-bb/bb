@@ -1128,6 +1128,13 @@ function EmbeddedThreadChatWithComposer({
     return {
       queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
       queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
+      notice: queuedMessages.some(
+        (row) =>
+          row.id === inlineEditingQueuedMessage.queuedMessageId &&
+          row.editToken === inlineEditingQueuedMessage.editToken,
+      )
+        ? undefined
+        : "This edit is no longer held by this client. Your draft is preserved; copy it before closing.",
       onDismiss: dismissInlineQueuedMessageEditor,
       content: (
         <FollowUpPromptBox
@@ -1159,6 +1166,7 @@ function EmbeddedThreadChatWithComposer({
     inlineComposerConfig,
     inlineComposerFocusNonce,
     inlineEditingQueuedMessage,
+    queuedMessages,
     inlineExecutionConfig,
     inlinePermissionConfig,
     promptActions,

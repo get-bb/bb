@@ -1896,6 +1896,13 @@ export function ThreadDetailPromptArea({
     const inlineEditor: QueuedMessageInlineEditor = {
       queuedMessageId,
       queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
+      notice: queuedMessages.some(
+        (row) =>
+          row.id === inlineEditingQueuedMessage.queuedMessageId &&
+          row.editToken === inlineEditingQueuedMessage.editToken,
+      )
+        ? undefined
+        : "This edit is no longer held by this client. Your draft is preserved; copy it before closing.",
       onDismiss: dismissInlineQueuedMessageEditor,
       content: buildInlineDraftComposer({
         attachments: {
@@ -1946,6 +1953,7 @@ export function ThreadDetailPromptArea({
     handleInlineComposerSubmit,
     inlineAttachmentError,
     inlineEditingQueuedMessage,
+    queuedMessages,
     inlineExecutionConfig,
     inlinePermissionConfig,
     isAttachingInlineFiles,

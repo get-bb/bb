@@ -28,6 +28,7 @@ export interface QueuedMessageEditRequest {
 }
 
 export interface QueuedMessageInlineEditor {
+  notice?: string;
   content: ReactNode;
   queuedMessageId: string;
   queuedMessageIndex: number;
