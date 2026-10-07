@@ -2,7 +2,7 @@ Edit a file in bb instead of only reading it. It applies to every place where bb
 
 ## What you get
 
-- Tap Save in the file bar to write your edits, including on mobile. Cmd+S, or Ctrl+S on Linux and Windows, also saves. If the file changed on disk since you opened it, the save stops and offers Reload or Overwrite.
+- Tap the Save icon in the file bar to write your edits, including on mobile. Cmd+S, or Ctrl+S on Linux and Windows, also saves. If the file changed on disk since you opened it, the save stops and offers Reload or Overwrite.
 - Find in file with Cmd+F or Ctrl+F, multiple cursors, block selection, bracket matching, and code folding.
 - Syntax highlighting for about 86 common file types.
 - A file tree that you toggle from the file bar. Filter by path, expand directories, and open another file. Right-click a row to copy its absolute path, relative path, or filename.

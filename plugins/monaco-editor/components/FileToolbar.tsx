@@ -42,14 +42,13 @@ export function FileToolbar({
         </ToolbarButton>
       </div>
       <SaveDot indicator={indicator} />
-      <button
-        type="button"
+      <ToolbarButton
+        label={indicator === "saving" ? "Saving…" : "Save"}
         onClick={onSave}
         disabled={saveDisabled}
-        className="h-7 shrink-0 cursor-pointer rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
       >
-        {indicator === "saving" ? "Saving…" : "Save"}
-      </button>
+        <SaveIcon />
+      </ToolbarButton>
       <ToolbarButton
         label={isFilesOpen ? "Hide files" : "Show in files"}
         onClick={onToggleFiles}
@@ -162,6 +161,20 @@ function ToolbarButton({
     >
       {children}
     </button>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="size-3.5" aria-hidden>
+      <path
+        d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h12l4 4v12a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8V3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
