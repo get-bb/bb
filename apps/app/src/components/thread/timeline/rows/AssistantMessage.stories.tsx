@@ -227,6 +227,7 @@ export function Overview() {
 const overflowStoryPluginActions = [
   {
     key: "story/summarize",
+    usageKey: "story/summarize",
     pluginId: null,
     icon: "Sparkles",
     label: "Summarize",
@@ -234,6 +235,7 @@ const overflowStoryPluginActions = [
   },
   {
     key: "story/translate",
+    usageKey: "story/translate",
     pluginId: null,
     icon: "Globe",
     label: "Translate",
@@ -241,6 +243,7 @@ const overflowStoryPluginActions = [
   },
   {
     key: "story/save",
+    usageKey: "story/save",
     pluginId: null,
     icon: "Bookmark",
     label: "Save to notes",
@@ -248,6 +251,7 @@ const overflowStoryPluginActions = [
   },
   {
     key: "story/pin",
+    usageKey: "story/pin",
     pluginId: null,
     icon: "Pin",
     label: "Pin message",
@@ -255,6 +259,7 @@ const overflowStoryPluginActions = [
   },
   {
     key: "story/share",
+    usageKey: "story/share",
     pluginId: null,
     icon: "Share",
     label: "Share",
@@ -329,7 +334,7 @@ export function MobileActionsAndSelection() {
         [aria-label="Copy message"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_earlier_agent_message"]
-        [aria-label="Fork into new thread"],
+        [aria-label="Fork thread"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_earlier_agent_message"]
       .mobile-agent-actions-review
@@ -355,7 +360,7 @@ export function MobileActionsAndSelection() {
         [aria-label="Copy message"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_agent_message"]
-        [aria-label="Fork into new thread"],
+        [aria-label="Fork thread"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_agent_message"]
       .mobile-agent-actions-review
@@ -374,7 +379,7 @@ export function MobileActionsAndSelection() {
         [aria-label="Copy message"] svg,
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_agent_message"]
-        [aria-label="Fork into new thread"] svg,
+        [aria-label="Fork thread"] svg,
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_agent_message"]
       .mobile-agent-actions-review

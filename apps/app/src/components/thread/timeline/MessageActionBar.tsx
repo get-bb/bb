@@ -1,4 +1,10 @@
-import { createContext, useCallback, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -19,6 +25,12 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
+import {
+  orderByRecency,
+  recordMessageActionUse,
+  useMessageActionRecency,
+  type MessageActionRecencyScope,
+} from "@/lib/message-action-recency";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 
 function PluginActionIcon({
@@ -45,6 +57,7 @@ interface MessageActionBarProps {
   timestamp: number;
   messageText: string;
   alignment: "start" | "end";
+  recencyScope: MessageActionRecencyScope;
   mobileActionDisplay: "inline" | "overflow";
   addToChatAttachments?: readonly PromptDraftAttachment[];
   copyImageUrl?: string;
@@ -69,6 +82,7 @@ interface MessageOverflowAction {
   copyText?: string;
   copyImageUrl?: string;
   kind?: "copy";
+  onUse?: () => void;
 }
 
 function MessageActionIcon({
@@ -195,6 +209,37 @@ const BUBBLE_ALIGN_OFFSET_CLASS =
 const PROSE_ALIGN_INSET_CLASS = "-ml-1 max-md:pointer-coarse:-ml-1.5";
 export const PROSE_COLUMN_INSET_CLASS = "px-2";
 
+const MESSAGE_HOVER_GROUP_SELECTOR = ".group\\/message";
+
+function useRecencyRefreshedWhileHidden(
+  liveRecency: readonly string[],
+  hoverGroup: HTMLElement | null,
+): readonly string[] {
+  const [shownRecency, setShownRecency] = useState(liveRecency);
+  useEffect(() => {
+    if (hoverGroup === null) return;
+    const handlePointerEnter = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") setShownRecency(liveRecency);
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (
+        event.relatedTarget instanceof Node &&
+        hoverGroup.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      setShownRecency(liveRecency);
+    };
+    hoverGroup.addEventListener("pointerenter", handlePointerEnter);
+    hoverGroup.addEventListener("focusin", handleFocusIn);
+    return () => {
+      hoverGroup.removeEventListener("pointerenter", handlePointerEnter);
+      hoverGroup.removeEventListener("focusin", handleFocusIn);
+    };
+  }, [hoverGroup, liveRecency]);
+  return shownRecency;
+}
+
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,
 ): HTMLElement | undefined {
@@ -219,6 +264,7 @@ function DesktopMessageAction({
             imageUrl={action.copyImageUrl}
             label={action.label}
             className={className}
+            onClickCapture={action.onUse}
           />
         ) : (
           <button
@@ -308,6 +354,7 @@ export function MessageActionBar({
   timestamp,
   messageText,
   alignment,
+  recencyScope,
   mobileActionDisplay,
   addToChatAttachments = [],
   copyImageUrl,
@@ -331,12 +378,20 @@ export function MessageActionBar({
     enabled: !(isCompactTouch && mobileActionDisplay === "overflow"),
   });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [hoverGroup, setHoverGroup] = useState<HTMLElement | null>(null);
   const slotRef = useCallback(
     (node: HTMLDivElement | null) => {
       measureRef(node);
       setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
+      setHoverGroup(
+        node?.closest<HTMLElement>(MESSAGE_HOVER_GROUP_SELECTOR) ?? node,
+      );
     },
     [measureRef],
+  );
+  const recency = useRecencyRefreshedWhileHidden(
+    useMessageActionRecency(recencyScope),
+    hoverGroup,
   );
   const mobileDirectActionClass =
     mobileActionDisplay === "inline"
@@ -350,10 +405,13 @@ export function MessageActionBar({
     }
     onAddToChat(messageText);
   }, [addToChatAttachments, messageText, onAddToChat]);
-  const inlineCandidates: MessageOverflowAction[] = [
+  const defaultInlineCandidates: (MessageOverflowAction & {
+    usageId: string;
+  })[] = [
     ...(hasCopy
       ? [
           {
+            usageId: "copy",
             icon: "Copy" as const,
             label: "Copy message",
             onSelect: () => {
@@ -371,6 +429,7 @@ export function MessageActionBar({
     ...(onEdit
       ? [
           {
+            usageId: "edit",
             icon: "Edit" as const,
             label: "Edit message",
             onSelect: onEdit,
@@ -381,10 +440,26 @@ export function MessageActionBar({
       icon: "Copy" as const,
       plugin: { pluginId: action.pluginId, icon: action.icon },
       key: action.key,
+      usageId: action.usageKey,
       label: action.label,
       onSelect: action.onSelect,
     })),
   ];
+  const inlineCandidates: MessageOverflowAction[] = orderByRecency(
+    defaultInlineCandidates,
+    recency,
+    (action) => action.usageId,
+  ).map(({ usageId, ...action }) => {
+    const onUse = () => recordMessageActionUse(recencyScope, usageId);
+    return {
+      ...action,
+      onUse,
+      onSelect: () => {
+        onUse();
+        action.onSelect();
+      },
+    };
+  });
   const trailingMenuActions: MessageOverflowAction[] = [
     ...(hasAddToChat
       ? [
@@ -399,7 +474,7 @@ export function MessageActionBar({
       ? [
           {
             icon: "Fork" as const,
-            label: "Fork into new thread",
+            label: "Fork thread",
             onSelect: onFork,
             disabled,
           },
@@ -510,6 +585,7 @@ function MobileInlineActions({
         imageUrl={action.copyImageUrl}
         label={action.label}
         className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
+        onClickCapture={action.onUse}
       />
     ) : (
       <button

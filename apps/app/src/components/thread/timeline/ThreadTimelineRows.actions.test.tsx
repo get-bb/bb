@@ -1788,13 +1788,13 @@ describe("ThreadTimelineRows shared message column width", () => {
       earlierMessage?.querySelector('[aria-label="Copy message"]'),
     ).toBeNull();
     expect(
-      earlierMessage?.querySelector('[aria-label="Fork into new thread"]'),
+      earlierMessage?.querySelector('[aria-label="Fork thread"]'),
     ).toBeNull();
     expect(
       await screen.findByRole("menuitem", { name: "Copy message" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("menuitem", { name: "Fork into new thread" }),
+      screen.getByRole("menuitem", { name: "Fork thread" }),
     ).toBeTruthy();
   });
 
@@ -1872,7 +1872,7 @@ describe("ThreadTimelineRows shared message column width", () => {
       earlierMessage.querySelector('[aria-label="Copy message"]'),
     ).toBeNull();
     expect(
-      earlierMessage.querySelector('[aria-label="Fork into new thread"]'),
+      earlierMessage.querySelector('[aria-label="Fork thread"]'),
     ).toBeNull();
   });
 });

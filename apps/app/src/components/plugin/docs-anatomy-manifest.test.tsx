@@ -242,6 +242,7 @@ describe("docs anatomy manifest", () => {
           timestamp={0}
           messageText="hello"
           alignment="start"
+          recencyScope="assistant"
           mobileActionDisplay="inline"
           onAddToChat={() => {}}
           onEdit={() => {}}
@@ -249,6 +250,7 @@ describe("docs anatomy manifest", () => {
           pluginActions={[
             {
               key: "anatomy-plugin-action",
+              usageKey: "anatomy-plugin-action",
               pluginId: null,
               icon: null,
               label: "Anatomy message action",

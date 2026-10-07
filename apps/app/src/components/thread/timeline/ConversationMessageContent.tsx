@@ -468,6 +468,7 @@ function UserConversationMessage({
             timestamp={timestamp}
             messageText={messageText}
             alignment="end"
+            recencyScope="user"
             mobileActionDisplay={mobileActionDisplay}
             addToChatAttachments={addToChatAttachments}
             copyImageUrl={attachmentItems.imageItems[0]?.src}
@@ -626,6 +627,7 @@ function AssistantConversationMessage({
           timestamp={timestamp}
           messageText={text}
           alignment="start"
+          recencyScope="assistant"
           mobileActionDisplay={mobileActionDisplay}
           addToChatAttachments={addToChatAttachments}
           copyImageUrl={attachmentItems.imageItems[0]?.src}

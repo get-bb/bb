@@ -27,6 +27,7 @@ export function Overview() {
               timestamp={STORY_TIMESTAMP}
               messageText="An agent message you can fork or reply to."
               alignment="end"
+              recencyScope="assistant"
               mobileActionDisplay="inline"
               onFork={noop}
             />
@@ -38,6 +39,7 @@ export function Overview() {
               timestamp={STORY_TIMESTAMP}
               messageText="A user message you can quote into the composer."
               alignment="end"
+              recencyScope="user"
               mobileActionDisplay="overflow"
               onAddToChat={noop}
             />
@@ -49,6 +51,7 @@ export function Overview() {
               timestamp={STORY_TIMESTAMP}
               messageText="Fork/Reply greyed when the thread can't fork."
               alignment="end"
+              recencyScope="assistant"
               mobileActionDisplay="inline"
               onFork={noop}
               disabled

@@ -217,6 +217,7 @@ it("uses a plugin action's icon instead of branding in the selection menu", () =
       pluginActions={[
         {
           key: "demo/inspect",
+          usageKey: "plugin/demo/inspect",
           pluginId: "demo",
           icon: "Zap",
           label: "Inspect selection",
