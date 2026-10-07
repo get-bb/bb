@@ -282,6 +282,62 @@ describe("bindSdkToPlugin", () => {
     ).toEqual(["section-a", "section-a"]);
   });
 
+  it("keeps an in-flight move over refetched sidebar data until the write settles", async () => {
+    const { sdk, queryClient, threads } = makeSdk();
+    const request = deferred<ReturnType<typeof makeThreadResponse>>();
+    threads.update.mockImplementation(() => request.promise);
+    const sidebarKey = sidebarNavigationQueryKey();
+    const serverNavigation = (sectionId: string) =>
+      makeSidebarBootstrapResponse({
+        projects: [
+          makeProjectWithThreadsResponse({
+            threads: [
+              makeThreadListEntry({ id: "thr_moved", sectionId }),
+              makeThreadListEntry({
+                id: "thr_child",
+                parentThreadId: "thr_moved",
+              }),
+            ],
+          }),
+        ],
+      });
+    const sidebarSectionId = () =>
+      queryClient
+        .getQueryData<SidebarBootstrapResponse>(sidebarKey)
+        ?.projects[0]?.threads.find((thread) => thread.id === "thr_moved")
+        ?.sectionId;
+    const refetchSidebar = (sectionId: string) =>
+      queryClient.fetchQuery({
+        queryKey: sidebarKey,
+        queryFn: async () => serverNavigation(sectionId),
+        staleTime: 0,
+      });
+    queryClient.setQueryData(sidebarKey, serverNavigation("section-a"));
+    const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
+
+    const update = bound.threads.update({
+      threadId: "thr_moved",
+      sectionId: "section-b",
+    });
+    await vi.waitFor(() => expect(sidebarSectionId()).toBe("section-b"));
+
+    await refetchSidebar("section-a");
+    expect(sidebarSectionId()).toBe("section-b");
+    expect(
+      queryClient
+        .getQueryData<SidebarBootstrapResponse>(sidebarKey)
+        ?.projects[0]?.threads.map((thread) => thread.id),
+    ).toContain("thr_child");
+
+    request.resolve(
+      makeThreadResponse({ id: "thr_moved", sectionId: "section-b" }),
+    );
+    await update;
+    await refetchSidebar("section-a");
+    expect(sidebarSectionId()).toBe("section-a");
+    queryClient.clear();
+  });
+
   it("applies the server's pinned order before the caller clears its drag preview", async () => {
     const { sdk, queryClient } = makeSdk();
     const entry = makeThreadListEntry({

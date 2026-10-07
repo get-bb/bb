@@ -702,6 +702,51 @@ describe("useSectionThreadDnd settled drop cleanup", () => {
     expect(result.current?.activeThread).toBeNull();
   });
 
+  const movedToBRootItems = buildSectionThreadList(
+    [
+      createThread({ id: "dragged", sectionId: "b" }),
+      createThread({ id: "peer-a", sectionId: "a", createdAt: 2 }),
+      createThread({ id: "in-b", sectionId: "b", createdAt: 3 }),
+      createThread({ id: "loose", createdAt: 4 }),
+    ],
+    undefined,
+    SECTIONS,
+  );
+
+  async function dropDraggedIntoSectionB() {
+    const view = renderSectionThreadDnd();
+    const props = () => view.result.current!.dndContextProps;
+    act(() => props().onDragStart?.(dragStart("dragged")));
+    act(() => props().onDragOver?.(dragOver("dragged", "section:b")));
+    act(() => props().onDragEnd?.(dragEnd("dragged", "section:b")));
+    await flushTasks();
+    expect(updateThreadDeferred).not.toBeNull();
+    view.rerender({ rootItems: movedToBRootItems });
+    return { ...view, props };
+  }
+
+  it("does not resurrect the drop projection when a refresh reverts the landed row before the write settles", async () => {
+    const { result, rerender } = await dropDraggedIntoSectionB();
+    expect(result.current?.activeThread).toBeNull();
+
+    rerender({ rootItems: ROOT_ITEMS });
+    expect(result.current?.activeThread).toBeNull();
+    expect(result.current?.activeItemId).toBeNull();
+    expect(result.current?.dragOverParentKey).toBeNull();
+  });
+
+  it("keeps a newer drag when an earlier drop's write settles", async () => {
+    const { props, result } = await dropDraggedIntoSectionB();
+
+    act(() => props().onDragStart?.(dragStart("peer-a")));
+    act(() => props().onDragOver?.(dragOver("peer-a", "section:b")));
+    resolveUpdateThread(createThread({ id: "dragged", sectionId: "b" }));
+    await flushTasks();
+
+    expect(result.current?.activeThread?.id).toBe("peer-a");
+    expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
+  });
+
   it("clears the nest projection when the drop mutation fails", async () => {
     const { result } = await nestDraggedOntoInB(() =>
       rejectUpdateThread(new Error("nope")),

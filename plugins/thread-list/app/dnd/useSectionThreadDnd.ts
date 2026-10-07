@@ -1117,6 +1117,9 @@ export function useSectionThreadDnd({
     useState<SectionThreadReorderTarget | null>(null);
   const [pendingDropDecision, setPendingDropDecision] =
     useState<SectionThreadDropDecision | null>(null);
+  const pendingDropDecisionRef = useRef<SectionThreadDropDecision | null>(
+    null,
+  );
   const draggingThreadRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dwellTargetKeyRef = useRef<string | null>(null);
@@ -1133,6 +1136,7 @@ export function useSectionThreadDnd({
     setRowDrop(null);
     setReorderTarget(null);
     setPendingDropDecision(null);
+    pendingDropDecisionRef.current = null;
     setReadyNestCandidate(null);
     clearNestCandidate();
     armedNestThreadIdRef.current = null;
@@ -1160,6 +1164,7 @@ export function useSectionThreadDnd({
         : null;
       draggingThreadRef.current = thread !== null;
       setPendingDropDecision(null);
+      pendingDropDecisionRef.current = null;
       activeIdRef.current = thread ? activeId : null;
       armedNestThreadIdRef.current = null;
       latestRowCollisionRef.current = null;
@@ -1366,7 +1371,13 @@ export function useSectionThreadDnd({
         return;
       }
       const settle = (request: Promise<unknown>) => {
-        void request.catch(() => undefined).finally(clearProjectedDrag);
+        void request
+          .catch(() => undefined)
+          .finally(() => {
+            if (pendingDropDecisionRef.current === decision) {
+              clearProjectedDrag();
+            }
+          });
       };
       switch (decision.kind) {
         case "move":
@@ -1401,6 +1412,7 @@ export function useSectionThreadDnd({
           clearProjectedDrag();
           return;
       }
+      pendingDropDecisionRef.current = decision;
       setPendingDropDecision(decision);
     },
     [
@@ -1441,10 +1453,14 @@ export function useSectionThreadDnd({
       onDragCancel: handleDragCancel,
     });
 
-  if (!enabled) return null;
   const dropDecisionLanded =
     pendingDropDecision !== null &&
     hasDropDecisionLanded(lookup, pendingDropDecision);
+  useEffect(() => {
+    if (dropDecisionLanded) clearProjectedDrag();
+  }, [clearProjectedDrag, dropDecisionLanded]);
+
+  if (!enabled) return null;
   return {
     activeItemId: dropDecisionLanded ? null : activeIdRef.current,
     activeThread: dropDecisionLanded ? null : activeThread,
