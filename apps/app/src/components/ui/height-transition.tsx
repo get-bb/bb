@@ -1,5 +1,11 @@
 import { useStore } from "jotai";
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -211,6 +217,8 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
   );
 }
 
+export const AutoHeightSnapContext = createContext<(() => void) | null>(null);
+
 interface AutoHeightContainerProps {
   children: ReactNode;
   snapRevision?: string;
@@ -239,6 +247,9 @@ export function AutoHeightContainer({
   const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
   const previousSnapRevisionRef = useRef(snapRevision);
   const store = useStore();
+  const snapToContentHeight = useCallback(() => {
+    snapToCurrentHeightRef.current?.();
+  }, []);
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
     const inner = innerRef.current;
@@ -335,17 +346,19 @@ export function AutoHeightContainer({
     snapToCurrentHeightRef.current?.();
   }, [snapRevision]);
   return (
-    <div
-      ref={wrapperRef}
-      style={{
-        overflowX: "visible",
-        overflowY: "clip",
-        transition: `height ${durationMs}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
-      }}
-    >
-      <div ref={innerRef} style={{ display: "flow-root" }}>
-        {children}
+    <AutoHeightSnapContext.Provider value={snapToContentHeight}>
+      <div
+        ref={wrapperRef}
+        style={{
+          overflowX: "visible",
+          overflowY: "clip",
+          transition: `height ${durationMs}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
+        }}
+      >
+        <div ref={innerRef} style={{ display: "flow-root" }}>
+          {children}
+        </div>
       </div>
-    </div>
+    </AutoHeightSnapContext.Provider>
   );
 }

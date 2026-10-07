@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -13,6 +14,7 @@ import {
   useVirtualizer,
   type Range,
 } from "@tanstack/react-virtual";
+import { AutoHeightSnapContext } from "@/components/ui/height-transition";
 import { isIOSWebKit } from "@/lib/ios-webkit";
 import {
   DEFAULT_WINDOWING_MIN_ITEM_COUNT,
@@ -153,15 +155,17 @@ export function TimelineWindowedItems({
     scrollMargin,
     startAtEnd,
   ]);
+  const snapAutoHeight = useContext(AutoHeightSnapContext);
   const scrollToFn = useCallback<typeof elementScroll<HTMLElement>>(
     (offset, options, instance) => {
       const container = containerElementRef.current;
       if (container !== null) {
         container.style.height = `${instance.getTotalSize()}px`;
       }
+      snapAutoHeight?.();
       elementScroll(offset, options, instance);
     },
-    [],
+    [snapAutoHeight],
   );
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
