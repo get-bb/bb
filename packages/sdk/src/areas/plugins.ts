@@ -212,6 +212,10 @@ export interface PluginGetSafeModeArgs {
   signal?: AbortSignal;
 }
 
+export interface PluginRpcDiscoveryArgs extends PluginRpcDiscoveryQuery {
+  signal?: AbortSignal;
+}
+
 export interface PluginSetSafeModeArgs {
   enabled: boolean;
 }
@@ -284,7 +288,7 @@ export interface PluginUpdateJobsArea {
 
 export interface PluginsArea {
   experimental_discoverRpc(
-    args?: PluginRpcDiscoveryQuery,
+    args?: PluginRpcDiscoveryArgs,
   ): Promise<PublishedPluginRpcMethod[]>;
   experimental_getSafeMode(
     args?: PluginGetSafeModeArgs,
@@ -604,6 +608,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return requestParsed(
         `/api/v1/plugins/rpc?${params}`,
         pluginRpcDiscoveryResponseSchema,
+        { signal: input.signal },
       );
     },
     async callRpc(input) {
