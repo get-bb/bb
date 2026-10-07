@@ -277,7 +277,7 @@ export function MachineEnvironmentSettingsContent({
         {environment === null && !loadFailed && (
           <p className="text-xs text-subtle-foreground">Loading…</p>
         )}
-        {environment !== null && (
+        {(environment !== null || loadFailed) && (
           <MachineEnvironmentAutomaticRow
             git={git}
             enabled={gitCredentialsEnabled}
