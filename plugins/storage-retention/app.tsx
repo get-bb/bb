@@ -90,7 +90,7 @@ type ActionFeedback = {
   failed: string;
   description: string;
   id?: string;
-  background?: boolean;
+  background?: { hostId: string | null };
 };
 function cleanupFeedback(
   kind:
@@ -135,7 +135,7 @@ function cleanupFeedback(
     completed,
     failed,
     description,
-    background: true,
+    background: { hostId },
     id: `storage:${hostId ?? "all"}:${kind === "development" || kind === "orphans" || kind === "worktrees" ? "maintenance" : kind}`,
   };
 }
@@ -209,6 +209,11 @@ function StoragePanel(props: PluginNavPanelProps) {
             host.hostId,
             machine,
           );
+          if (job.state === "running")
+            toast.loading(feedback.title, {
+              id: feedback.id,
+              description: machine,
+            });
           if (job.state === "failed")
             toast.error(feedback.failed, {
               id: feedback.id,
@@ -333,7 +338,6 @@ function StoragePage({
     const id = toast.loading(feedback.title, {
       id: feedback.id,
       description: feedback.description,
-      duration: feedback.background ? 5000 : undefined,
     });
     try {
       const result = await work();
@@ -342,10 +346,10 @@ function StoragePage({
           id,
           description: success?.(result) || feedback.description,
         });
-      else if (hostId === null)
-        toast.message(feedback.title, {
+      else if (feedback.background.hostId === null)
+        toast.info(feedback.title, {
           id,
-          description: feedback.description,
+          description: "Started on all online machines",
         });
       void refresh();
     } catch (error) {

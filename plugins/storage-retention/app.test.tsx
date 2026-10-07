@@ -113,6 +113,7 @@ function fixture(subPath = "host_test") {
         removeDevInstances: (input) =>
           remove(storageRpc.removeDevInstances.input.parse(input)),
         startClearArchivedFiles: start,
+        startClearLargeFiles: start,
         startCleanup: start,
       },
       sdk: {
@@ -259,6 +260,59 @@ it("toasts background completion once and keeps completed messages out of the pa
         node.textContent?.includes("Archived thread files deleted"),
       ),
   ).toBe(false);
+});
+
+it("hands an all-machines large-file cleanup toast over to each machine's job until it completes", async () => {
+  const { slot, hosts, start } = fixture("");
+  hosts[0]!.report!.archivedLargeFiles = {
+    threadCount: 1,
+    fileCount: 2,
+    bytes: 2 * 1024 * 1024 * 1024,
+  };
+  const page = within(slot.container);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Delete large files" }),
+  );
+  fireEvent.click(
+    within(page.getByRole("region", { name: "Confirm cleanup" })).getByRole(
+      "button",
+      { name: "Delete large files" },
+    ),
+  );
+  await waitFor(() => expect(start).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-sonner-toast][data-type="info"]')
+        ?.textContent,
+    ).toContain("Started on all online machines"),
+  );
+  const loadingDescriptions = () =>
+    [
+      ...document.querySelectorAll(
+        '[data-sonner-toast][data-type="loading"]:not([data-removed="true"]) [data-description]',
+      ),
+    ].map((node) => node.textContent);
+  await waitFor(() => expect(loadingDescriptions()).toEqual([]));
+  hosts[0]!.largeFileCleanup = { state: "running", startedAt: Date.now() };
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() => expect(loadingDescriptions()).toEqual(["Test machine"]));
+  hosts[0]!.largeFileCleanup = {
+    state: "completed",
+    clearedFiles: 2,
+    clearedBytes: 2 * 1024 * 1024 * 1024,
+  };
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-sonner-toast][data-type="success"]')
+        ?.textContent,
+    ).toContain("Large archived files deleted"),
+  );
+  expect(loadingDescriptions()).toEqual([]);
 });
 
 it("does not keep cleanup controls locked while the follow-up report is slow", async () => {
