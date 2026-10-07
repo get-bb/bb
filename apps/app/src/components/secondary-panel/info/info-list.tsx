@@ -377,7 +377,10 @@ export function InfoList<T>({
     <ul className="relative m-0 list-none p-0 max-md:pointer-coarse:[--text-xs--line-height:1.125rem] max-md:pointer-coarse:[--text-xs:0.8125rem]">
       {rail ? (
         <span
-          className="pointer-events-none absolute top-3 bottom-3 left-[5.5px] w-px bg-border"
+          className={cn(
+            "pointer-events-none absolute top-3 left-[5.5px] w-px bg-border [mask-image:linear-gradient(to_bottom,black_calc(100%-1rem),transparent)]",
+            canToggle ? "bottom-6" : "-bottom-3",
+          )}
           aria-hidden
         />
       ) : null}
