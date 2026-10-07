@@ -48,6 +48,8 @@ function Queue({
       onSetGroupBoundary={noop}
       onEdit={noop}
       onDelete={noop}
+      defaultExpanded={false}
+      onExpandedChange={noop}
     />
   );
 }

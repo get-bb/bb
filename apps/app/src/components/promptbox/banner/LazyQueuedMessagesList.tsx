@@ -49,6 +49,8 @@ export interface QueuedMessagesListProps {
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
   onDelete: (id: string) => void;
+  defaultExpanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }
 
 function QueuedMessagesCardFrame({
@@ -79,7 +81,7 @@ function QueuedMessagesCardFrame({
           )}
         >
           <span className="font-normal">Queue</span>
-          <QueuedMessagesCountPill count={queuedMessageCount} />
+          <QueuedMessagesCountPill arrivals={0} count={queuedMessageCount} />
         </div>
       </header>
       {children}

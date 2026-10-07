@@ -647,7 +647,7 @@ function QueuedMessageWaitLine({
       ? null
       : formatQueuedMessageCountdown(countdownInstant - now);
   return (
-    <div
+    <span
       data-queued-message-wait=""
       data-queued-message-failed={failed ? "" : undefined}
       className={cn(
@@ -669,8 +669,60 @@ function QueuedMessageWaitLine({
       {countdown === null ? null : (
         <span className="shrink-0 tabular-nums">· {countdown}</span>
       )}
-    </div>
+    </span>
   );
+}
+
+function QueuedMessagesHeaderWait({
+  queuedMessages,
+}: {
+  queuedMessages: readonly ThreadQueuedMessage[];
+}) {
+  const attentionMessage =
+    queuedMessages.find(
+      (queuedMessage) => queuedMessage.failureReason !== null,
+    ) ?? queuedMessages.find(queuedMessageHasWaitLine);
+  const pluginDisplayName = usePluginDisplayName(
+    attentionMessage?.waitingOn?.kind === "plugin"
+      ? attentionMessage.waitingOn.pluginId
+      : "",
+  );
+  if (!attentionMessage) return null;
+  return (
+    <QueuedMessageWaitLine
+      pluginDisplayName={pluginDisplayName}
+      queuedMessage={attentionMessage}
+    />
+  );
+}
+
+function useQueuedMessageArrivals(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): number {
+  const [tracker, setTracker] = useState(() => ({
+    arrivals: 0,
+    count: queuedMessages.length,
+    seenIds: new Set(queuedMessages.map((queuedMessage) => queuedMessage.id)),
+  }));
+  const hasUnseen = queuedMessages.some(
+    (queuedMessage) => !tracker.seenIds.has(queuedMessage.id),
+  );
+  if (hasUnseen || tracker.count !== queuedMessages.length) {
+    setTracker({
+      arrivals:
+        hasUnseen && queuedMessages.length > tracker.count
+          ? tracker.arrivals + 1
+          : tracker.arrivals,
+      count: queuedMessages.length,
+      seenIds: hasUnseen
+        ? new Set([
+            ...tracker.seenIds,
+            ...queuedMessages.map((queuedMessage) => queuedMessage.id),
+          ])
+        : tracker.seenIds,
+    });
+  }
+  return tracker.arrivals;
 }
 
 function QueuedMessageProcessingLine({ label }: { label: string }) {
@@ -1137,6 +1189,8 @@ export function QueuedMessagesList({
   onSetGroupBoundary,
   onEdit,
   onDelete,
+  defaultExpanded,
+  onExpandedChange,
 }: QueuedMessagesListProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const processingLabel =
@@ -1153,7 +1207,10 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [mode, setMode] = useState<QueueSurfaceMode>("collapsed");
+  const [mode, setMode] = useState<QueueSurfaceMode>(
+    defaultExpanded ? "drawer" : "collapsed",
+  );
+  const arrivals = useQueuedMessageArrivals(queuedMessages);
   const [expandedMobileActionsId, setExpandedMobileActionsId] = useState<
     string | null
   >(null);
@@ -1419,6 +1476,11 @@ export function QueuedMessagesList({
     wasInlineEditingRef.current = inlineEditor !== undefined;
   }, [inlineEditor]);
 
+  useEffect(() => {
+    if (mode === "workspace") return;
+    onExpandedChange(mode === "drawer");
+  }, [mode, onExpandedChange]);
+
   const openWorkspace = useCallback(() => {
     setMode("workspace");
   }, []);
@@ -1567,7 +1629,13 @@ export function QueuedMessagesList({
           )}
         >
           <span className="font-normal">Queue</span>
-          <QueuedMessagesCountPill count={queuedMessages.length} />
+          {isExpanded ? null : (
+            <QueuedMessagesHeaderWait queuedMessages={queuedMessages} />
+          )}
+          <QueuedMessagesCountPill
+            arrivals={arrivals}
+            count={queuedMessages.length}
+          />
         </button>
       </header>
       <div

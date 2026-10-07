@@ -662,6 +662,14 @@ export function ThreadDetailPromptArea({
     setWorkflowStackExpandedThreadId(null);
   }
   const isWorkflowStackExpanded = workflowStackExpandedThreadId === thread.id;
+  const [queueExpandedThreadId, setQueueExpandedThreadId] = useState<
+    string | null
+  >(null);
+  const handleQueueExpandedChange = useCallback(
+    (expanded: boolean) =>
+      setQueueExpandedThreadId(expanded ? thread.id : null),
+    [thread.id],
+  );
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -2222,11 +2230,15 @@ export function ThreadDetailPromptArea({
             onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={beginEditQueuedMessage}
             onDelete={handleDeleteQueuedMessage}
+            defaultExpanded={queueExpandedThreadId === thread.id}
+            onExpandedChange={handleQueueExpandedChange}
           />
         )}
       </>
     ),
     [
+      handleQueueExpandedChange,
+      queueExpandedThreadId,
       canUseGitUi,
       childPendingInteractionBanners,
       contextBannerMergeBase,

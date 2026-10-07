@@ -706,6 +706,8 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
+        defaultExpanded
+        onExpandedChange={noop}
         onDelete={(id) =>
           setStoryQueuedMessages((current) =>
             current.filter((message) => message.id !== id),

@@ -364,6 +364,8 @@ function StaticQueuedMessagesList({
       onSetGroupBoundary={noop}
       onEdit={noop}
       onDelete={noop}
+      defaultExpanded
+      onExpandedChange={noop}
     />
   );
 }
@@ -402,6 +404,8 @@ function ReorderableQueuedMessagesList() {
       onSetGroupBoundary={handleSetGroupBoundary}
       onEdit={noop}
       onDelete={noop}
+      defaultExpanded
+      onExpandedChange={noop}
     />
   );
 }

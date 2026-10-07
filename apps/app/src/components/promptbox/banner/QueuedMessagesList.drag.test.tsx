@@ -47,6 +47,8 @@ describe("QueuedMessagesList group-handle drag", () => {
         onSetGroupBoundary={onSetGroupBoundary}
         onEdit={noop}
         onDelete={noop}
+        defaultExpanded
+        onExpandedChange={noop}
       />,
     );
     const rows = container.querySelectorAll<HTMLElement>(

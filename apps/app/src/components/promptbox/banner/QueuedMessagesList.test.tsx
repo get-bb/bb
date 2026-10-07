@@ -45,16 +45,25 @@ const bottomAnchorMocks = vi.hoisted(() => ({
 function QueuedMessagesList({
   attachedToComposer = true,
   sendAction = "send-now",
+  defaultExpanded = false,
+  onExpandedChange = noop,
   ...props
-}: Omit<QueuedMessagesListProps, "attachedToComposer" | "sendAction"> & {
+}: Omit<
+  QueuedMessagesListProps,
+  "attachedToComposer" | "sendAction" | "defaultExpanded" | "onExpandedChange"
+> & {
   attachedToComposer?: boolean;
   sendAction?: QueuedMessagesListProps["sendAction"];
+  defaultExpanded?: boolean;
+  onExpandedChange?: QueuedMessagesListProps["onExpandedChange"];
 }) {
   return (
     <QueuedMessagesListComponent
       {...props}
       attachedToComposer={attachedToComposer}
       sendAction={sendAction}
+      defaultExpanded={defaultExpanded}
+      onExpandedChange={onExpandedChange}
     />
   );
 }
@@ -460,6 +469,184 @@ describe("QueuedMessagesList", () => {
     expect(
       container.querySelector("[data-queued-messages-previous-count]"),
     ).toBeNull();
+  });
+
+  it("does not replay the arrival flash for restored or replaced messages", () => {
+    const sharedProps = {
+      sendDisabled: false,
+      actionDisabled: false,
+      processingMessageId: null,
+      processingAction: null,
+      onSend: noop,
+      onReorder: noop,
+      onSetGroupBoundary: noop,
+      onEdit: noop,
+      onDelete: noop,
+    } as const;
+    const firstMessage = makeQueuedMessage("q_one", "First queued message");
+    const secondMessage = makeQueuedMessage("q_two", "Second queued message");
+    const { container, rerender } = render(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[firstMessage, secondMessage]}
+      />,
+    );
+    const count = () =>
+      container.querySelector<HTMLElement>("[data-queued-messages-count]");
+    const restingPill = count();
+
+    rerender(
+      <QueuedMessagesList {...sharedProps} queuedMessages={[firstMessage]} />,
+    );
+    rerender(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[firstMessage, secondMessage]}
+      />,
+    );
+    expect(count()).toBe(restingPill);
+    expect(count()?.classList.contains("bb-count-flash")).toBe(false);
+
+    rerender(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[
+          firstMessage,
+          secondMessage,
+          makeQueuedMessage("optimistic-queued-1", "Third queued message"),
+        ]}
+      />,
+    );
+    const bumpedPill = count();
+    expect(bumpedPill?.classList.contains("bb-count-flash")).toBe(true);
+
+    rerender(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[
+          firstMessage,
+          secondMessage,
+          makeQueuedMessage("q_three", "Third queued message"),
+        ]}
+      />,
+    );
+    expect(count()).toBe(bumpedPill);
+    expect(count()?.lastElementChild?.textContent).toBe("3");
+  });
+
+  it("names the lead failure or wait in the collapsed header", () => {
+    const sharedProps = {
+      sendDisabled: false,
+      actionDisabled: false,
+      processingMessageId: null,
+      processingAction: null,
+      onSend: noop,
+      onReorder: noop,
+      onSetGroupBoundary: noop,
+      onEdit: noop,
+      onDelete: noop,
+    } as const;
+    const plainMessage = makeQueuedMessage("q_plain", "Plain follow-up");
+    const retryMessage = makeThreadQueuedMessage({
+      id: "q_retry",
+      payload: {
+        kind: "retry",
+        retryOfTurnRequestId: "req_1",
+        attempt: 2,
+        reason: "Rate limited",
+      },
+      waitingOn: { kind: "time" },
+      sendAt: 0,
+    });
+    const failedMessage = {
+      ...makeQueuedMessage("q_failed", "Post the summary"),
+      failureReason: "Provider unavailable",
+    };
+    const { container, rerender } = render(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[plainMessage, retryMessage, failedMessage]}
+      />,
+    );
+    const headerWait = () =>
+      container.querySelector<HTMLElement>(
+        "header [data-queued-message-wait]",
+      );
+
+    expect(headerWait()?.textContent).toBe("Provider unavailable");
+    expect(headerWait()?.hasAttribute("data-queued-message-failed")).toBe(true);
+
+    rerender(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[plainMessage, retryMessage]}
+      />,
+    );
+    expect(headerWait()?.textContent).toMatch(
+      /^Rate limited · retrying at .* · attempt 2$/u,
+    );
+
+    expandQueue();
+    expect(headerWait()).toBeNull();
+  });
+
+  it("shows no header wait for ordinary queued messages", () => {
+    const { container } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_busy", "Ordinary queued"),
+        waitingOn: { kind: "thread-busy" },
+      },
+    ]);
+    expect(
+      container.querySelector("header [data-queued-message-wait]"),
+    ).toBeNull();
+  });
+
+  it("reports the open choice and restores it on remount", () => {
+    const sharedProps = {
+      sendDisabled: false,
+      actionDisabled: false,
+      processingMessageId: null,
+      processingAction: null,
+      onSend: noop,
+      onReorder: noop,
+      onSetGroupBoundary: noop,
+      onEdit: noop,
+      onDelete: noop,
+    } as const;
+    const onExpandedChange = vi.fn();
+    const queuedMessages = [
+      makeQueuedMessage("q_one", "First queued message"),
+    ];
+    const first = render(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={queuedMessages}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    expandQueue();
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+    first.unmount();
+
+    const { container } = render(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={queuedMessages}
+        defaultExpanded
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    expect(
+      container
+        .querySelector("[data-queued-messages-mode]")
+        ?.getAttribute("data-queued-messages-mode"),
+    ).toBe("drawer");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse queued messages" }),
+    );
+    expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   });
 
   it("uses labeled inline icon actions with tooltips", async () => {
@@ -1817,6 +2004,7 @@ describe("queued row affordances", () => {
         },
       },
     ]);
+    expandQueue();
 
     const waitLine = getByText("Held by Drafts · Draft").closest(
       "[data-queued-message-wait]",
@@ -1844,6 +2032,7 @@ describe("queued row affordances", () => {
         },
       },
     ]);
+    expandQueue();
 
     expect(getByText("Waiting for workspace")).toBeDefined();
     expect(
@@ -1908,6 +2097,7 @@ describe("queued row affordances", () => {
         waitingOn: { kind: "host-offline", hostName: "M4" },
       },
     ]);
+    expandQueue();
     expect(getByText("Waiting for M4 to be ready")).toBeDefined();
     expect(queryByLabelText("Send queued message 1 now")).toBeNull();
   });
@@ -1920,6 +2110,7 @@ describe("queued row affordances", () => {
         failureReason: "Thread stopped before the message could dispatch",
       },
     ]);
+    expandQueue();
     expect(
       getByText("Thread stopped before the message could dispatch"),
     ).toBeDefined();
@@ -1952,6 +2143,7 @@ describe("queued row affordances", () => {
         sendAt: 0,
       },
     ]);
+    expandQueue();
     expect(getByText(/^Retry failed turn from /u)).toBeDefined();
     expect(
       getByText(/^Rate limited · retrying at .* · attempt 2$/u),
@@ -1973,6 +2165,7 @@ describe("queued row affordances", () => {
         sendAt: 0,
       }),
     ]);
+    expandQueue();
     expect(container.querySelector("[data-queued-message-sender]")).toBeNull();
     expect(
       getByText(/^Rate limited · retrying at .* · attempt 2$/u),
@@ -1994,6 +2187,7 @@ describe("queued row affordances", () => {
         sendAt: 0,
       },
     ]);
+    expandQueue();
     expect(queryByLabelText("Edit queued message 1")).toBeNull();
     expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
   });

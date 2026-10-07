@@ -309,6 +309,13 @@ function EmbeddedThreadChatWithComposer({
   const [composerFocusNonce, setComposerFocusNonce] = useState(0);
   const [inlineComposerFocusNonce, setInlineComposerFocusNonce] = useState(0);
   const [isTurnSubmitting, setIsTurnSubmitting] = useState(false);
+  const [queueExpandedThreadId, setQueueExpandedThreadId] = useState<
+    string | null
+  >(null);
+  const handleQueueExpandedChange = useCallback(
+    (expanded: boolean) => setQueueExpandedThreadId(expanded ? threadId : null),
+    [threadId],
+  );
   const isMountedRef = useRef(false);
   useEffect(() => {
     isMountedRef.current = true;
@@ -1184,11 +1191,16 @@ function EmbeddedThreadChatWithComposer({
           onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
           onEdit={beginEditQueuedMessage}
           onDelete={handleDeleteQueuedMessage}
+          defaultExpanded={queueExpandedThreadId === threadId}
+          onExpandedChange={handleQueueExpandedChange}
         />
       ) : null,
     [
       beginEditQueuedMessage,
       handleDeleteQueuedMessage,
+      handleQueueExpandedChange,
+      queueExpandedThreadId,
+      threadId,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,
       handleSetQueuedMessageGroupBoundary,
