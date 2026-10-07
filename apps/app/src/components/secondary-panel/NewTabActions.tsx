@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type ReactNode } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -27,7 +27,7 @@ import { newTabActionOrderAtom } from "./newTabActionsAtoms";
 export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
 
-export interface NewTabActionsProps {
+export interface UseNewTabActionsArgs {
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
   startTerminalDisabled?: boolean;
@@ -35,7 +35,11 @@ export interface NewTabActionsProps {
   pluginActions?: readonly PluginPanelActionEntry[];
 }
 
-interface NewTabAction {
+export interface NewTabActionsProps {
+  actions: readonly NewTabAction[];
+}
+
+export interface NewTabAction {
   id: string;
   icon: ReactNode;
   label: string;
@@ -80,13 +84,14 @@ function actionIcon(iconName: IconName): ReactNode {
   );
 }
 
-export function NewTabActions({
+export function useNewTabActions({
   onOpenBrowser,
   onStartTerminal,
   pluginActions,
   startTerminalDisabled = false,
   startTerminalTrailing,
-}: NewTabActionsProps) {
+}: UseNewTabActionsArgs): NewTabAction[] {
+  const storedOrder = useAtomValue(newTabActionOrderAtom);
   const terminalShortcut = useAppCommandShortcut("terminal.open");
   const showOpenBrowser =
     onOpenBrowser !== undefined && isDesktopBrowserAvailable();
@@ -132,6 +137,37 @@ export function NewTabActions({
     });
   }
 
+  return arrangeByStoredOrder({
+    items: actions,
+    getId: (action) => action.id,
+    storedOrder,
+  }).ordered;
+}
+
+function toSearchWords(label: string): string[] {
+  return label
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 0);
+}
+
+export function matchNewTabActions(
+  actions: readonly NewTabAction[],
+  query: string,
+): NewTabAction[] {
+  const queryWords = toSearchWords(query);
+  if (queryWords.length === 0) {
+    return [];
+  }
+  return actions.filter((action) => {
+    const words = toSearchWords(action.label);
+    return queryWords.every((queryWord) =>
+      words.some((word) => word.startsWith(queryWord)),
+    );
+  });
+}
+
+export function NewTabActions({ actions }: NewTabActionsProps) {
   if (actions.length === 0) {
     return null;
   }
