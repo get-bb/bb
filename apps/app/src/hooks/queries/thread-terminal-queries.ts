@@ -7,9 +7,10 @@ import type {
   TerminalSession,
   UpdateTerminalRequest,
 } from "@bb/server-contract";
-import { sdk } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import {
   applyTerminalSessionClose,
+  applyTerminalSessionMissing,
   applyTerminalSessionUpsert,
 } from "../cache-owners/terminal-cache-owner";
 import { terminalsQueryKey, type TerminalQueryScope } from "./query-keys";
@@ -109,8 +110,18 @@ export function useCloseTerminal() {
       errorMessage: "Failed to close terminal.",
     },
     mutationFn: ({ mode, terminalId }: CloseTerminalMutationRequest) =>
-      sdk.terminals.close({ mode, terminalId }),
-    onSuccess: (session: TerminalSession, variables) => {
+      sdk.terminals.close({ mode, terminalId }).catch((error: unknown) => {
+        if (error instanceof BbHttpError && error.status === 404) return null;
+        throw error;
+      }),
+    onSuccess: (session: TerminalSession | null, variables) => {
+      if (session === null) {
+        applyTerminalSessionMissing({
+          queryClient,
+          terminalId: variables.terminalId,
+        });
+        return;
+      }
       applyTerminalSessionClose({
         queryClient,
         session,

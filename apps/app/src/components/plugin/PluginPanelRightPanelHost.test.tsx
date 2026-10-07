@@ -1466,6 +1466,29 @@ describe("PluginPanelRightPanelHost", () => {
     });
   });
 
+  it("refuses plugin terminals while the page's panel is not registered", async () => {
+    fixedTabState.panelRegistered = false;
+    const panelStateId = getPluginPagePanelStateId({
+      panelPath: "board",
+      pluginId: "demo",
+    });
+    renderHost();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open worktree terminal" }),
+    );
+
+    expect(screen.queryByTestId("plugin-page-terminal")).toBeNull();
+    const storedValue = localStorage.getItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+    );
+    const storedTabs =
+      storedValue === null ? [] : JSON.parse(storedValue).secondary.tabs;
+    expect(storedTabs).not.toContainEqual(
+      expect.objectContaining({ kind: "terminal" }),
+    );
+  });
+
   it("keeps a restored thread-targeted terminal out of thread tab sync", async () => {
     const panelStateId = getPluginPagePanelStateId({
       panelPath: "board",

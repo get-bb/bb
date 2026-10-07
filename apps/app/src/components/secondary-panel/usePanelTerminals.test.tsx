@@ -6,7 +6,7 @@ import type {
   TerminalSession,
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sdk } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import {
   createNewTabFixedPanelTab,
   createTerminalFixedPanelTab,
@@ -152,7 +152,7 @@ function activeTerminalId(
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   commandHandlers.clear();
   localStorage.clear();
   resetFixedPanelTabsStateForTest();
@@ -274,7 +274,9 @@ describe.each(SURFACES)("panel terminals on the $name", (surface) => {
       await firstClose;
     });
     await waitFor(() => {
-      expect(terminalTabIds(result.current.state)).toEqual([surface.sibling.id]);
+      expect(terminalTabIds(result.current.state)).toEqual([
+        surface.sibling.id,
+      ]);
     });
 
     await act(async () => {
@@ -289,5 +291,52 @@ describe.each(SURFACES)("panel terminals on the $name", (surface) => {
       mode: "force",
       terminalId: surface.own.id,
     });
+  });
+
+  it("removes the tab of a terminal that no longer exists and keeps it when closing fails", async () => {
+    vi.mocked(sdk.terminals.close).mockImplementation(({ terminalId }) =>
+      Promise.reject(
+        terminalId === surface.own.id
+          ? new BbHttpError({
+              status: 404,
+              code: "terminal_not_found",
+              message: "Terminal session not found",
+              body: {
+                code: "terminal_not_found",
+                message: "Terminal session not found",
+              },
+            })
+          : new BbHttpError({
+              status: 503,
+              code: "host_unavailable",
+              message: "Host is not connected",
+              body: {
+                code: "host_unavailable",
+                message: "Host is not connected",
+              },
+            }),
+      ),
+    );
+    const { result } = renderSurface(surface);
+    act(() => {
+      result.current.terminals.open(surface.own);
+      result.current.terminals.open(surface.sibling);
+    });
+
+    act(() => {
+      result.current.terminals.close(surface.own.id);
+    });
+    await waitFor(() => {
+      expect(terminalTabIds(result.current.state)).toEqual([
+        surface.sibling.id,
+      ]);
+    });
+
+    await act(async () => {
+      result.current.terminals.close(surface.sibling.id);
+    });
+    await waitFor(() => expect(sdk.terminals.close).toHaveBeenCalledTimes(2));
+    await act(async () => undefined);
+    expect(terminalTabIds(result.current.state)).toEqual([surface.sibling.id]);
   });
 });

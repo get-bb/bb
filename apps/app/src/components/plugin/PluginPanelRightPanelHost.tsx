@@ -194,8 +194,6 @@ function findPluginRightPanelTogglePortal(
   return null;
 }
 
-const acceptsAnyTerminal = () => true;
-
 export function PluginPanelRightPanelHost({
   children,
   panelPath,
@@ -512,6 +510,7 @@ export function PluginPanelRightPanelHost({
     scope: null,
   });
   const openLiveFilePreview = panelFiles.openFilePreview;
+  const acceptsSession = () => panel !== null;
   const terminals = usePanelTerminals({
     panelStateId,
     syncThreadId: null,
@@ -520,7 +519,7 @@ export function PluginPanelRightPanelHost({
         ? { kind: "host_path", hostId: selectedTerminalHost.id, cwd: null }
         : null,
     isFocused,
-    acceptsSession: acceptsAnyTerminal,
+    acceptsSession,
     tabsCarryTarget: true,
     reveal: revealPersistedPanel,
     onCloseLastTab: closeCompactDrawer,
