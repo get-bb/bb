@@ -1318,7 +1318,7 @@ describe("ThreadRow", () => {
         ),
       ).toBe("calc(var(--spacing) * 7.5)");
       expect(
-        titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
+        titleContainer?.classList.contains("[@media(hover:none)]:pr-0"),
       ).toBe(true);
       expect(navigationTarget?.classList.contains("flex-1")).toBe(true);
       expect(titleWrapper?.classList.contains("flex-1")).toBe(false);
