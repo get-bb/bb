@@ -188,14 +188,25 @@ export function createStorage(
             env.lifecycle.retireAt < Date.now() - 10 * 60_000)),
     );
   }
+  async function readReportContext() {
+    const [threads, projects] = await Promise.all([
+      readThreads(bb, lifecycle.signal),
+      bb.sdk.projects.list({ signal: lifecycle.signal }),
+    ]);
+    return { threads, projects };
+  }
+  function sharedReportContext() {
+    let pending: ReturnType<typeof readReportContext> | null = null;
+    return () => (pending ??= readReportContext());
+  }
   async function report(
     hostId: string,
     scan: Scan,
+    context: () => ReturnType<typeof readReportContext>,
   ): Promise<HostStorageReport> {
-    const [threads, allEnvironments, projects] = await Promise.all([
-      readThreads(bb, lifecycle.signal),
+    const [{ threads, projects }, allEnvironments] = await Promise.all([
+      context(),
       readEnvironments(hostId),
-      bb.sdk.projects.list({ signal: lifecycle.signal }),
     ]);
     const byId = new Map(threads.map((thread) => [thread.id, thread]));
     const environments = new Map(
@@ -363,10 +374,16 @@ export function createStorage(
     hostId: string;
   }): Promise<HostStorageResponse> {
     await requireHost(hostId);
+    return hostResponse(hostId, sharedReportContext());
+  }
+  async function hostResponse(
+    hostId: string,
+    context: () => ReturnType<typeof readReportContext>,
+  ): Promise<HostStorageResponse> {
     const cached = read(hostId);
     return {
       maintenance: maintenance.get(hostId) ?? { state: "idle" },
-      report: cached ? await report(hostId, cached) : null,
+      report: cached ? await report(hostId, cached, context) : null,
       scan: scans.get(hostId) ?? { state: "idle" },
       largeFileCleanup: largeFileCleanups.get(hostId) ?? { state: "idle" },
       archivedFileCleanup: archivedFileCleanups.get(hostId) ?? {
@@ -377,11 +394,12 @@ export function createStorage(
   async function hosts() {
     lifecycle.signal.throwIfAborted();
     const machines = await bb.sdk.hosts.list({ type: "persistent" });
+    const context = sharedReportContext();
     return {
       hosts: await Promise.all(
         machines.map(async (machine) => ({
           hostId: machine.id,
-          ...(await host({ hostId: machine.id })),
+          ...(await hostResponse(machine.id, context)),
         })),
       ),
     };
@@ -657,7 +675,7 @@ export function createStorage(
       return {
         removedCount: removed.count,
         removedBytes: removed.bytes,
-        report: await report(hostId, cached),
+        report: await report(hostId, cached, readReportContext),
       };
     } finally {
       release();

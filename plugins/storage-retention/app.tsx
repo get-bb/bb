@@ -249,7 +249,7 @@ function StoragePanel(props: PluginNavPanelProps) {
     const connection = sdk.subscribe({
       event: "realtime:connection",
       callback: (event) => {
-        if (event.state === "connected") void refresh();
+        if (event.state === "connected" && event.reconnected) void refresh();
       },
     });
     return () => {

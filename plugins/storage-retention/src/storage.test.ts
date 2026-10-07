@@ -14,7 +14,10 @@ import { resolveDevInstanceConfig } from "../../../packages/config/src/runtime.j
 import hostEntry from "./host.js";
 import plugin from "./server.js";
 import { hostStorageContract } from "./host-contract.js";
-import { hostStorageResponseSchema } from "./storage-types.js";
+import {
+  hostStorageListResponseSchema,
+  hostStorageResponseSchema,
+} from "./storage-types.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -531,6 +534,64 @@ it.each([false, true])(
     }
   },
 );
+
+it("builds every machine's report from one thread listing", async () => {
+  const root = await directory();
+  await fs.mkdir(path.join(root, "thr_kept"));
+  const worker = experimental_createHostEntryHarness(hostEntry);
+  const machineIds = ["host_a", "host_b", "host_c"];
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "measure")
+        return worker.experimental_call(
+          "measure",
+          hostStorageContract.measure.input.parse(call.input),
+        );
+      if (call.method === "capacity")
+        return worker.experimental_call(
+          "capacity",
+          hostStorageContract.capacity.input.parse(call.input),
+        );
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      projects: { list: async () => [] },
+      hosts: {
+        list: async () =>
+          machineIds.map((id) => makeHostResponse({ id, status: "connected" })),
+        get: async ({ hostId }) => ({
+          ...makeHostResponse({ id: hostId, status: "connected" }),
+          threadStorageRootPath: root,
+        }),
+      },
+      environments: { list: async () => [] },
+      threads: {
+        list: async () => [makeThreadResponse({ id: "thr_kept" })],
+      },
+    },
+  });
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanAll", null);
+    await expect
+      .poll(
+        async () =>
+          hostStorageListResponseSchema
+            .parse(await host.harness.callRpc("hosts", null))
+            .hosts.filter((machine) => machine.report !== null).length,
+      )
+      .toBe(machineIds.length);
+    const listed = host.harness.sdk.callsTo("threads.list").length;
+    await host.harness.callRpc("hosts", null);
+    expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(listed + 1);
+  } finally {
+    await host.harness.dispose();
+    await worker.experimental_dispose();
+  }
+});
 
 it("deletes only large files from archived threads on scanned online machines, keeping small files, pinned and live threads", async () => {
   const root = await directory();
