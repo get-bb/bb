@@ -36,7 +36,11 @@ import type {
   QueuedMessageSendAction,
   QueuedMessagesListProps,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
-import { getQueuedMessagesDrawerHeight } from "@/components/promptbox/banner/queued-messages-layout";
+import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
+import {
+  getQueuedMessagesDrawerHeight,
+  QUEUED_MESSAGES_COLLAPSED_HEIGHT,
+} from "@/components/promptbox/banner/queued-messages-layout";
 import {
   DndContext,
   KeyboardSensor,
@@ -138,7 +142,6 @@ interface QueuedMessageRowProps {
 }
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
-const COLLAPSED_HEIGHT = 44;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
@@ -170,7 +173,7 @@ export function getInlineEditorSurfaceMaxHeight({
     containerHeight - surfaceHeight,
   );
   return Math.max(
-    COLLAPSED_HEIGHT,
+    QUEUED_MESSAGES_COLLAPSED_HEIGHT,
     Math.floor(viewportHeight - occupiedHeightOutsideQueue),
   );
 }
@@ -1150,9 +1153,7 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [mode, setMode] = useState<QueueSurfaceMode>(
-    queuedMessages.length > 0 ? "drawer" : "collapsed",
-  );
+  const [mode, setMode] = useState<QueueSurfaceMode>("collapsed");
   const [expandedMobileActionsId, setExpandedMobileActionsId] = useState<
     string | null
   >(null);
@@ -1169,7 +1170,6 @@ export function QueuedMessagesList({
   const listRef = useRef<HTMLUListElement>(null);
   const wasInlineEditingRef = useRef(false);
   const inlineEditorDismissModeRef = useRef<QueueSurfaceMode | null>(null);
-  const previousMessageCountRef = useRef(queuedMessages.length);
   useEffect(() => {
     if (expandedMobileActionsId === null) return;
 
@@ -1419,35 +1419,6 @@ export function QueuedMessagesList({
     wasInlineEditingRef.current = inlineEditor !== undefined;
   }, [inlineEditor]);
 
-  useEffect(() => {
-    const previousMessageCount = previousMessageCountRef.current;
-    previousMessageCountRef.current = queuedMessages.length;
-    if (inlineEditorActive) {
-      return;
-    }
-    if (
-      queuedMessages.length !== 0 &&
-      queuedMessages.length <= previousMessageCount
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      if (queuedMessages.length === 0) {
-        setMode("collapsed");
-        return;
-      }
-      setMode((currentMode) =>
-        currentMode === "collapsed" ? "drawer" : currentMode,
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [inlineEditorActive, queuedMessages.length]);
-
   const openWorkspace = useCallback(() => {
     setMode("workspace");
   }, []);
@@ -1483,7 +1454,7 @@ export function QueuedMessagesList({
             queuedMessages,
             processingMessageId,
           })
-        : COLLAPSED_HEIGHT;
+        : QUEUED_MESSAGES_COLLAPSED_HEIGHT;
   const surfaceHeight =
     inlineEditor && inlineEditorMaxHeight !== null
       ? Math.min(
@@ -1596,9 +1567,7 @@ export function QueuedMessagesList({
           )}
         >
           <span className="font-normal">Queue</span>
-          <span className="-mr-1 ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground">
-            {queuedMessages.length}
-          </span>
+          <QueuedMessagesCountPill count={queuedMessages.length} />
         </button>
       </header>
       <div

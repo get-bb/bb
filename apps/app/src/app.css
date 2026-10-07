@@ -840,6 +840,50 @@
   }
 }
 
+@keyframes bb-count-flash {
+  0%,
+  35% {
+    background-color: var(--foreground);
+    color: var(--background);
+  }
+}
+
+@keyframes bb-count-roll-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes bb-count-roll-out {
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
+.bb-count-flash {
+  animation: bb-count-flash 1.2s ease-out;
+}
+
+.bb-count-roll-in {
+  animation: bb-count-roll-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bb-count-roll-out {
+  animation: bb-count-roll-out 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-count-roll-in {
+    animation: none;
+  }
+
+  .bb-count-roll-out {
+    display: none;
+  }
+}
+
 /* Browse hero (Plugins → Browse plugins): the archetype chips orbiting the mini bb
  * window drift slowly so the hero reads as alive without competing with the
  * composer sitting in the middle of it. Duration and delay are per-chip custom
