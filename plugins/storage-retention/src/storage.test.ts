@@ -1704,7 +1704,9 @@ it("automatically removes missing-checkout data only when enabled and online, re
         return { totalBytes: 10000, freeBytes: 5000 };
       if (call.method === "measure") {
         const input = hostStorageContract.measure.input.parse(call.input);
-        measuredPaths.push(...input.targets.map((target) => target.path));
+        measuredPaths.push(
+          ...input.targets.map((target) => target.path.replaceAll("\\", "/")),
+        );
         return worker.experimental_call("measure", input);
       }
       if (call.method === "inspectDeveloperEntries") {
@@ -1828,14 +1830,17 @@ it("automatically removes missing-checkout data only when enabled and online, re
     measuredPaths.length = 0;
     await emitRemoval();
     await expectCleaned();
-    expect(new Set(measuredPaths)).toEqual(new Set([root]));
+    const developerRoot = root.replaceAll("\\", "/");
+    expect(new Set(measuredPaths)).toEqual(new Set([developerRoot]));
     let openGate!: () => void;
     inspectionGate = new Promise<void>((resolve) => {
       openGate = resolve;
     });
     await host.harness.behavior.callRpc("scanHost", { hostId: "host_test" });
     await expect
-      .poll(() => measuredPaths.filter((entry) => entry === root).length)
+      .poll(
+        () => measuredPaths.filter((entry) => entry === developerRoot).length,
+      )
       .toBe(2);
     await recreateMissing();
     await emitRemoval();
