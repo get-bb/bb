@@ -31,7 +31,7 @@ type SaveState =
   | { kind: "dirty" }
   | { kind: "saving" }
   | { kind: "error"; message: string }
-  | { kind: "conflict" };
+  | { kind: "conflict"; currentSha256: string | null };
 
 function revealLineRange(
   editor: MonacoNs.editor.IStandaloneCodeEditor,
@@ -119,7 +119,10 @@ function MonacoFileOpener({
           expectedSha256,
         });
         if (result.outcome === "conflict") {
-          setSaveState({ kind: "conflict" });
+          setSaveState({
+            kind: "conflict",
+            currentSha256: result.currentSha256,
+          });
           return;
         }
         sha256Ref.current = result.sha256;
@@ -218,8 +221,9 @@ function MonacoFileOpener({
   }, [reloadFromDisk]);
 
   const overwrite = useCallback(async () => {
-    sha256Ref.current = null;
-    await writeEditorContent(null);
+    const current = saveStateRef.current;
+    if (current.kind !== "conflict") return;
+    await writeEditorContent(current.currentSha256);
   }, [writeEditorContent]);
 
   useEffect(() => {
