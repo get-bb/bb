@@ -2277,7 +2277,11 @@ function ThreadDetailViewInternal(
       actionsMenu={(includeResponsiveActions) => (
         <ThreadActionsMenu
           thread={thread}
-          onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
+          environment={
+            isThreadOnReusableEnvironment && thread.environmentId !== null
+              ? { id: thread.environmentId, path: environment.path }
+              : null
+          }
           triggerClassName={HEADER_ICON_BUTTON_CLASS}
           responsiveActions={
             includeResponsiveActions ? responsiveHeaderActions : undefined

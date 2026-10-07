@@ -11,6 +11,7 @@ import {
   describePreference,
   getPreferenceDefault,
   isPreferenceKey,
+  organizationModeSchema,
   parsePreferenceValue,
   parseStoredPreferenceValue,
   PREFERENCE_KEYS,
@@ -23,6 +24,82 @@ import {
 
 const PREFERENCE_KV_PREFIX = "preference:";
 const MIGRATION_KV_KEY = "migration:ui-preferences:v1";
+const CORE_MIGRATION_KV_KEY = "migration:core-ui-preferences:v2";
+
+const CORE_UI_PREFERENCE_KEYS = {
+  organizationMode: "sidebar.organizationMode",
+  manualSectionOrder: "sidebar.manualSectionOrder",
+} as const;
+type CoreStoredPreferenceKey = keyof typeof CORE_UI_PREFERENCE_KEYS;
+export const CORE_STORED_PREFERENCE_KEYS = Object.keys(
+  CORE_UI_PREFERENCE_KEYS,
+) as CoreStoredPreferenceKey[];
+
+function isCoreStoredPreferenceKey(
+  key: PreferenceKey,
+): key is CoreStoredPreferenceKey {
+  return Object.hasOwn(CORE_UI_PREFERENCE_KEYS, key);
+}
+
+type UiPreferenceEntries = Awaited<
+  ReturnType<BbPluginApi["sdk"]["system"]["uiPreferences"]["list"]>
+>["preferences"];
+
+async function readCoreEntries(
+  bb: BbPluginApi,
+): Promise<UiPreferenceEntries | null> {
+  try {
+    return (await bb.sdk.system.uiPreferences.list()).preferences;
+  } catch (error) {
+    bb.log.warn(
+      `could not read bb's sidebar preferences: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+function readCoreValue<Key extends CoreStoredPreferenceKey>(
+  bb: BbPluginApi,
+  entries: UiPreferenceEntries | null,
+  key: Key,
+): PreferenceValue<Key> {
+  const entry = entries?.[CORE_UI_PREFERENCE_KEYS[key]];
+  if (entry === undefined) return getPreferenceDefault(key);
+  const parsed = parsePreferenceValue(key, entry.value);
+  if (parsed.success) return parsed.value;
+  bb.log.warn(
+    `bb's ${CORE_UI_PREFERENCE_KEYS[key]} is invalid for ${key} (${parsed.message}); using the default`,
+  );
+  return getPreferenceDefault(key);
+}
+
+async function writeCoreValue(
+  bb: BbPluginApi,
+  key: CoreStoredPreferenceKey,
+  value: unknown,
+): Promise<void> {
+  const entries = (await bb.sdk.system.uiPreferences.list()).preferences;
+  const coreKey = CORE_UI_PREFERENCE_KEYS[key];
+  const expectedRevision = entries[coreKey]?.revision ?? 0;
+  switch (key) {
+    case "organizationMode":
+      await bb.sdk.system.uiPreferences.set({
+        key: "sidebar.organizationMode",
+        value: organizationModeSchema.parse(value),
+        expectedRevision,
+      });
+      return;
+    case "manualSectionOrder":
+      await bb.sdk.system.uiPreferences.set({
+        key: "sidebar.manualSectionOrder",
+        value: preferenceDefinitions.manualSectionOrder.schema.parse(value),
+        expectedRevision,
+      });
+      return;
+  }
+}
 
 const preferenceKeySchema = z.enum(
   PREFERENCE_KEYS as [PreferenceKey, ...PreferenceKey[]],
@@ -58,7 +135,7 @@ function kvKey(key: PreferenceKey): string {
 }
 
 export function createPreferenceStore(bb: BbPluginApi) {
-  async function read<Key extends PreferenceKey>(
+  async function readStored<Key extends PreferenceKey>(
     key: Key,
   ): Promise<PreferenceValue<Key>> {
     const stored = await bb.storage.kv.get<unknown>(kvKey(key));
@@ -71,11 +148,29 @@ export function createPreferenceStore(bb: BbPluginApi) {
     return getPreferenceDefault(key);
   }
 
+  async function read<Key extends PreferenceKey>(
+    key: Key,
+  ): Promise<PreferenceValue<Key>> {
+    if (isCoreStoredPreferenceKey(key)) {
+      const value: PreferenceValue<CoreStoredPreferenceKey> = readCoreValue(
+        bb,
+        await readCoreEntries(bb),
+        key,
+      );
+      return value as PreferenceValue<Key>;
+    }
+    return readStored(key);
+  }
+
   async function readAll(): Promise<PreferenceValues> {
     const values = defaultPreferences();
+    const coreEntries = await readCoreEntries(bb);
     await Promise.all(
       PREFERENCE_KEYS.map(async (key) => {
-        (values as Record<PreferenceKey, unknown>)[key] = await read(key);
+        (values as Record<PreferenceKey, unknown>)[key] =
+          isCoreStoredPreferenceKey(key)
+            ? readCoreValue(bb, coreEntries, key)
+            : await readStored(key);
       }),
     );
     return values;
@@ -89,7 +184,11 @@ export function createPreferenceStore(bb: BbPluginApi) {
     if (!parsed.success) {
       throw new PreferenceValidationError(key, parsed.message);
     }
-    await bb.storage.kv.set(kvKey(key), parsed.value);
+    if (isCoreStoredPreferenceKey(key)) {
+      await writeCoreValue(bb, key, parsed.value);
+    } else {
+      await bb.storage.kv.set(kvKey(key), parsed.value);
+    }
     bb.realtime.publish(PREFERENCES_CHANGED_CHANNEL, {
       key,
       value: parsed.value,
@@ -100,7 +199,13 @@ export function createPreferenceStore(bb: BbPluginApi) {
   async function reset<Key extends PreferenceKey>(
     key: Key,
   ): Promise<PreferenceValue<Key>> {
-    await bb.storage.kv.delete(kvKey(key));
+    if (isCoreStoredPreferenceKey(key)) {
+      await bb.sdk.system.uiPreferences.reset({
+        key: CORE_UI_PREFERENCE_KEYS[key],
+      });
+    } else {
+      await bb.storage.kv.delete(kvKey(key));
+    }
     const value = getPreferenceDefault(key);
     bb.realtime.publish(PREFERENCES_CHANGED_CHANNEL, { key, value });
     return value;
@@ -141,6 +246,7 @@ export async function migrateFromUiPreferences(
     return { migrated };
   }
   for (const key of PREFERENCE_KEYS) {
+    if (isCoreStoredPreferenceKey(key)) continue;
     const existing = await bb.storage.kv.get<unknown>(kvKey(key));
     if (existing !== undefined) continue;
     const legacyKey = preferenceDefinitions[key].legacyKey;
@@ -156,6 +262,35 @@ export async function migrateFromUiPreferences(
     migrated.push(key);
   }
   await bb.storage.kv.set(MIGRATION_KV_KEY, true);
+  return { migrated };
+}
+
+export async function migrateToUiPreferences(
+  bb: BbPluginApi,
+): Promise<{ migrated: PreferenceKey[] }> {
+  const done = await bb.storage.kv.get<boolean>(CORE_MIGRATION_KV_KEY);
+  if (done === true) return { migrated: [] };
+  const migrated: PreferenceKey[] = [];
+  for (const key of CORE_STORED_PREFERENCE_KEYS) {
+    const stored = await bb.storage.kv.get<unknown>(kvKey(key));
+    if (stored === undefined) continue;
+    const parsed = parseStoredPreferenceValue(key, stored);
+    if (parsed.success) {
+      try {
+        await writeCoreValue(bb, key, parsed.value);
+        migrated.push(key);
+      } catch (error) {
+        bb.log.warn(
+          `could not move ${key} into bb's sidebar preferences: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return { migrated };
+      }
+    }
+    await bb.storage.kv.delete(kvKey(key));
+  }
+  await bb.storage.kv.set(CORE_MIGRATION_KV_KEY, true);
   return { migrated };
 }
 
@@ -296,6 +431,12 @@ export default async function threadListPlugin(bb: BbPluginApi) {
   if (migrated.length > 0) {
     bb.log.info(
       `migrated sidebar preferences from bb settings: ${migrated.join(", ")}`,
+    );
+  }
+  const { migrated: movedToCore } = await migrateToUiPreferences(bb);
+  if (movedToCore.length > 0) {
+    bb.log.info(
+      `moved sidebar preferences into bb settings: ${movedToCore.join(", ")}`,
     );
   }
 }

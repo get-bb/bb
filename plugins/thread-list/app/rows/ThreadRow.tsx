@@ -34,6 +34,7 @@ import {
 import {
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreadSplit,
+  experimental_useThreadActions,
   experimental_useProviders,
   experimental_ProviderIcon as ProviderIcon,
   ThreadTitle,
@@ -43,6 +44,7 @@ import {
   useSidebarThreadShortcut,
   type PluginSidebarSplitPane,
   type PluginSidebarThreadRowStatus,
+  type PluginThreadActionItem,
 } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import {
@@ -88,12 +90,14 @@ import { SplitPaneMiniMap } from "./SplitPaneMiniMap.js";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
-  ThreadArchiveQuickAction,
-  canMoveThreadToSection,
-  ThreadRowQuickActions,
-  visibleThreadRowActions,
 } from "./ThreadActionsMenu.js";
-import { useThreadSectionMove } from "./ThreadSectionMoveProvider.js";
+import { ThreadActionButton } from "./ThreadActionMenuItems.js";
+import {
+  ARCHIVE_ACTION_KEY,
+  selectRowActionItems,
+  toThreadActionTarget,
+  withInlineRename,
+} from "./threadActionTarget.js";
 import {
   ThreadStatusGlyph,
   resolveThreadStatus,
@@ -292,17 +296,19 @@ function ThreadTrailingIndicator({
   );
 }
 
-function ThreadRestoreStatusAction({ thread }: { thread: SidebarThread }) {
+function ThreadRestoreStatusAction({
+  item,
+}: {
+  item: PluginThreadActionItem | undefined;
+}) {
+  if (item === undefined) return null;
   return (
     <span
       className="relative z-10 pointer-events-auto"
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
-      <ThreadArchiveQuickAction
-        thread={thread}
-        className={SIDEBAR_CONTROL_BUTTON_CLASS}
-      />
+      <ThreadActionButton item={item} className={SIDEBAR_CONTROL_BUTTON_CLASS} />
     </span>
   );
 }
@@ -385,13 +391,17 @@ function ThreadRowComponent({
   const openInSplit = useCallback(() => {
     actions.open(thread.id, { split: true });
   }, [actions, thread.id]);
-  const sectionMove = useThreadSectionMove();
-  const rowActionIds = visibleThreadRowActions(
+  const actionTarget = useMemo(() => toThreadActionTarget(thread), [thread]);
+  const buttonActionItems = withInlineRename(
+    experimental_useThreadActions(actionTarget, "button"),
+    startEditing,
+  );
+  const rowActionItems = selectRowActionItems(
+    buttonActionItems,
     useAtomValue(threadRowActionsAtom),
-    {
-      split: splitAvailable,
-      move: canMoveThreadToSection(sectionMove, thread),
-    },
+  );
+  const restoreActionItem = buttonActionItems.find(
+    (item) => item.key === ARCHIVE_ACTION_KEY,
   );
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
@@ -527,7 +537,11 @@ function ThreadRowComponent({
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
         style={getHoverActionsInsetStyle(
-          thread.archivedAt !== null ? 1 : rowActionIds.length,
+          thread.archivedAt !== null
+            ? restoreActionItem === undefined
+              ? 0
+              : 1
+            : rowActionItems.length,
         )}
       >
         <a
@@ -674,13 +688,12 @@ function ThreadRowComponent({
               <ThreadActionsMenu
                 thread={thread}
                 triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
-                onOpenInSplit={splitAvailable ? openInSplit : undefined}
                 onOpenChange={setIsDropdownActionsOpen}
                 onRename={rename.startEditingFromMenu}
                 onCloseAutoFocus={rename.onCloseAutoFocus}
               />
             </div>
-            <ThreadRestoreStatusAction thread={thread} />
+            <ThreadRestoreStatusAction item={restoreActionItem} />
           </span>
         ) : shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
@@ -741,22 +754,18 @@ function ThreadRowComponent({
                 )}
               >
                 <SidebarRowControls
-                  primaryAction={
-                    <ThreadRowQuickActions
-                      actionIds={rowActionIds}
-                      actions={actions}
-                      thread={thread}
+                  primaryAction={rowActionItems.map((item) => (
+                    <ThreadActionButton
+                      key={item.key}
+                      item={item}
                       className={SIDEBAR_CONTROL_BUTTON_CLASS}
-                      onOpenInSplit={openInSplit}
-                      onRename={startEditing}
                       onMenuOpenChange={setIsDropdownActionsOpen}
                     />
-                  }
+                  ))}
                 >
                   <ThreadActionsMenu
                     thread={thread}
                     triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
-                    onOpenInSplit={splitAvailable ? openInSplit : undefined}
                     onOpenChange={setIsDropdownActionsOpen}
                     onRename={rename.startEditingFromMenu}
                     onCloseAutoFocus={rename.onCloseAutoFocus}
@@ -790,7 +799,6 @@ function ThreadRowComponent({
   return (
     <ThreadActionsContextMenu
       thread={thread}
-      onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
       onRename={rename.startEditingFromMenu}
       onCloseAutoFocus={rename.onCloseAutoFocus}

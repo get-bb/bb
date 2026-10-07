@@ -20,24 +20,23 @@ import type {
   PluginSidebarThread,
   PluginSidebarThreadRowStatus,
   PluginProvidersState,
+  PluginThreadActionItem,
+  PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk/app";
 import {
   installTestPluginRuntime,
   renderSlot,
   type PluginSdkTestFakes,
   type RenderedSlot,
+  type TestThreadActionsResolver,
 } from "@get-bb/plugin-sdk/testing/app";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
-import {
-  makeSidebarEnvironment,
-  makeSidebarThread,
-} from "../model/fixtures.js";
+import { makeSidebarThread } from "../model/fixtures.js";
 import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
 import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "./sidebarRowClasses.js";
-import type { ThreadSectionMoveDestination } from "./ThreadSectionMoveProvider.js";
 import type { ThreadRowOptions } from "./ThreadRow.js";
 import {
   preferenceValueAtom,
@@ -48,8 +47,6 @@ import { CustomizeRowActionsContext } from "../list/customizeRowActionsContext.j
 installTestPluginRuntime();
 const { SidebarDraftPresenceSync } =
   await import("../list/sidebarDraftPresence.js");
-const { ThreadSectionMoveProvider } =
-  await import("./ThreadSectionMoveProvider.js");
 const { resetSidebarTitleDoubleClickForTest, ThreadRow } =
   await import("./ThreadRow.js");
 
@@ -58,6 +55,87 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
   depth: 1,
   isCompact: false,
 };
+
+const actionRuns: string[] = [];
+const moveSelections: string[] = [];
+const SECTION_CHOICES = [
+  { id: "sec_planning", label: "Planning" },
+  { id: "sec_building", label: "Building" },
+  { id: "threads", label: "Threads" },
+];
+
+function leafAction(
+  key: string,
+  label: string,
+  icon: string,
+  group: PluginThreadActionItem["action"]["group"],
+  variant?: "destructive",
+): PluginThreadActionItem {
+  return {
+    key,
+    pluginId: null,
+    action: {
+      label,
+      icon,
+      group,
+      ...(variant ? { variant } : {}),
+      run: () => {
+        actionRuns.push(key);
+      },
+    },
+  };
+}
+
+const fakeThreadActions: TestThreadActionsResolver = (
+  target: PluginThreadActionTarget,
+) => [
+  leafAction("core:split", "Open in split", "Columns2", "open"),
+  leafAction("core:copyLink", "Copy thread link", "Copy", "organize"),
+  leafAction(
+    "core:read",
+    target.isUnread ? "Mark read" : "Mark unread",
+    "MailOpen",
+    "organize",
+  ),
+  leafAction(
+    "core:pin",
+    target.pinnedAt === null ? "Pin" : "Unpin",
+    "Pin",
+    "organize",
+  ),
+  ...(target.parentThreadId === null && target.archivedAt === null
+    ? [
+        {
+          key: "core:move",
+          pluginId: null,
+          action: {
+            label: "Move to section",
+            icon: "SectionMove",
+            group: "organize" as const,
+            choices: {
+              heading: "Move to section",
+              items: SECTION_CHOICES.map((choice) => ({
+                ...choice,
+                selected: choice.id === target.sectionId,
+                disabled: choice.id === target.sectionId,
+              })),
+              select: (choiceId: string) => {
+                moveSelections.push(choiceId);
+              },
+            },
+          },
+        },
+      ]
+    : []),
+  leafAction("core:rename", "Rename", "Edit", "organize"),
+  leafAction(
+    "core:archive",
+    target.archivedAt === null ? "Archive" : "Unarchive",
+    "Archive",
+    "lifecycle",
+  ),
+  leafAction("core:delete", "Delete", "Trash2", "lifecycle", "destructive"),
+];
 
 function createThread(
   overrides: Partial<PluginSidebarThread> = {},
@@ -86,7 +164,6 @@ interface HarnessProps {
   options?: ThreadRowOptions;
   onRowEvent?: () => void;
   onCustomizeRowActions?: (threadId: string) => void;
-  sectionDestinations?: readonly ThreadSectionMoveDestination[];
 }
 
 function ThreadRowHarness({
@@ -97,7 +174,6 @@ function ThreadRowHarness({
   options = DEFAULT_OPTIONS,
   onRowEvent,
   onCustomizeRowActions,
-  sectionDestinations,
 }: HarnessProps) {
   const row = (
     <ThreadRow
@@ -119,13 +195,7 @@ function ThreadRowHarness({
             onKeyDown={onRowEvent}
             onClick={onRowEvent}
           >
-            {sectionDestinations ? (
-              <ThreadSectionMoveProvider destinations={sectionDestinations}>
-                {row}
-              </ThreadSectionMoveProvider>
-            ) : (
-              row
-            )}
+            {row}
           </div>
         </CustomizeRowActionsContext.Provider>
       </SidebarRenameProvider>
@@ -150,6 +220,7 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   projects?: PluginSidebarProject[];
   providers?: PluginProvidersState["providers"];
   sdk?: PluginSdkTestFakes;
+  threadActions?: TestThreadActionsResolver;
 }
 
 function renderThreadRow({
@@ -162,6 +233,7 @@ function renderThreadRow({
   projects = [],
   providers = [],
   sdk,
+  threadActions = fakeThreadActions,
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
   rerenderThreadRow(nextThread: PluginSidebarThread): void;
@@ -187,6 +259,7 @@ function renderThreadRow({
         : {},
       sidebarSplitLayout: splitLayout,
       sdk,
+      threadActions,
     },
   );
   return Object.assign(slot, {
@@ -235,21 +308,13 @@ function openActionsMenu() {
   );
 }
 
-function deferred() {
-  let resolve!: () => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<void>((done, fail) => {
-    resolve = done;
-    reject = fail;
-  });
-  return { promise, resolve, reject };
-}
-
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   resetSidebarTitleDoubleClickForTest();
   resetPreferencesSyncForTest();
+  actionRuns.length = 0;
+  moveSelections.length = 0;
 });
 
 describe("ThreadRow", () => {
@@ -331,93 +396,56 @@ describe("ThreadRow", () => {
     ]);
   });
 
-  it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", async () => {
+  it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", () => {
     const thread = createThread({ archivedAt: 1, isArchived: true });
     const rowEvent = vi.fn();
-    const unarchive = vi.fn().mockResolvedValue({ ok: true });
-    const slot = renderThreadRow({
-      thread,
-      onRowEvent: rowEvent,
-      sdk: { threads: { unarchive } },
-    });
-    const restore = screen.getByRole("button", { name: "Unarchive thread" });
-    expect(restore.querySelector('[data-icon="ArchiveRestore"]')).toBeTruthy();
+    renderThreadRow({ thread, onRowEvent: rowEvent });
+    const restore = screen.getByRole("button", { name: "Unarchive" });
+    expect(restore.querySelector('[data-icon="Archive"]')).toBeTruthy();
     expect(restore.classList.contains("bg-state-hover")).toBe(false);
     expect(restore.classList.contains("bg-state-active")).toBe(false);
     expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
     expect(restore.closest(".\\[\\@media\\(hover\\:none\\)\\]\\:hidden")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
     fireEvent.pointerDown(restore, { pointerType: "touch", button: 0 });
     fireEvent.keyDown(restore, { key: "Enter" });
     fireEvent.click(restore);
-    await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        { method: "threads.unarchive", args: [{ threadId: "thr_test" }] },
-      ]),
-    );
+    expect(actionRuns).toEqual(["core:archive"]);
     expect(rowEvent).not.toHaveBeenCalled();
   });
 
-  it("disables the restore button while its unarchive is in flight and recovers when it fails", async () => {
-    const pending = deferred();
-    const unarchive = vi.fn().mockReturnValue(pending.promise);
-    renderThreadRow({
-      thread: createThread({ archivedAt: 1, isArchived: true }),
-      sdk: { threads: { unarchive } },
-    });
-    const restore = screen.getByRole<HTMLButtonElement>("button", {
-      name: "Unarchive thread",
-    });
-    expect(restore.disabled).toBe(false);
-    fireEvent.click(restore);
-    await waitFor(() => expect(restore.disabled).toBe(true));
-    fireEvent.click(restore);
-    expect(unarchive).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      pending.reject(new Error("Unarchive failed"));
-      await pending.promise.catch(() => undefined);
-    });
-    await waitFor(() => expect(restore.disabled).toBe(false));
-    fireEvent.click(restore);
-    expect(unarchive).toHaveBeenCalledTimes(2);
-  });
-
-  it("archives through the host action from the hover control", () => {
-    const slot = renderThreadRow();
-    fireEvent.click(screen.getByRole("button", { name: "Archive thread" }));
-    expect(slot.inspection.sidebarActionCalls).toEqual([
-      { method: "archive", threadId: "thr_test" },
-    ]);
+  it("archives through the registered action from the hover control", () => {
+    renderThreadRow();
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    expect(actionRuns).toEqual(["core:archive"]);
   });
 
   it("shows the configured row actions in order and reserves their width", () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
-      "pin",
-      "copyLink",
-      "archive",
+      "core:pin",
+      "core:copyLink",
+      "core:archive",
     ]);
-    const slot = renderThreadRow();
+    renderThreadRow();
     const controls = document.querySelector("[data-sidebar-row-controls]");
     expect(
       Array.from(controls?.querySelectorAll("button") ?? []).map((button) =>
         button.getAttribute("aria-label"),
       ),
-    ).toEqual(["Pin", "Copy thread link", "Archive thread", "Thread actions"]);
+    ).toEqual(["Pin", "Copy thread link", "Archive", "Thread actions"]);
     expect(
       document
         .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
         ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
     ).toBe("calc(var(--spacing) * 22.5)");
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
-    expect(slot.inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "thr_test", pinned: true },
-    ]);
+    expect(actionRuns).toEqual(["core:pin"]);
   });
 
   it("shows only the actions menu when every row action is turned off", () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), []);
     renderThreadRow();
-    expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
     expect(screen.getByRole("button", { name: "Thread actions" })).toBeTruthy();
     expect(
       document
@@ -426,7 +454,7 @@ describe("ThreadRow", () => {
     ).toBe("calc(var(--spacing) * 0)");
   });
 
-  it.each([[[]], [["pin", "copyLink", "archive"]]] as const)(
+  it.each([[[]], [["core:pin", "core:copyLink", "core:archive"]]] as const)(
     "reserves one action for an archived row whatever the row actions (%j)",
     (rowActions) => {
       getDefaultStore().set(preferenceValueAtom("rowActions"), [...rowActions]);
@@ -442,76 +470,67 @@ describe("ThreadRow", () => {
   );
 
   it.each([
-    {
-      item: "Mark read",
-      thread: createThread(),
-      call: { method: "setRead", threadId: "thr_test", read: true },
-    },
+    { item: "Mark read", thread: createThread(), key: "core:read" },
     {
       item: "Mark unread",
       thread: createThread({ lastReadAt: 5, latestAttentionAt: 1 }),
-      call: { method: "setRead", threadId: "thr_test", read: false },
+      key: "core:read",
     },
-    {
-      item: "Pin",
-      thread: createThread(),
-      call: { method: "setPinned", threadId: "thr_test", pinned: true },
-    },
+    { item: "Pin", thread: createThread(), key: "core:pin" },
     {
       item: "Unpin",
       thread: createThread({ pinnedAt: 3, isPinned: true }),
-      call: { method: "setPinned", threadId: "thr_test", pinned: false },
+      key: "core:pin",
     },
-    {
-      item: "Archive",
-      thread: createThread(),
-      call: { method: "archive", threadId: "thr_test" },
-    },
-  ])(
-    "routes the $item menu item to the host action",
-    async ({ item, thread, call }) => {
-      const slot = renderThreadRow({ thread });
-      openActionsMenu();
-      fireEvent.click(await screen.findByRole("menuitem", { name: item }));
-      await waitFor(() =>
-        expect(slot.inspection.sidebarActionCalls).toEqual([call]),
-      );
-    },
-  );
-
-  it("drops split and move from the row when they are unavailable", async () => {
-    const { visibleThreadRowActions } = await import("./ThreadActionsMenu.js");
-    expect(
-      visibleThreadRowActions(["split", "move", "archive"], {
-        split: false,
-        move: false,
-      }),
-    ).toEqual(["archive"]);
-    expect(
-      visibleThreadRowActions(["split", "move", "archive"], {
-        split: true,
-        move: true,
-      }),
-    ).toEqual(["split", "move", "archive"]);
+    { item: "Archive", thread: createThread(), key: "core:archive" },
+  ])("runs the $item menu item", async ({ item, thread, key }) => {
+    renderThreadRow({ thread });
+    openActionsMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: item }));
+    await waitFor(() => expect(actionRuns).toEqual([key]));
   });
 
-  it("offers Move only on rows that can move", () => {
-    const destinations = [
-      { label: "Planning", sectionId: "sec_planning" },
-      { label: "Threads", sectionId: null },
-    ];
+  it("skips row action keys with no registered action", () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
-      "move",
-      "archive",
+      "core:split",
+      "core:move",
+      "notes/star",
+      "core:archive",
     ]);
-    renderThreadRow({ sectionDestinations: destinations });
+    renderThreadRow({
+      threadActions: (target, surface, rpc) =>
+        fakeThreadActions(target, surface, rpc).filter(
+          (item) => item.key !== "core:split" && item.key !== "core:move",
+        ),
+    });
+    const controls = document.querySelector("[data-sidebar-row-controls]");
     expect(
-      screen.getByRole("button", { name: "Move to section" }),
-    ).toBeTruthy();
+      Array.from(controls?.querySelectorAll("button") ?? []).map((button) =>
+        button.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Archive", "Thread actions"]);
+    expect(
+      document
+        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
+        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
+    ).toBe("calc(var(--spacing) * 7.5)");
+  });
+
+  it("offers Move only on rows that can move and opens its choices from the button", async () => {
+    getDefaultStore().set(preferenceValueAtom("rowActions"), [
+      "core:move",
+      "core:archive",
+    ]);
+    renderThreadRow({ thread: createThread({ sectionId: "sec_planning" }) });
+    const move = screen.getByRole("button", { name: "Move to section" });
+    fireEvent.pointerDown(move, { button: 0 });
+    const current = await screen.findByRole("menuitem", { name: "Planning" });
+    expect(current.getAttribute("aria-current")).toBe("true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Building" }));
+    expect(moveSelections).toEqual(["sec_building"]);
     cleanup();
     renderThreadRow({
       thread: createThread({ parentThreadId: "thr_parent" }),
-      sectionDestinations: destinations,
     });
     expect(
       screen.queryByRole("button", { name: "Move to section" }),
@@ -523,71 +542,9 @@ describe("ThreadRow", () => {
     ).toBe("calc(var(--spacing) * 7.5)");
   });
 
-  it.each([false, true])(
-    "opens a new thread in the row's environment with pinned=%s",
-    async (pinned) => {
-      const slot = renderThreadRow({
-        isCompactViewport: true,
-        thread: createThread({
-          projectId: "proj_environment",
-          environment: makeSidebarEnvironment({
-            id: "env_existing",
-            path: "/repo",
-          }),
-          sectionId: "sec_building",
-          pinnedAt: pinned ? 1 : null,
-        }),
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-      fireEvent.click(
-        await screen.findByRole("menuitem", {
-          name: "New thread in environment",
-        }),
-      );
-      expect(slot.inspection.sidebarActionCalls).toEqual([
-        {
-          method: "openNewThread",
-          options: {
-            projectId: "proj_environment",
-            environmentId: "env_existing",
-            experimental_placement: { sectionId: "sec_building", pinned },
-            focusPrompt: true,
-          },
-        },
-      ]);
-    },
-  );
-
-  it.each([
-    { compact: true, environment: null },
-    { compact: true, environment: makeSidebarEnvironment() },
-    { compact: false, environment: makeSidebarEnvironment({ path: "/repo" }) },
-  ])(
-    "omits environment reuse for compact=$compact and environment=$environment",
-    async ({ compact, environment }) => {
-      renderThreadRow({
-        isCompactViewport: compact,
-        thread: createThread({ environment }),
-      });
-      if (compact)
-        fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-      else openActionsMenu();
-      await screen.findByRole("menuitem", { name: "Rename" });
-      expect(
-        screen.queryByRole("menuitem", { name: "New thread in environment" }),
-      ).toBeNull();
-    },
-  );
-
-  it("orders the actions menu like the row actions, with customize before archive", async () => {
+  it("renders the registered actions by group, with customize before the lifecycle group", async () => {
     const customize = vi.fn();
-    renderThreadRow({
-      onCustomizeRowActions: customize,
-      sectionDestinations: [
-        { label: "Planning", sectionId: "sec_planning" },
-        { label: "Threads", sectionId: null },
-      ],
-    });
+    renderThreadRow({ onCustomizeRowActions: customize });
     openActionsMenu();
     const menu = await screen.findByRole("menu");
     expect(
@@ -616,70 +573,52 @@ describe("ThreadRow", () => {
     expect(customize).toHaveBeenCalledWith("thr_test");
   });
 
-  it("asks the host to confirm deletion from the menu", async () => {
-    const slot = renderThreadRow();
+  it("renders the Rename menu item as an inline rename, not the registered run", async () => {
+    renderThreadRow();
     openActionsMenu();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
-    await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toEqual([
-        { method: "requestDelete", threadId: "thr_test" },
-      ]),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    expect(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty("value", "Thread");
+    expect(actionRuns).toEqual([]);
   });
 
-  it("opens in a split from the menu and unarchives through the sdk", async () => {
-    const unarchive = vi.fn().mockResolvedValue({ ok: true });
-    const slot = renderThreadRow({
+  it("opens choices as a drawer step with Back on compact", async () => {
+    renderThreadRow({ isCompactViewport: true });
+    fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Move to section" }),
+    );
+    expect(await screen.findByRole("menuitem", { name: "Building" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
+  });
+
+  it("runs the destructive Delete action from the menu", async () => {
+    renderThreadRow();
+    openActionsMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await waitFor(() => expect(actionRuns).toEqual(["core:delete"]));
+  });
+
+  it("runs Open in split and Unarchive from an archived row's menu", async () => {
+    renderThreadRow({
       thread: createThread({ archivedAt: 1, isArchived: true }),
-      sdk: { threads: { unarchive } },
     });
     openActionsMenu();
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Open in split" }),
     );
-    expect(
-      slot.inspection.sidebarActionCalls.filter((call) => call.options),
-    ).toEqual([
-      { method: "open", threadId: "thr_test", options: { split: true } },
-    ]);
     openActionsMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Unarchive" }));
     await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        { method: "threads.unarchive", args: [{ threadId: "thr_test" }] },
-      ]),
+      expect(actionRuns).toEqual(["core:split", "core:archive"]),
     );
   });
 
-  it("copies the canonical thread URL built from the href", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-    renderThreadRow({
-      thread: createThread({ href: "/projects/proj_test/threads/thr_test" }),
-    });
-    openActionsMenu();
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Copy thread link" }),
-    );
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/projects/proj_test/threads/thr_test`,
-      ),
-    );
-    vi.unstubAllGlobals();
-  });
-
-  it("moves the thread to another section through the sdk", async () => {
-    const update = vi.fn().mockResolvedValue({ ok: true });
-    const slot = renderThreadRow({
-      thread: createThread({ sectionId: "sec_planning" }),
-      sdk: { threads: { update } },
-      sectionDestinations: [
-        { label: "Planning", sectionId: "sec_planning" },
-        { label: "Building", sectionId: "sec_building" },
-        { label: "Threads", sectionId: null },
-      ],
-    });
+  it("selects a section from the Move submenu and marks the current one", async () => {
+    renderThreadRow({ thread: createThread({ sectionId: "sec_planning" }) });
     openActionsMenu();
     const trigger = await screen.findByRole("menuitem", {
       name: "Move to section",
@@ -687,56 +626,9 @@ describe("ThreadRow", () => {
     fireEvent.keyDown(trigger, { key: "ArrowRight" });
     const current = await screen.findByRole("menuitem", { name: "Planning" });
     expect(current.getAttribute("aria-current")).toBe("true");
+    expect(current.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Building" }));
-    await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        {
-          method: "threads.update",
-          args: [{ threadId: "thr_test", sectionId: "sec_building" }],
-        },
-      ]),
-    );
-  });
-
-  it("unpins before moving a pinned thread and only unpins for its current section", async () => {
-    const unpin = vi.fn().mockResolvedValue({ ok: true });
-    const update = vi.fn().mockResolvedValue({ ok: true });
-    const destinations = [
-      { label: "Planning", sectionId: "sec_planning" },
-      { label: "Threads", sectionId: null },
-    ];
-    const slot = renderThreadRow({
-      thread: createThread({
-        sectionId: "sec_planning",
-        pinnedAt: 2,
-        isPinned: true,
-      }),
-      sdk: { threads: { unpin, update } },
-      sectionDestinations: destinations,
-    });
-    openActionsMenu();
-    fireEvent.keyDown(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-      { key: "ArrowRight" },
-    );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Threads" }));
-    await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        { method: "threads.unpin", args: [{ threadId: "thr_test" }] },
-        {
-          method: "threads.update",
-          args: [{ threadId: "thr_test", sectionId: null }],
-        },
-      ]),
-    );
-    openActionsMenu();
-    fireEvent.keyDown(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-      { key: "ArrowRight" },
-    );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Planning" }));
-    await waitFor(() => expect(unpin).toHaveBeenCalledTimes(2));
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(moveSelections).toEqual(["sec_building"]);
   });
 
   it("opens the context menu on right click and starts an inline rename from it", async () => {
@@ -750,21 +642,17 @@ describe("ThreadRow", () => {
   });
 
   it("does not select a menu item when the opening right click is released over it", async () => {
-    const slot = renderThreadRow();
+    renderThreadRow();
     fireEvent.contextMenu(screen.getByRole("link", { name: "Open Thread" }));
     const pin = await screen.findByRole("menuitem", { name: "Pin" });
 
     fireEvent.pointerUp(pin, { button: 2, pointerType: "mouse" });
 
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    expect(actionRuns).toEqual([]);
     expect(screen.getByRole("menuitem", { name: "Pin" })).toBe(pin);
 
     fireEvent.click(pin);
-    await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toEqual([
-        { method: "setPinned", threadId: "thr_test", pinned: true },
-      ]),
-    );
+    await waitFor(() => expect(actionRuns).toEqual(["core:pin"]));
   });
 
   const splitWorkingCases: Array<{

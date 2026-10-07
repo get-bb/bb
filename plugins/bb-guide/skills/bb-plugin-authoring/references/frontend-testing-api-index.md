@@ -14,6 +14,8 @@ Read `testing.md` for examples and fidelity limits.
 - `ComposerLog`
 - `SidebarActionCall`
 - `SidebarNavigationCall`
+- `TestThreadActionsResolver` — what `renderSlot` `options.threadActions` returns for
+  `experimental_useThreadActions(target, surface)`; receives the slot's `useRpc()` client
 - `installTestPluginRuntime`
 - `CapturedPluginApp`
 - `PluginAppSource`

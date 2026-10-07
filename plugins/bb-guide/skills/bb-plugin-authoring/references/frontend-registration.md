@@ -163,6 +163,43 @@ A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by
 `parentThreadId === threadId`.
 
+### An action in every thread menu
+
+`app.slots.experimental_threadAction` adds a row to the thread header's
+actions menu, the sidebar row's menu, its right-click menu, the compact
+long-press drawer, and, when the user picks it in Customize row actions, a
+sidebar row's quick-action buttons. The host renders it; `resolve` returns
+data and may depend only on the thread target and your plugin's own
+per-thread metadata, which the host fetches for you. Return null to hide the
+action for that thread or surface. Set exactly one of `run` or `choices`; a
+`choices` action renders as a submenu, a drawer step with Back, or a popover.
+`rpc` is your plugin's `useRpc()` client for handlers that run outside React;
+the host refetches `metadata` after `run` or `select` settles.
+
+```tsx
+app.slots.experimental_threadAction({
+  id: "notifications",
+  title: "Notifications",
+  resolve: ({ thread, metadata, rpc }) => ({
+    label: "Notifications",
+    icon: "Bell",
+    group: "organize",
+    choices: {
+      heading: "Notifications",
+      items: [
+        { id: "all", label: "All activity", selected: metadata?.level === "all" },
+        { id: "muted", label: "Muted", selected: metadata?.level === "muted" },
+      ],
+      select: (level) => rpc.call("setLevel", { threadId: thread.id, level }),
+    },
+  }),
+});
+```
+
+`experimental_useThreadActions(target, surface)` returns the full ordered list
+(bb's own actions and every plugin's) so a replaced thread list renders the
+same menu as the built-in one. Keys are `core:<id>` and `<pluginId>/<id>`.
+
 ### A control in the Browser toolbar
 
 `app.slots.experimental_browserToolbarAction` renders a component beside the

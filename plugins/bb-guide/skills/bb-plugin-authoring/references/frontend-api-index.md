@@ -185,6 +185,16 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginBoundThreadsArea`
 - `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
+- `PluginThreadActionTarget`
+- `PluginThreadActionSurface`
+- `PluginThreadActionGroup`
+- `PluginThreadActionChoice`
+- `PluginThreadActionChoices`
+- `PluginThreadAction`
+- `PluginThreadActionContext`
+- `PluginThreadActionRegistration` — the registration accepted by
+  `app.slots.experimental_threadAction`
+- `PluginThreadActionItem` — one row of `experimental_useThreadActions`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
 - `PluginSidebarSplitLayout`

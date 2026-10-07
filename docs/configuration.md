@@ -1112,15 +1112,18 @@ the two. Drag a filled slot onto another to reorder them. Hiding every slot
 leaves only the actions menu.
 Archived rows keep their unarchive button regardless of this setting.
 
-The Thread list plugin's `rowActions` preference defaults to `["archive"]` and
-accepts up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, and
-`archive`, in display order. Duplicates are deduplicated. `split` is skipped
-where a split is unavailable, and `move` is skipped for threads that cannot
-move to another section. `move` opens a menu of sections.
+The Thread list plugin's `rowActions` preference defaults to `["core:archive"]`
+and accepts up to three thread action keys, in display order: bb's own
+`core:split`, `core:copyLink`, `core:read`, `core:pin`, `core:move`,
+`core:rename`, and `core:archive`, or a plugin's `<pluginId>/<actionId>`.
+Duplicates are deduplicated and bare legacy ids such as `archive` become
+`core:archive`. A key whose action is hidden for a row (`core:split` where no
+split is available, `core:move` for a thread that cannot move) or has no
+registered action is skipped on that row. `core:move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions
-bb thread-list prefs set rowActions '["pin","copyLink","archive"]'
+bb thread-list prefs set rowActions '["core:pin","core:copyLink","core:archive"]'
 bb thread-list prefs set rowActions '[]'
 bb thread-list prefs reset rowActions
 ```

@@ -3007,6 +3007,71 @@ deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
 
+## `app.slots.experimental_threadAction` / `experimental_useThreadActions` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** A thread action is pure data: `resolve({ thread, surface,
+metadata })` returns `{ label, icon, group, variant?, disabled?, run? | choices? }`
+or null to hide. The host renders it into every surface bb's own thread menu
+has: the thread header's actions menu, the sidebar row's menu, the row's
+right-click context menu, the compact long-press drawer, and (when the user
+picks it) a sidebar row quick-action button. A `choices` action renders as a
+submenu on desktop, a drawer step with Back on compact, and a popover from the
+icon button. bb's own items (Open in split, New thread in environment, Copy
+thread link, Mark read, Pin, Move to section, Rename, Archive, Delete) are
+built with the same `PluginThreadAction` shape, so core and plugins render from
+one list and the header and sidebar menus cannot drift.
+
+`experimental_useThreadActions(target, surface)` returns that list for a
+thread as `{ key, pluginId, action }[]`, keyed `core:<id>` for bb's actions and
+`<pluginId>/<id>` for plugins. Groups render in the order open, organize,
+lifecycle with a separator between non-empty groups; bb's actions precede
+plugins within a group, plugins in registration order. The hook owns one
+`thread_plugin_metadata` query per registering plugin for the target thread
+and updates it when that plugin writes through
+`useSdk().threads.updatePluginMetadata`. `resolve` also receives `rpc`, the
+plugin's own `bb.rpc` client (what `useRpc()` returns), because `run` and
+`select` execute outside React; after a plugin `run` or `select` settles the
+host invalidates that plugin's metadata query for the thread, so a server-side
+write made through RPC is visible on the next render instead of after the
+30s stale window. A `resolve` that throws, or returns both or neither of
+`run` and `choices`, drops only that row and logs; the menu still renders.
+`run` and `select` errors are contained the same way.
+
+**Constraint.** An action may depend only on the thread target and the
+plugin's own per-thread metadata. Plugins that need derived state (an inherited
+notification level) denormalise it into their row on write.
+
+**rowActions.** The thread list's `rowActions` preference stores action keys.
+Stored legacy ids (`pin`, `archive`, …) migrate to `core:<id>` on read and
+write; keys with no live registration are skipped when a row renders and shown
+by key in Customize row actions. Customize lists every registered action, core
+and plugin, resolved against the originating row with pin, archive, and child
+state normalised so labels are stable.
+
+**Replacement thread lists.** `experimental_threadList` providers call the
+same hook, so a replacement list renders the same menu as the built-in one.
+The built-in list substitutes its inline rename for `core:rename`'s `run`,
+keeping its pre-slot behaviour; the header opens the rename dialog.
+
+**Audit before stabilizing.**
+
+1. **Per-row metadata fetches.** The `button` surface runs once per visible
+   sidebar row, so each registering plugin costs one small GET per windowed row
+   (deduplicated and cached for 30s). Decide on a batched read or a lazier
+   fetch (only once a quick action is configured) before a second plugin
+   registers.
+2. **Caller policy.** The header hides `core:split` for the thread already in
+   view by key. Decide whether the hook should take caller capabilities instead.
+3. **Surface vocabulary.** `"menu" | "button"` collapses dropdown, context
+   menu, and drawer. Confirm no plugin needs to tell them apart.
+4. **Section-move preferences.** Move destinations come from the host's
+   section-move context, which still reads the legacy `sidebar.*` UI
+   preferences the thread-list plugin migrated away from; both menus now share
+   that source. Point it at the plugin's preferences or drop the legacy keys.
+5. **Picker catalog.** Customize row actions resolves against one normalised
+   thread. Decide whether registrations should carry a thread-independent icon
+   and label for the picker instead.
+
 ## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Renders a plugin component beside the address bar in each

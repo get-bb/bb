@@ -15,6 +15,7 @@ type ActionMenuSurface = "context" | "dropdown";
 interface ActionMenuItemProps {
   children: ReactNode;
   variant?: "default" | "destructive";
+  disabled?: boolean;
   icon: IconName;
   onSelect?: (event: Event) => void;
   surface: ActionMenuSurface;
@@ -27,6 +28,7 @@ interface ActionMenuSeparatorProps {
 export function ActionMenuItem({
   children,
   variant,
+  disabled,
   icon,
   onSelect,
   surface,
@@ -45,6 +47,7 @@ export function ActionMenuItem({
           variant === "destructive" &&
             "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive",
         )}
+        disabled={disabled}
         onSelect={onSelect}
       >
         {content}
@@ -53,7 +56,7 @@ export function ActionMenuItem({
   }
 
   return (
-    <DropdownMenuItem variant={variant} onSelect={onSelect}>
+    <DropdownMenuItem variant={variant} disabled={disabled} onSelect={onSelect}>
       {content}
     </DropdownMenuItem>
   );

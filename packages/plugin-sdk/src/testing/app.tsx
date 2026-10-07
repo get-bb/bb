@@ -73,6 +73,10 @@ import {
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
   type PluginThreadHeaderActionRegistration,
+  type PluginThreadActionItem,
+  type PluginThreadActionRegistration,
+  type PluginThreadActionSurface,
+  type PluginThreadActionTarget,
   type ExperimentalPluginBrowserToolbarActionRegistration,
   type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
@@ -275,6 +279,7 @@ interface SlotEnv {
   sidebarThreads: PluginSidebarThreadsState;
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
+  threadActions: TestThreadActionsResolver;
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
   sidebarDraftThreadIds: ReadonlySet<string>;
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
@@ -301,6 +306,18 @@ interface TestFixedTabTargetStore {
   } | null;
   subscribe(listener: () => void): () => void;
 }
+
+/**
+ * What `experimental_useThreadActions(target, surface)` returns in a test;
+ * the host's own actions are not emulated. Omitted → an empty list. `rpc` is
+ * the slot's `useRpc()` client (backed by `renderSlot` `options.rpc`), so a
+ * test can run a captured `threadActions` registration's `resolve` with it.
+ */
+export type TestThreadActionsResolver = (
+  target: PluginThreadActionTarget,
+  surface: PluginThreadActionSurface,
+  rpc: PluginRpcClient,
+) => readonly PluginThreadActionItem[];
 
 /** One recorded `experimental_useSidebarThreadActions()` call. */
 export interface SidebarActionCall {
@@ -438,6 +455,8 @@ interface TestRealtimeConnectionStore {
 }
 
 const SlotEnvContext = createContext<SlotEnv | null>(null);
+
+const NO_THREAD_ACTIONS: TestThreadActionsResolver = () => [];
 
 function useSlotEnv(hook: string): SlotEnv {
   const env = useContext(SlotEnvContext);
@@ -1127,6 +1146,13 @@ const testPluginSdkApp = {
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
   },
+  experimental_useThreadActions(
+    target: PluginThreadActionTarget,
+    surface: PluginThreadActionSurface,
+  ): readonly PluginThreadActionItem[] {
+    const env = useSlotEnv("experimental_useThreadActions");
+    return env.threadActions(target, surface, env.rpcClient);
+  },
   experimental_useSidebarThreadSplit(threadId): PluginSidebarThreadSplit {
     const env = useSlotEnv("experimental_useSidebarThreadSplit");
     return useMemo(
@@ -1276,6 +1302,7 @@ export interface CapturedPluginApp {
   experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadActions: PluginThreadActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
@@ -1545,6 +1572,11 @@ export interface RenderSlotOptions<
   sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
   /** The split layout `useSidebarSplitLayout()` reports. Omitted → null. */
   sidebarSplitLayout?: PluginSidebarSplitLayout;
+  /**
+   * What `experimental_useThreadActions()` reports for a thread and surface.
+   * Omitted → an empty list.
+   */
+  threadActions?: TestThreadActionsResolver;
   /**
    * Items and the active item `experimental_useSidebarNavigation()` reports.
    * Omitted → no items. Actions are recorded in
@@ -2253,6 +2285,7 @@ export function renderSlot<
     sidebarThreads,
     sidebarActions,
     sidebarActionCalls,
+    threadActions: options.threadActions ?? NO_THREAD_ACTIONS,
     sidebarPullRequests,
     sidebarDraftThreadIds,
     sidebarRowStatuses,

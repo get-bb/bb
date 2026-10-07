@@ -33,7 +33,8 @@ export const environmentGroupingSchema = z.union([
   z.boolean(),
 ]);
 
-export const THREAD_ROW_ACTION_IDS = [
+export const THREAD_ROW_ACTION_LIMIT = 3;
+const LEGACY_ROW_ACTION_IDS = new Set([
   "split",
   "copyLink",
   "read",
@@ -41,10 +42,18 @@ export const THREAD_ROW_ACTION_IDS = [
   "move",
   "rename",
   "archive",
-] as const;
-export const THREAD_ROW_ACTION_LIMIT = 3;
-export const threadRowActionIdSchema = z.enum(THREAD_ROW_ACTION_IDS);
-export type ThreadRowActionId = z.infer<typeof threadRowActionIdSchema>;
+]);
+const CORE_ROW_ACTION_PREFIX = "core:";
+
+export function migrateRowActionKeys(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  const keys = value.map((key) =>
+    typeof key === "string" && LEGACY_ROW_ACTION_IDS.has(key)
+      ? `${CORE_ROW_ACTION_PREFIX}${key}`
+      : key,
+  );
+  return [...new Set(keys)];
+}
 
 const collapsibleSectionIdSchema = z.enum(["pinned", "threads"]);
 
@@ -139,15 +148,17 @@ export const preferenceDefinitions = {
     "sidebar.hiddenGroups",
   ),
   rowActions: definePreference(
-    z
-      .array(threadRowActionIdSchema)
-      .max(LIST_MAX_LENGTH)
-      .transform((value) => [...new Set(value)])
-      .refine((value) => value.length <= THREAD_ROW_ACTION_LIMIT, {
-        message: `Choose at most ${THREAD_ROW_ACTION_LIMIT} row actions`,
-      }),
-    ["archive"],
-    `Up to ${THREAD_ROW_ACTION_LIMIT} quick actions shown on a thread row's hover, left to right before its actions menu: split, copyLink, read, pin, move, rename, or archive. An empty list shows only the menu.`,
+    z.preprocess(
+      migrateRowActionKeys,
+      z
+        .array(listItemSchema)
+        .max(LIST_MAX_LENGTH)
+        .refine((value) => value.length <= THREAD_ROW_ACTION_LIMIT, {
+          message: `Choose at most ${THREAD_ROW_ACTION_LIMIT} row actions`,
+        }),
+    ),
+    ["core:archive"],
+    `Up to ${THREAD_ROW_ACTION_LIMIT} quick actions shown on a thread row's hover, left to right before its actions menu, as thread action keys: core:split, core:copyLink, core:read, core:pin, core:move, core:rename, core:archive, or a plugin's <pluginId>/<actionId>. Keys with no registered action are skipped. An empty list shows only the menu.`,
     null,
   ),
   collapsedSections: definePreference(
@@ -241,16 +252,10 @@ export function parseStoredPreferenceValue<Key extends PreferenceKey>(
 ): PreferenceParseResult<Key> {
   return parsePreferenceValue(
     key,
-    key === "rowActions" ? knownRowActions(value) : value,
+    key === "rowActions" && Array.isArray(value)
+      ? value.slice(0, THREAD_ROW_ACTION_LIMIT)
+      : value,
   );
-}
-
-function knownRowActions(value: unknown): unknown {
-  if (!Array.isArray(value)) return value;
-  const known = value.filter(
-    (id) => threadRowActionIdSchema.safeParse(id).success,
-  );
-  return [...new Set(known)].slice(0, THREAD_ROW_ACTION_LIMIT);
 }
 
 export function describePreference(key: PreferenceKey): string {

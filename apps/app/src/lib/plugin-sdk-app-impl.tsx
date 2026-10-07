@@ -62,6 +62,7 @@ import {
 } from "./plugin-sidebar-navigation";
 import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationModel";
 import { useAppNavigationHost } from "./app-navigation-host";
+import { useThreadActionItems } from "./thread-actions/use-thread-action-items";
 import { useCodeTheme } from "./plugin-code-theme";
 
 export const pluginSdkAppImplementation = {
@@ -96,6 +97,7 @@ export const pluginSdkAppImplementation = {
   experimental_Diff: PluginDiff,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
+  experimental_useThreadActions: useThreadActionItems,
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
   experimental_useSidebarNavigation: useSidebarNavigation,
