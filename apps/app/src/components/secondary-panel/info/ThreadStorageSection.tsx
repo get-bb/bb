@@ -92,7 +92,9 @@ export function ThreadStorageSection({
               aria-hidden
             />
           }
-          name={node.name}
+          name={
+            <span className="text-2xs text-subtle-foreground">{node.name}</span>
+          }
           title={node.path}
           expanded={expanded}
           target={
