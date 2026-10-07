@@ -466,6 +466,8 @@ type ExpectedThreadInteractionsKey =
   | "resolve"
   | "respond";
 type ExpectedThreadQueuedMessagesKey =
+  | "beginEdit"
+  | "cancelEdit"
   | "create"
   | "delete"
   | "list"

@@ -1,5 +1,6 @@
 import {
   createQueuedThreadMessage,
+  claimNextQueuedThreadMessageGroup,
   listEvents,
   listQueuedThreadMessages,
   setQueuedThreadMessageFailureReason,
@@ -21,6 +22,7 @@ import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-
 import { textInput } from "../helpers/prompt-input.js";
 import {
   reportQueuedCommandSuccess,
+  listQueuedThreadCommands,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import {
@@ -856,3 +858,209 @@ describe("queue recovery", () => {
     });
   });
 });
+
+describe("queued edit HTTP lifecycle", () => {
+  it("admits one editor, blocks Send now, then saves new content atomically", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-held-edit",
+        status: "active",
+      });
+      const row = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("ORIGINAL"),
+      });
+      const path = `/api/v1/threads/${thread.id}/queued-messages/${row.id}`;
+      const post = (url: string, body: object, method = "POST") =>
+        harness.app.request(url, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      const admission = await post(`${path}/edit`, {
+        expectedUpdatedAt: row.updatedAt,
+      });
+      expect(admission.status).toBe(200);
+      const held = await admission.json();
+      expect(held.editToken).toBeTypeOf("string");
+      expect(held.editable).toBe(false);
+      expect(
+        (await post(`${path}/edit`, { expectedUpdatedAt: held.updatedAt }))
+          .status,
+      ).toBe(409);
+      expect((await post(`${path}/send`, { mode: "auto" })).status).toBe(409);
+      expect(
+        claimNextQueuedThreadMessageGroup(
+          harness.db,
+          harness.deps.hub,
+          thread.id,
+          () => true,
+        ),
+      ).toBeNull();
+      expect(
+        (
+          await post(
+            path,
+            {
+              expectedUpdatedAt: held.updatedAt,
+              input: textInput("OTHER CLIENT"),
+            },
+            "PATCH",
+          )
+        ).status,
+      ).toBe(409);
+      const saved = await post(
+        path,
+        {
+          expectedUpdatedAt: held.updatedAt,
+          editToken: held.editToken,
+          input: textInput("EDITED"),
+        },
+        "PATCH",
+      );
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toMatchObject({
+        id: row.id,
+        editToken: null,
+        content: textInput("EDITED"),
+      });
+      const claims = claimNextQueuedThreadMessageGroup(
+        harness.db,
+        harness.deps.hub,
+        thread.id,
+        () => true,
+      );
+      expect(claims?.map((r) => JSON.parse(r.content))).toEqual([
+        textInput("EDITED"),
+      ]);
+    });
+  });
+  it("cancel preserves the saved payload and refuses the old token after reacquisition", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-cancel-edit",
+        status: "active",
+      });
+      const row = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("ORIGINAL"),
+      });
+      const path = `/api/v1/threads/${thread.id}/queued-messages/${row.id}`;
+      const post = (url: string, body: object) =>
+        harness.app.request(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      const held = await (
+        await post(`${path}/edit`, { expectedUpdatedAt: row.updatedAt })
+      ).json();
+      const oldArgs = {
+        expectedUpdatedAt: held.updatedAt,
+        editToken: held.editToken,
+      };
+      const resumeResponse = await post(`${path}/edit`, oldArgs);
+      expect(resumeResponse.status).toBe(200);
+      const resumed = await resumeResponse.json();
+      expect(resumed.editToken).not.toBe(held.editToken);
+      expect(
+        claimNextQueuedThreadMessageGroup(
+          harness.db,
+          harness.deps.hub,
+          thread.id,
+          () => true,
+        ),
+      ).toBeNull();
+      expect((await post(`${path}/edit/cancel`, oldArgs)).status).toBe(409);
+      const cancelArgs = {
+        expectedUpdatedAt: resumed.updatedAt,
+        editToken: resumed.editToken,
+      };
+      const cancelled = await post(`${path}/edit/cancel`, cancelArgs);
+      expect(cancelled.status).toBe(200);
+      const restored = await cancelled.json();
+      expect(restored).toMatchObject({
+        content: textInput("ORIGINAL"),
+        editToken: null,
+      });
+      expect(
+        (await post(`${path}/edit`, { expectedUpdatedAt: restored.updatedAt }))
+          .status,
+      ).toBe(200);
+      expect((await post(`${path}/edit/cancel`, cancelArgs)).status).toBe(409);
+      expect(
+        claimNextQueuedThreadMessageGroup(
+          harness.db,
+          harness.deps.hub,
+          thread.id,
+          () => true,
+        ),
+      ).toBeNull();
+    });
+  });
+});
+
+it.each(["save", "cancel"] as const)(
+  "holds through fake-provider turn completion then dispatches the %s payload",
+  async (finish) => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: `host-edit-${finish}`,
+        status: "active",
+      });
+      const row = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("ORIGINAL"),
+      });
+      const path = `/api/v1/threads/${thread.id}/queued-messages/${row.id}`;
+      const request = (url: string, body: object, method = "POST") =>
+        harness.app.request(url, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      const held = await (
+        await request(`${path}/edit`, { expectedUpdatedAt: row.updatedAt })
+      ).json();
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.succeeded" },
+        threadId: thread.id,
+      });
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      const args = {
+        expectedUpdatedAt: held.updatedAt,
+        editToken: held.editToken,
+      };
+      const response =
+        finish === "save"
+          ? await request(
+              path,
+              { ...args, input: textInput("EDITED") },
+              "PATCH",
+            )
+          : await request(`${path}/edit/cancel`, args);
+      expect(response.status).toBe(200);
+      const delivered = await waitForQueuedCommand(
+        harness,
+        (q) =>
+          q.command.type === "turn.submit" && q.command.threadId === thread.id,
+      );
+      if (delivered.command.type !== "turn.submit")
+        throw Error("Expected fake-provider submission");
+      expect(delivered.command.input).toEqual(
+        textInput(finish === "save" ? "EDITED" : "ORIGINAL"),
+      );
+      await reportQueuedCommandSuccess(harness, delivered, {});
+      await vi.waitFor(() =>
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0),
+      );
+    });
+  },
+);

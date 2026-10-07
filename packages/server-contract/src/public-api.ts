@@ -311,6 +311,10 @@ import {
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   queuedMessageListQuerySchema,
+  beginQueuedMessageEditRequestSchema,
+  cancelQueuedMessageEditRequestSchema,
+  type BeginQueuedMessageEditRequest,
+  type CancelQueuedMessageEditRequest,
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   forkThreadRequestSchema,
@@ -1445,6 +1449,24 @@ export const publicApiRoutes = {
         createQueuedMessageRequestSchema,
       ),
       response: jsonResponse<ThreadQueuedMessage>({ status: 201 }),
+    }),
+    beginQueuedMessageEdit: defineRoute({
+      path: "/threads/:id/queued-messages/:queuedMessageId/edit",
+      method: "post",
+      request: jsonRequest<
+        PathThreadAndQueuedMessage,
+        BeginQueuedMessageEditRequest
+      >(beginQueuedMessageEditRequestSchema),
+      response: jsonResponse<ThreadQueuedMessage>(),
+    }),
+    cancelQueuedMessageEdit: defineRoute({
+      path: "/threads/:id/queued-messages/:queuedMessageId/edit/cancel",
+      method: "post",
+      request: jsonRequest<
+        PathThreadAndQueuedMessage,
+        CancelQueuedMessageEditRequest
+      >(cancelQueuedMessageEditRequestSchema),
+      response: jsonResponse<ThreadQueuedMessage>(),
     }),
     updateQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages/:queuedMessageId",

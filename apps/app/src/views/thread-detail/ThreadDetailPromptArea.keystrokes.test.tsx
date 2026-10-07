@@ -14,6 +14,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  waitFor,
   screen,
   within,
 } from "@testing-library/react";
@@ -233,6 +234,21 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => {
     useSetThreadQueuedMessageGroupBoundary: idleMutation,
     useSendThreadQueuedMessage: idleMutation,
     useStopThread: idleMutation,
+    useBeginThreadQueuedMessageEdit: () => ({
+      isPending: false,
+      mutateAsync: async ({
+        queuedMessageId,
+      }: {
+        queuedMessageId: string;
+      }) => ({
+        ...queryMocks.queuedMessages.find((row) => row.id === queuedMessageId),
+        editToken: "test-edit-token",
+      }),
+    }),
+    useCancelThreadQueuedMessageEdit: () => ({
+      isPending: false,
+      mutateAsync: async () => undefined,
+    }),
     useUpdateThreadQueuedMessage: () => ({
       isPending: false,
       mutateAsync: mocks.updateQueuedMessageMutateAsync,
@@ -515,7 +531,7 @@ describe("ThreadDetailPromptArea published composer host", () => {
     expect(shellRenderCount()).toBe(rendersAfterMount);
   });
 
-  it("swaps to a per-session stable host for inline queued-message edits and streams the inline draft", () => {
+  it("swaps to a per-session stable host for inline queued-message edits and streams the inline draft", async () => {
     queryMocks.queuedMessages = [makeQueuedMessage()];
     renderPromptArea({ thread: makeThread(threadId) });
     const rendersAfterMount = shellRenderCount();
@@ -523,6 +539,11 @@ describe("ThreadDetailPromptArea published composer host", () => {
 
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("inline-queued-message-editor"),
+      ).not.toBeNull(),
     );
     expect(shellRenderCount()).toBe(rendersAfterMount + 1);
     expect(observedShellHosts().at(-1)).not.toBe(threadHost);
@@ -549,6 +570,9 @@ describe("ThreadDetailPromptArea published composer host", () => {
     expect(shellRenderCount()).toBe(rendersAfterMount + 1);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull(),
+    );
     expect(shellRenderCount()).toBe(rendersAfterMount + 2);
     expect(observedShellHosts().at(-1)).toBe(threadHost);
     expect(screen.getByTestId("published-host-draft").textContent).toBe("");

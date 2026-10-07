@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -88,6 +89,7 @@ export interface CreateQueuedThreadMessageInput {
 }
 
 export interface UpdateQueuedThreadMessageInput {
+  editToken?: string | null;
   content: PromptInput[];
   expectedUpdatedAt: number;
   id: string;
@@ -219,7 +221,8 @@ export type UpdateQueuedThreadMessageResult =
   | { kind: "updated"; queuedMessage: QueuedThreadMessageRow }
   | { kind: "not_found" }
   | { kind: "claimed" }
-  | { kind: "stale" };
+  | { kind: "stale" }
+  | { kind: "edit_conflict" };
 
 export type ReleaseQueuedMessageClaimArgs =
   ClaimedQueuedThreadMessageMutationArgs;
@@ -319,7 +322,7 @@ export function isOrdinaryTurnEndQueuedMessage(
  * pointer at the SQL so the two cannot drift silently.
  */
 function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
-  if (row.failureReason !== null) return false;
+  if (row.failureReason !== null || row.editToken !== null) return false;
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
@@ -485,7 +488,7 @@ function resolveQueuedThreadMessageNeighbor(
   if (
     !neighbor ||
     neighbor.threadId !== args.threadId ||
-    isQueuedThreadMessageClaimed(neighbor)
+    (isQueuedThreadMessageClaimed(neighbor) || neighbor.editToken !== null)
   ) {
     return false;
   }
@@ -547,6 +550,11 @@ function applyQueuedThreadMessageGroupBoundary(
     }
   }
 
+  const heldGroupIds = new Set(partitionQueuedMessageGroups(queuedMessages)
+    .filter((group) => group.some((row) => row.editToken !== null))
+    .flatMap((group) => group.map((row) => row.id)));
+  if (queuedMessages.some((row, index) => row.groupWithNext !== (index < boundaryIndex) &&
+    (heldGroupIds.has(row.id) || (index < boundaryIndex && heldGroupIds.has(queuedMessages[index + 1]?.id ?? ""))))) return { kind: "claimed" };
   let changed = false;
   const now = Date.now();
   for (const [index, queuedMessage] of queuedMessages.entries()) {
@@ -667,6 +675,49 @@ export function createQueuedThreadMessage(
   return row;
 }
 
+export interface QueuedThreadMessageEditInput {
+  editToken?: string | null;
+  id: string;
+  threadId: string;
+  expectedUpdatedAt: number;
+}
+
+export function beginQueuedThreadMessageEdit(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: QueuedThreadMessageEditInput,
+): UpdateQueuedThreadMessageResult {
+  const result = db.transaction((tx): UpdateQueuedThreadMessageResult => {
+    const row = getQueuedThreadMessage(tx, input.id);
+    if (!row || row.threadId !== input.threadId) return { kind: "not_found" };
+    if (isQueuedThreadMessageClaimed(row)) return { kind: "claimed" };
+    if (row.editToken !== (input.editToken ?? null) || row.payloadKind !== "inline") return { kind: "edit_conflict" };
+    if (row.updatedAt !== input.expectedUpdatedAt) return { kind: "stale" };
+    const queuedMessage = tx.update(queuedThreadMessages).set({ editToken: randomUUID(), updatedAt: Math.max(Date.now(), row.updatedAt + 1) }).where(eq(queuedThreadMessages.id, row.id)).returning().get();
+    return queuedMessage ? { kind: "updated", queuedMessage } : { kind: "not_found" };
+  }, { behavior: "immediate" });
+  if (result.kind === "updated") notifier.notifyThread(input.threadId, ["queue-changed"]);
+  return result;
+}
+
+export function cancelQueuedThreadMessageEdit(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: QueuedThreadMessageEditInput & { editToken: string },
+): UpdateQueuedThreadMessageResult {
+  const result = db.transaction((tx): UpdateQueuedThreadMessageResult => {
+    const row = getQueuedThreadMessage(tx, input.id);
+    if (!row || row.threadId !== input.threadId) return { kind: "not_found" };
+    if (isQueuedThreadMessageClaimed(row)) return { kind: "claimed" };
+    if (row.editToken !== input.editToken) return { kind: "edit_conflict" };
+    if (row.updatedAt !== input.expectedUpdatedAt) return { kind: "stale" };
+    const queuedMessage = tx.update(queuedThreadMessages).set({ editToken: null, updatedAt: Math.max(Date.now(), row.updatedAt + 1) }).where(eq(queuedThreadMessages.id, row.id)).returning().get();
+    return queuedMessage ? { kind: "updated", queuedMessage } : { kind: "not_found" };
+  }, { behavior: "immediate" });
+  if (result.kind === "updated") notifier.notifyThread(input.threadId, ["queue-changed"]);
+  return result;
+}
+
 export function updateQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,
@@ -681,6 +732,9 @@ export function updateQueuedThreadMessage(
       if (isQueuedThreadMessageClaimed(existing)) {
         return { kind: "claimed" };
       }
+      if (existing.editToken !== (input.editToken ?? null)) {
+        return { kind: "edit_conflict" };
+      }
       if (existing.updatedAt !== input.expectedUpdatedAt) {
         return { kind: "stale" };
       }
@@ -694,6 +748,7 @@ export function updateQueuedThreadMessage(
         .update(queuedThreadMessages)
         .set({
           content: JSON.stringify(input.content),
+          editToken: null,
           updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
         })
         .where(eq(queuedThreadMessages.id, input.id))
@@ -917,6 +972,8 @@ function claimQueuedThreadMessageIdsInTransaction(
 ): ClaimedQueuedThreadMessageRow[] | null {
   if (ids.length === 0) return null;
 
+  const rows = tx.select().from(queuedThreadMessages).where(inArray(queuedThreadMessages.id, [...ids])).all();
+  if (rows.length !== ids.length || rows.some((row) => row.editToken !== null)) return null;
   const now = Date.now();
   const claimToken = createQueuedThreadMessageClaimToken();
   const updated = tx
@@ -927,6 +984,7 @@ function claimQueuedThreadMessageIdsInTransaction(
         inArray(queuedThreadMessages.id, [...ids]),
         isNull(queuedThreadMessages.claimedAt),
         isNull(queuedThreadMessages.claimToken),
+        isNull(queuedThreadMessages.editToken),
       ),
     )
     .returning()
@@ -996,7 +1054,7 @@ export function claimQueuedThreadMessageGroup(
         partitionQueuedMessageGroups(queuedMessages).find((rows) =>
           rows.some((row) => row.id === id),
         ) ?? null;
-      if (group === null) {
+      if (group === null || group.some((row) => row.editToken !== null)) {
         return null;
       }
       if (
@@ -1050,6 +1108,7 @@ export function claimNextQueuedThreadMessageGroup(
       const group =
         partitionQueuedMessageGroups(queuedMessages).find((rows) => {
           const eligible =
+            !rows.some((row) => row.editToken !== null) &&
             rows.some(isIdleDrainableQueuedMessage) && isGroupEligible(rows);
           return (
             eligible &&
@@ -1097,6 +1156,8 @@ export function reorderQueuedThreadMessage({
         if (!movedQueuedMessage || movedQueuedMessage.threadId !== threadId) {
           return { kind: "not_found" };
         }
+        const movingGroup = partitionQueuedMessageGroups(listQueuedThreadMessages(tx, threadId)).find((group) => group.some((row) => row.id === queuedMessageId));
+        if (movingGroup?.some((row) => row.editToken !== null)) return { kind: "claimed" };
         if (isQueuedThreadMessageClaimed(movedQueuedMessage)) {
           return { kind: "claimed" };
         }
@@ -1519,6 +1580,7 @@ function liveQueuedThreadMessage() {
 
 function automaticallyDrainableQueuedThreadMessage() {
   return and(
+    isNull(queuedThreadMessages.editToken),
     liveQueuedThreadMessage(),
     isNull(queuedThreadMessages.failureReason),
   );

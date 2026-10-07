@@ -48,6 +48,7 @@ export interface QueuedMessagesListProps {
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onCancelEdit?: (id: string) => void;
   onDelete: (id: string) => void;
 }
 

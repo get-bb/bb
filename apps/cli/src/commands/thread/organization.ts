@@ -56,6 +56,7 @@ interface QueueCreateOptions extends JsonOptions {
 }
 
 interface QueueUpdateOptions extends JsonOptions {
+  editToken?: string;
   file?: string[];
   image?: string[];
   messageFile?: string;
@@ -115,9 +116,11 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
         : (row.senderThreadId ?? "Agent"),
     truncateCell(queuedMessagePreview(row.content), MAX_QUEUE_TEXT_WIDTH),
     truncateCell(
-      row.failureReason === null
-        ? describeQueueWait(row)
-        : `Failed: ${row.failureReason}`,
+      row.editToken !== null
+        ? "Editing (held)"
+        : row.failureReason === null
+          ? describeQueueWait(row)
+          : `Failed: ${row.failureReason}`,
       MAX_QUEUE_TEXT_WIDTH,
     ),
     formatQueueSendCountdown(row.sendAt, now),
@@ -393,6 +396,50 @@ export function registerOrganizationCommands(
         },
       ),
     );
+  for (const actionName of [
+    "begin-edit",
+    "resume-edit",
+    "cancel-edit",
+  ] as const) {
+    queue
+      .command(`${actionName} <threadId> <messageId>`)
+      .description(
+        actionName === "begin-edit"
+          ? "Hold a queued message for editing"
+          : actionName === "resume-edit"
+            ? "Take over a held edit without releasing the message"
+            : "Cancel a held edit without changing saved content",
+      )
+      .option("--json", "Print machine-readable JSON output")
+      .action(
+        action(
+          async (threadId: string, messageId: string, opts: JsonOptions) => {
+            const area = createCliBbSdk(getUrl()).threads.queuedMessages;
+            const row = (await area.list({ threadId })).find(
+              (item) => item.id === messageId,
+            );
+            if (!row) throw new Error("Queued message not found");
+            const args = {
+              threadId,
+              queuedMessageId: messageId,
+              expectedUpdatedAt: row.updatedAt,
+            };
+            if (actionName !== "begin-edit" && row.editToken === null)
+              throw new Error("Queued message has no held edit");
+            const result =
+              actionName !== "cancel-edit"
+                ? await area.beginEdit({
+                    ...args,
+                    ...(actionName === "resume-edit"
+                      ? { editToken: row.editToken }
+                      : {}),
+                  })
+                : await area.cancelEdit({ ...args, editToken: row.editToken! });
+            if (!outputJson(opts, result)) printHumanJson(result);
+          },
+        ),
+      );
+  }
   queue
     .command("update <threadId> <messageId> [message]")
     .description("Update a queued message in place")
@@ -413,6 +460,10 @@ export function registerOrganizationCommands(
       [],
     )
     .option("--json", "Print machine-readable JSON output")
+    .option(
+      "--edit-token <token>",
+      "Token from begin-edit when saving a held message",
+    )
     .action(
       action(
         async (
@@ -451,6 +502,7 @@ export function registerOrganizationCommands(
             threadId,
             queuedMessageId: messageId,
             expectedUpdatedAt: existing.updatedAt,
+            editToken: opts.editToken ?? null,
             input,
           });
           if (outputJson(opts, result)) return;

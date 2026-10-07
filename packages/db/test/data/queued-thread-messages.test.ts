@@ -3,6 +3,8 @@ import { threadScope, type PromptInput } from "@bb/domain";
 import { noopNotifier } from "../../src/notifier.js";
 import { insertEvents } from "../../src/data/events.js";
 import {
+  beginQueuedThreadMessageEdit,
+  cancelQueuedThreadMessageEdit,
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessageGroup,
   clearQueuedThreadMessageWaitingOn,
@@ -1917,5 +1919,97 @@ describe("queued thread messages", () => {
         nextQueuedMessageId: secondQueuedMessage.id,
       }).kind,
     ).toBe("stale_neighbor");
+  });
+});
+
+
+describe("queued message edit admission", () => {
+  function queue(db: ReturnType<typeof setup>["db"], threadId: string, text: string) {
+    return createQueuedThreadMessage(db, noopNotifier, { threadId, content: textInput(text), model: "fixture", reasoningLevel: "medium", permissionMode: "full", serviceTier: "default", waitingOn: null, sendAt: null, payload: { kind: "inline" }, systemNotice: null });
+  }
+  it("holds the saved payload against automatic and explicit dispatch until atomic save", () => {
+    const { db, thread } = setup();
+    const row = queue(db, thread.id, "original");
+    const held = beginQueuedThreadMessageEdit(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: row.updatedAt });
+    expect(held.kind).toBe("updated");
+    if (held.kind !== "updated") throw Error("Expected admitted edit");
+    expect(listQueuedThreadMessages(db, thread.id).map(r => r.id)).toEqual([row.id]);
+    expect(claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id, () => true)).toBeNull();
+    expect(claimQueuedThreadMessageGroup(db, noopNotifier, row.id, { kind: "explicit-send" })).toBeNull();
+    expect(updateQueuedThreadMessage(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: held.queuedMessage.updatedAt, content: altInput }).kind).toBe("edit_conflict");
+    const saved = updateQueuedThreadMessage(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: held.queuedMessage.updatedAt, editToken: held.queuedMessage.editToken, content: textInput("edited") });
+    expect(saved.kind).toBe("updated");
+    const sent = claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id, () => true);
+    expect(sent?.map(r => JSON.parse(r.content))).toEqual([textInput("edited")]);
+    expect(sent?.[0]?.sortKey).toBe(row.sortKey);
+  });
+  it("refuses edit admission after dispatch has already claimed the row", () => {
+    const { db, thread } = setup();
+    const row = queue(db, thread.id, "original");
+    expect(claimQueuedThreadMessageGroup(db, noopNotifier, row.id, { kind: "explicit-send" })).not.toBeNull();
+    expect(beginQueuedThreadMessageEdit(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: row.updatedAt }).kind).toBe("claimed");
+  });
+  it("blocks a whole group with a held member while independent rows may drain", () => {
+    const { db, thread } = setup();
+    const lead = queue(db, thread.id, "lead");
+    const tail = queue(db, thread.id, "tail");
+    setQueuedThreadMessageGroupBoundary({ db, notifier: noopNotifier, threadId: thread.id, expectedGroupedPrefixQueuedMessageIds: [lead.id, tail.id], groupBoundaryQueuedMessageId: tail.id });
+    const independent = queue(db, thread.id, "independent");
+    const current = getQueuedThreadMessage(db, tail.id)!;
+    expect(beginQueuedThreadMessageEdit(db, noopNotifier, { id: tail.id, threadId: thread.id, expectedUpdatedAt: current.updatedAt }).kind).toBe("updated");
+    expect(claimQueuedThreadMessageGroup(db, noopNotifier, lead.id, { kind: "explicit-send" })).toBeNull();
+    expect(claimQueuedThreadMessageGroup(db, noopNotifier, tail.id, { kind: "explicit-send" })).toBeNull();
+    expect(claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id, () => true)?.map(r => r.id)).toEqual([independent.id]);
+    expect(reorderQueuedThreadMessage({ db, notifier: noopNotifier, threadId: thread.id, queuedMessageId: lead.id, previousQueuedMessageId: tail.id, nextQueuedMessageId: null }).kind).toBe("claimed");
+    expect(setQueuedThreadMessageGroupBoundary({ db, notifier: noopNotifier, threadId: thread.id, expectedGroupedPrefixQueuedMessageIds: [lead.id], groupBoundaryQueuedMessageId: lead.id }).kind).toBe("claimed");
+    expect(getQueuedThreadMessage(db, lead.id)?.groupWithNext).toBe(true);
+    expect(getQueuedThreadMessage(db, lead.id)?.claimedAt).toBeNull();
+  });
+  it("fences two clients and rejects delayed saves/cancels after a new edit", () => {
+    const { db, thread } = setup();
+    const row = queue(db, thread.id, "original");
+    const first = beginQueuedThreadMessageEdit(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: row.updatedAt });
+    if (first.kind !== "updated" || !first.queuedMessage.editToken) throw Error("Expected held edit");
+    expect(beginQueuedThreadMessageEdit(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: first.queuedMessage.updatedAt }).kind).toBe("edit_conflict");
+    const old = { id: row.id, threadId: thread.id, expectedUpdatedAt: first.queuedMessage.updatedAt, editToken: first.queuedMessage.editToken };
+    const cancelled = cancelQueuedThreadMessageEdit(db, noopNotifier, old);
+    if (cancelled.kind !== "updated") throw Error("Expected cancel");
+    expect(cancelled.queuedMessage.content).toBe(row.content);
+    const second = beginQueuedThreadMessageEdit(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: cancelled.queuedMessage.updatedAt });
+    expect(second.kind).toBe("updated");
+    expect(cancelQueuedThreadMessageEdit(db, noopNotifier, old).kind).toBe("edit_conflict");
+    expect(updateQueuedThreadMessage(db, noopNotifier, { ...old, content: altInput }).kind).toBe("edit_conflict");
+    expect(claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id, () => true)).toBeNull();
+  });
+  it("persists the edit hold through database restart and stale-claim recovery", async () => {
+    const { createConnection } = await import("../../src/connection.js");
+    const { db, thread } = setup();
+    const row = queue(db, thread.id, "original");
+    const held = beginQueuedThreadMessageEdit(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: row.updatedAt });
+    if (held.kind !== "updated") throw Error("Expected held edit");
+    const serialized = db.$client.serialize();
+    db.$client.close();
+    const restarted = createConnection(serialized);
+    try {
+      expect(releaseStaleQueuedMessageClaims(restarted, noopNotifier, { claimedBefore: Date.now() + 86400000, protectedClaimTokens: [] })).toBe(0);
+      expect(getQueuedThreadMessage(restarted, row.id)?.editToken).toBe(held.queuedMessage.editToken);
+      expect(claimNextQueuedThreadMessageGroup(restarted, noopNotifier, thread.id, () => true)).toBeNull();
+      expect(cancelQueuedThreadMessageEdit(restarted, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: held.queuedMessage.updatedAt, editToken: held.queuedMessage.editToken! }).kind).toBe("updated");
+      expect(claimNextQueuedThreadMessageGroup(restarted, noopNotifier, thread.id, () => true)?.[0]?.content).toBe(row.content);
+    } finally { restarted.$client.close(); }
+  });
+  it("resumes an abandoned edit atomically without a dispatchable gap", () => {
+    const { db, thread } = setup();
+    const row = queue(db, thread.id, "original");
+    const first = beginQueuedThreadMessageEdit(db, noopNotifier, { id: row.id, threadId: thread.id, expectedUpdatedAt: row.updatedAt });
+    if (first.kind !== "updated") throw Error("Expected first edit");
+    const old = { id: row.id, threadId: thread.id, expectedUpdatedAt: first.queuedMessage.updatedAt, editToken: first.queuedMessage.editToken! };
+    const resumed = beginQueuedThreadMessageEdit(db, noopNotifier, old);
+    if (resumed.kind !== "updated") throw Error("Expected resumed edit");
+    expect(resumed.queuedMessage.editToken).not.toBe(old.editToken);
+    expect(resumed.queuedMessage.content).toBe(row.content);
+    expect(claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id, () => true)).toBeNull();
+    expect(cancelQueuedThreadMessageEdit(db, noopNotifier, old).kind).toBe("edit_conflict");
+    expect(updateQueuedThreadMessage(db, noopNotifier, { ...old, content: altInput }).kind).toBe("edit_conflict");
   });
 });

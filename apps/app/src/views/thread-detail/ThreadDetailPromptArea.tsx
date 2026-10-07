@@ -489,6 +489,9 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
+    clearInlineQueuedMessageEditor,
+    cancelHeldQueuedMessageEdit,
+    queuedEditActionPending,
     beginEditQueuedMessage,
     queuedMessageDraftSession,
   } = useInlineQueuedMessageEditing({
@@ -912,13 +915,14 @@ export function ThreadDetailPromptArea({
     handleReorderQueuedMessage,
     handleSetQueuedMessageGroupBoundary,
   } = useQueuedMessageActions({
+    queuedEditActionPending,
     threadId: thread.id,
     queuedMessages,
     sendProcessingPersistence: "until-left-queue",
     onSendSuccess: () => setInlineAttachmentError(null),
     onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
-    dismissInlineQueuedMessageEditor,
+    clearInlineQueuedMessageEditor,
     activeComposerDraftInput,
   });
   const isQueueMutationPending =
@@ -2221,6 +2225,7 @@ export function ThreadDetailPromptArea({
             onReorder={handleReorderQueuedMessage}
             onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={beginEditQueuedMessage}
+            onCancelEdit={cancelHeldQueuedMessageEdit}
             onDelete={handleDeleteQueuedMessage}
           />
         )}
@@ -2234,6 +2239,7 @@ export function ThreadDetailPromptArea({
       expandedBannerSection,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
+      cancelHeldQueuedMessageEdit,
       onChangedFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,

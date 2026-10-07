@@ -77,6 +77,8 @@ import type {
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
   UpdateQueuedMessageRequest,
+  BeginQueuedMessageEditRequest,
+  CancelQueuedMessageEditRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -517,6 +519,12 @@ export interface ThreadEventsArea {
 }
 
 export interface ThreadQueuedMessagesArea {
+  beginEdit(
+    args: ThreadQueuedMessageTargetArgs & BeginQueuedMessageEditRequest,
+  ): Promise<ThreadQueuedMessage>;
+  cancelEdit(
+    args: ThreadQueuedMessageTargetArgs & CancelQueuedMessageEditRequest,
+  ): Promise<ThreadQueuedMessage>;
   create(
     args: ThreadQueuedMessageCreateArgs,
   ): Promise<ThreadQueuedMessageCreateResult>;
@@ -988,6 +996,32 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   const queuedMessages: ThreadQueuedMessagesArea = {
+    async beginEdit(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          ":queuedMessageId"
+        ].edit.$post({
+          param: { id: input.threadId, queuedMessageId: input.queuedMessageId },
+          json: {
+            expectedUpdatedAt: input.expectedUpdatedAt,
+            ...(input.editToken ? { editToken: input.editToken } : {}),
+          },
+        }),
+      );
+    },
+    async cancelEdit(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          ":queuedMessageId"
+        ].edit.cancel.$post({
+          param: { id: input.threadId, queuedMessageId: input.queuedMessageId },
+          json: {
+            expectedUpdatedAt: input.expectedUpdatedAt,
+            editToken: input.editToken,
+          },
+        }),
+      );
+    },
     async create(input) {
       const { threadId, ...json } = input;
       return transport.readJson(

@@ -324,6 +324,17 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
+  useBeginThreadQueuedMessageEdit: () => ({
+    isPending: false,
+    mutateAsync: async ({ queuedMessageId }: { queuedMessageId: string }) => ({
+      ...mocks.queuedMessages.find((row) => row.id === queuedMessageId),
+      editToken: "test-edit-token",
+    }),
+  }),
+  useCancelThreadQueuedMessageEdit: () => ({
+    isPending: false,
+    mutateAsync: async () => undefined,
+  }),
   useUpdateThreadQueuedMessage: () => ({
     mutateAsync: vi.fn(),
     isPending: false,

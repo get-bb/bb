@@ -220,6 +220,7 @@ export function queuedMessage(args: {
     waitingOn: null,
     failureReason: null,
     payload: { kind: "inline" },
+    editToken: null,
     editable: true,
     createdAt: args.now,
     updatedAt: args.now,

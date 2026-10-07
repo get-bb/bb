@@ -427,6 +427,8 @@ export {
 export type { HostDaemonSessionRow } from "./sessions.js";
 
 export {
+  beginQueuedThreadMessageEdit,
+  cancelQueuedThreadMessageEdit,
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
   clearQueuedThreadMessageWaitingOn,

@@ -32,6 +32,7 @@ function queuedMessage(
     waitingOn: null,
     failureReason: null,
     payload: { kind: "inline" },
+    editToken: null,
     editable: true,
     createdAt: 1,
     updatedAt: 1,
@@ -331,6 +332,7 @@ describe("bb thread organization commands", () => {
       param: { id: "thread-1", queuedMessageId: "queued-1" },
       json: {
         expectedUpdatedAt: 42,
+        editToken: null,
         input: [
           { type: "text", text: "revised task", mentions: [] },
           { type: "localFile", path: "uploaded-spec.md" },
@@ -417,5 +419,71 @@ describe("bb thread organization commands", () => {
         nextThreadId: "thread-3",
       },
     });
+  });
+
+  it("exposes queued edit admission and cancellation through the CLI", async () => {
+    const held = queuedMessage({
+      editToken: "edit-fence",
+      updatedAt: 2,
+      editable: false,
+    });
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce([queuedMessage({})])
+      .mockResolvedValueOnce([held]);
+    const begin = vi.fn(async () => held);
+    const cancel = vi.fn(async () => queuedMessage({ updatedAt: 3 }));
+    stubServerApi({
+      "v1.threads.:id.queued-messages.$get": list,
+      "v1.threads.:id.queued-messages.:queuedMessageId.edit.$post": begin,
+      "v1.threads.:id.queued-messages.:queuedMessageId.edit.cancel.$post":
+        cancel,
+    });
+    const register: CommandRegistrar = (program) =>
+      registerThreadCommands(program, () => "http://server");
+    await runCommand(
+      ["thread", "queue", "begin-edit", "thread-1", "queued-1", "--json"],
+      register,
+    );
+    expect(begin).toHaveBeenCalledWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: { expectedUpdatedAt: 1 },
+    });
+    await runCommand(
+      ["thread", "queue", "cancel-edit", "thread-1", "queued-1", "--json"],
+      register,
+    );
+    expect(cancel).toHaveBeenCalledWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: { expectedUpdatedAt: 2, editToken: "edit-fence" },
+    });
+  });
+  it("resumes a held edit using admission rather than cancellation", async () => {
+    const held = queuedMessage({
+      editToken: "old-owner",
+      updatedAt: 2,
+      editable: false,
+    });
+    const begin = vi.fn(async () => ({
+      ...held,
+      editToken: "new-owner",
+      updatedAt: 3,
+    }));
+    const cancel = vi.fn();
+    stubServerApi({
+      "v1.threads.:id.queued-messages.$get": vi.fn(async () => [held]),
+      "v1.threads.:id.queued-messages.:queuedMessageId.edit.$post": begin,
+      "v1.threads.:id.queued-messages.:queuedMessageId.edit.cancel.$post":
+        cancel,
+    });
+    await runCommand(
+      ["thread", "queue", "resume-edit", "thread-1", "queued-1", "--json"],
+      register,
+    );
+    expect(begin).toHaveBeenCalledWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: { expectedUpdatedAt: 2, editToken: "old-owner" },
+    });
+    expect(cancel).not.toHaveBeenCalled();
   });
 });

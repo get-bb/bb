@@ -39,6 +39,7 @@ export interface QueueWaitPluginDirectory {
 
 export type QueuedMessageDispatchWake =
   | { kind: "thread-ready"; threadId: string }
+  | { kind: "edit-released"; threadId: string; queuedMessageId: string }
   | { kind: "turn-started"; threadId: string }
   | { kind: "workspace-ready"; threadId: string }
   | { kind: "provisioning-ended"; threadId: string }
@@ -112,6 +113,7 @@ function dispatchWakeContext(
   switch (wake.kind) {
     case "host-connected":
       return { hostId: wake.hostId, wake: wake.kind };
+    case "edit-released":
     case "workspace-ready":
     case "thread-ready":
     case "turn-started":
@@ -222,6 +224,17 @@ async function executePreparedQueuedMessageDispatch(
   wake: PreparedQueuedMessageDispatchWake,
 ): Promise<void> {
   switch (wake.kind) {
+    case "edit-released":
+      await attemptAutomaticQueuedMessage(
+        deps,
+        { id: wake.queuedMessageId, threadId: wake.threadId },
+        {
+          now: Date.now(),
+          respectRequeuePacing: false,
+          retryingFailure: false,
+        },
+      );
+      return;
     case "host-connected":
       for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
         deps.db,
@@ -360,7 +373,8 @@ async function runInteractionSettledDispatch(
   deps: QueueDispatchDeps,
   threadId: string,
 ): Promise<void> {
-  if (deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(threadId)) return;
+  if (deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(threadId))
+    return;
   const cleared = clearThreadQueueWaitsOfKind(deps, {
     threadId,
     kind: "interaction",

@@ -375,7 +375,21 @@ export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
 >;
 
+export const beginQueuedMessageEditRequestSchema = z.object({
+  editToken: z.string().min(1).nullable().optional(),
+  expectedUpdatedAt: z.number().int().nonnegative(),
+});
+export type BeginQueuedMessageEditRequest = z.infer<
+  typeof beginQueuedMessageEditRequestSchema
+>;
+export const cancelQueuedMessageEditRequestSchema =
+  beginQueuedMessageEditRequestSchema.extend({ editToken: z.string().min(1) });
+export type CancelQueuedMessageEditRequest = z.infer<
+  typeof cancelQueuedMessageEditRequestSchema
+>;
+
 export const updateQueuedMessageRequestSchema = z.object({
+  editToken: z.string().min(1).nullable().optional(),
   expectedUpdatedAt: z.number().int().nonnegative(),
   input: z.array(promptInputSchema).min(1),
 });

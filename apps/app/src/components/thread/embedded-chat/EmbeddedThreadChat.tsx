@@ -323,6 +323,9 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessageRef,
     updateInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
+    clearInlineQueuedMessageEditor,
+    cancelHeldQueuedMessageEdit,
+    queuedEditActionPending,
     beginEditQueuedMessage,
     queuedMessageDraftSession,
   } = useInlineQueuedMessageEditing({
@@ -396,12 +399,13 @@ function EmbeddedThreadChatWithComposer({
     handleReorderQueuedMessage,
     handleSetQueuedMessageGroupBoundary,
   } = useQueuedMessageActions({
+    queuedEditActionPending,
     threadId,
     queuedMessages,
     sendProcessingPersistence: "clear-on-settle",
     onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
-    dismissInlineQueuedMessageEditor,
+    clearInlineQueuedMessageEditor,
     activeComposerDraftInput,
   });
 
@@ -1183,11 +1187,13 @@ function EmbeddedThreadChatWithComposer({
           onReorder={handleReorderQueuedMessage}
           onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
           onEdit={beginEditQueuedMessage}
+          onCancelEdit={cancelHeldQueuedMessageEdit}
           onDelete={handleDeleteQueuedMessage}
         />
       ) : null,
     [
       beginEditQueuedMessage,
+      cancelHeldQueuedMessageEdit,
       handleDeleteQueuedMessage,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,

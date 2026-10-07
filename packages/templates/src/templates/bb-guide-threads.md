@@ -492,3 +492,7 @@ directories are inside that storage before removing files, including dev
 servers in nested checkouts. On macOS and Linux this uses the same SIGTERM
 grace period and SIGKILL fallback as worktree removal. Windows does not
 enumerate process working directories.
+
+Queued-message editing uses a persistent server hold. `bb thread queue begin-edit <thread-id> <message-id> --json` returns an `editToken`; save with `bb thread queue update <thread-id> <message-id> <text> --edit-token <token>`. `bb thread queue cancel-edit <thread-id> <message-id>` releases the current hold without changing saved content. Holds survive disconnects and server restarts and never expire automatically. A held member prevents its group from dispatching, including Send now. SDK equivalents are `threads.queuedMessages.beginEdit`, `update` with `editToken`, and `cancelEdit`.
+
+Use `bb thread queue resume-edit <thread-id> <message-id>` to explicitly take over an abandoned hold without making it dispatchable. It rotates the token; previous editors cannot save or cancel the new session. SDK callers pass the current `editToken` and `expectedUpdatedAt` to `beginEdit` for this transition.

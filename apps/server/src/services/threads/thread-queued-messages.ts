@@ -19,6 +19,7 @@ import { ApiError } from "../../errors.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
 
 interface StoredQueuedThreadMessageRow {
+  editToken: string | null;
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
   claimedAt: number | null;
@@ -186,7 +187,11 @@ export function toThreadQueuedMessage(
     payload: toQueuedMessagePayload(row),
     // An `inline` draft stops being editable the moment the drain claims it:
     // the row is on its way to a provider and a rewrite would be lost.
-    editable: row.payloadKind === "inline" && row.claimedAt === null,
+    editToken: row.editToken,
+    editable:
+      row.payloadKind === "inline" &&
+      row.claimedAt === null &&
+      row.editToken === null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

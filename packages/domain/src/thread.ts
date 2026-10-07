@@ -385,8 +385,10 @@ export const threadQueuedMessageSchema = z.object({
    * stops being editable once the drain has claimed it — and the claim is
    * deliberately not part of this response, since it is drain bookkeeping and
    * not something a client should reason about. The server folds both into
-   * this one answer.
+   * this one answer. A row held for editing is also not available to a new editor.
    */
+  /** Opaque edit-session fence; non-null rows are held until save or cancel. */
+  editToken: z.string().nullable(),
   editable: z.boolean(),
   createdAt: z.number(),
   updatedAt: z.number(),
