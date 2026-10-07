@@ -70,8 +70,15 @@ export function ThreadStorageSection({
     () => buildThreadStorageTree(filteredFiles),
     [filteredFiles],
   );
-  if (loadedFiles.length === 0 && filesError == null) return null;
   const isSearching = searchQuery.trim() !== "";
+  const searchRows = useMemo(
+    () =>
+      isSearching
+        ? tree.flatMap((node) => flattenThreadStorageNode(node, () => true))
+        : [],
+    [isSearching, tree],
+  );
+  if (loadedFiles.length === 0 && filesError == null) return null;
   const isFolderExpanded = (folderPath: string) =>
     isSearching || expandedFolders.has(folderPath);
   const renderRow = ({ node, depth }: ThreadStorageTreeRow) => {
@@ -189,6 +196,12 @@ export function ThreadStorageSection({
         />
       ) : filteredFiles.length === 0 ? (
         <EmptyState message="No files match search." />
+      ) : isSearching ? (
+        <InfoList
+          items={searchRows}
+          getKey={(row) => row.node.path}
+          renderItem={renderRow}
+        />
       ) : (
         <InfoList
           items={tree}
