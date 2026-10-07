@@ -888,7 +888,7 @@ export function GeneralSettingsSection({
 
           <SettingsWithControl
             label="Show Git changes and Commit button"
-            description="Show Git and PR controls above the composer, plus Commit in the header."
+            description="Show Git and PR controls above the composer, and Commit in the header."
           >
             <Switch
               checked={showGitChanges}
