@@ -21,7 +21,7 @@ import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { loadPluginAppDefinition } from "../../../../.ladle/plugin-app-module";
 
 installTestPluginRuntime();
-const secretsApp = await loadPluginAppDefinition(
+const secretsApp = loadPluginAppDefinition(
   import.meta.glob<unknown>("../../../../../../plugins/secrets/app.tsx"),
 );
 
@@ -29,15 +29,20 @@ export default { title: "thread/Pending Interaction/Additional States" };
 
 export function Overview() {
   useEffect(() => {
-    setPluginSlotRegistrations(
-      "secrets",
-      makePluginRegistrationSet({
-        pendingInteractions:
-          collectPluginAppRegistrations(secretsApp).pendingInteractions,
-      }),
-    );
-    markPluginFrontendsSettled();
+    let cancelled = false;
+    void secretsApp.then((app) => {
+      if (cancelled) return;
+      setPluginSlotRegistrations(
+        "secrets",
+        makePluginRegistrationSet({
+          pendingInteractions: collectPluginAppRegistrations(app)
+            .pendingInteractions,
+        }),
+      );
+      markPluginFrontendsSettled();
+    });
     return () => {
+      cancelled = true;
       removePluginSlotRegistrations("secrets");
       resetPluginFrontendBootStateForTest();
     };
@@ -152,14 +157,21 @@ function usePluginBranding(): void {
 
 function useSecretsFormRegistered(): void {
   useEffect(() => {
-    setPluginSlotRegistrations(
-      "secrets",
-      makePluginRegistrationSet({
-        pendingInteractions:
-          collectPluginAppRegistrations(secretsApp).pendingInteractions,
-      }),
-    );
-    return () => removePluginSlotRegistrations("secrets");
+    let cancelled = false;
+    void secretsApp.then((app) => {
+      if (cancelled) return;
+      setPluginSlotRegistrations(
+        "secrets",
+        makePluginRegistrationSet({
+          pendingInteractions: collectPluginAppRegistrations(app)
+            .pendingInteractions,
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+      removePluginSlotRegistrations("secrets");
+    };
   }, []);
 }
 

@@ -4,16 +4,18 @@ import {
   installTestPluginRuntime,
   loadPluginApp,
 } from "@get-bb/plugin-sdk/testing/app";
+import * as workflowAppModule from "../../../plugins/workflows/src/app.js";
 import type { WorkflowRunView } from "../../../plugins/workflows/src/ui-contract.js";
 
 installTestPluginRuntime();
-const workflowAppModule = await import("../../../plugins/workflows/src/app.js");
 const { EmptyOrError, LoadingPreview, WorkflowRunPanelState } =
   workflowAppModule;
-const workflowApp = await loadPluginApp(async () => workflowAppModule);
-const workflowPanel = workflowApp.threadPanelActions.find(
-  (registration) => registration.id === "workflow-run",
-)!;
+const workflowPanelPromise = loadPluginApp(async () => workflowAppModule).then(
+  (workflowApp) =>
+    workflowApp.threadPanelActions.find(
+      (registration) => registration.id === "workflow-run",
+    )!,
+);
 
 export default { title: "plugins/Workflows/Workflow panel" };
 
@@ -66,6 +68,9 @@ const LOADED_RUN: WorkflowRunView = {
 
 function LoadedPanel() {
   const [ready, setReady] = useState(false);
+  const [workflowPanel, setWorkflowPanel] = useState<
+    Awaited<typeof workflowPanelPromise> | undefined
+  >(undefined);
   useEffect(() => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
@@ -88,6 +93,16 @@ function LoadedPanel() {
       globalThis.fetch = originalFetch;
     };
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void workflowPanelPromise.then((panel) => {
+      if (!cancelled) setWorkflowPanel(panel);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (workflowPanel === undefined) return null;
   const Panel = workflowPanel.component;
   return (
     <div className="h-72 w-full max-w-sm overflow-hidden border border-border-seam">

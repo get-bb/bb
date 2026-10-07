@@ -27,7 +27,7 @@ import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 
 installTestPluginRuntime();
-const threadListApp = await loadPluginAppDefinition(
+const threadListApp = loadPluginAppDefinition(
   import.meta.glob<unknown>("../../../../../plugins/thread-list/app.tsx"),
 );
 
@@ -149,13 +149,20 @@ function useThreadListPreferenceRpc(initial: Record<string, unknown>) {
 
 function useThreadListPlugin() {
   useEffect(() => {
-    setPluginSlotRegistrations(
-      THREAD_LIST_PLUGIN_ID,
-      makePluginRegistrationSet({
-        threadLists: collectPluginAppRegistrations(threadListApp).threadLists,
-      }),
-    );
-    return () => removePluginSlotRegistrations(THREAD_LIST_PLUGIN_ID);
+    let cancelled = false;
+    void threadListApp.then((app) => {
+      if (cancelled) return;
+      setPluginSlotRegistrations(
+        THREAD_LIST_PLUGIN_ID,
+        makePluginRegistrationSet({
+          threadLists: collectPluginAppRegistrations(app).threadLists,
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+      removePluginSlotRegistrations(THREAD_LIST_PLUGIN_ID);
+    };
   }, []);
 }
 

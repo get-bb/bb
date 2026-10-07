@@ -10,7 +10,7 @@ import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPend
 import { loadPluginAppDefinition } from "../../../../.ladle/plugin-app-module";
 
 installTestPluginRuntime();
-const questionApp = await loadPluginAppDefinition(
+const questionApp = loadPluginAppDefinition(
   import.meta.glob<unknown>(
     "../../../../../../plugins/ask-user-question/app.tsx",
   ),
@@ -20,14 +20,21 @@ export default { title: "plugins/Question form" };
 
 export function CompactQuestion() {
   useEffect(() => {
-    setPluginSlotRegistrations(
-      "ask-user-question",
-      makePluginRegistrationSet({
-        pendingInteractions:
-          collectPluginAppRegistrations(questionApp).pendingInteractions,
-      }),
-    );
-    return () => removePluginSlotRegistrations("ask-user-question");
+    let cancelled = false;
+    void questionApp.then((app) => {
+      if (cancelled) return;
+      setPluginSlotRegistrations(
+        "ask-user-question",
+        makePluginRegistrationSet({
+          pendingInteractions: collectPluginAppRegistrations(app)
+            .pendingInteractions,
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+      removePluginSlotRegistrations("ask-user-question");
+    };
   }, []);
   return (
     <div className="mx-auto flex min-h-[80vh] w-full max-w-3xl flex-col justify-end p-4">
