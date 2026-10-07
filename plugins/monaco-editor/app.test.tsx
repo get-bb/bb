@@ -113,6 +113,49 @@ it("saves edits with the toolbar button and prevents duplicate pending saves", a
   ).toBe(false);
 });
 
+it("overwrites the conflicted version and requires confirmation for a newer conflict", async () => {
+  const write = vi
+    .fn()
+    .mockResolvedValueOnce({ outcome: "conflict", currentSha256: "external" })
+    .mockResolvedValueOnce({ outcome: "conflict", currentSha256: "newer" })
+    .mockResolvedValue({ outcome: "written", sha256: "saved" });
+  renderSlot(registration, base, {
+    rpc: {
+      assets: () => ({ baseUrl: "/assets", expiresAtMs: 99999 }),
+      read: () => file,
+      write,
+    },
+  });
+  await waitFor(() => expect(create).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Overwrite" }));
+  await screen.findByRole("button", { name: "Overwrite" });
+  expect(write).toHaveBeenNthCalledWith(2, {
+    path: base.path,
+    source: base.source,
+    content: "Edited on a phone",
+    expectedSha256: "external",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Overwrite" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Overwrite" })).toBeNull(),
+  );
+  expect(write).toHaveBeenNthCalledWith(3, {
+    path: base.path,
+    source: base.source,
+    content: "Edited on a phone",
+    expectedSha256: "newer",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(4));
+  expect(write).toHaveBeenLastCalledWith({
+    path: base.path,
+    source: base.source,
+    content: "Edited on a phone",
+    expectedSha256: "saved",
+  });
+});
+
 it.each([range(80), range(120, 124)])(
   "selects and reveals the initial target %j after loading",
   async (target) => {
