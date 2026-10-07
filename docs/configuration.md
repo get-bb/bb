@@ -1910,7 +1910,9 @@ supplies `GH_TOKEN`, Git's
 rewrites for github.com, and author/committer identity. The helper expands
 `GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
 store is installed. The primary host continues using its local Git authentication
-unless an explicit global or project `GH_TOKEN` overrides it. Private email uses
+unless an explicit global or project `GH_TOKEN` overrides it. A server without a
+local host daemon has no primary host, so every machine receives the built-in
+row. Private email uses
 `<id>+<login>@users.noreply.github.com`.
 A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
 Tokens obtained from gh are never persisted by the server. Image construction
