@@ -1468,7 +1468,10 @@ daemon used to reap a managed workspace before removing it: SIGTERM to
 every process whose working directory is at or under any of the paths,
 SIGKILL after the grace, returning what it signalled. Each sweep lists
 process working directories once for all paths, so batch callers pass every
-directory in one call. Published for the worktree and
+directory in one call. The input was `{ directory }` through SDK 0.6.26;
+the SDK export still accepts that shape at runtime but types only
+`directories`, because git-installed plugins are rebuilt against the newest
+matching SDK without a type check. Published for the worktree and
 environment-personal-workspace plugins, which own their teardown and call it
 before deleting the directory; Storage & retention passes whole cleanup
 batches. Confirm the platform coverage (Linux

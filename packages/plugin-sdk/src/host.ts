@@ -36,12 +36,7 @@ export {
   type ExperimentalVendorPluginRootsArgs,
 } from "./vendor-plugin-roots.js";
 
-/**
- * Kills every process whose working directory is at or under any of `directories`,
- * SIGTERM first and SIGKILL after the grace, for a provider tearing down a
- * workspace it made. Experimental: see docs/api_to_audit.md.
- */
-export { killProcessesWithCwdUnder as experimental_killProcessesWithCwdUnder } from "@bb/process-utils";
+export { experimental_killProcessesWithCwdUnder } from "./kill-processes.js";
 
 /**
  * Reads a running process's command line and approximate start time, or null
