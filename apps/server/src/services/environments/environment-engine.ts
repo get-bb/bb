@@ -1826,6 +1826,18 @@ export async function advanceEnvironmentProvisioning(
     const context = getThreadProvisionContext(deps.db, threadId);
     if (context === null) return;
     const target = environment;
+    const preparation =
+      target.ownerThreadId === null
+        ? getPreparingEnvironment(deps.db, threadId)
+        : target;
+    const needsAttachment =
+      target.ownerThreadId !== null ||
+      preparation?.status === "provisioning" ||
+      preparation?.status === "ready" ||
+      context.state.environmentId !== target.id ||
+      context.request.environmentIntent.type !== "reuse" ||
+      context.request.environmentIntent.environmentId !== target.id ||
+      getThread(deps.db, threadId)?.environmentId !== target.id;
     if (
       target.status === "ready" &&
       target.ownerThreadId !== null &&
@@ -1837,31 +1849,33 @@ export async function advanceEnvironmentProvisioning(
         path: target.path,
       });
     assertEnvironmentPathAvailable(deps, { ...target, threadId });
-    deps.db.transaction(
-      (tx) => {
-        if (
-          getThreadProvisionContext(tx, threadId)?.state.provisioningId !==
-          context.state.provisioningId
-        )
-          return;
-        updateThread(tx, deps.hub, threadId, { environmentId: target.id });
-        markProviderEnvironmentAttached(tx, threadId, target.id);
-        context.request.environmentIntent = {
-          type: "reuse",
-          environmentId: target.id,
-        };
-        context.state.environmentId = target.id;
-        saveThreadProvisionContext({
-          replace: false,
-          db: tx,
-          threadId,
-          context,
-        });
-      },
-      { behavior: "immediate" },
-    );
-    environment = getEnvironment(deps.db, environment.id);
-    if (environment === null || environment.ownerThreadId !== null) return;
+    if (needsAttachment) {
+      deps.db.transaction(
+        (tx) => {
+          if (
+            getThreadProvisionContext(tx, threadId)?.state.provisioningId !==
+            context.state.provisioningId
+          )
+            return;
+          updateThread(tx, deps.hub, threadId, { environmentId: target.id });
+          markProviderEnvironmentAttached(tx, threadId, target.id);
+          context.request.environmentIntent = {
+            type: "reuse",
+            environmentId: target.id,
+          };
+          context.state.environmentId = target.id;
+          saveThreadProvisionContext({
+            replace: false,
+            db: tx,
+            threadId,
+            context,
+          });
+        },
+        { behavior: "immediate" },
+      );
+      environment = getEnvironment(deps.db, environment.id);
+      if (environment === null || environment.ownerThreadId !== null) return;
+    }
   }
   if (environment.status === "ready") {
     if (threadId != null && args.threadId === undefined)

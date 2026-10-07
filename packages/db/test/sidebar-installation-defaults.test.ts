@@ -10,6 +10,7 @@ import {
 } from "../src/index.js";
 import {
   dropPluginEnabledFollowsDefaultColumn,
+  dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
 } from "./helpers/rewind.js";
 
@@ -82,6 +83,7 @@ describe.each(["project", "thread", "preference"] as const)(
           const projects = db.$client.prepare("SELECT * FROM projects").all();
           const threads = db.$client.prepare("SELECT * FROM threads").all();
           db.$client.exec("DROP TABLE ui_preference_defaults");
+          dropIdleLifecycleIndexes(db);
           rewindThreadPruningWork(db);
           dropPluginEnabledFollowsDefaultColumn(db);
           db.$client

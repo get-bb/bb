@@ -61,6 +61,7 @@ import { createProject } from "../src/data/projects.js";
 import {
   createThread,
   listRunningThreads,
+  listArchivedThreadsPendingTeardown,
   listThreadsWithPendingInteractionState,
 } from "../src/data/threads.js";
 
@@ -1059,6 +1060,25 @@ describe("slow query index plans", () => {
       }
     },
   );
+
+  it("discovers archived teardown work without walking archived thread history", () => {
+    const { db } = setup();
+    try {
+      const captured = captureStatements(db, () => {
+        listArchivedThreadsPendingTeardown(db);
+      });
+      const statement = captured[0]!;
+      const details = queryPlanDetails({ db, ...statement });
+      expect(details).toMatch(/SEARCH threads USING INDEX \S+ \(status=\?\)/);
+      expect(details).toContain(
+        "SEARCH threads USING INDEX sqlite_autoindex_threads_1 (id=?)",
+      );
+      expect(details).not.toContain("CORRELATED SCALAR SUBQUERY");
+      expect(details).not.toContain("SCAN threads");
+    } finally {
+      db.$client.close();
+    }
+  });
 
   it("uses the active-thread maintenance index for emitted idle checks", () => {
     const { db, logger } = setup();

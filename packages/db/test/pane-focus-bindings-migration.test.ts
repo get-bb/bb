@@ -8,6 +8,7 @@ import {
 } from "../src/index.js";
 import {
   dropPluginEnabledFollowsDefaultColumn,
+  dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
 } from "./helpers/rewind.js";
 
@@ -44,6 +45,7 @@ const custom: AppKeybindingOverrides = [
 function upgradeDatabase(overrides: AppKeybindingOverrides | undefined) {
   const db = createConnection(":memory:");
   migrate(db);
+  dropIdleLifecycleIndexes(db);
   rewindThreadPruningWork(db);
   dropPluginEnabledFollowsDefaultColumn(db);
   db.$client

@@ -1,5 +1,5 @@
 import { unlink } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -1347,6 +1347,70 @@ describe("automations server plugin harness", () => {
     expect(next.run.status).toBe("running");
 
     await reloaded.harness.dispose();
+  });
+
+  it("discovers a late-enrolled server host before dispatching a project script", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const host = await bootAutomationsPlugin();
+    const { harness } = host;
+    const source = project();
+    source.sources[0]!.path = dirname(host.bb.storage.database().name);
+    harness.sdk.stub("projects.get", async () => source);
+    const created = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Late enrollment",
+      "--in",
+      "1m",
+      "--script",
+      "printf 'late enrollment OK'",
+      "--interpreter",
+      "sh",
+      "--working-directory",
+      "project",
+      "--json",
+    ]);
+    expect(created.exitCode).toBe(0);
+    const automation = automationDetailResponseSchema.parse(
+      JSON.parse(created.stdout!),
+    );
+    let primaryHostId: string | null = null;
+    harness.sdk.stub("system.config", () => ({ primaryHostId }));
+    const initialCalls = harness.sdk.callsTo("system.config").length;
+    const service = harness.runService("automation-sweep");
+    try {
+      await vi.waitFor(() =>
+        expect(harness.sdk.callsTo("system.config")).toHaveLength(
+          initialCalls + 1,
+        ),
+      );
+      primaryHostId = "host_fake";
+      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.waitFor(async () => {
+        const { runs } = automationRunListResponseSchema.parse(
+          await harness.callRpc("automations_runs", {
+            projectId: PROJECT_ID,
+            automationId: automation.id,
+          }),
+        );
+        expect(runs[0]).toMatchObject({
+          status: "succeeded",
+          output: "late enrollment OK",
+          exitCode: 0,
+          error: null,
+        });
+      });
+      const calls = harness.sdk.callsTo("system.config").length;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(harness.sdk.callsTo("system.config")).toHaveLength(calls);
+    } finally {
+      service.controller.abort();
+      await service.done;
+      await harness.dispose();
+    }
   });
 
   it("dispatches a due agent automation from one sweep tick and closes it from thread.idle", async () => {

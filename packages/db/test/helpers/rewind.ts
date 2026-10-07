@@ -22,3 +22,12 @@ export function rewindThreadPruningWork(db: DbConnection): void {
       "ALTER TABLE thread_pruning_cursors DROP COLUMN work_revision",
     );
 }
+
+export function dropIdleLifecycleIndexes(db: DbConnection): void {
+  for (const name of [
+    "hosts_pending_provider_idx",
+    "threads_deleted_cleanup_idx",
+  ]) {
+    db.$client.exec(`DROP INDEX IF EXISTS ${name}`);
+  }
+}

@@ -7,7 +7,6 @@ import {
   count,
   desc,
   eq,
-  exists,
   getTableColumns,
   inArray,
   isNotNull,
@@ -1401,36 +1400,22 @@ export interface ArchivedTeardownThreadRow {
 export function listArchivedThreadsPendingTeardown(
   db: DbQueryConnection,
 ): ArchivedTeardownThreadRow[] {
+  const selection = {
+    archivedAt: threads.archivedAt,
+    environmentId: threads.environmentId,
+    id: threads.id,
+    status: threads.status,
+  };
+  const archived = and(isNotNull(threads.archivedAt), isNull(threads.deletedAt));
   return db
-    .select({
-      archivedAt: threads.archivedAt,
-      environmentId: threads.environmentId,
-      id: threads.id,
-      status: threads.status,
-    })
+    .select(selection)
     .from(threads)
-    .where(
-      and(
-        isNotNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-        or(
-          inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES]),
-          exists(
-            db
-              .select({ id: terminalSessions.id })
-              .from(terminalSessions)
-              .where(
-                and(
-                  eq(terminalSessions.threadId, threads.id),
-                  inArray(
-                    terminalSessions.status,
-                    NON_TERMINAL_SESSION_STATUSES,
-                  ),
-                ),
-              ),
-          ),
-        ),
-      ),
+    .where(and(archived, inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES])))
+    .union(
+      db
+        .select(selection)
+        .from(threads)
+        .where(and(archived, inArray(threads.id, db.select({ threadId: terminalSessions.threadId }).from(terminalSessions).where(inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES))))),
     )
     .all();
 }

@@ -11,6 +11,7 @@ import {
 } from "../src/index.js";
 import {
   dropPluginEnabledFollowsDefaultColumn,
+  dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
 } from "./helpers/rewind.js";
 
@@ -108,6 +109,7 @@ it.each([false, true])(
         .all();
       expect(queueBefore).toHaveLength(alreadyMigrated ? 2 : 5);
 
+      dropIdleLifecycleIndexes(db);
       rewindThreadPruningWork(db);
       dropPluginEnabledFollowsDefaultColumn(db);
       migrate(db);

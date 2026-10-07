@@ -138,6 +138,11 @@ export const hosts = sqliteTable(
   },
   (table) => [
     index("hosts_last_seen_idx").on(table.lastSeenAt),
+    index("hosts_pending_provider_idx")
+      .on(table.machineProviderId)
+      .where(
+        sql`${table.destroyedAt} IS NULL AND ${table.phase} <> 'destroyed'`,
+      ),
     uniqueIndex("hosts_live_launch_key_idx")
       .on(table.launchKey)
       .where(sql`${table.destroyedAt} is null`),
@@ -667,6 +672,9 @@ export const threads = sqliteTable(
       table.id,
     ),
     index("threads_archived_status_idx").on(table.archivedAt, table.status),
+    index("threads_deleted_cleanup_idx")
+      .on(table.deletedAt)
+      .where(sql`${table.deletedAt} IS NOT NULL`),
     index("threads_environment_archived_deleted_idx").on(
       table.environmentId,
       table.archivedAt,
