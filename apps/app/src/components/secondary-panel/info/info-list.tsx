@@ -237,7 +237,7 @@ export function InfoListRow({
       <span className="flex min-w-0 flex-1 items-center gap-1 pr-2">
         {primary}
         {context ? (
-          <TruncateStart className="min-w-0 text-2xs text-subtle-foreground [flex-shrink:9999]">
+          <TruncateStart className="min-w-0 max-w-[40%] text-2xs text-subtle-foreground [flex-shrink:9999]">
             {context}
           </TruncateStart>
         ) : null}
