@@ -1,6 +1,11 @@
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { Session } from "node:inspector/promises";
+import {
+  console as inspectorConsole,
+  type InspectorNotification,
+  type Profiler,
+} from "node:inspector";
 import { join } from "node:path";
 import {
   monitorEventLoopDelay,
@@ -15,14 +20,35 @@ const MAX_PROFILE_BYTES = 12 * 1024 * 1024;
 
 export async function startPerformanceDiagnostics(options: {
   dataDir: string;
+  runSynchronousWork?: <T>(label: string, work: () => T) => T;
   logger: {
     info(fields: object, message: string): void;
     warn(fields: object, message: string): void;
   };
 }): Promise<{ stop: () => Promise<void> }> {
+  const runSynchronousWork =
+    options.runSynchronousWork ??
+    (<T>(_label: string, work: () => T): T => work());
   const directory = join(options.dataDir, "logs", "performance");
   const session = new Session();
   let profiling = false;
+  let profileTitle = `bb-performance-${randomUUID()}`;
+  const finishProfile = (title: string): Profiler.Profile => {
+    let profile: Profiler.Profile | undefined;
+    const finished = (
+      message: InspectorNotification<Profiler.ConsoleProfileFinishedEventDataType>,
+    ) => {
+      if (message.params.title === title) profile = message.params.profile;
+    };
+    session.on("Profiler.consoleProfileFinished", finished);
+    try {
+      inspectorConsole.profileEnd(title);
+    } finally {
+      session.off("Profiler.consoleProfileFinished", finished);
+    }
+    if (!profile) throw new Error("CPU profile completion was not received");
+    return profile;
+  };
   let stopped = false;
   let profileStartedAt = new Date().toISOString();
   let rotation: Promise<void> = Promise.resolve();
@@ -124,7 +150,9 @@ export async function startPerformanceDiagnostics(options: {
     session.connect();
     await session.post("Profiler.enable");
     await session.post("Profiler.setSamplingInterval", { interval: 1_000 });
-    await session.post("Profiler.start");
+    runSynchronousWork("cpu-profile:start", () =>
+      inspectorConsole.profile(profileTitle),
+    );
     profiling = true;
     options.logger.info(
       {
@@ -148,16 +176,24 @@ export async function startPerformanceDiagnostics(options: {
   const capture = async (restart: boolean): Promise<void> => {
     if (!profiling) return;
     try {
-      const { profile } = await session.post("Profiler.stop");
-      profiling = false;
+      const title = profileTitle;
       const startedAt = profileStartedAt;
-      const endedAt = new Date().toISOString();
       if (restart && !stopped) {
-        await session.post("Profiler.start");
+        profileTitle = `bb-performance-${randomUUID()}`;
+        runSynchronousWork("cpu-profile:start", () =>
+          inspectorConsole.profile(profileTitle),
+        );
         profileStartedAt = new Date().toISOString();
-        profiling = true;
+      } else {
+        profiling = false;
       }
-      const contents = JSON.stringify(profile);
+      const profile = runSynchronousWork("cpu-profile:finish", () =>
+        finishProfile(title),
+      );
+      const endedAt = new Date().toISOString();
+      const contents = runSynchronousWork("cpu-profile:serialize", () =>
+        JSON.stringify(profile),
+      );
       const bytes = Buffer.byteLength(contents);
       await pruneProfiles(bytes > MAX_PROFILE_BYTES ? 0 : bytes);
       if (bytes > MAX_PROFILE_BYTES) {

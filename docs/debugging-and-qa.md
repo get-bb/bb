@@ -747,7 +747,12 @@ reached. Each file is limited to 12 MiB (oversized captures are discarded).
 Cleanup runs when collection starts and before each save, including captures
 from previous sessions. Space for the pending file is reserved inside the
 total cap. Turning collection off leaves saved captures until collection
-starts again; their age does not reset. Graceful
+starts again; their age does not reset. Rotation starts the next named capture
+before ending the current one, keeping the V8 profiler active instead of
+rebuilding its code map every 30 seconds. At most two diagnostic captures
+overlap during the handoff; no process-lifetime profile accumulates. Initial
+profiler setup and the final shutdown capture still run on the server thread.
+Graceful
 shutdown saves the partial window; a crash can lose the current window.
 `Server CPU profile saved` logs its path, PID, and UTC start/end times. Copy
 relevant files before age or size retention removes them. Load a profile in Chrome
@@ -781,7 +786,15 @@ The launch flag only grants permission and still requires a restart to change.
    inspect the stage timings. `inFlightWorkAtObservation` can name an unrelated asynchronous
    long poll; it is not proof of what blocked the loop. Compare `longestSynchronousWork`
    and its `longestSynchronousWorkWallMs` / `longestSynchronousWorkCpuMs`
-   measurements with the profile stacks instead.
+   measurements with the profile stacks instead. `stallAttribution` is
+   `unattributed` when no measured synchronous operation is long enough to
+   explain the maximum delay, allowing one 20 ms sampling interval of tolerance.
+   Otherwise it is `candidate`, and `stallCauseCandidate` names that operation.
+   A candidate is not a confirmed cause: the operation and delay may occur at
+   different times in the five-second window. The longest measured operation
+   remains in the log even when attribution is unavailable. CPU profiler start,
+   completion and serialization are measured as `cpu-profile:start`,
+   `cpu-profile:finish` and `cpu-profile:serialize`.
 2. Find the `Server CPU profile saved` interval covering that time and PID.
    Copy the file before rotation overwrites it. In the JavaScript profiler,
    select the affected time window and inspect the bottom-up view and caller
