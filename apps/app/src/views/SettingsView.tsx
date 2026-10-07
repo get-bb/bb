@@ -181,6 +181,7 @@ interface GeneralSettingsSectionProps {
   onManagedBranchPrefixChange: (prefix: string) => Promise<void> | void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
+  onReplaySetupGuide: () => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
@@ -867,6 +868,7 @@ export function GeneralSettingsSection({
   onManagedBranchPrefixChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
+  onReplaySetupGuide,
   onRewriteLocalhostLinksChange,
   onSteerActiveThreadOnEnterChange,
   openLinksInAppBrowser,
@@ -977,6 +979,21 @@ export function GeneralSettingsSection({
               onCheckedChange={onKeepHistoryAfterContextClearChange}
               aria-label="Show messages from before a context clear"
             />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Setup guide"
+            description="Walk through connecting an agent, adding projects, plugins, and devices again."
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={generalSettingsDisabled}
+              onClick={onReplaySetupGuide}
+            >
+              Show setup guide
+            </Button>
           </SettingsWithControl>
         </div>
       </SettingsSection>
@@ -1344,6 +1361,12 @@ export function SettingsView() {
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
               keepHistoryAfterContextClear: enabled,
+            })
+          }
+          onReplaySetupGuide={() =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              onboardingCompletedAt: null,
             })
           }
           desktopBrowserAvailable={desktopBrowserAvailable}

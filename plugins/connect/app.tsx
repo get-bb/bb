@@ -1302,13 +1302,9 @@ function NotPairedContent({
         <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
       ) : null}
 
-      <p className="flex items-start gap-1.5 text-xs text-subtle-foreground">
-        <Icon
-          name="AlertTriangle"
-          className="mt-px size-3.5 shrink-0 opacity-70"
-        />
-        Anyone signed in to your {dashboardHost} account gets full control of
-        this bb. Manage the account under Plugins → bb account.
+      <p className="text-xs text-subtle-foreground">
+        Only your {dashboardHost} account can open this bb. Manage the account
+        under Plugins → bb account.
       </p>
     </div>
   );

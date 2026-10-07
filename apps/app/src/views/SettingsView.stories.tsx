@@ -216,6 +216,7 @@ function GeneralSettingsStory({
           state.setNavigateToThreadAfterCreate
         }
         onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
+        onReplaySetupGuide={() => {}}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
         openLinksInAppBrowser={state.openLinksInAppBrowser}

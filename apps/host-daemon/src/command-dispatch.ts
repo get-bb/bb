@@ -52,6 +52,7 @@ import {
   readHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { writeHostFile } from "./command-handlers/file-write.js";
+import { discoverRepos } from "./command-handlers/discover-repos.js";
 import {
   mkdirHostPath,
   moveHostPath,
@@ -671,6 +672,12 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         command.bridgeLaunch,
         options,
       ),
+    }),
+  "host.discover_repos": (command) =>
+    discoverRepos({
+      maxDepth: command.maxDepth,
+      sinceDays: command.sinceDays,
+      limit: command.limit,
     }),
   "provider.installation.status": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(

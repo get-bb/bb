@@ -399,6 +399,14 @@ preference applies to all connected app clients. Set it with
 `bb.sdk.system.updateGeneralSettings` using `confirmThreadArchive`.
 CLI and SDK archive operations remain non-interactive.
 
+A new install opens a first-run setup guide (connect an agent, add projects,
+pick plugins, set up devices). `onboardingCompletedAt` in general settings
+records when it was finished or skipped; `bb settings replay-onboarding`, or
+Settings → General → Setup guide, clears it so the guide shows again.
+`setupChecklistVisible` controls the "Finish setting up bb" home-screen
+checklist. The projects step lists what `bb project discover` and
+`bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
+
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
 `bb provider models`, and `sdk.providers.models`. Turn it on before a screen

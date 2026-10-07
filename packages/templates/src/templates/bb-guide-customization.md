@@ -182,6 +182,7 @@ branches bb creates after the change.
   bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
   bb settings ai-services test <thread-title|commit-message>
   bb settings general <key> <value>
+  bb settings replay-onboarding
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>] [--refresh]
@@ -205,6 +206,13 @@ own model.
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
+
+`bb settings replay-onboarding` clears `onboardingCompletedAt`, so the first-run
+setup guide (connect an agent, add projects, pick plugins, set up devices) shows
+again in every open client. Settings → General → Setup guide has the same
+button. `setupChecklistVisible` controls the "Finish setting up bb" checklist
+on the home screen; the guide turns it on when steps are left undone, and
+dismissing the checklist turns it off.
 
 `bb settings completed-turns` lists how each provider shows a finished turn:
 `collapse` folds the turn's work into one "Worked for" row and keeps the final

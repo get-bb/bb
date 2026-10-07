@@ -447,6 +447,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.installation.status"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
+    onlineRpcResponseSuccessSchemaFor("host.discover_repos"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),
     onlineRpcResponseSuccessSchemaFor("workspace.diffFiles"),

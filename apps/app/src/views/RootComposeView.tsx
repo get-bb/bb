@@ -29,6 +29,12 @@ import {
   type NewThreadComposerSubmission,
 } from "@/components/promptbox/NewThreadComposer";
 import {
+  SetupChecklistBanner,
+  SetupChecklistCard,
+  hasSetupChecklistBanner,
+  useSetupChecklist,
+} from "@/components/onboarding/SetupChecklistHost";
+import {
   ProviderCliBanner,
   providerCliBlockedReason,
 } from "@/components/promptbox/banner/ProviderCliBanner";
@@ -1437,9 +1443,12 @@ function RootComposeSurface({
     },
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
+  const setupChecklist = useSetupChecklist();
   const promptBanner = useMemo(() => {
     if (blockingProviderCliStatus === null) {
-      return null;
+      return hasSetupChecklistBanner(setupChecklist) ? (
+        <SetupChecklistBanner checklist={setupChecklist} />
+      ) : null;
     }
     return (
       <ProviderCliBanner
@@ -1469,6 +1478,7 @@ function RootComposeSurface({
     runningJobKey,
     selectedProviderCliIssue,
     selectedProviderId,
+    setupChecklist,
   ]);
 
   if (!projects && sidebarNavigationError) {
@@ -1583,6 +1593,7 @@ function RootComposeSurface({
                       !quickCreateProject.isAvailable ||
                       quickCreateProject.isCreating
                     }
+                    footer={<SetupChecklistCard checklist={setupChecklist} />}
                   />
                 ) : (
                   promptBox

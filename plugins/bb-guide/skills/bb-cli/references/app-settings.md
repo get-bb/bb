@@ -11,6 +11,20 @@ every window and client sees the same value.
 - Unknown keys and values of the wrong shape are rejected; the error names the
   keys bb knows.
 
+## Setup guide
+
+- A new bb install opens a first-run setup guide: connect an agent, add
+  projects, pick plugins, and set up devices. Every step can be skipped.
+- `onboardingCompletedAt` is the ISO timestamp of when the guide was finished
+  or skipped; `null` means the guide is showing.
+- `bb settings replay-onboarding` clears it. Settings → General → Setup guide
+  has the same button.
+- `setupChecklistVisible` shows the "Finish setting up bb" checklist on the
+  home screen. Turn it off with
+  `bb settings general setupChecklistVisible false`.
+- `bb project discover [--machine <id-or-name>]` lists the git repositories the
+  guide offers to import; add one with `bb project create --name <name> --root <path>`.
+
 ## Sidebar preferences
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list

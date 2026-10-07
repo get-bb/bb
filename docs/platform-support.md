@@ -78,7 +78,7 @@ Not available on the phone (use the web app or desktop for these):
   content scripts, side-chat panels. Plugin backends (tools, CLI, mentions,
   declarative settings, pending-interaction forms for `ask-user-question` and
   `secrets`) work.
-- Provider sign-in (`codex login`, `claude /login`): still needs a terminal on
+- Provider sign-in (`codex login --device-auth`, `claude auth login`): still needs a terminal on
   the host; the phone assumes a signed-in host.
 - Local editor integration, "Open in …", native folder picker, local daemon
   features: phones have no host daemon. The remote path browser works.

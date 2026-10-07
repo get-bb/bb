@@ -197,7 +197,8 @@ function healthResult(
       minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
       canInstall: true,
       canUpdate: status !== "not_installed",
-      loginCommand: "codex login",
+      loginCommand: "codex login --device-auth",
+      localLoginCommand: "codex login",
     },
   };
 }

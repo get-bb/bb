@@ -473,6 +473,23 @@ export function registerSettingsCommands(
     );
 
   settings
+    .command("replay-onboarding")
+    .description("Show the first-run setup guide again")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const config = await sdk.system.config();
+        const result = await sdk.system.updateGeneralSettings({
+          ...config.generalSettings,
+          onboardingCompletedAt: null,
+        });
+        if (outputJson(opts, result)) return;
+        console.log("The setup guide is showing again");
+      }),
+    );
+
+  settings
     .command("completed-turns [providerId] [display]")
     .description(
       "Show or set whether each provider's finished turns collapse or stay flat (collapse, flat, or default)",
