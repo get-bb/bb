@@ -1,3 +1,5 @@
+import type { TimelineRow } from "@bb/server-contract";
+import { assertTimelineSourceOwnership } from "./timeline-source-ownership.js";
 import { describe, expect, it } from "vitest";
 import { buildThreadTimelineTurnDetailsFromEvents } from "../src/build-thread-timeline.js";
 import {
@@ -157,5 +159,116 @@ describe("timeline source ownership", () => {
       },
     });
     expect(details).toMatchObject({ kind: "matched", rows: turn.children });
+  });
+  it.each([false, true])(
+    "rejects two distinct row ids owning one source, nested: %s",
+    (nested) => {
+      const factory = createTimelineEventFactory({ threadId: "thread-1" });
+      const events = [
+        factory.systemError({ code: "test", message: "Failure" }),
+      ];
+      const fixture = renderTimelineFixture({
+        events,
+        projectionOptions: { threadStatus: "error", turnMessageDetail: "full" },
+      });
+      const entry = fixture.projection.entries[0];
+      if (entry.kind !== "projected-message")
+        throw new Error("Expected standalone failure");
+      const duplicateMessage = {
+        ...entry.message,
+        id: "second-representation",
+      };
+      const duplicateRow = { ...fixture.rows[0], id: duplicateMessage.id };
+      const extraRow: TimelineRow = nested
+        ? {
+            ...fixture.rows[0],
+            id: "summary",
+            kind: "turn",
+            turnId: "turn-1",
+            status: "completed",
+            completedAt: 10,
+            summaryCount: 1,
+            children: [duplicateRow],
+          }
+        : duplicateRow;
+      expect(() =>
+        assertTimelineSourceOwnership(
+          fromRows(events),
+          {
+            ...fixture.projection,
+            entries: [
+              ...fixture.projection.entries,
+              { kind: "projected-message", message: duplicateMessage },
+            ],
+          },
+          [...fixture.rows, extraRow],
+          [],
+        ),
+      ).toThrow("Duplicate source ownership");
+    },
+  );
+
+  it("preserves distinct grouped input parts through event replay", () => {
+    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const event = factory.clientTurnRequested({
+      text: "First Second",
+      inputGroups: [
+        [{ type: "text", text: "", mentions: [] }],
+        [{ type: "text", text: "First", mentions: [] }],
+        [{ type: "text", text: "Second", mentions: [] }],
+      ],
+    });
+    const fixture = renderTimelineFixture({
+      events: [event, event],
+      projectionOptions: { threadStatus: "active", turnMessageDetail: "full" },
+    });
+    expect(fixture.rows).toHaveLength(2);
+    expect(fixture.messages.map((message) => message.sourceEvent)).toEqual([
+      { seq: event.seq, part: 1 },
+      { seq: event.seq, part: 2 },
+    ]);
+  });
+
+  it("preserves distinct file changes through event replay", () => {
+    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const start = factory.turnStarted({});
+    const event = factory.fileChangeCompleted({
+      changes: [
+        { path: "a.ts", kind: "update", diff: "" },
+        { path: "b.ts", kind: "update", diff: "" },
+      ],
+    });
+    const fixture = renderTimelineFixture({
+      events: [start, event, event],
+      completedTurnDisplay: "flat",
+      projectionOptions: { threadStatus: "active", turnMessageDetail: "full" },
+    });
+    expect(fixture.rows).toHaveLength(2);
+    expect(fixture.messages.map((message) => message.sourceEvent)).toEqual([
+      { seq: event.seq, part: 0 },
+      { seq: event.seq, part: 1 },
+    ]);
+  });
+
+  it("applies assistant and command output deltas once per source event", () => {
+    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const start = factory.turnStarted({});
+    const assistant = factory.assistantDelta({ delta: "Inspecting.\n" });
+    const command = factory.commandStarted({
+      itemId: "command-1",
+      command: "inspect",
+    });
+    const output = factory.commandOutputDelta({
+      itemId: "command-1",
+      delta: "result\n",
+    });
+    const fixture = renderTimelineFixture({
+      events: [start, assistant, assistant, command, output, output],
+      completedTurnDisplay: "flat",
+      projectionOptions: { threadStatus: "active", turnMessageDetail: "full" },
+    });
+    expect(fixture.rows).toHaveLength(2);
+    expect(fixture.rows[0]).toMatchObject({ text: "Inspecting.\n" });
+    expect(fixture.rows[1]).toMatchObject({ output: "result\n" });
   });
 });

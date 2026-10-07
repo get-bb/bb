@@ -2254,6 +2254,7 @@ describe("timeline CLI rendering snapshots", () => {
       {
         kind: "operation",
         id: "thread-1:op:reasoning:kind:reasoning|turn:turn-1|parent:root|item:reasoning-1",
+        sourceEvent: { seq: 2, part: 0 },
         threadId: "thread-1",
         sourceSeqStart: 2,
         sourceSeqEnd: 4,

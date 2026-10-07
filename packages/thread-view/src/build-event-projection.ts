@@ -717,6 +717,7 @@ function buildFlatProjectionData(
       if (clientRequest) {
         for (const rejectedMessage of parseRejectedUsersFromClientRequest({
           decoded: clientRequest.event,
+          requestMeta: clientRequest.meta,
           meta,
           options: args.options,
         })) {

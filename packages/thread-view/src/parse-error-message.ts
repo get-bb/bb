@@ -15,6 +15,7 @@ export function parseErrorMessage(
     kind: "error",
     id: messageId(decoded.threadId, "error", `${meta.seq}`),
     threadId: decoded.threadId,
+    sourceEvent: { seq: meta.seq, part: 0 },
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,

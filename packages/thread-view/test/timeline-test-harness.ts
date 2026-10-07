@@ -1,3 +1,5 @@
+import { buildPendingSteerMessagesFromEvents } from "../src/pending-steer-projection.js";
+import { assertTimelineSourceOwnership } from "./timeline-source-ownership.js";
 import {
   buildThreadEvent,
   encodeClientTurnRequestIdNumber,
@@ -1496,6 +1498,21 @@ export function renderTimelineFixture(
     },
   });
   const rows = timeline.rows;
+  const ownershipProjection = buildEventProjection(decodedEvents, {
+    ...args.projectionOptions,
+    threadName: args.projectionOptions.threadName ?? "",
+    turnMessageDetail: "full",
+  });
+  assertTimelineSourceOwnership(
+    decodedEvents,
+    ownershipProjection,
+    rows,
+    buildPendingSteerMessagesFromEvents(
+      EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      decodedEvents,
+      commonProjectionOptions,
+    ),
+  );
   const messages = flattenEventProjectionMessagesDeep(projection);
   const text = formatThreadTimelineText(rows, {
     color: false,
