@@ -1855,7 +1855,10 @@ describe("bridge", () => {
       return query;
     });
 
-    const uidSpy = vi.spyOn(process, "getuid").mockReturnValue(1000);
+    const uidSpy =
+      process.platform === "win32"
+        ? null
+        : vi.spyOn(process, "getuid").mockReturnValue(1000);
     try {
       const threadId = "thread-full-ask-rule";
       const toolUseID = "tool-full-ask-rule";
@@ -1916,12 +1919,15 @@ describe("bridge", () => {
 
       await stopBridgeThread({ bridge, queries, threadId });
     } finally {
-      uidSpy.mockRestore();
+      uidSpy?.mockRestore();
       bridge.restore();
     }
   });
 
-  it("keeps approving requests itself in full access mode when running as root", async () => {
+  it("keeps approving requests itself in full access mode when running as root", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", "Windows has no root uid");
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
