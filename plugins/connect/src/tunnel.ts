@@ -1,3 +1,10 @@
+import type { IncomingMessage } from "node:http";
+import { isIP, type createConnection } from "node:net";
+import {
+  connect as tlsConnect,
+  type ConnectionOptions,
+  type TLSSocket,
+} from "node:tls";
 import { WebSocket as NodeWebSocket } from "ws";
 import {
   PROTOCOL_VERSION,
@@ -423,11 +430,23 @@ export class ConnectTunnel {
     this.options.log.info(
       `tunnel connecting to ${tunnelUrl} (origin ${this.options.getLoopbackBaseUrl()})`,
     );
+    const dialStartedAt = Date.now();
+    const diagnostics: DialDiagnostics = {
+      lookupMs: null,
+      connectMs: null,
+      tlsMs: null,
+      upgradeMs: null,
+      ray: null,
+      colo: null,
+    };
     let tunnel: NodeWebSocket;
     try {
       tunnel = new NodeWebSocket(tunnelUrl, {
         headers: { authorization: `Bearer ${credential}` },
         handshakeTimeout: TUNNEL_HANDSHAKE_TIMEOUT_MS,
+        createConnection: tunnelUrl.startsWith("wss:")
+          ? timedTlsConnection(dialStartedAt, diagnostics)
+          : undefined,
       });
     } catch (error) {
       this.lastError = `cannot dial ${tunnelUrl}: ${
@@ -465,11 +484,19 @@ export class ConnectTunnel {
     handshakeDeadline = setTimeout(() => {
       if (!isCurrent()) return;
       this.lastError = `can't reach ${connectApexHost(identity)} — handshake timed out`;
-      retry(this.lastError);
+      retry(`${this.lastError} ${JSON.stringify(diagnostics)}`);
       tunnel.terminate();
     }, TUNNEL_HANDSHAKE_TIMEOUT_MS);
     handshakeDeadline.unref?.();
 
+    tunnel.on("upgrade", (response: IncomingMessage) => {
+      diagnostics.upgradeMs = Date.now() - dialStartedAt;
+      const ray = response.headers["cf-ray"];
+      if (typeof ray === "string") {
+        diagnostics.ray = ray;
+        diagnostics.colo = ray.split("-").at(-1) ?? null;
+      }
+    });
     tunnel.on("open", () => {
       if (!isCurrent()) return;
       clearTimeout(handshakeDeadline);
@@ -477,7 +504,7 @@ export class ConnectTunnel {
       this.connected = true;
       this.lastError = null;
       this.nextRetryAt = null;
-      this.options.log.info("tunnel connected");
+      this.options.log.info(`tunnel connected ${JSON.stringify(diagnostics)}`);
       this.session = new TunnelSession({
         tunnel,
         log: this.options.log,
@@ -529,6 +556,9 @@ export class ConnectTunnel {
             lastHeartbeatAckAt === null
               ? null
               : Math.max(0, now - lastHeartbeatAckAt),
+          colo: diagnostics.colo,
+          ray: diagnostics.ray,
+          traffic: this.session?.snapshot(now) ?? null,
         },
       )}`;
       if (
@@ -543,6 +573,45 @@ export class ConnectTunnel {
       retry(detail);
     });
   }
+}
+
+interface DialDiagnostics {
+  lookupMs: number | null;
+  connectMs: number | null;
+  tlsMs: number | null;
+  upgradeMs: number | null;
+  ray: string | null;
+  colo: string | null;
+}
+
+function timedTlsConnection(
+  startedAt: number,
+  diagnostics: DialDiagnostics,
+): typeof createConnection {
+  const connect = (options: ConnectionOptions): TLSSocket => {
+    const host = options.host ?? "";
+    const socket = tlsConnect({
+      ...options,
+      path: undefined,
+      servername:
+        options.servername === undefined
+          ? isIP(host)
+            ? ""
+            : host
+          : options.servername,
+    });
+    socket.once("lookup", () => {
+      diagnostics.lookupMs = Date.now() - startedAt;
+    });
+    socket.once("connect", () => {
+      diagnostics.connectMs = Date.now() - startedAt;
+    });
+    socket.once("secureConnect", () => {
+      diagnostics.tlsMs = Date.now() - startedAt;
+    });
+    return socket;
+  };
+  return connect as typeof createConnection;
 }
 
 function connectApexHost(identity: ConnectIdentity): string {
