@@ -424,8 +424,8 @@ function Notice({
   }
   if (saveState.kind === "conflict") {
     return (
-      <NoticeRow tone="error">
-        This file changed on disk since you opened it.
+      <NoticeRow tone="warning" compact>
+        <span className="min-w-0 flex-1 truncate">Changed on disk</span>
         <NoticeAction onClick={onReload}>Reload</NoticeAction>
         <NoticeAction onClick={onOverwrite}>Overwrite</NoticeAction>
       </NoticeRow>
@@ -458,15 +458,20 @@ function Notice({
 function NoticeRow({
   children,
   tone,
+  compact = false,
 }: {
   children: React.ReactNode;
   tone: "error" | "warning";
+  compact?: boolean;
 }) {
   return (
     <div
       role="status"
       className={cn(
-        "flex shrink-0 items-center gap-2 px-4 py-1.5 text-xs",
+        "flex shrink-0 items-center gap-2 px-4 text-xs",
+        compact
+          ? "py-0.5 [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
+          : "py-1.5",
         tone === "error"
           ? "bg-destructive/10 text-destructive"
           : "bg-surface-recessed text-foreground",
