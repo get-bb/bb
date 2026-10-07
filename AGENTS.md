@@ -44,6 +44,7 @@
 ## Build And Test
 
 - Use Turbo for builds, typechecks, and tests so upstream dependencies run first: `pnpm exec turbo run <task> --filter=@bb/<pkg>`. Use the package's actual name for other scopes. Bypass orchestration only for deliberate investigation; do not invoke package scripts or raw `tsc` routinely.
+- Pass `--concurrency=2` to any Turbo run that includes `typecheck`, and filter it to the packages you changed, adding dependents (`--filter=...@bb/<pkg>`) when you change a shared package's exports. Each native `tsc` uses up to 2 GB, and an uncapped run starts one per package, which exhausts memory on 16 GB machines.
 - Generated modules are gitignored: `packages/templates/src/generated/`, `packages/plugin-build/src/generated/`, and `packages/plugin-sdk/bundled-types/`. Never commit them or add a `--check` mode. New generated modules need Turbo tasks with explicit inputs, outputs, and consumer dependencies.
 - If a plugin cannot resolve `@get-bb/plugin-sdk`, run `pnpm exec turbo run build:types --filter=@get-bb/plugin-sdk`.
 - Test plausible failure modes; avoid trivial getters/setters and framework wiring. Pipe slow test output to a file and inspect it.
