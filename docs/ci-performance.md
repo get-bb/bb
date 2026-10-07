@@ -31,6 +31,15 @@ An empty test matrix skips its runners before dependency installation. This
 reduces routine PR work; broad changes and cold builds do not have a guaranteed
 two-minute completion time.
 
+Before the matrix starts, dependency changes run a full frozen install with
+lifecycle scripts disabled. This catches missing lockfile snapshots as well as
+outdated manifest entries; `--lockfile-only --frozen-lockfile` does not catch
+missing snapshots. The check covers manifests, the lockfile, workspace and pnpm
+configuration, and patches. PRs compare with their base SHA; pushes compare with
+the event's previous SHA. Manual runs and unavailable history always validate.
+Source-only changes skip the extra install. The install has a five-minute limit
+inside the planning job's ten-minute budget.
+
 ## Fork checks
 
 On pull requests, the fork checker compares the checked-out merge commit with

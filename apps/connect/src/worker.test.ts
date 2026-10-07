@@ -1154,8 +1154,19 @@ describe("gate request deadline", () => {
         credentialHash: await sha256Hex(credential),
       },
     });
-    const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
-    void worker.fetch(
+    let reachedTunnel: () => void = () => {};
+    const tunnelReached = new Promise<void>((resolve) => {
+      reachedTunnel = resolve;
+    });
+    let answer: (response: Response) => void = () => {};
+    const tunnelResponse = new Promise<Response>((resolve) => {
+      answer = resolve;
+    });
+    const { env, ctx } = makeEnv(() => {
+      reachedTunnel();
+      return tunnelResponse;
+    });
+    const pending = worker.fetch(
       visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
         headers: {
           authorization: `Bearer ${credential}`,
@@ -1165,6 +1176,7 @@ describe("gate request deadline", () => {
       env as never,
       ctx,
     );
+    await tunnelReached;
     await vi.advanceTimersByTimeAsync(2_999);
     expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
@@ -1174,6 +1186,8 @@ describe("gate request deadline", () => {
       blobs: ["slow", "tunnel-object", "GET", "sawyer.getbb.app", "/__tunnel"],
       doubles: [3_000, 1],
     });
+    answer(new Response("connected"));
+    expect((await pending).status).toBe(200);
   });
 
   it("records nothing for a request that answers in time", async () => {

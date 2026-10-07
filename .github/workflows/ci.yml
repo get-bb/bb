@@ -19,7 +19,7 @@ jobs:
   plan:
     name: Select CI checks
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
@@ -45,6 +45,24 @@ jobs:
           fi
           echo "selection=$selection" >> "$GITHUB_OUTPUT"
           echo "$selection" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check dependency inputs
+        id: dependencies
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: echo "required=$(node scripts/ci-dependencies-changed.mjs "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
+      - name: Setup dependency validation tools
+        if: steps.dependencies.outputs.required == 'true'
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Validate frozen dependency installation
+        if: steps.dependencies.outputs.required == 'true'
+        timeout-minutes: 5
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
 
       - name: Check provider-literal ratchet
         env:
@@ -270,10 +288,13 @@ jobs:
           TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+          SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
         run: |
           filters=()
           if [[ "$APP_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+          elif [[ "$SERVER_SHARD" == "true" ]]; then
+            filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
           fi
           bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts "${filters[@]}"
 
