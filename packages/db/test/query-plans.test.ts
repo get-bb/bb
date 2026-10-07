@@ -1039,8 +1039,8 @@ describe("slow query index plans", () => {
           expect(advanceThreadPruning(db, "resolved-items").removed).toBe(1);
         });
         const supportQueries = statements.filter((statement) =>
-          statement.sql.includes(
-            "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+          /from events indexed by events_thread_turn_type_item_sequence_idx/i.test(
+            statement.sql,
           ),
         );
         expect(supportQueries.length).toBeGreaterThan(0);
@@ -1504,8 +1504,8 @@ describe("slow query index plans", () => {
     expect(discoveryPlan).toContain("USING INTEGER PRIMARY KEY (rowid=?)");
     expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
     const supportQueries = statements.filter((statement) =>
-      statement.sql.includes(
-        "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+      /from events indexed by events_thread_turn_type_item_sequence_idx/i.test(
+        statement.sql,
       ),
     );
     expect(supportQueries.length).toBeGreaterThan(0);
@@ -1513,7 +1513,7 @@ describe("slow query index plans", () => {
       expect(queryPlanDetails({ db, ...statement })).toContain(
         "USING INDEX events_thread_turn_type_item_sequence_idx",
       );
-      expect(statement.sql).toContain("LIMIT ?");
+      expect(statement.sql).toMatch(/LIMIT \?/i);
     }
     const pruneQuery = findOnlyDebugLog({
       logger,

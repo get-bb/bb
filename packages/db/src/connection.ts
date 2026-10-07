@@ -35,6 +35,26 @@ export type SlowDbQueryOperation =
   | "exec"
   | "transaction";
 
+const compiledQueries = new WeakMap<
+  DbQueryConnection,
+  Map<(db: DbQueryConnection) => unknown, unknown>
+>();
+
+export function prepareCachedQuery<TQuery>(
+  db: DbQueryConnection,
+  build: (db: DbQueryConnection) => TQuery,
+): TQuery {
+  let queries = compiledQueries.get(db);
+  if (!queries) {
+    queries = new Map();
+    compiledQueries.set(db, queries);
+  }
+  if (queries.has(build)) return queries.get(build) as TQuery;
+  const query = build(db);
+  queries.set(build, query);
+  return query;
+}
+
 interface SlowDbQueryConfig {
   logger: SlowDbQueryLogger;
   thresholdMs: number | (() => number);
@@ -245,6 +265,20 @@ export function createConnection(
   instrumentSqliteClient(sqlite, options);
 
   const db = drizzle({ client: sqlite, schema });
+  const queries = new Map<(db: DbQueryConnection) => unknown, unknown>();
+  compiledQueries.set(db, queries);
+  const originalTransaction = db.transaction.bind(db);
+  db.transaction = (work, config) =>
+    originalTransaction((tx) => {
+      compiledQueries.set(tx, queries);
+      return work(tx);
+    }, config);
+  const originalClose = sqlite.close.bind(sqlite);
+  sqlite.close = () => {
+    const result = originalClose();
+    queries.clear();
+    return result;
+  };
 
   return db;
 }
