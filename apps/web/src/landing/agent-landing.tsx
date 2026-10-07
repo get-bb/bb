@@ -51,9 +51,9 @@ const PHONE_SECTION: CompareHighlight = {
   body: (
     <>
       <p>
-        Every agent on every machine you add shows up in one list, marked
-        running, waiting on you, or done. From any phone browser, answer its
-        questions and approvals, start new work, or open the app it’s building.
+        When an agent is waiting on you, answer its question or approval from
+        any phone browser. You can also start new work on any of your machines,
+        or open the app an agent is building to see what it made.
       </p>
       <p>
         Add the bb mobile app, in beta on iPhone and alpha on Android, to get a
@@ -176,6 +176,7 @@ type VariantContent = {
   description: string;
   headline: string;
   sub: string;
+  closer: string;
   sections: CompareHighlight[];
   faq: CompareFaqGroup[];
 };
@@ -187,6 +188,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
       "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and reply from any phone browser. Free and open source.",
     headline: "See which agent needs you from your phone",
     sub: "Claude Code, Codex, and your other agents in one list, marked running, waiting on you, or done. Reply from any phone browser. Free and open source.",
+    closer: "Know which agent needs you",
     sections: [PHONE_SECTION, CODEX_SECTION, PARALLEL_SECTION],
     faq: [
       PHONE_FAQ,
@@ -203,10 +205,11 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
       "Have Codex review Claude Code’s work with no copy-paste between them. Both run in one free, open-source app, on the subscriptions you already have.",
     headline: "Have Codex review Claude Code’s work",
     sub: "Both run in one app on the subscriptions you already have, with no copy-paste between them. Free and open source.",
+    closer: "Let your agents check each other’s work",
     sections: [CODEX_SECTION, PARALLEL_SECTION, PHONE_SECTION],
     faq: [
       {
-        title: "Running several agents",
+        title: "Claude Code and Codex",
         items: [FAQ_SUBSCRIPTIONS, FAQ_PARALLEL, FAQ_LIMIT_RESET, FAQ_AGENTS],
       },
       START_FAQ,
@@ -219,6 +222,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
       "Run Claude Code, Codex, and other agents in parallel, each in its own Git worktree, and always know which one needs you. Free and open source.",
     headline: "Run your own software factory of coding agents",
     sub: "Claude Code, Codex, and more work in parallel, and one list shows which are running, waiting on you, or done. Free and open source.",
+    closer: "Put your software factory to work",
     sections: [PARALLEL_SECTION, CODEX_SECTION, PHONE_SECTION],
     faq: [
       {
@@ -231,10 +235,8 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
   },
 };
 
-const CLOSER = {
-  title: "Know which agent needs you",
-  body: "Free and open source, on your own machines. Bring the agents you already use.",
-};
+const CLOSER_BODY =
+  "Free and open source, on your own machines. Bring the agents you already use.";
 
 export function agentLandingHead(variant: LandingVariant) {
   const content = VARIANTS[variant];
@@ -276,7 +278,7 @@ export function AgentLandingPage({ variant }: { variant: LandingVariant }) {
 
       <FaqSection title="Common questions" faq={content.faq} />
 
-      <Closer closer={CLOSER} />
+      <Closer closer={{ title: content.closer, body: CLOSER_BODY }} />
 
       <SiteFooter current={LANDING_PAGE_PATHS[variant]} />
     </div>
