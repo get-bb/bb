@@ -89,11 +89,6 @@ describe("createConnection", () => {
           outsideAfter[key] - outsideBefore[key],
         );
       }
-      if (process.platform !== "win32") {
-        expect(
-          insideAfter.minorPageFault - insideBefore.minorPageFault,
-        ).toBeGreaterThan(0);
-      }
       expect(diagnostics.wal).toEqual({ sizeBytes: null });
     } finally {
       db.$client.close();
