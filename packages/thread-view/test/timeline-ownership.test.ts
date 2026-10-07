@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildThreadTimelineTurnDetailsFromEvents } from "../src/build-thread-timeline.js";
 import {
   createTimelineEventFactory,
   fromRows,
@@ -118,5 +119,43 @@ describe("timeline source ownership", () => {
     expect(rows[0]).toMatchObject({ detail: "first" });
     expect(rows[1]).toMatchObject({ detail: "second" });
     expect(rows[2]).toMatchObject({ systemKind: "error" });
+  });
+  it("normalizes reconnect rows consistently in eager and lazy turn details", () => {
+    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const events = [
+      factory.turnStarted({}),
+      factory.providerError({
+        message: "Provider error",
+        detail: "Reconnecting... 1/3\nstream disconnected",
+        willRetry: true,
+      }),
+      factory.providerError({
+        message: "Provider error",
+        detail: "Reconnecting... 2/3\nstream disconnected",
+        willRetry: true,
+      }),
+      factory.assistantCompleted({ text: "Recovered" }),
+      factory.turnCompleted({}),
+    ];
+    const timeline = renderTimelineFixture({
+      events,
+      projectionOptions: { threadStatus: "idle", turnMessageDetail: "full" },
+    });
+    const turn = timeline.turnRows[0];
+    expect(turn.children).toHaveLength(1);
+    expect(turn.children?.[0]).toMatchObject({ title: "Reconnecting... 2/3" });
+    const details = buildThreadTimelineTurnDetailsFromEvents({
+      events: fromRows(events),
+      options: {
+        completedTurnDisplay: "collapse",
+        includeDiagnosticOperations: false,
+        sourceSeqStart: turn.sourceSeqStart,
+        turnId: turn.turnId,
+        threadStatus: "idle",
+        threadName: "",
+        workspaceRoot: null,
+      },
+    });
+    expect(details).toMatchObject({ kind: "matched", rows: turn.children });
   });
 });
