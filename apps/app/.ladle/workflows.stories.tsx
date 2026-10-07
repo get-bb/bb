@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-// oxlint-disable-next-line bb/forkable-plugin-imports
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { PluginSlotMount } from "../src/components/plugin/PluginSlotMount";
 import {
   installTestPluginRuntime,
   loadPluginApp,
 } from "@get-bb/plugin-sdk/testing/app";
-import type { WorkflowRunView } from "./src/ui-contract.js";
+import type { WorkflowRunView } from "../../../plugins/workflows/src/ui-contract.js";
 
 installTestPluginRuntime();
-const workflowAppModule = await import("./src/app.js");
+const workflowAppModule = await import("../../../plugins/workflows/src/app.js");
 const { EmptyOrError, LoadingPreview, WorkflowRunPanelState } =
   workflowAppModule;
 const workflowApp = await loadPluginApp(async () => workflowAppModule);

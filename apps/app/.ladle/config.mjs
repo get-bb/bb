@@ -42,7 +42,7 @@ export default {
   stories: [
     "src/**/*.stories.tsx",
     "../../plugins/automations/*.stories.tsx",
-    "../../plugins/workflows/**/*.stories.tsx",
+    ".ladle/workflows.stories.tsx",
     "../../plugins/provider-usage/*.stories.tsx",
   ],
   defaultStory: "",
