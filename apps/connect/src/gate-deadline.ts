@@ -7,22 +7,26 @@ export type GateStage =
 
 export interface GateProgress {
   stage: GateStage;
+  tunnelObjectAttempts: number;
 }
 
-export interface GateStall {
+export interface GateDelay {
+  kind: "slow" | "stall";
   stage: GateStage;
   method: string;
   host: string;
   path: string;
-  deadlineMs: number;
+  elapsedMs: number;
+  tunnelObjectAttempts: number;
 }
 
 interface WithGateDeadlineArgs {
   request: Request;
   deadlineMs: number;
+  slowAfterMs: number | null;
   progress: GateProgress;
   run: () => Promise<Response>;
-  onStall: (stall: GateStall) => void;
+  onDelay: (delay: GateDelay) => void;
 }
 
 const STALL_MESSAGES: Record<GateStage, string> = {
@@ -45,30 +49,40 @@ function discardLateResponse(work: Promise<Response>): void {
 export async function withGateDeadline({
   request,
   deadlineMs,
+  slowAfterMs,
   progress,
   run,
-  onStall,
+  onDelay,
 }: WithGateDeadlineArgs): Promise<Response> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const url = new URL(request.url);
+  const report = (kind: GateDelay["kind"], elapsedMs: number) =>
+    onDelay({
+      kind,
+      stage: progress.stage,
+      method: request.method,
+      host: url.host,
+      path: url.pathname,
+      elapsedMs,
+      tunnelObjectAttempts: progress.tunnelObjectAttempts,
+    });
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const slowTimer =
+    slowAfterMs === null
+      ? undefined
+      : setTimeout(() => report("slow", slowAfterMs), slowAfterMs);
   const deadline = new Promise<typeof STALLED>((resolve) => {
-    timer = setTimeout(() => resolve(STALLED), deadlineMs);
+    deadlineTimer = setTimeout(() => resolve(STALLED), deadlineMs);
   });
   const work = run();
   try {
     const winner = await Promise.race([work, deadline]);
     if (winner !== STALLED) return winner;
   } finally {
-    clearTimeout(timer);
+    clearTimeout(deadlineTimer);
+    clearTimeout(slowTimer);
   }
   discardLateResponse(work);
-  const url = new URL(request.url);
-  onStall({
-    stage: progress.stage,
-    method: request.method,
-    host: url.host,
-    path: url.pathname,
-    deadlineMs,
-  });
+  report("stall", deadlineMs);
   return new Response(
     `bb connect: timed out ${STALL_MESSAGES[progress.stage]} (stage: ${progress.stage})\n`,
     {

@@ -46,7 +46,7 @@
     }
   ],
   "analytics_engine_datasets": [
-    { "binding": "GATE_STALLS", "dataset": "bb_connect_gate_stalls" }
+    { "binding": "GATE_EVENTS", "dataset": "bb_connect_gate_events" }
   ],
   "routes": [{ "pattern": "*.getbb.app/*", "zone_name": "getbb.app" }],
   "env": {
@@ -84,8 +84,8 @@
       ],
       "analytics_engine_datasets": [
         {
-          "binding": "GATE_STALLS",
-          "dataset": "bb_connect_gate_stalls_staging"
+          "binding": "GATE_EVENTS",
+          "dataset": "bb_connect_gate_events_staging"
         }
       ]
     }

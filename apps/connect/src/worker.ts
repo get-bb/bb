@@ -39,8 +39,8 @@ import {
 import { serveWithCache } from "./cache.js";
 import {
   withGateDeadline,
+  type GateDelay,
   type GateProgress,
-  type GateStall,
 } from "./gate-deadline.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
@@ -313,6 +313,7 @@ async function fetchTunnelDo(
   for (let attempt = 0; ; attempt += 1) {
     const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
     progress.stage = "tunnel-object";
+    progress.tunnelObjectAttempts += 1;
     try {
       const response =
         (relay ? await fetchThroughRelay(stub, request, progress) : null) ??
@@ -663,12 +664,14 @@ const gate = {
   },
 };
 
-function recordGateStall(env: Env, stall: GateStall): void {
-  console.error("bb connect: request stalled", stall);
-  env.GATE_STALLS.writeDataPoint({
-    indexes: [stall.host],
-    blobs: [stall.stage, stall.method, stall.host, stall.path],
-    doubles: [stall.deadlineMs],
+const SLOW_TUNNEL_DIAL_MS = 3_000;
+
+function recordGateDelay(env: Env, delay: GateDelay): void {
+  console.error(`bb connect: request ${delay.kind}`, delay);
+  env.GATE_EVENTS.writeDataPoint({
+    indexes: [delay.host],
+    blobs: [delay.kind, delay.stage, delay.method, delay.host, delay.path],
+    doubles: [delay.elapsedMs, delay.tunnelObjectAttempts],
   });
 }
 
@@ -678,18 +681,24 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    const progress: GateProgress = { stage: "routing" };
+    const progress: GateProgress = {
+      stage: "routing",
+      tunnelObjectAttempts: 0,
+    };
+    const requestUrl = new URL(request.url);
     try {
       return await withGateDeadline({
         request,
         deadlineMs: responseHeadTimeoutMs(
           request.method,
-          new URL(request.url),
+          requestUrl,
           request.headers,
         ),
+        slowAfterMs:
+          requestUrl.pathname === "/__tunnel" ? SLOW_TUNNEL_DIAL_MS : null,
         progress,
         run: () => gate.fetch(request, env, ctx, progress),
-        onStall: (stall) => recordGateStall(env, stall),
+        onDelay: (delay) => recordGateDelay(env, delay),
       });
     } catch (error) {
       console.error("bb connect: request failed", {

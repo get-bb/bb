@@ -280,7 +280,7 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "test-secret",
-    GATE_STALLS: { writeDataPoint: vi.fn() },
+    GATE_EVENTS: { writeDataPoint: vi.fn() },
   };
   const ctx = {
     waitUntil: vi.fn(),
@@ -1000,10 +1000,16 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: tunnel-object)");
-    expect(env.GATE_STALLS.writeDataPoint).toHaveBeenCalledWith({
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
       indexes: ["sawyer.getbb.app"],
-      blobs: ["tunnel-object", "GET", "sawyer.getbb.app", "/api/v1/threads"],
-      doubles: [RESP_HEAD_TIMEOUT_MS],
+      blobs: [
+        "stall",
+        "tunnel-object",
+        "GET",
+        "sawyer.getbb.app",
+        "/api/v1/threads",
+      ],
+      doubles: [RESP_HEAD_TIMEOUT_MS, 1],
     });
   });
 
@@ -1050,9 +1056,15 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: request-body)");
-    expect(env.GATE_STALLS.writeDataPoint).toHaveBeenCalledWith(
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
       expect.objectContaining({
-        blobs: ["request-body", "POST", "sawyer.getbb.app", "/api/v1/threads"],
+        blobs: [
+          "stall",
+          "request-body",
+          "POST",
+          "sawyer.getbb.app",
+          "/api/v1/threads",
+        ],
       }),
     );
   });
@@ -1106,6 +1118,37 @@ describe("gate request deadline", () => {
     expect(cancel).toHaveBeenCalled();
   });
 
+  it("marks a tunnel dial still waiting on the tunnel object after three seconds", async () => {
+    const credential = "bbcred_server_secret";
+    mockResolveLabel.mockResolvedValue({
+      ...resolvedServer(),
+      server: {
+        ...resolvedServer().server,
+        credentialHash: await sha256Hex(credential),
+      },
+    });
+    const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
+    void worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
+        headers: {
+          authorization: `Bearer ${credential}`,
+          upgrade: "websocket",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: ["slow", "tunnel-object", "GET", "sawyer.getbb.app", "/__tunnel"],
+      doubles: [3_000, 1],
+    });
+  });
+
   it("records nothing for a request that answers in time", async () => {
     const { env, ctx } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
@@ -1118,7 +1161,7 @@ describe("gate request deadline", () => {
     await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
 
     expect(response.status).toBe(200);
-    expect(env.GATE_STALLS.writeDataPoint).not.toHaveBeenCalled();
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
   });
 });
 
@@ -2133,7 +2176,7 @@ function makeDoEnv() {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "s",
-    GATE_STALLS: { writeDataPoint: vi.fn() },
+    GATE_EVENTS: { writeDataPoint: vi.fn() },
   };
 }
 
