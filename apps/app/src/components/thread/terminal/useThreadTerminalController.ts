@@ -212,6 +212,7 @@ export function useThreadTerminalController({
     }
     if (
       preferredTerminalId !== undefined ||
+      fixedTerminalId !== undefined ||
       activeFixedTerminalId === activeTerminalId
     ) {
       return;
@@ -220,6 +221,7 @@ export function useThreadTerminalController({
   }, [
     activeFixedTerminalId,
     activeTerminalId,
+    fixedTerminalId,
     isPanelOpen,
     preferredTerminalId,
     setActiveFixedTerminal,

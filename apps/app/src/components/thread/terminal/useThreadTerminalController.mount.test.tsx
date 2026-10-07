@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { TerminalSession } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import {
+  resetFixedPanelTabsStateForTest,
+  useActiveFixedRightTerminalId,
+  useSetFixedRightTerminalActiveTerminal,
+} from "@/lib/fixed-panel-tabs";
 import {
   useThreadTerminalController,
   type ThreadTerminalControllerArgs,
@@ -44,6 +49,8 @@ function controllerArgs(
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  localStorage.clear();
+  resetFixedPanelTabsStateForTest();
 });
 
 describe("useThreadTerminalController terminal view mounting", () => {
@@ -104,5 +111,44 @@ describe("useThreadTerminalController terminal view mounting", () => {
     expect(result.current.shouldMountTerminalView).toBe(false);
     rerender({ isPanelOpen: true, isPanelPersistedOpen: true });
     expect(result.current.shouldMountTerminalView).toBe(true);
+  });
+
+  it("leaves the selection alone while a fixed tab still shows its previous terminal", async () => {
+    const otherSession = makeTerminalSession({
+      id: "term_2",
+      threadId: "thr_1",
+      environmentId: "env_1",
+      hostId: "host_1",
+    });
+    vi.mocked(sdk.terminals.list).mockResolvedValue({
+      sessions: [session, otherSession],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => {
+        const controller = useThreadTerminalController({
+          ...controllerArgs({ isPanelOpen: true, isPanelPersistedOpen: true }),
+          fixedTerminalId: session.id,
+          panelStateId: "plugin-page",
+        });
+        return {
+          activeTerminalId: useActiveFixedRightTerminalId("plugin-page", null),
+          controller,
+          selectTerminal: useSetFixedRightTerminalActiveTerminal(
+            "plugin-page",
+            null,
+          ),
+        };
+      },
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.controller.activeSession?.id).toBe(session.id);
+    });
+
+    act(() => result.current.selectTerminal(otherSession.id));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.activeTerminalId).toBe(otherSession.id);
   });
 });

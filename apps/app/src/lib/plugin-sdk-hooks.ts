@@ -55,6 +55,7 @@ import {
 } from "@/lib/plugin-composer-handle";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { applyTerminalSessionUpsert } from "@/hooks/cache-owners/terminal-cache-owner";
+import { appQueryClient } from "@/lib/app-query-client";
 import { isVisibleTerminalSession } from "@/lib/terminal-session-visibility";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
@@ -337,7 +338,6 @@ export function useBbNavigate(): BbNavigate {
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const appNavigation = useAppNavigationHost();
   const toThread = useCallback(
     (threadId: string) => {
@@ -426,10 +426,10 @@ export function useBbNavigate(): BbNavigate {
           throw error;
         });
       if (session === null || !isVisibleTerminalSession(session)) return false;
-      applyTerminalSessionUpsert({ queryClient, session });
+      applyTerminalSessionUpsert({ queryClient: appQueryClient, session });
       return appNavigation.openTerminal(session);
     },
-    [appNavigation, queryClient],
+    [appNavigation],
   );
   return useMemo<BbNavigate>(
     () => ({
